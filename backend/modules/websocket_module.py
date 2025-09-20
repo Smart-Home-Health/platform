@@ -266,7 +266,7 @@ class WebSocketModule:
                 try:
                     # Try to get blood pressure from unified vitals
                     bp_vitals = get_vitals_by_type(db, 'blood_pressure', limit=5)
-                    bp_history = _group_multi_value_vitals(bp_vitals)
+                    bp_history = _group_multi_value_vitals(bp_vitals, 'blood_pressure')
                     
                     # If no unified data, fallback to legacy table
                     if not bp_history:
@@ -278,7 +278,7 @@ class WebSocketModule:
                 try:
                     # Try to get temperature from unified vitals
                     temp_vitals = get_vitals_by_type(db, 'temperature', limit=10)
-                    temp_history = _group_multi_value_vitals(temp_vitals)
+                    temp_history = _group_multi_value_vitals(temp_vitals, 'temperature')
                     
                     # If no unified data, fallback to legacy table
                     if not temp_history:

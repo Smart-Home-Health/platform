@@ -12,14 +12,21 @@ logger = logging.getLogger('crud')
 
 
 # --- CareTaskSchedule CRUD ---
-def add_care_task_schedule(db: Session, care_task_id, cron_expression, description=None, active=True, notes=None):
+def add_care_task_schedule(db: Session, care_task_id, cron_expression, description=None, active=True, notes=None, patient_id=None):
     """
     Add a new care task schedule
     """
     try:
+        # If no patient_id provided, use the current active patient
+        if patient_id is None:
+            active_patient = get_active_patient(db)
+            if active_patient:
+                patient_id = active_patient.id
+        
         now = datetime.now()
         schedule = CareTaskSchedule(
             care_task_id=care_task_id,
+            patient_id=patient_id,
             cron_expression=cron_expression,
             description=description,
             active=active,
@@ -30,7 +37,7 @@ def add_care_task_schedule(db: Session, care_task_id, cron_expression, descripti
         db.add(schedule)
         db.commit()
         db.refresh(schedule)
-        logger.info(f"Care task schedule added for task {care_task_id}: {cron_expression}")
+        logger.info(f"Care task schedule added for task {care_task_id} (patient {patient_id}): {cron_expression}")
         return schedule.id
     except Exception as e:
         logger.error(f"Error adding care task schedule: {e}")
@@ -38,19 +45,39 @@ def add_care_task_schedule(db: Session, care_task_id, cron_expression, descripti
         return None
 
 
-def get_care_task_schedules(db: Session, care_task_id):
+def get_care_task_schedules(db: Session, care_task_id, patient_id=None):
     """
-    Get all schedules for a specific care task
+    Get all schedules for a specific care task, optionally filtered by patient
     """
     try:
-        schedules = db.query(CareTaskSchedule).filter(
+        query = db.query(CareTaskSchedule).filter(
             CareTaskSchedule.care_task_id == care_task_id
-        ).order_by(CareTaskSchedule.created_at.desc()).all()
+        )
+        
+        # If patient_id is provided, filter by it
+        # If patient_id is None, get current patient and filter by that
+        if patient_id is None:
+            active_patient = get_active_patient(db)
+            if active_patient:
+                # Filter to show only schedules for current patient OR global schedules (patient_id is NULL)
+                query = query.filter(
+                    (CareTaskSchedule.patient_id == active_patient.id) | 
+                    (CareTaskSchedule.patient_id.is_(None))
+                )
+        else:
+            # Filter to show schedules for specific patient OR global schedules
+            query = query.filter(
+                (CareTaskSchedule.patient_id == patient_id) | 
+                (CareTaskSchedule.patient_id.is_(None))
+            )
+        
+        schedules = query.order_by(CareTaskSchedule.created_at.desc()).all()
         
         return [
             {
                 'id': s.id,
                 'care_task_id': s.care_task_id,
+                'patient_id': s.patient_id,
                 'cron_expression': s.cron_expression,
                 'description': s.description,
                 'active': s.active,
@@ -65,14 +92,30 @@ def get_care_task_schedules(db: Session, care_task_id):
         return []
 
 
-def get_all_care_task_schedules(db: Session, active_only=True):
+def get_all_care_task_schedules(db: Session, active_only=True, patient_id=None):
     """
-    Get all care task schedules, optionally filtering by active status
+    Get all care task schedules, optionally filtering by active status and patient
     """
     try:
         query = db.query(CareTaskSchedule)
         if active_only:
             query = query.filter(CareTaskSchedule.active == True)
+        
+        # Filter by patient - if no patient_id provided, use current patient
+        if patient_id is None:
+            active_patient = get_active_patient(db)
+            if active_patient:
+                # Show schedules for current patient OR global schedules (patient_id is NULL)
+                query = query.filter(
+                    (CareTaskSchedule.patient_id == active_patient.id) | 
+                    (CareTaskSchedule.patient_id.is_(None))
+                )
+        else:
+            # Show schedules for specific patient OR global schedules
+            query = query.filter(
+                (CareTaskSchedule.patient_id == patient_id) | 
+                (CareTaskSchedule.patient_id.is_(None))
+            )
         
         schedules = query.order_by(CareTaskSchedule.created_at.desc()).all()
         
@@ -81,6 +124,7 @@ def get_all_care_task_schedules(db: Session, active_only=True):
                 'id': s.id,
                 'care_task_id': s.care_task_id,
                 'care_task_name': s.care_task.name if s.care_task else None,
+                'patient_id': s.patient_id,
                 'cron_expression': s.cron_expression,
                 'description': s.description,
                 'active': s.active,
@@ -158,12 +202,13 @@ def toggle_care_task_schedule_active(db: Session, schedule_id):
         return False, None
 
 
-def get_scheduled_care_tasks_for_date(db: Session, target_date=None):
+def get_scheduled_care_tasks_for_date(db: Session, target_date=None, patient_id=None):
     """
-    Get all care tasks scheduled for a specific date
+    Get all care tasks scheduled for a specific date, filtered by patient
     
     Args:
         target_date: datetime.date object, defaults to today
+        patient_id: Patient ID to filter by, if None uses current active patient
     
     Returns:
         List of scheduled care task entries with calculated times
@@ -172,12 +217,30 @@ def get_scheduled_care_tasks_for_date(db: Session, target_date=None):
         if target_date is None:
             target_date = datetime.now().date()
         
-        # Get all active care task schedules
-        schedules = db.query(CareTaskSchedule).filter(
+        # Get all active care task schedules for the specified patient
+        query = db.query(CareTaskSchedule).filter(
             CareTaskSchedule.active == True
         ).join(CareTask).filter(
             CareTask.active == True
-        ).all()
+        )
+        
+        # Filter by patient - if no patient_id provided, use current patient
+        if patient_id is None:
+            active_patient = get_active_patient(db)
+            if active_patient:
+                # Show schedules for current patient OR global schedules (patient_id is NULL)
+                query = query.filter(
+                    (CareTaskSchedule.patient_id == active_patient.id) | 
+                    (CareTaskSchedule.patient_id.is_(None))
+                )
+        else:
+            # Show schedules for specific patient OR global schedules
+            query = query.filter(
+                (CareTaskSchedule.patient_id == patient_id) | 
+                (CareTaskSchedule.patient_id.is_(None))
+            )
+        
+        schedules = query.all()
         
         scheduled_tasks = []
         
@@ -259,9 +322,12 @@ def get_missed_care_tasks(db: Session, target_date=None):
         return []
 
 
-def get_daily_care_task_schedule(db: Session):
+def get_daily_care_task_schedule(db: Session, patient_id=None):
     """
     Get scheduled care tasks for today and yesterday in chronological order with status
+    
+    Args:
+        patient_id: Patient ID to filter by, if None uses current active patient
     
     Returns:
         Dict with 'scheduled_care_tasks' list sorted chronologically
@@ -271,9 +337,9 @@ def get_daily_care_task_schedule(db: Session):
         yesterday = today - timedelta(days=1)
         current_time = datetime.now()
         
-        # Get scheduled tasks for yesterday and today
-        yesterday_scheduled = get_scheduled_care_tasks_for_date(db, yesterday)
-        today_scheduled = get_scheduled_care_tasks_for_date(db, today)
+        # Get scheduled tasks for yesterday and today for the specified patient
+        yesterday_scheduled = get_scheduled_care_tasks_for_date(db, yesterday, patient_id)
+        today_scheduled = get_scheduled_care_tasks_for_date(db, today, patient_id)
         
         all_scheduled = []
         

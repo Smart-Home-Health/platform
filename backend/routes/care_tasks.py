@@ -35,7 +35,8 @@ async def api_add_care_task(data: dict = Body(...), db: Session = Depends(get_db
             name=data.get("name"),
             description=data.get("description"),
             category_id=data.get("category_id"),
-            active=data.get("active", True)
+            active=data.get("active", True),
+            patient_id=data.get("patient_id")  # Allow explicit patient assignment, defaults to None for global tasks
         )
         if task_id:
             return {"id": task_id, "status": "success"}
@@ -50,10 +51,10 @@ async def api_add_care_task(data: dict = Body(...), db: Session = Depends(get_db
 
 
 @router.get("/care-tasks/active")
-async def get_active_care_tasks_endpoint(db: Session = Depends(get_db)):
-    """Get all active care tasks with their schedules"""
+async def get_active_care_tasks_endpoint(patient_id: int = None, db: Session = Depends(get_db)):
+    """Get all active care tasks, optionally filtered by patient"""
     try:
-        care_tasks = get_care_tasks(db, active_only=True)
+        care_tasks = get_care_tasks(db, active_only=True, patient_id=patient_id)
         return {"care_tasks": care_tasks}
     except Exception as e:
         logger.error(f"Error getting active care tasks: {e}")
@@ -64,10 +65,10 @@ async def get_active_care_tasks_endpoint(db: Session = Depends(get_db)):
 
 
 @router.get("/care-tasks/inactive")
-async def get_inactive_care_tasks_endpoint(db: Session = Depends(get_db)):
-    """Get all inactive care tasks with their schedules"""
+async def get_inactive_care_tasks_endpoint(patient_id: int = None, db: Session = Depends(get_db)):
+    """Get all inactive care tasks, optionally filtered by patient"""
     try:
-        care_tasks = get_care_tasks(db, active_only=False)
+        care_tasks = get_care_tasks(db, active_only=False, patient_id=patient_id)
         return {"care_tasks": care_tasks}
     except Exception as e:
         logger.error(f"Error getting inactive care tasks: {e}")
@@ -176,7 +177,8 @@ async def api_add_care_task_schedule(
             cron_expression=cron_expression,
             description=data.get("description"),
             active=data.get("active", True),
-            notes=data.get("notes")
+            notes=data.get("notes"),
+            patient_id=data.get("patient_id")  # Allow explicit patient_id, fallback to current patient in function
         )
         if schedule_id:
             return {"id": schedule_id, "status": "success"}
@@ -191,10 +193,10 @@ async def api_add_care_task_schedule(
 
 
 @router.get("/care-tasks/{care_task_id}/schedules")
-async def get_care_task_schedules_endpoint(care_task_id: int, db: Session = Depends(get_db)):
-    """Get all schedules for a specific care task"""
+async def get_care_task_schedules_endpoint(care_task_id: int, patient_id: int = None, db: Session = Depends(get_db)):
+    """Get all schedules for a specific care task, optionally filtered by patient"""
     try:
-        schedules = get_care_task_schedules(db, care_task_id)
+        schedules = get_care_task_schedules(db, care_task_id, patient_id)
         return {"schedules": schedules}
     except Exception as e:
         logger.error(f"Error getting care task schedules: {e}")
@@ -205,10 +207,10 @@ async def get_care_task_schedules_endpoint(care_task_id: int, db: Session = Depe
 
 
 @router.get("/care-task-schedules")
-async def get_all_care_task_schedules_endpoint(active_only: bool = True, db: Session = Depends(get_db)):
-    """Get all care task schedules"""
+async def get_all_care_task_schedules_endpoint(active_only: bool = True, patient_id: int = None, db: Session = Depends(get_db)):
+    """Get all care task schedules, optionally filtered by patient"""
     try:
-        schedules = get_all_care_task_schedules(db, active_only)
+        schedules = get_all_care_task_schedules(db, active_only, patient_id)
         return {"schedules": schedules}
     except Exception as e:
         logger.error(f"Error getting all care task schedules: {e}")
@@ -219,10 +221,10 @@ async def get_all_care_task_schedules_endpoint(active_only: bool = True, db: Ses
 
 
 @router.get("/care-task-schedules/daily")
-async def get_daily_care_task_schedule_endpoint(db: Session = Depends(get_db)):
-    """Get today's care task schedule"""
+async def get_daily_care_task_schedule_endpoint(patient_id: int = None, db: Session = Depends(get_db)):
+    """Get today's care task schedule, optionally filtered by patient"""
     try:
-        schedule = get_daily_care_task_schedule(db)
+        schedule = get_daily_care_task_schedule(db, patient_id)
         return schedule
     except Exception as e:
         logger.error(f"Error getting daily care task schedule: {e}")
@@ -315,6 +317,10 @@ async def complete_care_task_schedule_endpoint(schedule_id: int, data: dict = Bo
         if not schedule:
             return JSONResponse(status_code=404, content={"detail": "Care task schedule not found"})
         
+        # Get the care task details to check if it's nutrition-related
+        from crud.care_tasks import get_care_task
+        care_task = get_care_task(db, schedule['care_task_id'])
+        
         log_id = complete_care_task(
             db=db,
             task_id=schedule['care_task_id'],
@@ -324,8 +330,40 @@ async def complete_care_task_schedule_endpoint(schedule_id: int, data: dict = Bo
             status="completed",
             completed_by=data.get("completed_by")
         )
+        
         if log_id:
-            return {"id": log_id, "status": "success"}
+            # Check if this is a nutrition-related task
+            is_nutrition_task = False
+            nutrition_data = None
+            
+            if care_task and care_task.get('category_name'):
+                nutrition_keywords = ['nutrition', 'feeding', 'meal', 'food', 'drink', 'supplement']
+                is_nutrition_task = any(keyword in care_task['category_name'].lower() for keyword in nutrition_keywords)
+            
+            # Extract nutrition data from schedule notes if available
+            if is_nutrition_task and schedule.get('notes'):
+                try:
+                    import json
+                    notes_data = json.loads(schedule['notes'])
+                    if 'nutrition' in notes_data:
+                        nutrition_data = notes_data['nutrition']
+                except (json.JSONDecodeError, KeyError):
+                    # If notes aren't JSON or don't contain nutrition data, that's ok
+                    pass
+            
+            response_data = {
+                "id": log_id, 
+                "status": "success",
+                "care_task": {
+                    "id": care_task['id'],
+                    "name": care_task['name'],
+                    "category": care_task.get('category_name'),
+                    "is_nutrition_related": is_nutrition_task
+                } if care_task else None,
+                "requires_nutrition_tracking": is_nutrition_task,
+                "nutrition_data": nutrition_data  # Include prefill data
+            }
+            return response_data
         else:
             return JSONResponse(status_code=500, content={"detail": "Failed to complete care task"})
     except Exception as e:

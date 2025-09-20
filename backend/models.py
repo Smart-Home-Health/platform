@@ -26,6 +26,7 @@ class Patient(Base):
     medication_logs = relationship('MedicationLog', back_populates='patient')
     care_task_logs = relationship('CareTaskLog', back_populates='patient')
     equipment = relationship('Equipment', back_populates='patient')
+    nutrition_intake = relationship('NutritionIntake', back_populates='patient')
 
 class BloodPressure(Base):
     __tablename__ = 'blood_pressure'
@@ -346,3 +347,42 @@ class CareTaskLog(Base):
     care_task = relationship('CareTask', back_populates='completion_logs')
     patient = relationship('Patient', back_populates='care_task_logs')
     schedule = relationship('CareTaskSchedule', back_populates='completion_logs')
+    nutrition_intake = relationship('NutritionIntake', back_populates='care_task_log')
+
+class NutritionIntake(Base):
+    __tablename__ = 'nutrition_intake'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    patient_id = Column(Integer, ForeignKey('patients.id'), nullable=False)
+    care_task_log_id = Column(Integer, ForeignKey('care_task_log.id'), nullable=True)  # Link to care task completion
+    
+    # Item details
+    item_name = Column(String, nullable=False)  # e.g., "Peptamen", "Water", "Apple"
+    item_type = Column(String, nullable=False)  # 'food', 'liquid', 'supplement'
+    
+    # Nutritional information
+    amount = Column(Float, nullable=False)  # Quantity consumed
+    amount_unit = Column(String, nullable=False)  # 'ml', 'oz', 'cups', 'grams', 'servings'
+    
+    # Optional nutritional data
+    calories = Column(Float, nullable=True)  # Calories per serving/amount
+    protein_grams = Column(Float, nullable=True)
+    carbs_grams = Column(Float, nullable=True)
+    fat_grams = Column(Float, nullable=True)
+    fiber_grams = Column(Float, nullable=True)
+    sodium_mg = Column(Float, nullable=True)
+    
+    # Timing and context
+    consumed_at = Column(TIMESTAMP(timezone=True), nullable=False)  # When it was consumed
+    meal_type = Column(String, nullable=True)  # 'breakfast', 'lunch', 'dinner', 'snack', 'supplement'
+    
+    # Additional tracking
+    notes = Column(Text, nullable=True)  # Any notes about consumption
+    recorded_by = Column(String, nullable=True)  # Who recorded this entry
+    
+    # Timestamps
+    created_at = Column(TIMESTAMP(timezone=True), nullable=False)
+    updated_at = Column(TIMESTAMP(timezone=True), nullable=False)
+    
+    # Relationships
+    patient = relationship('Patient', foreign_keys=[patient_id])
+    care_task_log = relationship('CareTaskLog', back_populates='nutrition_intake')

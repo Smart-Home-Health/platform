@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import ModalBase from './ModalBase';
 import config from '../config';
+import { patientService } from '../services/patients';
 import CareTaskListView from './care-task/CareTaskListView';
 import CareTaskScheduleView from './care-task/CareTaskScheduleView';
 import CareTaskScheduledView from './care-task/CareTaskScheduledView';
+import NutritionTrackingModal from './nutrition/NutritionTrackingModal';
 
 const CareTaskModal = ({ onClose }) => {
   const [tab, setTab] = useState('scheduled');
@@ -16,6 +18,7 @@ const CareTaskModal = ({ onClose }) => {
   const [loading, setLoading] = useState(false);
   const [showScheduleFor, setShowScheduleFor] = useState(null); // task id or null
   const [showHistory, setShowHistory] = useState(false); // show history view
+  const [currentPatient, setCurrentPatient] = useState(null);
   
   // Add category modal state
   const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
@@ -49,6 +52,51 @@ const CareTaskModal = ({ onClose }) => {
             transform: translateY(0);
           }
         }
+        
+        /* Force readable text in form inputs */
+        .care-task-input,
+        .care-task-textarea,
+        .care-task-select,
+        input.care-task-input,
+        textarea.care-task-textarea,
+        select.care-task-select {
+          color: #ffffff !important;
+          background-color: #2d3748 !important;
+          border: 1px solid #4a5568 !important;
+        }
+        
+        .care-task-input::placeholder,
+        .care-task-textarea::placeholder,
+        input.care-task-input::placeholder,
+        textarea.care-task-textarea::placeholder {
+          color: #a0aec0 !important;
+          opacity: 1 !important;
+        }
+        
+        .care-task-select option,
+        select.care-task-select option {
+          color: #ffffff !important;
+          background-color: #2d3748 !important;
+        }
+        
+        /* Additional overrides for any conflicting styles */
+        form input[type="text"].care-task-input,
+        form textarea.care-task-textarea,
+        form select.care-task-select {
+          color: #ffffff !important;
+          background-color: #2d3748 !important;
+          border: 1px solid #4a5568 !important;
+        }
+        
+        /* Very specific selectors to override any global styles */
+        div form input.care-task-input,
+        div form textarea.care-task-textarea,
+        div form select.care-task-select {
+          color: #ffffff !important;
+          background-color: #2d3748 !important;
+          border: 1px solid #4a5568 !important;
+          -webkit-text-fill-color: #ffffff !important;
+        }
       `;
       document.head.appendChild(style);
     }
@@ -77,6 +125,14 @@ const CareTaskModal = ({ onClose }) => {
     completedTasks: new Set()
   });
 
+  // Nutrition tracking modal state
+  const [nutritionModal, setNutritionModal] = useState({
+    open: false,
+    careTaskLogId: null,
+    careTaskName: '',
+    nutritionData: null  // Add nutrition prefill data
+  });
+
   // Status filter state for scheduled tasks - match backend status values
   const [statusFilters, setStatusFilters] = useState({
     pending: true,        // Tasks that haven't reached scheduled time yet (>30 min away)
@@ -95,6 +151,7 @@ const CareTaskModal = ({ onClose }) => {
   // Load tasks from API on component mount
   useEffect(() => {
     fetchCategories(); // Always fetch categories
+    fetchCurrentPatient(); // Fetch current patient
     if (tab === 'active') {
       fetchTasks();
     } else if (tab === 'inactive') {
@@ -103,6 +160,26 @@ const CareTaskModal = ({ onClose }) => {
       fetchScheduledTasks();
     }
   }, [tab]);
+
+  // Refetch data when patient changes
+  useEffect(() => {
+    if (currentPatient) {
+      if (tab === 'scheduled') {
+        fetchScheduledTasks();
+      } else if (tab === 'active' || tab === 'inactive') {
+        fetchTasks();
+      }
+    }
+  }, [currentPatient]);
+
+  const fetchCurrentPatient = async () => {
+    try {
+      const patient = await patientService.getCurrentPatient();
+      setCurrentPatient(patient);
+    } catch (error) {
+      console.error('Error fetching current patient:', error);
+    }
+  };
 
   const fetchCategories = async () => {
     try {
@@ -119,9 +196,13 @@ const CareTaskModal = ({ onClose }) => {
   const fetchTasks = async () => {
     setLoading(true);
     try {
+      // Get current patient and include in API call for patient filtering
+      const patient = currentPatient || await patientService.getCurrentPatient();
+      const patientParam = patient ? `?patient_id=${patient.id}` : '';
+      
       const [activeResponse, inactiveResponse] = await Promise.all([
-        fetch(`${config.apiUrl}/api/care-tasks/active`),
-        fetch(`${config.apiUrl}/api/care-tasks/inactive`)
+        fetch(`${config.apiUrl}/api/care-tasks/active${patientParam}`),
+        fetch(`${config.apiUrl}/api/care-tasks/inactive${patientParam}`)
       ]);
       
       if (activeResponse.ok && inactiveResponse.ok) {
@@ -140,7 +221,11 @@ const CareTaskModal = ({ onClose }) => {
   const fetchScheduledTasks = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${config.apiUrl}/api/care-task-schedules/daily`);
+      // Get current patient and include in API call for patient filtering
+      const patient = currentPatient || await patientService.getCurrentPatient();
+      const patientParam = patient ? `?patient_id=${patient.id}` : '';
+      
+      const response = await fetch(`${config.apiUrl}/api/care-task-schedules/daily${patientParam}`);
       if (response.ok) {
         const data = await response.json();
         setScheduledTasks(data);
@@ -154,7 +239,11 @@ const CareTaskModal = ({ onClose }) => {
 
   const fetchTaskSchedules = async (taskId) => {
     try {
-      const response = await fetch(`${config.apiUrl}/api/care-tasks/${taskId}/schedules`);
+      // Get current patient and include in API call for patient filtering
+      const patient = currentPatient || await patientService.getCurrentPatient();
+      const patientParam = patient ? `?patient_id=${patient.id}` : '';
+      
+      const response = await fetch(`${config.apiUrl}/api/care-tasks/${taskId}/schedules${patientParam}`);
       if (response.ok) {
         const data = await response.json();
         return data.schedules || [];
@@ -185,12 +274,18 @@ const CareTaskModal = ({ onClose }) => {
       
       const method = editingTask ? 'PUT' : 'POST';
       
+      // For new care tasks, include current patient_id to assign to current patient
+      const submitData = { ...formData };
+      if (!editingTask && currentPatient) {
+        submitData.patient_id = currentPatient.id;
+      }
+      
       const response = await fetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(submitData),
       });
 
       if (response.ok) {
@@ -385,6 +480,18 @@ const CareTaskModal = ({ onClose }) => {
       });
 
       if (response.ok) {
+        const result = await response.json();
+        
+        // Check if nutrition tracking is required
+        if (result.requires_nutrition_tracking && result.care_task) {
+          setNutritionModal({
+            open: true,
+            careTaskLogId: result.id,
+            careTaskName: result.care_task.name,
+            nutritionData: result.nutrition_data || null
+          });
+        }
+        
         // Refresh scheduled tasks to update the view
         fetchScheduledTasks();
       } else {
@@ -665,6 +772,34 @@ const CareTaskModal = ({ onClose }) => {
     }>
       {/* Content Area */}
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        {/* Current Patient Info */}
+        {(tab === 'scheduled' || tab === 'active' || tab === 'inactive') && (
+          <div style={{ 
+            marginBottom: 16, 
+            padding: 12, 
+            backgroundColor: currentPatient ? '#e8f4fd' : '#fff3cd', 
+            borderRadius: 6, 
+            border: currentPatient ? '1px solid #b3d7ff' : '1px solid #ffeaa7',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8
+          }}>
+            <span style={{ 
+              fontSize: 14, 
+              color: currentPatient ? '#0066cc' : '#856404', 
+              fontWeight: 500 
+            }}>
+              {currentPatient ? (
+                <>
+                  {tab === 'scheduled' ? 'Viewing schedule for:' : 'Viewing care tasks for:'} {currentPatient.first_name} {currentPatient.last_name}
+                </>
+              ) : (
+                'No patient selected - showing global templates only'
+              )}
+            </span>
+          </div>
+        )}
+        
         {/* Content */}
         <div style={{ flex: 1, overflow: 'auto' }}>
           {loading && (
@@ -929,15 +1064,41 @@ const CareTaskModal = ({ onClose }) => {
                 display: 'flex', 
                 flexDirection: 'column', 
                 gap: '24px',
-                backgroundColor: '#fff',
+                backgroundColor: 'rgba(30,32,40,0.95)',
                 padding: '24px',
                 borderRadius: '12px',
-                border: '1px solid #e9ecef',
+                border: '1px solid #4a5568',
                 boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)',
                 maxWidth: '100%',
                 overflow: 'hidden', // Prevent content from spilling out
                 boxSizing: 'border-box'
               }}>
+                
+                {/* Patient Context for New Tasks */}
+                {!editingTask && (
+                  <div style={{ 
+                    marginBottom: 8, 
+                    padding: 12, 
+                    backgroundColor: currentPatient ? '#e8f4fd' : '#fff3cd', 
+                    borderRadius: 6, 
+                    border: currentPatient ? '1px solid #b3d7ff' : '1px solid #ffeaa7',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8
+                  }}>
+                    <span style={{ 
+                      fontSize: 14, 
+                      color: currentPatient ? '#0066cc' : '#856404', 
+                      fontWeight: 500 
+                    }}>
+                      {currentPatient ? (
+                        <>Creating task for: {currentPatient.first_name} {currentPatient.last_name}</>
+                      ) : (
+                        'Creating global task template (no patient selected)'
+                      )}
+                    </span>
+                  </div>
+                )}
                 
                 {/* Category Selection - First Priority */}
                 <div>
@@ -945,7 +1106,7 @@ const CareTaskModal = ({ onClose }) => {
                     display: 'block', 
                     marginBottom: '12px', 
                     fontWeight: '700', 
-                    color: '#2c3e50',
+                    color: '#ffffff',
                     fontSize: '16px',
                     letterSpacing: '0.5px'
                   }}>
@@ -957,37 +1118,25 @@ const CareTaskModal = ({ onClose }) => {
                     <select
                       value={formData.category_id}
                       onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
+                      className="care-task-select"
                       style={{
                         width: '100%',
-                        padding: '18px 20px 18px 50px',
-                        border: '2px solid #e9ecef',
-                        borderRadius: '12px',
-                        fontSize: '16px',
-                        fontWeight: '600',
-                        transition: 'all 0.3s ease',
-                        backgroundColor: '#fff',
+                        padding: '10px 12px',
+                        backgroundColor: '#2d3748',
+                        border: '1px solid #4a5568',
+                        borderRadius: '6px',
+                        color: '#ffffff',
+                        fontSize: '14px',
                         outline: 'none',
+                        transition: 'border-color 0.2s ease',
+                        boxSizing: 'border-box',
                         cursor: 'pointer',
                         fontFamily: 'inherit',
-                        appearance: 'none',
-                        backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e")`,
-                        backgroundRepeat: 'no-repeat',
-                        backgroundPosition: 'right 16px center',
-                        backgroundSize: '16px',
-                        color: formData.category_id ? '#2c3e50' : '#6c757d',
-                        boxSizing: 'border-box'
-                      }}
-                      onFocus={(e) => {
-                        e.target.style.borderColor = '#007bff';
-                        e.target.style.boxShadow = '0 0 0 3px rgba(0, 123, 255, 0.15)';
-                      }}
-                      onBlur={(e) => {
-                        e.target.style.borderColor = '#e9ecef';
-                        e.target.style.boxShadow = 'none';
+                        appearance: 'none'
                       }}
                       required
                     >
-                      <option value="" style={{ color: '#6c757d' }}>
+                      <option value="" style={{ color: '#ffffff', backgroundColor: '#2d3748' }}>
                         🏷️ Select a category...
                       </option>
                       {categories.map(category => (
@@ -995,32 +1144,16 @@ const CareTaskModal = ({ onClose }) => {
                           key={category.id} 
                           value={category.id}
                           style={{ 
-                            color: '#2c3e50',
+                            color: '#ffffff', // White text for dark theme
                             fontWeight: '600',
-                            padding: '8px'
+                            padding: '8px',
+                            backgroundColor: '#2d3748' // Dark background
                           }}
                         >
                           {category.name} {category.description ? `- ${category.description}` : ''}
                         </option>
                       ))}
                     </select>
-                    
-                    {/* Category Color Indicator */}
-                    {formData.category_id && (
-                      <div style={{
-                        position: 'absolute',
-                        left: '20px',
-                        top: '50%',
-                        transform: 'translateY(-50%)',
-                        width: '18px',
-                        height: '18px',
-                        borderRadius: '50%',
-                        backgroundColor: categories.find(c => c.id == formData.category_id)?.color || '#6f42c1',
-                        pointerEvents: 'none',
-                        boxShadow: '0 2px 6px rgba(0, 0, 0, 0.2)',
-                        border: '2px solid #fff'
-                      }}></div>
-                    )}
                   </div>
                   
                   {/* Category Info */}
@@ -1028,11 +1161,11 @@ const CareTaskModal = ({ onClose }) => {
                     <div style={{
                       marginTop: '12px',
                       padding: '12px 16px',
-                      backgroundColor: '#f8f9fa',
+                      backgroundColor: '#1a202c',
                       borderRadius: '8px',
-                      border: '1px solid #e9ecef',
+                      border: '1px solid #4a5568',
                       fontSize: '14px',
-                      color: '#495057'
+                      color: '#ffffff'
                     }}>
                       <div style={{ 
                         display: 'flex', 
@@ -1052,7 +1185,7 @@ const CareTaskModal = ({ onClose }) => {
                         <div style={{ 
                           marginTop: '6px',
                           fontSize: '13px',
-                          color: '#6c757d',
+                          color: '#cbd5e0',
                           fontStyle: 'italic'
                         }}>
                           {categories.find(c => c.id == formData.category_id)?.description}
@@ -1068,7 +1201,7 @@ const CareTaskModal = ({ onClose }) => {
                     display: 'block', 
                     marginBottom: '10px', 
                     fontWeight: '700', 
-                    color: '#2c3e50',
+                    color: '#ffffff',
                     fontSize: '15px',
                     letterSpacing: '0.5px'
                   }}>
@@ -1079,29 +1212,19 @@ const CareTaskModal = ({ onClose }) => {
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     placeholder="Enter a clear, descriptive task name"
+                    className="care-task-input"
                     style={{
                       width: '100%',
-                      padding: '16px 20px',
-                      border: '2px solid #e9ecef',
-                      borderRadius: '12px',
-                      fontSize: '16px',
-                      fontWeight: '500',
-                      transition: 'all 0.3s ease',
-                      backgroundColor: '#fdfdfd',
+                      padding: '10px 12px',
+                      backgroundColor: '#2d3748',
+                      border: '1px solid #4a5568',
+                      borderRadius: '6px',
+                      color: '#ffffff',
+                      fontSize: '14px',
                       outline: 'none',
-                      fontFamily: 'inherit',
+                      transition: 'border-color 0.2s ease',
                       boxSizing: 'border-box',
-                      minWidth: 0 // Prevent input from expanding beyond container
-                    }}
-                    onFocus={(e) => {
-                      e.target.style.borderColor = '#007bff';
-                      e.target.style.backgroundColor = '#fff';
-                      e.target.style.boxShadow = '0 0 0 3px rgba(0, 123, 255, 0.1)';
-                    }}
-                    onBlur={(e) => {
-                      e.target.style.borderColor = '#e9ecef';
-                      e.target.style.backgroundColor = '#fdfdfd';
-                      e.target.style.boxShadow = 'none';
+                      fontFamily: 'inherit'
                     }}
                     required
                   />
@@ -1113,7 +1236,7 @@ const CareTaskModal = ({ onClose }) => {
                     display: 'block', 
                     marginBottom: '10px', 
                     fontWeight: '700', 
-                    color: '#2c3e50',
+                    color: '#ffffff',
                     fontSize: '15px',
                     letterSpacing: '0.5px'
                   }}>
@@ -1124,52 +1247,40 @@ const CareTaskModal = ({ onClose }) => {
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                     placeholder="Provide detailed instructions or notes for this care task..."
                     rows={4}
+                    className="care-task-textarea"
                     style={{
                       width: '100%',
-                      padding: '16px 20px',
-                      border: '2px solid #e9ecef',
-                      borderRadius: '12px',
-                      fontSize: '15px',
-                      fontWeight: '500',
-                      resize: 'vertical',
-                      transition: 'all 0.3s ease',
-                      backgroundColor: '#fdfdfd',
+                      padding: '10px 12px',
+                      backgroundColor: '#2d3748',
+                      border: '1px solid #4a5568',
+                      borderRadius: '6px',
+                      color: '#ffffff',
+                      fontSize: '14px',
                       outline: 'none',
-                      fontFamily: 'inherit',
-                      minHeight: '100px',
-                      lineHeight: '1.6',
+                      transition: 'border-color 0.2s ease',
                       boxSizing: 'border-box',
-                      minWidth: 0, // Prevent textarea from expanding beyond container
-                      maxWidth: '100%' // Ensure it doesn't exceed container width
-                    }}
-                    onFocus={(e) => {
-                      e.target.style.borderColor = '#007bff';
-                      e.target.style.backgroundColor = '#fff';
-                      e.target.style.boxShadow = '0 0 0 3px rgba(0, 123, 255, 0.1)';
-                    }}
-                    onBlur={(e) => {
-                      e.target.style.borderColor = '#e9ecef';
-                      e.target.style.backgroundColor = '#fdfdfd';
-                      e.target.style.boxShadow = 'none';
+                      fontFamily: 'inherit',
+                      resize: 'vertical',
+                      minHeight: '80px'
                     }}
                   />
                 </div>
 
                 {/* Active Status with Better Styling */}
                 <div style={{
-                  backgroundColor: '#f8f9fa',
-                  padding: '16px 20px',
-                  borderRadius: '12px',
-                  border: '2px solid #e9ecef'
+                  backgroundColor: '#1a202c',
+                  padding: '12px',
+                  borderRadius: '6px',
+                  border: '1px solid #4a5568'
                 }}>
                   <label style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
-                    gap: '12px',
+                    gap: '10px',
                     cursor: 'pointer',
-                    fontSize: '15px',
-                    fontWeight: '600',
-                    color: '#2c3e50'
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    color: '#ffffff'
                   }}>
                     <div style={{ position: 'relative' }}>
                       <input
@@ -1186,7 +1297,7 @@ const CareTaskModal = ({ onClose }) => {
                     </div>
                     <div>
                       <div style={{ fontWeight: '700', marginBottom: '2px' }}>Active Task</div>
-                      <div style={{ fontSize: '13px', color: '#6c757d', fontWeight: '400' }}>
+                      <div style={{ fontSize: '13px', color: '#cbd5e0', fontWeight: '400' }}>
                         {formData.active 
                           ? 'This task will be available for scheduling and completion'
                           : 'This task will be saved but not active for use'
@@ -1626,6 +1737,19 @@ const CareTaskModal = ({ onClose }) => {
         </div>
       </div>
     )}
+
+    {/* Nutrition Tracking Modal */}
+    <NutritionTrackingModal
+      isOpen={nutritionModal.open}
+      onClose={() => setNutritionModal({ open: false, careTaskLogId: null, careTaskName: '', nutritionData: null })}
+      careTaskLogId={nutritionModal.careTaskLogId}
+      careTaskName={nutritionModal.careTaskName}
+      nutritionData={nutritionModal.nutritionData}
+      onSave={(result) => {
+        console.log('Nutrition data saved:', result);
+        // Optionally refresh data or show confirmation
+      }}
+    />
     </>
   );
 };

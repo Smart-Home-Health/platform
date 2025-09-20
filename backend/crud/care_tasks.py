@@ -107,14 +107,24 @@ def delete_care_task_category(db: Session, category_id):
 
 
 # --- CareTask CRUD ---
-def add_care_task(db: Session, name, category_id, description=None, active=True):
+def add_care_task(db: Session, name, category_id, description=None, active=True, patient_id=None):
     """
     Add a new care task
+    
+    Args:
+        patient_id: If provided, assign task to specific patient. If None, creates global task template.
     """
     try:
+        from crud.patients import get_active_patient
+        
+        # If no patient_id provided and we want patient-specific tasks, use current patient
+        # For now, we'll keep it as a global template unless explicitly specified
+        # You can modify this logic based on your requirements
+        
         now = datetime.now()
         task = CareTask(
             name=name,
+            patient_id=patient_id,  # Can be None for global templates
             category_id=category_id,
             description=description,
             active=active,
@@ -124,7 +134,7 @@ def add_care_task(db: Session, name, category_id, description=None, active=True)
         db.add(task)
         db.commit()
         db.refresh(task)
-        logger.info(f"Care task added: {name}")
+        logger.info(f"Care task added: {name} (patient_id: {patient_id})")
         return task.id
     except Exception as e:
         logger.error(f"Error adding care task: {e}")
@@ -132,15 +142,18 @@ def add_care_task(db: Session, name, category_id, description=None, active=True)
         return None
 
 
-def get_care_tasks(db: Session, active_only=True, category_id=None):
+def get_care_tasks(db: Session, active_only=True, category_id=None, patient_id=None):
     """
     Get care tasks with optional filtering
     
     Args:
         active_only: If True, only return active tasks
         category_id: If provided, filter by category
+        patient_id: If provided, filter by patient (includes global tasks)
     """
     try:
+        from crud.patients import get_active_patient
+        
         query = db.query(CareTask)
         
         if active_only:
@@ -149,12 +162,29 @@ def get_care_tasks(db: Session, active_only=True, category_id=None):
         if category_id:
             query = query.filter(CareTask.category_id == category_id)
         
+        # Filter by patient - if no patient_id provided, use current patient
+        if patient_id is None:
+            active_patient = get_active_patient(db)
+            if active_patient:
+                # Show tasks for current patient OR global tasks (patient_id is NULL)
+                query = query.filter(
+                    (CareTask.patient_id == active_patient.id) | 
+                    (CareTask.patient_id.is_(None))
+                )
+        else:
+            # Show tasks for specific patient OR global tasks
+            query = query.filter(
+                (CareTask.patient_id == patient_id) | 
+                (CareTask.patient_id.is_(None))
+            )
+        
         tasks = query.order_by(CareTask.name).all()
         
         return [
             {
                 'id': task.id,
                 'name': task.name,
+                'patient_id': task.patient_id,
                 'category_id': task.category_id,
                 'category_name': task.category.name if task.category else None,
                 'category_color': task.category.color if task.category else '#3B82F6',
