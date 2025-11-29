@@ -80,11 +80,15 @@ async def update_multiple_settings(settings: SettingUpdate, db: Session = Depend
     results = {}
     gpio_enabled_changed = False
     gpio_enabled_new = None
+    baud_rate_changed = False
     
     for key, value in settings.settings.items():
         if key == "gpio_enabled":
             gpio_enabled_changed = True
             gpio_enabled_new = value
+        
+        if key == "baud_rate":
+            baud_rate_changed = True
             
         if isinstance(value, dict) and "value" in value:
             # Handle objects with value, data_type, description
@@ -120,6 +124,16 @@ async def update_multiple_settings(settings: SettingUpdate, db: Session = Depend
                 logger.info("[settings] GPIO monitoring stop requested")
             except Exception as e:
                 logger.error(f"[settings] Failed to request GPIO monitoring stop: {e}")
+    
+    # Handle baud rate changes - reconnect serial port
+    if baud_rate_changed:
+        try:
+            from main import serial_module
+            if serial_module:
+                serial_module.reconnect()
+                logger.info("[settings] Serial port reconnection triggered due to baud rate change")
+        except Exception as e:
+            logger.error(f"[settings] Failed to reconnect serial port: {e}")
     
     return results
 

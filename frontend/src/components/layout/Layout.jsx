@@ -31,6 +31,12 @@ const AdminNav = () => {
           Dashboard
         </Link>
         <Link 
+          to="/admin/schedule" 
+          className={`nav-link ${location.pathname === '/admin/schedule' ? 'active' : ''}`}
+        >
+          Schedule
+        </Link>
+        <Link 
           to="/admin/medications" 
           className={`nav-link ${location.pathname === '/admin/medications' ? 'active' : ''}`}
         >

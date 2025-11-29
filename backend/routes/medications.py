@@ -352,10 +352,10 @@ async def toggle_medication_schedule_active_endpoint(schedule_id: int, db: Sessi
 
 
 @router.get("/schedules/daily")
-async def get_daily_medication_schedule_endpoint(db: Session = Depends(get_db)):
+async def get_daily_medication_schedule_endpoint(patient_id: Optional[int] = None, db: Session = Depends(get_db)):
     """Get today's scheduled medications plus yesterday's missed medications."""
     try:
-        daily_schedule = get_daily_medication_schedule(db)
+        daily_schedule = get_daily_medication_schedule(db, patient_id=patient_id)
         return daily_schedule
     except Exception as e:
         logger.error(f"Error getting daily medication schedule: {e}")

@@ -39,3 +39,18 @@ async def get_serial_status(db: Session = Depends(get_db)):
         }
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@router.post("/reconnect")
+async def reconnect_serial():
+    """Reconnect the serial port (useful after changing baud rate)."""
+    try:
+        from main import serial_module
+        if serial_module:
+            serial_module.reconnect()
+            return {"status": "success", "message": "Serial port will reconnect with updated settings"}
+        else:
+            return JSONResponse(status_code=503, content={"error": "Serial module not available"})
+    except Exception as e:
+        logger.error(f"Error reconnecting serial: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})

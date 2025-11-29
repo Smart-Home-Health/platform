@@ -463,12 +463,13 @@ def toggle_medication_schedule_active(db: Session, schedule_id):
         return False, None
 
 
-def get_scheduled_medications_for_date(db: Session, target_date=None):
+def get_scheduled_medications_for_date(db: Session, target_date=None, patient_id=None):
     """
     Get all medications scheduled for a specific date for the current patient plus global medications
     
     Args:
         target_date: datetime.date object, defaults to today
+        patient_id: Optional patient ID to filter schedules. If None, uses current patient from settings
     
     Returns:
         List of scheduled medication entries with calculated times
@@ -477,14 +478,18 @@ def get_scheduled_medications_for_date(db: Session, target_date=None):
         if target_date is None:
             target_date = datetime.now().date()
         
-        current_patient_id = get_setting(db, 'current_patient_id')
-        
-        # Convert to int if it's a string
-        if current_patient_id:
-            try:
-                current_patient_id = int(current_patient_id)
-            except (ValueError, TypeError):
-                current_patient_id = None
+        # Use provided patient_id or fall back to current patient from settings
+        if patient_id is None:
+            current_patient_id = get_setting(db, 'current_patient_id')
+            
+            # Convert to int if it's a string
+            if current_patient_id:
+                try:
+                    current_patient_id = int(current_patient_id)
+                except (ValueError, TypeError):
+                    current_patient_id = None
+        else:
+            current_patient_id = patient_id
         
         # Get all active medication schedules for current patient or global medications
         schedules = db.query(MedicationSchedule).filter(
@@ -583,9 +588,12 @@ def get_missed_medications(db: Session, target_date=None):
         return []
 
 
-def get_daily_medication_schedule(db: Session):
+def get_daily_medication_schedule(db: Session, patient_id=None):
     """
     Get scheduled medications for today and yesterday in chronological order with status
+    
+    Args:
+        patient_id: Optional patient ID to filter schedules. If None, uses current patient from settings
     
     Returns:
         Dict with 'scheduled_medications' list sorted chronologically
@@ -596,8 +604,8 @@ def get_daily_medication_schedule(db: Session):
         current_time = datetime.now()
         
         # Get scheduled meds for yesterday and today
-        yesterday_scheduled = get_scheduled_medications_for_date(db, yesterday)
-        today_scheduled = get_scheduled_medications_for_date(db, today)
+        yesterday_scheduled = get_scheduled_medications_for_date(db, yesterday, patient_id=patient_id)
+        today_scheduled = get_scheduled_medications_for_date(db, today, patient_id=patient_id)
         
         all_scheduled = []
         

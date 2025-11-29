@@ -27,7 +27,7 @@ class SerialModule:
         self.is_connected = False
         self.is_running = False
         self.current_port = None
-        self.baud_rate = int(os.getenv("BAUD_RATE", 19200))
+        self.default_baud_rate = 115200  # Default fallback
         
         # Thread for blocking serial operations
         self.serial_thread: Optional[threading.Thread] = None
@@ -58,7 +58,7 @@ class SerialModule:
             from crud.settings import get_setting
             from db import get_db
             db = next(get_db())
-            val = get_setting(db, "baud_rate", self.baud_rate)
+            val = get_setting(db, "baud_rate", self.default_baud_rate)
             logger.info(f"Retrieved baud_rate from settings: {val} (type: {type(val)})")
             db.close()
             try:
@@ -66,11 +66,11 @@ class SerialModule:
                 logger.info(f"Using baud rate: {baud_rate}")
                 return baud_rate
             except (ValueError, TypeError):
-                logger.warning(f"Invalid baud_rate value from settings: {val}, using default: {self.baud_rate}")
-                return self.baud_rate
+                logger.warning(f"Invalid baud_rate value from settings: {val}, using default: {self.default_baud_rate}")
+                return self.default_baud_rate
         except Exception as e:
-            logger.warning(f"Error getting baud_rate from settings: {e}, using default: {self.baud_rate}")
-            return self.baud_rate
+            logger.warning(f"Error getting baud_rate from settings: {e}, using default: {self.default_baud_rate}")
+            return self.default_baud_rate
 
     def find_serial_port(self) -> Optional[str]:
         """Scan for compatible serial ports."""
@@ -324,6 +324,21 @@ class SerialModule:
         if self.serial_thread:
             self.serial_thread.join(timeout=5.0)
         logger.info("Serial module stopped")
+
+    def reconnect(self):
+        """Reconnect the serial port (useful when baud rate changes)."""
+        logger.info("Reconnecting serial port...")
+        if self.serial_connection:
+            try:
+                self.serial_connection.close()
+                logger.info("Closed existing serial connection")
+            except Exception as e:
+                logger.warning(f"Error closing serial connection: {e}")
+            self.serial_connection = None
+            self.is_connected = False
+        
+        # The serial_worker thread will automatically reconnect with new settings
+        logger.info("Serial port will reconnect with updated settings")
 
     def get_status(self) -> dict:
         """Get current status of the serial module."""

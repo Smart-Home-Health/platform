@@ -1,0 +1,286 @@
+/* Schedule Tabs */
+.schedule-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+  border-bottom: 2px solid #e2e8f0;
+  padding-bottom: 0;
+}
+
+.schedule-tab {
+  padding: 12px 24px;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: #666;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  bottom: -2px;
+}
+
+.schedule-tab:hover {
+  color: #007acc;
+  background-color: #f8f9fa;
+}
+
+.schedule-tab.active {
+  color: #007acc;
+  border-bottom-color: #007acc;
+}
+
+/* Schedule Content */
+.schedule-content {
+  background: #fff;
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Schedule Section */
+.schedule-section {
+  width: 100%;
+}
+
+.schedule-header {
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.schedule-header h2 {
+  margin: 0 0 12px 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: #333;
+}
+
+/* Filter Controls */
+.filter-controls {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.filter-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #555;
+}
+
+.filter-checkbox input[type="checkbox"] {
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+}
+
+.filter-checkbox span {
+  user-select: none;
+}
+
+/* Day Groups */
+.day-group {
+  margin-bottom: 32px;
+}
+
+.day-header {
+  font-size: 20px;
+  font-weight: 700;
+  color: #333;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+/* Time Groups */
+.time-group {
+  margin-bottom: 24px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.time-header {
+  font-size: 18px;
+  font-weight: 600;
+  color: #007acc;
+  margin-bottom: 12px;
+}
+
+/* Medication/Task Lists */
+.medication-list,
+.task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Medication/Task Items */
+.medication-item,
+.task-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-radius: 8px;
+  gap: 16px;
+  transition: opacity 0.2s;
+}
+
+.medication-info,
+.task-info {
+  flex: 1;
+}
+
+.medication-name,
+.task-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.medication-details,
+.task-details {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 4px;
+}
+
+.task-category {
+  font-size: 13px;
+  color: #888;
+  font-style: italic;
+  margin-bottom: 4px;
+}
+
+.medication-status,
+.task-status {
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+/* Medication/Task Actions */
+.medication-actions,
+.task-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Equipment List */
+.equipment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.equipment-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.equipment-info {
+  flex: 1;
+}
+
+.equipment-actions {
+  flex-shrink: 0;
+}
+
+/* Buttons */
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 13px;
+  border-radius: 4px;
+}
+
+.btn-success {
+  background-color: #28a745;
+  color: white;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-success:hover {
+  background-color: #218838;
+}
+
+.btn-warning {
+  background-color: #ffc107;
+  color: #212529;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-warning:hover {
+  background-color: #e0a800;
+}
+
+.btn-primary {
+  background-color: #007acc;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.btn-primary:hover {
+  background-color: #005a9e;
+}
+
+.btn-secondary {
+  background-color: #6c757d;
+  color: white;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-secondary:hover {
+  background-color: #5a6268;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .schedule-tabs {
+    flex-wrap: wrap;
+  }
+
+  .schedule-tab {
+    flex: 1;
+    min-width: 150px;
+    text-align: center;
+  }
+
+  .filter-controls {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .medication-item,
+  .task-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .medication-actions,
+  .task-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
