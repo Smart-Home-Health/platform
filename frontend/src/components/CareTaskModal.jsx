@@ -692,18 +692,35 @@ const CareTaskModal = ({ onClose }) => {
   return (
     <>
       <ModalBase isOpen={true} onClose={onClose} title={
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%' }}>
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: '8px', 
+        width: '100%',
+        overflowX: 'auto',
+        overflowY: 'hidden',
+        WebkitOverflowScrolling: 'touch',
+        scrollbarWidth: 'none', // Firefox
+        msOverflowStyle: 'none' // IE/Edge
+      }}>
+        <style>{`
+          div::-webkit-scrollbar {
+            display: none;
+          }
+        `}</style>
         <button
           onClick={() => { setTab('scheduled'); setShowAddForm(false); setShowScheduleFor(null); }}
           style={{
-            padding: '8px 16px',
+            padding: '8px 14px',
             border: 'none',
             borderRadius: '6px',
             backgroundColor: tab === 'scheduled' ? '#007bff' : '#f8f9fa',
             color: tab === 'scheduled' ? '#fff' : '#333',
             cursor: 'pointer',
             fontWeight: '500',
-            fontSize: '14px'
+            fontSize: '13px',
+            whiteSpace: 'nowrap',
+            flexShrink: 0
           }}
         >
           Scheduled Today
@@ -711,14 +728,16 @@ const CareTaskModal = ({ onClose }) => {
         <button
           onClick={() => { setTab('active'); setShowAddForm(false); setShowScheduleFor(null); }}
           style={{
-            padding: '8px 16px',
+            padding: '8px 14px',
             border: 'none',
             borderRadius: '6px',
             backgroundColor: tab === 'active' ? '#007bff' : '#f8f9fa',
             color: tab === 'active' ? '#fff' : '#333',
             cursor: 'pointer',
             fontWeight: '500',
-            fontSize: '14px'
+            fontSize: '13px',
+            whiteSpace: 'nowrap',
+            flexShrink: 0
           }}
         >
           Active ({activeTasks.length})
@@ -726,14 +745,16 @@ const CareTaskModal = ({ onClose }) => {
         <button
           onClick={() => { setTab('inactive'); setShowAddForm(false); setShowScheduleFor(null); }}
           style={{
-            padding: '8px 16px',
+            padding: '8px 14px',
             border: 'none',
             borderRadius: '6px',
             backgroundColor: tab === 'inactive' ? '#007bff' : '#f8f9fa',
             color: tab === 'inactive' ? '#fff' : '#333',
             cursor: 'pointer',
             fontWeight: '500',
-            fontSize: '14px'
+            fontSize: '13px',
+            whiteSpace: 'nowrap',
+            flexShrink: 0
           }}
         >
           Inactive ({inactiveTasks.length})
@@ -741,14 +762,16 @@ const CareTaskModal = ({ onClose }) => {
         <button
           onClick={() => { setTab('categories'); setShowScheduleFor(null); }}
           style={{
-            padding: '8px 16px',
+            padding: '8px 14px',
             border: 'none',
             borderRadius: '6px',
             backgroundColor: tab === 'categories' ? '#6f42c1' : '#f8f9fa',
             color: tab === 'categories' ? '#fff' : '#333',
             cursor: 'pointer',
             fontWeight: '500',
-            fontSize: '14px'
+            fontSize: '13px',
+            whiteSpace: 'nowrap',
+            flexShrink: 0
           }}
         >
           Categories
@@ -756,14 +779,16 @@ const CareTaskModal = ({ onClose }) => {
         <button
           onClick={() => { setTab('add'); setShowScheduleFor(null); }}
           style={{
-            padding: '8px 16px',
+            padding: '8px 14px',
             border: 'none',
             borderRadius: '6px',
             backgroundColor: tab === 'add' ? '#28a745' : '#f8f9fa',
             color: tab === 'add' ? '#fff' : '#333',
             cursor: 'pointer',
             fontWeight: '500',
-            fontSize: '14px'
+            fontSize: '13px',
+            whiteSpace: 'nowrap',
+            flexShrink: 0
           }}
         >
           + Add Task
