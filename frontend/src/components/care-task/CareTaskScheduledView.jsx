@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 const CareTaskScheduledView = ({ 
   scheduledTasks, 
@@ -11,6 +11,21 @@ const CareTaskScheduledView = ({
   showFilters,
   setShowFilters
 }) => {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    
+    return () => {
+      window.removeEventListener('resize', checkMobile);
+    };
+  }, []);
+
   const allScheduledTasks = scheduledTasks.scheduled_care_tasks || [];
 
   // Filter tasks based on status filters
@@ -291,14 +306,15 @@ const CareTaskScheduledView = ({
                         key={`scheduled-${dayKey}-${timeStr}-${idx}`}
                         style={{
                           backgroundColor: statusColors.bg,
-                          borderRadius: 12,
-                          padding: '14px 18px',
+                          borderRadius: isMobile ? 10 : 12,
+                          padding: isMobile ? '12px 14px' : '14px 18px',
                           boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
                           border: `1.5px solid ${statusColors.border}`,
-                          borderLeft: `6px solid ${categoryColor}`, // Category color on left border
+                          borderLeft: `6px solid ${categoryColor}`,
                           display: 'flex',
-                          alignItems: 'center',
-                          gap: '12px',
+                          flexDirection: isMobile ? 'column' : 'row',
+                          alignItems: isMobile ? 'stretch' : 'center',
+                          gap: isMobile ? '10px' : '12px',
                           marginBottom: 0,
                           opacity: isCompleted && isToday ? 0.7 : 1,
                           order: isCompleted && isToday ? 1 : 0,
@@ -306,85 +322,90 @@ const CareTaskScheduledView = ({
                         }}
                       >
                         {/* Category color indicator */}
-                        <div style={{
-                          position: 'absolute',
-                          top: 8,
-                          right: 8,
-                          width: 12,
-                          height: 12,
-                          borderRadius: '50%',
-                          backgroundColor: categoryColor,
-                          border: '2px solid #fff',
-                          boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
-                        }}></div>
+                        {!isMobile && (
+                          <div style={{
+                            position: 'absolute',
+                            top: 8,
+                            right: 8,
+                            width: 12,
+                            height: 12,
+                            borderRadius: '50%',
+                            backgroundColor: categoryColor,
+                            border: '2px solid #fff',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                          }}></div>
+                        )}
                         
-                        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <span style={{ color: statusColors.text, fontSize: '16px', fontWeight: '600' }}>
+                        <div style={{ flex: 1, display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'flex-start' : 'center', gap: isMobile ? 6 : 10 }}>
+                          <span style={{ color: statusColors.text, fontSize: isMobile ? '15px' : '16px', fontWeight: '600', lineHeight: '1.3' }}>
                             {item.care_task_name}
                           </span>
                           {item.care_task_description && (
-                            <span style={{ color: statusColors.text, fontSize: '14px', fontWeight: 400, opacity: 0.8 }}>
-                              - {item.care_task_description}
+                            <span style={{ color: statusColors.text, fontSize: isMobile ? '13px' : '14px', fontWeight: 400, opacity: 0.8, lineHeight: '1.3' }}>
+                              {isMobile ? item.care_task_description : `- ${item.care_task_description}`}
                             </span>
                           )}
-                          {item.care_task_category_name && (
-                            <span style={{ 
-                              backgroundColor: categoryColor, 
-                              color: '#fff', 
-                              padding: '2px 8px', 
-                              borderRadius: '12px', 
-                              fontSize: '11px',
-                              fontWeight: '600',
-                              marginLeft: 8
-                            }}>
-                              {item.care_task_category_name}
+                          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: isMobile ? '4px' : 0 }}>
+                            {item.care_task_category_name && (
+                              <span style={{ 
+                                backgroundColor: categoryColor, 
+                                color: '#fff', 
+                                padding: '2px 8px', 
+                                borderRadius: '12px', 
+                                fontSize: isMobile ? '10px' : '11px',
+                                fontWeight: '600'
+                              }}>
+                                {item.care_task_category_name}
+                              </span>
+                            )}
+                            <span 
+                              style={{ 
+                                backgroundColor: statusColors.border, 
+                                color: '#fff', 
+                                padding: '2px 8px', 
+                                borderRadius: '12px', 
+                                fontSize: isMobile ? '11px' : '12px',
+                                fontWeight: '500'
+                              }}
+                            >
+                              {getStatusText(item)}
                             </span>
-                          )}
-                          <span 
-                            style={{ 
-                              backgroundColor: statusColors.border, 
-                              color: '#fff', 
-                              padding: '2px 8px', 
-                              borderRadius: '12px', 
-                              fontSize: '12px',
-                              fontWeight: '500',
-                              marginLeft: 8
-                            }}
-                          >
-                            {getStatusText(item)}
-                          </span>
+                          </div>
                         </div>
-                        <div style={{ display: 'flex', gap: '8px' }}>
+                        
+                        <div style={{ display: 'flex', gap: isMobile ? '6px' : '8px', flexDirection: isMobile ? 'row' : 'row', width: isMobile ? '100%' : 'auto' }}>
                           {!isCompleted && (
                             <>
                               <button
                                 style={{
-                                  padding: '6px 14px',
+                                  padding: isMobile ? '10px 14px' : '6px 14px',
                                   border: 'none',
                                   borderRadius: '8px',
                                   backgroundColor: '#28a745',
                                   color: '#fff',
                                   cursor: 'pointer',
-                                  fontSize: '13px',
+                                  fontSize: isMobile ? '14px' : '13px',
                                   fontWeight: '500',
-                                  boxShadow: '0 1px 2px rgba(0,0,0,0.07)'
+                                  boxShadow: '0 1px 2px rgba(0,0,0,0.07)',
+                                  flex: isMobile ? '1' : '0 0 auto'
                                 }}
                                 onClick={() => handleMarkCompleted(item)}
                               >
-                                {item.status === 'missed' ? 'Complete Now' : 'Mark Completed'}
+                                {item.status === 'missed' ? 'Complete Now' : isMobile ? 'Complete' : 'Mark Completed'}
                               </button>
                               {item.status === 'missed' && (
                                 <button
                                   style={{
-                                    padding: '6px 14px',
+                                    padding: isMobile ? '10px 14px' : '6px 14px',
                                     border: '2px solid #6c757d',
                                     borderRadius: '8px',
                                     backgroundColor: '#fff',
                                     color: '#6c757d',
                                     cursor: 'pointer',
-                                    fontSize: '13px',
+                                    fontSize: isMobile ? '14px' : '13px',
                                     fontWeight: '500',
-                                    boxShadow: '0 1px 2px rgba(0,0,0,0.07)'
+                                    boxShadow: '0 1px 2px rgba(0,0,0,0.07)',
+                                    flex: isMobile ? '1' : '0 0 auto'
                                   }}
                                   onClick={() => handleSkipTask(item)}
                                 >
@@ -395,15 +416,17 @@ const CareTaskScheduledView = ({
                           )}
                           {isCompleted && (
                             <div style={{
-                              padding: '6px 14px',
+                              padding: isMobile ? '10px 14px' : '6px 14px',
                               backgroundColor: '#e8f5e8',
                               color: '#28a745',
                               borderRadius: '8px',
-                              fontSize: '13px',
+                              fontSize: isMobile ? '14px' : '13px',
                               fontWeight: '600',
                               display: 'flex',
                               alignItems: 'center',
-                              gap: '4px'
+                              justifyContent: 'center',
+                              gap: '4px',
+                              flex: isMobile ? '1' : '0 0 auto'
                             }}>
                               ✓ Completed
                             </div>
