@@ -27,6 +27,8 @@ const NutritionTrackingModal = ({
   const [presets, setPresets] = useState(null);
   const [selectedPreset, setSelectedPreset] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Add CSS for animations if not already present
@@ -178,6 +180,8 @@ const NutritionTrackingModal = ({
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
+    setError(null);
+    setSuccess(false);
 
     try {
       const nutritionPayload = {
@@ -196,6 +200,8 @@ const NutritionTrackingModal = ({
         consumed_at: formData.consumed_at
       };
 
+      console.log('Submitting nutrition data:', nutritionPayload);
+
       const response = await fetch(`${config.apiUrl}/api/nutrition`, {
         method: 'POST',
         headers: {
@@ -204,15 +210,30 @@ const NutritionTrackingModal = ({
         body: JSON.stringify(nutritionPayload)
       });
 
+      const responseData = await response.json();
+      console.log('Nutrition save response:', response.status, responseData);
+
       if (response.ok) {
+        setSuccess(true);
+        console.log('Nutrition data saved successfully:', responseData);
+        
+        // Call onSave callback if provided
         if (onSave) {
-          onSave();
+          onSave(responseData);
         }
-        onClose();
+        
+        // Close modal after a brief delay to show success message
+        setTimeout(() => {
+          onClose();
+        }, 1000);
       } else {
-        console.error('Failed to save nutrition data');
+        const errorMessage = responseData.detail || 'Failed to save nutrition data';
+        setError(errorMessage);
+        console.error('Failed to save nutrition data:', errorMessage);
       }
     } catch (error) {
+      const errorMessage = error.message || 'Error saving nutrition data. Please try again.';
+      setError(errorMessage);
       console.error('Error saving nutrition data:', error);
     } finally {
       setLoading(false);
@@ -846,6 +867,35 @@ const NutritionTrackingModal = ({
               }}
             />
           </div>
+
+          {/* Error and Success Messages */}
+          {error && (
+            <div style={{
+              marginTop: '16px',
+              padding: '12px 16px',
+              backgroundColor: '#dc3545',
+              color: '#fff',
+              borderRadius: '8px',
+              fontSize: '14px',
+              fontWeight: '500'
+            }}>
+              ❌ {error}
+            </div>
+          )}
+          
+          {success && (
+            <div style={{
+              marginTop: '16px',
+              padding: '12px 16px',
+              backgroundColor: '#28a745',
+              color: '#fff',
+              borderRadius: '8px',
+              fontSize: '14px',
+              fontWeight: '500'
+            }}>
+              ✓ Nutrition data saved successfully!
+            </div>
+          )}
 
           {/* Action Buttons */}
           <div style={{ display: 'flex', gap: '16px' }}>

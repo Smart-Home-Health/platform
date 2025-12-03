@@ -237,7 +237,35 @@ async def startup_event():
     else:
         logger.info("[main] GPIO module disabled in settings")
     
+    # 6. Start nutrition scheduled update task (hourly)
+    asyncio.create_task(nutrition_scheduled_updater())
+    logger.info("[main] Nutrition scheduled updater started")
+    
     logger.info("[main] Event-driven system startup complete")
+
+
+async def nutrition_scheduled_updater():
+    """Background task to publish nutrition scheduled values every hour"""
+    logger.info("[nutrition_updater] Started hourly nutrition scheduled updater")
+    while True:
+        try:
+            await asyncio.sleep(3600)  # Wait 1 hour
+            
+            # Publish scheduled nutrition values
+            db = next(get_db())
+            try:
+                from crud.patients import get_active_patient
+                from crud.nutrition import _publish_nutrition_scheduled_mqtt
+                
+                active_patient = get_active_patient(db)
+                if active_patient:
+                    _publish_nutrition_scheduled_mqtt(db, active_patient.id)
+                    logger.info("[nutrition_updater] Published hourly nutrition scheduled update")
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error(f"[nutrition_updater] Error in scheduled updater: {e}")
+            await asyncio.sleep(60)  # Wait 1 minute before retry
 
 
 @app.on_event("shutdown")

@@ -249,11 +249,23 @@ class MQTTPublisher:
                 "water": vital_data.get('water'),
                 "calories": vital_data.get('calories')
             })
-        elif vital_type in ['water', 'calories']:
+        elif vital_type in ['water', 'calories', 'nutrition_water', 'nutrition_calories', 
+                            'nutrition_water_intake', 'nutrition_water_scheduled', 'nutrition_water_target',
+                            'nutrition_calories_intake', 'nutrition_calories_scheduled', 'nutrition_calories_target']:
+            # Extract metadata for nutrition values
+            metadata = vital_data.get('metadata', {})
             base_payload.update({
                 "value": vital_data.get('value'),
+                "day_start": metadata.get('day_start'),
+                "day_end": metadata.get('day_end'),
                 "notes": vital_data.get('notes')
             })
+            # Add scheduled metadata if present
+            if 'scheduled_feedings_past' in metadata:
+                base_payload.update({
+                    "scheduled_feedings_past": metadata.get('scheduled_feedings_past'),
+                    "total_scheduled_feedings": metadata.get('total_scheduled_feedings')
+                })
         else:
             # Generic vital payload
             base_payload.update({

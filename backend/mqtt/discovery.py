@@ -54,32 +54,86 @@ def send_mqtt_discovery(mqtt_client, test_mode: bool = True) -> bool:
         
         # Handle nutrition special case with multiple sensors
         if vital_name == 'nutrition':
-            # Water sensor
+            # Water intake (actual consumed)
             water_topic = config.get('water_broadcast_topic')
             if water_topic:
-                sensors[f"{vital_name}_water"] = {
-                    "uniq_id": f"{base_topic}_sensor.{vital_name}_water",
+                sensors[f"{vital_name}_water_intake"] = {
+                    "uniq_id": f"{base_topic}_sensor.water_intake",
                     "name": "Water Intake",
                     "stat_t": water_topic,
                     "val_tpl": "{{ value_json.value }}",
                     "json_attr_t": f"{water_topic}/attributes",
                     "avty_t": f"{base_topic}/availability",
                     "unit_of_meas": "ml",
-                    "stat_cla": "total_increasing",
+                    "stat_cla": "measurement",
+                    "icon": "mdi:water"
+                }
+                
+                # Water scheduled (expected progress)
+                sensors[f"{vital_name}_water_scheduled"] = {
+                    "uniq_id": f"{base_topic}_sensor.water_scheduled",
+                    "name": "Water Scheduled",
+                    "stat_t": f"{water_topic}/scheduled",
+                    "val_tpl": "{{ value_json.value }}",
+                    "json_attr_t": f"{water_topic}/scheduled/attributes",
+                    "avty_t": f"{base_topic}/availability",
+                    "unit_of_meas": "ml",
+                    "stat_cla": "measurement",
+                    "icon": "mdi:calendar-clock"
+                }
+                
+                # Water target (daily limit)
+                sensors[f"{vital_name}_water_target"] = {
+                    "uniq_id": f"{base_topic}_sensor.water_target",
+                    "name": "Water Target",
+                    "stat_t": f"{water_topic}/target",
+                    "val_tpl": "{{ value_json.value }}",
+                    "json_attr_t": f"{water_topic}/target/attributes",
+                    "avty_t": f"{base_topic}/availability",
+                    "unit_of_meas": "ml",
+                    "stat_cla": "measurement",
+                    "icon": "mdi:flag-checkered"
                 }
             
-            # Calories sensor
+            # Calories intake (actual consumed)
             calories_topic = config.get('calories_broadcast_topic')
             if calories_topic:
-                sensors[f"{vital_name}_calories"] = {
-                    "uniq_id": f"{base_topic}_sensor.{vital_name}_calories",
+                sensors[f"{vital_name}_calories_intake"] = {
+                    "uniq_id": f"{base_topic}_sensor.calories_intake",
                     "name": "Calorie Intake",
                     "stat_t": calories_topic,
                     "val_tpl": "{{ value_json.value }}",
                     "json_attr_t": f"{calories_topic}/attributes",
                     "avty_t": f"{base_topic}/availability",
                     "unit_of_meas": "kcal",
-                    "stat_cla": "total_increasing",
+                    "stat_cla": "measurement",
+                    "icon": "mdi:food-apple"
+                }
+                
+                # Calories scheduled (expected progress)
+                sensors[f"{vital_name}_calories_scheduled"] = {
+                    "uniq_id": f"{base_topic}_sensor.calories_scheduled",
+                    "name": "Calories Scheduled",
+                    "stat_t": f"{calories_topic}/scheduled",
+                    "val_tpl": "{{ value_json.value }}",
+                    "json_attr_t": f"{calories_topic}/scheduled/attributes",
+                    "avty_t": f"{base_topic}/availability",
+                    "unit_of_meas": "kcal",
+                    "stat_cla": "measurement",
+                    "icon": "mdi:calendar-clock"
+                }
+                
+                # Calories target (daily limit)
+                sensors[f"{vital_name}_calories_target"] = {
+                    "uniq_id": f"{base_topic}_sensor.calories_target",
+                    "name": "Calories Target",
+                    "stat_t": f"{calories_topic}/target",
+                    "val_tpl": "{{ value_json.value }}",
+                    "json_attr_t": f"{calories_topic}/target/attributes",
+                    "avty_t": f"{base_topic}/availability",
+                    "unit_of_meas": "kcal",
+                    "stat_cla": "measurement",
+                    "icon": "mdi:flag-checkered"
                 }
         
         # Handle standard vitals
@@ -100,7 +154,12 @@ def send_mqtt_discovery(mqtt_client, test_mode: bool = True) -> bool:
     success_count = 0
     for sensor_id, config in sensors.items():
         config["dev"] = device_info
-        discovery_topic = f"{discovery_prefix}/sensor/{sensor_id}/config"
+        
+        # Determine if this is a binary sensor (alarms) or regular sensor
+        is_binary = 'alarm' in sensor_id
+        sensor_type = 'binary_sensor' if is_binary else 'sensor'
+        
+        discovery_topic = f"{discovery_prefix}/{sensor_type}/{sensor_id}/config"
         json_payload = json.dumps(config)
 
         try:

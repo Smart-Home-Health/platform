@@ -1810,7 +1810,8 @@ const CareTaskModal = ({ onClose }) => {
       nutritionData={nutritionModal.nutritionData}
       onSave={(result) => {
         console.log('Nutrition data saved:', result);
-        // Optionally refresh data or show confirmation
+        // Refresh the scheduled tasks to update the view
+        fetchScheduledTasks();
       }}
     />
     </>

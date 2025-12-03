@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, date
 from typing import List, Optional
 from pydantic import BaseModel, Field
+import logging
 from db import get_db
 from crud.nutrition import (
     create_nutrition_intake, 
@@ -16,6 +17,7 @@ from crud.nutrition import (
 )
 from crud.patients import get_active_patient
 
+logger = logging.getLogger("app")
 router = APIRouter(prefix="/api", tags=["nutrition"])
 
 # Pydantic models for request/response
@@ -84,32 +86,42 @@ async def create_nutrition_simple(
 ):
     """Create a new nutrition intake record (simple endpoint)"""
     try:
+        logger.info(f"Received nutrition intake request: {intake_data.model_dump()}")
+        
         # Get the active patient
         active_patient = get_active_patient(db)
         if not active_patient:
+            logger.error("No active patient found when creating nutrition intake")
             raise HTTPException(status_code=400, detail="No active patient found")
+        
+        logger.info(f"Using active patient: {active_patient.id} ({active_patient.first_name} {active_patient.last_name})")
         
         # Convert consumed_at to datetime if it's a string
         data_dict = intake_data.model_dump()
         if 'consumed_at' in data_dict and isinstance(data_dict['consumed_at'], str):
             try:
                 data_dict['consumed_at'] = datetime.fromisoformat(data_dict['consumed_at'].replace('Z', '+00:00'))
-            except ValueError:
+                logger.info(f"Converted consumed_at to datetime: {data_dict['consumed_at']}")
+            except ValueError as e:
+                logger.warning(f"Failed to parse consumed_at '{data_dict['consumed_at']}', using current time: {e}")
                 # If parsing fails, use current time
                 data_dict['consumed_at'] = datetime.utcnow()
         
+        logger.info(f"Creating nutrition intake with data: {data_dict}")
         intake = create_nutrition_intake(
             db=db, 
             intake_data=data_dict, 
             patient_id=active_patient.id
         )
+        logger.info(f"Successfully created nutrition intake record with ID: {intake.id}")
         return intake
     except ValueError as e:
+        logger.error(f"Validation error creating nutrition intake: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         import traceback
-        print(f"Nutrition creation error: {str(e)}")
-        print(f"Traceback: {traceback.format_exc()}")
+        logger.error(f"Nutrition creation error: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to create nutrition intake record: {str(e)}")
 
 @router.post("/nutrition-intake", response_model=NutritionIntakeResponse)
@@ -310,3 +322,176 @@ async def get_nutrition_presets():
             "foods": ["grams", "oz", "servings", "pieces"]
         }
     }
+
+@router.get("/nutrition/dashboard")
+async def get_nutrition_dashboard_data(db: Session = Depends(get_db)):
+    """
+    Get nutrition data for dashboard gauges with scheduled progress
+    Respects day_start_hour setting for daily boundaries
+    """
+    try:
+        # Get the active patient
+        active_patient = get_active_patient(db)
+        if not active_patient:
+            raise HTTPException(status_code=400, detail="No active patient found")
+        
+        # Get day_start_hour setting (default 7am)
+        from crud.settings import get_setting
+        day_start_hour_setting = get_setting(db, 'day_start_hour')
+        day_start_hour = int(day_start_hour_setting) if day_start_hour_setting else 7
+        
+        # Get daily targets
+        target_calories_setting = get_setting(db, 'daily_calories')
+        target_water_setting = get_setting(db, 'daily_water')
+        target_calories = float(target_calories_setting) if target_calories_setting else 2000
+        target_water = float(target_water_setting) if target_water_setting else 2000  # ml
+        
+        # Calculate the current "day" based on day_start_hour
+        from datetime import datetime, timedelta
+        now = datetime.now()
+        
+        # If current hour is before day_start_hour, we're still in "yesterday"
+        if now.hour < day_start_hour:
+            day_start = datetime(now.year, now.month, now.day, day_start_hour, 0, 0) - timedelta(days=1)
+        else:
+            day_start = datetime(now.year, now.month, now.day, day_start_hour, 0, 0)
+        
+        day_end = day_start + timedelta(days=1)
+        
+        # Get nutrition data for current "day"
+        from models import NutritionIntake
+        daily_intake = db.query(NutritionIntake).filter(
+            NutritionIntake.patient_id == active_patient.id,
+            NutritionIntake.consumed_at >= day_start,
+            NutritionIntake.consumed_at < day_end
+        ).all()
+        
+        # Calculate totals
+        total_calories = sum(item.calories or 0 for item in daily_intake)
+        total_water_ml = 0
+        
+        for intake in daily_intake:
+            if intake.item_type == 'liquid':
+                amount_ml = intake.amount
+                # Convert units to ml
+                unit = intake.amount_unit.lower()
+                if unit in ['oz', 'ounces']:
+                    amount_ml = intake.amount * 29.5735
+                elif unit in ['cup', 'cups']:
+                    amount_ml = intake.amount * 236.588
+                elif unit in ['liter', 'liters', 'l']:
+                    amount_ml = intake.amount * 1000
+                total_water_ml += amount_ml
+        
+        # Get scheduled nutrition tasks for today to calculate expected progress
+        from models import CareTaskSchedule, CareTask, CareTaskLog
+        from croniter import croniter
+        
+        # Find all nutrition-related scheduled tasks (category_id = 1)
+        nutrition_schedules = db.query(CareTaskSchedule).join(CareTask).filter(
+            CareTask.category_id == 1,
+            CareTaskSchedule.active == True,
+            CareTaskSchedule.patient_id == active_patient.id
+        ).all()
+        
+        # Calculate how many scheduled feedings should have occurred by now
+        scheduled_feedings_past = 0
+        total_scheduled_feedings = 0
+        scheduled_calories_past = 0
+        scheduled_water_past = 0
+        
+        # Calculate scheduled amounts by parsing nutrition data from care task notes
+        for schedule in nutrition_schedules:
+            # First, count total scheduled feedings in the day
+            # Start from slightly before day_start to ensure we include times AT day_start
+            schedule_times = []
+            temp_cron = croniter(schedule.cron_expression, day_start - timedelta(seconds=1))
+            while True:
+                next_time = temp_cron.get_next(datetime)
+                if next_time >= day_end:
+                    break
+                schedule_times.append(next_time)
+                total_scheduled_feedings += 1
+            
+            # Count how many have passed and extract nutrition data from notes
+            for scheduled_time in schedule_times:
+                if scheduled_time <= now:
+                    scheduled_feedings_past += 1
+                    
+                    # Parse nutrition data from care task schedule notes
+                    if schedule.notes:
+                        try:
+                            import json
+                            notes_data = json.loads(schedule.notes)
+                            
+                            if 'nutrition' in notes_data:
+                                nutrition_info = notes_data['nutrition']
+                                
+                                # Add calories if present
+                                if nutrition_info.get('calories'):
+                                    scheduled_calories_past += float(nutrition_info['calories'])
+                                
+                                # Add water for liquids only (not supplements)
+                                if nutrition_info.get('item_type') == 'liquid':
+                                    amount = float(nutrition_info.get('amount', 0))
+                                    unit = nutrition_info.get('amount_unit', 'ml').lower()
+                                    
+                                    # Convert to ml
+                                    amount_ml = amount
+                                    if unit in ['oz', 'ounces']:
+                                        amount_ml = amount * 29.5735
+                                    elif unit in ['cup', 'cups']:
+                                        amount_ml = amount * 236.588
+                                    elif unit in ['liter', 'liters', 'l']:
+                                        amount_ml = amount * 1000
+                                    
+                                    scheduled_water_past += amount_ml
+                        except (json.JSONDecodeError, KeyError, ValueError) as e:
+                            logger.warning(f"Failed to parse nutrition data from schedule {schedule.id} notes: {e}")
+                            # Fallback to proportional calculation for this feeding
+                            if total_scheduled_feedings > 0:
+                                scheduled_calories_past += target_calories / total_scheduled_feedings
+                                scheduled_water_past += target_water / total_scheduled_feedings
+        
+        # If no scheduled amounts were calculated, use time-based proportion
+        if scheduled_feedings_past > 0 and scheduled_calories_past == 0 and scheduled_water_past == 0:
+            # No nutrition data in notes, use proportional calculation
+            calories_per_feeding = target_calories / total_scheduled_feedings if total_scheduled_feedings > 0 else 0
+            water_per_feeding = target_water / total_scheduled_feedings if total_scheduled_feedings > 0 else 0
+            scheduled_calories_past = calories_per_feeding * scheduled_feedings_past
+            scheduled_water_past = water_per_feeding * scheduled_feedings_past
+        elif total_scheduled_feedings == 0:
+            # If no scheduled tasks at all, use time-based proportion
+            time_elapsed = (now - day_start).total_seconds()
+            day_duration = 24 * 3600  # 24 hours in seconds
+            time_proportion = min(time_elapsed / day_duration, 1.0)
+            scheduled_calories_past = target_calories * time_proportion
+            scheduled_water_past = target_water * time_proportion
+        
+        return {
+            "total_calories": round(total_calories, 1),
+            "total_water_ml": round(total_water_ml, 1),
+            "target_calories": target_calories,
+            "target_water_ml": target_water,
+            "scheduled_calories": round(scheduled_calories_past, 1),
+            "scheduled_water_ml": round(scheduled_water_past, 1),
+            "scheduled_feedings_past": scheduled_feedings_past,
+            "total_scheduled_feedings": total_scheduled_feedings,
+            "day_start": day_start.isoformat(),
+            "day_end": day_end.isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting nutrition dashboard data: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/nutrition/has-data")
+async def check_nutrition_data(db: Session = Depends(get_db)):
+    """Check if there is any nutrition data in the database"""
+    try:
+        from models import NutritionIntake
+        count = db.query(NutritionIntake).count()
+        return {"has_data": count > 0, "count": count}
+    except Exception as e:
+        logger.error(f"Error checking nutrition data: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))

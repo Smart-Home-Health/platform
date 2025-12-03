@@ -1,7 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { LineChart, Line, ResponsiveContainer, YAxis, Tooltip } from "recharts";
+import NutritionGaugeCard from './dashboard/NutritionGaugeCard';
 
 const DynamicVitalsCard = ({ vitalType, data = [], title }) => {
+  const [isFlipped, setIsFlipped] = useState(false);
+
+  // Special case for nutrition - render dedicated gauge component
+  if (vitalType === 'nutrition') {
+    return <NutritionGaugeCard />;
+  }
+
   // Format the data for the chart based on vital type
   const formatChartData = (data, vitalType) => {
     if (!data || data.length === 0) return [];
@@ -253,160 +261,230 @@ const DynamicVitalsCard = ({ vitalType, data = [], title }) => {
 
   return (
     <div style={{
-      display: 'flex',
-      flexDirection: 'column',
+      position: 'relative',
       height: '100%',
-      width: '100%'
+      width: '100%',
+      perspective: '1000px'
     }}>
-      <h3 style={{ 
-        color: vitalType === 'bathroom' && primaryGroup ? 
-          getChartColor(vitalType, primaryGroup) : 
-          getChartColor(vitalType), 
-        margin: '0 0 10px 0', 
-        fontSize: '18px',
-        fontWeight: '600',
-        textAlign: 'center'
+      <div style={{
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        transition: 'transform 0.6s',
+        transformStyle: 'preserve-3d',
+        transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)'
       }}>
-        {displayTitle} History
-      </h3>
-
-      {/* Minimalist Chart */}
-      <div style={{ height: '60%', marginBottom: '10px' }}>
-        {chartData.length > 0 ? (
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData} margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
-              <YAxis 
-                domain={calculateYDomain()}
-                hide={true}
-              />
-              <Tooltip content={<CustomTooltip />} />
-              <Line 
-                type="monotone" 
-                dataKey="value" 
-                stroke={vitalType === 'bathroom' && chartData[0]?.group ? 
-                  getChartColor(vitalType, chartData[0].group) : 
-                  getChartColor(vitalType)}
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ 
-                  r: 4, 
-                  fill: vitalType === 'bathroom' && chartData[0]?.group ? 
-                    getChartColor(vitalType, chartData[0].group) : 
-                    getChartColor(vitalType),
-                  stroke: '#fff',
-                  strokeWidth: 2
-                }}
-                isAnimationActive={false}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        ) : (
-          <div style={{ 
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: '100%',
-            color: '#666',
-            fontSize: '14px'
+        {/* Front side - Chart only */}
+        <div style={{
+          position: 'absolute',
+          width: '100%',
+          height: '100%',
+          backfaceVisibility: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          cursor: 'pointer'
+        }}
+        onClick={() => setIsFlipped(true)}
+        >
+          <h3 style={{ 
+            color: vitalType === 'bathroom' && primaryGroup ? 
+              getChartColor(vitalType, primaryGroup) : 
+              getChartColor(vitalType), 
+            margin: '0 0 10px 0', 
+            fontSize: '18px',
+            fontWeight: '600',
+            textAlign: 'center'
           }}>
-            No {vitalType} data available
-          </div>
-        )}
-      </div>
+            {displayTitle} History
+          </h3>
 
-      {/* Minimalist Table */}
-      <div style={{ 
-        flex: 1, 
-        overflowY: 'auto'
-      }}>
-        <table style={{ 
-          width: '100%', 
-          borderCollapse: 'collapse',
-          fontSize: '12px',
-          color: '#fff'
-        }}>
-          <thead>
-            <tr>
-              <th style={{ 
-                padding: '4px 8px', 
-                borderBottom: '1px solid #333',
-                fontSize: '10px',
-                color: '#ccc',
-                textAlign: 'left'
+          {/* Chart only view */}
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {chartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData} margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
+                  <YAxis 
+                    domain={calculateYDomain()}
+                    hide={true}
+                  />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Line 
+                    type="monotone" 
+                    dataKey="value" 
+                    stroke={vitalType === 'bathroom' && chartData[0]?.group ? 
+                      getChartColor(vitalType, chartData[0].group) : 
+                      getChartColor(vitalType)}
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ 
+                      r: 4, 
+                      fill: vitalType === 'bathroom' && chartData[0]?.group ? 
+                        getChartColor(vitalType, chartData[0].group) : 
+                        getChartColor(vitalType),
+                      stroke: '#fff',
+                      strokeWidth: 2
+                    }}
+                    isAnimationActive={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div style={{ 
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                height: '100%',
+                color: '#666',
+                fontSize: '14px'
               }}>
-                Time
-              </th>
-              {vitalType === 'bathroom' && (
-                <th style={{ 
-                  padding: '4px 8px', 
-                  borderBottom: '1px solid #333',
-                  fontSize: '10px',
-                  color: '#ccc',
-                  textAlign: 'left'
-                }}>
-                  Group
-                </th>
-              )}
-              <th style={{ 
-                padding: '4px 8px', 
-                borderBottom: '1px solid #333',
-                fontSize: '10px',
-                color: '#ccc',
-                textAlign: 'right'
-              }}>
-                Value
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {data && data.length > 0 ? (
-              data.slice(-5).map((item, index) => (
-                <tr key={index}>
-                  <td style={{ 
+                No {vitalType} data available
+              </div>
+            )}
+          </div>
+          
+          {/* Click hint */}
+          <div style={{
+            textAlign: 'center',
+            padding: '8px',
+            fontSize: '11px',
+            color: '#888',
+            opacity: 0.7
+          }}>
+            Click to view details
+          </div>
+        </div>
+
+        {/* Back side - Table only */}
+        <div style={{
+          position: 'absolute',
+          width: '100%',
+          height: '100%',
+          backfaceVisibility: 'hidden',
+          transform: 'rotateY(180deg)',
+          display: 'flex',
+          flexDirection: 'column',
+          cursor: 'pointer'
+        }}
+        onClick={() => setIsFlipped(false)}
+        >
+          <h3 style={{ 
+            color: vitalType === 'bathroom' && primaryGroup ? 
+              getChartColor(vitalType, primaryGroup) : 
+              getChartColor(vitalType), 
+            margin: '0 0 10px 0', 
+            fontSize: '18px',
+            fontWeight: '600',
+            textAlign: 'center'
+          }}>
+            {displayTitle} Data
+          </h3>
+
+          {/* Table only */}
+          <div style={{ 
+            flex: 1, 
+            overflowY: 'auto'
+          }}>
+            <table style={{ 
+              width: '100%', 
+              borderCollapse: 'collapse',
+              fontSize: '12px',
+              color: '#fff'
+            }}>
+              <thead>
+                <tr>
+                  <th style={{ 
                     padding: '4px 8px', 
                     borderBottom: '1px solid #333',
-                    fontSize: '11px',
-                    color: '#ccc'
+                    fontSize: '10px',
+                    color: '#ccc',
+                    textAlign: 'left'
                   }}>
-                    {formatDateTime(item.datetime)}
-                  </td>
+                    Time
+                  </th>
                   {vitalType === 'bathroom' && (
-                    <td style={{ 
+                    <th style={{ 
                       padding: '4px 8px', 
                       borderBottom: '1px solid #333',
-                      fontSize: '11px',
-                      color: getChartColor(vitalType, item.vital_group),
-                      fontWeight: '500'
+                      fontSize: '10px',
+                      color: '#ccc',
+                      textAlign: 'left'
                     }}>
-                      {getGroupDisplay(item.vital_group)}
-                    </td>
+                      Group
+                    </th>
                   )}
-                  <td style={{ 
+                  <th style={{ 
                     padding: '4px 8px', 
                     borderBottom: '1px solid #333',
-                    fontSize: '11px',
-                    color: '#fff',
-                    textAlign: 'right',
-                    fontWeight: '500'
+                    fontSize: '10px',
+                    color: '#ccc',
+                    textAlign: 'right'
                   }}>
-                    {formatDisplayValue(item, vitalType)}
-                  </td>
+                    Value
+                  </th>
                 </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={vitalType === 'bathroom' ? 3 : 2} style={{ 
-                  textAlign: "center", 
-                  padding: '20px',
-                  color: '#666',
-                  fontSize: '11px'
-                }}>
-                  No data available
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              </thead>
+              <tbody>
+                {data && data.length > 0 ? (
+                  data.slice(-5).map((item, index) => (
+                    <tr key={index}>
+                      <td style={{ 
+                        padding: '4px 8px', 
+                        borderBottom: '1px solid #333',
+                        fontSize: '11px',
+                        color: '#ccc'
+                      }}>
+                        {formatDateTime(item.datetime)}
+                      </td>
+                      {vitalType === 'bathroom' && (
+                        <td style={{ 
+                          padding: '4px 8px', 
+                          borderBottom: '1px solid #333',
+                          fontSize: '11px',
+                          color: getChartColor(vitalType, item.vital_group),
+                          fontWeight: '500'
+                        }}>
+                          {getGroupDisplay(item.vital_group)}
+                        </td>
+                      )}
+                      <td style={{ 
+                        padding: '4px 8px', 
+                        borderBottom: '1px solid #333',
+                        fontSize: '11px',
+                        color: '#fff',
+                        textAlign: 'right',
+                        fontWeight: '500'
+                      }}>
+                        {formatDisplayValue(item, vitalType)}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={vitalType === 'bathroom' ? 3 : 2} style={{ 
+                      textAlign: "center", 
+                      padding: '20px',
+                      color: '#666',
+                      fontSize: '11px'
+                    }}>
+                      No data available
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          
+          {/* Click hint */}
+          <div style={{
+            textAlign: 'center',
+            padding: '8px',
+            fontSize: '11px',
+            color: '#888',
+            opacity: 0.7
+          }}>
+            Click to hide details
+          </div>
+        </div>
       </div>
     </div>
   );

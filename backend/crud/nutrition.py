@@ -1,11 +1,322 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, and_, func
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import List, Optional
 from models import NutritionIntake, Patient
 import logging
 
 logger = logging.getLogger(__name__)
+
+def _publish_nutrition_mqtt(db: Session, patient_id: int):
+    """Publish nutrition dashboard data to MQTT"""
+    try:
+        from bus import EventBus
+        from events import SensorUpdate, EventSource
+        
+        # Get dashboard data
+        dashboard_data = _get_nutrition_dashboard_data(db, patient_id)
+        
+        # Publish WATER intake (actual consumed)
+        water_intake_event = SensorUpdate(
+            sensor_type="nutrition_water_intake",
+            value=dashboard_data["total_water_ml"],
+            timestamp=datetime.now(),
+            source=EventSource.API,
+            metadata={
+                "day_start": dashboard_data["day_start"],
+                "day_end": dashboard_data["day_end"]
+            }
+        )
+        EventBus.publish(water_intake_event)
+        
+        # Publish WATER scheduled (expected progress)
+        water_scheduled_event = SensorUpdate(
+            sensor_type="nutrition_water_scheduled",
+            value=dashboard_data["scheduled_water_ml"],
+            timestamp=datetime.now(),
+            source=EventSource.API,
+            metadata={
+                "scheduled_feedings_past": dashboard_data["scheduled_feedings_past"],
+                "total_scheduled_feedings": dashboard_data["total_scheduled_feedings"],
+                "day_start": dashboard_data["day_start"],
+                "day_end": dashboard_data["day_end"]
+            }
+        )
+        EventBus.publish(water_scheduled_event)
+        
+        # Publish WATER target (daily limit)
+        water_target_event = SensorUpdate(
+            sensor_type="nutrition_water_target",
+            value=dashboard_data["target_water_ml"],
+            timestamp=datetime.now(),
+            source=EventSource.API,
+            metadata={
+                "day_start": dashboard_data["day_start"],
+                "day_end": dashboard_data["day_end"]
+            }
+        )
+        EventBus.publish(water_target_event)
+        
+        # Publish CALORIES intake (actual consumed)
+        calories_intake_event = SensorUpdate(
+            sensor_type="nutrition_calories_intake",
+            value=dashboard_data["total_calories"],
+            timestamp=datetime.now(),
+            source=EventSource.API,
+            metadata={
+                "day_start": dashboard_data["day_start"],
+                "day_end": dashboard_data["day_end"]
+            }
+        )
+        EventBus.publish(calories_intake_event)
+        
+        # Publish CALORIES scheduled (expected progress)
+        calories_scheduled_event = SensorUpdate(
+            sensor_type="nutrition_calories_scheduled",
+            value=dashboard_data["scheduled_calories"],
+            timestamp=datetime.now(),
+            source=EventSource.API,
+            metadata={
+                "scheduled_feedings_past": dashboard_data["scheduled_feedings_past"],
+                "total_scheduled_feedings": dashboard_data["total_scheduled_feedings"],
+                "day_start": dashboard_data["day_start"],
+                "day_end": dashboard_data["day_end"]
+            }
+        )
+        EventBus.publish(calories_scheduled_event)
+        
+        # Publish CALORIES target (daily limit)
+        calories_target_event = SensorUpdate(
+            sensor_type="nutrition_calories_target",
+            value=dashboard_data["target_calories"],
+            timestamp=datetime.now(),
+            source=EventSource.API,
+            metadata={
+                "day_start": dashboard_data["day_start"],
+                "day_end": dashboard_data["day_end"]
+            }
+        )
+        EventBus.publish(calories_target_event)
+        
+        logger.info(f"Published nutrition MQTT: {dashboard_data['total_calories']} cal, {dashboard_data['total_water_ml']} ml")
+    except Exception as e:
+        logger.error(f"Error publishing nutrition to MQTT: {e}")
+
+def _publish_nutrition_scheduled_mqtt(db: Session, patient_id: int):
+    """Publish only scheduled nutrition values (for hourly updates)"""
+    try:
+        from bus import EventBus
+        from events import SensorUpdate, EventSource
+        
+        # Get dashboard data
+        dashboard_data = _get_nutrition_dashboard_data(db, patient_id)
+        
+        # Publish WATER scheduled
+        water_scheduled_event = SensorUpdate(
+            sensor_type="nutrition_water_scheduled",
+            value=dashboard_data["scheduled_water_ml"],
+            timestamp=datetime.now(),
+            source=EventSource.SYSTEM,
+            metadata={
+                "scheduled_feedings_past": dashboard_data["scheduled_feedings_past"],
+                "total_scheduled_feedings": dashboard_data["total_scheduled_feedings"],
+                "day_start": dashboard_data["day_start"],
+                "day_end": dashboard_data["day_end"]
+            }
+        )
+        EventBus.publish(water_scheduled_event)
+        
+        # Publish CALORIES scheduled
+        calories_scheduled_event = SensorUpdate(
+            sensor_type="nutrition_calories_scheduled",
+            value=dashboard_data["scheduled_calories"],
+            timestamp=datetime.now(),
+            source=EventSource.SYSTEM,
+            metadata={
+                "scheduled_feedings_past": dashboard_data["scheduled_feedings_past"],
+                "total_scheduled_feedings": dashboard_data["total_scheduled_feedings"],
+                "day_start": dashboard_data["day_start"],
+                "day_end": dashboard_data["day_end"]
+            }
+        )
+        EventBus.publish(calories_scheduled_event)
+        
+        logger.info(f"Published nutrition scheduled MQTT: {dashboard_data['scheduled_calories']} cal, {dashboard_data['scheduled_water_ml']} ml")
+    except Exception as e:
+        logger.error(f"Error publishing nutrition scheduled to MQTT: {e}")
+
+def _publish_nutrition_targets_mqtt(db: Session, patient_id: int):
+    """Publish only nutrition targets (for settings changes)"""
+    try:
+        from bus import EventBus
+        from events import SensorUpdate, EventSource
+        from crud.settings import get_setting
+        
+        # Get targets
+        target_calories_setting = get_setting(db, 'daily_calories')
+        target_water_setting = get_setting(db, 'daily_water')
+        target_calories = float(target_calories_setting) if target_calories_setting else 2000
+        target_water = float(target_water_setting) if target_water_setting else 2000
+        
+        # Calculate day boundaries
+        day_start_hour_setting = get_setting(db, 'day_start_hour')
+        day_start_hour = int(day_start_hour_setting) if day_start_hour_setting else 7
+        now = datetime.now()
+        if now.hour < day_start_hour:
+            day_start = datetime(now.year, now.month, now.day, day_start_hour, 0, 0) - timedelta(days=1)
+        else:
+            day_start = datetime(now.year, now.month, now.day, day_start_hour, 0, 0)
+        day_end = day_start + timedelta(days=1)
+        
+        # Publish WATER target
+        water_target_event = SensorUpdate(
+            sensor_type="nutrition_water_target",
+            value=target_water,
+            timestamp=datetime.now(),
+            source=EventSource.API,
+            metadata={
+                "day_start": day_start.isoformat(),
+                "day_end": day_end.isoformat()
+            }
+        )
+        EventBus.publish(water_target_event)
+        
+        # Publish CALORIES target
+        calories_target_event = SensorUpdate(
+            sensor_type="nutrition_calories_target",
+            value=target_calories,
+            timestamp=datetime.now(),
+            source=EventSource.API,
+            metadata={
+                "day_start": day_start.isoformat(),
+                "day_end": day_end.isoformat()
+            }
+        )
+        EventBus.publish(calories_target_event)
+        
+        logger.info(f"Published nutrition targets MQTT: {target_calories} cal, {target_water} ml")
+    except Exception as e:
+        logger.error(f"Error publishing nutrition targets to MQTT: {e}")
+
+def _get_nutrition_dashboard_data(db: Session, patient_id: int) -> dict:
+    """Get nutrition dashboard data for MQTT publishing"""
+    from crud.settings import get_setting
+    from models import CareTaskSchedule, CareTask
+    from croniter import croniter
+    import json
+    
+    # Get day_start_hour setting (default 7am)
+    day_start_hour_setting = get_setting(db, 'day_start_hour')
+    day_start_hour = int(day_start_hour_setting) if day_start_hour_setting else 7
+    
+    # Get daily targets
+    target_calories_setting = get_setting(db, 'daily_calories')
+    target_water_setting = get_setting(db, 'daily_water')
+    target_calories = float(target_calories_setting) if target_calories_setting else 2000
+    target_water = float(target_water_setting) if target_water_setting else 2000  # ml
+    
+    # Calculate the current "day" based on day_start_hour
+    now = datetime.now()
+    
+    # If current hour is before day_start_hour, we're still in "yesterday"
+    if now.hour < day_start_hour:
+        day_start = datetime(now.year, now.month, now.day, day_start_hour, 0, 0) - timedelta(days=1)
+    else:
+        day_start = datetime(now.year, now.month, now.day, day_start_hour, 0, 0)
+    
+    day_end = day_start + timedelta(days=1)
+    
+    # Get nutrition data for current "day"
+    daily_intake = db.query(NutritionIntake).filter(
+        NutritionIntake.patient_id == patient_id,
+        NutritionIntake.consumed_at >= day_start,
+        NutritionIntake.consumed_at < day_end
+    ).all()
+    
+    # Calculate totals
+    total_calories = sum(item.calories or 0 for item in daily_intake)
+    total_water_ml = 0
+    
+    for intake in daily_intake:
+        if intake.item_type == 'liquid':
+            amount_ml = intake.amount
+            # Convert units to ml
+            unit = intake.amount_unit.lower()
+            if unit in ['oz', 'ounces']:
+                amount_ml = intake.amount * 29.5735
+            elif unit in ['cup', 'cups']:
+                amount_ml = intake.amount * 236.588
+            elif unit in ['liter', 'liters', 'l']:
+                amount_ml = intake.amount * 1000
+            total_water_ml += amount_ml
+    
+    # Get scheduled nutrition tasks
+    nutrition_schedules = db.query(CareTaskSchedule).join(CareTask).filter(
+        CareTask.category_id == 1,
+        CareTaskSchedule.active == True,
+        CareTaskSchedule.patient_id == patient_id
+    ).all()
+    
+    scheduled_feedings_past = 0
+    total_scheduled_feedings = 0
+    scheduled_calories_past = 0
+    scheduled_water_past = 0
+    
+    for schedule in nutrition_schedules:
+        schedule_times = []
+        temp_cron = croniter(schedule.cron_expression, day_start - timedelta(seconds=1))
+        while True:
+            next_time = temp_cron.get_next(datetime)
+            if next_time >= day_end:
+                break
+            schedule_times.append(next_time)
+            total_scheduled_feedings += 1
+        
+        for scheduled_time in schedule_times:
+            if scheduled_time <= now:
+                scheduled_feedings_past += 1
+                
+                if schedule.notes:
+                    try:
+                        notes_data = json.loads(schedule.notes)
+                        if 'nutrition' in notes_data:
+                            nutrition_info = notes_data['nutrition']
+                            if nutrition_info.get('calories'):
+                                scheduled_calories_past += float(nutrition_info['calories'])
+                            
+                            if nutrition_info.get('item_type') == 'liquid':
+                                amount = float(nutrition_info.get('amount', 0))
+                                unit = nutrition_info.get('amount_unit', 'ml').lower()
+                                amount_ml = amount
+                                if unit in ['oz', 'ounces']:
+                                    amount_ml = amount * 29.5735
+                                elif unit in ['cup', 'cups']:
+                                    amount_ml = amount * 236.588
+                                elif unit in ['liter', 'liters', 'l']:
+                                    amount_ml = amount * 1000
+                                scheduled_water_past += amount_ml
+                    except (json.JSONDecodeError, KeyError, ValueError):
+                        pass
+    
+    if total_scheduled_feedings == 0:
+        time_elapsed = (now - day_start).total_seconds()
+        day_duration = 24 * 3600
+        time_proportion = min(time_elapsed / day_duration, 1.0)
+        scheduled_calories_past = target_calories * time_proportion
+        scheduled_water_past = target_water * time_proportion
+    
+    return {
+        "total_calories": round(total_calories, 1),
+        "total_water_ml": round(total_water_ml, 1),
+        "target_calories": target_calories,
+        "target_water_ml": target_water,
+        "scheduled_calories": round(scheduled_calories_past, 1),
+        "scheduled_water_ml": round(scheduled_water_past, 1),
+        "scheduled_feedings_past": scheduled_feedings_past,
+        "total_scheduled_feedings": total_scheduled_feedings,
+        "day_start": day_start.isoformat(),
+        "day_end": day_end.isoformat()
+    }
 
 def create_nutrition_intake(db: Session, intake_data: dict, patient_id: int = None) -> NutritionIntake:
     """Create a new nutrition intake record"""
@@ -44,6 +355,10 @@ def create_nutrition_intake(db: Session, intake_data: dict, patient_id: int = No
         db.refresh(nutrition_intake)
         
         logger.info(f"Created nutrition intake record: {nutrition_intake.id}")
+        
+        # Publish to MQTT
+        _publish_nutrition_mqtt(db, patient_id)
+        
         return nutrition_intake
         
     except Exception as e:
@@ -172,6 +487,10 @@ def update_nutrition_intake(db: Session, intake_id: int, update_data: dict) -> O
         db.refresh(intake)
         
         logger.info(f"Updated nutrition intake record: {intake_id}")
+        
+        # Publish to MQTT
+        _publish_nutrition_mqtt(db, intake.patient_id)
+        
         return intake
         
     except Exception as e:
@@ -185,11 +504,17 @@ def delete_nutrition_intake(db: Session, intake_id: int) -> bool:
         intake = db.query(NutritionIntake).filter(NutritionIntake.id == intake_id).first()
         if not intake:
             return False
-            
+        
+        patient_id = intake.patient_id
+        
         db.delete(intake)
         db.commit()
         
         logger.info(f"Deleted nutrition intake record: {intake_id}")
+        
+        # Publish to MQTT
+        _publish_nutrition_mqtt(db, patient_id)
+        
         return True
         
     except Exception as e:
