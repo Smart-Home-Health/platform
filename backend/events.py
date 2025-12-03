@@ -21,6 +21,15 @@ class SensorUpdate:
     source: EventSource = EventSource.SERIAL
 
 @dataclass(frozen=True)
+class NutritionSensorUpdate:
+    """Nutrition-specific sensor update for MQTT publishing."""
+    sensor_type: str                 # e.g. "nutrition_water_intake", "nutrition_calories_target"
+    value: Any                       # The sensor value
+    timestamp: datetime
+    source: EventSource = EventSource.API
+    metadata: Optional[Dict[str, Any]] = None
+
+@dataclass(frozen=True)
 class AlarmPanelState:
     """GPIO alarm panel state change"""
     ts: datetime

@@ -92,6 +92,59 @@ def get_vital_topic_config(vital_type: str) -> Optional[Dict[str, Any]]:
         return None
         
     topics = settings.get('topics', {})
+    base_topic = settings.get('base_topic', 'shh')
+    nutrition_config = topics.get('nutrition', {})
+    
+    # Handle nutrition sensor types (e.g., nutrition_water_intake, nutrition_calories_target)
+    # These use the configured topics from the database
+    nutrition_types = {
+        'nutrition_water_intake': 'water_broadcast_topic',
+        'nutrition_water_scheduled': 'water_broadcast_topic',  # Uses same base, different suffix
+        'nutrition_water_target': 'water_broadcast_topic',
+        'nutrition_calories_intake': 'calories_broadcast_topic',
+        'nutrition_calories_scheduled': 'calories_broadcast_topic',
+        'nutrition_calories_target': 'calories_broadcast_topic',
+    }
+    
+    if vital_type in nutrition_types:
+        if nutrition_config.get('enabled', False):
+            topic_key = nutrition_types[vital_type]
+            base_broadcast = nutrition_config.get(topic_key, f"{base_topic}/water/state" if 'water' in vital_type else f"{base_topic}/calories/state")
+            
+            # Modify topic for scheduled/target variants
+            # Discovery expects: shh/water/state/scheduled, shh/water/state/target
+            if '_scheduled' in vital_type:
+                broadcast_topic = f"{base_broadcast}/scheduled"
+            elif '_target' in vital_type:
+                broadcast_topic = f"{base_broadcast}/target"
+            else:
+                broadcast_topic = base_broadcast
+                
+            return {
+                'enabled': True,
+                'broadcast_topic': broadcast_topic
+            }
+        return None
+    
+    # Handle legacy water/water_ml/calories vital types from vital_saved events
+    # These should use the nutrition topic configuration
+    legacy_nutrition_map = {
+        'water': 'water_broadcast_topic',
+        'water_ml': 'water_broadcast_topic', 
+        'calories': 'calories_broadcast_topic',
+    }
+    
+    if vital_type in legacy_nutrition_map:
+        if nutrition_config.get('enabled', False):
+            topic_key = legacy_nutrition_map[vital_type]
+            broadcast_topic = nutrition_config.get(topic_key)
+            if broadcast_topic:
+                return {
+                    'enabled': True,
+                    'broadcast_topic': broadcast_topic
+                }
+        return None
+    
     vital_config = topics.get(vital_type, {})
     
     if not vital_config.get('enabled', False):

@@ -42,9 +42,9 @@ services:
     networks:
       - shh-network
     # Uncomment if you need access to serial devices (Raspberry Pi)
-    devices:
-     - /dev/ttyUSB0:/dev/ttyUSB0
-     - /dev/ttyACM0:/dev/ttyACM0
+    # devices:
+    #  - /dev/ttyUSB0:/dev/ttyUSB0
+    #  - /dev/ttyACM0:/dev/ttyACM0
     # privileged: true
     command: sh -c "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
 

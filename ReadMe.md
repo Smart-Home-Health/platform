@@ -26,19 +26,21 @@ Smart Home Health is a home care monitoring system designed for families who nee
 ### Frontend
 - **React**: Modern user interface framework
 - **Vite**: Fast development and build tool
-- **SciChart**: Advanced charting for vital signs visualization
 - **Chart.js**: Additional charting capabilities
 
 ## Prerequisites
 
 Before you begin, ensure you have the following installed:
 
-- **Python 3.8+** (recommended: Python 3.12)
-- **Node.js 16+** and npm
-- **PostgreSQL 12+**
+- **Docker** and **Docker Compose**
 - **Git**
 
-## Installation & Setup
+For development without Docker, you'll need:
+- **Python 3.11+**
+- **Node.js 20+** and npm
+- **PostgreSQL 15+**
+
+## Quick Start with Docker (Recommended)
 
 ### 1. Clone the Repository
 
@@ -47,99 +49,137 @@ git clone https://github.com/johnrcarty/smart-home-health-hub.git
 cd smart-home-health-hub
 ```
 
-### 2. Backend Setup
+### 2. Configure Environment (Optional)
 
-#### Create Python Virtual Environment
+Create a `.env.docker` file to customize settings (optional - has sensible defaults):
+
+```env
+# MQTT Configuration (point to your Home Assistant or external broker)
+MQTT_BROKER=192.168.1.12
+MQTT_PORT=1883
+MQTT_USERNAME=your_username
+MQTT_PASSWORD=your_password
+
+# Serial Device (uncomment devices in docker-compose.yml if using)
+SERIAL_PORT=/dev/ttyUSB0
+SERIAL_BAUD_RATE=9600
+```
+
+### 3. Start the Application
+
+```bash
+# Start all services (database, backend, frontend)
+docker compose up -d
+
+# View logs
+docker compose logs -f backend
+```
+
+That's it! The application will:
+- Automatically create the database
+- Run database migrations
+- Start the backend API server
+- Start the frontend development server
+
+**Access the application:**
+- **Web Interface**: http://localhost:5173
+- **API**: http://localhost:8000
+- **API Documentation**: http://localhost:8000/docs
+
+### Docker Management Commands
+
+```bash
+# Stop all services
+docker compose down
+
+# Restart a specific service
+docker compose restart backend
+
+# View logs
+docker compose logs backend --tail 50
+docker compose logs frontend --tail 50
+
+# Rebuild after code changes
+docker compose up -d --build backend
+
+# Access database
+docker compose exec db psql -U shh_user -d shh
+
+# Access backend shell
+docker compose exec backend /bin/sh
+```
+
+## Serial Device Setup (Raspberry Pi)
+
+If you're using serial medical devices (pulse oximeter, etc.) on a Raspberry Pi:
+
+1. Uncomment the device mappings in `docker-compose.yml`:
+
+```yaml
+devices:
+  - /dev/ttyUSB0:/dev/ttyUSB0
+  - /dev/ttyACM0:/dev/ttyACM0
+```
+
+2. Ensure the user has permission to access serial devices:
+
+```bash
+sudo usermod -a -G dialout $USER
+```
+
+3. Restart Docker containers:
+
+```bash
+docker compose restart backend
+```
+
+## Production Deployment
+
+For production deployment, use the production compose file:
+
+```bash
+# Build and start in production mode
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+# The frontend will be served via nginx on port 80
+# The backend runs with multiple workers for better performance
+```
+
+## Manual Setup (Development without Docker)
+
+<details>
+<summary>Click to expand manual setup instructions</summary>
+
+### Backend Setup
 
 ```bash
 cd backend
 python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-#### Install Python Dependencies
-
-```bash
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-#### Configure Environment Variables
-
-```bash
-cp example.env .env
-```
-
-Edit the `.env` file with your specific configuration:
-
+Create `.env` file:
 ```env
-# MQTT Configuration (if using MQTT devices)
-MQTT_BROKER=localhost
-MQTT_PORT=1883
-MQTT_TOPIC=medical/spo2
-MQTT_CLIENT_ID=spo2_monitor
-MQTT_USERNAME=your_mqtt_username
-MQTT_PASSWORD=your_mqtt_password
-
-# Vital Signs Thresholds
-MIN_SPO2=90
-MAX_SPO2=100
-MIN_BPM=55
-MAX_BPM=155
-
-# Database Configuration
-DATABASE_URL=postgresql://username:password@localhost:5432/health_hub
+DATABASE_URL=postgresql://shh_user:shh_dev_pass@localhost:5432/shh
 ```
 
-#### Database Setup
-
-1. Create a PostgreSQL database:
-```sql
-CREATE DATABASE health_hub;
-```
-
-2. Run database migrations:
+Setup database:
 ```bash
+createdb shh
 alembic upgrade head
-```
-
-### 3. Frontend Setup
-
-```bash
-cd ../frontend
-npm install
-```
-
-#### Configure Frontend Environment
-
-Create a `.env` file in the frontend directory:
-
-```env
-VITE_API_URL=http://localhost:8000
-VITE_CHART_REFRESH_RATE=1000
-VITE_CHART_TIMESPAN=5
-```
-
-## Running the Application
-
-### Start the Backend Server
-
-```bash
-cd backend
-source venv/bin/activate  # If not already activated
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-The API will be available at: http://localhost:8000
-API Documentation: http://localhost:8000/docs
-
-### Start the Frontend Development Server
+### Frontend Setup
 
 ```bash
 cd frontend
+npm install
 npm run dev
 ```
 
-The web interface will be available at: http://localhost:5173
+</details>
 
 ## Usage
 
@@ -172,71 +212,154 @@ The web interface will be available at: http://localhost:5173
 
 ### MQTT Devices
 
-The system supports MQTT-enabled medical devices. Configure your MQTT broker settings in the backend `.env` file and ensure your devices publish to the configured topics.
+The system supports MQTT-enabled medical devices and integrates with **Home Assistant** for home automation.
+
+**Configuration:**
+
+1. Set your MQTT broker address in the settings (via web UI or environment variables)
+2. Configure MQTT topics in the web interface under Settings → MQTT
+3. Enable nutrition tracking topics for water and calorie monitoring
+4. The system automatically publishes:
+   - Vital signs (SpO2, heart rate, blood pressure, temperature)
+   - Nutrition intake, scheduled, and target values
+   - Alarm states
+
+**Home Assistant Integration:**
+
+The system uses MQTT Discovery to automatically create sensors in Home Assistant:
+- Real-time vital sign sensors
+- Nutrition tracking (intake, scheduled progress, daily targets)
+- Binary sensors for alarms
+- Availability monitoring
 
 ### Serial Devices
 
-For devices that communicate via serial port, the system includes a serial reader module that can be configured for various protocols.
+For devices that communicate via serial port (pulse oximeters, etc.), configure in Docker:
+
+```yaml
+# In docker-compose.yml, uncomment:
+devices:
+  - /dev/ttyUSB0:/dev/ttyUSB0
+  - /dev/ttyACM0:/dev/ttyACM0
+```
+
+Set the serial port in environment variables or settings panel.
 
 ## Development
 
 ### Backend Development
 
-The backend uses FastAPI with the following key modules:
+The backend uses FastAPI with a modular architecture:
 
-- `main.py`: Main application and API endpoints
-- `db.py`: Database models and operations
-- `mqtt_handler.py`: MQTT device communication
-- `serial_reader.py`: Serial device communication
-- `state_manager.py`: Real-time state management
-- `sensor_manager.py`: Sensor data processing
+- `main.py`: Main application, API routes, and module initialization
+- `models.py`: Database models (SQLAlchemy)
+- `crud/`: Database operations organized by domain
+- `routes/`: API endpoints for each feature area
+- `modules/`: Core system modules (MQTT, Serial, WebSocket, GPIO, State)
+- `mqtt/`: MQTT client, discovery, and publishing
+- `events.py`: Event system for inter-module communication
+- `bus.py`: Event bus for pub/sub messaging
+
+**Hot Reload:** The Docker development setup automatically reloads on code changes.
 
 ### Frontend Development
 
 The React frontend is organized as:
 
 - `src/components/`: Reusable UI components
-- `src/services/`: API communication services
+- `src/pages/`: Page-level components
+- `src/services/`: API communication
+- `src/contexts/`: React context providers
 - `src/config.js`: Configuration management
+
+**Hot Reload:** Vite provides instant HMR (Hot Module Replacement).
 
 ### Database Migrations
 
-To create a new migration:
+Create a new migration after changing models:
 
 ```bash
+# Using Docker
+docker compose exec backend alembic revision --autogenerate -m "Description"
+docker compose exec backend alembic upgrade head
+
+# Or manually
 cd backend
 alembic revision --autogenerate -m "Description of changes"
 alembic upgrade head
 ```
 
+### Architecture
+
+The system uses an event-driven architecture:
+
+1. **Event Bus**: Central pub/sub system for inter-module communication
+2. **Modules**: Independent modules (MQTT, Serial, GPIO, WebSocket, State) subscribe to events
+3. **State Manager**: Maintains global state and broadcasts updates via WebSocket
+4. **MQTT Integration**: Bidirectional communication with Home Assistant
+5. **Real-time Updates**: WebSocket pushes live data to frontend clients
+
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Database Connection Issues**
-   - Verify PostgreSQL is running
-   - Check database credentials in `.env`
-   - Ensure database exists
+1. **Port Already in Use**
+   - Stop conflicting services: `sudo lsof -i :8000` or `:5173`
+   - Change ports in docker-compose.yml if needed
 
-2. **MQTT Connection Issues**
-   - Verify MQTT broker is accessible
-   - Check MQTT credentials and topics
-   - Test MQTT connection independently
+2. **Database Connection Issues**
+   - Check if database container is healthy: `docker compose ps`
+   - View database logs: `docker compose logs db`
+   - Restart database: `docker compose restart db`
 
-3. **Serial Device Issues**
-   - Check device permissions
-   - Verify correct port and baud rate
-   - Test device communication separately
+3. **MQTT Connection Issues**
+   - Verify MQTT broker is accessible from Docker network
+   - Use the broker's IP address, not `localhost`
+   - Check credentials in Settings panel or environment variables
+   - View MQTT logs: `docker compose logs backend | grep -i mqtt`
 
-4. **Frontend Build Issues**
-   - Clear node_modules and reinstall: `rm -rf node_modules && npm install`
-   - Check Node.js version compatibility
+4. **Serial Device Not Found**
+   - Uncomment device mappings in docker-compose.yml
+   - Check device exists: `ls -l /dev/ttyUSB*`
+   - Add user to dialout group: `sudo usermod -a -G dialout $USER`
+   - Restart Docker after group changes
 
-### Logs
+5. **Container Won't Start**
+   - View logs: `docker compose logs backend --tail 100`
+   - Check for syntax errors in code
+   - Rebuild: `docker compose up -d --build`
 
-- Backend logs are available in the terminal running uvicorn
-- Frontend logs are available in the browser developer console
-- Database logs can be found in PostgreSQL logs
+6. **Frontend Not Loading**
+   - Check frontend logs: `docker compose logs frontend`
+   - Verify backend is running: `curl http://localhost:8000/api/status`
+   - Clear browser cache
+
+### Viewing Logs
+
+```bash
+# All services
+docker compose logs -f
+
+# Specific service with filter
+docker compose logs backend --tail 100 | grep -i "error\|warning"
+docker compose logs backend --tail 50 | grep -i "mqtt\|nutrition"
+
+# Follow logs in real-time
+docker compose logs -f backend
+```
+
+### Accessing Containers
+
+```bash
+# Backend shell
+docker compose exec backend /bin/sh
+
+# Database shell
+docker compose exec db psql -U shh_user -d shh
+
+# Check Python environment
+docker compose exec backend python --version
+```
 
 ## Contributing
 

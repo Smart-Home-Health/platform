@@ -4,20 +4,45 @@ from datetime import datetime, date, timedelta
 from typing import List, Optional
 from models import NutritionIntake, Patient
 import logging
+import asyncio
 
 logger = logging.getLogger(__name__)
+
+def _get_event_bus():
+    """Get the event bus instance from main module."""
+    try:
+        from main import get_modules
+        modules = get_modules()
+        return modules.get("event_bus")
+    except Exception as e:
+        logger.error(f"Failed to get event bus: {e}")
+        return None
+
+def _publish_event_async(event):
+    """Helper to publish event to event bus from sync code."""
+    try:
+        event_bus = _get_event_bus()
+        if event_bus:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(event_bus.publish(event))
+            else:
+                loop.run_until_complete(event_bus.publish(event))
+        else:
+            logger.warning("Event bus not available for publishing")
+    except Exception as e:
+        logger.error(f"Failed to publish event: {e}")
 
 def _publish_nutrition_mqtt(db: Session, patient_id: int):
     """Publish nutrition dashboard data to MQTT"""
     try:
-        from bus import EventBus
-        from events import SensorUpdate, EventSource
+        from events import NutritionSensorUpdate, EventSource
         
         # Get dashboard data
         dashboard_data = _get_nutrition_dashboard_data(db, patient_id)
         
         # Publish WATER intake (actual consumed)
-        water_intake_event = SensorUpdate(
+        water_intake_event = NutritionSensorUpdate(
             sensor_type="nutrition_water_intake",
             value=dashboard_data["total_water_ml"],
             timestamp=datetime.now(),
@@ -27,10 +52,10 @@ def _publish_nutrition_mqtt(db: Session, patient_id: int):
                 "day_end": dashboard_data["day_end"]
             }
         )
-        EventBus.publish(water_intake_event)
+        _publish_event_async(water_intake_event)
         
         # Publish WATER scheduled (expected progress)
-        water_scheduled_event = SensorUpdate(
+        water_scheduled_event = NutritionSensorUpdate(
             sensor_type="nutrition_water_scheduled",
             value=dashboard_data["scheduled_water_ml"],
             timestamp=datetime.now(),
@@ -42,10 +67,10 @@ def _publish_nutrition_mqtt(db: Session, patient_id: int):
                 "day_end": dashboard_data["day_end"]
             }
         )
-        EventBus.publish(water_scheduled_event)
+        _publish_event_async(water_scheduled_event)
         
         # Publish WATER target (daily limit)
-        water_target_event = SensorUpdate(
+        water_target_event = NutritionSensorUpdate(
             sensor_type="nutrition_water_target",
             value=dashboard_data["target_water_ml"],
             timestamp=datetime.now(),
@@ -55,10 +80,10 @@ def _publish_nutrition_mqtt(db: Session, patient_id: int):
                 "day_end": dashboard_data["day_end"]
             }
         )
-        EventBus.publish(water_target_event)
+        _publish_event_async(water_target_event)
         
         # Publish CALORIES intake (actual consumed)
-        calories_intake_event = SensorUpdate(
+        calories_intake_event = NutritionSensorUpdate(
             sensor_type="nutrition_calories_intake",
             value=dashboard_data["total_calories"],
             timestamp=datetime.now(),
@@ -68,10 +93,10 @@ def _publish_nutrition_mqtt(db: Session, patient_id: int):
                 "day_end": dashboard_data["day_end"]
             }
         )
-        EventBus.publish(calories_intake_event)
+        _publish_event_async(calories_intake_event)
         
         # Publish CALORIES scheduled (expected progress)
-        calories_scheduled_event = SensorUpdate(
+        calories_scheduled_event = NutritionSensorUpdate(
             sensor_type="nutrition_calories_scheduled",
             value=dashboard_data["scheduled_calories"],
             timestamp=datetime.now(),
@@ -83,10 +108,10 @@ def _publish_nutrition_mqtt(db: Session, patient_id: int):
                 "day_end": dashboard_data["day_end"]
             }
         )
-        EventBus.publish(calories_scheduled_event)
+        _publish_event_async(calories_scheduled_event)
         
         # Publish CALORIES target (daily limit)
-        calories_target_event = SensorUpdate(
+        calories_target_event = NutritionSensorUpdate(
             sensor_type="nutrition_calories_target",
             value=dashboard_data["target_calories"],
             timestamp=datetime.now(),
@@ -96,7 +121,7 @@ def _publish_nutrition_mqtt(db: Session, patient_id: int):
                 "day_end": dashboard_data["day_end"]
             }
         )
-        EventBus.publish(calories_target_event)
+        _publish_event_async(calories_target_event)
         
         logger.info(f"Published nutrition MQTT: {dashboard_data['total_calories']} cal, {dashboard_data['total_water_ml']} ml")
     except Exception as e:
@@ -105,14 +130,13 @@ def _publish_nutrition_mqtt(db: Session, patient_id: int):
 def _publish_nutrition_scheduled_mqtt(db: Session, patient_id: int):
     """Publish only scheduled nutrition values (for hourly updates)"""
     try:
-        from bus import EventBus
-        from events import SensorUpdate, EventSource
+        from events import NutritionSensorUpdate, EventSource
         
         # Get dashboard data
         dashboard_data = _get_nutrition_dashboard_data(db, patient_id)
         
         # Publish WATER scheduled
-        water_scheduled_event = SensorUpdate(
+        water_scheduled_event = NutritionSensorUpdate(
             sensor_type="nutrition_water_scheduled",
             value=dashboard_data["scheduled_water_ml"],
             timestamp=datetime.now(),
@@ -124,10 +148,10 @@ def _publish_nutrition_scheduled_mqtt(db: Session, patient_id: int):
                 "day_end": dashboard_data["day_end"]
             }
         )
-        EventBus.publish(water_scheduled_event)
+        _publish_event_async(water_scheduled_event)
         
         # Publish CALORIES scheduled
-        calories_scheduled_event = SensorUpdate(
+        calories_scheduled_event = NutritionSensorUpdate(
             sensor_type="nutrition_calories_scheduled",
             value=dashboard_data["scheduled_calories"],
             timestamp=datetime.now(),
@@ -139,7 +163,7 @@ def _publish_nutrition_scheduled_mqtt(db: Session, patient_id: int):
                 "day_end": dashboard_data["day_end"]
             }
         )
-        EventBus.publish(calories_scheduled_event)
+        _publish_event_async(calories_scheduled_event)
         
         logger.info(f"Published nutrition scheduled MQTT: {dashboard_data['scheduled_calories']} cal, {dashboard_data['scheduled_water_ml']} ml")
     except Exception as e:
@@ -148,8 +172,7 @@ def _publish_nutrition_scheduled_mqtt(db: Session, patient_id: int):
 def _publish_nutrition_targets_mqtt(db: Session, patient_id: int):
     """Publish only nutrition targets (for settings changes)"""
     try:
-        from bus import EventBus
-        from events import SensorUpdate, EventSource
+        from events import NutritionSensorUpdate, EventSource
         from crud.settings import get_setting
         
         # Get targets
@@ -169,7 +192,7 @@ def _publish_nutrition_targets_mqtt(db: Session, patient_id: int):
         day_end = day_start + timedelta(days=1)
         
         # Publish WATER target
-        water_target_event = SensorUpdate(
+        water_target_event = NutritionSensorUpdate(
             sensor_type="nutrition_water_target",
             value=target_water,
             timestamp=datetime.now(),
@@ -179,10 +202,10 @@ def _publish_nutrition_targets_mqtt(db: Session, patient_id: int):
                 "day_end": day_end.isoformat()
             }
         )
-        EventBus.publish(water_target_event)
+        _publish_event_async(water_target_event)
         
         # Publish CALORIES target
-        calories_target_event = SensorUpdate(
+        calories_target_event = NutritionSensorUpdate(
             sensor_type="nutrition_calories_target",
             value=target_calories,
             timestamp=datetime.now(),
@@ -192,7 +215,7 @@ def _publish_nutrition_targets_mqtt(db: Session, patient_id: int):
                 "day_end": day_end.isoformat()
             }
         )
-        EventBus.publish(calories_target_event)
+        _publish_event_async(calories_target_event)
         
         logger.info(f"Published nutrition targets MQTT: {target_calories} cal, {target_water} ml")
     except Exception as e:
