@@ -368,10 +368,10 @@ def analyze_pulse_ox_day(db: Session, date_str):
                 'message': 'No data available for this date'
             }
         
-        # Extract values for analysis
-        spo2_values = [r.spo2 for r in readings if r.spo2 is not None]
-        bpm_values = [r.bpm for r in readings if r.bpm is not None]
-        pa_values = [r.pa for r in readings if r.pa is not None]
+        # Extract values for analysis, excluding -1 values (sensor errors)
+        spo2_values = [r.spo2 for r in readings if r.spo2 is not None and r.spo2 > 0]
+        bpm_values = [r.bpm for r in readings if r.bpm is not None and r.bpm > 0]
+        pa_values = [r.pa for r in readings if r.pa is not None and r.pa > 0]
         
         # Calculate basic statistics
         spo2_stats = {
@@ -450,27 +450,26 @@ def get_available_pulse_ox_dates(db: Session, limit=30):
         limit: Maximum number of dates to return
     
     Returns:
-        List of date strings in YYYY-MM-DD format
+        Dict with list of date strings in YYYY-MM-DD format
     """
     try:
         # Get distinct dates from pulse ox data
-        # Since timestamp is stored as string, we need to extract the date part
         from sqlalchemy import func, distinct
         
-        # Query for distinct dates - this approach works with string timestamps
+        # Query for distinct dates using func.date for TIMESTAMP fields
         results = db.query(
-            func.substr(PulseOxData.timestamp, 1, 10).label('date')
+            func.date(PulseOxData.timestamp).label('date')
         ).distinct().order_by(
-            func.substr(PulseOxData.timestamp, 1, 10).desc()
+            func.date(PulseOxData.timestamp).desc()
         ).limit(limit).all()
         
-        dates = [result.date for result in results]
-        logger.info(f"Found {len(dates)} dates with pulse ox data")
-        return dates
+        dates = [result.date.strftime('%Y-%m-%d') if hasattr(result.date, 'strftime') else str(result.date) for result in results]
+        logger.info(f"Found {len(dates)} dates with pulse ox data: {dates}")
+        return {'dates': dates}
         
     except Exception as e:
         logger.error(f"Error getting available pulse ox dates: {e}")
-        return []
+        return {'dates': []}
 
 
 def start_monitoring_alert(db: Session, spo2=None, bpm=None, data_id=None, spo2_alarm_triggered=None, hr_alarm_triggered=None, external_alarm_triggered=None, patient_id=None):

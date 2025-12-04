@@ -45,6 +45,11 @@ class MQTTManager:
         self.client.on_message = self._on_message
         self.client.on_disconnect = self._on_disconnect
         
+        # Set Last Will and Testament for availability
+        base_topic = self.settings.get('base_topic', 'shh')
+        availability_topic = f"{base_topic}/availability"
+        self.client.will_set(availability_topic, payload="offline", qos=1, retain=True)
+        
         return self.client
         
     def connect(self) -> bool:
@@ -65,6 +70,11 @@ class MQTTManager:
     def disconnect(self):
         """Disconnect from MQTT broker"""
         if self.client:
+            # Publish availability as 'offline' before disconnecting
+            base_topic = self.settings.get('base_topic', 'shh')
+            availability_topic = f"{base_topic}/availability"
+            self.client.publish(availability_topic, payload="offline", qos=1, retain=True)
+            
             self.client.loop_stop()
             self.client.disconnect()
             logger.info("Disconnected from MQTT broker")
@@ -74,6 +84,12 @@ class MQTTManager:
         if rc == 0:
             self._is_connected = True
             logger.info(f"Connected to MQTT Broker at {self.settings['broker']}:{self.settings['port']}")
+            
+            # Publish availability as 'online'
+            base_topic = self.settings.get('base_topic', 'shh')
+            availability_topic = f"{base_topic}/availability"
+            client.publish(availability_topic, payload="online", qos=1, retain=True)
+            logger.info(f"Published availability 'online' to {availability_topic}")
             
             # Subscribe to all enabled listen topics
             enabled_topics = get_enabled_topics(self.settings)

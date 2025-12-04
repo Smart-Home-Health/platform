@@ -91,6 +91,17 @@ export default function Dashboard() {
   // Function to fetch chart data for a specific vital type
   const fetchChartData = async (vitalType, chartNumber) => {
     try {
+      // Skip fetching data for nutrition - it has its own real-time data source
+      if (vitalType === 'nutrition') {
+        console.log(`Skipping fetch for nutrition (uses dedicated endpoint)`);
+        if (chartNumber === 1) {
+          setDashboardChart1(prev => ({ ...prev, data: [] }));
+        } else {
+          setDashboardChart2(prev => ({ ...prev, data: [] }));
+        }
+        return;
+      }
+      
       console.log(`Fetching chart data for ${vitalType} (Chart ${chartNumber})`);
       const response = await fetch(`${config.apiUrl}/api/vitals/${vitalType}?limit=20`);
       if (response.ok) {
@@ -124,7 +135,8 @@ export default function Dashboard() {
       'bathroom': 'Bathroom',
       'weight': 'Weight',
       'calories': 'Calories',
-      'water': 'Water Intake'
+      'water': 'Water Intake',
+      'nutrition': 'Nutrition'
     };
     
     return displayNames[vital] || vital.charAt(0).toUpperCase() + vital.slice(1);

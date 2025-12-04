@@ -54,48 +54,112 @@ def send_mqtt_discovery(mqtt_client, test_mode: bool = True) -> bool:
         
         # Handle nutrition special case with multiple sensors
         if vital_name == 'nutrition':
-            # Water sensor
+            # Water intake (actual consumed)
             water_topic = config.get('water_broadcast_topic')
             if water_topic:
-                sensors[f"{vital_name}_water"] = {
-                    "uniq_id": f"{base_topic}_sensor.{vital_name}_water",
+                sensors[f"{vital_name}_water_intake"] = {
+                    "uniq_id": f"{base_topic}_sensor.water_intake",
                     "name": "Water Intake",
                     "stat_t": water_topic,
                     "val_tpl": "{{ value_json.value }}",
                     "json_attr_t": f"{water_topic}/attributes",
                     "avty_t": f"{base_topic}/availability",
                     "unit_of_meas": "ml",
-                    "stat_cla": "total_increasing",
+                    "stat_cla": "measurement",
+                    "icon": "mdi:water"
+                }
+                
+                # Water scheduled (expected progress)
+                sensors[f"{vital_name}_water_scheduled"] = {
+                    "uniq_id": f"{base_topic}_sensor.water_scheduled",
+                    "name": "Water Scheduled",
+                    "stat_t": f"{water_topic}/scheduled",
+                    "val_tpl": "{{ value_json.value }}",
+                    "json_attr_t": f"{water_topic}/scheduled/attributes",
+                    "avty_t": f"{base_topic}/availability",
+                    "unit_of_meas": "ml",
+                    "stat_cla": "measurement",
+                    "icon": "mdi:calendar-clock"
+                }
+                
+                # Water target (daily limit)
+                sensors[f"{vital_name}_water_target"] = {
+                    "uniq_id": f"{base_topic}_sensor.water_target",
+                    "name": "Water Target",
+                    "stat_t": f"{water_topic}/target",
+                    "val_tpl": "{{ value_json.value }}",
+                    "json_attr_t": f"{water_topic}/target/attributes",
+                    "avty_t": f"{base_topic}/availability",
+                    "unit_of_meas": "ml",
+                    "stat_cla": "measurement",
+                    "icon": "mdi:flag-checkered"
                 }
             
-            # Calories sensor
+            # Calories intake (actual consumed)
             calories_topic = config.get('calories_broadcast_topic')
             if calories_topic:
-                sensors[f"{vital_name}_calories"] = {
-                    "uniq_id": f"{base_topic}_sensor.{vital_name}_calories",
+                sensors[f"{vital_name}_calories_intake"] = {
+                    "uniq_id": f"{base_topic}_sensor.calories_intake",
                     "name": "Calorie Intake",
                     "stat_t": calories_topic,
                     "val_tpl": "{{ value_json.value }}",
                     "json_attr_t": f"{calories_topic}/attributes",
                     "avty_t": f"{base_topic}/availability",
                     "unit_of_meas": "kcal",
-                    "stat_cla": "total_increasing",
+                    "stat_cla": "measurement",
+                    "icon": "mdi:food-apple"
+                }
+                
+                # Calories scheduled (expected progress)
+                sensors[f"{vital_name}_calories_scheduled"] = {
+                    "uniq_id": f"{base_topic}_sensor.calories_scheduled",
+                    "name": "Calories Scheduled",
+                    "stat_t": f"{calories_topic}/scheduled",
+                    "val_tpl": "{{ value_json.value }}",
+                    "json_attr_t": f"{calories_topic}/scheduled/attributes",
+                    "avty_t": f"{base_topic}/availability",
+                    "unit_of_meas": "kcal",
+                    "stat_cla": "measurement",
+                    "icon": "mdi:calendar-clock"
+                }
+                
+                # Calories target (daily limit)
+                sensors[f"{vital_name}_calories_target"] = {
+                    "uniq_id": f"{base_topic}_sensor.calories_target",
+                    "name": "Calories Target",
+                    "stat_t": f"{calories_topic}/target",
+                    "val_tpl": "{{ value_json.value }}",
+                    "json_attr_t": f"{calories_topic}/target/attributes",
+                    "avty_t": f"{base_topic}/availability",
+                    "unit_of_meas": "kcal",
+                    "stat_cla": "measurement",
+                    "icon": "mdi:flag-checkered"
                 }
         
         # Handle standard vitals
         else:
             broadcast_topic = config.get('broadcast_topic')
             if broadcast_topic:
-                sensor_config = get_sensor_config(vital_name, broadcast_topic, base_topic)
-                if sensor_config:
-                    sensors[vital_name] = sensor_config
+                # Blood pressure gets three separate sensors
+                if vital_name == 'blood_pressure':
+                    bp_sensors = get_blood_pressure_sensors(broadcast_topic, base_topic)
+                    sensors.update(bp_sensors)
+                else:
+                    sensor_config = get_sensor_config(vital_name, broadcast_topic, base_topic)
+                    if sensor_config:
+                        sensors[vital_name] = sensor_config
 
     
     # Send discovery messages for all configured sensors
     success_count = 0
     for sensor_id, config in sensors.items():
         config["dev"] = device_info
-        discovery_topic = f"{discovery_prefix}/sensor/{sensor_id}/config"
+        
+        # Determine if this is a binary sensor (alarms) or regular sensor
+        is_binary = 'alarm' in sensor_id
+        sensor_type = 'binary_sensor' if is_binary else 'sensor'
+        
+        discovery_topic = f"{discovery_prefix}/{sensor_type}/{sensor_id}/config"
         json_payload = json.dumps(config)
 
         try:
@@ -110,6 +174,50 @@ def send_mqtt_discovery(mqtt_client, test_mode: bool = True) -> bool:
             
     logger.info(f"Sent {success_count}/{len(sensors)} MQTT Discovery messages")
     return success_count > 0
+
+def get_blood_pressure_sensors(broadcast_topic: str, base_topic: str) -> Dict[str, Dict[str, Any]]:
+    """
+    Get three separate sensor configurations for blood pressure (systolic, diastolic, MAP)
+    
+    Args:
+        broadcast_topic: MQTT topic where blood pressure data is published
+        base_topic: Base MQTT topic for the system
+        
+    Returns:
+        Dict containing three sensor configurations
+    """
+    return {
+        'blood_pressure_systolic': {
+            "uniq_id": f"{base_topic}_sensor.bp_systolic",
+            "name": "Blood Pressure Systolic",
+            "stat_t": broadcast_topic,
+            "val_tpl": "{{ value_json.systolic }}",
+            "json_attr_t": f"{broadcast_topic}/attributes",
+            "avty_t": f"{base_topic}/availability",
+            "unit_of_meas": "mmHg",
+            "stat_cla": "measurement",
+        },
+        'blood_pressure_diastolic': {
+            "uniq_id": f"{base_topic}_sensor.bp_diastolic",
+            "name": "Blood Pressure Diastolic",
+            "stat_t": broadcast_topic,
+            "val_tpl": "{{ value_json.diastolic }}",
+            "json_attr_t": f"{broadcast_topic}/attributes",
+            "avty_t": f"{base_topic}/availability",
+            "unit_of_meas": "mmHg",
+            "stat_cla": "measurement",
+        },
+        'blood_pressure_map': {
+            "uniq_id": f"{base_topic}_sensor.bp_map",
+            "name": "Blood Pressure MAP",
+            "stat_t": broadcast_topic,
+            "val_tpl": "{{ value_json.map }}",
+            "json_attr_t": f"{broadcast_topic}/attributes",
+            "avty_t": f"{base_topic}/availability",
+            "unit_of_meas": "mmHg",
+            "stat_cla": "measurement",
+        }
+    }
 
 def get_sensor_config(vital_name: str, broadcast_topic: str, base_topic: str) -> Optional[Dict[str, Any]]:
     """
@@ -153,15 +261,6 @@ def get_sensor_config(vital_name: str, broadcast_topic: str, base_topic: str) ->
             "avty_t": f"{base_topic}/availability",
             "unit_of_meas": "PA",
             "stat_cla": "measurement",
-        },
-        'blood_pressure': {
-            "uniq_id": f"{base_topic}_sensor.blood_pressure",
-            "name": "Blood Pressure",
-            "stat_t": broadcast_topic,
-            "val_tpl": "{{ value_json.systolic }}/{{ value_json.diastolic }} ({{ value_json.map }})",
-            "json_attr_t": f"{broadcast_topic}/attributes",
-            "avty_t": f"{base_topic}/availability",
-            "unit_of_meas": "mmHg",
         },
         'temperature': {
             "uniq_id": f"{base_topic}_sensor.temperature",

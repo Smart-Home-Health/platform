@@ -9,7 +9,7 @@ from typing import Optional, Dict, Any
 import logging
 
 from bus import EventBus
-from events import SensorUpdate, MQTTConnectionEvent, VitalSignRecorded, EventSource
+from events import SensorUpdate, MQTTConnectionEvent, VitalSignRecorded, EventSource, NutritionSensorUpdate
 
 logger = logging.getLogger("mqtt_module")
 
@@ -31,7 +31,50 @@ class MQTTModule:
         """Start subscribing to relevant events."""
         # Subscribe to vital_saved events to publish manually entered vitals to MQTT
         asyncio.create_task(self._subscribe_to_vital_saved())
+        # Subscribe to SensorUpdate events for nutrition MQTT publishing
+        asyncio.create_task(self._subscribe_to_sensor_updates())
         logger.info("MQTT module event subscribers started")
+    
+    async def _subscribe_to_sensor_updates(self):
+        """Subscribe to NutritionSensorUpdate events and publish them to MQTT."""
+        logger.info("Starting subscription to NutritionSensorUpdate events")
+        async for event in self.event_bus.subscribe_to_type(NutritionSensorUpdate):
+            try:
+                await self._handle_sensor_update(event)
+            except Exception as e:
+                logger.error(f"Error handling NutritionSensorUpdate event: {e}")
+    
+    async def _handle_sensor_update(self, event: NutritionSensorUpdate):
+        """Handle SensorUpdate events by publishing to MQTT."""
+        try:
+            sensor_type = event.sensor_type
+            value = event.value
+            metadata = event.metadata or {}
+            
+            # Only publish nutrition-related sensor updates to MQTT
+            nutrition_types = [
+                'nutrition_water_intake', 'nutrition_water_scheduled', 'nutrition_water_target',
+                'nutrition_calories_intake', 'nutrition_calories_scheduled', 'nutrition_calories_target'
+            ]
+            
+            if sensor_type in nutrition_types:
+                logger.info(f"Publishing {sensor_type} to MQTT: {value}")
+                
+                if self.mqtt_publisher and self.mqtt_publisher.is_available():
+                    vital_data = {
+                        'value': value,
+                        'metadata': metadata
+                    }
+                    success = self.mqtt_publisher.publish_vital_data(sensor_type, vital_data)
+                    if success:
+                        logger.info(f"Successfully published {sensor_type} to MQTT")
+                    else:
+                        logger.warning(f"Failed to publish {sensor_type} to MQTT")
+                else:
+                    logger.debug(f"MQTT publisher not available for {sensor_type}")
+                    
+        except Exception as e:
+            logger.error(f"Error handling SensorUpdate event: {e}")
         
     async def _subscribe_to_vital_saved(self):
         """Subscribe to vital_saved events and publish them to MQTT."""
@@ -52,6 +95,13 @@ class MQTTModule:
             from_manual = event.get("data", {}).get("from_manual", False)
             
             logger.info(f"Extracted: vital_type={vital_type}, vital_data={vital_data}, from_manual={from_manual}")
+            
+            # Skip nutrition types - they're handled by NutritionSensorUpdate events
+            # which publish daily totals instead of individual entries
+            nutrition_vital_types = ['water', 'water_ml', 'calories']
+            if vital_type in nutrition_vital_types:
+                logger.info(f"Skipping {vital_type} - handled by NutritionSensorUpdate with daily totals")
+                return
             
             if vital_type and vital_data and from_manual:
                 logger.info(f"Publishing manually saved {vital_type} to MQTT: {vital_data}")

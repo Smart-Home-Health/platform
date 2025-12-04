@@ -6,3 +6,8 @@
 /.idea
 *.pyc
 *.db
+
+# Docker
+*.sql
+
+.env.docker

@@ -28,9 +28,10 @@ const DashboardSettings = () => {
         setIsLoading(true);
         
         // Load both settings and available vitals in parallel
-        const [settingsResponse, vitalsResponse] = await Promise.all([
+        const [settingsResponse, vitalsResponse, nutritionCheckResponse] = await Promise.all([
           getSettings(),
-          fetch(`${config.apiUrl}/api/vitals/types`)
+          fetch(`${config.apiUrl}/api/vitals/types`),
+          fetch(`${config.apiUrl}/api/nutrition/has-data`)
         ]);
         
         // Process vitals response
@@ -42,6 +43,15 @@ const DashboardSettings = () => {
         // Add default vital types that are always available
         const defaultVitals = ['blood_pressure', 'temperature'];
         const allVitals = [...new Set([...defaultVitals, ...vitalsData])];
+        
+        // Add nutrition if there's data
+        if (nutritionCheckResponse.ok) {
+          const nutritionCheck = await nutritionCheckResponse.json();
+          if (nutritionCheck.has_data) {
+            allVitals.push('nutrition');
+          }
+        }
+        
         setAvailableVitals(allVitals);
         
         const dashboardFormData = {};
@@ -103,7 +113,8 @@ const DashboardSettings = () => {
       'bathroom': 'Bathroom',
       'weight': 'Weight',
       'calories': 'Calories',
-      'water': 'Water Intake'
+      'water': 'Water Intake',
+      'nutrition': 'Nutrition (Calories & Water)'
     };
     
     return displayNames[vital] || vital.charAt(0).toUpperCase() + vital.slice(1);

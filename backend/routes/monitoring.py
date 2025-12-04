@@ -9,7 +9,8 @@ from typing import Optional
 from db import get_db
 from crud.monitoring import (get_monitoring_alerts, get_unacknowledged_alerts_count, update_monitoring_alert, 
                              acknowledge_alert, get_pulse_ox_data_for_alert, get_available_pulse_ox_dates,
-                             analyze_pulse_ox_day, get_pulse_ox_data_by_date)
+                             get_pulse_ox_data_by_date)
+from crud.vitals import analyze_pulse_ox_day
 
 logger = logging.getLogger("app")
 
@@ -107,9 +108,12 @@ async def get_alert_data(alert_id: int, db: Session = Depends(get_db)):
 async def get_available_dates(db: Session = Depends(get_db)):
     """Get list of dates that have pulse ox data"""
     try:
+        logger.info("Fetching available pulse ox dates...")
         dates = get_available_pulse_ox_dates(db)
+        logger.info(f"Returning dates response: {dates}")
         return dates
     except Exception as e:
+        logger.error(f"Error in get_available_dates endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error retrieving available dates: {str(e)}")
 
 

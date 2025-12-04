@@ -224,41 +224,50 @@ class StateModule:
                     bpm_alarm = bpm < min_bpm or bpm > max_bpm
             
             current_thresholds_exceeded = spo2_alarm or bpm_alarm
-            currently_disconnected = is_disconnected
             
-            # Handle disconnection alerts differently from threshold alerts
-            if currently_disconnected and not self.alert_thresholds_exceeded:
-                # Device just disconnected - start a disconnection alert
-                await self._start_pulse_ox_alert(spo2, bpm, timestamp, data_point, alert_type="disconnected")
+            # NEW LOGIC: Don't trigger new alerts on disconnection
+            # If device disconnects while NOT in an alarm state, just ignore it
+            # If device disconnects while IN an alarm state, keep the alarm active
+            
+            if is_disconnected:
+                # Device is disconnected - don't start new alerts
+                # Just keep existing alert active if there is one
+                if self.current_alert_id:
+                    # Keep tracking data points for the existing alert
+                    self.event_data_points.append(data_point)
+                # Do nothing else - don't change alert state
                 
-            elif not currently_disconnected and self.alert_thresholds_exceeded and self.current_alert_id:
-                # Device reconnected - check if previous alert was disconnection
-                # End the disconnection alert immediately since we have real data
-                await self._end_pulse_ox_alert(timestamp)
-                
-                # Now check if the new data triggers threshold alerts
-                if current_thresholds_exceeded:
-                    await self._start_pulse_ox_alert(spo2, bpm, timestamp, data_point, alert_type="threshold")
-                    
-            elif current_thresholds_exceeded and not self.alert_thresholds_exceeded and not currently_disconnected:
+            elif not is_disconnected and self.current_alert_id and not current_thresholds_exceeded:
+                # Device reconnected with good values - end the alert after recovery period
+                if not self.alert_recovery_start_time:
+                    self.alert_recovery_start_time = timestamp
+                else:
+                    recovery_duration = (timestamp - self.alert_recovery_start_time).total_seconds()
+                    if recovery_duration >= 30:  # 30 second recovery period
+                        await self._end_pulse_ox_alert(timestamp)
+                        
+            elif current_thresholds_exceeded and not self.alert_thresholds_exceeded and not is_disconnected:
                 # Normal threshold alert started (device connected but values out of range)
                 await self._start_pulse_ox_alert(spo2, bpm, timestamp, data_point, alert_type="threshold")
+                self.alert_recovery_start_time = None
                 
-            elif not current_thresholds_exceeded and self.alert_thresholds_exceeded and not currently_disconnected:
+            elif not current_thresholds_exceeded and self.alert_thresholds_exceeded and not is_disconnected:
                 # Threshold alert condition cleared - start recovery timer
-                self.alert_recovery_start_time = timestamp
+                if not self.alert_recovery_start_time:
+                    self.alert_recovery_start_time = timestamp
                 
-            elif not current_thresholds_exceeded and self.alert_recovery_start_time and not currently_disconnected:
+            elif not current_thresholds_exceeded and self.alert_recovery_start_time and not is_disconnected:
                 # Check if recovery period has elapsed (only for threshold alerts)
                 recovery_duration = (timestamp - self.alert_recovery_start_time).total_seconds()
                 if recovery_duration >= 30:  # 30 second recovery period
                     await self._end_pulse_ox_alert(timestamp)
             
-            # Update state - track both disconnection and threshold states
-            self.alert_thresholds_exceeded = current_thresholds_exceeded or currently_disconnected
+            # Update state - only track threshold exceeded state (ignore disconnection for state tracking)
+            if not is_disconnected:
+                self.alert_thresholds_exceeded = current_thresholds_exceeded
             
             # Add to event data if we're tracking an alert
-            if self.current_alert_id:
+            if self.current_alert_id and not is_disconnected:
                 self.event_data_points.append(data_point)
                 
         except Exception as e:

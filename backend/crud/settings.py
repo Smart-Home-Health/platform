@@ -50,11 +50,29 @@ def save_setting(db: Session, key, value, data_type="string", description=None):
 
         db.commit()
         logger.info(f"Setting saved: {key}={value}")
+        
+        # Publish MQTT update if nutrition targets changed
+        if key in ['daily_calories', 'daily_water']:
+            _publish_nutrition_targets_mqtt(db)
+        
         return True
     except Exception as e:
         logger.error(f"Error saving setting: {e}")
         db.rollback()
         return False
+
+
+def _publish_nutrition_targets_mqtt(db: Session):
+    """Publish nutrition targets to MQTT when targets are updated"""
+    try:
+        from crud.patients import get_active_patient
+        active_patient = get_active_patient(db)
+        if active_patient:
+            from crud.nutrition import _publish_nutrition_targets_mqtt
+            _publish_nutrition_targets_mqtt(db, active_patient.id)
+            logger.info("Published nutrition targets MQTT after settings update")
+    except Exception as e:
+        logger.error(f"Error publishing nutrition targets to MQTT: {e}")
 
 
 def get_setting(db: Session, key, default=None):

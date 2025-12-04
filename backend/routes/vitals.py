@@ -9,6 +9,7 @@ from db import get_db
 from crud.vitals import (get_vitals_by_type, get_distinct_vital_types, get_vitals_by_type_paginated, 
                   save_blood_pressure, save_temperature, save_vital, 
                   save_blood_pressure_as_vitals, save_temperature_as_vitals)
+from crud.nutrition import create_nutrition_intake
 
 logger = logging.getLogger("app")
 
@@ -120,20 +121,48 @@ async def add_manual_vitals(vital_data: dict, db: Session = Depends(get_db)):
             if nutrition:
                 calories = nutrition.get("calories")
                 water = nutrition.get("water")
+                
+                # Save calories to nutrition_intake table
                 if calories is not None and calories != "":
-                    cal_id = save_vital(db, "calories", calories, datetime_val, notes)
-                    if cal_id:
+                    try:
+                        intake_data = {
+                            "item_name": "Manual Entry - Calories",
+                            "item_type": "manual",
+                            "amount": calories,
+                            "amount_unit": "calories",
+                            "calories": calories,
+                            "consumed_at": datetime_val,
+                            "notes": notes
+                        }
+                        nutrition_record = create_nutrition_intake(db, intake_data)
                         vitals_saved.append({
                             'type': 'calories', 
-                            'data': {'value': calories, 'notes': notes}
+                            'data': {'value': calories, 'notes': notes, 'nutrition_id': nutrition_record.id}
                         })
+                        logger.info(f"Saved calories to nutrition_intake: {nutrition_record.id}")
+                    except Exception as e:
+                        logger.error(f"Error saving calories to nutrition_intake: {str(e)}")
+                
+                # Save water to nutrition_intake table
                 if water is not None and water != "":
-                    water_id = save_vital(db, "water", water, datetime_val, notes)
-                    if water_id:
+                    try:
+                        intake_data = {
+                            "item_name": "Manual Entry - Water",
+                            "item_type": "fluid",
+                            "amount": water,
+                            "amount_unit": "ml",
+                            "calories": 0,  # Water has 0 calories
+                            "consumed_at": datetime_val,
+                            "notes": notes
+                        }
+                        nutrition_record = create_nutrition_intake(db, intake_data)
                         vitals_saved.append({
                             'type': 'water',
-                            'data': {'value': water, 'notes': notes}
+                            'data': {'value': water, 'notes': notes, 'nutrition_id': nutrition_record.id}
                         })
+                        logger.info(f"Saved water to nutrition_intake: {nutrition_record.id}")
+                    except Exception as e:
+                        logger.error(f"Error saving water to nutrition_intake: {str(e)}")
             
             # Handle weight
             weight = vital_data.get("weight")

@@ -16,6 +16,7 @@ const MedicationModal = ({ onClose }) => {
   const [loading, setLoading] = useState(false);
   const [showScheduleFor, setShowScheduleFor] = useState(null); // med id or null
   const [showHistory, setShowHistory] = useState(false); // show history view
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
 
   // Remove endDate from formData
   const [formData, setFormData] = useState({
@@ -65,6 +66,16 @@ const MedicationModal = ({ onClose }) => {
 
   // Status filters visibility toggle
   const [showFilters, setShowFilters] = useState(false);
+
+  // Mobile detection
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Load medications from API on component mount
   useEffect(() => {
@@ -1043,6 +1054,61 @@ const MedicationModal = ({ onClose }) => {
 
   return (
     <ModalBase isOpen={true} onClose={onClose} title={
+      isMobile ? (
+        <select
+          value={showAddForm ? 'add' : showHistory ? 'history' : tab}
+          onChange={(e) => {
+            const value = e.target.value;
+            if (value === 'add') {
+              setShowAddForm(true);
+              setShowScheduleFor(null);
+              setEditingMed(null);
+              setShowHistory(false);
+            } else if (value === 'history') {
+              setTab('history');
+              setShowHistory(true);
+              setShowAddForm(false);
+              setShowScheduleFor(null);
+              setEditingMed(null);
+              resetForm();
+            } else {
+              setTab(value);
+              setShowHistory(false);
+              setShowAddForm(false);
+              setShowScheduleFor(null);
+              setEditingMed(null);
+              resetForm();
+            }
+          }}
+          style={{
+            width: '100%',
+            padding: '12px 16px',
+            fontSize: '15px',
+            fontWeight: '600',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: '8px',
+            backgroundColor: '#1a2332',
+            color: '#fff',
+            cursor: 'pointer',
+            outline: 'none',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+            WebkitAppearance: 'none',
+            MozAppearance: 'none',
+            appearance: 'none',
+            backgroundImage: 'url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'white\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3e%3cpolyline points=\'6 9 12 15 18 9\'%3e%3c/polyline%3e%3c/svg%3e")',
+            backgroundRepeat: 'no-repeat',
+            backgroundPosition: 'right 12px center',
+            backgroundSize: '20px',
+            paddingRight: '40px'
+          }}
+        >
+          <option value="scheduled" style={{ backgroundColor: '#1a2332', color: '#fff' }}>📅 Scheduled</option>
+          <option value="active" style={{ backgroundColor: '#1a2332', color: '#fff' }}>✓ Active ({activeMedications.length})</option>
+          <option value="inactive" style={{ backgroundColor: '#1a2332', color: '#fff' }}>⏸ Inactive ({inactiveMedications.length})</option>
+          <option value="history" style={{ backgroundColor: '#1a2332', color: '#fff' }}>📜 History</option>
+          <option value="add" style={{ backgroundColor: '#1a2332', color: '#fff' }}>➕ Add Medication</option>
+        </select>
+      ) : (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{ display: 'flex', gap: '8px' }}>
@@ -1170,6 +1236,7 @@ const MedicationModal = ({ onClose }) => {
           </div>
         </div>
       </div>
+      )
     }>
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
 

@@ -522,13 +522,13 @@ def analyze_pulse_ox_day(db: Session, date_str):
                 'spo2_distribution': {}
             }
         
-        # Filter out None values and 0 values for SpO2 (0 indicates sensor error)
+        # Filter out None values, 0 values, and -1 values (sensor errors)
         valid_spo2_readings = [reading for reading in data if reading.spo2 is not None and reading.spo2 > 0]
         valid_bpm_readings = [reading for reading in data if reading.bpm is not None and reading.bpm > 0]
         
         # Count zero/error readings for reporting
-        zero_spo2_readings = [reading for reading in data if reading.spo2 is not None and reading.spo2 == 0]
-        zero_bpm_readings = [reading for reading in data if reading.bpm is not None and reading.bpm == 0]
+        error_spo2_readings = [reading for reading in data if reading.spo2 is not None and reading.spo2 <= 0]
+        error_bpm_readings = [reading for reading in data if reading.bpm is not None and reading.bpm <= 0]
         
         # Calculate time logged (assume readings every ~5 seconds, so multiply by 5 and convert to minutes)
         time_logged_minutes = (len(data) * 5) / 60
@@ -578,13 +578,23 @@ def analyze_pulse_ox_day(db: Session, date_str):
                 spo2_distribution['below_twenty'] += 1
         
         # Count zero/error readings separately
-        spo2_distribution['zero_errors'] = len(zero_spo2_readings)
+        spo2_distribution['zero_errors'] = len(error_spo2_readings)
         
-        # Convert counts to percentages
-        total_all_readings = len(valid_spo2_readings) + len(zero_spo2_readings)
+        # Convert counts to objects with count and percentage
+        total_all_readings = len(valid_spo2_readings) + len(error_spo2_readings)
+        distribution_with_details = {}
         if total_all_readings > 0:
-            for key in spo2_distribution:
-                spo2_distribution[key] = round((spo2_distribution[key] / total_all_readings) * 100, 1)
+            for key, count in spo2_distribution.items():
+                distribution_with_details[key] = {
+                    'count': count,
+                    'percentage': round((count / total_all_readings) * 100, 1)
+                }
+        else:
+            for key, count in spo2_distribution.items():
+                distribution_with_details[key] = {
+                    'count': count,
+                    'percentage': 0
+                }
         
         # Calculate basic statistics (excluding zero/error readings for averages)
         spo2_values = [r.spo2 for r in valid_spo2_readings]
@@ -595,11 +605,11 @@ def analyze_pulse_ox_day(db: Session, date_str):
             'total_readings': len(data),
             'valid_spo2_readings': len(valid_spo2_readings),
             'valid_bpm_readings': len(valid_bpm_readings),
-            'error_spo2_readings': len(zero_spo2_readings),
-            'error_bpm_readings': len(zero_bpm_readings),
+            'error_spo2_readings': len(error_spo2_readings),
+            'error_bpm_readings': len(error_bpm_readings),
             'time_logged_minutes': round(time_logged_minutes, 1) if time_logged_minutes else 0,
             'time_logged_hours': round(time_logged_minutes / 60, 2) if time_logged_minutes else 0,
-            'spo2_distribution': spo2_distribution,
+            'spo2_distribution': distribution_with_details,
             'avg_spo2': round(sum(spo2_values) / len(spo2_values), 1) if spo2_values else None,
             'min_spo2': min(spo2_values) if spo2_values else None,
             'max_spo2': max(spo2_values) if spo2_values else None,
@@ -630,7 +640,7 @@ def get_available_pulse_ox_dates(db: Session, limit=30):
         limit (int): Maximum number of dates to return
 
     Returns:
-        list: List of dates that have pulse ox data
+        dict: Dict with list of dates that have pulse ox data
     """
     try:
         from sqlalchemy import func, distinct
@@ -642,8 +652,8 @@ def get_available_pulse_ox_dates(db: Session, limit=30):
             func.date(PulseOxData.timestamp).desc()
         ).limit(limit).all()
         
-        return [date.date.strftime('%Y-%m-%d') for date in dates]
+        return {'dates': [date.date.strftime('%Y-%m-%d') for date in dates]}
         
     except Exception as e:
         logger.error(f"Error getting available pulse ox dates: {e}")
-        return []
+        return {'dates': []}

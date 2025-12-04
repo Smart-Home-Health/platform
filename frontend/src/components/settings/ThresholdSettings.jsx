@@ -12,6 +12,7 @@ const ThresholdSettings = () => {
     max_bpm: 155,
     daily_calories: 2000,
     daily_water: 2000,
+    day_start_hour: 7,
   });
 
   const [isLoading, setIsLoading] = useState(true);
@@ -29,7 +30,7 @@ const ThresholdSettings = () => {
         const thresholdFormData = {};
         for (const [key, value] of Object.entries(settings)) {
           // Only include threshold-related settings
-          if (key.includes('spo2') || key.includes('bpm') || key.includes('daily_calories') || key.includes('daily_water')) {
+          if (key.includes('spo2') || key.includes('bpm') || key.includes('daily_calories') || key.includes('daily_water') || key === 'day_start_hour') {
             thresholdFormData[key] = value;
           }
         }
@@ -65,7 +66,7 @@ const ThresholdSettings = () => {
     console.log('Form submitted with data:', formData);
     
     // Validate that all fields have values
-    const requiredFields = ['min_spo2', 'max_spo2', 'min_bpm', 'max_bpm', 'daily_calories', 'daily_water'];
+    const requiredFields = ['min_spo2', 'max_spo2', 'min_bpm', 'max_bpm', 'daily_calories', 'daily_water', 'day_start_hour'];
     const missingFields = requiredFields.filter(field => !formData[field] || formData[field] === '');
     
     if (missingFields.length > 0) {
@@ -88,6 +89,9 @@ const ThresholdSettings = () => {
         setSetting('max_bpm', parseInt(formData.max_bpm), 'int', 'Maximum heart rate threshold'),
         setSetting('daily_calories', parseInt(formData.daily_calories), 'int', 'Daily calorie target in kcal'),
         setSetting('daily_water', parseInt(formData.daily_water), 'int', 'Daily water target in ml'),
+        setSetting('target_calories', parseInt(formData.daily_calories), 'int', 'Daily calorie target in kcal (alias)'),
+        setSetting('target_water', parseInt(formData.daily_water), 'int', 'Daily water target in ml (alias)'),
+        setSetting('day_start_hour', parseInt(formData.day_start_hour), 'int', 'Hour when daily tracking resets (0-23)'),
       ];
       
       console.log('Save promises created, executing...');
@@ -303,6 +307,41 @@ const ThresholdSettings = () => {
                 boxSizing: 'border-box'
               }}
             />
+          </div>
+          <div>
+            <label style={{ 
+              color: '#e2e8f0', 
+              fontSize: '13px', 
+              fontWeight: '500', 
+              marginBottom: '6px', 
+              display: 'block' 
+            }}>Day Start Hour (24-hour format)</label>
+            <input
+              type="number"
+              value={formData.day_start_hour}
+              onChange={(e) => handleInputChange('day_start_hour', e.target.value)}
+              min="0"
+              max="23"
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                backgroundColor: '#2d3748',
+                border: '1px solid #4a5568',
+                borderRadius: '6px',
+                color: '#ffffff',
+                fontSize: '14px',
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+            />
+            <div style={{ 
+              color: '#a0aec0', 
+              fontSize: '11px', 
+              marginTop: '4px',
+              fontStyle: 'italic'
+            }}>
+              Hour when daily nutrition tracking resets (e.g., 7 = 7:00 AM)
+            </div>
           </div>
         </div>
       </div>

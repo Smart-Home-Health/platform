@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 const MedicationScheduledView = ({ 
   scheduledMedications, 
@@ -6,6 +6,17 @@ const MedicationScheduledView = ({
   getStatusText, 
   handleMarkTaken 
 }) => {
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const allScheduledMedications = scheduledMedications.scheduled_medications || [];
 
   const renderScheduledMedications = () => {
@@ -55,16 +66,16 @@ const MedicationScheduledView = ({
                 position: 'relative',
                 border: '1.5px solid #2d3748',
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                  <div style={{ fontWeight: 700, fontSize: 20, color: '#00bfff', letterSpacing: 0.2, textShadow: '0 1px 2px #222' }}>{timeStr}</div>
+                <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', justifyContent: 'space-between', marginBottom: 16, gap: isMobile ? '10px' : '0' }}>
+                  <div style={{ fontWeight: 700, fontSize: isMobile ? 18 : 20, color: '#00bfff', letterSpacing: 0.2, textShadow: '0 1px 2px #222' }}>{timeStr}</div>
                   <button style={{
                     background: '#007bff',
                     color: '#fff',
                     border: 'none',
                     borderRadius: 12,
-                    padding: '8px 18px',
+                    padding: isMobile ? '10px 16px' : '8px 18px',
                     fontWeight: 600,
-                    fontSize: 14,
+                    fontSize: isMobile ? 15 : 14,
                     boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
                     cursor: 'pointer',
                     transition: 'background 0.2s',
@@ -85,25 +96,26 @@ const MedicationScheduledView = ({
                         style={{
                           backgroundColor: colors.bg,
                           borderRadius: 12,
-                          padding: '14px 18px',
+                          padding: isMobile ? '12px 14px' : '14px 18px',
                           boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
                           border: `1.5px solid ${colors.border}`,
                           display: 'flex',
-                          alignItems: 'center',
-                          gap: '12px',
+                          flexDirection: isMobile ? 'column' : 'row',
+                          alignItems: isMobile ? 'stretch' : 'center',
+                          gap: isMobile ? '10px' : '12px',
                           marginBottom: 0,
                           opacity: isCompleted && isToday ? 0.7 : 1,
                           order: isCompleted && isToday ? 1 : 0
                         }}
                       >
-                        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <span style={{ color: colors.text, fontSize: '16px', fontWeight: '600' }}>
+                        <div style={{ flex: 1, display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'flex-start' : 'center', gap: isMobile ? '6px' : 10 }}>
+                          <span style={{ color: colors.text, fontSize: isMobile ? '15px' : '16px', fontWeight: '600' }}>
                             {item.medication_name}{item.concentration ? ` (${item.concentration})` : ''}
                           </span>
-                          <span style={{ color: colors.text, fontSize: '14px', fontWeight: 500 }}>
-                            - {item.dose_amount} {item.dose_unit}
+                          <span style={{ color: colors.text, fontSize: isMobile ? '13px' : '14px', fontWeight: 500 }}>
+                            {isMobile ? '' : '- '}{item.dose_amount} {item.dose_unit}
                           </span>
-                          <span style={{ color: colors.text, fontSize: '14px', fontWeight: 500 }}>
+                          <span style={{ color: colors.text, fontSize: isMobile ? '13px' : '14px', fontWeight: 500 }}>
                             {item.type ? `(${item.type})` : ''}
                           </span>
                           <span 
@@ -112,28 +124,29 @@ const MedicationScheduledView = ({
                               color: '#fff', 
                               padding: '2px 8px', 
                               borderRadius: '12px', 
-                              fontSize: '12px',
+                              fontSize: isMobile ? '11px' : '12px',
                               fontWeight: '500',
-                              marginLeft: 8
+                              marginLeft: isMobile ? 0 : 8
                             }}
                           >
                             {getStatusText(item)}
                           </span>
                         </div>
-                        <div style={{ display: 'flex', gap: '8px' }}>
+                        <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '8px', width: isMobile ? '100%' : 'auto' }}>
                           {!isCompleted && (
                             <>
                               <button
                                 style={{
-                                  padding: '6px 14px',
+                                  padding: isMobile ? '10px 14px' : '6px 14px',
                                   border: 'none',
                                   borderRadius: '8px',
                                   backgroundColor: '#28a745',
                                   color: '#fff',
                                   cursor: 'pointer',
-                                  fontSize: '13px',
+                                  fontSize: isMobile ? '14px' : '13px',
                                   fontWeight: '500',
-                                  boxShadow: '0 1px 2px rgba(0,0,0,0.07)'
+                                  boxShadow: '0 1px 2px rgba(0,0,0,0.07)',
+                                  flex: isMobile ? 1 : 'initial'
                                 }}
                                 onClick={() => handleMarkTaken(item)}
                               >
@@ -142,15 +155,16 @@ const MedicationScheduledView = ({
                               {item.status === 'missed' && (
                                 <button
                                   style={{
-                                    padding: '6px 14px',
+                                    padding: isMobile ? '10px 14px' : '6px 14px',
                                     border: '2px solid #6c757d',
                                     borderRadius: '8px',
                                     backgroundColor: '#fff',
                                     color: '#6c757d',
                                     cursor: 'pointer',
-                                    fontSize: '13px',
+                                    fontSize: isMobile ? '14px' : '13px',
                                     fontWeight: '500',
-                                    boxShadow: '0 1px 2px rgba(0,0,0,0.07)'
+                                    boxShadow: '0 1px 2px rgba(0,0,0,0.07)',
+                                    flex: isMobile ? 1 : 'initial'
                                   }}
                                   onClick={() => {
                                     alert('Skip dose functionality coming soon');

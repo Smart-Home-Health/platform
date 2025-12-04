@@ -17,6 +17,7 @@ const AlertsHistory = () => {
       const response = await fetch(`${config.apiUrl}/api/monitoring/history/dates`);
       if (!response.ok) throw new Error('Failed to fetch dates');
       const data = await response.json();
+      console.log('Received dates data:', data);
       setAvailableDates(data.dates || []);
       
       // Auto-select the most recent date
@@ -36,6 +37,7 @@ const AlertsHistory = () => {
       const response = await fetch(`${config.apiUrl}/api/monitoring/history/analyze/${date}`);
       if (!response.ok) throw new Error('Failed to fetch analysis');
       const data = await response.json();
+      console.log('Received analysis data:', data);
       setAnalysis(data);
     } catch (err) {
       console.error('Error fetching analysis:', err);
@@ -60,7 +62,9 @@ const AlertsHistory = () => {
   }, [selectedDate]);
 
   const formatDate = (dateString) => {
-    const date = new Date(dateString);
+    // Parse as local date to avoid timezone conversion
+    const [year, month, day] = dateString.split('-');
+    const date = new Date(year, month - 1, day);
     return date.toLocaleDateString('en-US', {
       weekday: 'long',
       year: 'numeric',
@@ -182,7 +186,7 @@ const AlertsHistory = () => {
           <div className="distribution-section">
             <h4>SpO₂ Distribution</h4>
             <div className="distribution-chart">
-              {Object.entries(analysis.spo2_distribution).map(([category, data]) => (
+              {analysis.spo2_distribution && Object.entries(analysis.spo2_distribution).map(([category, data]) => (
                 <div key={category} className="distribution-row">
                   <div className="distribution-label">
                     <div 

@@ -19,6 +19,7 @@ const CareTaskModal = ({ onClose }) => {
   const [showScheduleFor, setShowScheduleFor] = useState(null); // task id or null
   const [showHistory, setShowHistory] = useState(false); // show history view
   const [currentPatient, setCurrentPatient] = useState(null);
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   
   // Add category modal state
   const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
@@ -29,6 +30,15 @@ const CareTaskModal = ({ onClose }) => {
   });
 
   // Add CSS for animations
+  React.useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   React.useEffect(() => {
     if (!document.getElementById('care-task-modal-styles')) {
       const style = document.createElement('style');
@@ -692,22 +702,49 @@ const CareTaskModal = ({ onClose }) => {
   return (
     <>
       <ModalBase isOpen={true} onClose={onClose} title={
+      isMobile ? (
+        <select
+          value={tab}
+          onChange={(e) => {
+            setTab(e.target.value);
+            setShowAddForm(false);
+            setShowScheduleFor(null);
+          }}
+          style={{
+            width: '100%',
+            padding: '12px 16px',
+            fontSize: '15px',
+            fontWeight: '600',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: '8px',
+            backgroundColor: '#1a2332',
+            color: '#fff',
+            cursor: 'pointer',
+            outline: 'none',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+            WebkitAppearance: 'none',
+            MozAppearance: 'none',
+            appearance: 'none',
+            backgroundImage: 'url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'white\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3e%3cpolyline points=\'6 9 12 15 18 9\'%3e%3c/polyline%3e%3c/svg%3e")',
+            backgroundRepeat: 'no-repeat',
+            backgroundPosition: 'right 12px center',
+            backgroundSize: '20px',
+            paddingRight: '40px'
+          }}
+        >
+          <option value="scheduled" style={{ backgroundColor: '#1a2332', color: '#fff' }}>📅 Scheduled Today</option>
+          <option value="active" style={{ backgroundColor: '#1a2332', color: '#fff' }}>✓ Active ({activeTasks.length})</option>
+          <option value="inactive" style={{ backgroundColor: '#1a2332', color: '#fff' }}>⏸ Inactive ({inactiveTasks.length})</option>
+          <option value="categories" style={{ backgroundColor: '#1a2332', color: '#fff' }}>📁 Categories</option>
+          <option value="add" style={{ backgroundColor: '#1a2332', color: '#fff' }}>➕ Add Task</option>
+        </select>
+      ) : (
       <div style={{ 
         display: 'flex', 
         alignItems: 'center', 
         gap: '8px', 
-        width: '100%',
-        overflowX: 'auto',
-        overflowY: 'hidden',
-        WebkitOverflowScrolling: 'touch',
-        scrollbarWidth: 'none', // Firefox
-        msOverflowStyle: 'none' // IE/Edge
+        width: '100%'
       }}>
-        <style>{`
-          div::-webkit-scrollbar {
-            display: none;
-          }
-        `}</style>
         <button
           onClick={() => { setTab('scheduled'); setShowAddForm(false); setShowScheduleFor(null); }}
           style={{
@@ -794,6 +831,7 @@ const CareTaskModal = ({ onClose }) => {
           + Add Task
         </button>
       </div>
+      )
     }>
       {/* Content Area */}
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -1772,7 +1810,8 @@ const CareTaskModal = ({ onClose }) => {
       nutritionData={nutritionModal.nutritionData}
       onSave={(result) => {
         console.log('Nutrition data saved:', result);
-        // Optionally refresh data or show confirmation
+        // Refresh the scheduled tasks to update the view
+        fetchScheduledTasks();
       }}
     />
     </>
