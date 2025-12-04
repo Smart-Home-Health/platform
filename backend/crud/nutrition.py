@@ -318,8 +318,8 @@ def _get_nutrition_dashboard_data(db: Session, patient_id: int) -> dict:
                                 elif unit in ['liter', 'liters', 'l']:
                                     amount_ml = amount * 1000
                                 scheduled_water_past += amount_ml
-                    except (json.JSONDecodeError, KeyError, ValueError):
-                        pass
+                    except (json.JSONDecodeError, KeyError, ValueError) as e:
+                        logger.warning(f"Failed to parse nutrition notes '{schedule.notes}': {e}")
     
     if total_scheduled_feedings == 0:
         time_elapsed = (now - day_start).total_seconds()
