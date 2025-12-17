@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from typing import List, Optional
 from datetime import datetime, timezone
-from models import Business
+from schemas.business import Business
 
 def get_business(db: Session, business_id: int) -> Optional[Business]:
     """Get a business by ID."""

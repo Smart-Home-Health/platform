@@ -5,7 +5,9 @@ import logging
 from datetime import datetime, timedelta
 from croniter import croniter
 from sqlalchemy.orm import Session
-from models import Medication, MedicationSchedule, MedicationLog
+from schemas.medication import Medication
+from schemas.medication_schedule import MedicationSchedule
+from schemas.medication_log import MedicationLog
 from crud.settings import get_setting
 
 logger = logging.getLogger('crud')
@@ -220,7 +222,12 @@ def administer_medication(db: Session, med_id, dose_amount, schedule_id=None, sc
         administered_late = False
         
         if schedule_id and scheduled_time:
-            scheduled_dt = datetime.fromisoformat(scheduled_time.replace('Z', '+00:00'))
+            # Handle both datetime objects (from Pydantic) and string (legacy)
+            if isinstance(scheduled_time, datetime):
+                scheduled_dt = scheduled_time
+            else:
+                scheduled_dt = datetime.fromisoformat(scheduled_time.replace('Z', '+00:00'))
+            
             now = datetime.now()
             diff_minutes = (now - scheduled_dt).total_seconds() / 60
             

@@ -4,7 +4,8 @@ Equipment management CRUD operations
 import logging
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
-from models import Equipment, EquipmentChangeLog
+from schemas.equipment import Equipment
+from schemas.equipment_change_log import EquipmentChangeLog
 from crud.patients import get_or_create_default_patient
 
 logger = logging.getLogger('crud')

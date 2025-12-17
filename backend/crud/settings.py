@@ -5,7 +5,7 @@ import logging
 import json
 from datetime import datetime
 from sqlalchemy.orm import Session
-from models import Setting
+from schemas.setting import Setting
 
 logger = logging.getLogger('crud')
 

@@ -5,7 +5,9 @@ import logging
 from datetime import datetime, timedelta
 from croniter import croniter
 from sqlalchemy.orm import Session
-from models import CareTask, CareTaskSchedule, CareTaskLog
+from schemas.care_task import CareTask
+from schemas.care_task_schedule import CareTaskSchedule
+from schemas.care_task_log import CareTaskLog
 from crud.patients import get_active_patient
 
 logger = logging.getLogger('crud')

@@ -5,7 +5,10 @@ import logging
 import pytz
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
-from models import BloodPressure, Temperature, Vital, PulseOxData
+from schemas.blood_pressure import BloodPressure
+from schemas.temperature import Temperature
+from schemas.vital import Vital
+from schemas.pulse_ox_data import PulseOxData
 from crud.patients import get_or_create_default_patient
 
 logger = logging.getLogger('crud')

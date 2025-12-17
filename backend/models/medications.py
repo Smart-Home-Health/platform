@@ -110,7 +110,7 @@ class MedicationScheduleResponse(BaseModel):
 
 
 class MedicationAdminister(BaseModel):
-    dose_amount: float = Field(..., gt=0)
+    dose_amount: float = Field(..., ge=0)  # Allow 0 for skipped doses
     schedule_id: Optional[int] = None
     scheduled_time: Optional[datetime] = None
     notes: Optional[str] = None

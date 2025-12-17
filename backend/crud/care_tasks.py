@@ -4,7 +4,9 @@ Care tasks management CRUD operations
 import logging
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
-from models import CareTaskCategory, CareTask, CareTaskLog
+from schemas.care_task_category import CareTaskCategory
+from schemas.care_task import CareTask
+from schemas.care_task_log import CareTaskLog
 
 logger = logging.getLogger('crud')
 

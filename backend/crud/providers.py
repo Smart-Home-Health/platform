@@ -2,7 +2,8 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc, and_
 from typing import List, Optional
 from datetime import datetime, timezone
-from models import Provider, Business
+from schemas.provider import Provider
+from schemas.business import Business
 
 def get_provider(db: Session, provider_id: int) -> Optional[Provider]:
     """Get a provider by ID with business information."""

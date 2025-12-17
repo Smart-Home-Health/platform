@@ -2,7 +2,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc, and_, func
 from datetime import datetime, date, timedelta
 from typing import List, Optional
-from models import NutritionIntake, Patient
+from schemas.nutrition_intake import NutritionIntake
+from schemas.patient import Patient
 import logging
 import asyncio
 

@@ -5,7 +5,12 @@ import logging
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, asc, and_, or_
-from models import Vital, BloodPressure, Temperature, PulseOxData, Setting, MonitoringAlert
+from schemas.vital import Vital
+from schemas.blood_pressure import BloodPressure
+from schemas.temperature import Temperature
+from schemas.pulse_ox_data import PulseOxData
+from schemas.setting import Setting
+from schemas.monitoring_alert import MonitoringAlert
 
 logger = logging.getLogger('crud')
 
@@ -563,13 +568,6 @@ def save_pulse_ox_data(db: Session, spo2, bpm, pa, status=None, motion=None, spo
     except Exception as e:
         logger.error(f"Error saving pulse ox data: {e}")
         return None
-import logging
-from datetime import datetime, timedelta
-from sqlalchemy.orm import Session
-from sqlalchemy import desc, asc, and_, or_
-from models import Vital, BloodPressure, Temperature, PulseOxData, Setting, MonitoringAlert
-
-logger = logging.getLogger('crud')
 
 
 def get_alerts_list(db: Session, limit=25, offset=0, severity_filter=None, vital_type_filter=None, start_date=None, end_date=None):

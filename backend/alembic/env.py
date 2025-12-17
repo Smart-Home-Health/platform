@@ -25,7 +25,33 @@ if config.config_file_name is not None:
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from models import Base
+
+# Import Base from schemas (all ORM models now in schemas/)
+from schemas import Base
+
+# Import all schema models to ensure they're registered with Base.metadata
+from schemas.patient import Patient
+from schemas.business import Business
+from schemas.provider import Provider
+from schemas.blood_pressure import BloodPressure
+from schemas.temperature import Temperature
+from schemas.vital import Vital
+from schemas.pulse_ox_data import PulseOxData
+from schemas.monitoring_alert import MonitoringAlert
+from schemas.ventilator_alert import VentilatorAlert
+from schemas.external_alarm import ExternalAlarm
+from schemas.equipment import Equipment
+from schemas.equipment_change_log import EquipmentChangeLog
+from schemas.medication import Medication
+from schemas.medication_schedule import MedicationSchedule
+from schemas.medication_log import MedicationLog
+from schemas.care_task_category import CareTaskCategory
+from schemas.care_task import CareTask
+from schemas.care_task_schedule import CareTaskSchedule
+from schemas.care_task_log import CareTaskLog
+from schemas.nutrition_intake import NutritionIntake
+from schemas.setting import Setting
+
 target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,

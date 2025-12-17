@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc
-from models import Patient
+from schemas.patient import Patient
 from typing import Optional, List
 from datetime import datetime
 from crud.settings import get_setting, save_setting

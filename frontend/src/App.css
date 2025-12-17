@@ -469,6 +469,7 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   background-color: #161e2e; /* Match main background */
+  border-right: 1px solid #30363d; /* Add right border to match left column */
 }
 
 /* Updated right column for new BP sizing */
