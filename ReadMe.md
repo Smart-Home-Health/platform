@@ -35,11 +35,6 @@ Before you begin, ensure you have the following installed:
 - **Docker** and **Docker Compose**
 - **Git**
 
-For development without Docker, you'll need:
-- **Python 3.11+**
-- **Node.js 20+** and npm
-- **PostgreSQL 15+**
-
 ## Quick Start with Docker (Recommended)
 
 ### 1. Clone the Repository
@@ -50,8 +45,6 @@ cd smart-home-health-hub
 ```
 
 ### 2. Configure Environment (Optional)
-
-Create a `.env.docker` file to customize settings (optional - has sensible defaults):
 
 ```env
 # Serial Device (uncomment devices in docker-compose.yml if using)
@@ -105,19 +98,6 @@ sudo usermod -a -G dialout $USER
 docker compose restart backend
 ```
 
-## Production Deployment
-
-For production deployment, use the production compose file:
-
-```bash
-# Build and start in production mode
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-
-# The frontend will be served via nginx on port 80
-# The backend runs with multiple workers for better performance
-```
-
-
 ## Usage
 
 ### Initial Setup
@@ -168,20 +148,6 @@ The system uses MQTT Discovery to automatically create sensors in Home Assistant
 - Nutrition tracking (intake, scheduled progress, daily targets)
 - Binary sensors for alarms
 - Availability monitoring
-
-### Serial Devices
-
-For devices that communicate via serial port (pulse oximeters, etc.), configure in Docker:
-
-```yaml
-# In docker-compose.yml, uncomment:
-devices:
-  - /dev/ttyUSB0:/dev/ttyUSB0
-  - /dev/ttyACM0:/dev/ttyACM0
-```
-
-Set the serial port in environment variables or settings panel.
-
 
 ## License
 
