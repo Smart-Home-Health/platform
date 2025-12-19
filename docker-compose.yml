@@ -30,7 +30,6 @@ services:
     environment:
       DATABASE_URL: postgresql://shh_user:shh_dev_pass@db:5432/shh
       SERIAL_PORT: ${SERIAL_PORT:-/dev/ttyUSB0}
-      SERIAL_BAUD_RATE: ${SERIAL_BAUD_RATE:-9600}
     volumes:
       - ./backend:/app
       - app_data:/app/data

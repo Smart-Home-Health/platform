@@ -36,7 +36,6 @@ cd smart-home-health-hub
 ```env
 # Serial Device (uncomment devices in docker-compose.yml if using)
 SERIAL_PORT=/dev/ttyUSB0
-SERIAL_BAUD_RATE=9600
 ```
 
 ### 3. Start the Application
