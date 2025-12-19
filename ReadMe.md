@@ -14,19 +14,6 @@ Smart Home Health is a home care monitoring system designed for families who nee
 - **Serial Device Support**: Interface with medical devices via serial connection
 - **Modern Web Interface**: Responsive dashboard accessible from any device
 
-## Technology Stack
-
-### Backend
-- **FastAPI**: Modern Python web framework for APIs
-- **PostgreSQL**: Reliable database for health data storage
-- **Alembic**: Database migrations
-- **MQTT**: Device communication protocol
-- **WebSockets**: Real-time data streaming
-
-### Frontend
-- **React**: Modern user interface framework
-- **Vite**: Fast development and build tool
-- **Chart.js**: Additional charting capabilities
 
 ## Prerequisites
 
@@ -57,9 +44,6 @@ SERIAL_BAUD_RATE=9600
 ```bash
 # Start all services (database, backend, frontend)
 docker compose up -d
-
-# View logs
-docker compose logs -f backend
 ```
 
 That's it! The application will:
@@ -141,13 +125,6 @@ The system supports MQTT-enabled medical devices and integrates with **Home Assi
    - Nutrition intake, scheduled, and target values
    - Alarm states
 
-**Home Assistant Integration:**
-
-The system uses MQTT Discovery to automatically create sensors in Home Assistant:
-- Real-time vital sign sensors
-- Nutrition tracking (intake, scheduled progress, daily targets)
-- Binary sensors for alarms
-- Availability monitoring
 
 ## License
 
