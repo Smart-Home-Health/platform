@@ -31,7 +31,7 @@ class NutritionIntake(Base):
     
     # Additional tracking
     notes = Column(Text, nullable=True)  # Any notes about consumption
-    recorded_by = Column(String, nullable=True)  # Who recorded this entry
+    recorded_by = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)  # User who recorded this entry
     
     # Timestamps
     created_at = Column(TIMESTAMP(timezone=True), nullable=False)
@@ -40,3 +40,5 @@ class NutritionIntake(Base):
     # Relationships
     patient = relationship('Patient', foreign_keys=[patient_id])
     care_task_log = relationship('CareTaskLog', back_populates='nutrition_intake')
+    # User relationship defined in models/users.py to avoid circular imports
+    # recorded_by_user = relationship('User', back_populates='nutrition_intakes', foreign_keys=[recorded_by])

@@ -22,7 +22,7 @@ class MedicationLog(Base):
     
     # Optional details
     notes = Column(Text, nullable=True)  # Any notes about this administration
-    administered_by = Column(String, nullable=True)  # Who administered it (optional)
+    administered_by = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)  # User who administered it
     
     # Timestamps
     created_at = Column(TIMESTAMP(timezone=True), nullable=False)
@@ -31,3 +31,5 @@ class MedicationLog(Base):
     medication = relationship('Medication', back_populates='administration_logs')
     patient = relationship('Patient', back_populates='medication_logs')
     schedule = relationship('MedicationSchedule', back_populates='administration_logs')
+    # User relationship defined in models/users.py to avoid circular imports
+    # administered_by_user = relationship('User', back_populates='medication_logs', foreign_keys=[administered_by])

@@ -24,7 +24,7 @@ class CareTaskLog(Base):
     
     # Optional details
     notes = Column(Text, nullable=True)  # Any notes about this completion
-    completed_by = Column(String, nullable=True)  # Who completed it (optional)
+    performed_by = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)  # User who completed it
     
     # Timestamps
     created_at = Column(TIMESTAMP(timezone=True), nullable=False)
@@ -33,4 +33,6 @@ class CareTaskLog(Base):
     care_task = relationship('CareTask', back_populates='completion_logs')
     patient = relationship('Patient', back_populates='care_task_logs')
     schedule = relationship('CareTaskSchedule', back_populates='completion_logs')
+    # User relationship defined in models/users.py to avoid circular imports
+    # performed_by_user = relationship('User', back_populates='care_task_logs', foreign_keys=[performed_by])
     nutrition_intake = relationship('NutritionIntake', back_populates='care_task_log')

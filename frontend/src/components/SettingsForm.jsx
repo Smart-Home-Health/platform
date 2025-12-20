@@ -5,6 +5,7 @@ import SerialSettings from './settings/SerialSettings';
 import DashboardSettings from './settings/DashboardSettings';
 import PatientSettings from './settings/PatientSettings';
 import ThresholdSettings from './settings/ThresholdSettings';
+import UserSettings from './settings/UserSettings';
 import ModalBase from './ModalBase';
 import { getSettings, updateSettings } from '../services/settings';
 import config from '../config';
@@ -237,6 +238,21 @@ const SettingsForm = ({ onClose }) => {
               Patients
             </button>
             <button
+              onClick={() => setActiveTab('users')}
+              style={{
+                padding: '8px 16px',
+                border: 'none',
+                borderRadius: '6px',
+                backgroundColor: activeTab === 'users' ? '#007bff' : '#f8f9fa',
+                color: activeTab === 'users' ? '#fff' : '#333',
+                cursor: 'pointer',
+                fontWeight: '500',
+                fontSize: '14px'
+              }}
+            >
+              Users
+            </button>
+            <button
               onClick={() => setActiveTab('dev')}
               style={{
                 padding: '8px 16px',
@@ -455,6 +471,9 @@ const SettingsForm = ({ onClose }) => {
           {activeTab === 'patients' && (
             <PatientSettings />
           )}
+          {activeTab === 'users' && (
+            <UserSettings />
+          )}
           {activeTab === 'dev' && (
             <>
               <div>
@@ -637,7 +656,7 @@ const SettingsForm = ({ onClose }) => {
             }}>Settings saved successfully!</div>
           )}
           {/* Only show main Save Settings button for tabs that don't have their own save functionality */}
-          {activeTab !== 'dashboard' && activeTab !== 'gpio' && activeTab !== 'serial' && activeTab !== 'mqtt' && activeTab !== 'thresholds' && activeTab !== 'admin' && (
+          {activeTab !== 'dashboard' && activeTab !== 'gpio' && activeTab !== 'serial' && activeTab !== 'mqtt' && activeTab !== 'thresholds' && activeTab !== 'users' && activeTab !== 'admin' && (
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
               <button 
                 type="submit" 

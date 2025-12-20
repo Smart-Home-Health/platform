@@ -22,12 +22,16 @@ from modules.mqtt_module import MQTTModule
 from modules.state_module import StateModule
 
 # Import route modules
-from routes import core, settings, vitals, medications, care_tasks, equipment, monitoring, mqtt, serial, status, patients, nutrition, businesses, providers, admin
+from routes import core, settings, vitals, medications, care_tasks, equipment, monitoring, mqtt, serial, status, patients, nutrition, businesses, providers, auth, admin
 
 # Import legacy components
 from mqtt import initialize_mqtt_service, shutdown_mqtt_service
 from db import get_db
 from crud.settings import get_setting, save_setting
+
+# Import auth components
+from middleware import AuthenticationMiddleware
+from seed_auth import seed_default_data
 
 load_dotenv()
 
@@ -66,15 +70,26 @@ else:
 # FastAPI app setup
 app = FastAPI()
 
+# Add CORS middleware (must be first)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5173",  # Vite dev server
+        "http://localhost:3000",  # Alternative dev port
+        "http://localhost",       # Docker frontend
+        "*"  # Allow all for now - restrict in production
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
+# Add authentication middleware
+app.add_middleware(AuthenticationMiddleware)
+
 # Register route modules
+app.include_router(auth.router)  # Auth routes first (public)
 app.include_router(core.router)
 app.include_router(settings.router)
 app.include_router(vitals.router)
@@ -196,6 +211,13 @@ async def startup_event():
 
     if get_setting(db, "alarm2_recovery_time") is None:
         save_setting(db, "alarm2_recovery_time", 30, "int", "Recovery time in seconds for Alarm 2")
+    
+    # Seed default roles and permissions for authentication system
+    try:
+        seed_default_data(db)
+        logger.info("[main] Default roles and permissions seeded")
+    except Exception as e:
+        logger.error(f"[main] Error seeding auth data: {e}")
 
     # Initialize modules
     

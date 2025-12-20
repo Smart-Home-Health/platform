@@ -24,11 +24,13 @@ from schemas.blood_pressure import BloodPressure
 from schemas.temperature import Temperature
 from schemas.vital import Vital
 from schemas.patient import Patient
+from models.users import User, Role, Permission, AuditLog
 
 __all__ = [
     'Business', 'Provider', 'NutritionIntake', 'CareTaskCategory', 'CareTask',
     'CareTaskSchedule', 'CareTaskLog', 'Medication', 'MedicationSchedule',
     'MedicationLog', 'Equipment', 'EquipmentChangeLog', 'MonitoringAlert',
     'VentilatorAlert', 'ExternalAlarm', 'PulseOxData', 'Setting',
-    'BloodPressure', 'Temperature', 'Vital', 'Patient'
+    'BloodPressure', 'Temperature', 'Vital', 'Patient', 'User', 'Role',
+    'Permission', 'AuditLog'
 ]

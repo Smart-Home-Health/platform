@@ -7,6 +7,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from sqlalchemy.orm import Session
 from db import get_db
 from crud.vitals import get_latest_blood_pressure, get_blood_pressure_history, get_last_n_temperature
+from crud.users import has_any_admin_user
 
 logger = logging.getLogger("app")
 
@@ -42,6 +43,20 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.close()
         except:
             pass
+
+
+@router.get("/first-run")
+def check_first_run_status(db: Session = Depends(get_db)):
+    """
+    Check if this is a first-run scenario (no admin users exist).
+    Public endpoint used by frontend to determine if setup wizard is needed.
+    """
+    has_admin = has_any_admin_user(db)
+    return {
+        "is_first_run": not has_admin,
+        "has_admin": has_admin,
+        "message": "Admin user exists" if has_admin else "First run - admin setup required"
+    }
 
 
 @router.get("/limits")
