@@ -517,7 +517,8 @@ def create_new_user(
         full_name=user_data.full_name,
         email=user_data.email,
         pin=user_data.pin,
-        is_active=user_data.is_active
+        is_active=user_data.is_active,
+        role_ids=user_data.role_ids
     )
     
     # Create audit log

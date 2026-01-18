@@ -808,7 +808,7 @@ def get_due_and_upcoming_medications_count(db: Session):
         return 0
 
 
-def get_medication_history(db: Session, limit=25, medication_name=None, start_date=None, end_date=None, status_filter=None):
+def get_medication_history(db: Session, limit=25, medication_name=None, start_date=None, end_date=None, status_filter=None, patient_id=None):
     """
     Get medication administration history with filtering options
     
@@ -818,7 +818,8 @@ def get_medication_history(db: Session, limit=25, medication_name=None, start_da
         medication_name: Filter by medication name (partial match)
         start_date: Filter by start date (YYYY-MM-DD format)
         end_date: Filter by end date (YYYY-MM-DD format)  
-        status_filter: Filter by status ('late', 'early', 'missed', 'on-time')
+        status_filter: Filter by status ('late', 'early', 'skipped', 'on-time')
+        patient_id: Filter by patient ID
     
     Returns:
         List of medication administration records with related data
@@ -826,6 +827,10 @@ def get_medication_history(db: Session, limit=25, medication_name=None, start_da
     try:
         # Start with base query joining medication log with medication and schedule
         query = db.query(MedicationLog).join(Medication).outerjoin(MedicationSchedule)
+        
+        # Filter by patient_id
+        if patient_id:
+            query = query.filter(MedicationLog.patient_id == patient_id)
         
         # Filter by medication name (partial match, case insensitive)
         if medication_name:
@@ -837,20 +842,23 @@ def get_medication_history(db: Session, limit=25, medication_name=None, start_da
             query = query.filter(MedicationLog.administered_at >= start_dt)
         
         if end_date:
-            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
-            query = query.filter(MedicationLog.administered_at <= end_dt)
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)  # Include full end day
+            query = query.filter(MedicationLog.administered_at < end_dt)
         
         # Filter by status
         if status_filter:
             if status_filter == 'late':
-                query = query.filter(MedicationLog.administered_late == True)
+                query = query.filter(MedicationLog.administered_late == True, MedicationLog.dose_amount > 0)
             elif status_filter == 'early':
-                query = query.filter(MedicationLog.administered_early == True)
+                query = query.filter(MedicationLog.administered_early == True, MedicationLog.dose_amount > 0)
             elif status_filter == 'on-time':
-                query = query.filter(MedicationLog.administered_late == False, MedicationLog.administered_early == False)
-            elif status_filter == 'missed':
-                # This would need to be implemented differently since missed meds aren't logged
-                pass
+                query = query.filter(
+                    MedicationLog.administered_late == False, 
+                    MedicationLog.administered_early == False,
+                    MedicationLog.dose_amount > 0
+                )
+            elif status_filter == 'skipped':
+                query = query.filter(MedicationLog.dose_amount == 0)
         
         # Order by most recent first and apply limit
         records = query.order_by(MedicationLog.administered_at.desc()).limit(limit).all()
@@ -858,21 +866,30 @@ def get_medication_history(db: Session, limit=25, medication_name=None, start_da
         # Format the results
         result = []
         for log in records:
-            status = 'on-time'
-            if log.administered_early:
+            # Check for skipped first (dose_amount == 0)
+            if log.dose_amount == 0:
+                status = 'skipped'
+            elif log.administered_early:
                 status = 'early'
             elif log.administered_late:
                 status = 'late'
+            else:
+                status = 'on-time'
             
             result.append({
                 'id': log.id,
+                'medication_id': log.medication_id,
                 'medication_name': log.medication.name,
+                'concentration': log.medication.concentration,
                 'dose_amount': log.dose_amount,
+                'dose_unit': log.medication.quantity_unit,
                 'administered_at': log.administered_at.isoformat(),
-                'scheduled_time': log.scheduled_time,
+                'scheduled_time': log.scheduled_time.isoformat() if log.scheduled_time else None,
                 'is_scheduled': log.is_scheduled,
                 'status': status,
                 'notes': log.notes,
+                'patient_id': log.patient_id,
+                'schedule_id': log.schedule_id,
                 'schedule_description': log.schedule.description if log.schedule else None
             })
         

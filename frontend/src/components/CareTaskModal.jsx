@@ -171,6 +171,16 @@ const CareTaskModal = ({ onClose }) => {
     }
   }, [tab]);
 
+  // Pre-select first category when categories load and adding new task
+  useEffect(() => {
+    if (tab === 'add' && categories.length > 0 && !editingTask) {
+      setFormData(prev => ({
+        ...prev,
+        category_id: prev.category_id || String(categories[0].id)
+      }));
+    }
+  }, [categories, editingTask, tab]);
+
   // Refetch data when patient changes
   useEffect(() => {
     if (currentPatient) {
@@ -193,10 +203,15 @@ const CareTaskModal = ({ onClose }) => {
 
   const fetchCategories = async () => {
     try {
-      const response = await fetch(`${config.apiUrl}/api/care-task-categories`);
+      const response = await fetch(`${config.apiUrl}/api/care-task-categories`, {
+        credentials: 'include'
+      });
       if (response.ok) {
         const data = await response.json();
+        console.log('Fetched categories:', data);
         setCategories(data.categories || []);
+      } else {
+        console.error('Failed to fetch categories:', response.status, response.statusText);
       }
     } catch (error) {
       console.error('Error fetching care task categories:', error);
@@ -211,8 +226,8 @@ const CareTaskModal = ({ onClose }) => {
       const patientParam = patient ? `?patient_id=${patient.id}` : '';
       
       const [activeResponse, inactiveResponse] = await Promise.all([
-        fetch(`${config.apiUrl}/api/care-tasks/active${patientParam}`),
-        fetch(`${config.apiUrl}/api/care-tasks/inactive${patientParam}`)
+        fetch(`${config.apiUrl}/api/care-tasks/active${patientParam}`, { credentials: 'include' }),
+        fetch(`${config.apiUrl}/api/care-tasks/inactive${patientParam}`, { credentials: 'include' })
       ]);
       
       if (activeResponse.ok && inactiveResponse.ok) {
@@ -235,7 +250,9 @@ const CareTaskModal = ({ onClose }) => {
       const patient = currentPatient || await patientService.getCurrentPatient();
       const patientParam = patient ? `?patient_id=${patient.id}` : '';
       
-      const response = await fetch(`${config.apiUrl}/api/care-task-schedules/daily${patientParam}`);
+      const response = await fetch(`${config.apiUrl}/api/care-task-schedules/daily${patientParam}`, {
+        credentials: 'include'
+      });
       if (response.ok) {
         const data = await response.json();
         setScheduledTasks(data);
@@ -253,7 +270,9 @@ const CareTaskModal = ({ onClose }) => {
       const patient = currentPatient || await patientService.getCurrentPatient();
       const patientParam = patient ? `?patient_id=${patient.id}` : '';
       
-      const response = await fetch(`${config.apiUrl}/api/care-tasks/${taskId}/schedules${patientParam}`);
+      const response = await fetch(`${config.apiUrl}/api/care-tasks/${taskId}/schedules${patientParam}`, {
+        credentials: 'include'
+      });
       if (response.ok) {
         const data = await response.json();
         return data.schedules || [];
@@ -292,6 +311,7 @@ const CareTaskModal = ({ onClose }) => {
       
       const response = await fetch(url, {
         method,
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -333,6 +353,7 @@ const CareTaskModal = ({ onClose }) => {
     try {
       const response = await fetch(`${config.apiUrl}/api/care-tasks/${id}`, {
         method: 'DELETE',
+        credentials: 'include'
       });
 
       if (response.ok) {
@@ -354,6 +375,7 @@ const CareTaskModal = ({ onClose }) => {
     try {
       const response = await fetch(`${config.apiUrl}/api/care-task-categories/${categoryId}`, {
         method: 'DELETE',
+        credentials: 'include'
       });
 
       if (response.ok) {
@@ -373,6 +395,7 @@ const CareTaskModal = ({ onClose }) => {
     try {
       const response = await fetch(`${config.apiUrl}/api/care-tasks/${id}/toggle-active`, {
         method: 'POST',
+        credentials: 'include'
       });
 
       if (response.ok) {
@@ -480,6 +503,7 @@ const CareTaskModal = ({ onClose }) => {
     try {
       const response = await fetch(`${config.apiUrl}/api/care-task-schedule/${task.schedule_id}/complete`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -516,6 +540,7 @@ const CareTaskModal = ({ onClose }) => {
     try {
       const response = await fetch(`${config.apiUrl}/api/care-task-schedule/${task.schedule_id}/skip`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -672,6 +697,7 @@ const CareTaskModal = ({ onClose }) => {
     try {
       const response = await fetch(`${config.apiUrl}/api/add/care-task-category`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -1200,7 +1226,7 @@ const CareTaskModal = ({ onClose }) => {
                       required
                     >
                       <option value="" style={{ color: '#ffffff', backgroundColor: '#2d3748' }}>
-                        🏷️ Select a category...
+                        🏷️ Select a category... ({categories.length} available)
                       </option>
                       {categories.map(category => (
                         <option 

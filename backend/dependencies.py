@@ -19,7 +19,8 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)) -> U
     This dependency should be used on protected routes to ensure user is authenticated.
     The middleware adds user_id to request.state after validating the JWT token.
     """
-    user_id = getattr(request.state, "user_id", None)
+    # Try request.state first, then fall back to scope (BaseHTTPMiddleware compatibility)
+    user_id = getattr(request.state, "user_id", None) or request.scope.get("user_id")
     
     if not user_id:
         raise HTTPException(

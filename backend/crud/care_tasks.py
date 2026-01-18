@@ -49,6 +49,8 @@ def get_care_task_categories(db: Session):
                 'name': cat.name,
                 'description': cat.description,
                 'color': cat.color,
+                'active': cat.active,
+                'is_default': cat.is_default,
                 'created_at': cat.created_at.isoformat() if cat.created_at else None,
                 'updated_at': cat.updated_at.isoformat() if cat.updated_at else None
             }
@@ -144,12 +146,13 @@ def add_care_task(db: Session, name, category_id, description=None, active=True,
         return None
 
 
-def get_care_tasks(db: Session, active_only=True, category_id=None, patient_id=None):
+def get_care_tasks(db: Session, active_only=True, inactive_only=False, category_id=None, patient_id=None):
     """
     Get care tasks with optional filtering
     
     Args:
         active_only: If True, only return active tasks
+        inactive_only: If True, only return inactive tasks
         category_id: If provided, filter by category
         patient_id: If provided, filter by patient (includes global tasks)
     """
@@ -160,6 +163,8 @@ def get_care_tasks(db: Session, active_only=True, category_id=None, patient_id=N
         
         if active_only:
             query = query.filter(CareTask.active == True)
+        elif inactive_only:
+            query = query.filter(CareTask.active == False)
         
         if category_id:
             query = query.filter(CareTask.category_id == category_id)

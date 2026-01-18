@@ -98,7 +98,7 @@ async def get_inactive_care_tasks_endpoint(patient_id: int = None, db: Session =
             current_patient = get_current_patient(db)
             patient_id = current_patient.id if current_patient else None
         
-        tasks = get_care_tasks(db, active_only=False, patient_id=patient_id)
+        tasks = get_care_tasks(db, active_only=False, inactive_only=True, patient_id=patient_id)
         return {"care_tasks": tasks}
     except Exception as e:
         logger.error(f"Error fetching inactive care tasks: {e}")
@@ -465,11 +465,11 @@ async def get_admin_inactive_care_tasks_endpoint(patient_id: int = None, db: Ses
     """Get inactive care tasks for admin view - can filter by patient_id or show all"""
     try:
         if patient_id:
-            # Get care tasks for specific patient + global care tasks
-            tasks = get_care_tasks(db, active_only=False, patient_id=patient_id)
+            # Get inactive care tasks for specific patient + global care tasks
+            tasks = get_care_tasks(db, active_only=False, inactive_only=True, patient_id=patient_id)
         else:
             # Get all inactive care tasks (admin overview) - pass None to get all
-            tasks = get_care_tasks(db, active_only=False, patient_id=-1)  # Use -1 to indicate "show all"
+            tasks = get_care_tasks(db, active_only=False, inactive_only=True, patient_id=-1)  # Use -1 to indicate "show all"
         
         return {"care_tasks": tasks}
     except Exception as e:

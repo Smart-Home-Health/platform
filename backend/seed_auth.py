@@ -15,47 +15,50 @@ logger = logging.getLogger(__name__)
 def seed_permissions(db: Session):
     """Create default permissions if they don't exist"""
     
-    default_permissions = [
-        # Medication permissions
-        ("medications.view", "View Medications", "View medication schedules and logs", "medications"),
-        ("medications.administer", "Administer Medications", "Record medication administration", "medications"),
-        ("medications.manage", "Manage Medications", "Add, edit, delete medications", "medications"),
-        
-        # Care task permissions
-        ("care_tasks.view", "View Care Tasks", "View care task schedules and logs", "care_tasks"),
-        ("care_tasks.perform", "Perform Care Tasks", "Record care task completion", "care_tasks"),
-        ("care_tasks.manage", "Manage Care Tasks", "Add, edit, delete care tasks", "care_tasks"),
-        
-        # Vital signs permissions
-        ("vitals.view", "View Vitals", "View vital sign readings", "vitals"),
-        ("vitals.record", "Record Vitals", "Manually record vital signs", "vitals"),
-        
-        # Equipment permissions
-        ("equipment.view", "View Equipment", "View equipment status", "equipment"),
-        ("equipment.change", "Change Equipment", "Record equipment changes", "equipment"),
-        ("equipment.manage", "Manage Equipment", "Add, edit equipment definitions", "equipment"),
-        
-        # Nutrition permissions
-        ("nutrition.view", "View Nutrition", "View nutrition intake", "nutrition"),
-        ("nutrition.record", "Record Nutrition", "Record nutrition intake", "nutrition"),
-        ("nutrition.manage", "Manage Nutrition", "Manage nutrition plans", "nutrition"),
-        
-        # Monitoring/Alert permissions
-        ("monitoring.view", "View Alerts", "View monitoring alerts", "monitoring"),
-        ("monitoring.manage", "Manage Alerts", "Acknowledge and manage alerts", "monitoring"),
-        
-        # Patient permissions
-        ("patients.view", "View Patients", "View patient information", "patients"),
-        ("patients.manage", "Manage Patients", "Add, edit patient information", "patients"),
-        
-        # System permissions
-        ("settings.view", "View Settings", "View system settings", "system"),
-        ("settings.manage", "Manage Settings", "Modify system settings", "system"),
-        ("users.view", "View Users", "View user list", "system"),
-        ("users.manage", "Manage Users", "Add, edit, delete users", "system"),
-        ("roles.manage", "Manage Roles", "Add, edit roles and permissions", "system"),
-        ("audit.view", "View Audit Logs", "View system audit logs", "system"),
+    # Define sections based on nav bar
+    sections = [
+        ("patients", "Patients"),
+        ("medications", "Medications"),
+        ("care_tasks", "Care Tasks"),
+        ("equipment", "Equipment"),
+        ("nutrition", "Nutrition"),
+        ("providers", "Providers"),
+        ("businesses", "Businesses"),
+        ("monitoring", "Monitoring"),
+        ("vitals", "Vitals"),
+        ("users", "Users"),
+        ("roles", "Roles"),
+        ("settings", "Settings"),
+        ("audit", "Audit"),
     ]
+    
+    # CRUD operations for each section
+    operations = [
+        ("create", "Create", "Create new"),
+        ("read", "View", "View"),
+        ("update", "Edit", "Edit"),
+        ("delete", "Delete", "Delete"),
+    ]
+    
+    default_permissions = []
+    
+    # Generate CRUD permissions for each section
+    for section_code, section_name in sections:
+        for op_code, op_name, op_desc in operations:
+            perm_name = f"{section_code}.{op_code}"
+            display_name = f"{op_name} {section_name}"
+            description = f"{op_desc} {section_name.lower()}"
+            default_permissions.append((perm_name, display_name, description, section_code))
+    
+    # Add special/legacy permissions for backward compatibility
+    legacy_permissions = [
+        ("medications.administer", "Administer Medications", "Record medication administration", "medications"),
+        ("care_tasks.perform", "Perform Care Tasks", "Record care task completion", "care_tasks"),
+        ("vitals.record", "Record Vitals", "Manually record vital signs", "vitals"),
+        ("equipment.change", "Change Equipment", "Record equipment changes", "equipment"),
+        ("monitoring.acknowledge", "Acknowledge Alerts", "Acknowledge monitoring alerts", "monitoring"),
+    ]
+    default_permissions.extend(legacy_permissions)
     
     created_count = 0
     for name, display_name, description, category in default_permissions:
@@ -78,66 +81,75 @@ def seed_roles(db: Session):
             "display_name": "System Administrator",
             "description": "Full system access with all permissions",
             "permissions": [
-                "medications.view", "medications.administer", "medications.manage",
-                "care_tasks.view", "care_tasks.perform", "care_tasks.manage",
-                "vitals.view", "vitals.record",
-                "equipment.view", "equipment.change", "equipment.manage",
-                "nutrition.view", "nutrition.record", "nutrition.manage",
-                "monitoring.view", "monitoring.manage",
-                "patients.view", "patients.manage",
-                "settings.view", "settings.manage",
-                "users.view", "users.manage", "roles.manage",
-                "audit.view"
+                # Full CRUD on all sections
+                "patients.create", "patients.read", "patients.update", "patients.delete",
+                "medications.create", "medications.read", "medications.update", "medications.delete", "medications.administer",
+                "care_tasks.create", "care_tasks.read", "care_tasks.update", "care_tasks.delete", "care_tasks.perform",
+                "equipment.create", "equipment.read", "equipment.update", "equipment.delete", "equipment.change",
+                "nutrition.create", "nutrition.read", "nutrition.update", "nutrition.delete",
+                "providers.create", "providers.read", "providers.update", "providers.delete",
+                "businesses.create", "businesses.read", "businesses.update", "businesses.delete",
+                "monitoring.create", "monitoring.read", "monitoring.update", "monitoring.delete", "monitoring.acknowledge",
+                "vitals.create", "vitals.read", "vitals.update", "vitals.delete", "vitals.record",
+                "users.create", "users.read", "users.update", "users.delete",
+                "roles.create", "roles.read", "roles.update", "roles.delete",
+                "settings.create", "settings.read", "settings.update", "settings.delete",
+                "audit.create", "audit.read", "audit.update", "audit.delete",
             ]
         },
         "nurse": {
             "display_name": "Registered Nurse",
             "description": "Full clinical access for nursing duties",
             "permissions": [
-                "medications.view", "medications.administer", "medications.manage",
-                "care_tasks.view", "care_tasks.perform", "care_tasks.manage",
-                "vitals.view", "vitals.record",
-                "equipment.view", "equipment.change", "equipment.manage",
-                "nutrition.view", "nutrition.record", "nutrition.manage",
-                "monitoring.view", "monitoring.manage",
-                "patients.view", "patients.manage",
-                "settings.view",
-                "users.view"
+                "patients.read", "patients.update",
+                "medications.create", "medications.read", "medications.update", "medications.administer",
+                "care_tasks.create", "care_tasks.read", "care_tasks.update", "care_tasks.perform",
+                "equipment.read", "equipment.update", "equipment.change",
+                "nutrition.create", "nutrition.read", "nutrition.update",
+                "providers.read",
+                "businesses.read",
+                "monitoring.read", "monitoring.update", "monitoring.acknowledge",
+                "vitals.read", "vitals.record",
+                "users.read",
+                "settings.read",
             ]
         },
         "caregiver": {
             "display_name": "Caregiver",
             "description": "Standard care duties and documentation",
             "permissions": [
-                "medications.view", "medications.administer",
-                "care_tasks.view", "care_tasks.perform",
-                "vitals.view", "vitals.record",
-                "equipment.view", "equipment.change",
-                "nutrition.view", "nutrition.record",
-                "monitoring.view",
-                "patients.view"
+                "patients.read",
+                "medications.read", "medications.administer",
+                "care_tasks.read", "care_tasks.perform",
+                "equipment.read", "equipment.change",
+                "nutrition.read", "nutrition.create",
+                "providers.read",
+                "businesses.read",
+                "monitoring.read", "monitoring.acknowledge",
+                "vitals.read", "vitals.record",
             ]
         },
         "family": {
             "display_name": "Family Member",
             "description": "View-only access with limited recording capabilities",
             "permissions": [
-                "medications.view",
-                "care_tasks.view",
-                "vitals.view",
-                "equipment.view",
-                "nutrition.view", "nutrition.record",
-                "monitoring.view",
-                "patients.view"
+                "patients.read",
+                "medications.read",
+                "care_tasks.read",
+                "equipment.read",
+                "nutrition.read",
+                "providers.read",
+                "monitoring.read",
+                "vitals.read",
             ]
         },
         "monitor": {
             "display_name": "Monitor Only",
             "description": "Read-only access to vitals and alerts",
             "permissions": [
-                "vitals.view",
-                "equipment.view",
-                "monitoring.view"
+                "vitals.read",
+                "equipment.read",
+                "monitoring.read",
             ]
         }
     }

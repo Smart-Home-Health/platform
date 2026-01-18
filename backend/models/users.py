@@ -61,6 +61,11 @@ class User(Base):
     # Relationships
     audit_logs = relationship("AuditLog", back_populates="user")
     
+    @property
+    def has_pin(self) -> bool:
+        """Check if user has a PIN set"""
+        return self.pin_hash is not None
+    
     def has_role(self, role_name: str) -> bool:
         """Check if user has a specific role"""
         if self.is_system_admin:

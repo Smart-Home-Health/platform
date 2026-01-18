@@ -81,6 +81,10 @@ export const AuthProvider = ({ children }) => {
       }
 
       const data = await res.json();
+      
+      // Small delay to ensure cookie is fully set by browser before we update state
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       // Ensure user object has proper structure
       setUser({
         id: data.user.id,
@@ -115,6 +119,9 @@ export const AuthProvider = ({ children }) => {
       if (data.requires_full_password) {
         return { success: false, requiresPassword: true };
       }
+
+      // Small delay to ensure cookie is fully set by browser before we update state
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       // Ensure user object has proper structure
       setUser({

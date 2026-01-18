@@ -1,0 +1,578 @@
+import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import AdminV2Layout from './AdminV2Layout';
+import config from '../../config';
+import { useAuth } from '../../contexts/AuthContext';
+import {
+  MedicationsIcon,
+  ClockIcon,
+  CheckIcon,
+  XIcon,
+  EditIcon
+} from '../../components/Icons';
+import './AdminV2.css';
+
+const AdminV2MedicationsSchedule = () => {
+  const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  
+  // Patient state
+  const [patients, setPatients] = useState([]);
+  const [selectedPatient, setSelectedPatient] = useState(null);
+  const [showPatientModal, setShowPatientModal] = useState(false);
+  const [loadingPatients, setLoadingPatients] = useState(true);
+  
+  // Schedule data state
+  const [scheduledMedications, setScheduledMedications] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  
+  // Status filter state
+  const [statusFilters, setStatusFilters] = useState({
+    ready: true,
+    upcoming: true,
+    missed: true,
+    completed: false,
+    skipped: false
+  });
+
+  // Permission helper
+  const hasPermission = (permission) => {
+    if (!user) return false;
+    if (user.is_system_admin) return true;
+    return user.permissions?.includes(permission) || false;
+  };
+
+  // Fetch patients on mount
+  useEffect(() => {
+    fetchPatients();
+  }, []);
+
+  // Check for patient param and load patient
+  useEffect(() => {
+    const patientId = searchParams.get('patient');
+    if (patientId && patients.length > 0) {
+      const patient = patients.find(p => p.id === parseInt(patientId));
+      if (patient) {
+        setSelectedPatient(patient);
+      } else {
+        setShowPatientModal(true);
+      }
+    } else if (!patientId && patients.length > 0) {
+      setShowPatientModal(true);
+    }
+  }, [patients, searchParams]);
+
+  // Fetch schedule when patient changes
+  useEffect(() => {
+    if (selectedPatient) {
+      fetchSchedule();
+    }
+  }, [selectedPatient]);
+
+  const fetchPatients = async () => {
+    try {
+      const response = await fetch(`${config.apiUrl}/api/patients`, {
+        credentials: 'include'
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setPatients(data);
+      }
+    } catch (err) {
+      console.error('Error fetching patients:', err);
+    } finally {
+      setLoadingPatients(false);
+    }
+  };
+
+  const fetchSchedule = async () => {
+    if (!selectedPatient) return;
+    
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await fetch(
+        `${config.apiUrl}/api/schedules/daily?patient_id=${selectedPatient.id}`,
+        { credentials: 'include' }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setScheduledMedications(data.scheduled_medications || []);
+      } else {
+        setError('Failed to load schedule');
+      }
+    } catch (err) {
+      setError('Error connecting to server');
+      console.error('Error fetching schedule:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSelectPatient = (patient) => {
+    setSelectedPatient(patient);
+    setSearchParams({ patient: patient.id });
+    setShowPatientModal(false);
+  };
+
+  const handleChangePatient = () => {
+    setShowPatientModal(true);
+  };
+
+  // Status helpers
+  const getStatusInfo = (status) => {
+    const statusMap = {
+      'on_time': { label: 'On Time', color: '#238636', bg: 'rgba(35, 134, 54, 0.15)', border: '#238636' },
+      'completed': { label: 'Completed', color: '#238636', bg: 'rgba(35, 134, 54, 0.15)', border: '#238636' },
+      'warning': { label: 'Warning', color: '#9e6a03', bg: 'rgba(158, 106, 3, 0.15)', border: '#9e6a03' },
+      'late_early': { label: 'Late/Early', color: '#f85149', bg: 'rgba(248, 81, 73, 0.15)', border: '#f85149' },
+      'missed': { label: 'Missed', color: '#f85149', bg: 'rgba(248, 81, 73, 0.15)', border: '#f85149' },
+      'upcoming': { label: 'Upcoming', color: '#1f6feb', bg: 'rgba(31, 111, 235, 0.15)', border: '#1f6feb' },
+      'ready': { label: 'Ready', color: '#58a6ff', bg: 'rgba(88, 166, 255, 0.15)', border: '#58a6ff' },
+      'skipped': { label: 'Skipped', color: '#8b949e', bg: 'rgba(139, 148, 158, 0.15)', border: '#8b949e' }
+    };
+    return statusMap[status] || statusMap.upcoming;
+  };
+
+  const getStatusText = (item) => {
+    if (item.is_completed) {
+      if (item.actual_dose === 0) return 'Skipped';
+      return item.status === 'on_time' ? 'On Time' : 
+             item.status === 'warning' ? 'Slight Delay' : 
+             item.status === 'late_early' ? 'Late/Early' : 'Completed';
+    }
+    if (item.status === 'missed') return 'Missed';
+    if (item.status === 'ready') return 'Ready to Take';
+    return 'Upcoming';
+  };
+
+  const getFilteredMedications = () => {
+    return scheduledMedications.filter(med => {
+      if (med.is_completed) {
+        if (med.actual_dose === 0) return statusFilters.skipped;
+        return statusFilters.completed;
+      }
+      if (med.status === 'missed') return statusFilters.missed;
+      if (med.status === 'ready') return statusFilters.ready;
+      return statusFilters.upcoming;
+    });
+  };
+
+  // Group medications by day and time
+  const groupMedications = (medications) => {
+    const groups = {};
+    
+    medications.forEach(item => {
+      const dateObj = new Date(item.scheduled_time);
+      const dayKey = dateObj.toLocaleDateString(undefined, { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      });
+      const timeStr = dateObj.toLocaleTimeString(undefined, { 
+        hour: 'numeric', 
+        minute: '2-digit', 
+        hour12: true 
+      });
+      
+      if (!groups[dayKey]) groups[dayKey] = {};
+      if (!groups[dayKey][timeStr]) groups[dayKey][timeStr] = [];
+      groups[dayKey][timeStr].push(item);
+    });
+    
+    return groups;
+  };
+
+  // Sort time slots
+  const sortTimeSlots = (times) => {
+    return times.sort((a, b) => {
+      const parseTime = (t) => {
+        const match = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
+        if (!match) return 0;
+        let [, h, m, ampm] = match;
+        let hour = parseInt(h, 10);
+        if (/pm/i.test(ampm) && hour !== 12) hour += 12;
+        if (/am/i.test(ampm) && hour === 12) hour = 0;
+        return hour * 60 + parseInt(m, 10);
+      };
+      return parseTime(a) - parseTime(b);
+    });
+  };
+
+  const handleMarkTaken = async (medication) => {
+    try {
+      const response = await fetch(`${config.apiUrl}/api/medications/${medication.medication_id}/administer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          schedule_id: medication.schedule_id,
+          dose_amount: medication.dose_amount,
+          notes: ''
+        })
+      });
+
+      if (response.ok) {
+        await fetchSchedule();
+      } else {
+        const data = await response.json();
+        alert(data.detail || 'Failed to mark as taken');
+      }
+    } catch (err) {
+      console.error('Error marking medication as taken:', err);
+      alert('Error connecting to server');
+    }
+  };
+
+  const handleSkip = async (medication) => {
+    try {
+      const response = await fetch(`${config.apiUrl}/api/medications/${medication.medication_id}/administer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          schedule_id: medication.schedule_id,
+          dose_amount: 0,
+          notes: 'Skipped'
+        })
+      });
+
+      if (response.ok) {
+        await fetchSchedule();
+      } else {
+        const data = await response.json();
+        alert(data.detail || 'Failed to skip medication');
+      }
+    } catch (err) {
+      console.error('Error skipping medication:', err);
+      alert('Error connecting to server');
+    }
+  };
+
+  const getInitials = (name) => {
+    return name
+      .split(' ')
+      .map(part => part[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
+  // Get stats
+  const stats = {
+    total: scheduledMedications.length,
+    ready: scheduledMedications.filter(m => !m.is_completed && m.status === 'ready').length,
+    upcoming: scheduledMedications.filter(m => !m.is_completed && m.status === 'upcoming').length,
+    missed: scheduledMedications.filter(m => !m.is_completed && m.status === 'missed').length,
+    completed: scheduledMedications.filter(m => m.is_completed && m.actual_dose > 0).length,
+    skipped: scheduledMedications.filter(m => m.is_completed && m.actual_dose === 0).length
+  };
+
+  // Loading state
+  if (loadingPatients) {
+    return (
+      <AdminV2Layout>
+        <div className="admin-v2-loading">Loading patients...</div>
+      </AdminV2Layout>
+    );
+  }
+
+  const filteredMeds = getFilteredMedications();
+  const groupedMeds = groupMedications(filteredMeds);
+  const sortedDays = Object.keys(groupedMeds).sort((a, b) => new Date(a) - new Date(b));
+
+  return (
+    <AdminV2Layout>
+      <div className="admin-v2-page">
+        {selectedPatient ? (
+          <>
+            {/* Patient Context Header */}
+            <div className="schedule-patient-header">
+              <div className="schedule-patient-info">
+                <div className="schedule-patient-avatar">
+                  {getInitials(`${selectedPatient.first_name} ${selectedPatient.last_name}`)}
+                </div>
+                <div className="schedule-patient-name-row">
+                  <h2>{selectedPatient.first_name} {selectedPatient.last_name}</h2>
+                  <button 
+                    className="schedule-edit-patient-btn"
+                    onClick={handleChangePatient}
+                    title="Change Patient"
+                  >
+                    <EditIcon size={16} />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Section Title */}
+            <h1 className="schedule-section-title">Daily Medication Schedule</h1>
+
+            {/* Stats Row */}
+            <div className="admin-v2-stats-row">
+              <div 
+                className={`admin-v2-stat-card ${statusFilters.ready ? 'selected' : ''}`}
+                onClick={() => setStatusFilters(f => ({ ...f, ready: !f.ready }))}
+                style={{ cursor: 'pointer' }}
+              >
+                <div className="admin-v2-stat-icon" style={{ background: 'rgba(88, 166, 255, 0.15)' }}>
+                  <ClockIcon size={20} />
+                </div>
+                <div className="admin-v2-stat-info">
+                  <h4>{stats.ready}</h4>
+                  <p>Ready</p>
+                </div>
+              </div>
+              <div 
+                className={`admin-v2-stat-card ${statusFilters.upcoming ? 'selected' : ''}`}
+                onClick={() => setStatusFilters(f => ({ ...f, upcoming: !f.upcoming }))}
+                style={{ cursor: 'pointer' }}
+              >
+                <div className="admin-v2-stat-icon" style={{ background: 'rgba(31, 111, 235, 0.15)' }}>
+                  <ClockIcon size={20} />
+                </div>
+                <div className="admin-v2-stat-info">
+                  <h4>{stats.upcoming}</h4>
+                  <p>Upcoming</p>
+                </div>
+              </div>
+              <div 
+                className={`admin-v2-stat-card ${statusFilters.missed ? 'selected' : ''}`}
+                onClick={() => setStatusFilters(f => ({ ...f, missed: !f.missed }))}
+                style={{ cursor: 'pointer' }}
+              >
+                <div className="admin-v2-stat-icon" style={{ background: 'rgba(248, 81, 73, 0.15)' }}>
+                  <XIcon size={20} />
+                </div>
+                <div className="admin-v2-stat-info">
+                  <h4>{stats.missed}</h4>
+                  <p>Missed</p>
+                </div>
+              </div>
+              <div 
+                className={`admin-v2-stat-card ${statusFilters.completed ? 'selected' : ''}`}
+                onClick={() => setStatusFilters(f => ({ ...f, completed: !f.completed }))}
+                style={{ cursor: 'pointer' }}
+              >
+                <div className="admin-v2-stat-icon" style={{ background: 'rgba(35, 134, 54, 0.15)' }}>
+                  <CheckIcon size={20} />
+                </div>
+                <div className="admin-v2-stat-info">
+                  <h4>{stats.completed}</h4>
+                  <p>Completed</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Refresh Button */}
+            <div className="admin-v2-page-header">
+              <h3 style={{ margin: 0, color: '#e6edf3' }}>
+                Today & Yesterday ({filteredMeds.length} of {scheduledMedications.length})
+              </h3>
+              <button 
+                className="admin-v2-btn admin-v2-btn-primary"
+                onClick={fetchSchedule}
+                disabled={loading}
+              >
+                {loading ? 'Refreshing...' : 'Refresh'}
+              </button>
+            </div>
+
+            {/* Schedule Content */}
+            {loading ? (
+              <div className="admin-v2-loading">Loading schedule...</div>
+            ) : error ? (
+              <div className="admin-v2-error">{error}</div>
+            ) : filteredMeds.length === 0 ? (
+              <div className="admin-v2-empty-state">
+                <MedicationsIcon size={48} />
+                <h3>No Scheduled Medications</h3>
+                <p className="admin-v2-text-muted">
+                  {scheduledMedications.length === 0 
+                    ? 'No medications scheduled for today or yesterday'
+                    : 'No medications match the selected filters'}
+                </p>
+              </div>
+            ) : (
+              <div className="admin-v2-schedule-list">
+                {sortedDays.map(dayKey => (
+                  <div key={dayKey} className="admin-v2-schedule-day">
+                    <div className="admin-v2-schedule-day-header">
+                      <h3>{dayKey}</h3>
+                    </div>
+                    
+                    {sortTimeSlots(Object.keys(groupedMeds[dayKey])).map(timeStr => (
+                      <div key={timeStr} className="admin-v2-schedule-time-group">
+                        <div className="admin-v2-schedule-time-header">
+                          <span className="admin-v2-schedule-time">{timeStr}</span>
+                          <span className="admin-v2-schedule-count-label">
+                            {groupedMeds[dayKey][timeStr].length} medication{groupedMeds[dayKey][timeStr].length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        
+                        <div className="admin-v2-schedule-items">
+                          {groupedMeds[dayKey][timeStr].map((item, idx) => {
+                            const statusInfo = getStatusInfo(item.status);
+                            const isCompleted = item.is_completed;
+                            
+                            return (
+                              <div 
+                                key={`${item.schedule_id}-${idx}`}
+                                className={`admin-v2-schedule-item ${isCompleted ? 'completed' : ''}`}
+                                style={{ 
+                                  borderLeftColor: statusInfo.border,
+                                  backgroundColor: statusInfo.bg
+                                }}
+                              >
+                                <div className="admin-v2-schedule-item-content">
+                                  <div className="admin-v2-schedule-item-main">
+                                    <span className="admin-v2-schedule-med-name">
+                                      {item.medication_name}
+                                      {item.concentration && (
+                                        <span className="admin-v2-schedule-concentration">
+                                          ({item.concentration})
+                                        </span>
+                                      )}
+                                    </span>
+                                    <span className="admin-v2-schedule-dose">
+                                      {item.dose_amount} {item.dose_unit || 'units'}
+                                    </span>
+                                  </div>
+                                  <div className="admin-v2-schedule-item-status">
+                                    <span 
+                                      className="admin-v2-schedule-status-badge"
+                                      style={{ 
+                                        backgroundColor: statusInfo.border,
+                                        color: '#fff'
+                                      }}
+                                    >
+                                      {getStatusText(item)}
+                                    </span>
+                                    {item.actual_time && (
+                                      <span className="admin-v2-schedule-actual-time">
+                                        Taken at {new Date(item.actual_time).toLocaleTimeString(undefined, { 
+                                          hour: 'numeric', 
+                                          minute: '2-digit', 
+                                          hour12: true 
+                                        })}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                
+                                {!isCompleted && hasPermission('medications.update') && (
+                                  <div className="admin-v2-schedule-item-actions">
+                                    <button
+                                      className="admin-v2-btn admin-v2-btn-success admin-v2-btn-sm"
+                                      onClick={() => handleMarkTaken(item)}
+                                    >
+                                      {item.status === 'missed' ? 'Take Now' : 'Mark Taken'}
+                                    </button>
+                                    {item.status === 'missed' && (
+                                      <button
+                                        className="admin-v2-btn admin-v2-btn-sm"
+                                        onClick={() => handleSkip(item)}
+                                      >
+                                        Skip
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Legend */}
+            <div className="admin-v2-schedule-legend">
+              <h4>Status Legend</h4>
+              <div className="admin-v2-legend-items">
+                <div className="admin-v2-legend-item">
+                  <span className="admin-v2-legend-dot" style={{ backgroundColor: '#58a6ff' }}></span>
+                  <span>Ready to Take</span>
+                </div>
+                <div className="admin-v2-legend-item">
+                  <span className="admin-v2-legend-dot" style={{ backgroundColor: '#1f6feb' }}></span>
+                  <span>Upcoming</span>
+                </div>
+                <div className="admin-v2-legend-item">
+                  <span className="admin-v2-legend-dot" style={{ backgroundColor: '#f85149' }}></span>
+                  <span>Missed</span>
+                </div>
+                <div className="admin-v2-legend-item">
+                  <span className="admin-v2-legend-dot" style={{ backgroundColor: '#238636' }}></span>
+                  <span>Completed</span>
+                </div>
+                <div className="admin-v2-legend-item">
+                  <span className="admin-v2-legend-dot" style={{ backgroundColor: '#8b949e' }}></span>
+                  <span>Skipped</span>
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="admin-v2-no-patient">
+            <MedicationsIcon size={48} />
+            <h2>Select a Patient</h2>
+            <p>Choose a patient to view their daily medication schedule</p>
+            <button 
+              className="admin-v2-btn admin-v2-btn-primary"
+              onClick={() => setShowPatientModal(true)}
+            >
+              Select Patient
+            </button>
+          </div>
+        )}
+
+        {/* Patient Selector Modal */}
+        {showPatientModal && (
+          <div className="admin-v2-modal-overlay" onClick={() => selectedPatient && setShowPatientModal(false)}>
+            <div className="admin-v2-modal" onClick={e => e.stopPropagation()}>
+              <div className="admin-v2-modal-header">
+                <h2>Select Patient</h2>
+                {selectedPatient && (
+                  <button className="admin-v2-modal-close" onClick={() => setShowPatientModal(false)}>
+                    <XIcon size={20} />
+                  </button>
+                )}
+              </div>
+              <div className="admin-v2-modal-body">
+                <div className="admin-v2-patient-selector">
+                  {patients.map(patient => (
+                    <button
+                      key={patient.id}
+                      className={`admin-v2-patient-option ${selectedPatient?.id === patient.id ? 'selected' : ''}`}
+                      onClick={() => handleSelectPatient(patient)}
+                    >
+                      <div className="admin-v2-patient-option-avatar">
+                        {getInitials(`${patient.first_name} ${patient.last_name}`)}
+                      </div>
+                      <div className="admin-v2-patient-option-info">
+                        <strong>{patient.first_name} {patient.last_name}</strong>
+                        {patient.date_of_birth && (
+                          <span>DOB: {new Date(patient.date_of_birth).toLocaleDateString()}</span>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </AdminV2Layout>
+  );
+};
+
+export default AdminV2MedicationsSchedule;

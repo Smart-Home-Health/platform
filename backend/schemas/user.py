@@ -127,14 +127,25 @@ class UserWithPermissions(UserResponse):
     permissions: List[str] = []
 
 
+class RoleListItem(BaseModel):
+    """Simplified role for lists"""
+    id: int
+    name: str
+    display_name: str
+
+
 class UserListItem(BaseModel):
     """Simplified user for lists"""
     id: int
     username: str
     full_name: str
+    email: Optional[str] = None
     is_active: bool
+    is_system_admin: bool = False
     has_pin: bool
-    role_names: List[str] = []
+    roles: List[RoleListItem] = []
+    created_at: Optional[datetime] = None
+    last_login: Optional[datetime] = None
     
     class Config:
         from_attributes = True

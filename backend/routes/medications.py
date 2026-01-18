@@ -356,6 +356,7 @@ async def get_medication_history_endpoint(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     status_filter: Optional[str] = None,
+    patient_id: Optional[int] = None,
     db: Session = Depends(get_db)
 ):
     """
@@ -366,7 +367,8 @@ async def get_medication_history_endpoint(
     - medication_name: Filter by medication name (partial match)
     - start_date: Filter by start date (YYYY-MM-DD format)
     - end_date: Filter by end date (YYYY-MM-DD format)
-    - status_filter: Filter by status ('late', 'early', 'missed', 'on-time')
+    - status_filter: Filter by status ('late', 'early', 'skipped', 'on-time')
+    - patient_id: Filter by patient ID
     """
     try:
         history = get_medication_history(
@@ -375,7 +377,8 @@ async def get_medication_history_endpoint(
             medication_name=medication_name,
             start_date=start_date,
             end_date=end_date,
-            status_filter=status_filter
+            status_filter=status_filter,
+            patient_id=patient_id
         )
         return {"history": history, "count": len(history)}
     except Exception as e:

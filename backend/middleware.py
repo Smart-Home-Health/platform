@@ -28,10 +28,18 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
     """
     
     async def dispatch(self, request: Request, call_next):
+        # Allow OPTIONS requests through for CORS preflight
+        if request.method == "OPTIONS":
+            return await call_next(request)
+        
         # Define public paths that don't require authentication
         public_paths = [
-            "/api/auth/",  # All auth endpoints
-            "/api/core/first-run",  # First run check
+            "/api/auth/first-run",  # First run check and setup
+            "/api/auth/login",  # Login endpoint
+            "/api/auth/verify-pin",  # PIN verification
+            "/api/auth/users/available",  # Available users for login
+            "/api/auth/session",  # Session check (can return 401)
+            "/api/core/first-run",  # First run check (legacy)
             "/ws/",  # WebSocket connections
             "/docs",  # API documentation
             "/openapi.json",  # OpenAPI schema
@@ -41,7 +49,11 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         
         # Check if path is public
         path = request.url.path
-        is_public = any(path.startswith(public_path) for public_path in public_paths)
+        # Exact match for "/" or startswith for other paths
+        is_public = path == "/" or any(
+            path.startswith(public_path) 
+            for public_path in public_paths if public_path != "/"
+        )
         
         if is_public:
             return await call_next(request)
@@ -84,11 +96,16 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                     }
                 )
             
-            # Add user context to request state
+            # Add user context to request state AND scope (for BaseHTTPMiddleware compatibility)
             request.state.user_id = user_id
             request.state.username = username
             request.state.user_role = payload.get("role")
             request.state.is_authenticated = True
+            
+            # Also add to scope for persistence
+            request.scope["user_id"] = user_id
+            request.scope["username"] = username
+            request.scope["user_role"] = payload.get("role")
             
             # Continue with request
             response = await call_next(request)

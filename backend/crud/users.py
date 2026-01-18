@@ -62,6 +62,7 @@ def create_user(
     email: Optional[str] = None,
     pin: Optional[str] = None,
     is_system_admin: bool = False,
+    is_active: bool = True,
     role_ids: List[int] = None
 ) -> User:
     """Create a new user with hashed password"""
@@ -75,7 +76,8 @@ def create_user(
         full_name=full_name,
         password_hash=password_hash,
         pin_hash=pin_hash,
-        is_system_admin=is_system_admin
+        is_system_admin=is_system_admin,
+        is_active=is_active
     )
     
     db.add(user)
@@ -373,6 +375,51 @@ def create_permission(
     
     logger.info(f"Created permission: {name}")
     return permission
+
+
+def update_permission(
+    db: Session,
+    permission_id: int,
+    name: Optional[str] = None,
+    display_name: Optional[str] = None,
+    category: Optional[str] = None,
+    description: Optional[str] = None,
+    is_active: Optional[bool] = None
+) -> Optional[Permission]:
+    """Update an existing permission"""
+    permission = db.query(Permission).filter(Permission.id == permission_id).first()
+    if not permission:
+        return None
+    
+    if name is not None:
+        permission.name = name
+    if display_name is not None:
+        permission.display_name = display_name
+    if category is not None:
+        permission.category = category
+    if description is not None:
+        permission.description = description
+    if is_active is not None:
+        permission.is_active = is_active
+    
+    db.commit()
+    db.refresh(permission)
+    
+    logger.info(f"Updated permission: {permission.name}")
+    return permission
+
+
+def delete_permission(db: Session, permission_id: int) -> bool:
+    """Delete a permission"""
+    permission = db.query(Permission).filter(Permission.id == permission_id).first()
+    if not permission:
+        return False
+    
+    db.delete(permission)
+    db.commit()
+    
+    logger.info(f"Deleted permission: {permission.name}")
+    return True
 
 
 def assign_permission_to_role(db: Session, role_id: int, permission_id: int) -> bool:

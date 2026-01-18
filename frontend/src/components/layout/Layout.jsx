@@ -92,6 +92,18 @@ const AdminNav = () => {
 const Layout = ({ children }) => {
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith('/admin');
+  const isAdminV2Route = location.pathname.startsWith('/admin-v2');
+  
+  // Admin V2 has its own layout, so just render children directly
+  if (isAdminV2Route) {
+    return (
+      <div className="layout">
+        <main className="main-content">
+          {children}
+        </main>
+      </div>
+    );
+  }
   
   return (
     <div className="layout">
