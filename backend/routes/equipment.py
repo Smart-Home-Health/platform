@@ -39,14 +39,14 @@ async def api_add_equipment(data: EquipmentCreate, db: Session = Depends(get_db)
     if data.scheduled_replacement and (not data.last_changed or not data.useful_days):
         return JSONResponse(status_code=400, content={"detail": "Last changed and useful days are required for scheduled replacements"})
     
-    eid = add_equipment_simple(db, data.name, data.quantity, data.scheduled_replacement, data.last_changed, data.useful_days)
+    eid = add_equipment_simple(db, data.name, data.quantity, data.scheduled_replacement, data.last_changed, data.useful_days, data.patient_id)
     return {"id": eid, "status": "success"}
 
 
 @router.get("", response_model=List[dict])
-async def api_get_equipment(db: Session = Depends(get_db)):
-    """Get equipment list sorted by due next."""
-    return get_equipment_list(db)
+async def api_get_equipment(patient_id: int = None, db: Session = Depends(get_db)):
+    """Get equipment list sorted by due next. Optionally filter by patient_id."""
+    return get_equipment_list(db, patient_id=patient_id)
 
 
 @router.post("/{equipment_id}/change")
@@ -84,6 +84,85 @@ async def api_open_equipment(equipment_id: int, data: EquipmentQuantityChange, d
     """Decrease equipment quantity (open/use equipment)."""
     success = open_equipment(db, equipment_id, data.amount)
     return {"success": success}
+
+
+@router.get("/history")
+async def api_get_all_equipment_history(
+    equipment_id: int = None,
+    patient_id: int = None,
+    start_date: str = None,
+    end_date: str = None,
+    limit: int = 100,
+    db: Session = Depends(get_db)
+):
+    """Get change history for all equipment with optional filtering."""
+    from schemas.equipment_change_log import EquipmentChangeLog as EquipmentChangeLogSchema
+    from schemas.equipment import Equipment
+    from sqlalchemy import desc
+    
+    try:
+        query = db.query(EquipmentChangeLogSchema).join(
+            Equipment, EquipmentChangeLogSchema.equipment_id == Equipment.id
+        )
+        
+        if patient_id:
+            query = query.filter(Equipment.patient_id == patient_id)
+        
+        if equipment_id:
+            query = query.filter(EquipmentChangeLogSchema.equipment_id == equipment_id)
+        
+        if start_date:
+            query = query.filter(EquipmentChangeLogSchema.changed_at >= start_date)
+        
+        if end_date:
+            query = query.filter(EquipmentChangeLogSchema.changed_at <= end_date)
+        
+        changes = query.order_by(desc(EquipmentChangeLogSchema.changed_at)).limit(limit).all()
+        
+        result = []
+        for change in changes:
+            equipment = db.query(Equipment).filter(Equipment.id == change.equipment_id).first()
+            result.append({
+                'id': change.id,
+                'equipment_id': change.equipment_id,
+                'equipment_name': equipment.name if equipment else 'Unknown',
+                'patient_id': change.patient_id,
+                'changed_at': change.changed_at.isoformat() if change.changed_at else None,
+                'notes': change.notes,
+                'changed_by': change.changed_by,
+                'created_at': change.created_at.isoformat() if change.created_at else None
+            })
+        
+        return {"history": result, "total": len(result)}
+    except Exception as e:
+        logger.error(f"Error fetching equipment history: {e}")
+        return {"history": [], "total": 0}
+
+
+@router.put("/{equipment_id}")
+async def api_update_equipment(equipment_id: int, data: EquipmentUpdate, db: Session = Depends(get_db)):
+    """Update an equipment item."""
+    success = update_equipment(
+        db, 
+        equipment_id, 
+        name=data.name,
+        quantity=data.quantity,
+        scheduled_replacement=data.scheduled_replacement,
+        last_changed=data.last_changed,
+        useful_days=data.useful_days
+    )
+    if not success:
+        return JSONResponse(status_code=404, content={"detail": "Equipment not found"})
+    return {"status": "success"}
+
+
+@router.delete("/{equipment_id}")
+async def api_delete_equipment(equipment_id: int, db: Session = Depends(get_db)):
+    """Delete an equipment item."""
+    success = delete_equipment(db, equipment_id)
+    if not success:
+        return JSONResponse(status_code=404, content={"detail": "Equipment not found or could not be deleted"})
+    return {"status": "success"}
 
 
 @router.get("/due/count")

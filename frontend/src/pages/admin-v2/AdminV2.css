@@ -1402,6 +1402,48 @@
   opacity: 0.7;
 }
 
+/* Patient Table Cell */
+.admin-v2-patient-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.admin-v2-patient-avatar-sm {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #238636, #2ea043);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #ffffff;
+  flex-shrink: 0;
+}
+
+.admin-v2-patient-cell .admin-v2-patient-name {
+  font-weight: 500;
+  color: #e6edf3;
+}
+
+.admin-v2-mrn {
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  font-size: 0.85rem;
+  color: #8b949e;
+}
+
+.admin-v2-notes-preview {
+  font-size: 0.85rem;
+  color: #8b949e;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+}
+
 /* Medication Name Cell */
 .admin-v2-med-name {
   display: flex;
@@ -1842,6 +1884,14 @@
   width: 10px;
   height: 10px;
   border-radius: 50%;
+}
+
+.admin-v2-legend-category-note {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #30363d;
+  font-size: 0.8rem;
+  color: #8b949e;
 }
 
 .admin-v2-stat-card.selected {
@@ -3129,4 +3179,236 @@
 .admin-v2-warning-text {
   color: #d29922;
   font-size: 0.9rem;
+}
+
+/* Nutrition section in schedule modal */
+.admin-v2-nutrition-section {
+  margin-top: 1.5rem;
+  padding: 1.25rem;
+  background: linear-gradient(135deg, rgba(88, 166, 255, 0.08), rgba(88, 166, 255, 0.03));
+  border: 1px solid rgba(88, 166, 255, 0.2);
+  border-radius: 8px;
+}
+
+.admin-v2-nutrition-section h4 {
+  color: #58a6ff;
+  font-size: 1rem;
+  margin: 0 0 0.75rem 0;
+}
+
+.admin-v2-nutrition-section .admin-v2-form-group {
+  margin-bottom: 0;
+}
+
+.admin-v2-nutrition-section .admin-v2-form-group label {
+  font-size: 0.8rem;
+  margin-bottom: 0.35rem;
+}
+
+.admin-v2-nutrition-section input,
+.admin-v2-nutrition-section select,
+.admin-v2-nutrition-section textarea {
+  font-size: 0.9rem;
+  padding: 0.5rem 0.75rem;
+}
+
+/* Equipment-specific styles */
+.admin-v2-row-warning {
+  background: rgba(158, 106, 3, 0.1) !important;
+}
+
+.admin-v2-row-warning:hover {
+  background: rgba(158, 106, 3, 0.15) !important;
+}
+
+.admin-v2-equipment-name {
+  font-weight: 500;
+  color: #e6edf3;
+}
+
+.admin-v2-quantity {
+  font-weight: 600;
+  color: #e6edf3;
+}
+
+.admin-v2-quantity.low {
+  color: #f85149;
+}
+
+.admin-v2-text-danger {
+  color: #f85149;
+  font-weight: 500;
+}
+
+.admin-v2-results-count {
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  color: #8b949e;
+}
+
+/* History List Styles */
+.admin-v2-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.admin-v2-history-day {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.admin-v2-history-day-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  background: #21262d;
+  border-bottom: 1px solid #30363d;
+}
+
+.admin-v2-history-day-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #e6edf3;
+}
+
+.admin-v2-history-day-count {
+  font-size: 0.8rem;
+  color: #8b949e;
+}
+
+.admin-v2-history-items {
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-v2-history-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid #30363d;
+}
+
+.admin-v2-history-item:last-child {
+  border-bottom: none;
+}
+
+.admin-v2-history-item-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: rgba(88, 166, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #58a6ff;
+  flex-shrink: 0;
+}
+
+.admin-v2-history-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-v2-history-item-main {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.admin-v2-history-item-name {
+  font-weight: 500;
+  color: #e6edf3;
+}
+
+.admin-v2-history-item-action {
+  font-size: 0.85rem;
+  color: #8b949e;
+}
+
+.admin-v2-history-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.85rem;
+  color: #8b949e;
+}
+
+.admin-v2-history-item-time {
+  color: #58a6ff;
+}
+
+.admin-v2-history-item-notes {
+  color: #8b949e;
+  font-style: italic;
+}
+
+/* Filter Bar */
+.admin-v2-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.admin-v2-search-box {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  min-width: 250px;
+  flex: 1;
+  max-width: 350px;
+}
+
+.admin-v2-search-box svg {
+  color: #8b949e;
+  flex-shrink: 0;
+}
+
+.admin-v2-search-box input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #e6edf3;
+  font-size: 0.9rem;
+  outline: none;
+}
+
+.admin-v2-search-box input::placeholder {
+  color: #8b949e;
+}
+
+.admin-v2-search-clear {
+  background: none;
+  border: none;
+  color: #8b949e;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.admin-v2-search-clear:hover {
+  color: #e6edf3;
+}
+
+/* Text color utilities */
+.admin-v2-text-warning {
+  color: #d29922;
 }

@@ -22,6 +22,9 @@ import AdminV2MedicationsHistory from './pages/admin-v2/AdminV2MedicationsHistor
 import AdminV2CareTasks from './pages/admin-v2/AdminV2CareTasks';
 import AdminV2CareTasksSchedule from './pages/admin-v2/AdminV2CareTasksSchedule';
 import AdminV2CareTasksHistory from './pages/admin-v2/AdminV2CareTasksHistory';
+import AdminV2Equipment from './pages/admin-v2/AdminV2Equipment';
+import AdminV2EquipmentHistory from './pages/admin-v2/AdminV2EquipmentHistory';
+import AdminV2Patients from './pages/admin-v2/AdminV2Patients';
 import AdminV2Providers from './pages/admin-v2/AdminV2Providers';
 import AdminV2Businesses from './pages/admin-v2/AdminV2Businesses';
 import FirstRunSetup from './components/FirstRunSetup';
@@ -79,6 +82,9 @@ function AppContent() {
             <Route path="/admin-v2/care-tasks" element={<AdminV2CareTasks />} />
             <Route path="/admin-v2/care-tasks/schedule" element={<AdminV2CareTasksSchedule />} />
             <Route path="/admin-v2/care-tasks/history" element={<AdminV2CareTasksHistory />} />
+            <Route path="/admin-v2/equipment" element={<AdminV2Equipment />} />
+            <Route path="/admin-v2/equipment/history" element={<AdminV2EquipmentHistory />} />
+            <Route path="/admin-v2/patients" element={<AdminV2Patients />} />
             <Route path="/admin-v2/providers" element={<AdminV2Providers />} />
             <Route path="/admin-v2/businesses" element={<AdminV2Businesses />} />
             <Route path="/admin-v2/*" element={<AdminV2Dashboard />} />

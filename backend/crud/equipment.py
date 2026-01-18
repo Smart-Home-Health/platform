@@ -179,12 +179,16 @@ def search_equipment(db: Session, query):
 
 
 # --- Equipment Change Management ---
-def get_equipment_list(db: Session):
+def get_equipment_list(db: Session, patient_id: int = None):
     """
-    Get equipment list with calculated due dates for scheduled replacements
+    Get equipment list with calculated due dates for scheduled replacements.
+    Optionally filter by patient_id.
     """
     try:
-        equipment = db.query(Equipment).all()
+        query = db.query(Equipment)
+        if patient_id is not None:
+            query = query.filter(Equipment.patient_id == patient_id)
+        equipment = query.all()
         result = []
         
         for item in equipment:

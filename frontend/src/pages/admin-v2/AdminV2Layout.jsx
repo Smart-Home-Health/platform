@@ -48,7 +48,7 @@ const getTopNavItems = (section, hasAnyPermission) => {
     ],
     equipment: [
       { path: '/admin-v2/equipment', label: 'Overview' },
-      { path: '/admin-v2/equipment/maintenance', label: 'Maintenance' },
+      { path: '/admin-v2/equipment/history', label: 'History' },
     ],
     nutrition: [
       { path: '/admin-v2/nutrition', label: 'Overview' },
@@ -113,8 +113,8 @@ const AdminV2Layout = ({ children }) => {
   
   // Get URL with preserved query params for certain sections
   const getNavUrl = (path) => {
-    // For medications section, preserve patient param
-    if (path.startsWith('/admin-v2/medications')) {
+    // For medications, care-tasks, and equipment sections, preserve patient param
+    if (path.startsWith('/admin-v2/medications') || path.startsWith('/admin-v2/care-tasks') || path.startsWith('/admin-v2/equipment')) {
       const patientId = searchParams.get('patient');
       if (patientId) {
         return `${path}?patient=${patientId}`;

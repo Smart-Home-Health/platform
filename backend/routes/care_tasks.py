@@ -550,41 +550,50 @@ async def delete_care_task_category_endpoint(category_id: int, db: Session = Dep
         )
 
 
-# Additional endpoints using new CRUD functions
-@router.get("/care-tasks/{task_id}")
-async def get_care_task_endpoint(task_id: int, db: Session = Depends(get_db)):
-    """Get a specific care task by ID"""
-    try:
-        task = get_care_task(db, task_id)
-        if task:
-            return {"care_task": task}
-        else:
-            return JSONResponse(status_code=404, content={"detail": "Care task not found"})
-    except Exception as e:
-        logger.error(f"Error getting care task {task_id}: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={"detail": f"Error retrieving care task: {str(e)}"}
-        )
-
-
-@router.get("/care-tasks/logs")
-async def get_care_task_logs_endpoint(
+# History and stats endpoints - MUST be before /care-tasks/{task_id} to avoid route conflicts
+@router.get("/care-tasks/history")
+async def get_care_task_history_endpoint(
+    patient_id: int = None,
     task_id: int = None, 
+    task_name: str = None,
+    category_id: int = None,
+    status_filter: str = None,
     limit: int = 50, 
     start_date: str = None, 
     end_date: str = None, 
     db: Session = Depends(get_db)
 ):
-    """Get care task completion logs with optional filtering"""
+    """
+    Get care task completion history with filtering options
+    
+    Query parameters:
+    - patient_id: Filter by patient ID
+    - task_id: Filter by specific task ID
+    - task_name: Filter by task name (partial match)
+    - category_id: Filter by category ID
+    - status_filter: Filter by status ('completed', 'skipped')
+    - limit: Maximum number of records (default 50)
+    - start_date: Filter by start date (YYYY-MM-DD format)
+    - end_date: Filter by end date (YYYY-MM-DD format)
+    """
     try:
-        logs = get_care_task_logs(db, task_id, limit, start_date, end_date)
-        return {"logs": logs}
+        history = get_care_task_logs(
+            db=db,
+            task_id=task_id,
+            limit=limit,
+            start_date=start_date,
+            end_date=end_date,
+            patient_id=patient_id,
+            task_name=task_name,
+            category_id=category_id,
+            status_filter=status_filter
+        )
+        return {"history": history, "count": len(history)}
     except Exception as e:
-        logger.error(f"Error getting care task logs: {e}")
+        logger.error(f"Error getting care task history: {e}")
         return JSONResponse(
             status_code=500,
-            content={"detail": f"Error retrieving care task logs: {str(e)}"}
+            content={"detail": f"Error retrieving care task history: {str(e)}"}
         )
 
 
@@ -627,6 +636,24 @@ async def get_overdue_tasks_endpoint(db: Session = Depends(get_db)):
         return JSONResponse(
             status_code=500,
             content={"detail": f"Error retrieving overdue tasks: {str(e)}"}
+        )
+
+
+# Dynamic task_id endpoint - MUST be after static routes like /history, /completions/recent, etc.
+@router.get("/care-tasks/{task_id}")
+async def get_care_task_endpoint(task_id: int, db: Session = Depends(get_db)):
+    """Get a specific care task by ID"""
+    try:
+        task = get_care_task(db, task_id)
+        if task:
+            return {"care_task": task}
+        else:
+            return JSONResponse(status_code=404, content={"detail": "Care task not found"})
+    except Exception as e:
+        logger.error(f"Error getting care task {task_id}: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"Error retrieving care task: {str(e)}"}
         )
 
 

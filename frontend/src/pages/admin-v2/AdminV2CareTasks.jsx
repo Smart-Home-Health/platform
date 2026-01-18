@@ -43,6 +43,16 @@ const AdminV2CareTasks = () => {
   const [scheduleTime, setScheduleTime] = useState('08:00');
   const [scheduleSaving, setScheduleSaving] = useState(false);
   
+  // Nutrition-specific schedule fields
+  const [nutritionData, setNutritionData] = useState({
+    item_type: 'liquid',
+    item_name: '',
+    amount: '',
+    amount_unit: 'ml',
+    calories: '',
+    notes: ''
+  });
+  
   const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   
   // Form state
@@ -308,6 +318,15 @@ const AdminV2CareTasks = () => {
     setSelectedDays([]);
     setSelectedDayOfMonth(1);
     setScheduleTime('08:00');
+    // Reset nutrition data
+    setNutritionData({
+      item_type: 'liquid',
+      item_name: '',
+      amount: '',
+      amount_unit: 'ml',
+      calories: '',
+      notes: ''
+    });
     setShowScheduleModal(true);
   };
 
@@ -340,6 +359,13 @@ const AdminV2CareTasks = () => {
     return categories.find(c => c.id === categoryId);
   };
 
+  // Check if a task is nutrition-related based on category
+  const isNutritionTask = (task) => {
+    if (!task || !task.category_id) return false;
+    const category = getCategoryById(task.category_id);
+    return category && category.name.toLowerCase() === 'nutrition';
+  };
+
   // Add schedule handler
   const handleAddSchedule = async () => {
     if (!selectedTask) return;
@@ -359,6 +385,21 @@ const AdminV2CareTasks = () => {
       description = `Monthly on day ${selectedDayOfMonth} at ${scheduleTime}`;
     }
 
+    // Prepare notes with nutrition data if applicable
+    let notes = null;
+    if (isNutritionTask(selectedTask) && nutritionData.item_name && nutritionData.amount) {
+      notes = JSON.stringify({
+        nutrition: {
+          item_type: nutritionData.item_type,
+          item_name: nutritionData.item_name,
+          amount: parseFloat(nutritionData.amount),
+          amount_unit: nutritionData.amount_unit,
+          calories: nutritionData.calories ? parseFloat(nutritionData.calories) : null
+        },
+        custom_notes: nutritionData.notes
+      });
+    }
+
     setScheduleSaving(true);
     try {
       const response = await fetch(`${config.apiUrl}/api/add/care-task-schedule/${selectedTask.id}`, {
@@ -368,7 +409,8 @@ const AdminV2CareTasks = () => {
         body: JSON.stringify({
           cron_expression: cron,
           description: description,
-          patient_id: selectedPatient.id
+          patient_id: selectedPatient.id,
+          notes: notes
         })
       });
 
@@ -376,6 +418,15 @@ const AdminV2CareTasks = () => {
         setShowScheduleModal(false);
         setSelectedDays([]);
         setScheduleTime('08:00');
+        // Reset nutrition data
+        setNutritionData({
+          item_type: 'liquid',
+          item_name: '',
+          amount: '',
+          amount_unit: 'ml',
+          calories: '',
+          notes: ''
+        });
         fetchCareTasks();
       } else {
         const data = await response.json();
@@ -595,35 +646,34 @@ const AdminV2CareTasks = () => {
 
         {/* Patient Selection Modal */}
         {showPatientModal && (
-          <div className="admin-v2-modal-overlay">
-            <div className="admin-v2-modal admin-v2-modal-sm">
+          <div className="admin-v2-modal-overlay" onClick={() => selectedPatient && setShowPatientModal(false)}>
+            <div className="admin-v2-modal" onClick={e => e.stopPropagation()}>
               <div className="admin-v2-modal-header">
                 <h2>Select Patient</h2>
                 {selectedPatient && (
-                  <button 
-                    className="admin-v2-modal-close"
-                    onClick={() => setShowPatientModal(false)}
-                  >
+                  <button className="admin-v2-modal-close" onClick={() => setShowPatientModal(false)}>
                     <XIcon size={20} />
                   </button>
                 )}
               </div>
               <div className="admin-v2-modal-body">
-                <div className="admin-v2-patient-list">
-                  {patients.map(patient => (
+                <div className="admin-v2-patient-selector-list">
+                  {patients.filter(p => p.is_active).map(patient => (
                     <button
                       key={patient.id}
-                      className={`admin-v2-patient-list-item ${selectedPatient?.id === patient.id ? 'selected' : ''}`}
+                      className={`admin-v2-patient-selector-item ${selectedPatient?.id === patient.id ? 'selected' : ''}`}
                       onClick={() => handleSelectPatient(patient)}
                     >
-                      <div className="admin-v2-patient-list-avatar">
+                      <div className="admin-v2-patient-avatar">
                         {patient.first_name?.[0]}{patient.last_name?.[0]}
                       </div>
-                      <div className="admin-v2-patient-list-info">
-                        <span className="name">{patient.first_name} {patient.last_name}</span>
-                        {patient.date_of_birth && (
-                          <span className="dob">DOB: {patient.date_of_birth}</span>
-                        )}
+                      <div className="admin-v2-patient-selector-info">
+                        <span className="admin-v2-patient-name">
+                          {patient.first_name} {patient.last_name}
+                        </span>
+                        <span className="admin-v2-patient-meta">
+                          {patient.room || 'No room assigned'}
+                        </span>
                       </div>
                     </button>
                   ))}
@@ -915,6 +965,88 @@ const AdminV2CareTasks = () => {
                       onChange={e => setScheduleTime(e.target.value)}
                     />
                   </div>
+
+                  {/* Nutrition Fields - Only show for nutrition-related tasks */}
+                  {isNutritionTask(selectedTask) && (
+                    <div className="admin-v2-nutrition-section">
+                      <h4 style={{ marginTop: '1.5rem', marginBottom: '1rem', color: '#58a6ff' }}>
+                        🍽️ Nutrition Information
+                      </h4>
+                      <p style={{ fontSize: '0.85rem', color: '#8b949e', marginBottom: '1rem' }}>
+                        Pre-fill nutrition details for this scheduled task. This data will be used when marking the task complete.
+                      </p>
+                      
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '1rem', marginBottom: '1rem' }}>
+                        <div className="admin-v2-form-group">
+                          <label>Type</label>
+                          <select
+                            value={nutritionData.item_type}
+                            onChange={e => setNutritionData({ ...nutritionData, item_type: e.target.value })}
+                          >
+                            <option value="liquid">Liquid/Drink</option>
+                            <option value="food">Food</option>
+                            <option value="supplement">Supplement</option>
+                          </select>
+                        </div>
+
+                        <div className="admin-v2-form-group">
+                          <label>Item Name *</label>
+                          <input
+                            type="text"
+                            value={nutritionData.item_name}
+                            onChange={e => setNutritionData({ ...nutritionData, item_name: e.target.value })}
+                            placeholder="e.g., Peptamen, Water, Chicken Soup"
+                          />
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                        <div className="admin-v2-form-group">
+                          <label>Amount *</label>
+                          <input
+                            type="number"
+                            value={nutritionData.amount}
+                            onChange={e => setNutritionData({ ...nutritionData, amount: e.target.value })}
+                            placeholder="250"
+                          />
+                        </div>
+
+                        <div className="admin-v2-form-group">
+                          <label>Unit</label>
+                          <select
+                            value={nutritionData.amount_unit}
+                            onChange={e => setNutritionData({ ...nutritionData, amount_unit: e.target.value })}
+                          >
+                            <option value="ml">ml</option>
+                            <option value="oz">oz</option>
+                            <option value="cups">cups</option>
+                            <option value="grams">grams</option>
+                            <option value="servings">servings</option>
+                          </select>
+                        </div>
+
+                        <div className="admin-v2-form-group">
+                          <label>Calories</label>
+                          <input
+                            type="number"
+                            value={nutritionData.calories}
+                            onChange={e => setNutritionData({ ...nutritionData, calories: e.target.value })}
+                            placeholder="375"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="admin-v2-form-group">
+                        <label>Notes</label>
+                        <textarea
+                          value={nutritionData.notes}
+                          onChange={e => setNutritionData({ ...nutritionData, notes: e.target.value })}
+                          placeholder="Additional notes about this nutrition item..."
+                          rows={2}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="admin-v2-modal-footer">

@@ -11,7 +11,8 @@ import {
   XIcon,
   ShieldIcon,
   KeyIcon,
-  UsersIcon
+  UsersIcon,
+  SearchIcon
 } from '../../components/Icons';
 import './AdminV2.css';
 
@@ -21,6 +22,12 @@ const AdminV2Users = () => {
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  
+  // Filter state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterRole, setFilterRole] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterStaleLogin, setFilterStaleLogin] = useState(false);
 
   // Permission helper
   const hasPermission = (permission) => {
@@ -283,6 +290,44 @@ const AdminV2Users = () => {
       .slice(0, 2);
   };
 
+  // Check if login is stale (> 30 days ago or never)
+  const isStaleLogin = (lastLogin) => {
+    if (!lastLogin) return true;
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    return new Date(lastLogin) < thirtyDaysAgo;
+  };
+
+  // Filter users
+  const filteredUsers = users.filter(u => {
+    // Search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      const matchesSearch = 
+        u.full_name.toLowerCase().includes(query) ||
+        u.username.toLowerCase().includes(query) ||
+        (u.email && u.email.toLowerCase().includes(query));
+      if (!matchesSearch) return false;
+    }
+    
+    // Role filter
+    if (filterRole) {
+      const hasRole = u.roles?.some(r => r.id === parseInt(filterRole));
+      if (!hasRole) return false;
+    }
+    
+    // Status filter
+    if (filterStatus === 'active' && !u.is_active) return false;
+    if (filterStatus === 'inactive' && u.is_active) return false;
+    
+    // Stale login filter
+    if (filterStaleLogin && !isStaleLogin(u.last_login)) return false;
+    
+    return true;
+  });
+
+  const hasActiveFilters = searchQuery || filterRole || filterStatus || filterStaleLogin;
+
   // Show loading while waiting for auth
   if (!user) {
     return (
@@ -303,21 +348,17 @@ const AdminV2Users = () => {
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
+        {/* Page Header */}
         <div className="admin-v2-page-header">
-          <div>
-            <h1 className="admin-v2-page-title">User Management</h1>
-            <p className="admin-v2-page-subtitle">
-              Manage user accounts, roles, and permissions
-            </p>
+          <div className="admin-v2-header-content">
+            <div className="admin-v2-header-icon">
+              <UsersIcon size={32} />
+            </div>
+            <div className="admin-v2-header-text">
+              <h1>User Management</h1>
+              <p>Manage user accounts, roles, and permissions</p>
+            </div>
           </div>
-          {hasPermission('users.create') && (
-            <button 
-              className="admin-v2-btn admin-v2-btn-primary"
-              onClick={openCreateModal}
-            >
-              <PlusIcon size={16} /> Add User
-            </button>
-          )}
         </div>
 
         {error && (
@@ -355,6 +396,72 @@ const AdminV2Users = () => {
           </div>
         </div>
 
+        {/* Filter Bar */}
+        <div className="admin-v2-filter-bar">
+          <div className="admin-v2-search-box">
+            <SearchIcon size={16} />
+            <input
+              type="text"
+              placeholder="Search by name, username, or email..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button className="admin-v2-search-clear" onClick={() => setSearchQuery('')}>
+                <XIcon size={14} />
+              </button>
+            )}
+          </div>
+          <select
+            value={filterRole}
+            onChange={e => setFilterRole(e.target.value)}
+            className="admin-v2-filter-select"
+          >
+            <option value="">All Roles</option>
+            {roles.map(role => (
+              <option key={role.id} value={role.id}>{role.display_name}</option>
+            ))}
+          </select>
+          <select
+            value={filterStatus}
+            onChange={e => setFilterStatus(e.target.value)}
+            className="admin-v2-filter-select"
+          >
+            <option value="">All Status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+          <label className="admin-v2-checkbox">
+            <input
+              type="checkbox"
+              checked={filterStaleLogin}
+              onChange={e => setFilterStaleLogin(e.target.checked)}
+            />
+            <span>No login {'>'} 30 days</span>
+          </label>
+          {hasActiveFilters && (
+            <button
+              className="admin-v2-btn admin-v2-btn-sm"
+              onClick={() => {
+                setSearchQuery('');
+                setFilterRole('');
+                setFilterStatus('');
+                setFilterStaleLogin(false);
+              }}
+            >
+              <XIcon size={14} /> Clear
+            </button>
+          )}
+          {hasPermission('users.create') && (
+            <button 
+              className="admin-v2-btn admin-v2-btn-primary"
+              onClick={openCreateModal}
+            >
+              <PlusIcon size={16} /> Add User
+            </button>
+          )}
+        </div>
+
         {/* Users Table */}
         <div className="admin-v2-table-container">
           <table className="admin-v2-table">
@@ -370,28 +477,28 @@ const AdminV2Users = () => {
               </tr>
             </thead>
             <tbody>
-              {users.map(user => (
-                <tr key={user.id}>
+              {filteredUsers.map(u => (
+                <tr key={u.id}>
                   <td>
                     <div className="admin-v2-user-cell">
                       <div className="admin-v2-user-avatar">
-                        {getInitials(user.full_name)}
+                        {getInitials(u.full_name)}
                       </div>
                       <div className="admin-v2-user-info">
-                        <span className="admin-v2-user-name">{user.full_name}</span>
-                        <span className="admin-v2-user-username">@{user.username}</span>
+                        <span className="admin-v2-user-name">{u.full_name}</span>
+                        <span className="admin-v2-user-username">@{u.username}</span>
                       </div>
                     </div>
                   </td>
-                  <td>{user.email || '-'}</td>
+                  <td>{u.email || '-'}</td>
                   <td>
                     <div className="admin-v2-role-badges">
-                      {user.roles?.map(role => (
+                      {u.roles?.map(role => (
                         <span key={role.id} className={`admin-v2-role-badge ${role.name === 'system_admin' ? 'admin' : ''}`}>
                           {role.display_name}
                         </span>
                       ))}
-                      {(!user.roles || user.roles.length === 0) && (
+                      {(!u.roles || u.roles.length === 0) && (
                         <span className="admin-v2-role-badge none">No roles</span>
                       )}
                     </div>
@@ -402,29 +509,31 @@ const AdminV2Users = () => {
                     </span>
                   </td>
                   <td>
-                    <span className={`admin-v2-status-badge ${user.is_active ? 'active' : 'inactive'}`}>
-                      {user.is_active ? 'Active' : 'Inactive'}
+                    <span className={`admin-v2-status-badge ${u.is_active ? 'active' : 'inactive'}`}>
+                      {u.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </td>
                   <td>
-                    {user.last_login 
-                      ? new Date(user.last_login).toLocaleDateString() 
-                      : 'Never'}
+                    <span className={isStaleLogin(u.last_login) ? 'admin-v2-text-warning' : ''}>
+                      {u.last_login 
+                        ? new Date(u.last_login).toLocaleDateString() 
+                        : 'Never'}
+                    </span>
                   </td>
                   <td>
                     <div className="admin-v2-table-actions">
                       <button 
                         className="admin-v2-action-btn admin-v2-action-btn-edit"
-                        onClick={() => openEditModal(user)}
+                        onClick={() => openEditModal(u)}
                         title="Edit user"
                       >
                         <EditIcon size={14} />
                         <span>Edit</span>
                       </button>
-                      {!user.is_system_admin && (
+                      {!u.is_system_admin && (
                         <button 
                           className="admin-v2-action-btn admin-v2-action-btn-delete"
-                          onClick={() => openDeleteModal(user)}
+                          onClick={() => openDeleteModal(u)}
                           title="Delete user"
                         >
                           <TrashIcon size={14} />
