@@ -75,9 +75,9 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",  # Vite dev server
+        "http://localhost:5174",  # Vite dev server (alt port)
         "http://localhost:3000",  # Alternative dev port
         "http://localhost",       # Docker frontend
-        "*"  # Allow all for now - restrict in production
     ],
     allow_credentials=True,
     allow_methods=["*"],

@@ -142,6 +142,8 @@ def first_run_setup(
         value=token,
         httponly=True,
         max_age=SESSION_TIMEOUT_MINUTES * 60,
+        path="/",
+        domain="localhost",
         samesite="lax",
         secure=False  # Set to True in production with HTTPS
     )
@@ -237,6 +239,8 @@ def login(
         value=token,
         httponly=True,
         max_age=SESSION_TIMEOUT_MINUTES * 60,
+        path="/",
+        domain="localhost",
         samesite="lax",
         secure=False  # Set to True in production with HTTPS
     )
@@ -341,6 +345,8 @@ def verify_user_pin(
         value=token,
         httponly=True,
         max_age=SESSION_TIMEOUT_MINUTES * 60,
+        path="/",
+        domain="localhost",
         samesite="lax",
         secure=False  # Set to True in production with HTTPS
     )
