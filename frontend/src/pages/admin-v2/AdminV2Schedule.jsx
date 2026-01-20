@@ -391,8 +391,23 @@ const AdminV2Schedule = () => {
                                 )}
                               </div>
                               <div className="admin-v2-schedule-item-name">{item.name}</div>
-                              {item.description && (
-                                <div className="admin-v2-schedule-item-desc">{item.description}</div>
+                              {(item.default_amount || item.default_item) && (
+                                <div className="admin-v2-schedule-item-dose">
+                                  {item.default_item && <span>{item.default_item}</span>}
+                                  {item.default_amount && (
+                                    <span> {item.default_amount} {item.default_amount_unit || ''}</span>
+                                  )}
+                                  {item.default_calories && (
+                                    <span className="admin-v2-schedule-item-calories"> ({item.default_calories} cal)</span>
+                                  )}
+                                </div>
+                              )}
+                              {item.schedule_type && (
+                                <div className="admin-v2-schedule-item-type">
+                                  <span className={`admin-v2-badge admin-v2-badge-${item.schedule_type}`}>
+                                    {item.schedule_type.replace('_', ' ')}
+                                  </span>
+                                </div>
                               )}
                             </div>
                           ))}

@@ -441,3 +441,232 @@ async def check_nutrition_data(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error checking nutrition data: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================
+# NUTRITION GOALS ROUTES
+# =============================================
+
+from models.nutrition import (
+    NutritionGoalCreate, NutritionGoalUpdate, NutritionGoalResponse,
+    NutritionOutputCreate, NutritionOutputUpdate, NutritionOutputResponse,
+    NutritionScheduleCreate, NutritionScheduleUpdate, NutritionScheduleResponse,
+    OUTPUT_TYPES, CONSISTENCY_TYPES, COLOR_TYPES, CLARITY_TYPES, DIAPER_WETNESS_TYPES,
+    SCHEDULE_TYPES
+)
+from crud.nutrition import (
+    create_nutrition_goal, get_nutrition_goal_by_id, get_patient_nutrition_goals,
+    get_current_nutrition_goal, update_nutrition_goal, delete_nutrition_goal,
+    create_nutrition_output, get_nutrition_output_by_id, get_patient_nutrition_outputs,
+    get_daily_nutrition_outputs, get_output_summary, update_nutrition_output, delete_nutrition_output,
+    create_nutrition_schedule, get_nutrition_schedule_by_id, get_patient_nutrition_schedules,
+    update_nutrition_schedule, toggle_nutrition_schedule, delete_nutrition_schedule
+)
+
+
+@router.post("/nutrition/goals", response_model=NutritionGoalResponse)
+async def create_goal(goal_data: NutritionGoalCreate, db: Session = Depends(get_db)):
+    """Create a new nutrition goal for a patient"""
+    try:
+        goal = create_nutrition_goal(db, goal_data.model_dump())
+        return goal
+    except Exception as e:
+        logger.error(f"Error creating nutrition goal: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/nutrition/goals/patient/{patient_id}", response_model=List[NutritionGoalResponse])
+async def get_goals_for_patient(
+    patient_id: int, 
+    active_only: bool = True,
+    db: Session = Depends(get_db)
+):
+    """Get all nutrition goals for a patient"""
+    return get_patient_nutrition_goals(db, patient_id, active_only)
+
+
+@router.get("/nutrition/goals/patient/{patient_id}/current", response_model=Optional[NutritionGoalResponse])
+async def get_current_goal(patient_id: int, db: Session = Depends(get_db)):
+    """Get the current active nutrition goal for a patient"""
+    return get_current_nutrition_goal(db, patient_id)
+
+
+@router.get("/nutrition/goals/{goal_id}", response_model=NutritionGoalResponse)
+async def get_goal(goal_id: int, db: Session = Depends(get_db)):
+    """Get a specific nutrition goal"""
+    goal = get_nutrition_goal_by_id(db, goal_id)
+    if not goal:
+        raise HTTPException(status_code=404, detail="Nutrition goal not found")
+    return goal
+
+
+@router.put("/nutrition/goals/{goal_id}", response_model=NutritionGoalResponse)
+async def update_goal(goal_id: int, update_data: NutritionGoalUpdate, db: Session = Depends(get_db)):
+    """Update a nutrition goal"""
+    goal = update_nutrition_goal(db, goal_id, update_data.model_dump(exclude_unset=True))
+    if not goal:
+        raise HTTPException(status_code=404, detail="Nutrition goal not found")
+    return goal
+
+
+@router.delete("/nutrition/goals/{goal_id}")
+async def delete_goal(goal_id: int, db: Session = Depends(get_db)):
+    """Delete a nutrition goal"""
+    if not delete_nutrition_goal(db, goal_id):
+        raise HTTPException(status_code=404, detail="Nutrition goal not found")
+    return {"success": True}
+
+
+# =============================================
+# NUTRITION OUTPUT ROUTES
+# =============================================
+
+@router.get("/nutrition/outputs/types")
+async def get_output_types():
+    """Get available output types and options"""
+    return {
+        "output_types": OUTPUT_TYPES,
+        "consistency_types": CONSISTENCY_TYPES,
+        "color_types": COLOR_TYPES,
+        "clarity_types": CLARITY_TYPES,
+        "diaper_wetness_types": DIAPER_WETNESS_TYPES
+    }
+
+
+@router.post("/nutrition/outputs", response_model=NutritionOutputResponse)
+async def create_output(output_data: NutritionOutputCreate, db: Session = Depends(get_db)):
+    """Create a new output log entry"""
+    try:
+        output = create_nutrition_output(db, output_data.model_dump())
+        return output
+    except Exception as e:
+        logger.error(f"Error creating nutrition output: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/nutrition/outputs/patient/{patient_id}", response_model=List[NutritionOutputResponse])
+async def get_outputs_for_patient(
+    patient_id: int,
+    output_type: Optional[str] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    limit: int = 100,
+    db: Session = Depends(get_db)
+):
+    """Get output logs for a patient"""
+    return get_patient_nutrition_outputs(db, patient_id, output_type, start_date, end_date, limit)
+
+
+@router.get("/nutrition/outputs/patient/{patient_id}/daily")
+async def get_daily_outputs(
+    patient_id: int,
+    target_date: Optional[date] = None,
+    db: Session = Depends(get_db)
+):
+    """Get output logs for a specific day"""
+    outputs = get_daily_nutrition_outputs(db, patient_id, target_date)
+    return [NutritionOutputResponse.model_validate(o) for o in outputs]
+
+
+@router.get("/nutrition/outputs/patient/{patient_id}/summary")
+async def get_patient_output_summary(
+    patient_id: int,
+    target_date: Optional[date] = None,
+    db: Session = Depends(get_db)
+):
+    """Get output summary for a patient for a specific day"""
+    return get_output_summary(db, patient_id, target_date)
+
+
+@router.get("/nutrition/outputs/{output_id}", response_model=NutritionOutputResponse)
+async def get_output(output_id: int, db: Session = Depends(get_db)):
+    """Get a specific output log"""
+    output = get_nutrition_output_by_id(db, output_id)
+    if not output:
+        raise HTTPException(status_code=404, detail="Output log not found")
+    return output
+
+
+@router.put("/nutrition/outputs/{output_id}", response_model=NutritionOutputResponse)
+async def update_output(output_id: int, update_data: NutritionOutputUpdate, db: Session = Depends(get_db)):
+    """Update an output log entry"""
+    output = update_nutrition_output(db, output_id, update_data.model_dump(exclude_unset=True))
+    if not output:
+        raise HTTPException(status_code=404, detail="Output log not found")
+    return output
+
+
+@router.delete("/nutrition/outputs/{output_id}")
+async def delete_output(output_id: int, db: Session = Depends(get_db)):
+    """Delete an output log entry"""
+    if not delete_nutrition_output(db, output_id):
+        raise HTTPException(status_code=404, detail="Output log not found")
+    return {"success": True}
+
+
+# =============================================
+# NUTRITION SCHEDULE ROUTES
+# =============================================
+
+@router.get("/nutrition/schedules/types")
+async def get_schedule_types():
+    """Get available schedule types"""
+    return {"schedule_types": SCHEDULE_TYPES}
+
+
+@router.post("/nutrition/schedules", response_model=NutritionScheduleResponse)
+async def create_schedule(schedule_data: NutritionScheduleCreate, db: Session = Depends(get_db)):
+    """Create a new nutrition schedule"""
+    try:
+        schedule = create_nutrition_schedule(db, schedule_data.model_dump())
+        return schedule
+    except Exception as e:
+        logger.error(f"Error creating nutrition schedule: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/nutrition/schedules/patient/{patient_id}", response_model=List[NutritionScheduleResponse])
+async def get_schedules_for_patient(
+    patient_id: int,
+    schedule_type: Optional[str] = None,
+    active_only: bool = True,
+    db: Session = Depends(get_db)
+):
+    """Get nutrition schedules for a patient"""
+    return get_patient_nutrition_schedules(db, patient_id, schedule_type, active_only)
+
+
+@router.get("/nutrition/schedules/{schedule_id}", response_model=NutritionScheduleResponse)
+async def get_schedule(schedule_id: int, db: Session = Depends(get_db)):
+    """Get a specific nutrition schedule"""
+    schedule = get_nutrition_schedule_by_id(db, schedule_id)
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Nutrition schedule not found")
+    return schedule
+
+
+@router.put("/nutrition/schedules/{schedule_id}", response_model=NutritionScheduleResponse)
+async def update_schedule(schedule_id: int, update_data: NutritionScheduleUpdate, db: Session = Depends(get_db)):
+    """Update a nutrition schedule"""
+    schedule = update_nutrition_schedule(db, schedule_id, update_data.model_dump(exclude_unset=True))
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Nutrition schedule not found")
+    return schedule
+
+
+@router.post("/nutrition/schedules/{schedule_id}/toggle", response_model=NutritionScheduleResponse)
+async def toggle_schedule(schedule_id: int, db: Session = Depends(get_db)):
+    """Toggle a nutrition schedule active status"""
+    schedule = toggle_nutrition_schedule(db, schedule_id)
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Nutrition schedule not found")
+    return schedule
+
+
+@router.delete("/nutrition/schedules/{schedule_id}")
+async def delete_schedule(schedule_id: int, db: Session = Depends(get_db)):
+    """Delete a nutrition schedule"""
+    if not delete_nutrition_schedule(db, schedule_id):
+        raise HTTPException(status_code=404, detail="Nutrition schedule not found")
+    return {"success": True}
+

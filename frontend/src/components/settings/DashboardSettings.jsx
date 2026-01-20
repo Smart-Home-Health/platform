@@ -30,8 +30,8 @@ const DashboardSettings = () => {
         // Load both settings and available vitals in parallel
         const [settingsResponse, vitalsResponse, nutritionCheckResponse] = await Promise.all([
           getSettings(),
-          fetch(`${config.apiUrl}/api/vitals/types`),
-          fetch(`${config.apiUrl}/api/nutrition/has-data`)
+          fetch(`${config.apiUrl}/api/vitals/types`, { credentials: 'include' }),
+          fetch(`${config.apiUrl}/api/nutrition/has-data`, { credentials: 'include' })
         ]);
         
         // Process vitals response

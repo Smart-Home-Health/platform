@@ -28,6 +28,10 @@ import AdminV2Patients from './pages/admin-v2/AdminV2Patients';
 import AdminV2Providers from './pages/admin-v2/AdminV2Providers';
 import AdminV2Businesses from './pages/admin-v2/AdminV2Businesses';
 import AdminV2Schedule from './pages/admin-v2/AdminV2Schedule';
+import AdminV2Vitals from './pages/admin-v2/AdminV2Vitals';
+import AdminV2Symptoms from './pages/admin-v2/AdminV2Symptoms';
+import AdminV2Nutrition from './pages/admin-v2/AdminV2Nutrition';
+import { AdminV2SettingsGeneral } from './pages/admin-v2/settings';
 import FirstRunSetup from './components/FirstRunSetup';
 import LoginModal from './components/LoginModal';
 import "./App.css";
@@ -89,6 +93,32 @@ function AppContent() {
             <Route path="/admin-v2/providers" element={<AdminV2Providers />} />
             <Route path="/admin-v2/businesses" element={<AdminV2Businesses />} />
             <Route path="/admin-v2/schedule" element={<AdminV2Schedule />} />
+            
+            {/* Admin V2 Vitals Routes */}
+            <Route path="/admin-v2/vitals" element={<AdminV2Vitals />} />
+            <Route path="/admin-v2/vitals/history" element={<AdminV2Vitals />} />
+            
+            {/* Admin V2 Symptoms Routes */}
+            <Route path="/admin-v2/symptoms" element={<AdminV2Symptoms />} />
+            <Route path="/admin-v2/symptoms/active" element={<AdminV2Symptoms />} />
+            <Route path="/admin-v2/symptoms/history" element={<AdminV2Symptoms />} />
+            
+            {/* Admin V2 Nutrition Routes */}
+            <Route path="/admin-v2/nutrition" element={<AdminV2Nutrition />} />
+            <Route path="/admin-v2/nutrition/intake" element={<AdminV2Nutrition />} />
+            <Route path="/admin-v2/nutrition/output" element={<AdminV2Nutrition />} />
+            <Route path="/admin-v2/nutrition/schedules" element={<AdminV2Nutrition />} />
+            <Route path="/admin-v2/nutrition/goals" element={<AdminV2Nutrition />} />
+            
+            {/* Admin V2 Settings Routes */}
+            <Route path="/admin-v2/settings" element={<AdminV2SettingsGeneral />} />
+            <Route path="/admin-v2/settings/patients" element={<AdminV2Patients />} />
+            <Route path="/admin-v2/settings/providers" element={<AdminV2Providers />} />
+            <Route path="/admin-v2/settings/businesses" element={<AdminV2Businesses />} />
+            <Route path="/admin-v2/settings/users" element={<AdminV2Users />} />
+            <Route path="/admin-v2/settings/users/roles" element={<AdminV2Roles />} />
+            <Route path="/admin-v2/settings/users/permissions" element={<AdminV2Permissions />} />
+            
             <Route path="/admin-v2/*" element={<AdminV2Dashboard />} />
           </Routes>
         </Layout>

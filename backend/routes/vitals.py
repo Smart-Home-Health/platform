@@ -35,6 +35,7 @@ async def add_manual_vitals(vital_data: dict, db: Session = Depends(get_db)):
     try:
         datetime_val = vital_data.get("datetime") or vital_data.get("timestamp")
         notes = vital_data.get("notes")
+        patient_id = vital_data.get("patient_id")  # Get patient_id from request
         vitals_saved = []  # Track what vitals were actually saved
         
         # Check if this is a single vital entry format
@@ -45,7 +46,7 @@ async def add_manual_vitals(vital_data: dict, db: Session = Depends(get_db)):
             # Handle specific vital types with special logic
             if vital_type == "temperature":
                 # For unified storage, save to vitals table
-                temp_ids = save_temperature_as_vitals(db, body_temp=value, timestamp=datetime_val, notes=notes)
+                temp_ids = save_temperature_as_vitals(db, body_temp=value, timestamp=datetime_val, notes=notes, patient_id=patient_id)
                 if temp_ids:
                     vitals_saved.append({
                         'type': 'temperature',
@@ -59,7 +60,7 @@ async def add_manual_vitals(vital_data: dict, db: Session = Depends(get_db)):
                     map_bp = value.get("map")
                     if systolic and diastolic:
                         # Save to unified vitals table
-                        bp_ids = save_blood_pressure_as_vitals(db, systolic, diastolic, map_bp, datetime_val, notes)
+                        bp_ids = save_blood_pressure_as_vitals(db, systolic, diastolic, map_bp, datetime_val, notes, patient_id=patient_id)
                         if bp_ids:
                             vitals_saved.append({
                                 'type': 'blood_pressure',
@@ -67,7 +68,7 @@ async def add_manual_vitals(vital_data: dict, db: Session = Depends(get_db)):
                             })
             else:
                 # Generic vital type
-                vital_id = save_vital(db, vital_type, value, datetime_val, notes)
+                vital_id = save_vital(db, vital_type, value, datetime_val, notes, patient_id=patient_id)
                 if vital_id:
                     vitals_saved.append({
                         'type': vital_type,
@@ -83,7 +84,7 @@ async def add_manual_vitals(vital_data: dict, db: Session = Depends(get_db)):
                 map_bp = bp.get("map_bp")
                 if systolic and diastolic:
                     # Save to unified vitals table
-                    bp_ids = save_blood_pressure_as_vitals(db, systolic, diastolic, map_bp, datetime_val, notes)
+                    bp_ids = save_blood_pressure_as_vitals(db, systolic, diastolic, map_bp, datetime_val, notes, patient_id=patient_id)
                     if bp_ids:
                         vitals_saved.append({
                             'type': 'blood_pressure',
@@ -96,7 +97,7 @@ async def add_manual_vitals(vital_data: dict, db: Session = Depends(get_db)):
                 body_temp = temp.get("body_temp")
                 skin_temp = temp.get("skin_temp")  # Include skin temp if provided
                 # Save to unified vitals table
-                temp_ids = save_temperature_as_vitals(db, body_temp=body_temp, skin_temp=skin_temp, timestamp=datetime_val, notes=notes)
+                temp_ids = save_temperature_as_vitals(db, body_temp=body_temp, skin_temp=skin_temp, timestamp=datetime_val, notes=notes, patient_id=patient_id)
                 if temp_ids:
                     vitals_saved.append({
                         'type': 'temperature',
@@ -109,7 +110,7 @@ async def add_manual_vitals(vital_data: dict, db: Session = Depends(get_db)):
             bathroom_size_map = ["smear", "s", "m", "l", "xl"]
             if bathroom_type and bathroom_size:
                 size_numeric = bathroom_size_map.index(bathroom_size) if bathroom_size in bathroom_size_map else 0
-                vital_id = save_vital(db, "bathroom", size_numeric, datetime_val, notes, bathroom_type)
+                vital_id = save_vital(db, "bathroom", size_numeric, datetime_val, notes, vital_group=bathroom_type, patient_id=patient_id)
                 if vital_id:
                     vitals_saved.append({
                         'type': 'bathroom',
@@ -204,6 +205,93 @@ async def add_manual_vitals(vital_data: dict, db: Session = Depends(get_db)):
 def get_vital_types(db: Session = Depends(get_db)):
     """Get a distinct list of vital_type values from the vitals table"""
     return get_distinct_vital_types(db)
+
+
+@router.get("/patient/{patient_id}")
+def get_patient_vitals(
+    patient_id: int, 
+    vital_type: str = None, 
+    start_date: str = None, 
+    end_date: str = None,
+    limit: int = 100, 
+    db: Session = Depends(get_db)
+):
+    """Get all vitals for a specific patient with optional filtering"""
+    from schemas.vital import Vital
+    from datetime import datetime
+    
+    query = db.query(Vital).filter(Vital.patient_id == patient_id)
+    
+    if vital_type:
+        query = query.filter(Vital.vital_type == vital_type)
+    
+    if start_date:
+        try:
+            start_dt = datetime.fromisoformat(start_date)
+            query = query.filter(Vital.timestamp >= start_dt)
+        except:
+            pass
+    
+    if end_date:
+        try:
+            end_dt = datetime.fromisoformat(end_date)
+            query = query.filter(Vital.timestamp <= end_dt)
+        except:
+            pass
+    
+    results = query.order_by(Vital.timestamp.desc()).limit(limit).all()
+    
+    # Group multi-value vitals (BP, temperature) by timestamp
+    from collections import defaultdict
+    grouped = defaultdict(lambda: {'values': {}})
+    single_vitals = []
+    
+    for v in results:
+        if v.vital_type in ['blood_pressure', 'temperature'] and v.vital_group:
+            key = (v.timestamp, v.vital_type)
+            grouped[key]['timestamp'] = v.timestamp
+            grouped[key]['vital_type'] = v.vital_type
+            grouped[key]['notes'] = v.notes
+            grouped[key]['patient_id'] = v.patient_id
+            grouped[key]['values'][v.vital_group] = v.value
+        else:
+            single_vitals.append({
+                'id': v.id,
+                'timestamp': v.timestamp,
+                'vital_type': v.vital_type,
+                'value': v.value,
+                'notes': v.notes,
+                'patient_id': v.patient_id,
+                'source': 'manual'
+            })
+    
+    # Convert grouped vitals to list format
+    for key, data in grouped.items():
+        if data['vital_type'] == 'blood_pressure':
+            single_vitals.append({
+                'timestamp': data['timestamp'],
+                'vital_type': 'blood_pressure',
+                'systolic': data['values'].get('systolic'),
+                'diastolic': data['values'].get('diastolic'),
+                'map': data['values'].get('map'),
+                'notes': data['notes'],
+                'patient_id': data['patient_id'],
+                'source': 'manual'
+            })
+        elif data['vital_type'] == 'temperature':
+            single_vitals.append({
+                'timestamp': data['timestamp'],
+                'vital_type': 'temperature',
+                'value': data['values'].get('body') or data['values'].get('core'),
+                'notes': data['notes'],
+                'patient_id': data['patient_id'],
+                'source': 'manual'
+            })
+    
+    # Sort by timestamp descending
+    single_vitals.sort(key=lambda x: x['timestamp'] if x['timestamp'] else '', reverse=True)
+    
+    return single_vitals
 
 
 @router.get("/nutrition")

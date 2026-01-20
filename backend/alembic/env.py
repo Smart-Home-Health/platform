@@ -50,7 +50,12 @@ from schemas.care_task import CareTask
 from schemas.care_task_schedule import CareTaskSchedule
 from schemas.care_task_log import CareTaskLog
 from schemas.nutrition_intake import NutritionIntake
+from schemas.nutrition_goal import NutritionGoal
+from schemas.nutrition_output import NutritionOutput
+from schemas.nutrition_schedule import NutritionSchedule
 from schemas.setting import Setting
+from models.users import User, Role, Permission
+from schemas.symptom import Symptom
 
 target_metadata = Base.metadata
 

@@ -26,6 +26,7 @@ from schemas.setting import Setting
 from schemas.blood_pressure import BloodPressure
 from schemas.temperature import Temperature
 from schemas.vital import Vital
+from schemas.symptom import Symptom
 from schemas.patient import Patient
 
 __all__ = [
@@ -33,6 +34,6 @@ __all__ = [
     'CareTaskSchedule', 'CareTaskLog', 'Medication', 'MedicationSchedule',
     'MedicationLog', 'Equipment', 'EquipmentChangeLog', 'MonitoringAlert',
     'VentilatorAlert', 'ExternalAlarm', 'PulseOxData', 'Setting',
-    'BloodPressure', 'Temperature', 'Vital', 'Patient', 'User', 'Role',
+    'BloodPressure', 'Temperature', 'Vital', 'Symptom', 'Patient', 'User', 'Role',
     'Permission', 'AuditLog'
 ]

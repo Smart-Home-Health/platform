@@ -1,5 +1,5 @@
 """
-Schedule routes - Daily schedule view combining medications and care tasks
+Schedule routes - Daily schedule view combining medications, nutrition schedules, and care tasks
 """
 import logging
 from datetime import datetime, date, timedelta
@@ -15,6 +15,8 @@ from schemas.care_task import CareTask
 from schemas.care_task_schedule import CareTaskSchedule
 from schemas.care_task_log import CareTaskLog
 from schemas.care_task_category import CareTaskCategory
+from schemas.nutrition_schedule import NutritionSchedule
+from schemas.nutrition_intake import NutritionIntake
 from croniter import croniter
 
 logger = logging.getLogger("app")
@@ -30,7 +32,7 @@ async def get_daily_schedule(
 ):
     """
     Get the complete daily schedule for a patient, organized by hour.
-    Returns medications, nutrition tasks, and other care tasks with completion status.
+    Returns medications, nutrition schedules, and care tasks with completion status.
     """
     try:
         # Parse target date
@@ -41,6 +43,7 @@ async def get_daily_schedule(
         
         # Get all scheduled items
         medications = get_scheduled_medications(db, schedule_date, patient_id)
+        nutrition_items = get_scheduled_nutrition(db, schedule_date, patient_id)
         care_tasks = get_scheduled_care_tasks(db, schedule_date, patient_id)
         
         # Check completion status for medications
@@ -70,11 +73,20 @@ async def get_daily_schedule(
                 key = f"{log.schedule_id}_{log.scheduled_time.strftime('%H:%M')}"
                 completed_task_times.add(key)
         
-        # Get nutrition category ID
-        nutrition_category = db.query(CareTaskCategory).filter(
-            CareTaskCategory.name.ilike('%nutrition%')
-        ).first()
-        nutrition_category_id = nutrition_category.id if nutrition_category else None
+        # Check completion status for nutrition schedules (via nutrition_intake)
+        nutrition_logs = db.query(NutritionIntake).filter(
+            NutritionIntake.patient_id == patient_id,
+            NutritionIntake.consumed_at >= datetime.combine(schedule_date, datetime.min.time()),
+            NutritionIntake.consumed_at <= datetime.combine(schedule_date, datetime.max.time())
+        ).all()
+        
+        # For nutrition, we check if intake was logged around the scheduled time (within 30 min)
+        completed_nutrition_times = set()
+        for log in nutrition_logs:
+            for nutr in nutrition_items:
+                if abs((log.consumed_at.replace(tzinfo=None) - nutr['scheduled_time']).total_seconds()) <= 1800:  # 30 minutes
+                    key = f"{nutr['schedule_id']}_{nutr['scheduled_time'].strftime('%H:%M')}"
+                    completed_nutrition_times.add(key)
         
         # Build response with completion status
         result = {
@@ -101,11 +113,28 @@ async def get_daily_schedule(
                 "type": "medication"
             })
         
+        for nutr in nutrition_items:
+            key = f"{nutr['schedule_id']}_{nutr['scheduled_time'].strftime('%H:%M')}"
+            result["nutrition"].append({
+                "schedule_id": nutr["schedule_id"],
+                "name": nutr["name"],
+                "schedule_type": nutr["schedule_type"],
+                "description": nutr.get("instructions"),
+                "default_item": nutr.get("default_item_name"),
+                "default_amount": nutr.get("default_amount"),
+                "default_amount_unit": nutr.get("default_amount_unit"),
+                "default_calories": nutr.get("default_calories"),
+                "scheduled_time": nutr["scheduled_time"].isoformat(),
+                "hour": nutr["scheduled_time"].hour,
+                "minute": nutr["scheduled_time"].minute,
+                "notes": nutr.get("notes"),
+                "completed": key in completed_nutrition_times,
+                "type": "nutrition"
+            })
+        
         for task in care_tasks:
             key = f"{task['schedule_id']}_{task['scheduled_time'].strftime('%H:%M')}"
-            is_nutrition = task.get("category_id") == nutrition_category_id
-            
-            item = {
+            result["care_tasks"].append({
                 "schedule_id": task["schedule_id"],
                 "care_task_id": task["care_task_id"],
                 "name": task["care_task_name"],
@@ -118,13 +147,8 @@ async def get_daily_schedule(
                 "category_id": task.get("category_id"),
                 "category_name": task.get("category_name"),
                 "category_color": task.get("category_color"),
-                "type": "nutrition" if is_nutrition else "care_task"
-            }
-            
-            if is_nutrition:
-                result["nutrition"].append(item)
-            else:
-                result["care_tasks"].append(item)
+                "type": "care_task"
+            })
         
         return result
         
@@ -245,4 +269,57 @@ def get_scheduled_care_tasks(db: Session, target_date: date, patient_id: int):
         
     except Exception as e:
         logger.error(f"Error getting scheduled care tasks: {e}")
+        return []
+
+
+def get_scheduled_nutrition(db: Session, target_date: date, patient_id: int):
+    """
+    Get all nutrition items scheduled for a specific date for a patient.
+    Uses the nutrition_schedules table for meals, hydration, bathroom checks, etc.
+    """
+    try:
+        # Get all active nutrition schedules for this patient
+        schedules = db.query(NutritionSchedule).filter(
+            NutritionSchedule.is_active == True,
+            NutritionSchedule.patient_id == patient_id
+        ).all()
+        
+        scheduled_nutrition = []
+        
+        for schedule in schedules:
+            try:
+                # Create datetime for start of target date
+                start_of_day = datetime.combine(target_date, datetime.min.time())
+                
+                # Initialize croniter with a time before the target date
+                base_time = start_of_day - timedelta(days=1)
+                cron = croniter(schedule.cron_expression, base_time)
+                
+                # Find all scheduled times for the target date
+                while True:
+                    next_time = cron.get_next(datetime)
+                    if next_time.date() > target_date:
+                        break
+                    if next_time.date() == target_date:
+                        scheduled_nutrition.append({
+                            'schedule_id': schedule.id,
+                            'name': schedule.name,
+                            'schedule_type': schedule.schedule_type,
+                            'default_item_name': schedule.default_item_name,
+                            'default_amount': schedule.default_amount,
+                            'default_amount_unit': schedule.default_amount_unit,
+                            'default_calories': schedule.default_calories,
+                            'scheduled_time': next_time,
+                            'instructions': schedule.instructions,
+                            'notes': schedule.notes,
+                            'cron_expression': schedule.cron_expression
+                        })
+            except Exception as cron_error:
+                logger.error(f"Error processing nutrition cron expression {schedule.cron_expression}: {cron_error}")
+                continue
+        
+        return sorted(scheduled_nutrition, key=lambda x: x['scheduled_time'])
+        
+    except Exception as e:
+        logger.error(f"Error getting scheduled nutrition: {e}")
         return []

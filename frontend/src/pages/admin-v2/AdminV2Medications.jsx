@@ -610,7 +610,7 @@ const AdminV2Medications = () => {
                           </td>
                           <td>
                             <div className="admin-v2-table-actions">
-                              {hasPermission('medications.update') && !med.as_needed && (
+                              {hasPermission('medications.update') && (
                                 <button 
                                   className="admin-v2-action-btn admin-v2-action-btn-schedule"
                                   onClick={() => openScheduleModal(med)}

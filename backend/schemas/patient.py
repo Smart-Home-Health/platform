@@ -27,3 +27,4 @@ class Patient(Base):
     equipment = relationship('Equipment', back_populates='patient')
     nutrition_intake = relationship('NutritionIntake', back_populates='patient')
     providers = relationship('Provider', back_populates='patient')
+    symptoms = relationship('Symptom', back_populates='patient')
