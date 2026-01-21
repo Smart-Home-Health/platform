@@ -137,12 +137,14 @@ def first_run_setup(
     token = create_access_token(user, is_full_password=True)
     
     # Set httpOnly cookie
+    # Note: samesite="none" requires secure=True in production
+    # For dev with different ports (5173->8000), we need none to allow cross-origin POST
     response.set_cookie(
         key="session_token",
         value=token,
         httponly=True,
         max_age=SESSION_TIMEOUT_MINUTES * 60,
-        samesite="lax",
+        samesite="none",
         secure=False  # Set to True in production with HTTPS
     )
     
@@ -232,12 +234,14 @@ def login(
     token = create_access_token(user, is_full_password=True)
     
     # Set httpOnly cookie
+    # Note: samesite="none" requires secure=True in production
+    # For dev with different ports (5173->8000), we need none to allow cross-origin POST
     response.set_cookie(
         key="session_token",
         value=token,
         httponly=True,
         max_age=SESSION_TIMEOUT_MINUTES * 60,
-        samesite="lax",
+        samesite="none",
         secure=False  # Set to True in production with HTTPS
     )
     
@@ -336,12 +340,14 @@ def verify_user_pin(
     token = create_access_token(user, is_full_password=False)
     
     # Set httpOnly cookie
+    # Note: samesite="none" requires secure=True in production
+    # For dev with different ports (5173->8000), we need none to allow cross-origin POST
     response.set_cookie(
         key="session_token",
         value=token,
         httponly=True,
         max_age=SESSION_TIMEOUT_MINUTES * 60,
-        samesite="lax",
+        samesite="none",
         secure=False  # Set to True in production with HTTPS
     )
     

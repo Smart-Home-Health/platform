@@ -201,7 +201,18 @@ def get_care_tasks(db: Session, active_only=True, inactive_only=False, category_
                 'description': task.description,
                 'active': task.active,
                 'created_at': task.created_at.isoformat() if task.created_at else None,
-                'updated_at': task.updated_at.isoformat() if task.updated_at else None
+                'updated_at': task.updated_at.isoformat() if task.updated_at else None,
+                'schedules': [
+                    {
+                        'id': schedule.id,
+                        'cron_expression': schedule.cron_expression,
+                        'description': schedule.description,
+                        'active': schedule.active,
+                        'notes': schedule.notes,
+                        'patient_id': schedule.patient_id
+                    }
+                    for schedule in task.schedules
+                ] if task.schedules else []
             }
             for task in tasks
         ]

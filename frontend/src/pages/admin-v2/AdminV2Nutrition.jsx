@@ -14,7 +14,24 @@ import {
   ClockIcon,
   DropletIcon,
   FlameIcon,
-  ToiletIcon
+  ToiletIcon,
+  UrineIcon,
+  BowelIcon,
+  VomitIcon,
+  NotesIcon,
+  DiaperIcon,
+  CatheterIcon,
+  BloodIcon,
+  MucusIcon,
+  PainIcon,
+  StrainingIcon,
+  SizeSmearIcon,
+  SizeSmallIcon,
+  SizeMediumIcon,
+  SizeLargeIcon,
+  WetnessDryIcon,
+  WetnessWetIcon,
+  WetnessSoakedIcon
 } from '../../components/Icons';
 import './AdminV2.css';
 
@@ -1552,191 +1569,255 @@ const AdminV2Nutrition = () => {
               <div className="admin-v2-modal-body">
                 {formError && <div className="admin-v2-form-error">{formError}</div>}
                 
-                <div className="admin-v2-form-row">
-                  <div className="admin-v2-form-group">
-                    <label>Output Type *</label>
-                    <select
-                      value={outputForm.output_type}
-                      onChange={e => setOutputForm({...outputForm, output_type: e.target.value})}
-                    >
-                      {(outputTypes.output_types || ['urine', 'bowel', 'vomit', 'other']).map(type => (
-                        <option key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1)}</option>
-                      ))}
-                    </select>
+                {/* Output Type Selection */}
+                <div className="admin-v2-output-type-section">
+                  <label className="admin-v2-output-section-label">Output Type *</label>
+                  <div className="admin-v2-output-type-grid">
+                    {(outputTypes.output_types || ['urine', 'bowel', 'vomit', 'other']).map(type => (
+                      <button
+                        key={type}
+                        type="button"
+                        className={`admin-v2-output-type-btn ${outputForm.output_type === type ? 'active' : ''}`}
+                        onClick={() => setOutputForm({...outputForm, output_type: type})}
+                      >
+                        {type === 'urine' && <UrineIcon size={20} />}
+                        {type === 'bowel' && <BowelIcon size={20} />}
+                        {type === 'vomit' && <VomitIcon size={20} />}
+                        {type === 'other' && <NotesIcon size={20} />}
+                        <span>{type.charAt(0).toUpperCase() + type.slice(1)}</span>
+                      </button>
+                    ))}
                   </div>
-                  <div className="admin-v2-form-group">
-                    <label>
+                </div>
+
+                {/* Method Selection */}
+                <div className="admin-v2-output-method-section">
+                  <div className="admin-v2-output-method-options">
+                    <label className={`admin-v2-output-method-option ${outputForm.is_diaper ? 'active' : ''}`}>
                       <input
                         type="checkbox"
                         checked={outputForm.is_diaper}
                         onChange={e => setOutputForm({...outputForm, is_diaper: e.target.checked})}
                       />
-                      {' '}Diaper Change
+                      <span className="admin-v2-output-method-icon"><DiaperIcon size={18} /></span>
+                      <span>Diaper</span>
                     </label>
-                  </div>
-                  <div className="admin-v2-form-group">
-                    <label>
+                    <label className={`admin-v2-output-method-option ${outputForm.is_catheter ? 'active' : ''}`}>
                       <input
                         type="checkbox"
                         checked={outputForm.is_catheter}
                         onChange={e => setOutputForm({...outputForm, is_catheter: e.target.checked})}
                       />
-                      {' '}Catheter
+                      <span className="admin-v2-output-method-icon"><CatheterIcon size={18} /></span>
+                      <span>Catheter</span>
                     </label>
                   </div>
                 </div>
 
+                {/* Bowel Movement Details */}
                 {outputForm.output_type === 'bowel' && (
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Consistency</label>
-                      <select
-                        value={outputForm.consistency}
-                        onChange={e => setOutputForm({...outputForm, consistency: e.target.value})}
-                      >
-                        <option value="">Select...</option>
-                        {(outputTypes.consistency_types || []).map(type => (
-                          <option key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ')}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Color</label>
-                      <select
-                        value={outputForm.color}
-                        onChange={e => setOutputForm({...outputForm, color: e.target.value})}
-                      >
-                        <option value="">Select...</option>
-                        {(outputTypes.color_types || []).map(type => (
-                          <option key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ')}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                )}
-
-                {outputForm.output_type === 'urine' && (
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Clarity</label>
-                      <select
-                        value={outputForm.clarity}
-                        onChange={e => setOutputForm({...outputForm, clarity: e.target.value})}
-                      >
-                        <option value="">Select...</option>
-                        {(outputTypes.clarity_types || []).map(type => (
-                          <option key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1)}</option>
-                        ))}
-                      </select>
-                    </div>
+                  <div className="admin-v2-output-details-card">
+                    <h4 className="admin-v2-output-card-title">Bowel Movement Details</h4>
+                    
                     <div className="admin-v2-form-group">
                       <label>Amount</label>
-                      <input
-                        type="number"
-                        step="1"
-                        value={outputForm.amount}
-                        onChange={e => setOutputForm({...outputForm, amount: e.target.value})}
-                        placeholder="ml"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {outputForm.is_diaper && (
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Diaper Wetness</label>
-                      <select
-                        value={outputForm.diaper_wetness}
-                        onChange={e => setOutputForm({...outputForm, diaper_wetness: e.target.value})}
-                      >
-                        <option value="">Select...</option>
-                        {(outputTypes.diaper_wetness_types || ['dry', 'wet', 'soaked']).map(type => (
-                          <option key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1)}</option>
+                      <div className="admin-v2-output-amount-grid">
+                        {['smear', 'small', 'medium', 'large'].map(size => (
+                          <button
+                            key={size}
+                            type="button"
+                            className={`admin-v2-output-amount-btn ${outputForm.amount_unit === size ? 'active' : ''}`}
+                            onClick={() => setOutputForm({...outputForm, amount_unit: size, amount: null})}
+                          >
+                            <span className="admin-v2-output-amount-icon">
+                              {size === 'smear' && <SizeSmearIcon size={20} />}
+                              {size === 'small' && <SizeSmallIcon size={20} />}
+                              {size === 'medium' && <SizeMediumIcon size={20} />}
+                              {size === 'large' && <SizeLargeIcon size={20} />}
+                            </span>
+                            <span>{size.charAt(0).toUpperCase() + size.slice(1)}</span>
+                          </button>
                         ))}
-                      </select>
+                      </div>
                     </div>
-                    <div className="admin-v2-form-group">
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={outputForm.diaper_soiled}
-                          onChange={e => setOutputForm({...outputForm, diaper_soiled: e.target.checked})}
-                        />
-                        {' '}Soiled (BM)
-                      </label>
+                    
+                    <div className="admin-v2-form-row">
+                      <div className="admin-v2-form-group">
+                        <label>Consistency</label>
+                        <select
+                          value={outputForm.consistency}
+                          onChange={e => setOutputForm({...outputForm, consistency: e.target.value})}
+                        >
+                          <option value="">Select...</option>
+                          {(outputTypes.consistency_types || []).map(type => (
+                            <option key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ')}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="admin-v2-form-group">
+                        <label>Color</label>
+                        <select
+                          value={outputForm.color}
+                          onChange={e => setOutputForm({...outputForm, color: e.target.value})}
+                        >
+                          <option value="">Select...</option>
+                          {(outputTypes.color_types || []).map(type => (
+                            <option key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ')}</option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                   </div>
                 )}
 
+                {/* Urine Details */}
+                {outputForm.output_type === 'urine' && (
+                  <div className="admin-v2-output-details-card">
+                    <h4 className="admin-v2-output-card-title">Urine Details</h4>
+                    <div className="admin-v2-form-row">
+                      <div className="admin-v2-form-group">
+                        <label>Clarity</label>
+                        <select
+                          value={outputForm.clarity}
+                          onChange={e => setOutputForm({...outputForm, clarity: e.target.value})}
+                        >
+                          <option value="">Select...</option>
+                          {(outputTypes.clarity_types || []).map(type => (
+                            <option key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1)}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="admin-v2-form-group">
+                        <label>Amount (ml)</label>
+                        <input
+                          type="number"
+                          step="1"
+                          value={outputForm.amount}
+                          onChange={e => setOutputForm({...outputForm, amount: e.target.value})}
+                          placeholder="Enter ml"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Diaper Details */}
+                {outputForm.is_diaper && (
+                  <div className="admin-v2-output-details-card">
+                    <h4 className="admin-v2-output-card-title">Diaper Details</h4>
+                    <div className="admin-v2-form-row">
+                      <div className="admin-v2-form-group">
+                        <label>Wetness Level</label>
+                        <div className="admin-v2-output-wetness-grid">
+                          {(outputTypes.diaper_wetness_types || ['dry', 'wet', 'soaked']).map(type => (
+                            <button
+                              key={type}
+                              type="button"
+                              className={`admin-v2-output-wetness-btn ${outputForm.diaper_wetness === type ? 'active' : ''}`}
+                              onClick={() => setOutputForm({...outputForm, diaper_wetness: type})}
+                            >
+                              {type === 'dry' && <WetnessDryIcon size={18} />}
+                              {type === 'wet' && <WetnessWetIcon size={18} />}
+                              {type === 'soaked' && <WetnessSoakedIcon size={18} />}
+                              <span>{type.charAt(0).toUpperCase() + type.slice(1)}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="admin-v2-form-group">
+                        <label className={`admin-v2-output-toggle-option ${outputForm.diaper_soiled ? 'active' : ''}`}>
+                          <input
+                            type="checkbox"
+                            checked={outputForm.diaper_soiled}
+                            onChange={e => setOutputForm({...outputForm, diaper_soiled: e.target.checked})}
+                          />
+                          <span>Soiled (Bowel Movement)</span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Catheter Details */}
                 {outputForm.is_catheter && (
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>
+                  <div className="admin-v2-output-details-card">
+                    <h4 className="admin-v2-output-card-title">Catheter Details</h4>
+                    <div className="admin-v2-form-row">
+                      <div className="admin-v2-form-group">
+                        <label className={`admin-v2-output-toggle-option ${outputForm.catheter_bag_emptied ? 'active' : ''}`}>
+                          <input
+                            type="checkbox"
+                            checked={outputForm.catheter_bag_emptied}
+                            onChange={e => setOutputForm({...outputForm, catheter_bag_emptied: e.target.checked})}
+                          />
+                          <span>Bag Emptied</span>
+                        </label>
+                      </div>
+                      <div className="admin-v2-form-group">
+                        <label>Amount (ml)</label>
                         <input
-                          type="checkbox"
-                          checked={outputForm.catheter_bag_emptied}
-                          onChange={e => setOutputForm({...outputForm, catheter_bag_emptied: e.target.checked})}
+                          type="number"
+                          step="1"
+                          value={outputForm.amount}
+                          onChange={e => setOutputForm({...outputForm, amount: e.target.value})}
+                          placeholder="Enter ml"
                         />
-                        {' '}Catheter Bag Emptied
-                      </label>
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Amount (ml)</label>
-                      <input
-                        type="number"
-                        step="1"
-                        value={outputForm.amount}
-                        onChange={e => setOutputForm({...outputForm, amount: e.target.value})}
-                      />
+                      </div>
                     </div>
                   </div>
                 )}
 
-                <div className="admin-v2-form-section">
-                  <h4>Concerns (check if applicable)</h4>
-                  <div className="admin-v2-checkbox-grid">
-                    <label>
+                {/* Concerns Section */}
+                <div className="admin-v2-output-details-card admin-v2-output-concerns-card">
+                  <h4 className="admin-v2-output-card-title">Concerns</h4>
+                  <div className="admin-v2-output-concerns-grid">
+                    <label className={`admin-v2-output-concern-option ${outputForm.has_blood ? 'active warning' : ''}`}>
                       <input
                         type="checkbox"
                         checked={outputForm.has_blood}
                         onChange={e => setOutputForm({...outputForm, has_blood: e.target.checked})}
                       />
-                      {' '}Blood Present
+                      <span className="admin-v2-concern-icon"><BloodIcon size={20} /></span>
+                      <span>Blood</span>
                     </label>
-                    <label>
+                    <label className={`admin-v2-output-concern-option ${outputForm.has_mucus ? 'active warning' : ''}`}>
                       <input
                         type="checkbox"
                         checked={outputForm.has_mucus}
                         onChange={e => setOutputForm({...outputForm, has_mucus: e.target.checked})}
                       />
-                      {' '}Mucus Present
+                      <span className="admin-v2-concern-icon"><MucusIcon size={20} /></span>
+                      <span>Mucus</span>
                     </label>
-                    <label>
+                    <label className={`admin-v2-output-concern-option ${outputForm.pain_reported ? 'active warning' : ''}`}>
                       <input
                         type="checkbox"
                         checked={outputForm.pain_reported}
                         onChange={e => setOutputForm({...outputForm, pain_reported: e.target.checked})}
                       />
-                      {' '}Pain Reported
+                      <span className="admin-v2-concern-icon"><PainIcon size={20} /></span>
+                      <span>Pain</span>
                     </label>
-                    <label>
+                    <label className={`admin-v2-output-concern-option ${outputForm.straining ? 'active warning' : ''}`}>
                       <input
                         type="checkbox"
                         checked={outputForm.straining}
                         onChange={e => setOutputForm({...outputForm, straining: e.target.checked})}
                       />
-                      {' '}Straining
+                      <span className="admin-v2-concern-icon"><StrainingIcon size={20} /></span>
+                      <span>Straining</span>
                     </label>
                   </div>
                 </div>
 
-                <div className="admin-v2-form-group">
+                {/* Notes */}
+                <div className="admin-v2-output-notes-section">
                   <label>Notes</label>
                   <textarea
                     value={outputForm.notes}
                     onChange={e => setOutputForm({...outputForm, notes: e.target.value})}
-                    rows={2}
+                    rows={3}
+                    placeholder="Any additional observations..."
                   />
                 </div>
               </div>

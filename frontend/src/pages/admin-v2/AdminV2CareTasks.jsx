@@ -42,6 +42,20 @@ const AdminV2CareTasks = () => {
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
   
+  // Category modal states
+  const [showCategorySection, setShowCategorySection] = useState(false);
+  const [showCreateCategoryModal, setShowCreateCategoryModal] = useState(false);
+  const [showEditCategoryModal, setShowEditCategoryModal] = useState(false);
+  const [showDeleteCategoryModal, setShowDeleteCategoryModal] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [categoryFormData, setCategoryFormData] = useState({
+    name: '',
+    description: '',
+    color: '#a371f7'
+  });
+  const [categorySaving, setCategorySaving] = useState(false);
+  const [categoryError, setCategoryError] = useState(null);
+  
   // Schedule form state
   const [scheduleMode, setScheduleMode] = useState('weekly');
   const [selectedDays, setSelectedDays] = useState([]);
@@ -352,6 +366,120 @@ const AdminV2CareTasks = () => {
     return category && category.name.toLowerCase() === 'nutrition';
   };
 
+  // Category management handlers
+  const openCreateCategoryModal = () => {
+    setCategoryFormData({ name: '', description: '', color: '#a371f7' });
+    setCategoryError(null);
+    setShowCreateCategoryModal(true);
+  };
+
+  const openEditCategoryModal = (category) => {
+    setSelectedCategory(category);
+    setCategoryFormData({
+      name: category.name,
+      description: category.description || '',
+      color: category.color || '#a371f7'
+    });
+    setCategoryError(null);
+    setShowEditCategoryModal(true);
+  };
+
+  const openDeleteCategoryModal = (category) => {
+    setSelectedCategory(category);
+    setShowDeleteCategoryModal(true);
+  };
+
+  const handleCreateCategory = async (e) => {
+    e.preventDefault();
+    setCategorySaving(true);
+    setCategoryError(null);
+
+    try {
+      const response = await fetch(`${config.apiUrl}/api/add/care-task-category`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(categoryFormData)
+      });
+
+      if (response.ok) {
+        setShowCreateCategoryModal(false);
+        fetchCategories();
+        setCategoryFormData({ name: '', description: '', color: '#a371f7' });
+      } else {
+        const data = await response.json();
+        setCategoryError(data.detail || 'Failed to create category');
+      }
+    } catch (err) {
+      setCategoryError('Error creating category');
+    } finally {
+      setCategorySaving(false);
+    }
+  };
+
+  const handleUpdateCategory = async (e) => {
+    e.preventDefault();
+    if (!selectedCategory) return;
+    
+    setCategorySaving(true);
+    setCategoryError(null);
+
+    try {
+      const response = await fetch(`${config.apiUrl}/api/care-task-categories/${selectedCategory.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(categoryFormData)
+      });
+
+      if (response.ok) {
+        setShowEditCategoryModal(false);
+        setSelectedCategory(null);
+        fetchCategories();
+        fetchCareTasks(); // Refresh tasks to show updated category info
+      } else {
+        const data = await response.json();
+        setCategoryError(data.detail || 'Failed to update category');
+      }
+    } catch (err) {
+      setCategoryError('Error updating category');
+    } finally {
+      setCategorySaving(false);
+    }
+  };
+
+  const handleDeleteCategory = async () => {
+    if (!selectedCategory) return;
+    
+    setCategorySaving(true);
+
+    try {
+      const response = await fetch(`${config.apiUrl}/api/care-task-categories/${selectedCategory.id}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+
+      if (response.ok) {
+        setShowDeleteCategoryModal(false);
+        setSelectedCategory(null);
+        fetchCategories();
+        fetchCareTasks(); // Refresh tasks
+      } else {
+        const data = await response.json();
+        alert(data.detail || 'Failed to delete category');
+      }
+    } catch (err) {
+      alert('Error deleting category');
+    } finally {
+      setCategorySaving(false);
+    }
+  };
+
+  // Get task count for a category
+  const getCategoryTaskCount = (categoryId) => {
+    return careTasks.filter(t => t.category_id === categoryId).length;
+  };
+
   // Add schedule handler
   const handleAddSchedule = async () => {
     if (!selectedTask) return;
@@ -444,12 +572,6 @@ const AdminV2CareTasks = () => {
       <div className="admin-v2-page">
         {selectedPatient ? (
           <>
-            {/* Patient Context Header */}
-            <PatientHeader 
-              patient={selectedPatient} 
-              onChangePatient={handleChangePatient} 
-            />
-
             {/* Section Title */}
             <h1 className="schedule-section-title">Care Tasks Overview</h1>
 
@@ -477,15 +599,126 @@ const AdminV2CareTasks = () => {
               </div>
             </div>
 
-            {/* Add Task Button */}
-            {hasPermission('care_tasks.create') && (
-              <div style={{ marginBottom: '1.5rem' }}>
+            {/* Action Buttons */}
+            <div className="admin-v2-action-row" style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+              {hasPermission('care_tasks.create') && (
                 <button 
                   className="admin-v2-btn admin-v2-btn-primary"
                   onClick={openCreateModal}
                 >
                   <PlusIcon size={16} /> Add Care Task
                 </button>
+              )}
+              <button 
+                className={`admin-v2-btn ${showCategorySection ? 'admin-v2-btn-secondary' : ''}`}
+                onClick={() => setShowCategorySection(!showCategorySection)}
+                style={{ 
+                  backgroundColor: '#a371f7',
+                  borderColor: '#a371f7',
+                  color: 'white'
+                }}
+              >
+                {showCategorySection ? 'Hide Categories' : 'Manage Categories'}
+              </button>
+            </div>
+
+            {/* Categories Management Section */}
+            {showCategorySection && (
+              <div className="admin-v2-categories-section" style={{ 
+                marginBottom: '2rem',
+                padding: '1.5rem',
+                background: '#161b22',
+                borderRadius: '8px',
+                border: '1px solid #30363d'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <h3 style={{ margin: 0, color: '#f0f6fc' }}>Care Task Categories</h3>
+                  <button 
+                    className="admin-v2-btn admin-v2-btn-primary admin-v2-btn-sm"
+                    onClick={openCreateCategoryModal}
+                  >
+                    <PlusIcon size={14} /> Add Category
+                  </button>
+                </div>
+
+                {categories.length === 0 ? (
+                  <p style={{ color: '#8b949e', margin: 0 }}>No categories created yet.</p>
+                ) : (
+                  <div className="admin-v2-category-grid" style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                    gap: '1rem'
+                  }}>
+                    {categories.map(cat => (
+                      <div 
+                        key={cat.id} 
+                        className="admin-v2-category-card"
+                        style={{
+                          background: '#21262d',
+                          borderRadius: '6px',
+                          padding: '1rem',
+                          borderLeft: `4px solid ${cat.color || '#a371f7'}`,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.5rem'
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <span 
+                                style={{
+                                  width: '12px',
+                                  height: '12px',
+                                  borderRadius: '50%',
+                                  backgroundColor: cat.color || '#a371f7',
+                                  display: 'inline-block'
+                                }}
+                              />
+                              <strong style={{ color: '#f0f6fc' }}>{cat.name}</strong>
+                              {cat.is_default && (
+                                <span style={{
+                                  fontSize: '0.7rem',
+                                  background: '#30363d',
+                                  padding: '2px 6px',
+                                  borderRadius: '10px',
+                                  color: '#8b949e'
+                                }}>Default</span>
+                              )}
+                            </div>
+                            {cat.description && (
+                              <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: '#8b949e' }}>
+                                {cat.description}
+                              </p>
+                            )}
+                            <span style={{ fontSize: '0.8rem', color: '#6e7681' }}>
+                              {getCategoryTaskCount(cat.id)} task{getCategoryTaskCount(cat.id) !== 1 ? 's' : ''}
+                            </span>
+                          </div>
+                          
+                          <div style={{ display: 'flex', gap: '4px' }}>
+                            <button 
+                              className="admin-v2-action-btn"
+                              onClick={() => openEditCategoryModal(cat)}
+                              title="Edit category"
+                            >
+                              <EditIcon size={14} />
+                            </button>
+                            {!cat.is_default && (
+                              <button 
+                                className="admin-v2-action-btn delete"
+                                onClick={() => openDeleteCategoryModal(cat)}
+                                title="Delete category"
+                              >
+                                <TrashIcon size={14} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -552,10 +785,10 @@ const AdminV2CareTasks = () => {
                             {task.schedules && task.schedules.length > 0 ? (
                               <span className="admin-v2-schedule-count">
                                 <ClockIcon size={14} />
-                                {task.schedules.length} schedule{task.schedules.length !== 1 ? 's' : ''}
+                                {task.schedules.length}
                               </span>
                             ) : (
-                              <span className="admin-v2-table-muted">No schedule</span>
+                              <span className="admin-v2-table-muted">—</span>
                             )}
                           </td>
                           <td>
@@ -1009,6 +1242,278 @@ const AdminV2CareTasks = () => {
                   disabled={scheduleSaving || (scheduleMode === 'weekly' && selectedDays.length === 0)}
                 >
                   {scheduleSaving ? 'Adding...' : 'Add Schedule'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Create Category Modal */}
+        {showCreateCategoryModal && (
+          <div className="admin-v2-modal-overlay" onClick={() => setShowCreateCategoryModal(false)}>
+            <div className="admin-v2-modal admin-v2-modal-sm" onClick={e => e.stopPropagation()}>
+              <div className="admin-v2-modal-header">
+                <h2>Add Category</h2>
+                <button className="admin-v2-modal-close" onClick={() => setShowCreateCategoryModal(false)}>
+                  <XIcon size={20} />
+                </button>
+              </div>
+              <form onSubmit={handleCreateCategory}>
+                <div className="admin-v2-modal-body">
+                  {categoryError && (
+                    <div className="admin-v2-form-error">{categoryError}</div>
+                  )}
+                  
+                  <div className="admin-v2-form-group">
+                    <label>Category Name *</label>
+                    <input
+                      type="text"
+                      value={categoryFormData.name}
+                      onChange={e => setCategoryFormData({...categoryFormData, name: e.target.value})}
+                      required
+                      placeholder="e.g., Wound Care, Monitoring"
+                    />
+                  </div>
+
+                  <div className="admin-v2-form-group">
+                    <label>Description</label>
+                    <textarea
+                      value={categoryFormData.description}
+                      onChange={e => setCategoryFormData({...categoryFormData, description: e.target.value})}
+                      placeholder="Optional description..."
+                      rows={2}
+                    />
+                  </div>
+
+                  <div className="admin-v2-form-group">
+                    <label>Color</label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                      <input
+                        type="color"
+                        value={categoryFormData.color}
+                        onChange={e => setCategoryFormData({...categoryFormData, color: e.target.value})}
+                        style={{ 
+                          width: '50px', 
+                          height: '40px', 
+                          border: 'none', 
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          padding: 0
+                        }}
+                      />
+                      <input
+                        type="text"
+                        value={categoryFormData.color}
+                        onChange={e => setCategoryFormData({...categoryFormData, color: e.target.value})}
+                        placeholder="#a371f7"
+                        pattern="^#[0-9A-Fa-f]{6}$"
+                        style={{ flex: 1 }}
+                      />
+                      <span 
+                        style={{
+                          width: '24px',
+                          height: '24px',
+                          borderRadius: '50%',
+                          backgroundColor: categoryFormData.color,
+                          border: '2px solid #30363d'
+                        }}
+                      />
+                    </div>
+                    <div style={{ 
+                      display: 'flex', 
+                      gap: '0.5rem', 
+                      marginTop: '0.5rem',
+                      flexWrap: 'wrap' 
+                    }}>
+                      {['#a371f7', '#f78166', '#7ee787', '#58a6ff', '#d2a8ff', '#ff7b72', '#ffa657', '#79c0ff'].map(color => (
+                        <button
+                          key={color}
+                          type="button"
+                          onClick={() => setCategoryFormData({...categoryFormData, color})}
+                          style={{
+                            width: '28px',
+                            height: '28px',
+                            borderRadius: '50%',
+                            backgroundColor: color,
+                            border: categoryFormData.color === color ? '3px solid #f0f6fc' : '2px solid #30363d',
+                            cursor: 'pointer',
+                            padding: 0
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="admin-v2-modal-footer">
+                  <button 
+                    type="button" 
+                    className="admin-v2-btn"
+                    onClick={() => setShowCreateCategoryModal(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="admin-v2-btn admin-v2-btn-primary"
+                    disabled={categorySaving}
+                  >
+                    {categorySaving ? 'Creating...' : 'Add Category'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Category Modal */}
+        {showEditCategoryModal && selectedCategory && (
+          <div className="admin-v2-modal-overlay" onClick={() => setShowEditCategoryModal(false)}>
+            <div className="admin-v2-modal admin-v2-modal-sm" onClick={e => e.stopPropagation()}>
+              <div className="admin-v2-modal-header">
+                <h2>Edit Category</h2>
+                <button className="admin-v2-modal-close" onClick={() => setShowEditCategoryModal(false)}>
+                  <XIcon size={20} />
+                </button>
+              </div>
+              <form onSubmit={handleUpdateCategory}>
+                <div className="admin-v2-modal-body">
+                  {categoryError && (
+                    <div className="admin-v2-form-error">{categoryError}</div>
+                  )}
+                  
+                  <div className="admin-v2-form-group">
+                    <label>Category Name *</label>
+                    <input
+                      type="text"
+                      value={categoryFormData.name}
+                      onChange={e => setCategoryFormData({...categoryFormData, name: e.target.value})}
+                      required
+                    />
+                  </div>
+
+                  <div className="admin-v2-form-group">
+                    <label>Description</label>
+                    <textarea
+                      value={categoryFormData.description}
+                      onChange={e => setCategoryFormData({...categoryFormData, description: e.target.value})}
+                      placeholder="Optional description..."
+                      rows={2}
+                    />
+                  </div>
+
+                  <div className="admin-v2-form-group">
+                    <label>Color</label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                      <input
+                        type="color"
+                        value={categoryFormData.color}
+                        onChange={e => setCategoryFormData({...categoryFormData, color: e.target.value})}
+                        style={{ 
+                          width: '50px', 
+                          height: '40px', 
+                          border: 'none', 
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          padding: 0
+                        }}
+                      />
+                      <input
+                        type="text"
+                        value={categoryFormData.color}
+                        onChange={e => setCategoryFormData({...categoryFormData, color: e.target.value})}
+                        placeholder="#a371f7"
+                        pattern="^#[0-9A-Fa-f]{6}$"
+                        style={{ flex: 1 }}
+                      />
+                      <span 
+                        style={{
+                          width: '24px',
+                          height: '24px',
+                          borderRadius: '50%',
+                          backgroundColor: categoryFormData.color,
+                          border: '2px solid #30363d'
+                        }}
+                      />
+                    </div>
+                    <div style={{ 
+                      display: 'flex', 
+                      gap: '0.5rem', 
+                      marginTop: '0.5rem',
+                      flexWrap: 'wrap' 
+                    }}>
+                      {['#a371f7', '#f78166', '#7ee787', '#58a6ff', '#d2a8ff', '#ff7b72', '#ffa657', '#79c0ff'].map(color => (
+                        <button
+                          key={color}
+                          type="button"
+                          onClick={() => setCategoryFormData({...categoryFormData, color})}
+                          style={{
+                            width: '28px',
+                            height: '28px',
+                            borderRadius: '50%',
+                            backgroundColor: color,
+                            border: categoryFormData.color === color ? '3px solid #f0f6fc' : '2px solid #30363d',
+                            cursor: 'pointer',
+                            padding: 0
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="admin-v2-modal-footer">
+                  <button 
+                    type="button" 
+                    className="admin-v2-btn"
+                    onClick={() => setShowEditCategoryModal(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="admin-v2-btn admin-v2-btn-primary"
+                    disabled={categorySaving}
+                  >
+                    {categorySaving ? 'Saving...' : 'Save Changes'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Delete Category Confirmation Modal */}
+        {showDeleteCategoryModal && selectedCategory && (
+          <div className="admin-v2-modal-overlay" onClick={() => setShowDeleteCategoryModal(false)}>
+            <div className="admin-v2-modal admin-v2-modal-sm" onClick={e => e.stopPropagation()}>
+              <div className="admin-v2-modal-header">
+                <h2>Delete Category</h2>
+                <button className="admin-v2-modal-close" onClick={() => setShowDeleteCategoryModal(false)}>
+                  <XIcon size={20} />
+                </button>
+              </div>
+              <div className="admin-v2-modal-body">
+                <p>Are you sure you want to delete the category <strong style={{ color: selectedCategory.color }}>{selectedCategory.name}</strong>?</p>
+                {getCategoryTaskCount(selectedCategory.id) > 0 && (
+                  <p className="admin-v2-warning-text">
+                    ⚠️ This category has {getCategoryTaskCount(selectedCategory.id)} task(s) assigned. You must reassign or delete those tasks first.
+                  </p>
+                )}
+              </div>
+              <div className="admin-v2-modal-footer">
+                <button 
+                  type="button" 
+                  className="admin-v2-btn"
+                  onClick={() => setShowDeleteCategoryModal(false)}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="button" 
+                  className="admin-v2-btn admin-v2-btn-danger"
+                  onClick={handleDeleteCategory}
+                  disabled={categorySaving || getCategoryTaskCount(selectedCategory.id) > 0}
+                >
+                  {categorySaving ? 'Deleting...' : 'Delete Category'}
                 </button>
               </div>
             </div>

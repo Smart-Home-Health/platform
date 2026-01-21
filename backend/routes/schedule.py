@@ -3,9 +3,11 @@ Schedule routes - Daily schedule view combining medications, nutrition schedules
 """
 import logging
 from datetime import datetime, date, timedelta
-from fastapi import APIRouter, Depends, Query
+from typing import List, Optional
+from fastapi import APIRouter, Depends, Query, Body
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
+from pydantic import BaseModel
 
 from db import get_db
 from schemas.medication import Medication
@@ -22,6 +24,56 @@ from croniter import croniter
 logger = logging.getLogger("app")
 
 router = APIRouter(prefix="/api/schedule", tags=["schedule"])
+
+
+def parse_scheduled_time(scheduled_time_str: str) -> datetime:
+    """
+    Parse scheduled time string and return as UTC-aware datetime.
+    This ensures PostgreSQL stores the exact time without any timezone conversion.
+    """
+    from datetime import timezone as tz
+    
+    # Remove Z or timezone offset to get the raw time
+    s = scheduled_time_str
+    if s.endswith('Z'):
+        s = s[:-1]
+    # Handle +00:00 or similar timezone offsets
+    if '+' in s and 'T' in s:
+        s = s.rsplit('+', 1)[0]
+    elif s.count('-') > 2:  # Has negative timezone offset like -05:00
+        # Split on T, then handle the time part
+        parts = s.split('T')
+        if len(parts) == 2:
+            time_part = parts[1]
+            # Find the last dash that's part of timezone (after HH:MM:SS)
+            if '-' in time_part and len(time_part) > 8:
+                time_part = time_part.rsplit('-', 1)[0]
+                s = f"{parts[0]}T{time_part}"
+    
+    # Parse as naive datetime then mark as UTC
+    # This tells PostgreSQL "this IS UTC" so it won't convert it
+    naive_dt = datetime.fromisoformat(s)
+    return naive_dt.replace(tzinfo=tz.utc)
+
+
+# Pydantic models for request bodies
+class CompleteItemRequest(BaseModel):
+    schedule_id: int
+    scheduled_time: str  # ISO format datetime string
+    patient_id: int
+    user_id: Optional[int] = None
+    notes: Optional[str] = None
+    completed_at: Optional[str] = None  # ISO format - when actually completed (defaults to now)
+    # Medication-specific
+    dose_amount: Optional[float] = None
+    dose_unit: Optional[str] = None
+    # Nutrition-specific
+    amount: Optional[float] = None
+    amount_unit: Optional[str] = None
+    item_name: Optional[str] = None
+
+class BulkCompleteRequest(BaseModel):
+    items: List[CompleteItemRequest]
 
 
 @router.get("/daily")
@@ -73,20 +125,26 @@ async def get_daily_schedule(
                 key = f"{log.schedule_id}_{log.scheduled_time.strftime('%H:%M')}"
                 completed_task_times.add(key)
         
-        # Check completion status for nutrition schedules (via nutrition_intake)
+        # Check completion status for nutrition schedules (via nutrition_intake with schedule_id)
         nutrition_logs = db.query(NutritionIntake).filter(
             NutritionIntake.patient_id == patient_id,
             NutritionIntake.consumed_at >= datetime.combine(schedule_date, datetime.min.time()),
             NutritionIntake.consumed_at <= datetime.combine(schedule_date, datetime.max.time())
         ).all()
         
-        # For nutrition, we check if intake was logged around the scheduled time (within 30 min)
+        # Use schedule_id + scheduled_time for accurate matching
         completed_nutrition_times = set()
         for log in nutrition_logs:
-            for nutr in nutrition_items:
-                if abs((log.consumed_at.replace(tzinfo=None) - nutr['scheduled_time']).total_seconds()) <= 1800:  # 30 minutes
-                    key = f"{nutr['schedule_id']}_{nutr['scheduled_time'].strftime('%H:%M')}"
-                    completed_nutrition_times.add(key)
+            if log.schedule_id and log.scheduled_time:
+                # Use scheduled_time directly if available
+                key = f"{log.schedule_id}_{log.scheduled_time.strftime('%H:%M')}"
+                completed_nutrition_times.add(key)
+            elif log.schedule_id:
+                # Fallback: match by schedule_id and consumed_at time
+                for nutr in nutrition_items:
+                    if log.schedule_id == nutr['schedule_id']:
+                        key = f"{nutr['schedule_id']}_{nutr['scheduled_time'].strftime('%H:%M')}"
+                        completed_nutrition_times.add(key)
         
         # Build response with completion status
         result = {
@@ -323,3 +381,266 @@ def get_scheduled_nutrition(db: Session, target_date: date, patient_id: int):
     except Exception as e:
         logger.error(f"Error getting scheduled nutrition: {e}")
         return []
+
+
+# ===== Completion Endpoints =====
+
+@router.post("/complete/medication")
+async def complete_medication(
+    data: CompleteItemRequest,
+    db: Session = Depends(get_db)
+):
+    """Mark a scheduled medication as administered"""
+    try:
+        # Parse scheduled time
+        scheduled_dt = parse_scheduled_time(data.scheduled_time)
+        
+        # Parse completed_at time if provided, otherwise use now
+        if data.completed_at:
+            completed_at = parse_scheduled_time(data.completed_at)
+        else:
+            completed_at = datetime.now()
+        
+        logger.info(f"Completing medication: schedule_id={data.schedule_id}, scheduled_time={data.scheduled_time}, completed_at={completed_at}")
+        
+        # Get the schedule to find medication ID
+        schedule = db.query(MedicationSchedule).filter(MedicationSchedule.id == data.schedule_id).first()
+        if not schedule:
+            return {"success": False, "error": "Schedule not found"}
+        
+        # Get medication for dose info
+        medication = db.query(Medication).filter(Medication.id == schedule.medication_id).first()
+        if not medication:
+            return {"success": False, "error": "Medication not found"}
+        
+        # Use provided dose or fall back to schedule defaults
+        dose_amount = data.dose_amount if data.dose_amount is not None else (schedule.dose_amount or 0)
+        
+        # Deduct from quantity if applicable
+        if dose_amount > 0 and medication.quantity is not None:
+            medication.quantity = max(0, medication.quantity - float(dose_amount))
+        
+        # Create log entry
+        log = MedicationLog(
+            medication_id=medication.id,
+            patient_id=data.patient_id,
+            schedule_id=data.schedule_id,
+            administered_at=completed_at,
+            dose_amount=dose_amount,
+            is_scheduled=True,
+            scheduled_time=scheduled_dt,
+            administered_early=False,
+            administered_late=False,
+            notes=data.notes,
+            created_at=datetime.now()
+        )
+        db.add(log)
+        db.commit()
+        
+        return {"success": True, "log_id": log.id}
+    except Exception as e:
+        logger.error(f"Error completing medication: {e}")
+        db.rollback()
+        return {"success": False, "error": str(e)}
+
+
+@router.post("/complete/nutrition")
+async def complete_nutrition(
+    data: CompleteItemRequest,
+    db: Session = Depends(get_db)
+):
+    """Mark a scheduled nutrition item as completed"""
+    try:
+        # Parse scheduled time
+        scheduled_dt = parse_scheduled_time(data.scheduled_time)
+        
+        # Parse completed_at time if provided, otherwise use now
+        if data.completed_at:
+            completed_at = parse_scheduled_time(data.completed_at)
+        else:
+            completed_at = datetime.now()
+        
+        # Get the schedule for default values
+        schedule = db.query(NutritionSchedule).filter(NutritionSchedule.id == data.schedule_id).first()
+        if not schedule:
+            return {"success": False, "error": "Schedule not found"}
+        
+        # Use provided values or fall back to schedule defaults
+        item_name = data.item_name or schedule.default_item_name or schedule.name
+        amount = data.amount if data.amount is not None else (schedule.default_amount or 0)
+        amount_unit = data.amount_unit or schedule.default_amount_unit or 'servings'
+        
+        # Create nutrition intake record
+        intake = NutritionIntake(
+            patient_id=data.patient_id,
+            schedule_id=data.schedule_id,
+            item_name=item_name,
+            item_type=schedule.schedule_type or 'food',  # Map schedule_type to item_type
+            amount=amount,
+            amount_unit=amount_unit,
+            calories=schedule.default_calories,
+            consumed_at=completed_at,
+            scheduled_time=scheduled_dt,
+            notes=data.notes or f"Completed from schedule '{schedule.name}' at {scheduled_dt.strftime('%H:%M')}",
+            created_at=datetime.now(),
+            updated_at=datetime.now()
+        )
+        db.add(intake)
+        db.commit()
+        
+        return {"success": True, "intake_id": intake.id}
+    except Exception as e:
+        logger.error(f"Error completing nutrition: {e}")
+        db.rollback()
+        return {"success": False, "error": str(e)}
+
+
+@router.post("/complete/care-task")
+async def complete_care_task(
+    data: CompleteItemRequest,
+    db: Session = Depends(get_db)
+):
+    """Mark a scheduled care task as completed"""
+    try:
+        # Parse scheduled time
+        scheduled_dt = parse_scheduled_time(data.scheduled_time)
+        
+        # Parse completed_at time if provided, otherwise use now
+        if data.completed_at:
+            completed_at = parse_scheduled_time(data.completed_at)
+        else:
+            completed_at = datetime.now()
+        
+        # Get the schedule to find care task ID
+        schedule = db.query(CareTaskSchedule).filter(CareTaskSchedule.id == data.schedule_id).first()
+        if not schedule:
+            return {"success": False, "error": "Schedule not found"}
+        
+        # Create log entry
+        log = CareTaskLog(
+            care_task_id=schedule.care_task_id,
+            patient_id=data.patient_id,
+            schedule_id=data.schedule_id,
+            scheduled_time=scheduled_dt,
+            completed_at=completed_at,
+            status="completed",
+            notes=data.notes,
+            completed_by=data.user_id
+        )
+        db.add(log)
+        db.commit()
+        
+        return {"success": True, "log_id": log.id}
+    except Exception as e:
+        logger.error(f"Error completing care task: {e}")
+        db.rollback()
+        return {"success": False, "error": str(e)}
+
+
+@router.post("/complete/bulk")
+async def complete_bulk(
+    medications: List[CompleteItemRequest] = Body(default=[]),
+    nutrition: List[CompleteItemRequest] = Body(default=[]),
+    care_tasks: List[CompleteItemRequest] = Body(default=[]),
+    db: Session = Depends(get_db)
+):
+    """Complete multiple schedule items at once (e.g., all items in an hour)"""
+    results = {
+        "medications": [],
+        "nutrition": [],
+        "care_tasks": [],
+        "success": True
+    }
+    
+    try:
+        # Process medications
+        for item in medications:
+            try:
+                scheduled_dt = parse_scheduled_time(item.scheduled_time)
+                completed_at = parse_scheduled_time(item.completed_at) if item.completed_at else datetime.now()
+                
+                schedule = db.query(MedicationSchedule).filter(MedicationSchedule.id == item.schedule_id).first()
+                if schedule:
+                    medication = db.query(Medication).filter(Medication.id == schedule.medication_id).first()
+                    if medication:
+                        dose_amount = item.dose_amount if item.dose_amount is not None else (schedule.dose_amount or 0)
+                        if dose_amount > 0 and medication.quantity is not None:
+                            medication.quantity = max(0, medication.quantity - float(dose_amount))
+                        
+                        log = MedicationLog(
+                            medication_id=medication.id,
+                            patient_id=item.patient_id,
+                            schedule_id=item.schedule_id,
+                            administered_at=completed_at,
+                            dose_amount=dose_amount,
+                            is_scheduled=True,
+                            scheduled_time=scheduled_dt,
+                            notes=item.notes,
+                            created_at=datetime.now()
+                        )
+                        db.add(log)
+                        results["medications"].append({"schedule_id": item.schedule_id, "success": True})
+            except Exception as e:
+                results["medications"].append({"schedule_id": item.schedule_id, "success": False, "error": str(e)})
+        
+        # Process nutrition
+        for item in nutrition:
+            try:
+                scheduled_dt = parse_scheduled_time(item.scheduled_time)
+                completed_at = parse_scheduled_time(item.completed_at) if item.completed_at else datetime.now()
+                
+                schedule = db.query(NutritionSchedule).filter(NutritionSchedule.id == item.schedule_id).first()
+                if schedule:
+                    item_name = item.item_name or schedule.default_item_name or schedule.name
+                    amount = item.amount if item.amount is not None else (schedule.default_amount or 0)
+                    amount_unit = item.amount_unit or schedule.default_amount_unit or 'servings'
+                    
+                    intake = NutritionIntake(
+                        patient_id=item.patient_id,
+                        schedule_id=item.schedule_id,
+                        item_name=item_name,
+                        item_type=schedule.schedule_type or 'food',
+                        amount=amount,
+                        amount_unit=amount_unit,
+                        calories=schedule.default_calories,
+                        consumed_at=completed_at,
+                        scheduled_time=scheduled_dt,
+                        notes=item.notes or f"Completed from schedule '{schedule.name}' at {scheduled_dt.strftime('%H:%M')}",
+                        created_at=datetime.now(),
+                        updated_at=datetime.now()
+                    )
+                    db.add(intake)
+                    results["nutrition"].append({"schedule_id": item.schedule_id, "success": True})
+            except Exception as e:
+                results["nutrition"].append({"schedule_id": item.schedule_id, "success": False, "error": str(e)})
+        
+        # Process care tasks
+        for item in care_tasks:
+            try:
+                scheduled_dt = parse_scheduled_time(item.scheduled_time)
+                completed_at = parse_scheduled_time(item.completed_at) if item.completed_at else datetime.now()
+                
+                schedule = db.query(CareTaskSchedule).filter(CareTaskSchedule.id == item.schedule_id).first()
+                if schedule:
+                    log = CareTaskLog(
+                        care_task_id=schedule.care_task_id,
+                        patient_id=item.patient_id,
+                        schedule_id=item.schedule_id,
+                        scheduled_time=scheduled_dt,
+                        completed_at=completed_at,
+                        status="completed",
+                        notes=item.notes,
+                        completed_by=item.user_id
+                    )
+                    db.add(log)
+                    results["care_tasks"].append({"schedule_id": item.schedule_id, "success": True})
+            except Exception as e:
+                results["care_tasks"].append({"schedule_id": item.schedule_id, "success": False, "error": str(e)})
+        
+        db.commit()
+        return results
+        
+    except Exception as e:
+        logger.error(f"Error in bulk complete: {e}")
+        db.rollback()
+        return {"success": False, "error": str(e)}
