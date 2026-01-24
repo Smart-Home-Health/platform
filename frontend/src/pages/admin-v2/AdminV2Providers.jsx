@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
-import { PatientHeader, PatientSelectorModal } from './components';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
@@ -17,17 +15,13 @@ import './AdminV2.css';
 
 const AdminV2Providers = () => {
   const { user } = useAuth();
-  const [searchParams, setSearchParams] = useSearchParams();
   const { 
-    patients, 
     selectedPatient: contextPatient, 
-    selectPatient: setContextPatient,
     loadingPatients 
   } = useAdminPatient();
   
   // Use context patient as the source of truth
   const selectedPatient = contextPatient;
-  const [showPatientModal, setShowPatientModal] = useState(false);
   
   // Providers state
   const [providers, setProviders] = useState([]);
@@ -83,26 +77,6 @@ const AdminV2Providers = () => {
     fetchBusinesses();
     fetchProviderTypes();
   }, []);
-
-  // Check URL params for patient ID or use context patient
-  useEffect(() => {
-    const patientId = searchParams.get('patient');
-    if (patientId && patients.length > 0) {
-      const patient = patients.find(p => p.id === parseInt(patientId));
-      if (patient && patient.id !== contextPatient?.id) {
-        setContextPatient(patient);
-      }
-    } else if (!patientId && !contextPatient && patients.length > 0 && !loadingPatients) {
-      setShowPatientModal(true);
-    }
-  }, [searchParams, patients, loadingPatients]);
-
-  // Update URL when context patient changes
-  useEffect(() => {
-    if (contextPatient && searchParams.get('patient') !== String(contextPatient.id)) {
-      setSearchParams({ patient: contextPatient.id });
-    }
-  }, [contextPatient]);
 
   // Fetch providers when patient or filters change
   useEffect(() => {
@@ -164,15 +138,6 @@ const AdminV2Providers = () => {
     } catch (err) {
       console.error('Error fetching provider types:', err);
     }
-  };
-
-  const handleSelectPatient = (patient) => {
-    setContextPatient(patient);
-    setShowPatientModal(false);
-  };
-
-  const handleChangePatient = () => {
-    setShowPatientModal(true);
   };
 
   const handleSubmit = async (e) => {
@@ -526,12 +491,6 @@ const AdminV2Providers = () => {
       <div className="admin-v2-page">
         {selectedPatient ? (
           <>
-            {/* Patient Context Header */}
-            <PatientHeader 
-              patient={selectedPatient} 
-              onChangePatient={handleChangePatient} 
-            />
-
             {/* Section Title */}
             <h1 className="schedule-section-title">Care Team & Providers</h1>
 
@@ -714,15 +673,6 @@ const AdminV2Providers = () => {
         )}
 
         {/* Modals */}
-        {showPatientModal && (
-          <PatientSelectorModal
-            patients={patients}
-            selectedPatient={selectedPatient}
-            onSelectPatient={handleSelectPatient}
-            onClose={() => setShowPatientModal(false)}
-            loading={loadingPatients}
-          />
-        )}
         {showCreateModal && renderFormModal()}
       </div>
     </AdminV2Layout>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
-import { PatientHeader, PatientSelectorModal } from './components';
+import { PatientSelectorModal } from './components';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
@@ -270,12 +270,6 @@ const AdminV2MedicationsSchedule = () => {
       <div className="admin-v2-page">
         {selectedPatient ? (
           <>
-            {/* Patient Context Header */}
-            <PatientHeader 
-              patient={selectedPatient} 
-              onChangePatient={handleChangePatient} 
-            />
-
             {/* Section Title */}
             <h1 className="schedule-section-title">Daily Medication Schedule</h1>
 

@@ -28,6 +28,8 @@ from schemas.temperature import Temperature
 from schemas.vital import Vital
 from schemas.symptom import Symptom
 from schemas.patient import Patient
+from schemas.diagnosis import Diagnosis, DiagnosisNote
+from schemas.implant import Implant, ImplantNote
 
 __all__ = [
     'Business', 'Provider', 'NutritionIntake', 'CareTaskCategory', 'CareTask',
@@ -35,5 +37,5 @@ __all__ = [
     'MedicationLog', 'Equipment', 'EquipmentChangeLog', 'MonitoringAlert',
     'VentilatorAlert', 'ExternalAlarm', 'PulseOxData', 'Setting',
     'BloodPressure', 'Temperature', 'Vital', 'Symptom', 'Patient', 'User', 'Role',
-    'Permission', 'AuditLog'
+    'Permission', 'AuditLog', 'Diagnosis', 'DiagnosisNote', 'Implant', 'ImplantNote'
 ]

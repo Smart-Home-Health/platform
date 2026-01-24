@@ -13,7 +13,8 @@ import {
   ProvidersIcon,
   BusinessesIcon,
   MonitoringIcon,
-  AdminSettingsIcon,
+  ProfileIcon,
+  ConfigIcon,
   BackArrowIcon,
   UsersIcon,
   CalendarIcon,
@@ -36,7 +37,8 @@ const sideNavItems = [
   { path: '/admin-v2/care-tasks', label: 'Care Tasks', Icon: TasksIcon, requiredPermissions: ['care_tasks.view', 'care_tasks.create', 'care_tasks.update', 'care_tasks.delete'] },
   { path: '/admin-v2/equipment', label: 'Equipment', Icon: EquipmentIcon, requiredPermissions: ['equipment.view', 'equipment.create', 'equipment.update', 'equipment.delete'] },
   { path: '/admin-v2/nutrition', label: 'Nutrition', Icon: NutritionIcon, requiredPermissions: ['nutrition.view', 'nutrition.create', 'nutrition.update', 'nutrition.delete'] },
-  { path: '/admin-v2/settings', label: 'Settings', Icon: AdminSettingsIcon },
+  { path: '/admin-v2/profile', label: 'Profile', Icon: ProfileIcon },
+  { path: '/admin-v2/configuration', label: 'Configuration', Icon: ConfigIcon },
 ];
 
 // Get top nav items based on current section and user permissions
@@ -76,21 +78,32 @@ const getTopNavItems = (section, hasAnyPermission) => {
       { path: '/admin-v2/monitoring/history', label: 'History' },
       { path: '/admin-v2/monitoring/settings', label: 'Alert Settings' },
     ],
-    settings: [
-      { path: '/admin-v2/settings', label: 'General' },
-      // Data Management Section
-      ...(hasAnyPermission(['patients.view', 'patients.create', 'patients.update', 'patients.delete']) 
-        ? [{ path: '/admin-v2/settings/patients', label: 'Patients' }] : []),
+    profile: [
+      // Patient profile sections
+      { path: '/admin-v2/profile', label: 'Summary' },
       ...(hasAnyPermission(['providers.view', 'providers.create', 'providers.update', 'providers.delete']) 
-        ? [{ path: '/admin-v2/settings/providers', label: 'Providers' }] : []),
+        ? [{ path: '/admin-v2/profile/providers', label: 'Providers' }] : []),
+      ...(hasAnyPermission(['providers.view', 'providers.create', 'providers.update', 'providers.delete', 'diagnoses.view', 'diagnoses.create', 'diagnoses.update', 'diagnoses.delete']) 
+        ? [{ path: '/admin-v2/profile/diagnoses', label: 'Diagnoses' }] : []),
+      ...(hasAnyPermission(['providers.view', 'providers.create', 'providers.update', 'providers.delete', 'implants.view', 'implants.create', 'implants.update', 'implants.delete']) 
+        ? [{ path: '/admin-v2/profile/implants', label: 'Implants' }] : []),
       ...(hasAnyPermission(['businesses.view', 'businesses.create', 'businesses.update', 'businesses.delete']) 
-        ? [{ path: '/admin-v2/settings/businesses', label: 'Businesses' }] : []),
+        ? [{ path: '/admin-v2/profile/businesses', label: 'Businesses' }] : []),
+    ],
+    configuration: [
+      // System-wide configuration
+      { path: '/admin-v2/configuration', label: 'General' },
+      ...(hasAnyPermission(['patients.view', 'patients.create', 'patients.update', 'patients.delete']) 
+        ? [{ path: '/admin-v2/configuration/patients', label: 'Patients' }] : []),
       ...(hasAnyPermission(['users.view', 'users.create', 'users.update', 'users.delete']) 
-        ? [{ path: '/admin-v2/settings/users', label: 'Users' }] : []),
-      // Device Settings Section
-      { path: '/admin-v2/settings/mqtt', label: 'MQTT' },
-      { path: '/admin-v2/settings/serial', label: 'Serial' },
-      { path: '/admin-v2/settings/alarms', label: 'Alarms' },
+        ? [{ path: '/admin-v2/configuration/users', label: 'Users' }] : []),
+      ...(hasAnyPermission(['roles.view', 'roles.create', 'roles.update', 'roles.delete', 'users.view']) 
+        ? [{ path: '/admin-v2/configuration/users/roles', label: 'Roles' }] : []),
+      ...(hasAnyPermission(['roles.view', 'roles.create', 'roles.update', 'roles.delete', 'users.view']) 
+        ? [{ path: '/admin-v2/configuration/users/permissions', label: 'Permissions' }] : []),
+      { path: '/admin-v2/configuration/mqtt', label: 'MQTT' },
+      { path: '/admin-v2/configuration/serial', label: 'Serial' },
+      { path: '/admin-v2/configuration/alarms', label: 'Alarms' },
     ],
   };
   return navItems[section] || [];

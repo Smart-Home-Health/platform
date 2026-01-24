@@ -28,3 +28,5 @@ class Patient(Base):
     nutrition_intake = relationship('NutritionIntake', back_populates='patient')
     providers = relationship('Provider', back_populates='patient')
     symptoms = relationship('Symptom', back_populates='patient')
+    diagnoses = relationship('Diagnosis', back_populates='patient', cascade='all, delete-orphan')
+    implants = relationship('Implant', back_populates='patient', cascade='all, delete-orphan')

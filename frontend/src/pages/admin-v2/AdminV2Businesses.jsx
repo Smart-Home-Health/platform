@@ -397,38 +397,11 @@ const AdminV2Businesses = () => {
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
-        {/* Page Header */}
-        <div className="admin-v2-page-header">
-          <div className="admin-v2-header-content">
-            <div className="admin-v2-header-icon">
-              <BuildingIcon size={32} />
-            </div>
-            <div className="admin-v2-header-text">
-              <h1>Businesses & Organizations</h1>
-              <p>Manage hospitals, clinics, pharmacies, and other healthcare organizations</p>
-            </div>
-          </div>
-        </div>
+        <h1 className="schedule-section-title">Businesses & Organizations</h1>
 
         {error && (
           <div className="admin-v2-error-banner">{error}</div>
         )}
-
-        {/* Stats Cards */}
-        <div className="admin-v2-stats-row">
-          <div className="admin-v2-stat-card">
-            <div className="admin-v2-stat-value">{businesses.length}</div>
-            <div className="admin-v2-stat-label">Total Businesses</div>
-          </div>
-          <div className="admin-v2-stat-card">
-            <div className="admin-v2-stat-value admin-v2-stat-success">{activeCount}</div>
-            <div className="admin-v2-stat-label">Active</div>
-          </div>
-          <div className="admin-v2-stat-card">
-            <div className="admin-v2-stat-value admin-v2-stat-muted">{inactiveCount}</div>
-            <div className="admin-v2-stat-label">Inactive</div>
-          </div>
-        </div>
 
         {/* Tabs and Filters */}
         <div className="admin-v2-controls-bar">
@@ -437,13 +410,13 @@ const AdminV2Businesses = () => {
               className={`admin-v2-tab ${activeTab === 'active' ? 'active' : ''}`}
               onClick={() => setActiveTab('active')}
             >
-              Active
+              Active ({activeCount})
             </button>
             <button 
               className={`admin-v2-tab ${activeTab === 'inactive' ? 'active' : ''}`}
               onClick={() => setActiveTab('inactive')}
             >
-              Inactive
+              Inactive ({inactiveCount})
             </button>
           </div>
 

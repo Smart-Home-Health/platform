@@ -30,7 +30,10 @@ import AdminV2Businesses from './pages/admin-v2/AdminV2Businesses';
 import AdminV2Schedule from './pages/admin-v2/AdminV2Schedule';
 import AdminV2Vitals from './pages/admin-v2/AdminV2Vitals';
 import AdminV2Symptoms from './pages/admin-v2/AdminV2Symptoms';
+import AdminV2Diagnoses from './pages/admin-v2/AdminV2Diagnoses';
+import AdminV2Implants from './pages/admin-v2/AdminV2Implants';
 import AdminV2Nutrition from './pages/admin-v2/AdminV2Nutrition';
+import AdminV2ProfileSummary from './pages/admin-v2/AdminV2ProfileSummary';
 import { AdminV2SettingsGeneral } from './pages/admin-v2/settings';
 import FirstRunSetup from './components/FirstRunSetup';
 import LoginModal from './components/LoginModal';
@@ -110,14 +113,19 @@ function AppContent() {
             <Route path="/admin-v2/nutrition/schedules" element={<AdminV2Nutrition />} />
             <Route path="/admin-v2/nutrition/goals" element={<AdminV2Nutrition />} />
             
-            {/* Admin V2 Settings Routes */}
-            <Route path="/admin-v2/settings" element={<AdminV2SettingsGeneral />} />
-            <Route path="/admin-v2/settings/patients" element={<AdminV2Patients />} />
-            <Route path="/admin-v2/settings/providers" element={<AdminV2Providers />} />
-            <Route path="/admin-v2/settings/businesses" element={<AdminV2Businesses />} />
-            <Route path="/admin-v2/settings/users" element={<AdminV2Users />} />
-            <Route path="/admin-v2/settings/users/roles" element={<AdminV2Roles />} />
-            <Route path="/admin-v2/settings/users/permissions" element={<AdminV2Permissions />} />
+            {/* Admin V2 Profile Routes (Patient-specific) */}
+            <Route path="/admin-v2/profile" element={<AdminV2ProfileSummary />} />
+            <Route path="/admin-v2/profile/providers" element={<AdminV2Providers />} />
+            <Route path="/admin-v2/profile/diagnoses" element={<AdminV2Diagnoses />} />
+            <Route path="/admin-v2/profile/implants" element={<AdminV2Implants />} />
+            <Route path="/admin-v2/profile/businesses" element={<AdminV2Businesses />} />
+            
+            {/* Admin V2 Configuration Routes (System-wide) */}
+            <Route path="/admin-v2/configuration" element={<AdminV2SettingsGeneral />} />
+            <Route path="/admin-v2/configuration/patients" element={<AdminV2Patients />} />
+            <Route path="/admin-v2/configuration/users" element={<AdminV2Users />} />
+            <Route path="/admin-v2/configuration/users/roles" element={<AdminV2Roles />} />
+            <Route path="/admin-v2/configuration/users/permissions" element={<AdminV2Permissions />} />
             
             <Route path="/admin-v2/*" element={<AdminV2Dashboard />} />
           </Routes>

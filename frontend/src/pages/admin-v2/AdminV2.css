@@ -3107,6 +3107,9 @@
 .admin-v2-card-row .value {
   color: #e6edf3;
   word-break: break-word;
+  font-size: 0.85rem;
+  font-weight: 400;
+  line-height: 1.4;
 }
 
 .admin-v2-card-row .value a {
@@ -6128,5 +6131,1378 @@
   
   .admin-v2-output-method-options {
     flex-direction: column;
+  }
+}
+
+/* ==============================================
+   Diagnosis Notes Styles
+   ============================================== */
+
+.admin-v2-notes-form {
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.admin-v2-notes-form .admin-v2-btn {
+  margin-top: 0.75rem;
+}
+
+.admin-v2-notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.admin-v2-note-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.admin-v2-note-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.admin-v2-note-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.admin-v2-note-provider {
+  font-size: 0.8rem;
+  color: #58a6ff;
+}
+
+.admin-v2-note-date {
+  font-size: 0.75rem;
+  color: #8b949e;
+}
+
+.admin-v2-note-content {
+  color: #e6edf3;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.admin-v2-note-footer {
+  margin-top: 0.75rem;
+  font-size: 0.75rem;
+  color: #6e7681;
+}
+
+/* Note type badges */
+.admin-v2-badge-follow_up {
+  background: rgba(88, 166, 255, 0.2);
+  color: #58a6ff;
+}
+
+.admin-v2-badge-status_change {
+  background: rgba(158, 106, 3, 0.2);
+  color: #d29922;
+}
+
+.admin-v2-badge-treatment_update {
+  background: rgba(35, 134, 54, 0.2);
+  color: #3fb950;
+}
+
+.admin-v2-badge-provider_note {
+  background: rgba(139, 148, 158, 0.2);
+  color: #8b949e;
+}
+
+/* Status badges for diagnoses */
+.admin-v2-badge-success {
+  background: rgba(35, 134, 54, 0.2);
+  color: #3fb950;
+}
+
+.admin-v2-badge-warning {
+  background: rgba(158, 106, 3, 0.2);
+  color: #d29922;
+}
+
+.admin-v2-badge-danger {
+  background: rgba(248, 81, 73, 0.2);
+  color: #f85149;
+}
+
+.admin-v2-badge-critical {
+  background: rgba(248, 81, 73, 0.3);
+  color: #ff7b72;
+  font-weight: 700;
+}
+
+.admin-v2-badge-muted {
+  background: rgba(139, 148, 158, 0.2);
+  color: #8b949e;
+}
+
+.admin-v2-badge-info {
+  background: rgba(31, 111, 235, 0.2);
+  color: #58a6ff;
+}
+
+/* Notes action button */
+.admin-v2-action-btn-notes {
+  background: rgba(88, 166, 255, 0.1);
+  color: #58a6ff;
+  border: 1px solid rgba(88, 166, 255, 0.3);
+}
+
+.admin-v2-action-btn-notes:hover {
+  background: rgba(88, 166, 255, 0.2);
+  border-color: #58a6ff;
+}
+
+/* Card badges container */
+.admin-v2-card-badges {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* Empty state small variant */
+.admin-v2-empty-state-sm {
+  padding: 2rem;
+  text-align: center;
+}
+
+.admin-v2-empty-state-sm p {
+  color: #8b949e;
+  margin: 0;
+}
+
+/* ==============================================
+   Diagnosis Notes Styles
+   ============================================== */
+
+.admin-v2-notes-form {
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.admin-v2-notes-form .admin-v2-btn {
+  margin-top: 0.5rem;
+}
+
+.admin-v2-notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.admin-v2-note-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.admin-v2-note-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.admin-v2-note-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.admin-v2-note-provider {
+  color: #58a6ff;
+  font-size: 0.85rem;
+}
+
+.admin-v2-note-date {
+  color: #8b949e;
+  font-size: 0.8rem;
+}
+
+.admin-v2-note-content {
+  color: #e6edf3;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.admin-v2-note-footer {
+  margin-top: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #21262d;
+  color: #8b949e;
+  font-size: 0.75rem;
+}
+
+.admin-v2-empty-state-sm {
+  padding: 2rem;
+  text-align: center;
+  color: #8b949e;
+}
+
+.admin-v2-empty-state-sm p {
+  margin: 0;
+}
+
+/* Note type badges */
+.admin-v2-badge-follow_up {
+  background: rgba(88, 166, 255, 0.2);
+  color: #58a6ff;
+}
+
+.admin-v2-badge-status_change {
+  background: rgba(210, 153, 34, 0.2);
+  color: #d29922;
+}
+
+.admin-v2-badge-treatment_update {
+  background: rgba(63, 185, 80, 0.2);
+  color: #3fb950;
+}
+
+.admin-v2-badge-provider_note {
+  background: rgba(163, 113, 247, 0.2);
+  color: #a371f7;
+}
+
+/* Card badges container */
+.admin-v2-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+/* Additional badge types for diagnoses */
+.admin-v2-badge-success {
+  background: rgba(63, 185, 80, 0.2);
+  color: #3fb950;
+}
+
+.admin-v2-badge-warning {
+  background: rgba(210, 153, 34, 0.2);
+  color: #d29922;
+}
+
+.admin-v2-badge-danger {
+  background: rgba(248, 81, 73, 0.2);
+  color: #f85149;
+}
+
+.admin-v2-badge-critical {
+  background: rgba(248, 81, 73, 0.3);
+  color: #ff6b6b;
+  font-weight: 700;
+}
+
+.admin-v2-badge-info {
+  background: rgba(88, 166, 255, 0.2);
+  color: #58a6ff;
+}
+
+.admin-v2-badge-muted {
+  background: rgba(139, 148, 158, 0.2);
+  color: #8b949e;
+}
+
+/* Notes action button */
+.admin-v2-action-btn-notes {
+  color: #a371f7;
+  border-color: rgba(163, 113, 247, 0.3);
+}
+
+.admin-v2-action-btn-notes:hover {
+  background: rgba(163, 113, 247, 0.1);
+  border-color: #a371f7;
+}
+
+/* =====================================================
+   Profile Summary Page Styles
+   ===================================================== */
+
+.profile-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+  padding: 0;
+}
+
+.profile-section {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  padding: 1.25rem;
+  overflow: hidden;
+}
+
+.profile-section.full-width {
+  grid-column: 1 / -1;
+}
+
+.profile-section h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #e6edf3;
+  margin: 0 0 1rem 0;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #30363d;
+}
+
+.profile-section h3 {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #8b949e;
+  margin: 0 0 0.5rem 0;
+}
+
+/* Profile Lists (Diagnoses, Medications, Symptoms) */
+.profile-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* Medications - single column, scrollable */
+.medications-section .profile-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.profile-list-item {
+  background: #0d1117;
+  border: 1px solid #21262d;
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+/* Diagnosis Items */
+.diagnosis-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.diagnosis-name {
+  font-weight: 500;
+  color: #e6edf3;
+  font-size: 0.9rem;
+}
+
+.diagnosis-details {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: 0.8rem;
+}
+
+.icd-code {
+  background: rgba(56, 139, 253, 0.15);
+  color: #58a6ff;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.75rem;
+}
+
+.severity-badge {
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  text-transform: capitalize;
+}
+
+.severity-badge[data-severity="mild"] {
+  background: rgba(46, 160, 67, 0.2);
+  color: #3fb950;
+}
+
+.severity-badge[data-severity="moderate"] {
+  background: rgba(210, 153, 34, 0.2);
+  color: #d29922;
+}
+
+.severity-badge[data-severity="severe"],
+.severity-badge[data-severity="critical"] {
+  background: rgba(248, 81, 73, 0.2);
+  color: #f85149;
+}
+
+.provider-name {
+  color: #8b949e;
+}
+
+/* Status Badges */
+.status-badge {
+  padding: 0.2rem 0.6rem;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.status-badge.active {
+  background: rgba(46, 160, 67, 0.2);
+  color: #3fb950;
+}
+
+.status-badge.chronic {
+  background: rgba(163, 113, 247, 0.2);
+  color: #a371f7;
+}
+
+.status-badge.resolved {
+  background: rgba(139, 148, 158, 0.2);
+  color: #8b949e;
+}
+
+.status-badge.remission {
+  background: rgba(56, 139, 253, 0.2);
+  color: #58a6ff;
+}
+
+/* Medication Items - 2 row layout */
+.medication-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.medication-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.medication-name {
+  font-weight: 500;
+  color: #e6edf3;
+  font-size: 0.95rem;
+}
+
+.medication-dose-badge {
+  background: rgba(56, 139, 253, 0.2);
+  color: #58a6ff;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+}
+
+.medication-qty-badge {
+  background: rgba(139, 148, 158, 0.2);
+  color: #e6edf3;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+}
+
+.medication-instructions {
+  color: #8b949e;
+  font-size: 0.8rem;
+}
+
+.medication-last-given {
+  color: #58a6ff;
+  font-size: 0.75rem;
+  font-style: italic;
+}
+
+.medication-prescriber {
+  color: #6e7681;
+  font-size: 0.75rem;
+  font-style: italic;
+  margin-left: auto;
+}
+
+/* Old medication styles removed - using medication-row instead */
+
+/* Symptom Items */
+.symptom-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.symptom-type {
+  font-weight: 500;
+  color: #e6edf3;
+  font-size: 0.9rem;
+}
+
+.symptom-status {
+  padding: 0.15rem 0.5rem;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.symptom-status.active {
+  background: rgba(248, 81, 73, 0.2);
+  color: #f85149;
+}
+
+.symptom-status.resolved {
+  background: rgba(139, 148, 158, 0.2);
+  color: #8b949e;
+}
+
+.symptom-details {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: 0.8rem;
+  color: #8b949e;
+}
+
+.severity-indicator {
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: #fff;
+  font-weight: 500;
+}
+
+/* Providers Grid */
+.providers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.provider-card {
+  background: #0d1117;
+  border: 1px solid #21262d;
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.provider-card.primary {
+  border-color: rgba(56, 139, 253, 0.5);
+}
+
+.provider-card .provider-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.35rem;
+}
+
+.provider-card .provider-name {
+  font-weight: 500;
+  color: #e6edf3;
+  font-size: 0.9rem;
+}
+
+.primary-badge {
+  background: rgba(56, 139, 253, 0.2);
+  color: #58a6ff;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.provider-specialty {
+  color: #8b949e;
+  font-size: 0.8rem;
+  margin-bottom: 0.5rem;
+}
+
+.provider-contact {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: #6e7681;
+}
+
+.provider-title {
+  background: rgba(139, 148, 158, 0.15);
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+}
+
+/* Vitals Charts Grid */
+.vitals-charts-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
+.vital-chart-container {
+  background: #0d1117;
+  border: 1px solid #21262d;
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.vital-chart-container.span-2 {
+  grid-column: span 2;
+}
+
+/* Nutrition Charts */
+.nutrition-chart-container {
+  background: #0d1117;
+  border: 1px solid #21262d;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.nutrition-output-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+
+.output-chart-container {
+  background: #0d1117;
+  border: 1px solid #21262d;
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+/* Profile Summary - Implants Section */
+.implants-section .profile-list-item {
+  border-left: 3px solid transparent;
+}
+
+.implant-item.life-sustaining {
+  border-left-color: #ef4444;
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.implant-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.35rem;
+}
+
+.implant-name {
+  font-weight: 500;
+  color: #e6edf3;
+  font-size: 0.9rem;
+}
+
+.life-sustaining-badge {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f85149;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.implant-details {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: 0.8rem;
+  color: #8b949e;
+  margin-bottom: 0.35rem;
+}
+
+.implant-category {
+  background: rgba(163, 113, 247, 0.15);
+  color: #a371f7;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
+.implant-model {
+  color: #e6edf3;
+  font-family: 'SF Mono', Monaco, 'Consolas', monospace;
+  font-size: 0.75rem;
+}
+
+.mri-badge {
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+
+.mri-badge.mri-safe {
+  background: rgba(46, 160, 67, 0.2);
+  color: #3fb950;
+}
+
+.mri-badge.mri-conditional {
+  background: rgba(210, 153, 34, 0.2);
+  color: #d29922;
+}
+
+.mri-badge.mri-unsafe {
+  background: rgba(248, 81, 73, 0.2);
+  color: #f85149;
+}
+
+.mri-badge.mri-unknown {
+  background: rgba(139, 148, 158, 0.15);
+  color: #8b949e;
+}
+
+.implant-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: #6e7681;
+}
+
+.implant-provider {
+  font-style: italic;
+}
+
+/* Profile Summary - Providers Table */
+.providers-table-wrapper {
+  overflow-x: auto;
+  background: #0d1117;
+  border: 1px solid #21262d;
+  border-radius: 8px;
+}
+
+.providers-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.providers-table th {
+  background: #161b22;
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  font-weight: 600;
+  color: #8b949e;
+  border-bottom: 1px solid #30363d;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.providers-table td {
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid #21262d;
+  color: #e6edf3;
+}
+
+.providers-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.providers-table tbody tr:hover {
+  background: rgba(56, 139, 253, 0.05);
+}
+
+.providers-table .primary-row {
+  background: rgba(56, 139, 253, 0.08);
+}
+
+.provider-name-cell {
+  font-weight: 500;
+}
+
+.providers-table .type-badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.type-badge.medical {
+  background: rgba(56, 139, 253, 0.15);
+  color: #58a6ff;
+}
+
+.type-badge.therapy {
+  background: rgba(163, 113, 247, 0.15);
+  color: #a371f7;
+}
+
+.type-badge.nursing {
+  background: rgba(46, 160, 67, 0.15);
+  color: #3fb950;
+}
+
+.primary-check {
+  color: #3fb950;
+  font-weight: 600;
+}
+
+/* Responsive adjustments for profile summary */
+@media (max-width: 1400px) {
+  .vitals-charts-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .vital-chart-container.span-2 {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 1024px) {
+  .profile-summary-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .vitals-charts-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .vital-chart-container.span-2 {
+    grid-column: span 1;
+  }
+  
+  .nutrition-output-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* =====================================================
+   Implants Page Styles
+   ===================================================== */
+
+/* Life sustaining implant card */
+.admin-v2-card.life-sustaining {
+  border-left: 3px solid #ef4444;
+}
+
+.admin-v2-card.life-sustaining .admin-v2-card-header {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.life-sustaining-icon {
+  margin-right: 0.5rem;
+}
+
+/* Inactive implant card */
+.admin-v2-card.inactive {
+  opacity: 0.6;
+}
+
+.admin-v2-card.inactive .admin-v2-card-header {
+  background: rgba(139, 148, 158, 0.1);
+}
+
+/* Serial number monospace */
+.admin-v2-card-row .value.mono {
+  font-family: 'SF Mono', Monaco, 'Consolas', monospace;
+  font-size: 0.8rem;
+  background: rgba(139, 148, 158, 0.15);
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+}
+
+/* Card badges row */
+.admin-v2-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+
+/* Notes count badge */
+.notes-count {
+  background: #a371f7;
+  color: #fff;
+  font-size: 0.65rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 10px;
+  margin-left: 0.25rem;
+  font-weight: 600;
+}
+
+/* Filter row */
+.admin-v2-filters {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.admin-v2-filter-select {
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #e6edf3;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  min-width: 150px;
+}
+
+.admin-v2-filter-select:focus {
+  outline: none;
+  border-color: #58a6ff;
+}
+
+/* Large modal for implant form */
+.admin-v2-modal-large {
+  max-width: 900px;
+  width: 95%;
+  max-height: 90vh;
+}
+
+.admin-v2-modal-large .admin-v2-modal-form {
+  max-height: calc(90vh - 120px);
+  overflow-y: auto;
+  padding: 1.5rem;
+}
+
+/* Form grid for implant form */
+.admin-v2-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+
+.admin-v2-form-group.full-width,
+.admin-v2-form-section.full-width {
+  grid-column: 1 / -1;
+}
+
+.admin-v2-form-section {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #30363d;
+}
+
+.admin-v2-form-section:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.admin-v2-form-section h3 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #58a6ff;
+  margin: 0;
+}
+
+/* Checkbox label styling */
+.admin-v2-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.admin-v2-checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #58a6ff;
+}
+
+/* Notes form */
+.admin-v2-notes-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #30363d;
+  margin-bottom: 1rem;
+}
+
+.admin-v2-form-row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.admin-v2-input-sm {
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #e6edf3;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+  flex: 1;
+  min-width: 120px;
+}
+
+.admin-v2-input-sm:focus {
+  outline: none;
+  border-color: #58a6ff;
+}
+
+/* Note change info */
+.admin-v2-note-change-info {
+  font-size: 0.75rem;
+  color: #f59e0b;
+  margin-top: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  background: rgba(245, 158, 11, 0.1);
+  border-radius: 4px;
+  font-family: monospace;
+}
+
+/* Print Button */
+.header-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  width: 100%;
+}
+
+.print-button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  background: rgba(56, 139, 253, 0.1);
+  border: 1px solid rgba(56, 139, 253, 0.4);
+  border-radius: 8px;
+  color: #58a6ff;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.print-button:hover {
+  background: rgba(56, 139, 253, 0.2);
+  border-color: #58a6ff;
+}
+
+.print-button svg {
+  flex-shrink: 0;
+}
+
+/* =====================================================
+   Print Styles
+   ===================================================== */
+
+@media print {
+  /* Reset everything for print */
+  * {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  /* Hide non-printable elements */
+  .no-print,
+  .admin-v2-sidebar,
+  .admin-v2-top-nav,
+  .admin-v2-patient-bar,
+  .print-button {
+    display: none !important;
+  }
+
+  /* Reset body and html */
+  html, body {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  /* Reset layout for print */
+  .admin-v2-layout {
+    display: block !important;
+    background: #fff !important;
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
+  }
+
+  .admin-v2-main {
+    margin-left: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
+  }
+
+  .admin-v2-content {
+    padding: 0.5in !important;
+    background: #fff !important;
+    color: #000 !important;
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
+  }
+
+  .admin-v2-header {
+    position: static !important;
+  }
+
+  .admin-v2-header h1 {
+    color: #000 !important;
+    font-size: 24pt !important;
+    margin-bottom: 0.25in !important;
+  }
+
+  .admin-v2-header .subtitle {
+    color: #666 !important;
+    font-size: 11pt !important;
+  }
+
+  /* Profile sections */
+  .profile-summary-grid {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .profile-section {
+    background: #fff !important;
+    border: 1px solid #ccc !important;
+    margin-bottom: 0.25in !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .profile-section.full-width {
+    width: 100% !important;
+  }
+
+  .profile-section h2 {
+    color: #000 !important;
+    border-bottom-color: #ccc !important;
+    font-size: 14pt !important;
+  }
+
+  .profile-section h3 {
+    color: #333 !important;
+    font-size: 11pt !important;
+  }
+
+  /* Profile list - remove scroll constraints */
+  .profile-list {
+    max-height: none !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  /* List items */
+  .profile-list-item {
+    background: #f9f9f9 !important;
+    border-color: #ddd !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .diagnosis-name,
+  .medication-name,
+  .symptom-type,
+  .provider-card .provider-name {
+    color: #000 !important;
+  }
+
+  .diagnosis-details,
+  .medication-details,
+  .symptom-details,
+  .provider-specialty,
+  .provider-name {
+    color: #444 !important;
+  }
+
+  .medication-prescriber,
+  .provider-contact {
+    color: #666 !important;
+  }
+
+  /* Status badges for print */
+  .status-badge,
+  .symptom-status,
+  .severity-badge,
+  .icd-code,
+  .primary-badge {
+    border: 1px solid #999 !important;
+    background: #eee !important;
+    color: #333 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .severity-indicator {
+    background: #666 !important;
+    color: #fff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Provider cards */
+  .providers-grid {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .provider-card {
+    background: #f9f9f9 !important;
+    border-color: #ddd !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .provider-card.primary {
+    border-color: #666 !important;
+  }
+
+  /* Charts - ensure they print with colors */
+  .vitals-charts-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .vital-chart-container,
+  .nutrition-chart-container,
+  .output-chart-container {
+    background: #fff !important;
+    border-color: #ccc !important;
+    height: auto !important;
+    min-height: 200px !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .vital-chart-container.span-2 {
+    grid-column: span 2 !important;
+  }
+
+  .nutrition-output-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  /* Recharts print adjustments */
+  .recharts-wrapper {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    overflow: visible !important;
+  }
+
+  .recharts-surface {
+    overflow: visible !important;
+  }
+
+  .recharts-cartesian-grid-bg,
+  .recharts-cartesian-grid line {
+    stroke: #ddd !important;
+  }
+
+  .recharts-text {
+    fill: #333 !important;
+  }
+
+  /* Implants section for print */
+  .implant-item {
+    border-left-width: 3px !important;
+    border-left-style: solid !important;
+  }
+
+  .implant-item.life-sustaining {
+    border-left-color: #666 !important;
+    background: #f0f0f0 !important;
+  }
+
+  .implant-name {
+    color: #000 !important;
+  }
+
+  .life-sustaining-badge {
+    background: #ddd !important;
+    color: #333 !important;
+    border: 1px solid #999 !important;
+  }
+
+  .implant-details,
+  .implant-meta {
+    color: #444 !important;
+  }
+
+  .implant-category,
+  .mri-badge {
+    background: #eee !important;
+    color: #333 !important;
+    border: 1px solid #999 !important;
+  }
+
+  /* Providers table for print */
+  .providers-table-wrapper {
+    background: #fff !important;
+    border-color: #ccc !important;
+    overflow: visible !important;
+  }
+
+  .providers-table th {
+    background: #eee !important;
+    color: #000 !important;
+    border-bottom-color: #999 !important;
+  }
+
+  .providers-table td {
+    color: #000 !important;
+    border-bottom-color: #ddd !important;
+  }
+
+  .providers-table tbody tr:hover {
+    background: transparent !important;
+  }
+
+  .providers-table .primary-row {
+    background: #f5f5f5 !important;
+  }
+
+  .providers-table .type-badge {
+    background: #eee !important;
+    color: #333 !important;
+    border: 1px solid #999 !important;
+  }
+
+  .primary-check {
+    color: #333 !important;
+  }
+
+  /* Page breaks */
+  .vitals-section {
+    page-break-before: always;
+  }
+
+  .nutrition-section,
+  .nutrition-output-section {
+    page-break-before: auto;
   }
 }
