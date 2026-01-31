@@ -19,6 +19,7 @@ import {
   EditIcon,
   PrintIcon
 } from '../../components/Icons';
+import { getCurrentLocalDateTime, localDateTimeToUTC } from '../../utils/timezone';
 import './AdminV2.css';
 
 const AdminV2Schedule = () => {
@@ -160,10 +161,27 @@ const AdminV2Schedule = () => {
 
       if (response.ok) {
         const data = await response.json();
+        
+        // Convert UTC scheduled times to local timezone for display
+        // Backend returns times in UTC, we need to compute local hour/minute
+        const convertToLocalTime = (item) => {
+          if (!item.scheduled_time) return item;
+          // Ensure the time is parsed as UTC (add Z if missing)
+          const utcTime = item.scheduled_time.endsWith('Z') || item.scheduled_time.includes('+') 
+            ? item.scheduled_time 
+            : item.scheduled_time + 'Z';
+          const localDate = new Date(utcTime);
+          return {
+            ...item,
+            hour: localDate.getHours(),
+            minute: localDate.getMinutes()
+          };
+        };
+        
         setScheduleData({
-          medications: data.medications || [],
-          nutrition: data.nutrition || [],
-          care_tasks: data.care_tasks || []
+          medications: (data.medications || []).map(convertToLocalTime),
+          nutrition: (data.nutrition || []).map(convertToLocalTime),
+          care_tasks: (data.care_tasks || []).map(convertToLocalTime)
         });
       } else {
         setError('Failed to load schedule');
@@ -179,14 +197,6 @@ const AdminV2Schedule = () => {
   const handleSelectPatient = (patient) => {
     setContextPatient(patient);
     setShowPatientModal(false);
-  };
-
-  // Get current datetime in local format for datetime-local input
-  const getCurrentLocalDateTime = () => {
-    const now = new Date();
-    const offset = now.getTimezoneOffset();
-    const local = new Date(now.getTime() - offset * 60000);
-    return local.toISOString().slice(0, 16);
   };
 
   // Open completion modal for a single item
@@ -274,7 +284,7 @@ const AdminV2Schedule = () => {
           patient_id: selectedPatient.id,
           user_id: user?.id || null,
           notes: completeFormData.notes || null,
-          completed_at: completeFormData.completed_at,
+          completed_at: localDateTimeToUTC(completeFormData.completed_at),
           // Include type-specific data
           ...(type === 'medication' && { 
             dose_amount: completeFormData.dose_amount || item.dose_amount,
@@ -319,7 +329,7 @@ const AdminV2Schedule = () => {
             patient_id: selectedPatient.id,
             user_id: user?.id || null,
             notes: completeFormData.notes || null,
-            completed_at: completeFormData.completed_at,
+            completed_at: localDateTimeToUTC(completeFormData.completed_at),
             // Include type-specific data
             ...(type === 'medication' && { 
               dose_amount: completeFormData.dose_amount,

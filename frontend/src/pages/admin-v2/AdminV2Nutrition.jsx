@@ -33,8 +33,17 @@ import {
   WetnessWetIcon,
   WetnessSoakedIcon,
   LeafIcon,
-  BarChartIcon
+  BarChartIcon,
+  LiquidIcon,
+  FoodIcon,
+  SupplementIcon,
+  BreakfastIcon,
+  LunchIcon,
+  DinnerIcon,
+  SnackIcon,
+  TubeIcon
 } from '../../components/Icons';
+import { localTimeToUTC, formatCronExpression, getCurrentLocalDateTime, localDateTimeToUTC, getLocalDateTimeString } from '../../utils/timezone';
 import './AdminV2.css';
 
 const AdminV2Nutrition = () => {
@@ -99,7 +108,8 @@ const AdminV2Nutrition = () => {
     fat_grams: '',
     sodium_mg: '',
     meal_type: 'snack',
-    notes: ''
+    notes: '',
+    consumed_at: ''
   });
   
   const [outputForm, setOutputForm] = useState({
@@ -118,7 +128,8 @@ const AdminV2Nutrition = () => {
     has_blood: false,
     has_mucus: false,
     pain_reported: false,
-    straining: false
+    straining: false,
+    occurred_at: ''
   });
   
   const [scheduleForm, setScheduleForm] = useState({
@@ -304,7 +315,8 @@ const AdminV2Nutrition = () => {
         fat_grams: intake.fat_grams || '',
         sodium_mg: intake.sodium_mg || '',
         meal_type: intake.meal_type || 'snack',
-        notes: intake.notes || ''
+        notes: intake.notes || '',
+        consumed_at: intake.consumed_at ? getLocalDateTimeString(new Date(intake.consumed_at)) : getCurrentLocalDateTime()
       });
     } else {
       setEditingItem(null);
@@ -319,7 +331,8 @@ const AdminV2Nutrition = () => {
         fat_grams: '',
         sodium_mg: '',
         meal_type: 'snack',
-        notes: ''
+        notes: '',
+        consumed_at: getCurrentLocalDateTime()
       });
     }
     setFormError(null);
@@ -342,7 +355,7 @@ const AdminV2Nutrition = () => {
         carbs_grams: intakeForm.carbs_grams ? parseFloat(intakeForm.carbs_grams) : null,
         fat_grams: intakeForm.fat_grams ? parseFloat(intakeForm.fat_grams) : null,
         sodium_mg: intakeForm.sodium_mg ? parseFloat(intakeForm.sodium_mg) : null,
-        consumed_at: new Date().toISOString()
+        consumed_at: localDateTimeToUTC(intakeForm.consumed_at)
       };
       
       const url = editingItem
@@ -393,7 +406,8 @@ const AdminV2Nutrition = () => {
         has_blood: output.has_blood || false,
         has_mucus: output.has_mucus || false,
         pain_reported: output.pain_reported || false,
-        straining: output.straining || false
+        straining: output.straining || false,
+        occurred_at: output.occurred_at ? getLocalDateTimeString(new Date(output.occurred_at)) : getCurrentLocalDateTime()
       });
     } else {
       setEditingItem(null);
@@ -413,7 +427,8 @@ const AdminV2Nutrition = () => {
         has_blood: false,
         has_mucus: false,
         pain_reported: false,
-        straining: false
+        straining: false,
+        occurred_at: getCurrentLocalDateTime()
       });
     }
     setFormError(null);
@@ -432,7 +447,7 @@ const AdminV2Nutrition = () => {
         ...outputForm,
         patient_id: selectedPatient.id,
         amount: outputForm.amount ? parseFloat(outputForm.amount) : null,
-        occurred_at: new Date().toISOString()
+        occurred_at: localDateTimeToUTC(outputForm.occurred_at)
       };
       
       const url = editingItem
@@ -527,15 +542,16 @@ const AdminV2Nutrition = () => {
   };
 
   const buildCronExpression = () => {
-    const [hour, minute] = scheduleTime.split(':').map(Number);
+    // Convert local time to UTC for cron expression (DB stores in UTC)
+    const utc = localTimeToUTC(scheduleTime);
     
     if (scheduleMode === 'daily') {
-      return `${minute} ${hour} * * *`;
+      return `${utc.minute} ${utc.hour} * * *`;
     } else if (scheduleMode === 'weekly') {
       if (selectedDays.length === 0) return null;
-      return `${minute} ${hour} * * ${selectedDays.sort().join(',')}`;
+      return `${utc.minute} ${utc.hour} * * ${selectedDays.sort().join(',')}`;
     } else if (scheduleMode === 'monthly') {
-      return `${minute} ${hour} ${selectedDayOfMonth} * *`;
+      return `${utc.minute} ${utc.hour} ${selectedDayOfMonth} * *`;
     }
     return null;
   };
@@ -764,25 +780,6 @@ const AdminV2Nutrition = () => {
     if (!dateStr) return '-';
     const date = new Date(dateStr);
     return date.toLocaleDateString();
-  };
-
-  const parseCronExpression = (cronExpr) => {
-    if (!cronExpr) return 'Not scheduled';
-    const parts = cronExpr.split(' ');
-    if (parts.length < 5) return cronExpr;
-    
-    const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
-    const timeStr = `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`;
-    
-    if (dayOfMonth !== '*') {
-      return `Day ${dayOfMonth} at ${timeStr}`;
-    } else if (dayOfWeek !== '*') {
-      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-      const days = dayOfWeek.split(',').map(d => dayNames[parseInt(d)] || d).join(', ');
-      return `${days} at ${timeStr}`;
-    } else {
-      return `Daily at ${timeStr}`;
-    }
   };
 
   // Calculate daily occurrences from cron expression
@@ -1218,7 +1215,7 @@ const AdminV2Nutrition = () => {
                                   {getScheduleTypeLabel(schedule.schedule_type)}
                                 </span>
                               </td>
-                              <td>{parseCronExpression(schedule.cron_expression)}</td>
+                              <td>{formatCronExpression(schedule.cron_expression)}</td>
                               <td>
                                 {schedule.default_amount 
                                   ? `${schedule.default_amount} ${schedule.default_amount_unit || ''}`
@@ -1513,7 +1510,7 @@ const AdminV2Nutrition = () => {
       {/* Intake Modal */}
       {showIntakeModal && (
         <div className="admin-v2-modal-overlay" onClick={() => setShowIntakeModal(false)}>
-          <div className="admin-v2-modal" onClick={e => e.stopPropagation()}>
+          <div className="admin-v2-modal admin-v2-modal-lg" onClick={e => e.stopPropagation()}>
             <div className="admin-v2-modal-header">
               <h3>{editingItem ? 'Edit Intake' : 'Log Intake'}</h3>
               <button className="admin-v2-modal-close" onClick={() => setShowIntakeModal(false)}>
@@ -1524,7 +1521,62 @@ const AdminV2Nutrition = () => {
               <div className="admin-v2-modal-body">
                 {formError && <div className="admin-v2-form-error">{formError}</div>}
                 
-                <div className="admin-v2-form-row">
+                <div className="admin-v2-form-group" style={{ marginBottom: '1rem' }}>
+                  <label><ClockIcon size={16} /> Date & Time *</label>
+                  <input
+                    type="datetime-local"
+                    value={intakeForm.consumed_at}
+                    onChange={e => setIntakeForm({...intakeForm, consumed_at: e.target.value})}
+                    required
+                  />
+                </div>
+
+                {/* Intake Type Selection */}
+                <div className="admin-v2-output-type-section">
+                  <label className="admin-v2-output-section-label">Intake Type *</label>
+                  <div className="admin-v2-output-type-grid">
+                    {['liquid', 'food', 'supplement', 'tube_feed'].map(type => (
+                      <button
+                        key={type}
+                        type="button"
+                        className={`admin-v2-output-type-btn ${intakeForm.item_type === type ? 'active' : ''}`}
+                        onClick={() => setIntakeForm({...intakeForm, item_type: type})}
+                      >
+                        {type === 'liquid' && <LiquidIcon size={20} />}
+                        {type === 'food' && <FoodIcon size={20} />}
+                        {type === 'supplement' && <SupplementIcon size={20} />}
+                        {type === 'tube_feed' && <TubeIcon size={20} />}
+                        <span>{type === 'tube_feed' ? 'Tube Feed' : type.charAt(0).toUpperCase() + type.slice(1)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Meal Type Selection */}
+                <div className="admin-v2-output-type-section">
+                  <label className="admin-v2-output-section-label">Meal Type</label>
+                  <div className="admin-v2-output-type-grid">
+                    {['breakfast', 'lunch', 'dinner', 'snack', 'supplement'].map(type => (
+                      <button
+                        key={type}
+                        type="button"
+                        className={`admin-v2-output-type-btn ${intakeForm.meal_type === type ? 'active' : ''}`}
+                        onClick={() => setIntakeForm({...intakeForm, meal_type: type})}
+                      >
+                        {type === 'breakfast' && <BreakfastIcon size={20} />}
+                        {type === 'lunch' && <LunchIcon size={20} />}
+                        {type === 'dinner' && <DinnerIcon size={20} />}
+                        {type === 'snack' && <SnackIcon size={20} />}
+                        {type === 'supplement' && <SupplementIcon size={20} />}
+                        <span>{type.charAt(0).toUpperCase() + type.slice(1)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Item Details Card */}
+                <div className="admin-v2-output-details-card">
+                  <h4 className="admin-v2-output-card-title">Item Details</h4>
                   <div className="admin-v2-form-group">
                     <label>Item Name *</label>
                     <input
@@ -1535,116 +1587,95 @@ const AdminV2Nutrition = () => {
                       required
                     />
                   </div>
-                  <div className="admin-v2-form-group">
-                    <label>Type *</label>
-                    <select
-                      value={intakeForm.item_type}
-                      onChange={e => setIntakeForm({...intakeForm, item_type: e.target.value})}
-                    >
-                      <option value="liquid">Liquid</option>
-                      <option value="food">Food</option>
-                      <option value="supplement">Supplement</option>
-                    </select>
+                  <div className="admin-v2-form-row">
+                    <div className="admin-v2-form-group">
+                      <label>Amount *</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={intakeForm.amount}
+                        onChange={e => setIntakeForm({...intakeForm, amount: e.target.value})}
+                        required
+                      />
+                    </div>
+                    <div className="admin-v2-form-group">
+                      <label>Unit</label>
+                      <select
+                        value={intakeForm.amount_unit}
+                        onChange={e => setIntakeForm({...intakeForm, amount_unit: e.target.value})}
+                      >
+                        <option value="ml">ml</option>
+                        <option value="oz">oz</option>
+                        <option value="cups">cups</option>
+                        <option value="grams">grams</option>
+                        <option value="servings">servings</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
 
-                <div className="admin-v2-form-row">
-                  <div className="admin-v2-form-group">
-                    <label>Amount *</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={intakeForm.amount}
-                      onChange={e => setIntakeForm({...intakeForm, amount: e.target.value})}
-                      required
-                    />
+                {/* Nutrition Details Card */}
+                <div className="admin-v2-output-details-card">
+                  <h4 className="admin-v2-output-card-title"><FlameIcon size={16} /> Nutrition (Optional)</h4>
+                  <div className="admin-v2-form-row">
+                    <div className="admin-v2-form-group">
+                      <label>Calories</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={intakeForm.calories}
+                        onChange={e => setIntakeForm({...intakeForm, calories: e.target.value})}
+                        placeholder="kcal"
+                      />
+                    </div>
+                    <div className="admin-v2-form-group">
+                      <label>Protein (g)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={intakeForm.protein_grams}
+                        onChange={e => setIntakeForm({...intakeForm, protein_grams: e.target.value})}
+                      />
+                    </div>
+                    <div className="admin-v2-form-group">
+                      <label>Carbs (g)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={intakeForm.carbs_grams}
+                        onChange={e => setIntakeForm({...intakeForm, carbs_grams: e.target.value})}
+                      />
+                    </div>
                   </div>
-                  <div className="admin-v2-form-group">
-                    <label>Unit</label>
-                    <select
-                      value={intakeForm.amount_unit}
-                      onChange={e => setIntakeForm({...intakeForm, amount_unit: e.target.value})}
-                    >
-                      <option value="ml">ml</option>
-                      <option value="oz">oz</option>
-                      <option value="cups">cups</option>
-                      <option value="grams">grams</option>
-                      <option value="servings">servings</option>
-                    </select>
-                  </div>
-                  <div className="admin-v2-form-group">
-                    <label>Meal Type</label>
-                    <select
-                      value={intakeForm.meal_type}
-                      onChange={e => setIntakeForm({...intakeForm, meal_type: e.target.value})}
-                    >
-                      <option value="breakfast">Breakfast</option>
-                      <option value="lunch">Lunch</option>
-                      <option value="dinner">Dinner</option>
-                      <option value="snack">Snack</option>
-                      <option value="supplement">Supplement</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="admin-v2-form-row">
-                  <div className="admin-v2-form-group">
-                    <label>Calories</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={intakeForm.calories}
-                      onChange={e => setIntakeForm({...intakeForm, calories: e.target.value})}
-                      placeholder="Optional"
-                    />
-                  </div>
-                  <div className="admin-v2-form-group">
-                    <label>Protein (g)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={intakeForm.protein_grams}
-                      onChange={e => setIntakeForm({...intakeForm, protein_grams: e.target.value})}
-                    />
-                  </div>
-                  <div className="admin-v2-form-group">
-                    <label>Carbs (g)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={intakeForm.carbs_grams}
-                      onChange={e => setIntakeForm({...intakeForm, carbs_grams: e.target.value})}
-                    />
-                  </div>
-                </div>
-
-                <div className="admin-v2-form-row">
-                  <div className="admin-v2-form-group">
-                    <label>Fat (g)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={intakeForm.fat_grams}
-                      onChange={e => setIntakeForm({...intakeForm, fat_grams: e.target.value})}
-                    />
-                  </div>
-                  <div className="admin-v2-form-group">
-                    <label>Sodium (mg)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      value={intakeForm.sodium_mg}
-                      onChange={e => setIntakeForm({...intakeForm, sodium_mg: e.target.value})}
-                    />
+                  <div className="admin-v2-form-row">
+                    <div className="admin-v2-form-group">
+                      <label>Fat (g)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={intakeForm.fat_grams}
+                        onChange={e => setIntakeForm({...intakeForm, fat_grams: e.target.value})}
+                      />
+                    </div>
+                    <div className="admin-v2-form-group">
+                      <label>Sodium (mg)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={intakeForm.sodium_mg}
+                        onChange={e => setIntakeForm({...intakeForm, sodium_mg: e.target.value})}
+                      />
+                    </div>
                   </div>
                 </div>
 
                 <div className="admin-v2-form-group">
-                  <label>Notes</label>
+                  <label><NotesIcon size={16} /> Notes</label>
                   <textarea
                     value={intakeForm.notes}
                     onChange={e => setIntakeForm({...intakeForm, notes: e.target.value})}
                     rows={2}
+                    placeholder="Additional notes..."
                   />
                 </div>
               </div>
@@ -1674,6 +1705,16 @@ const AdminV2Nutrition = () => {
             <form onSubmit={handleSaveOutput}>
               <div className="admin-v2-modal-body">
                 {formError && <div className="admin-v2-form-error">{formError}</div>}
+                
+                <div className="admin-v2-form-group" style={{ marginBottom: '1rem' }}>
+                  <label>Date & Time *</label>
+                  <input
+                    type="datetime-local"
+                    value={outputForm.occurred_at}
+                    onChange={e => setOutputForm({...outputForm, occurred_at: e.target.value})}
+                    required
+                  />
+                </div>
                 
                 {/* Output Type Selection */}
                 <div className="admin-v2-output-type-section">

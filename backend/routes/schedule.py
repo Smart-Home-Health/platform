@@ -2,13 +2,14 @@
 Schedule routes - Daily schedule view combining medications, nutrition schedules, and care tasks
 """
 import logging
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, Body
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
 from db import get_db
+from utils.datetime_utils import utc_now
 from models.schedule import CompleteItemRequest, BulkCompleteRequest
 from crud.scheduling import get_scheduled_medications, get_scheduled_care_tasks, get_scheduled_nutrition
 from schemas.medication import Medication
@@ -167,7 +168,7 @@ async def complete_medication(
         if data.completed_at:
             completed_at = parse_scheduled_time(data.completed_at)
         else:
-            completed_at = datetime.now()
+            completed_at = utc_now()
         
         logger.info(f"Completing medication: schedule_id={data.schedule_id}, scheduled_time={data.scheduled_time}, completed_at={completed_at}")
         
@@ -200,7 +201,7 @@ async def complete_medication(
             administered_early=False,
             administered_late=False,
             notes=data.notes,
-            created_at=datetime.now()
+            created_at=utc_now()
         )
         db.add(log)
         db.commit()
@@ -226,7 +227,7 @@ async def complete_nutrition(
         if data.completed_at:
             completed_at = parse_scheduled_time(data.completed_at)
         else:
-            completed_at = datetime.now()
+            completed_at = utc_now()
         
         # Get the schedule for default values
         schedule = db.query(NutritionSchedule).filter(NutritionSchedule.id == data.schedule_id).first()
@@ -250,8 +251,8 @@ async def complete_nutrition(
             consumed_at=completed_at,
             scheduled_time=scheduled_dt,
             notes=data.notes or f"Completed from schedule '{schedule.name}' at {scheduled_dt.strftime('%H:%M')}",
-            created_at=datetime.now(),
-            updated_at=datetime.now()
+            created_at=utc_now(),
+            updated_at=utc_now()
         )
         db.add(intake)
         db.commit()
@@ -277,7 +278,7 @@ async def complete_care_task(
         if data.completed_at:
             completed_at = parse_scheduled_time(data.completed_at)
         else:
-            completed_at = datetime.now()
+            completed_at = utc_now()
         
         # Get the schedule to find care task ID
         schedule = db.query(CareTaskSchedule).filter(CareTaskSchedule.id == data.schedule_id).first()
@@ -294,7 +295,7 @@ async def complete_care_task(
             status="completed",
             notes=data.notes,
             performed_by=data.user_id,
-            created_at=datetime.now()
+            created_at=utc_now()
         )
         db.add(log)
         db.commit()
@@ -326,7 +327,7 @@ async def complete_bulk(
         for item in medications:
             try:
                 scheduled_dt = parse_scheduled_time(item.scheduled_time)
-                completed_at = parse_scheduled_time(item.completed_at) if item.completed_at else datetime.now()
+                completed_at = parse_scheduled_time(item.completed_at) if item.completed_at else utc_now()
                 
                 schedule = db.query(MedicationSchedule).filter(MedicationSchedule.id == item.schedule_id).first()
                 if schedule:
@@ -345,7 +346,7 @@ async def complete_bulk(
                             is_scheduled=True,
                             scheduled_time=scheduled_dt,
                             notes=item.notes,
-                            created_at=datetime.now()
+                            created_at=utc_now()
                         )
                         db.add(log)
                         results["medications"].append({"schedule_id": item.schedule_id, "success": True})
@@ -356,7 +357,7 @@ async def complete_bulk(
         for item in nutrition:
             try:
                 scheduled_dt = parse_scheduled_time(item.scheduled_time)
-                completed_at = parse_scheduled_time(item.completed_at) if item.completed_at else datetime.now()
+                completed_at = parse_scheduled_time(item.completed_at) if item.completed_at else utc_now()
                 
                 schedule = db.query(NutritionSchedule).filter(NutritionSchedule.id == item.schedule_id).first()
                 if schedule:
@@ -375,8 +376,8 @@ async def complete_bulk(
                         consumed_at=completed_at,
                         scheduled_time=scheduled_dt,
                         notes=item.notes or f"Completed from schedule '{schedule.name}' at {scheduled_dt.strftime('%H:%M')}",
-                        created_at=datetime.now(),
-                        updated_at=datetime.now()
+                        created_at=utc_now(),
+                        updated_at=utc_now()
                     )
                     db.add(intake)
                     results["nutrition"].append({"schedule_id": item.schedule_id, "success": True})
@@ -387,7 +388,7 @@ async def complete_bulk(
         for item in care_tasks:
             try:
                 scheduled_dt = parse_scheduled_time(item.scheduled_time)
-                completed_at = parse_scheduled_time(item.completed_at) if item.completed_at else datetime.now()
+                completed_at = parse_scheduled_time(item.completed_at) if item.completed_at else utc_now()
                 
                 schedule = db.query(CareTaskSchedule).filter(CareTaskSchedule.id == item.schedule_id).first()
                 if schedule:

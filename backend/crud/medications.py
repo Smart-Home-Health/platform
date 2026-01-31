@@ -2,13 +2,14 @@
 Medication management CRUD operations
 """
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from croniter import croniter
 from sqlalchemy.orm import Session
 from schemas.medication import Medication
 from schemas.medication_schedule import MedicationSchedule
 from schemas.medication_log import MedicationLog
 from crud.settings import get_setting
+from utils.datetime_utils import utc_now, utc_today
 
 logger = logging.getLogger('crud')
 
@@ -23,7 +24,7 @@ def add_medication(db: Session, name, concentration=None, quantity=None, quantit
         prescriber_id: Optional provider ID who prescribed this medication
         pharmacy_id: Optional business ID representing the pharmacy
     """
-    now = datetime.now()
+    now = utc_now()
     medication = Medication(
         patient_id=patient_id,
         name=name,
@@ -54,7 +55,7 @@ def get_active_medications(db: Session):
     (active=True and end_date is None or > today, and patient_id matches current patient or is None)
     """
     try:
-        today = datetime.now().date()
+        today = utc_today()
         current_patient_id = get_setting(db, 'current_patient_id')
         
         # Convert to int if it's a string
@@ -104,7 +105,7 @@ def get_inactive_medications(db: Session):
     (active=False or end_date <= today, and patient_id matches current patient or is None)
     """
     try:
-        today = datetime.now().date()
+        today = utc_today()
         current_patient_id = get_setting(db, 'current_patient_id')
         
         # Convert to int if it's a string
@@ -162,7 +163,7 @@ def update_medication(db: Session, med_id, **kwargs):
             if hasattr(medication, key):
                 setattr(medication, key, value)
         
-        medication.updated_at = datetime.now()
+        medication.updated_at = utc_now()
         
         db.commit()
         logger.info(f"Medication updated: {medication.name}")
@@ -180,7 +181,7 @@ def delete_medication(db: Session, med_id):
         medication = db.query(Medication).filter(Medication.id == med_id).first()
         if medication:
             medication.active = False
-            medication.updated_at = datetime.now()
+            medication.updated_at = utc_now()
             db.commit()
             logger.info(f"Medication deleted (soft): {medication.name}")
             return True
@@ -221,14 +222,19 @@ def administer_medication(db: Session, med_id, dose_amount, schedule_id=None, sc
         administered_early = False
         administered_late = False
         
+        # Use timezone-aware UTC datetime
+        now = datetime.now(timezone.utc)
+        
         if schedule_id and scheduled_time:
             # Handle both datetime objects (from Pydantic) and string (legacy)
             if isinstance(scheduled_time, datetime):
                 scheduled_dt = scheduled_time
+                # Ensure it's timezone-aware
+                if scheduled_dt.tzinfo is None:
+                    scheduled_dt = scheduled_dt.replace(tzinfo=timezone.utc)
             else:
                 scheduled_dt = datetime.fromisoformat(scheduled_time.replace('Z', '+00:00'))
             
-            now = datetime.now()
             diff_minutes = (now - scheduled_dt).total_seconds() / 60
             
             if diff_minutes < -15:  # More than 15 minutes early
@@ -241,14 +247,14 @@ def administer_medication(db: Session, med_id, dose_amount, schedule_id=None, sc
             medication_id=med_id,
             patient_id=current_patient_id,  # Always use current patient for logs
             schedule_id=schedule_id,
-            administered_at=datetime.now(),
+            administered_at=now,
             dose_amount=dose_amount,
             is_scheduled=bool(schedule_id),
             scheduled_time=scheduled_time,
             administered_early=administered_early,
             administered_late=administered_late,
             notes=notes,
-            created_at=datetime.now()
+            created_at=now
         )
         db.add(log)
         db.commit()
@@ -265,7 +271,7 @@ def get_medication_names_for_dropdown(db: Session):
     Returns active medications first, then inactive ones with indicators
     """
     try:
-        today = datetime.now().date()
+        today = utc_today()
         current_patient_id = get_setting(db, 'current_patient_id')
         
         # Convert to int if it's a string
@@ -326,7 +332,7 @@ def add_medication_schedule(db: Session, medication_id, cron_expression, descrip
         # Use provided patient_id if given, otherwise inherit from medication
         schedule_patient_id = patient_id if patient_id is not None else medication.patient_id
         
-        now = datetime.now()
+        now = utc_now()
         schedule = MedicationSchedule(
             medication_id=medication_id,
             patient_id=schedule_patient_id,
@@ -421,7 +427,7 @@ def update_medication_schedule(db: Session, schedule_id, **kwargs):
             if hasattr(schedule, key):
                 setattr(schedule, key, value)
         
-        schedule.updated_at = datetime.now()
+        schedule.updated_at = utc_now()
         db.commit()
         logger.info(f"Medication schedule {schedule_id} updated")
         return True
@@ -460,7 +466,7 @@ def toggle_medication_schedule_active(db: Session, schedule_id):
             return False, None
         
         schedule.active = not schedule.active
-        schedule.updated_at = datetime.now()
+        schedule.updated_at = utc_now()
         db.commit()
         logger.info(f"Medication schedule {schedule_id} active status toggled to {schedule.active}")
         return True, schedule.active
@@ -483,7 +489,7 @@ def get_scheduled_medications_for_date(db: Session, target_date=None, patient_id
     """
     try:
         if target_date is None:
-            target_date = datetime.now().date()
+            target_date = utc_today()
         
         # Use provided patient_id or fall back to current patient from settings
         if patient_id is None:
@@ -525,13 +531,17 @@ def get_scheduled_medications_for_date(db: Session, target_date=None, patient_id
                     if next_time.date() > target_date:
                         break
                     if next_time.date() == target_date:
+                        # Croniter returns naive datetime - cron expressions are stored in UTC
+                        # so we just need to mark it as UTC-aware
+                        utc_time = next_time.replace(tzinfo=timezone.utc)
+                        
                         scheduled_meds.append({
                             'schedule_id': schedule.id,
                             'medication_id': schedule.medication_id,
                             'medication_name': schedule.medication.name,
                             'dose_amount': schedule.dose_amount,
                             'dose_unit': schedule.medication.quantity_unit,
-                            'scheduled_time': next_time,
+                            'scheduled_time': utc_time,
                             'description': schedule.description,
                             'cron_expression': schedule.cron_expression
                         })
@@ -558,7 +568,7 @@ def get_missed_medications(db: Session, target_date=None):
     """
     try:
         if target_date is None:
-            target_date = (datetime.now() - timedelta(days=1)).date()
+            target_date = (utc_now() - timedelta(days=1)).date()
         
         # Get all scheduled medications for the target date
         scheduled = get_scheduled_medications_for_date(db, target_date)
@@ -606,9 +616,9 @@ def get_daily_medication_schedule(db: Session, patient_id=None):
         Dict with 'scheduled_medications' list sorted chronologically
     """
     try:
-        today = datetime.now().date()
+        today = utc_today()
         yesterday = today - timedelta(days=1)
-        current_time = datetime.now()
+        current_time = utc_now()
         
         # Get scheduled meds for yesterday and today
         yesterday_scheduled = get_scheduled_medications_for_date(db, yesterday, patient_id=patient_id)
@@ -776,7 +786,7 @@ def get_daily_medication_schedule(db: Session, patient_id=None):
         logger.error(f"Error getting daily medication schedule: {e}")
         return {
             'scheduled_medications': [],
-            'generated_at': datetime.now().isoformat()
+            'generated_at': utc_now().isoformat()
         }
 
 
@@ -790,7 +800,7 @@ def get_due_and_upcoming_medications_count(db: Session):
     try:
         schedule_data = get_daily_medication_schedule(db)
         meds = schedule_data.get('scheduled_medications', [])
-        now = datetime.now()
+        now = utc_now()
         count = 0
         for med in meds:
             status = med.get('status', '')

@@ -1,5 +1,8 @@
 FROM python:3.11-slim
 
+# Set timezone to UTC for consistent datetime handling
+ENV TZ=UTC
+
 # Set working directory
 WORKDIR /app
 

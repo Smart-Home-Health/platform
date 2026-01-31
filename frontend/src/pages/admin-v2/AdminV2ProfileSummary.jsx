@@ -379,9 +379,10 @@ const AdminV2ProfileSummary = () => {
                       <span className="medication-name">{med.name}</span>
                       {med.concentration && <span className="medication-dose-badge">{med.concentration}</span>}
                       {med.quantity && <span className="medication-qty-badge">{med.quantity} {med.quantity_unit || ''}</span>}
-                      {med.instructions && <span className="medication-instructions">{med.instructions}</span>}
+                      {med.prescriber_name && <span className="medication-prescriber">{med.prescriber_name}</span>}
                     </div>
                     <div className="medication-row">
+                      {med.instructions && <span className="medication-instructions">{med.instructions}</span>}
                       {med.as_needed && <span className="medication-prn-badge">PRN</span>}
                       {med.last_administered && (
                         <span className="medication-last-given">

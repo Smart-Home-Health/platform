@@ -13,6 +13,7 @@ import {
   TasksIcon,
   ClockIcon
 } from '../../components/Icons';
+import { localTimeToUTC } from '../../utils/timezone';
 import './AdminV2.css';
 
 const AdminV2CareTasks = () => {
@@ -486,16 +487,17 @@ const AdminV2CareTasks = () => {
     
     let cron = '';
     let description = '';
-    let [hour, minute] = scheduleTime.split(':').map(Number);
+    // Convert local time to UTC for cron expression (DB stores in UTC)
+    const utc = localTimeToUTC(scheduleTime);
     
     if (scheduleMode === 'weekly') {
       if (selectedDays.length === 0) return;
       const dayList = selectedDays.sort((a, b) => a - b).join(',');
-      cron = `${minute} ${hour} * * ${dayList}`;
+      cron = `${utc.minute} ${utc.hour} * * ${dayList}`;
       const dayNames = selectedDays.map(d => daysOfWeek[d]).join(', ');
       description = `Every ${dayNames} at ${scheduleTime}`;
     } else {
-      cron = `${minute} ${hour} ${selectedDayOfMonth} * *`;
+      cron = `${utc.minute} ${utc.hour} ${selectedDayOfMonth} * *`;
       description = `Monthly on day ${selectedDayOfMonth} at ${scheduleTime}`;
     }
 

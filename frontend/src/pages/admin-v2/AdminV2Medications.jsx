@@ -13,6 +13,7 @@ import {
   MedicationsIcon,
   ClockIcon
 } from '../../components/Icons';
+import { localTimeToUTC, utcTimeToLocal, parseCronExpression } from '../../utils/timezone';
 import './AdminV2.css';
 
 const AdminV2Medications = () => {
@@ -331,27 +332,6 @@ const AdminV2Medications = () => {
     setShowScheduleModal(true);
   };
 
-  // Helper to parse cron expression for display
-  const parseCronExpression = (cronExpression) => {
-    const parts = cronExpression.split(' ');
-    if (parts.length !== 5) return null;
-    
-    const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
-    const timeStr = `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`;
-    
-    if (dayOfWeek !== '*') {
-      const daysMap = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-      const days = dayOfWeek.split(',').map(d => daysMap[parseInt(d)]).join(', ');
-      return { type: 'weekly', time: timeStr, days };
-    }
-    
-    if (dayOfMonth !== '*') {
-      return { type: 'monthly', time: timeStr, dayOfMonth: parseInt(dayOfMonth) };
-    }
-    
-    return null;
-  };
-
   // Get schedules relevant to current patient
   const getRelevantSchedules = (schedules) => {
     if (!schedules || schedules.length === 0) return [];
@@ -378,15 +358,17 @@ const AdminV2Medications = () => {
     try {
       let cron = '';
       let description = '';
-      const [hour, minute] = scheduleTime.split(':').map(Number);
+      // Convert local time to UTC for cron expression (DB stores in UTC)
+      const utc = localTimeToUTC(scheduleTime);
+      const [localHour, localMinute] = scheduleTime.split(':').map(Number);
       
       if (scheduleMode === 'weekly') {
         const dow = selectedDays.sort((a,b) => parseInt(a) - parseInt(b)).join(',');
-        cron = `${minute} ${hour} * * ${dow}`;
+        cron = `${utc.minute} ${utc.hour} * * ${dow}`;
         const dayNames = selectedDays.map(d => daysOfWeek[parseInt(d)]).join(', ');
         description = `${dayNames} at ${scheduleTime}`;
       } else {
-        cron = `${minute} ${hour} ${selectedDayOfMonth} * *`;
+        cron = `${utc.minute} ${utc.hour} ${selectedDayOfMonth} * *`;
         description = `Day ${selectedDayOfMonth} of each month at ${scheduleTime}`;
       }
       

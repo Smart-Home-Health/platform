@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from schemas.care_task_category import CareTaskCategory
 from schemas.care_task import CareTask
 from schemas.care_task_log import CareTaskLog
+from utils.datetime_utils import utc_now
 
 logger = logging.getLogger('crud')
 
@@ -17,7 +18,7 @@ def add_care_task_category(db: Session, name, description=None, color='#3B82F6')
     Add a new care task category
     """
     try:
-        now = datetime.now()
+        now = utc_now()
         category = CareTaskCategory(
             name=name,
             description=description,
@@ -75,7 +76,7 @@ def update_care_task_category(db: Session, category_id, **kwargs):
             if hasattr(category, key):
                 setattr(category, key, value)
         
-        category.updated_at = datetime.now()
+        category.updated_at = utc_now()
         db.commit()
         logger.info(f"Care task category updated: {category.name}")
         return True
@@ -125,7 +126,7 @@ def add_care_task(db: Session, name, category_id, description=None, active=True,
         # For now, we'll keep it as a global template unless explicitly specified
         # You can modify this logic based on your requirements
         
-        now = datetime.now()
+        now = utc_now()
         task = CareTask(
             name=name,
             patient_id=patient_id,  # Can be None for global templates
@@ -260,7 +261,7 @@ def update_care_task(db: Session, task_id, **kwargs):
             if hasattr(task, key):
                 setattr(task, key, value)
         
-        task.updated_at = datetime.now()
+        task.updated_at = utc_now()
         db.commit()
         logger.info(f"Care task updated: {task.name}")
         return True
@@ -280,7 +281,7 @@ def delete_care_task(db: Session, task_id):
             return False
         
         task.active = False
-        task.updated_at = datetime.now()
+        task.updated_at = utc_now()
         db.commit()
         logger.info(f"Care task deleted (soft): {task.name}")
         return True
@@ -300,7 +301,7 @@ def toggle_care_task_active(db: Session, task_id):
             return False, None
         
         task.active = not task.active
-        task.updated_at = datetime.now()
+        task.updated_at = utc_now()
         db.commit()
         logger.info(f"Care task {task_id} active status toggled to {task.active}")
         return True, task.active
@@ -322,7 +323,7 @@ def log_care_task(db: Session, task_id, completion_status='completed', notes=Non
         completed_by: Optional identifier of who completed the task
     """
     try:
-        now = datetime.now()
+        now = utc_now()
         log = CareTaskLog(
             task_id=task_id,
             completed_at=now,
@@ -414,7 +415,7 @@ def get_recent_care_task_completions(db: Session, days=7):
     Get care task completions from the last N days
     """
     try:
-        cutoff_date = datetime.now() - timedelta(days=days)
+        cutoff_date = utc_now() - timedelta(days=days)
         
         logs = db.query(CareTaskLog).filter(
             CareTaskLog.completed_at >= cutoff_date
@@ -444,7 +445,7 @@ def get_care_task_completion_stats(db: Session, days=30):
     Get completion statistics for care tasks over the last N days
     """
     try:
-        cutoff_date = datetime.now() - timedelta(days=days)
+        cutoff_date = utc_now() - timedelta(days=days)
         
         # Get all logs from the period
         logs = db.query(CareTaskLog).filter(
@@ -504,7 +505,7 @@ def get_overdue_care_tasks(db: Session):
         tasks = db.query(CareTask).filter(CareTask.active == True).all()
         
         overdue_tasks = []
-        now = datetime.now()
+        now = utc_now()
         
         for task in tasks:
             if not task.frequency:

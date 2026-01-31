@@ -15,6 +15,14 @@ const AdminV2Vitals = () => {
   
   const selectedPatient = contextPatient;
   const isHistoryView = location.pathname.includes('/history');
+
+  // Helper to get local datetime string for datetime-local input
+  const getLocalDateTimeString = () => {
+    const now = new Date();
+    const offset = now.getTimezoneOffset();
+    const local = new Date(now.getTime() - offset * 60 * 1000);
+    return local.toISOString().slice(0, 16);
+  };
   
   const [vitalsFormData, setVitalsFormData] = useState({
     heart_rate: '',
@@ -25,7 +33,7 @@ const AdminV2Vitals = () => {
     systolic: '',
     diastolic: '',
     notes: '',
-    timestamp: new Date().toISOString().slice(0, 16)
+    timestamp: getLocalDateTimeString()
   });
   
   // Toggle state for which vitals to show
@@ -246,7 +254,7 @@ const AdminV2Vitals = () => {
           setVitalsFormData({
             heart_rate: '', spo2: '', respiratory_rate: '', temperature: '', weight: '',
             systolic: '', diastolic: '', notes: '',
-            timestamp: new Date().toISOString().slice(0, 16)
+            timestamp: getLocalDateTimeString()
           });
           setTimeout(() => setSuccess(null), 3000);
         } else {

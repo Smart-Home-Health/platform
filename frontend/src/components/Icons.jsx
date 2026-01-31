@@ -675,3 +675,81 @@ export const TargetIcon = ({ size = 20 }) => (
     <circle cx="12" cy="12" r="2" />
   </svg>
 );
+
+// Intake Icons
+export const LiquidIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" 
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M8 2h8l1 7H7l1-7z" />
+    <path d="M7 9v10a3 3 0 0 0 3 3h4a3 3 0 0 0 3-3V9" />
+    <path d="M12 14v3" />
+  </svg>
+);
+
+export const FoodIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" 
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 11h18" />
+    <path d="M5 11V7a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v4" />
+    <path d="M5 11v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" />
+    <line x1="12" y1="3" x2="12" y2="5" />
+  </svg>
+);
+
+export const SupplementIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" 
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="6" y="4" width="12" height="16" rx="2" />
+    <line x1="6" y1="10" x2="18" y2="10" />
+    <circle cx="12" cy="7" r="1" />
+    <circle cx="10" cy="14" r="1" />
+    <circle cx="14" cy="14" r="1" />
+    <circle cx="12" cy="17" r="1" />
+  </svg>
+);
+
+export const BreakfastIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" 
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="8" />
+    <path d="M12 6v2" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+
+export const LunchIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" 
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <ellipse cx="12" cy="12" rx="10" ry="5" />
+    <path d="M2 12v2c0 2.76 4.48 5 10 5s10-2.24 10-5v-2" />
+  </svg>
+);
+
+export const DinnerIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" 
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 14h18v2a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4v-2z" />
+    <path d="M6 14V8c0-2.5 2.5-4 6-4s6 1.5 6 4v6" />
+    <line x1="12" y1="4" x2="12" y2="2" />
+  </svg>
+);
+
+export const SnackIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" 
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M7 21h10" />
+    <path d="M12 21V11" />
+    <path d="M8 11c0-3 2-4 4-6 2 2 4 3 4 6" />
+    <path d="M6 11h12" />
+  </svg>
+);
+
+export const TubeIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" 
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="8" y="2" width="8" height="6" rx="1" />
+    <path d="M10 8v12a2 2 0 0 0 4 0V8" />
+    <line x1="8" y1="5" x2="10" y2="5" />
+    <line x1="14" y1="5" x2="16" y2="5" />
+  </svg>
+);

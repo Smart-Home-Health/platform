@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import config from '../../config';
 import { patientService } from '../../services/patients';
+import { localTimeToUTC, parseCronExpression } from '../../utils/timezone';
 
 const CareTaskScheduleView = ({ taskId, taskName, onClose }) => {
   const [schedules, setSchedules] = useState([]);
@@ -76,31 +77,6 @@ const CareTaskScheduleView = ({ taskId, taskName, onClose }) => {
     }
   };
 
-  // Helper function to parse cron expression
-  const parseCronExpression = (cronExpression) => {
-    const parts = cronExpression.split(' ');
-    if (parts.length !== 5) return null;
-    
-    const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
-    
-    // Format time
-    const timeStr = `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`;
-    
-    // Check if it's weekly (dayOfWeek is not *)
-    if (dayOfWeek !== '*') {
-      const daysMap = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-      const days = dayOfWeek.split(',').map(d => daysMap[parseInt(d)]).join(', ');
-      return { type: 'weekly', time: timeStr, days };
-    }
-    
-    // Check if it's monthly (dayOfMonth is not *)
-    if (dayOfMonth !== '*') {
-      return { type: 'monthly', time: timeStr, dayOfMonth: parseInt(dayOfMonth) };
-    }
-    
-    return null;
-  };
-
   // Helper function to separate schedules by type
   const separateSchedules = (schedules) => {
     const weekly = [];
@@ -135,19 +111,20 @@ const CareTaskScheduleView = ({ taskId, taskName, onClose }) => {
   const handleAddSchedule = async () => {
     let cron = '';
     let description = '';
-    let [hour, minute] = time.split(':').map(Number);
+    // Convert local time to UTC for cron expression (DB stores in UTC)
+    const utc = localTimeToUTC(time);
     
     if (scheduleMode === 'weekly') {
       if (selectedDays.length === 0) return;
       const dow = selectedDays.sort().join(',');
-      cron = `${minute} ${hour} * * ${dow}`;
+      cron = `${utc.minute} ${utc.hour} * * ${dow}`;
       
       // Generate human-readable description for weekly schedule
       const daysMap = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
       const dayNames = selectedDays.map(d => daysMap[parseInt(d)]).join(', ');
       description = `${dayNames} at ${time}`;
     } else {
-      cron = `${minute} ${hour} ${selectedDayOfMonth} * *`;
+      cron = `${utc.minute} ${utc.hour} ${selectedDayOfMonth} * *`;
       
       // Generate human-readable description for monthly schedule
       description = `Day ${selectedDayOfMonth} of each month at ${time}`;

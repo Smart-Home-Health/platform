@@ -151,6 +151,7 @@ async def get_admin_active_medications_endpoint(patient_id: Optional[int] = None
                 'updated_at': med.updated_at.isoformat() if med.updated_at else None,
                 'is_global': med.patient_id is None,
                 'prescriber_id': med.prescriber_id,
+                'prescriber_name': f"{med.prescriber.first_name} {med.prescriber.last_name}".strip() if med.prescriber and (med.prescriber.first_name or med.prescriber.last_name) else (med.prescriber.name if med.prescriber else None),
                 'pharmacy_id': med.pharmacy_id,
                 'last_administered': last_administered_map.get(med.id).isoformat() if last_administered_map.get(med.id) else None,
                 'schedules': get_medication_schedules(db, med.id)

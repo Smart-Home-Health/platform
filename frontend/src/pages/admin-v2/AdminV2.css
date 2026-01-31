@@ -6708,6 +6708,7 @@
 .profile-list {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 0.75rem;
   max-height: 400px;
   overflow-y: auto;
@@ -6818,13 +6819,16 @@
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  text-align: left;
 }
 
 .medication-row {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 0.75rem;
   flex-wrap: wrap;
+  width: 100%;
 }
 
 .medication-name {
@@ -6866,7 +6870,6 @@
   color: #6e7681;
   font-size: 0.75rem;
   font-style: italic;
-  margin-left: auto;
 }
 
 /* Old medication styles removed - using medication-row instead */

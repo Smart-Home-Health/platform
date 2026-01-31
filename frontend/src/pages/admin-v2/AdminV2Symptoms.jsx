@@ -47,6 +47,14 @@ const AdminV2Symptoms = () => {
   } = useAdminPatient();
   
   const selectedPatient = contextPatient;
+
+  // Helper to get local datetime string for datetime-local input
+  const getLocalDateTimeString = () => {
+    const now = new Date();
+    const offset = now.getTimezoneOffset();
+    const local = new Date(now.getTime() - offset * 60 * 1000);
+    return local.toISOString().slice(0, 16);
+  };
   
   // Determine active view based on URL
   const isHistoryView = location.pathname.includes('/history');
@@ -82,7 +90,7 @@ const AdminV2Symptoms = () => {
     duration: '',
     description: '',
     notes: '',
-    timestamp: new Date().toISOString().slice(0, 16)
+    timestamp: getLocalDateTimeString()
   });
   
   // Form states
@@ -324,7 +332,7 @@ const AdminV2Symptoms = () => {
       duration: symptom.duration || '',
       description: symptom.description || '',
       notes: symptom.notes || '',
-      timestamp: symptom.timestamp ? symptom.timestamp.slice(0, 16) : new Date().toISOString().slice(0, 16)
+      timestamp: symptom.timestamp ? symptom.timestamp.slice(0, 16) : getLocalDateTimeString()
     });
     setShowSymptomModal(true);
   };
@@ -337,7 +345,7 @@ const AdminV2Symptoms = () => {
       duration: '',
       description: '',
       notes: '',
-      timestamp: new Date().toISOString().slice(0, 16)
+      timestamp: getLocalDateTimeString()
     });
   };
 
