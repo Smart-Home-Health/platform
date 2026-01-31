@@ -24,6 +24,9 @@ import AdminV2CareTasksSchedule from './pages/admin-v2/AdminV2CareTasksSchedule'
 import AdminV2CareTasksHistory from './pages/admin-v2/AdminV2CareTasksHistory';
 import AdminV2Equipment from './pages/admin-v2/AdminV2Equipment';
 import AdminV2EquipmentHistory from './pages/admin-v2/AdminV2EquipmentHistory';
+import AdminV2Shipments from './pages/admin-v2/AdminV2Shipments';
+import AdminV2ShipmentDetail from './pages/admin-v2/AdminV2ShipmentDetail';
+import AdminV2ShipmentAlerts from './pages/admin-v2/AdminV2ShipmentAlerts';
 import AdminV2Patients from './pages/admin-v2/AdminV2Patients';
 import AdminV2Providers from './pages/admin-v2/AdminV2Providers';
 import AdminV2Businesses from './pages/admin-v2/AdminV2Businesses';
@@ -92,6 +95,9 @@ function AppContent() {
             <Route path="/admin-v2/care-tasks/history" element={<AdminV2CareTasksHistory />} />
             <Route path="/admin-v2/equipment" element={<AdminV2Equipment />} />
             <Route path="/admin-v2/equipment/history" element={<AdminV2EquipmentHistory />} />
+            <Route path="/admin-v2/equipment/shipments" element={<AdminV2Shipments />} />
+            <Route path="/admin-v2/equipment/shipments/:id" element={<AdminV2ShipmentDetail />} />
+            <Route path="/admin-v2/equipment/alerts" element={<AdminV2ShipmentAlerts />} />
             <Route path="/admin-v2/patients" element={<AdminV2Patients />} />
             <Route path="/admin-v2/providers" element={<AdminV2Providers />} />
             <Route path="/admin-v2/businesses" element={<AdminV2Businesses />} />

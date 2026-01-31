@@ -1808,6 +1808,35 @@
   cursor: pointer;
 }
 
+/* Checkbox Grid for multi-select */
+.admin-v2-checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem 1rem;
+  padding: 0.75rem 1rem;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  margin-top: 0.25rem;
+  width: 100%;
+}
+
+.admin-v2-checkbox-grid .admin-v2-checkbox-label {
+  font-size: 0.9rem;
+}
+
+/* Badge Group for multiple badges */
+.admin-v2-badge-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.admin-v2-badge-group .admin-v2-badge {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+}
+
 /* Empty Row */
 .admin-v2-empty-row {
   text-align: center;
@@ -4721,7 +4750,209 @@
 
 /* ===== Nutrition Styles ===== */
 
-/* Goals Card */
+/* Current Goals Card */
+.nutrition-goals-card {
+  border: 2px solid var(--success-color) !important;
+}
+
+.nutrition-goals-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+}
+
+@media (max-width: 1200px) {
+  .nutrition-goals-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .nutrition-goals-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.nutrition-goal-card {
+  background: linear-gradient(135deg, #21262d 0%, #161b22 100%);
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  overflow: hidden;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.nutrition-goal-card:hover {
+  border-color: #58a6ff;
+  transform: translateY(-2px);
+}
+
+.nutrition-goal-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: rgba(88, 166, 255, 0.08);
+  border-bottom: 1px solid #30363d;
+}
+
+.nutrition-goal-card-header h5 {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #c9d1d9;
+}
+
+.nutrition-goal-card-header svg {
+  color: #58a6ff;
+  flex-shrink: 0;
+}
+
+.nutrition-goal-card-body {
+  padding: 1rem;
+  min-height: 80px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.nutrition-goal-stat {
+  text-align: center;
+}
+
+.nutrition-goal-stat.secondary {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #30363d;
+  display: flex;
+  justify-content: space-between;
+  text-align: left;
+}
+
+.nutrition-goal-value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #58a6ff;
+  line-height: 1;
+}
+
+.nutrition-goal-unit {
+  display: block;
+  font-size: 0.75rem;
+  color: #8b949e;
+  margin-top: 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.nutrition-goal-label {
+  font-size: 0.8rem;
+  color: #8b949e;
+}
+
+.nutrition-goal-amount {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #c9d1d9;
+}
+
+.nutrition-goal-range {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: #8b949e;
+}
+
+.range-divider {
+  color: #484f58;
+}
+
+.nutrition-goal-empty {
+  color: #484f58;
+  font-size: 0.85rem;
+  font-style: italic;
+  text-align: center;
+}
+
+/* Macros Grid */
+.nutrition-goal-macros {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+}
+
+.macro-item {
+  text-align: center;
+  padding: 0.5rem;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+}
+
+.macro-item .macro-value {
+  font-size: 1.1rem;
+  font-weight: 700;
+  display: block;
+}
+
+.macro-item .macro-label {
+  font-size: 0.65rem;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.macro-item.protein .macro-value { color: #f472b6; }
+.macro-item.carbs .macro-value { color: #fbbf24; }
+.macro-item.fat .macro-value { color: #fb923c; }
+.macro-item.fiber .macro-value { color: #34d399; }
+
+/* Limits Grid */
+.nutrition-goal-limits {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.limit-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid #21262d;
+}
+
+.limit-item:last-child {
+  border-bottom: none;
+}
+
+.limit-label {
+  font-size: 0.8rem;
+  color: #8b949e;
+}
+
+.limit-value {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #c9d1d9;
+}
+
+/* Goals Footer */
+.nutrition-goals-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid #30363d;
+}
+
+.nutrition-goals-footer .effective-date {
+  font-size: 0.8rem;
+  color: #8b949e;
+}
+
+/* Goals Card (original styles below) */
 .admin-v2-nutrition-goals {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -7505,4 +7736,209 @@
   .nutrition-output-section {
     page-break-before: auto;
   }
+}
+
+/* ======================= */
+/* DME Shipments Styles    */
+/* ======================= */
+
+.admin-v2-detail-header {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.admin-v2-detail-title {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.admin-v2-detail-title h1 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.admin-v2-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  color: #8b949e;
+  font-size: 0.875rem;
+}
+
+.admin-v2-detail-meta strong {
+  color: #e6edf3;
+}
+
+.admin-v2-section {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.admin-v2-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.admin-v2-section h2 {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.admin-v2-receive-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.admin-v2-receive-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-v2-receive-row input[type="number"] {
+  width: 60px;
+  padding: 4px 8px;
+  font-size: 0.875rem;
+}
+
+.admin-v2-receive-row select {
+  width: 100px;
+  padding: 4px 8px;
+  font-size: 0.875rem;
+}
+
+.admin-v2-finalize-section {
+  text-align: center;
+  padding: 2rem;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  margin-top: 1.5rem;
+}
+
+.admin-v2-finalized-info {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 1rem;
+  background: rgba(46, 160, 67, 0.1);
+  border: 1px solid rgba(46, 160, 67, 0.3);
+  border-radius: 8px;
+  color: #3fb950;
+  margin-top: 1.5rem;
+}
+
+.admin-v2-alerts-section {
+  background: rgba(248, 81, 73, 0.1);
+  border: 1px solid rgba(248, 81, 73, 0.3);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.admin-v2-alerts-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 0.75rem 0;
+  color: #f85149;
+}
+
+.admin-v2-alerts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.admin-v2-alert-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: #161b22;
+  border-radius: 6px;
+  font-size: 0.875rem;
+}
+
+.admin-v2-alert-item.resolved {
+  opacity: 0.6;
+}
+
+.admin-v2-selected-alerts {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #21262d;
+  border-radius: 8px;
+}
+
+.admin-v2-selected-alerts h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.875rem;
+  color: #8b949e;
+}
+
+.admin-v2-selected-alerts ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.admin-v2-selected-alerts li {
+  margin-bottom: 0.5rem;
+}
+
+.admin-v2-text-success {
+  color: #3fb950;
+}
+
+.admin-v2-text-small {
+  font-size: 0.75rem;
+  color: #8b949e;
+}
+
+.admin-v2-row-muted {
+  opacity: 0.6;
+}
+
+.admin-v2-clickable-row {
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.admin-v2-clickable-row:hover {
+  background: #21262d;
+}
+
+.admin-v2-btn-ghost {
+  background: transparent;
+  border: none;
+  color: #8b949e;
+}
+
+.admin-v2-btn-ghost:hover {
+  color: #e6edf3;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.admin-v2-btn-lg {
+  padding: 12px 24px;
+  font-size: 1rem;
+}
+
+.admin-v2-page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
 }

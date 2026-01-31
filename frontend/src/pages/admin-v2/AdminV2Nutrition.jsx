@@ -31,7 +31,9 @@ import {
   SizeLargeIcon,
   WetnessDryIcon,
   WetnessWetIcon,
-  WetnessSoakedIcon
+  WetnessSoakedIcon,
+  LeafIcon,
+  BarChartIcon
 } from '../../components/Icons';
 import './AdminV2.css';
 
@@ -1284,39 +1286,143 @@ const AdminV2Nutrition = () => {
                   </div>
 
                   {currentGoal && (
-                    <div className="admin-v2-card" style={{ marginBottom: '1.5rem', border: '2px solid var(--success-color)' }}>
+                    <div className="admin-v2-card nutrition-goals-card" style={{ marginBottom: '1.5rem' }}>
                       <div className="admin-v2-card-header">
                         <h4>Current Active Goals</h4>
                         <span className="admin-v2-badge admin-v2-badge-success">Active</span>
                       </div>
                       <div className="admin-v2-card-body">
-                        <div className="admin-v2-goal-grid">
-                          <div className="admin-v2-goal-section">
-                            <h5>Fluids</h5>
-                            {currentGoal.water_ml_target && <p>Water Target: <strong>{currentGoal.water_ml_target} ml</strong></p>}
-                            {currentGoal.total_fluid_ml_target && <p>Total Fluids: <strong>{currentGoal.total_fluid_ml_target} ml</strong></p>}
+                        <div className="nutrition-goals-grid">
+                          {/* Fluids Section */}
+                          <div className="nutrition-goal-card">
+                            <div className="nutrition-goal-card-header">
+                              <DropletIcon size={18} />
+                              <h5>Fluids</h5>
+                            </div>
+                            <div className="nutrition-goal-card-body">
+                              {currentGoal.water_ml_target ? (
+                                <div className="nutrition-goal-stat">
+                                  <span className="nutrition-goal-value">{currentGoal.water_ml_target}</span>
+                                  <span className="nutrition-goal-unit">ml water</span>
+                                </div>
+                              ) : null}
+                              {currentGoal.total_fluid_ml_target ? (
+                                <div className="nutrition-goal-stat secondary">
+                                  <span className="nutrition-goal-label">Total Fluids:</span>
+                                  <span className="nutrition-goal-amount">{currentGoal.total_fluid_ml_target} ml</span>
+                                </div>
+                              ) : null}
+                              {!currentGoal.water_ml_target && !currentGoal.total_fluid_ml_target && (
+                                <span className="nutrition-goal-empty">Not set</span>
+                              )}
+                            </div>
                           </div>
-                          <div className="admin-v2-goal-section">
-                            <h5>Calories</h5>
-                            {currentGoal.calories_target && <p>Target: <strong>{currentGoal.calories_target} kcal</strong></p>}
-                            {currentGoal.calories_min && <p>Minimum: <strong>{currentGoal.calories_min} kcal</strong></p>}
-                            {currentGoal.calories_max && <p>Maximum: <strong>{currentGoal.calories_max} kcal</strong></p>}
+
+                          {/* Calories Section */}
+                          <div className="nutrition-goal-card">
+                            <div className="nutrition-goal-card-header">
+                              <FlameIcon size={18} />
+                              <h5>Calories</h5>
+                            </div>
+                            <div className="nutrition-goal-card-body">
+                              {currentGoal.calories_target ? (
+                                <div className="nutrition-goal-stat">
+                                  <span className="nutrition-goal-value">{currentGoal.calories_target}</span>
+                                  <span className="nutrition-goal-unit">kcal</span>
+                                </div>
+                              ) : null}
+                              {(currentGoal.calories_min || currentGoal.calories_max) && (
+                                <div className="nutrition-goal-range">
+                                  {currentGoal.calories_min && <span>Min: {currentGoal.calories_min}</span>}
+                                  {currentGoal.calories_min && currentGoal.calories_max && <span className="range-divider">–</span>}
+                                  {currentGoal.calories_max && <span>Max: {currentGoal.calories_max}</span>}
+                                </div>
+                              )}
+                              {!currentGoal.calories_target && !currentGoal.calories_min && !currentGoal.calories_max && (
+                                <span className="nutrition-goal-empty">Not set</span>
+                              )}
+                            </div>
                           </div>
-                          <div className="admin-v2-goal-section">
-                            <h5>Macros</h5>
-                            {currentGoal.protein_grams_target && <p>Protein: <strong>{currentGoal.protein_grams_target}g</strong></p>}
-                            {currentGoal.carbs_grams_target && <p>Carbs: <strong>{currentGoal.carbs_grams_target}g</strong></p>}
-                            {currentGoal.fat_grams_target && <p>Fat: <strong>{currentGoal.fat_grams_target}g</strong></p>}
-                            {currentGoal.fiber_grams_target && <p>Fiber: <strong>{currentGoal.fiber_grams_target}g</strong></p>}
+
+                          {/* Macros Section */}
+                          <div className="nutrition-goal-card">
+                            <div className="nutrition-goal-card-header">
+                              <LeafIcon size={18} />
+                              <h5>Macros</h5>
+                            </div>
+                            <div className="nutrition-goal-card-body">
+                              <div className="nutrition-goal-macros">
+                                {currentGoal.protein_grams_target ? (
+                                  <div className="macro-item protein">
+                                    <span className="macro-value">{currentGoal.protein_grams_target}g</span>
+                                    <span className="macro-label">Protein</span>
+                                  </div>
+                                ) : null}
+                                {currentGoal.carbs_grams_target ? (
+                                  <div className="macro-item carbs">
+                                    <span className="macro-value">{currentGoal.carbs_grams_target}g</span>
+                                    <span className="macro-label">Carbs</span>
+                                  </div>
+                                ) : null}
+                                {currentGoal.fat_grams_target ? (
+                                  <div className="macro-item fat">
+                                    <span className="macro-value">{currentGoal.fat_grams_target}g</span>
+                                    <span className="macro-label">Fat</span>
+                                  </div>
+                                ) : null}
+                                {currentGoal.fiber_grams_target ? (
+                                  <div className="macro-item fiber">
+                                    <span className="macro-value">{currentGoal.fiber_grams_target}g</span>
+                                    <span className="macro-label">Fiber</span>
+                                  </div>
+                                ) : null}
+                              </div>
+                              {!currentGoal.protein_grams_target && !currentGoal.carbs_grams_target && 
+                               !currentGoal.fat_grams_target && !currentGoal.fiber_grams_target && (
+                                <span className="nutrition-goal-empty">Not set</span>
+                              )}
+                            </div>
                           </div>
-                          <div className="admin-v2-goal-section">
-                            <h5>Limits & Output</h5>
-                            {currentGoal.sodium_mg_max && <p>Sodium Max: <strong>{currentGoal.sodium_mg_max} mg</strong></p>}
-                            {currentGoal.urine_output_ml_min && <p>Min Urine: <strong>{currentGoal.urine_output_ml_min} ml</strong></p>}
-                            {currentGoal.bowel_movements_target && <p>BM Target: <strong>{currentGoal.bowel_movements_target}/day</strong></p>}
+
+                          {/* Limits & Output Section */}
+                          <div className="nutrition-goal-card">
+                            <div className="nutrition-goal-card-header">
+                              <BarChartIcon size={18} />
+                              <h5>Limits & Output</h5>
+                            </div>
+                            <div className="nutrition-goal-card-body">
+                              <div className="nutrition-goal-limits">
+                                {currentGoal.sodium_mg_max ? (
+                                  <div className="limit-item">
+                                    <span className="limit-label">Sodium Max</span>
+                                    <span className="limit-value">{currentGoal.sodium_mg_max} mg</span>
+                                  </div>
+                                ) : null}
+                                {currentGoal.urine_output_ml_min ? (
+                                  <div className="limit-item">
+                                    <span className="limit-label">Min Urine</span>
+                                    <span className="limit-value">{currentGoal.urine_output_ml_min} ml</span>
+                                  </div>
+                                ) : null}
+                                {currentGoal.bowel_movements_target ? (
+                                  <div className="limit-item">
+                                    <span className="limit-label">BM Target</span>
+                                    <span className="limit-value">{currentGoal.bowel_movements_target}/day</span>
+                                  </div>
+                                ) : null}
+                              </div>
+                              {!currentGoal.sodium_mg_max && !currentGoal.urine_output_ml_min && 
+                               !currentGoal.bowel_movements_target && (
+                                <span className="nutrition-goal-empty">Not set</span>
+                              )}
+                            </div>
                           </div>
                         </div>
-                        <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
+                        
+                        <div className="nutrition-goals-footer">
+                          <span className="effective-date">
+                            Effective: {formatDate(currentGoal.effective_date)}
+                          </span>
                           {hasPermission('nutrition.update') && (
                             <button 
                               className="admin-v2-btn admin-v2-btn-secondary"

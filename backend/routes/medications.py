@@ -97,6 +97,9 @@ async def get_inactive_medications_endpoint(db: Session = Depends(get_db)):
 @router.get("/admin/medications/active")
 async def get_admin_active_medications_endpoint(patient_id: Optional[int] = None, db: Session = Depends(get_db)):
     """Get active medications for admin view - can filter by patient_id or show all"""
+    from schemas.medication_log import MedicationLog
+    from sqlalchemy import func
+    
     try:
         if patient_id:
             # Get medications for specific patient + global medications
@@ -111,6 +114,24 @@ async def get_admin_active_medications_endpoint(patient_id: Optional[int] = None
                 Medication.active == True,
                 (Medication.end_date == None) | (Medication.end_date > datetime.now().date())
             ).order_by(Medication.name).all()
+        
+        # Get last administered dates for all medications in one query
+        med_ids = [med.id for med in medications]
+        last_administered_query = db.query(
+            MedicationLog.medication_id,
+            func.max(MedicationLog.administered_at).label('last_administered')
+        ).filter(
+            MedicationLog.medication_id.in_(med_ids)
+        )
+        
+        # If patient_id provided, also filter logs by patient
+        if patient_id:
+            last_administered_query = last_administered_query.filter(
+                MedicationLog.patient_id == patient_id
+            )
+        
+        last_administered_query = last_administered_query.group_by(MedicationLog.medication_id)
+        last_administered_map = {row.medication_id: row.last_administered for row in last_administered_query.all()}
         
         return [
             {
@@ -129,6 +150,9 @@ async def get_admin_active_medications_endpoint(patient_id: Optional[int] = None
                 'created_at': med.created_at.isoformat() if med.created_at else None,
                 'updated_at': med.updated_at.isoformat() if med.updated_at else None,
                 'is_global': med.patient_id is None,
+                'prescriber_id': med.prescriber_id,
+                'pharmacy_id': med.pharmacy_id,
+                'last_administered': last_administered_map.get(med.id).isoformat() if last_administered_map.get(med.id) else None,
                 'schedules': get_medication_schedules(db, med.id)
             }
             for med in medications
@@ -173,6 +197,8 @@ async def get_admin_inactive_medications_endpoint(patient_id: Optional[int] = No
                 'created_at': med.created_at.isoformat() if med.created_at else None,
                 'updated_at': med.updated_at.isoformat() if med.updated_at else None,
                 'is_global': med.patient_id is None,
+                'prescriber_id': med.prescriber_id,
+                'pharmacy_id': med.pharmacy_id,
                 'schedules': get_medication_schedules(db, med.id)
             }
             for med in medications
@@ -444,9 +470,11 @@ async def get_providers_for_medication(patient_id: Optional[int] = None, db: Ses
 async def get_pharmacies_for_medication(db: Session = Depends(get_db)):
     """Get businesses that are pharmacies"""
     from models import Business
+    from schemas.business import BusinessTypeAssignment
     try:
-        pharmacies = db.query(Business).filter(
-            Business.business_type == 'pharmacy',
+        # Get businesses that have 'pharmacy' type
+        pharmacies = db.query(Business).join(BusinessTypeAssignment).filter(
+            BusinessTypeAssignment.type_name == 'pharmacy',
             Business.active == True
         ).all()
         

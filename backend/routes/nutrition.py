@@ -517,6 +517,134 @@ async def delete_goal(goal_id: int, db: Session = Depends(get_db)):
     return {"success": True}
 
 
+@router.get("/nutrition/patient/{patient_id}/summary")
+async def get_nutrition_intake_summary(
+    patient_id: int,
+    days: int = 30,
+    db: Session = Depends(get_db)
+):
+    """
+    Get daily nutrition summary for a patient over specified days.
+    Uses the correct nutrition goal for each day based on effective_date.
+    Returns daily intake totals, goals, and % deviation.
+    """
+    from sqlalchemy import func, cast, Date
+    from datetime import timedelta
+    from models import NutritionIntake
+    from schemas.nutrition_goal import NutritionGoal
+    
+    try:
+        end_date = date.today()
+        start_date = end_date - timedelta(days=days - 1)
+        
+        # Get all goals for this patient (including historical) sorted by effective_date desc
+        all_goals = db.query(NutritionGoal).filter(
+            NutritionGoal.patient_id == patient_id
+        ).order_by(NutritionGoal.effective_date.desc()).all()
+        
+        # Get daily aggregated intake data
+        # Group by date and sum calories, water
+        daily_intake = db.query(
+            cast(NutritionIntake.consumed_at, Date).label('date'),
+            func.sum(NutritionIntake.calories).label('total_calories'),
+            func.sum(
+                func.case(
+                    (NutritionIntake.item_type == 'liquid',
+                     func.case(
+                         (NutritionIntake.amount_unit.in_(['oz', 'ounces']), NutritionIntake.amount * 29.5735),
+                         (NutritionIntake.amount_unit.in_(['cup', 'cups']), NutritionIntake.amount * 236.588),
+                         (NutritionIntake.amount_unit.in_(['liter', 'liters', 'l']), NutritionIntake.amount * 1000),
+                         else_=NutritionIntake.amount
+                     )),
+                    else_=0
+                )
+            ).label('total_water_ml'),
+            func.sum(NutritionIntake.protein).label('total_protein'),
+            func.sum(NutritionIntake.carbs).label('total_carbs'),
+            func.sum(NutritionIntake.fat).label('total_fat')
+        ).filter(
+            NutritionIntake.patient_id == patient_id,
+            cast(NutritionIntake.consumed_at, Date) >= start_date,
+            cast(NutritionIntake.consumed_at, Date) <= end_date
+        ).group_by(
+            cast(NutritionIntake.consumed_at, Date)
+        ).all()
+        
+        # Convert to dict for easier lookup
+        intake_by_date = {
+            row.date: {
+                'calories': float(row.total_calories or 0),
+                'water_ml': float(row.total_water_ml or 0),
+                'protein': float(row.total_protein or 0),
+                'carbs': float(row.total_carbs or 0),
+                'fat': float(row.total_fat or 0)
+            }
+            for row in daily_intake
+        }
+        
+        def find_goal_for_date(target_date: date):
+            """Find the applicable goal for a specific date"""
+            target_datetime = datetime.combine(target_date, datetime.min.time())
+            for goal in all_goals:
+                # Check if goal was effective on this date
+                goal_effective = goal.effective_date.date() if isinstance(goal.effective_date, datetime) else goal.effective_date
+                if goal_effective <= target_date:
+                    # Check end_date if set
+                    if goal.end_date:
+                        goal_end = goal.end_date.date() if isinstance(goal.end_date, datetime) else goal.end_date
+                        if goal_end < target_date:
+                            continue
+                    if goal.is_active:
+                        return goal
+            return None
+        
+        # Build result for each day
+        result = []
+        current_date = start_date
+        while current_date <= end_date:
+            intake = intake_by_date.get(current_date, {
+                'calories': 0,
+                'water_ml': 0,
+                'protein': 0,
+                'carbs': 0,
+                'fat': 0
+            })
+            
+            goal = find_goal_for_date(current_date)
+            
+            day_data = {
+                'date': current_date.isoformat(),
+                'calories': round(intake['calories'], 1),
+                'water_ml': round(intake['water_ml'], 1),
+                'protein': round(intake['protein'], 1),
+                'carbs': round(intake['carbs'], 1),
+                'fat': round(intake['fat'], 1),
+                'calories_target': None,
+                'water_target': None,
+                'protein_target': None,
+                'carbs_target': None,
+                'fat_target': None
+            }
+            
+            if goal:
+                day_data['calories_target'] = goal.calories_target
+                day_data['water_target'] = goal.water_ml_target
+                day_data['protein_target'] = goal.protein_grams_target
+                day_data['carbs_target'] = goal.carbs_grams_target
+                day_data['fat_target'] = goal.fat_grams_target
+            
+            result.append(day_data)
+            current_date += timedelta(days=1)
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error getting nutrition summary: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # =============================================
 # NUTRITION OUTPUT ROUTES
 # =============================================
@@ -576,6 +704,107 @@ async def get_patient_output_summary(
 ):
     """Get output summary for a patient for a specific day"""
     return get_output_summary(db, patient_id, target_date)
+
+
+@router.get("/nutrition/outputs/patient/{patient_id}/history")
+async def get_output_history_summary(
+    patient_id: int,
+    days: int = 30,
+    db: Session = Depends(get_db)
+):
+    """
+    Get daily output summary for a patient over specified days.
+    Uses the correct nutrition goal for each day based on effective_date.
+    Tracks urine output and bowel movement counts.
+    """
+    from sqlalchemy import func, cast, Date
+    from datetime import timedelta
+    from schemas.nutrition_output import NutritionOutput
+    from schemas.nutrition_goal import NutritionGoal
+    
+    try:
+        end_date_val = date.today()
+        start_date_val = end_date_val - timedelta(days=days - 1)
+        
+        # Get all goals for this patient (including historical) sorted by effective_date desc
+        all_goals = db.query(NutritionGoal).filter(
+            NutritionGoal.patient_id == patient_id
+        ).order_by(NutritionGoal.effective_date.desc()).all()
+        
+        # Get daily aggregated urine output (in ml)
+        daily_urine = db.query(
+            cast(NutritionOutput.occurred_at, Date).label('date'),
+            func.sum(
+                func.case(
+                    (NutritionOutput.amount_unit.in_(['oz', 'ounces']), NutritionOutput.amount * 29.5735),
+                    (NutritionOutput.amount_unit.in_(['cup', 'cups']), NutritionOutput.amount * 236.588),
+                    (NutritionOutput.amount_unit.in_(['liter', 'liters', 'l']), NutritionOutput.amount * 1000),
+                    else_=NutritionOutput.amount
+                )
+            ).label('total_urine_ml')
+        ).filter(
+            NutritionOutput.patient_id == patient_id,
+            NutritionOutput.output_type == 'urine',
+            cast(NutritionOutput.occurred_at, Date) >= start_date_val,
+            cast(NutritionOutput.occurred_at, Date) <= end_date_val
+        ).group_by(
+            cast(NutritionOutput.occurred_at, Date)
+        ).all()
+        
+        # Get daily bowel movement count
+        daily_bowel = db.query(
+            cast(NutritionOutput.occurred_at, Date).label('date'),
+            func.count(NutritionOutput.id).label('bowel_count')
+        ).filter(
+            NutritionOutput.patient_id == patient_id,
+            NutritionOutput.output_type == 'bowel',
+            cast(NutritionOutput.occurred_at, Date) >= start_date_val,
+            cast(NutritionOutput.occurred_at, Date) <= end_date_val
+        ).group_by(
+            cast(NutritionOutput.occurred_at, Date)
+        ).all()
+        
+        # Convert to dicts for lookup
+        urine_by_date = {row.date: float(row.total_urine_ml or 0) for row in daily_urine}
+        bowel_by_date = {row.date: int(row.bowel_count or 0) for row in daily_bowel}
+        
+        def find_goal_for_date(target_date: date):
+            """Find the applicable goal for a specific date"""
+            for goal in all_goals:
+                goal_effective = goal.effective_date.date() if isinstance(goal.effective_date, datetime) else goal.effective_date
+                if goal_effective <= target_date:
+                    if goal.end_date:
+                        goal_end = goal.end_date.date() if isinstance(goal.end_date, datetime) else goal.end_date
+                        if goal_end < target_date:
+                            continue
+                    if goal.is_active:
+                        return goal
+            return None
+        
+        # Build result for each day
+        result = []
+        current_date = start_date_val
+        while current_date <= end_date_val:
+            goal = find_goal_for_date(current_date)
+            
+            day_data = {
+                'date': current_date.isoformat(),
+                'urine_ml': round(urine_by_date.get(current_date, 0), 1),
+                'bowel_count': bowel_by_date.get(current_date, 0),
+                'urine_target': goal.urine_output_ml_min if goal else None,
+                'bowel_target': goal.bowel_movements_target if goal else None
+            }
+            
+            result.append(day_data)
+            current_date += timedelta(days=1)
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error getting output history: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/nutrition/outputs/{output_id}", response_model=NutritionOutputResponse)

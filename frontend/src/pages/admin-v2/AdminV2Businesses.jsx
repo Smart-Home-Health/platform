@@ -34,7 +34,7 @@ const AdminV2Businesses = () => {
   // Form state
   const [formData, setFormData] = useState({
     name: '',
-    business_type: 'hospital',
+    business_types: [],
     phone: '',
     fax: '',
     email: '',
@@ -51,8 +51,20 @@ const AdminV2Businesses = () => {
 
   const businessTypeOptions = [
     'hospital', 'clinic', 'pharmacy', 'dme', 'school', 'therapy', 
-    'insurance', 'lab', 'imaging', 'home_health', 'hospice', 'other'
+    'insurance', 'lab', 'imaging', 'home_health', 'hospice', 'rehab', 'other'
   ];
+
+  // Toggle a type in the business_types array
+  const toggleBusinessType = (type) => {
+    setFormData(prev => {
+      const types = prev.business_types || [];
+      if (types.includes(type)) {
+        return { ...prev, business_types: types.filter(t => t !== type) };
+      } else {
+        return { ...prev, business_types: [...types, type] };
+      }
+    });
+  };
 
   // Permission helper
   const hasPermission = (permission) => {
@@ -109,6 +121,12 @@ const AdminV2Businesses = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    // Validate at least one type selected
+    if (!formData.business_types || formData.business_types.length === 0) {
+      setFormError('Please select at least one business type');
+      return;
+    }
+
     try {
       setSaving(true);
       setFormError(null);
@@ -143,7 +161,7 @@ const AdminV2Businesses = () => {
   const handleEdit = (business) => {
     setFormData({
       name: business.name || '',
-      business_type: business.business_type || 'hospital',
+      business_types: business.business_types || (business.business_type ? [business.business_type] : []),
       phone: business.phone || '',
       fax: business.fax || '',
       email: business.email || '',
@@ -192,7 +210,7 @@ const AdminV2Businesses = () => {
   const resetForm = () => {
     setFormData({
       name: '',
-      business_type: 'hospital',
+      business_types: [],
       phone: '',
       fax: '',
       email: '',
@@ -213,12 +231,14 @@ const AdminV2Businesses = () => {
     setShowCreateModal(true);
   };
 
-  const filteredBusinesses = businesses.filter(business =>
-    business.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    business.business_type.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    business.city?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    business.state?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredBusinesses = businesses.filter(business => {
+    const typesStr = (business.business_types || []).join(' ').toLowerCase();
+    const searchLower = searchTerm.toLowerCase();
+    return business.name.toLowerCase().includes(searchLower) ||
+      typesStr.includes(searchLower) ||
+      business.city?.toLowerCase().includes(searchLower) ||
+      business.state?.toLowerCase().includes(searchLower);
+  });
 
   // Stats
   const activeCount = businesses.filter(b => b.active).length;
@@ -251,8 +271,27 @@ const AdminV2Businesses = () => {
               <div className="admin-v2-form-error">{formError}</div>
             )}
             
+            <div className="admin-v2-form-group" style={{marginBottom: '1.25rem'}}>
+              <label>Business Types * <span style={{fontWeight: 'normal', fontSize: '0.85em'}}>(select all that apply)</span></label>
+              <div className="admin-v2-checkbox-grid">
+                {businessTypeOptions.map(type => (
+                  <label key={type} className="admin-v2-checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={(formData.business_types || []).includes(type)}
+                      onChange={() => toggleBusinessType(type)}
+                    />
+                    {type.replace('_', ' ').toUpperCase()}
+                  </label>
+                ))}
+              </div>
+              {formData.business_types?.length === 0 && (
+                <span style={{color: '#f44336', fontSize: '0.85em'}}>Please select at least one type</span>
+              )}
+            </div>
+
             <div className="admin-v2-form-grid">
-              <div className="admin-v2-form-group admin-v2-form-full">
+              <div className="admin-v2-form-group">
                 <label>Business Name *</label>
                 <input
                   type="text"
@@ -260,21 +299,6 @@ const AdminV2Businesses = () => {
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   required
                 />
-              </div>
-
-              <div className="admin-v2-form-group">
-                <label>Business Type *</label>
-                <select
-                  value={formData.business_type}
-                  onChange={(e) => setFormData({ ...formData, business_type: e.target.value })}
-                  required
-                >
-                  {businessTypeOptions.map(type => (
-                    <option key={type} value={type}>
-                      {type.replace('_', ' ').toUpperCase()}
-                    </option>
-                  ))}
-                </select>
               </div>
 
               <div className="admin-v2-form-group">
@@ -314,7 +338,7 @@ const AdminV2Businesses = () => {
                 />
               </div>
 
-              <div className="admin-v2-form-group admin-v2-form-full">
+              <div className="admin-v2-form-group">
                 <label>Address Line 1</label>
                 <input
                   type="text"
@@ -323,7 +347,7 @@ const AdminV2Businesses = () => {
                 />
               </div>
 
-              <div className="admin-v2-form-group admin-v2-form-full">
+              <div className="admin-v2-form-group">
                 <label>Address Line 2</label>
                 <input
                   type="text"
@@ -359,15 +383,17 @@ const AdminV2Businesses = () => {
                   onChange={(e) => setFormData({ ...formData, zip_code: e.target.value })}
                 />
               </div>
+            </div>
 
-              <div className="admin-v2-form-group admin-v2-form-full">
-                <label>Notes</label>
-                <textarea
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  rows="3"
-                />
-              </div>
+            <div className="admin-v2-form-group" style={{marginTop: '1rem'}}>
+              <label>Notes</label>
+              <textarea
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                rows="4"
+                placeholder="Additional notes about this business..."
+                style={{width: '100%', resize: 'vertical'}}
+              />
             </div>
           </div>
           <div className="admin-v2-modal-footer">
@@ -477,9 +503,13 @@ const AdminV2Businesses = () => {
                   <div className="admin-v2-card-title-row">
                     <h3>{business.name}</h3>
                   </div>
-                  <span className={`admin-v2-badge admin-v2-badge-type-${business.business_type}`}>
-                    {business.business_type.replace('_', ' ').toUpperCase()}
-                  </span>
+                  <div className="admin-v2-badge-group">
+                    {(business.business_types || [business.business_type]).filter(Boolean).map(type => (
+                      <span key={type} className={`admin-v2-badge admin-v2-badge-type-${type}`}>
+                        {type.replace('_', ' ').toUpperCase()}
+                      </span>
+                    ))}
+                  </div>
                 </div>
                 
                 <div className="admin-v2-card-body">

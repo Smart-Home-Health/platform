@@ -6,7 +6,7 @@ Pydantic models for API request/response validation
 from models.users import User, Role, Permission, AuditLog
 
 # Re-export SQLAlchemy models from schemas for backward compatibility
-from schemas.business import Business
+from schemas.business import Business, BusinessTypeAssignment
 from schemas.provider import Provider
 from schemas.nutrition_intake import NutritionIntake
 from schemas.care_task_category import CareTaskCategory

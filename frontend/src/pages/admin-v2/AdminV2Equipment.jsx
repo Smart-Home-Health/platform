@@ -49,10 +49,24 @@ const AdminV2Equipment = () => {
     quantity: 1,
     scheduled_replacement: true,
     last_changed: new Date().toISOString().split('T')[0],
-    useful_days: 30
+    useful_days: 30,
+    // Supply tracking fields
+    item_number: '',
+    description: '',
+    category: 'equipment',
+    tracking_level: 'quantity',
+    default_manufacturer: '',
+    unit_of_measure: '',
+    unit_size: '',
+    unit_description: '',
+    reorder_point: '',
+    par_level: ''
   });
   const [formError, setFormError] = useState(null);
   const [saving, setSaving] = useState(false);
+  
+  // Toggle for advanced supply fields
+  const [showAdvanced, setShowAdvanced] = useState(false);
   
   // Quantity modal state
   const [quantityAmount, setQuantityAmount] = useState(1);
@@ -118,9 +132,20 @@ const AdminV2Equipment = () => {
       quantity: 1,
       scheduled_replacement: true,
       last_changed: new Date().toISOString().split('T')[0],
-      useful_days: 30
+      useful_days: 30,
+      item_number: '',
+      description: '',
+      category: 'equipment',
+      tracking_level: 'quantity',
+      default_manufacturer: '',
+      unit_of_measure: '',
+      unit_size: '',
+      unit_description: '',
+      reorder_point: '',
+      par_level: ''
     });
     setFormError(null);
+    setShowAdvanced(false);
   };
 
   const handleCreateEquipment = async (e) => {
@@ -133,7 +158,17 @@ const AdminV2Equipment = () => {
         name: formData.name,
         quantity: parseInt(formData.quantity),
         scheduled_replacement: formData.scheduled_replacement,
-        patient_id: selectedPatient.id
+        patient_id: selectedPatient.id,
+        item_number: formData.item_number || null,
+        description: formData.description || null,
+        category: formData.category || 'equipment',
+        tracking_level: formData.tracking_level || 'quantity',
+        default_manufacturer: formData.default_manufacturer || null,
+        unit_of_measure: formData.unit_of_measure || null,
+        unit_size: formData.unit_size || null,
+        unit_description: formData.unit_description || null,
+        reorder_point: formData.reorder_point ? parseInt(formData.reorder_point) : null,
+        par_level: formData.par_level ? parseInt(formData.par_level) : null
       };
       
       if (formData.scheduled_replacement) {
@@ -172,7 +207,17 @@ const AdminV2Equipment = () => {
       const payload = {
         name: formData.name,
         quantity: parseInt(formData.quantity),
-        scheduled_replacement: formData.scheduled_replacement
+        scheduled_replacement: formData.scheduled_replacement,
+        item_number: formData.item_number || null,
+        description: formData.description || null,
+        category: formData.category || 'equipment',
+        tracking_level: formData.tracking_level || 'quantity',
+        default_manufacturer: formData.default_manufacturer || null,
+        unit_of_measure: formData.unit_of_measure || null,
+        unit_size: formData.unit_size || null,
+        unit_description: formData.unit_description || null,
+        reorder_point: formData.reorder_point ? parseInt(formData.reorder_point) : null,
+        par_level: formData.par_level ? parseInt(formData.par_level) : null
       };
       
       if (formData.scheduled_replacement) {
@@ -316,8 +361,19 @@ const AdminV2Equipment = () => {
       quantity: equip.quantity,
       scheduled_replacement: equip.scheduled_replacement,
       last_changed: equip.last_changed ? equip.last_changed.split('T')[0] : new Date().toISOString().split('T')[0],
-      useful_days: equip.useful_days || 30
+      useful_days: equip.useful_days || 30,
+      item_number: equip.item_number || '',
+      description: equip.description || '',
+      category: equip.category || 'equipment',
+      tracking_level: equip.tracking_level || 'quantity',
+      default_manufacturer: equip.default_manufacturer || '',
+      unit_of_measure: equip.unit_of_measure || '',
+      unit_size: equip.unit_size || '',
+      unit_description: equip.unit_description || '',
+      reorder_point: equip.reorder_point || '',
+      par_level: equip.par_level || ''
     });
+    setShowAdvanced(!!equip.item_number || !!equip.default_manufacturer);
     setShowEditModal(true);
   };
 
@@ -444,12 +500,11 @@ const AdminV2Equipment = () => {
                   <thead>
                     <tr>
                       <th>Name</th>
-                      <th>Quantity</th>
+                      <th>Item #</th>
+                      <th>Qty</th>
                       <th>Type</th>
                       <th>Last Changed</th>
-                      <th>Useful Days</th>
-                      <th>Due Date</th>
-                      <th>Status</th>
+                      <th>Due/Status</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
@@ -457,7 +512,7 @@ const AdminV2Equipment = () => {
                     {equipment.map(equip => {
                       const daysUntil = getDaysUntilDue(equip);
                       const isOverdue = isDue(equip);
-                      const isLowStock = equip.quantity <= 2;
+                      const isLowStock = equip.reorder_point ? equip.quantity <= equip.reorder_point : equip.quantity <= 2;
                       
                       return (
                         <tr 
@@ -466,28 +521,29 @@ const AdminV2Equipment = () => {
                         >
                           <td>
                             <span className="admin-v2-equipment-name">{equip.name}</span>
+                            {equip.default_manufacturer && (
+                              <div className="admin-v2-text-muted">{equip.default_manufacturer}</div>
+                            )}
                           </td>
+                          <td>{equip.item_number || '-'}</td>
                           <td>
                             <span className={`admin-v2-quantity ${isLowStock ? 'low' : ''}`}>
                               {equip.quantity}
                             </span>
+                            {equip.unit_of_measure && (
+                              <span className="admin-v2-text-small"> {equip.unit_of_measure}</span>
+                            )}
                           </td>
                           <td>
-                            {equip.scheduled_replacement ? (
+                            {equip.category === 'supply' ? (
+                              <span className="admin-v2-badge admin-v2-badge-secondary">Supply</span>
+                            ) : equip.scheduled_replacement ? (
                               <span className="admin-v2-badge admin-v2-badge-info">Scheduled</span>
                             ) : (
                               <span className="admin-v2-badge admin-v2-badge-secondary">Consumable</span>
                             )}
                           </td>
                           <td>{equip.scheduled_replacement ? formatDate(equip.last_changed) : '-'}</td>
-                          <td>{equip.scheduled_replacement ? (equip.useful_days || '-') : '-'}</td>
-                          <td>
-                            {equip.scheduled_replacement ? (
-                              <span className={isOverdue ? 'admin-v2-text-danger' : ''}>
-                                {formatDate(equip.due_date)}
-                              </span>
-                            ) : '-'}
-                          </td>
                           <td>
                             {equip.scheduled_replacement ? (
                               isOverdue ? (
@@ -640,6 +696,132 @@ const AdminV2Equipment = () => {
                       </div>
                     </div>
                   )}
+
+                  {/* Supply Tracking Toggle */}
+                  <div className="admin-v2-form-group" style={{ marginTop: '1rem', borderTop: '1px solid #30363d', paddingTop: '1rem' }}>
+                    <label className="admin-v2-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={showAdvanced}
+                        onChange={e => setShowAdvanced(e.target.checked)}
+                      />
+                      <span>Show Supply Tracking Options</span>
+                    </label>
+                  </div>
+
+                  {showAdvanced && (
+                    <>
+                      <div className="admin-v2-form-row">
+                        <div className="admin-v2-form-group">
+                          <label>Item Number</label>
+                          <input
+                            type="text"
+                            value={formData.item_number}
+                            onChange={e => setFormData({...formData, item_number: e.target.value})}
+                            placeholder="e.g., 6025"
+                          />
+                        </div>
+                        <div className="admin-v2-form-group">
+                          <label>Manufacturer</label>
+                          <input
+                            type="text"
+                            value={formData.default_manufacturer}
+                            onChange={e => setFormData({...formData, default_manufacturer: e.target.value})}
+                            placeholder="e.g., Hollister"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="admin-v2-form-group">
+                        <label>Description</label>
+                        <input
+                          type="text"
+                          value={formData.description}
+                          onChange={e => setFormData({...formData, description: e.target.value})}
+                          placeholder="Item description for shipments"
+                        />
+                      </div>
+
+                      <div className="admin-v2-form-row">
+                        <div className="admin-v2-form-group">
+                          <label>Category</label>
+                          <select
+                            value={formData.category}
+                            onChange={e => setFormData({...formData, category: e.target.value})}
+                          >
+                            <option value="equipment">Equipment</option>
+                            <option value="supply">Supply</option>
+                            <option value="medication">Medication</option>
+                          </select>
+                        </div>
+                        <div className="admin-v2-form-group">
+                          <label>Tracking Level</label>
+                          <select
+                            value={formData.tracking_level}
+                            onChange={e => setFormData({...formData, tracking_level: e.target.value})}
+                          >
+                            <option value="quantity">Quantity Only</option>
+                            <option value="lot">Lot Number</option>
+                            <option value="serial">Serial Number</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="admin-v2-form-row">
+                        <div className="admin-v2-form-group">
+                          <label>Unit of Measure</label>
+                          <input
+                            type="text"
+                            value={formData.unit_of_measure}
+                            onChange={e => setFormData({...formData, unit_of_measure: e.target.value})}
+                            placeholder="e.g., Box, Pack"
+                          />
+                        </div>
+                        <div className="admin-v2-form-group">
+                          <label>Unit Size</label>
+                          <input
+                            type="text"
+                            value={formData.unit_size}
+                            onChange={e => setFormData({...formData, unit_size: e.target.value})}
+                            placeholder="e.g., 10"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="admin-v2-form-group">
+                        <label>Unit Description</label>
+                        <input
+                          type="text"
+                          value={formData.unit_description}
+                          onChange={e => setFormData({...formData, unit_description: e.target.value})}
+                          placeholder="e.g., Box of 10"
+                        />
+                      </div>
+
+                      <div className="admin-v2-form-row">
+                        <div className="admin-v2-form-group">
+                          <label>Reorder Point</label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={formData.reorder_point}
+                            onChange={e => setFormData({...formData, reorder_point: e.target.value})}
+                            placeholder="Low stock alert"
+                          />
+                        </div>
+                        <div className="admin-v2-form-group">
+                          <label>Par Level</label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={formData.par_level}
+                            onChange={e => setFormData({...formData, par_level: e.target.value})}
+                            placeholder="Target quantity"
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
                 <div className="admin-v2-modal-footer">
                   <button type="button" className="admin-v2-btn" onClick={() => setShowCreateModal(false)}>
@@ -728,6 +910,132 @@ const AdminV2Equipment = () => {
                         />
                       </div>
                     </div>
+                  )}
+
+                  {/* Supply Tracking Toggle */}
+                  <div className="admin-v2-form-group" style={{ marginTop: '1rem', borderTop: '1px solid #30363d', paddingTop: '1rem' }}>
+                    <label className="admin-v2-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={showAdvanced}
+                        onChange={e => setShowAdvanced(e.target.checked)}
+                      />
+                      <span>Show Supply Tracking Options</span>
+                    </label>
+                  </div>
+
+                  {showAdvanced && (
+                    <>
+                      <div className="admin-v2-form-row">
+                        <div className="admin-v2-form-group">
+                          <label>Item Number</label>
+                          <input
+                            type="text"
+                            value={formData.item_number}
+                            onChange={e => setFormData({...formData, item_number: e.target.value})}
+                            placeholder="e.g., 6025"
+                          />
+                        </div>
+                        <div className="admin-v2-form-group">
+                          <label>Manufacturer</label>
+                          <input
+                            type="text"
+                            value={formData.default_manufacturer}
+                            onChange={e => setFormData({...formData, default_manufacturer: e.target.value})}
+                            placeholder="e.g., Hollister"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="admin-v2-form-group">
+                        <label>Description</label>
+                        <input
+                          type="text"
+                          value={formData.description}
+                          onChange={e => setFormData({...formData, description: e.target.value})}
+                          placeholder="Item description for shipments"
+                        />
+                      </div>
+
+                      <div className="admin-v2-form-row">
+                        <div className="admin-v2-form-group">
+                          <label>Category</label>
+                          <select
+                            value={formData.category}
+                            onChange={e => setFormData({...formData, category: e.target.value})}
+                          >
+                            <option value="equipment">Equipment</option>
+                            <option value="supply">Supply</option>
+                            <option value="medication">Medication</option>
+                          </select>
+                        </div>
+                        <div className="admin-v2-form-group">
+                          <label>Tracking Level</label>
+                          <select
+                            value={formData.tracking_level}
+                            onChange={e => setFormData({...formData, tracking_level: e.target.value})}
+                          >
+                            <option value="quantity">Quantity Only</option>
+                            <option value="lot">Lot Number</option>
+                            <option value="serial">Serial Number</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="admin-v2-form-row">
+                        <div className="admin-v2-form-group">
+                          <label>Unit of Measure</label>
+                          <input
+                            type="text"
+                            value={formData.unit_of_measure}
+                            onChange={e => setFormData({...formData, unit_of_measure: e.target.value})}
+                            placeholder="e.g., Box, Pack"
+                          />
+                        </div>
+                        <div className="admin-v2-form-group">
+                          <label>Unit Size</label>
+                          <input
+                            type="text"
+                            value={formData.unit_size}
+                            onChange={e => setFormData({...formData, unit_size: e.target.value})}
+                            placeholder="e.g., 10"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="admin-v2-form-group">
+                        <label>Unit Description</label>
+                        <input
+                          type="text"
+                          value={formData.unit_description}
+                          onChange={e => setFormData({...formData, unit_description: e.target.value})}
+                          placeholder="e.g., Box of 10"
+                        />
+                      </div>
+
+                      <div className="admin-v2-form-row">
+                        <div className="admin-v2-form-group">
+                          <label>Reorder Point</label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={formData.reorder_point}
+                            onChange={e => setFormData({...formData, reorder_point: e.target.value})}
+                            placeholder="Low stock alert"
+                          />
+                        </div>
+                        <div className="admin-v2-form-group">
+                          <label>Par Level</label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={formData.par_level}
+                            onChange={e => setFormData({...formData, par_level: e.target.value})}
+                            placeholder="Target quantity"
+                          />
+                        </div>
+                      </div>
+                    </>
                   )}
                 </div>
                 <div className="admin-v2-modal-footer">

@@ -2,9 +2,11 @@
 Vitals and sensor data routes
 """
 import logging
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import func, cast, Date
+from datetime import datetime, timedelta
 from db import get_db
 from crud.vitals import (get_vitals_by_type, get_distinct_vital_types, get_vitals_by_type_paginated, 
                   save_blood_pressure, save_temperature, save_vital, 
@@ -28,6 +30,117 @@ def publish_event(event_type: str, data: dict):
         logger.error(f"Failed to publish event {event_type}: {e}")
 
 router = APIRouter(prefix="/api/vitals", tags=["vitals"])
+
+
+@router.get("/patient/{patient_id}/summary")
+async def get_vitals_summary(
+    patient_id: int,
+    days: int = Query(30, ge=1, le=90, description="Number of days to aggregate"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get aggregated vitals summary for charts (daily min/avg/max).
+    Returns data optimized for 30-day trend charts.
+    """
+    from schemas.vital import Vital
+    
+    try:
+        # Calculate date range
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days)
+        
+        # Generate list of all dates in range for null filling
+        date_range = []
+        current = start_date.date()
+        while current <= end_date.date():
+            date_range.append(current.isoformat())
+            current += timedelta(days=1)
+        
+        # Query aggregated vitals grouped by date and type
+        results = db.query(
+            cast(Vital.timestamp, Date).label('date'),
+            Vital.vital_type,
+            Vital.vital_group,
+            func.min(Vital.value).label('min_val'),
+            func.avg(Vital.value).label('avg_val'),
+            func.max(Vital.value).label('max_val'),
+            func.count(Vital.id).label('count')
+        ).filter(
+            Vital.patient_id == patient_id,
+            Vital.timestamp >= start_date,
+            Vital.timestamp <= end_date
+        ).group_by(
+            cast(Vital.timestamp, Date),
+            Vital.vital_type,
+            Vital.vital_group
+        ).order_by(
+            cast(Vital.timestamp, Date)
+        ).all()
+        
+        # Organize results by vital type
+        vitals_map = {
+            'spo2': {},
+            'heart_rate': {},
+            'respiratory_rate': {},
+            'temperature': {},
+            'blood_pressure': {}  # Will aggregate MAP
+        }
+        
+        # Process results
+        for row in results:
+            date_str = row.date.isoformat()
+            vital_type = row.vital_type
+            vital_group = row.vital_group
+            
+            # Handle blood pressure specially - we want MAP average
+            if vital_type == 'blood_pressure' and vital_group == 'map':
+                vitals_map['blood_pressure'][date_str] = {
+                    'date': date_str,
+                    'min': round(float(row.min_val), 1) if row.min_val else None,
+                    'avg': round(float(row.avg_val), 1) if row.avg_val else None,
+                    'max': round(float(row.max_val), 1) if row.max_val else None,
+                    'count': row.count
+                }
+            elif vital_type == 'temperature' and vital_group in ['body', 'core', None]:
+                # Use body/core temp, not skin temp
+                if date_str not in vitals_map['temperature']:
+                    vitals_map['temperature'][date_str] = {
+                        'date': date_str,
+                        'min': round(float(row.min_val), 1) if row.min_val else None,
+                        'avg': round(float(row.avg_val), 1) if row.avg_val else None,
+                        'max': round(float(row.max_val), 1) if row.max_val else None,
+                        'count': row.count
+                    }
+            elif vital_type in vitals_map and vital_type not in ['blood_pressure', 'temperature']:
+                vitals_map[vital_type][date_str] = {
+                    'date': date_str,
+                    'min': round(float(row.min_val), 1) if row.min_val else None,
+                    'avg': round(float(row.avg_val), 1) if row.avg_val else None,
+                    'max': round(float(row.max_val), 1) if row.max_val else None,
+                    'count': row.count
+                }
+        
+        # Convert to arrays with null filling for missing dates
+        result = {}
+        for vital_type, data_map in vitals_map.items():
+            result[vital_type] = []
+            for date_str in date_range:
+                if date_str in data_map:
+                    result[vital_type].append(data_map[date_str])
+                else:
+                    result[vital_type].append({
+                        'date': date_str,
+                        'min': None,
+                        'avg': None,
+                        'max': None,
+                        'count': 0
+                    })
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error getting vitals summary for patient {patient_id}: {e}")
+        return JSONResponse(status_code=500, content={"detail": str(e)})
 
 
 @router.post("/manual")

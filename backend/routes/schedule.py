@@ -293,7 +293,8 @@ async def complete_care_task(
             completed_at=completed_at,
             status="completed",
             notes=data.notes,
-            completed_by=data.user_id
+            performed_by=data.user_id,
+            created_at=datetime.now()
         )
         db.add(log)
         db.commit()

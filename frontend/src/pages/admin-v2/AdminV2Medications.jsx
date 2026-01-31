@@ -37,6 +37,9 @@ const AdminV2Medications = () => {
   // Providers state (for prescriber dropdown)
   const [providers, setProviders] = useState([]);
   
+  // Pharmacies state (for pharmacy dropdown)
+  const [pharmacies, setPharmacies] = useState([]);
+  
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -67,7 +70,8 @@ const AdminV2Medications = () => {
     notes: '',
     active: true,
     is_global: false,
-    prescriber_id: ''
+    prescriber_id: '',
+    pharmacy_id: ''
   });
   const [formError, setFormError] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -104,6 +108,7 @@ const AdminV2Medications = () => {
     if (selectedPatient) {
       fetchMedications();
       fetchProviders();
+      fetchPharmacies();
     }
   }, [selectedPatient]);
 
@@ -165,6 +170,21 @@ const AdminV2Medications = () => {
     }
   };
 
+  const fetchPharmacies = async () => {
+    try {
+      const response = await fetch(
+        `${config.apiUrl}/api/medications/pharmacies`,
+        { credentials: 'include' }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setPharmacies(data.pharmacies || []);
+      }
+    } catch (err) {
+      console.error('Error fetching pharmacies:', err);
+    }
+  };
+
   const handleSelectPatient = (patient) => {
     setContextPatient(patient);
     setSearchParams({ patient: patient.id });
@@ -184,6 +204,7 @@ const AdminV2Medications = () => {
       const payload = {
         ...formData,
         prescriber_id: formData.prescriber_id ? parseInt(formData.prescriber_id) : null,
+        pharmacy_id: formData.pharmacy_id ? parseInt(formData.pharmacy_id) : null,
         is_patient_specific: !formData.is_global,
         admin_patient_id: formData.is_global ? null : selectedPatient.id
       };
@@ -222,10 +243,11 @@ const AdminV2Medications = () => {
     try {
       const payload = {
         ...formData,
-        prescriber_id: formData.prescriber_id ? parseInt(formData.prescriber_id) : null
+        prescriber_id: formData.prescriber_id ? parseInt(formData.prescriber_id) : null,
+        pharmacy_id: formData.pharmacy_id ? parseInt(formData.pharmacy_id) : null
       };
       
-      const response = await fetch(`${config.apiUrl}/api/update/medication/${selectedMedication.id}`, {
+      const response = await fetch(`${config.apiUrl}/api/medications/${selectedMedication.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -250,7 +272,7 @@ const AdminV2Medications = () => {
   const handleDeleteMedication = async () => {
     setSaving(true);
     try {
-      const response = await fetch(`${config.apiUrl}/api/delete/medication/${selectedMedication.id}`, {
+      const response = await fetch(`${config.apiUrl}/api/medications/${selectedMedication.id}`, {
         method: 'DELETE',
         credentials: 'include'
       });
@@ -278,12 +300,13 @@ const AdminV2Medications = () => {
       quantity: medication.quantity,
       quantity_unit: medication.quantity_unit,
       instructions: medication.instructions || '',
-      start_date: medication.start_date || new Date().toISOString().split('T')[0],
+      start_date: medication.start_date ? medication.start_date.split('T')[0] : new Date().toISOString().split('T')[0],
       as_needed: medication.as_needed,
       notes: medication.notes || '',
       active: medication.active,
       is_global: medication.is_global || false,
-      prescriber_id: medication.prescriber_id || ''
+      prescriber_id: medication.prescriber_id ? String(medication.prescriber_id) : '',
+      pharmacy_id: medication.pharmacy_id ? String(medication.pharmacy_id) : ''
     });
     setFormError(null);
     setShowEditModal(true);
@@ -479,7 +502,8 @@ const AdminV2Medications = () => {
       notes: '',
       active: true,
       is_global: false,
-      prescriber_id: ''
+      prescriber_id: '',
+      pharmacy_id: ''
     });
     setFormError(null);
     setSelectedMedication(null);
@@ -758,13 +782,29 @@ const AdminV2Medications = () => {
                       >
                         <option value="">-- No Prescriber --</option>
                         {providers.map(provider => (
-                          <option key={provider.id} value={provider.id}>
+                          <option key={provider.id} value={String(provider.id)}>
                             {provider.title ? `${provider.title} ` : ''}{provider.first_name} {provider.last_name}
                             {provider.specialty ? ` (${provider.specialty})` : ''}
                           </option>
                         ))}
                       </select>
                     </div>
+                  </div>
+
+                  <div className="admin-v2-form-group">
+                    <label>Pharmacy</label>
+                    <select
+                      value={formData.pharmacy_id}
+                      onChange={e => setFormData({...formData, pharmacy_id: e.target.value})}
+                    >
+                      <option value="">-- No Pharmacy --</option>
+                      {pharmacies.map(pharmacy => (
+                        <option key={pharmacy.id} value={String(pharmacy.id)}>
+                          {pharmacy.name}
+                          {pharmacy.phone ? ` - ${pharmacy.phone}` : ''}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <div className="admin-v2-form-group">
@@ -929,13 +969,29 @@ const AdminV2Medications = () => {
                       >
                         <option value="">-- No Prescriber --</option>
                         {providers.map(provider => (
-                          <option key={provider.id} value={provider.id}>
+                          <option key={provider.id} value={String(provider.id)}>
                             {provider.title ? `${provider.title} ` : ''}{provider.first_name} {provider.last_name}
                             {provider.specialty ? ` (${provider.specialty})` : ''}
                           </option>
                         ))}
                       </select>
                     </div>
+                  </div>
+
+                  <div className="admin-v2-form-group">
+                    <label>Pharmacy</label>
+                    <select
+                      value={formData.pharmacy_id}
+                      onChange={e => setFormData({...formData, pharmacy_id: e.target.value})}
+                    >
+                      <option value="">-- No Pharmacy --</option>
+                      {pharmacies.map(pharmacy => (
+                        <option key={pharmacy.id} value={String(pharmacy.id)}>
+                          {pharmacy.name}
+                          {pharmacy.phone ? ` - ${pharmacy.phone}` : ''}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <div className="admin-v2-form-row">

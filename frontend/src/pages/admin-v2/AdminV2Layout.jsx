@@ -35,7 +35,7 @@ const sideNavItems = [
   { path: '/admin-v2/monitoring', label: 'Monitoring', Icon: MonitoringIcon, requiredPermissions: ['monitoring.view', 'monitoring.create', 'monitoring.update', 'monitoring.delete'] },
   { path: '/admin-v2/medications', label: 'Medications', Icon: MedicationsIcon, requiredPermissions: ['medications.view', 'medications.create', 'medications.update', 'medications.delete'] },
   { path: '/admin-v2/care-tasks', label: 'Care Tasks', Icon: TasksIcon, requiredPermissions: ['care_tasks.view', 'care_tasks.create', 'care_tasks.update', 'care_tasks.delete'] },
-  { path: '/admin-v2/equipment', label: 'Equipment', Icon: EquipmentIcon, requiredPermissions: ['equipment.view', 'equipment.create', 'equipment.update', 'equipment.delete'] },
+  { path: '/admin-v2/equipment', label: 'Equipment & Supplies', Icon: EquipmentIcon, requiredPermissions: ['equipment.view', 'equipment.create', 'equipment.update', 'equipment.delete'] },
   { path: '/admin-v2/nutrition', label: 'Nutrition', Icon: NutritionIcon, requiredPermissions: ['nutrition.view', 'nutrition.create', 'nutrition.update', 'nutrition.delete'] },
   { path: '/admin-v2/profile', label: 'Profile', Icon: ProfileIcon },
   { path: '/admin-v2/configuration', label: 'Configuration', Icon: ConfigIcon },
@@ -65,7 +65,9 @@ const getTopNavItems = (section, hasAnyPermission) => {
     ],
     equipment: [
       { path: '/admin-v2/equipment', label: 'Overview' },
-      { path: '/admin-v2/equipment/history', label: 'History' },
+      { path: '/admin-v2/equipment/history', label: 'Change History' },
+      { path: '/admin-v2/equipment/shipments', label: 'Shipments' },
+      { path: '/admin-v2/equipment/alerts', label: 'Alerts' },
     ],
     nutrition: [
       { path: '/admin-v2/nutrition', label: 'Intake Log' },
