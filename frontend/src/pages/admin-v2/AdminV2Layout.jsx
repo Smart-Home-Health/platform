@@ -96,6 +96,7 @@ const getTopNavItems = (section, hasAnyPermission) => {
       // System-wide configuration
       { path: '/care/configuration', label: 'General' },
       { path: '/care/configuration/account', label: 'Account' },
+      { path: '/care/configuration/integrations', label: 'Integrations' },
       ...(hasAnyPermission(['patients.view', 'patients.create', 'patients.update', 'patients.delete']) 
         ? [{ path: '/care/configuration/patients', label: 'Patients' }] : []),
       ...(hasAnyPermission(['users.view', 'users.create', 'users.update', 'users.delete']) 

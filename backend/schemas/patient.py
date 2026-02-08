@@ -48,6 +48,7 @@ class Patient(Base):
     access_grants = relationship('PatientAccess', back_populates='patient', cascade='all, delete-orphan')
     owner = relationship('User', foreign_keys=[owner_user_id])
     creating_org = relationship('Organization', foreign_keys=[creating_org_id])
+    integrations = relationship('PatientIntegration', back_populates='patient', cascade='all, delete-orphan')
 
 
 class PatientAccess(Base):

@@ -42,6 +42,7 @@ import AdminV2Implants from './pages/admin-v2/AdminV2Implants';
 import AdminV2Nutrition from './pages/admin-v2/AdminV2Nutrition';
 import AdminV2ProfileSummary from './pages/admin-v2/AdminV2ProfileSummary';
 import AdminV2AccountSettings from './pages/admin-v2/AdminV2AccountSettings';
+import AdminV2Integrations from './pages/admin-v2/AdminV2Integrations';
 import { AdminV2SettingsGeneral } from './pages/admin-v2/settings';
 import FirstRunSetup from './components/FirstRunSetup';
 import "./App.css";
@@ -143,6 +144,7 @@ function AppContent() {
           {/* Care Configuration Routes (System-wide) */}
           <Route path="/care/configuration" element={<ProtectedRoute><Layout><AdminV2SettingsGeneral /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/account" element={<ProtectedRoute><Layout><AdminV2AccountSettings /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/integrations" element={<ProtectedRoute><Layout><AdminV2Integrations /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/patients" element={<ProtectedRoute><Layout><AdminV2Patients /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/users" element={<ProtectedRoute><Layout><AdminV2Users /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/users/roles" element={<ProtectedRoute><Layout><AdminV2Roles /></Layout></ProtectedRoute>} />
