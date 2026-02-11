@@ -37,14 +37,39 @@ export default function AdminV2Integrations() {
   // Syncing state
   const [syncingId, setSyncingId] = useState(null);
 
+  // Reader state
+  const [readers, setReaders] = useState([]);
+  const [showReaderModal, setShowReaderModal] = useState(false);
+  const [readerIp, setReaderIp] = useState('');
+  const [readerPort, setReaderPort] = useState('8080');
+  const [readerName, setReaderName] = useState('');
+  const [pairingReader, setPairingReader] = useState(null); // { id, name, code }
+  const [pairingCode, setPairingCode] = useState('');
+  const [pairingLoading, setPairingLoading] = useState(false);
+
   // Get patient ID
   const patientId = selectedPatient?.id;
 
   useEffect(() => {
     if (patientId) {
       fetchIntegrations();
+      fetchReaders();
     }
   }, [patientId]);
+
+  const fetchReaders = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/readers`, {
+        credentials: 'include'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setReaders(data.readers || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch readers:', err);
+    }
+  };
 
   const fetchIntegrations = async () => {
     if (!patientId) return;
@@ -202,11 +227,138 @@ export default function AdminV2Integrations() {
     }
   };
 
+  // --- Reader Functions ---
+
+  const handleInitiatePairing = async () => {
+    if (!readerIp.trim()) {
+      setError('Please enter the reader IP address');
+      return;
+    }
+
+    setPairingLoading(true);
+    setError('');
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/readers/pair`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          ip_address: readerIp.trim(),
+          port: parseInt(readerPort, 10) || 8080,
+          patient_id: patientId,
+          host_url: API_BASE_URL
+        })
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.detail || 'Failed to initiate pairing');
+      }
+
+      const data = await res.json();
+      setPairingReader({
+        id: data.reader_id,
+        name: data.reader_name,
+        code: data.code
+      });
+      setSuccess('Pairing initiated. Enter the code shown on the reader device.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPairingLoading(false);
+    }
+  };
+
+  const handleConfirmPairing = async () => {
+    if (!pairingCode.trim() || pairingCode.length !== 6) {
+      setError('Please enter the 6-digit code from the reader');
+      return;
+    }
+
+    setPairingLoading(true);
+    setError('');
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/readers/pair/confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          reader_id: pairingReader.id,
+          code: pairingCode.trim(),
+          host_url: API_BASE_URL
+        })
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.detail || 'Failed to confirm pairing');
+      }
+
+      setSuccess('Reader paired successfully!');
+      setShowReaderModal(false);
+      setPairingReader(null);
+      setPairingCode('');
+      setReaderIp('');
+      setReaderPort('8080');
+      setReaderName('');
+      await fetchReaders();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setPairingLoading(false);
+    }
+  };
+
+  const handleUnpairReader = async (readerId) => {
+    if (!window.confirm('Are you sure you want to unpair this reader?')) return;
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/readers/${readerId}/unpair`, {
+        method: 'POST',
+        credentials: 'include'
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.detail || 'Failed to unpair reader');
+      }
+
+      setSuccess('Reader unpaired');
+      await fetchReaders();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleDeleteReader = async (readerId) => {
+    if (!window.confirm('Are you sure you want to delete this reader?')) return;
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/readers/${readerId}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.detail || 'Failed to delete reader');
+      }
+
+      setSuccess('Reader deleted');
+      await fetchReaders();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const getAuthTypeLabel = (authType) => {
     switch (authType) {
       case 'oauth2': return 'OAuth 2.0';
       case 'api_key': return 'API Key';
       case 'local': return 'Local';
+      case 'device_pairing': return 'Device Pairing';
       case 'none': return 'No Auth';
       default: return authType;
     }
@@ -243,17 +395,33 @@ export default function AdminV2Integrations() {
     }
   }, []);
 
+  // SHH Pulse Oximeter integration definition
+  const shhPulseOxIntegration = {
+    slug: 'shh_pulse_ox',
+    name: 'SHH Pulse Oximeter',
+    description: 'Connect SHH Reader devices to stream SpO2, heart rate, and perfusion data from pulse oximeters over your local network.',
+    auth_type: 'device_pairing',
+    supported_vitals: ['spo2', 'bpm', 'perfusion']
+  };
+
   // Get integrations not yet configured for this patient
   const unconfiguredIntegrations = availableIntegrations.filter(
     avail => !patientIntegrations.some(pi => pi.integration_slug === avail.slug)
   );
 
-  // Stats
+  // Add SHH Pulse Oximeter to available integrations list
+  const allAvailableIntegrations = [shhPulseOxIntegration, ...availableIntegrations];
+
+  // Check if any readers are configured for this patient
+  const patientReaders = readers.filter(r => r.patient_id === patientId || !r.patient_id);
+  const hasConfiguredReaders = patientReaders.some(r => r.is_paired);
+
+  // Stats - include readers in counts
   const stats = {
-    total: patientIntegrations.length,
-    connected: patientIntegrations.filter(i => i.is_enabled && i.last_sync_at).length,
-    pending: patientIntegrations.filter(i => i.is_enabled && !i.last_sync_at).length,
-    available: availableIntegrations.length
+    total: patientIntegrations.length + patientReaders.filter(r => r.is_paired).length,
+    connected: patientIntegrations.filter(i => i.is_enabled && i.last_sync_at).length + patientReaders.filter(r => r.is_paired && r.connected).length,
+    pending: patientIntegrations.filter(i => i.is_enabled && !i.last_sync_at).length + patientReaders.filter(r => r.is_paired && !r.connected).length,
+    available: allAvailableIntegrations.length
   };
 
   // Loading state
@@ -431,23 +599,80 @@ export default function AdminV2Integrations() {
               </div>
             )}
 
+            {/* Connected Readers - shown in same table style */}
+            {patientReaders.filter(r => r.is_paired).length > 0 && (
+              <div className="admin-v2-table-container" style={{ marginTop: '1rem' }}>
+                <table className="admin-v2-table">
+                  <thead>
+                    <tr>
+                      <th>Device</th>
+                      <th>Status</th>
+                      <th>Last Seen</th>
+                      <th>IP Address</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {patientReaders.filter(r => r.is_paired).map(reader => (
+                      <tr key={`reader-${reader.id}`}>
+                        <td>
+                          <span className="admin-v2-integration-name">{reader.name}</span>
+                          <div className="admin-v2-text-muted admin-v2-text-small">SHH Pulse Oximeter</div>
+                        </td>
+                        <td>
+                          {reader.connected ? (
+                            <span className="admin-v2-badge admin-v2-badge-success">
+                              <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#3fb950', marginRight: 6 }}></span>
+                              Online
+                            </span>
+                          ) : (
+                            <span className="admin-v2-badge admin-v2-badge-muted">Offline</span>
+                          )}
+                        </td>
+                        <td>{formatDate(reader.last_seen)}</td>
+                        <td>
+                          <code style={{ fontSize: '0.85rem', color: '#8b949e' }}>{reader.ip_address}</code>
+                        </td>
+                        <td>
+                          <div className="admin-v2-table-actions">
+                            <button 
+                              className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-danger-ghost"
+                              onClick={() => handleUnpairReader(reader.id)}
+                              title="Disconnect"
+                            >
+                              Disconnect
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
             {/* Available Integrations */}
             <div className="admin-v2-page-header" style={{ marginTop: '2rem' }}>
               <h3 style={{ margin: 0, color: '#e6edf3' }}>
-                Available Integrations ({availableIntegrations.length})
+                Available Integrations ({allAvailableIntegrations.length})
               </h3>
             </div>
 
             <div className="admin-v2-cards-grid">
-              {availableIntegrations.map(integration => {
-                const isConfigured = patientIntegrations.some(pi => pi.integration_slug === integration.slug);
+              {allAvailableIntegrations.map(integration => {
+                const isSHHDevice = integration.slug === 'shh_pulse_ox';
+                const isConfigured = isSHHDevice 
+                  ? hasConfiguredReaders 
+                  : patientIntegrations.some(pi => pi.integration_slug === integration.slug);
                 return (
                   <div key={integration.slug} className={`admin-v2-card ${isConfigured ? 'inactive' : ''}`}>
                     <div className="admin-v2-card-header">
                       <div className="admin-v2-card-title-row">
                         <h3>{integration.name}</h3>
                         {isConfigured && (
-                          <span className="admin-v2-badge admin-v2-badge-success">Configured</span>
+                          <span className="admin-v2-badge admin-v2-badge-success">
+                            {isSHHDevice ? `${patientReaders.filter(r => r.is_paired).length} Connected` : 'Configured'}
+                          </span>
                         )}
                       </div>
                       <span className="admin-v2-badge admin-v2-badge-info">
@@ -464,24 +689,177 @@ export default function AdminV2Integrations() {
                         </span>
                       </div>
                     </div>
-                    {!isConfigured && (
-                      <div className="admin-v2-card-actions">
-                        <button 
-                          className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-primary"
-                          onClick={() => {
+                    <div className="admin-v2-card-actions">
+                      <button 
+                        className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-primary"
+                        onClick={() => {
+                          if (isSHHDevice) {
+                            setShowReaderModal(true);
+                          } else {
                             setSelectedIntegration(integration);
                             setShowAddModal(true);
-                          }}
-                        >
-                          <PlusIcon size={14} /> Add
-                        </button>
-                      </div>
-                    )}
+                          }
+                        }}
+                      >
+                        <PlusIcon size={14} /> {isSHHDevice ? 'Add Device' : 'Add'}
+                      </button>
+                    </div>
                   </div>
                 );
               })}
             </div>
           </>
+        )}
+
+        {/* Add Reader Modal */}
+        {showReaderModal && (
+          <div className="admin-v2-modal-overlay" onClick={() => {
+            setShowReaderModal(false);
+            setPairingReader(null);
+            setPairingCode('');
+            setReaderIp('');
+            setReaderPort('8080');
+            setReaderName('');
+          }}>
+            <div className="admin-v2-modal" onClick={e => e.stopPropagation()}>
+              <div className="admin-v2-modal-header">
+                <h2>{pairingReader ? 'Confirm Pairing' : 'Add SHH Reader'}</h2>
+                <button 
+                  className="admin-v2-modal-close"
+                  onClick={() => {
+                    setShowReaderModal(false);
+                    setPairingReader(null);
+                    setPairingCode('');
+                    setReaderIp('');
+                    setReaderPort('8080');
+                    setReaderName('');
+                  }}
+                >
+                  <XIcon size={20} />
+                </button>
+              </div>
+              <div className="admin-v2-modal-body">
+                {!pairingReader ? (
+                  <>
+                    <p className="admin-v2-text-muted" style={{ marginBottom: '1.5rem' }}>
+                      Enter the IP address and port of your SHH Reader device. Make sure the reader is powered on and connected to your network.
+                    </p>
+                    <div style={{ display: 'flex', gap: '1rem' }}>
+                      <div className="admin-v2-form-group" style={{ flex: 1 }}>
+                        <label className="admin-v2-label">Reader IP Address *</label>
+                        <input
+                          type="text"
+                          className="admin-v2-input"
+                          value={readerIp}
+                          onChange={(e) => setReaderIp(e.target.value)}
+                          placeholder="e.g., 192.168.1.100"
+                          autoFocus
+                        />
+                      </div>
+                      <div className="admin-v2-form-group" style={{ width: '100px' }}>
+                        <label className="admin-v2-label">Port</label>
+                        <input
+                          type="number"
+                          className="admin-v2-input"
+                          value={readerPort}
+                          onChange={(e) => setReaderPort(e.target.value)}
+                          placeholder="8080"
+                        />
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="admin-v2-alert admin-v2-alert-info" style={{ marginBottom: '1.5rem' }}>
+                      <strong>Pairing Code Required</strong>
+                      <p style={{ margin: '0.5rem 0 0 0' }}>
+                        Look at the <strong>{pairingReader.name}</strong> device screen and enter the 6-digit pairing code shown.
+                      </p>
+                    </div>
+                    <div style={{ 
+                      textAlign: 'center', 
+                      padding: '1.5rem', 
+                      background: 'rgba(88, 166, 255, 0.1)', 
+                      borderRadius: '8px',
+                      marginBottom: '1.5rem'
+                    }}>
+                      <p style={{ margin: '0 0 1rem 0', color: '#8b949e' }}>Code shown on reader:</p>
+                      <div style={{ 
+                        fontSize: '2rem', 
+                        fontFamily: 'monospace', 
+                        letterSpacing: '0.5rem',
+                        color: '#58a6ff',
+                        fontWeight: 'bold'
+                      }}>
+                        {pairingReader.code}
+                      </div>
+                    </div>
+                    <div className="admin-v2-form-group">
+                      <label className="admin-v2-label">Enter Pairing Code *</label>
+                      <input
+                        type="text"
+                        className="admin-v2-input"
+                        value={pairingCode}
+                        onChange={(e) => setPairingCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        placeholder="000000"
+                        maxLength={6}
+                        style={{ 
+                          textAlign: 'center', 
+                          fontSize: '1.5rem', 
+                          letterSpacing: '0.5rem',
+                          fontFamily: 'monospace'
+                        }}
+                        autoFocus
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+              <div className="admin-v2-modal-footer">
+                {pairingReader && (
+                  <button 
+                    className="admin-v2-btn admin-v2-btn-ghost"
+                    onClick={() => {
+                      setPairingReader(null);
+                      setPairingCode('');
+                    }}
+                  >
+                    Back
+                  </button>
+                )}
+                <button 
+                  className="admin-v2-btn admin-v2-btn-secondary"
+                  onClick={() => {
+                    setShowReaderModal(false);
+                    setPairingReader(null);
+                    setPairingCode('');
+                    setReaderIp('');
+                    setReaderPort('8080');
+                    setReaderName('');
+                  }}
+                >
+                  Cancel
+                </button>
+                {!pairingReader ? (
+                  <button 
+                    className="admin-v2-btn admin-v2-btn-primary"
+                    onClick={handleInitiatePairing}
+                    disabled={pairingLoading || !readerIp.trim()}
+                  >
+                    {pairingLoading ? 'Connecting...' : 'Connect Reader'}
+                  </button>
+                ) : (
+                  <button 
+                    className="admin-v2-btn admin-v2-btn-primary"
+                    onClick={handleConfirmPairing}
+                    disabled={pairingLoading || pairingCode.length !== 6}
+                  >
+                    {pairingLoading ? 'Pairing...' : 'Confirm Pairing'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Add Integration Modal */}
@@ -508,6 +886,22 @@ export default function AdminV2Integrations() {
               <div className="admin-v2-modal-body">
                 {!selectedIntegration ? (
                   <div className="admin-v2-integration-list">
+                    {/* SHH Pulse Oximeter option */}
+                    <button
+                      className="admin-v2-integration-option"
+                      onClick={() => {
+                        setShowAddModal(false);
+                        setShowReaderModal(true);
+                      }}
+                    >
+                      <div className="admin-v2-integration-option-info">
+                        <strong>{shhPulseOxIntegration.name}</strong>
+                        <p className="admin-v2-text-muted admin-v2-text-small">{shhPulseOxIntegration.description}</p>
+                      </div>
+                      <span className="admin-v2-badge admin-v2-badge-secondary">
+                        {getAuthTypeLabel(shhPulseOxIntegration.auth_type)}
+                      </span>
+                    </button>
                     {unconfiguredIntegrations.map(integration => (
                       <button
                         key={integration.slug}

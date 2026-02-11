@@ -79,30 +79,20 @@ def validate_patient_access(db: Session, patient_id: int) -> bool:
     return patient is not None and patient.is_active
 
 
-def create_default_patient(db: Session) -> Patient:
-    """Create a default patient if none exists"""
-    existing_patient = get_active_patient(db)
-    if existing_patient:
-        return existing_patient
-    
-    default_patient_data = {
-        "first_name": "Patient1",
-        "last_name": "",
-        "date_of_birth": datetime(1900, 1, 1),
-        "medical_record_number": "DEFAULT001",
-        "is_active": True,
-        "notes": "Default patient created automatically"
-    }
-    
-    return create_patient(db, default_patient_data)
+def create_default_patient(db: Session) -> Optional[Patient]:
+    """Get the default patient - no longer auto-creates Patient1.
+    Default patient is now created during first-run setup with the user's name.
+    Returns existing active patient or None if no patient exists yet.
+    """
+    return get_active_patient(db)
 
 
-def get_or_create_default_patient(db: Session) -> Patient:
-    """Get active patient or create default if none exists"""
-    patient = get_active_patient(db)
-    if not patient:
-        patient = create_default_patient(db)
-    return patient
+def get_or_create_default_patient(db: Session) -> Optional[Patient]:
+    """Get active patient. No longer auto-creates a default.
+    Default patient is created during first-run setup.
+    Returns None if no patient exists (e.g., before first-run completes).
+    """
+    return get_active_patient(db)
 
 
 def get_current_patient(db: Session) -> Optional[Patient]:

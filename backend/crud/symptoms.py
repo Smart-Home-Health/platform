@@ -47,6 +47,8 @@ def create_symptom(
     # Get patient_id if not provided
     if patient_id is None:
         patient = get_or_create_default_patient(db)
+        if not patient:
+            raise ValueError("No patient exists. Complete first-run setup first.")
         patient_id = patient.id
     
     # Ensure timestamp is timezone-aware

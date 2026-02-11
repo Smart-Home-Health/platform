@@ -10,6 +10,8 @@ import os
 import json
 import logging
 
+import re
+
 from db import get_db
 from schemas.auth import (
     LoginRequest, PinVerifyRequest, TokenResponse, SessionInfo,
@@ -26,6 +28,7 @@ from crud.users import (
     get_all_roles, assign_role_to_user as add_role_to_user,
     remove_role_from_user
 )
+from schemas.patient import Patient
 from dependencies import get_current_user, require_permission, get_current_account_id, get_current_account, require_full_auth
 from models.users import User, Account
 import bcrypt
@@ -101,8 +104,13 @@ def first_run_setup(
     db: Session = Depends(get_db)
 ):
     """
-    Create the first admin user during first-run setup.
+    Create the first account and admin user during first-run setup.
     This endpoint is only available when no admin users exist.
+    
+    Flow:
+    1. Create account (with password for account-level login)
+    2. Create admin user attached to account
+    3. Create default patient using the username
     """
     # Check if admin already exists
     if has_any_admin_user(db):
@@ -126,17 +134,71 @@ def first_run_setup(
             detail="System roles not initialized. Run database seed."
         )
     
-    # Create admin user
-    user = create_user(
-        db,
-        username=setup.username,
-        password=setup.password,
-        full_name=setup.full_name,
-        email=setup.email,
-        pin=setup.pin,
-        is_system_admin=True,
-        role_ids=[admin_role.id]
+    # Determine account name (use provided account_name or fall back to full_name)
+    account_name = setup.account_name or setup.full_name
+    
+    # Generate slug from account name (lowercase, alphanumeric and hyphens only)
+    account_slug = re.sub(r'[^a-z0-9]+', '-', account_name.lower()).strip('-')
+    
+    # Hash password for account (separate from user password)
+    account_password_hash = bcrypt.hashpw(setup.account_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    
+    # Create account first
+    account = Account(
+        name=account_name,
+        slug=account_slug,
+        password_hash=account_password_hash,
+        is_default=True,
+        is_active=True,
+        contact_email=setup.email
     )
+    db.add(account)
+    db.flush()  # Get account ID without committing
+    
+    # Hash user password and PIN
+    user_password_hash = bcrypt.hashpw(setup.password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    pin_hash = bcrypt.hashpw(setup.pin.encode('utf-8'), bcrypt.gensalt()).decode('utf-8') if setup.pin else None
+    
+    # Create admin user directly (not via create_user to control transaction)
+    user = User(
+        username=setup.username,
+        email=setup.email,
+        full_name=setup.full_name,
+        password_hash=user_password_hash,
+        pin_hash=pin_hash,
+        is_system_admin=True,
+        is_active=True,
+        account_id=account.id
+    )
+    db.add(user)
+    db.flush()  # Get user ID
+    
+    # Assign system_admin role
+    from models.users import user_roles
+    db.execute(
+        user_roles.insert().values(user_id=user.id, role_id=admin_role.id)
+    )
+    
+    # Create default patient using the username
+    from datetime import datetime as dt
+    patient = Patient(
+        first_name=setup.username,
+        last_name="",
+        date_of_birth=dt(1900, 1, 1),
+        medical_record_number=f"DEFAULT-{account.id}",
+        is_active=True,
+        notes="Default patient created during first-run setup",
+        account_id=account.id,
+        owner_user_id=user.id,
+        created_at=dt.utcnow(),
+        updated_at=dt.utcnow()
+    )
+    db.add(patient)
+    
+    # Commit entire transaction at once
+    db.commit()
+    db.refresh(user)
+    db.refresh(account)
     
     # Update login timestamp
     update_login_timestamp(db, user.id, is_full_password=True)
@@ -146,13 +208,18 @@ def first_run_setup(
         db,
         user_id=user.id,
         action="first_run.setup",
-        details=json.dumps({"username": user.username, "full_name": user.full_name}),
+        details=json.dumps({
+            "username": user.username,
+            "full_name": user.full_name,
+            "account_name": account.name,
+            "account_id": account.id
+        }),
         ip_address=get_client_ip(request),
         user_agent=request.headers.get("User-Agent")
     )
     
-    # Generate token
-    token = create_access_token(user, is_full_password=True)
+    # Generate token with account
+    token = create_access_token(user, account=account, is_full_password=True)
     
     # Set httpOnly cookie
     # Note: samesite="none" requires secure=True in production
@@ -166,7 +233,7 @@ def first_run_setup(
         secure=False  # Set to True in production with HTTPS
     )
     
-    logger.info(f"First-run admin user created: {user.username}")
+    logger.info(f"First-run setup completed: account '{account.name}' (slug='{account.slug}', id={account.id}), admin user '{user.username}'")
     
     return TokenResponse(
         access_token=token,
@@ -174,10 +241,12 @@ def first_run_setup(
             "id": user.id,
             "username": user.username,
             "full_name": user.full_name,
+            "account_id": account.id,
             "is_system_admin": user.is_system_admin,
             "roles": [{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles]
         },
-        requires_full_password=False
+        requires_full_password=False,
+        account_slug=account.slug  # Return slug so user knows their account login
     )
 
 

@@ -1,5 +1,5 @@
 """
-Manual/SHH integration for local device data and manual entry.
+Manual integration for local device data and manual entry.
 
 This is the default integration that handles:
 - Serial-connected devices (pulse oximeters, temp sensors)
@@ -8,6 +8,9 @@ This is the default integration that handles:
 
 It doesn't require external authentication and data flows in real-time
 through the WebSocket/MQTT system rather than periodic syncing.
+
+Note: Network-connected SHH devices (like SHH Pulse Oximeter readers)
+are handled through the readers module, not this integration.
 """
 from datetime import datetime
 from typing import Dict, Any, Optional, List
@@ -115,101 +118,3 @@ class ManualIntegration(BaseIntegration):
         Manual integration is always available.
         """
         return True
-
-
-@register  
-class SHHDeviceIntegration(BaseIntegration):
-    """
-    Integration for SHH-branded or configured remote devices.
-    
-    This handles devices that connect over the network (not serial)
-    but are still "local" to the SHH ecosystem, such as:
-    - SHH Hub devices
-    - MQTT-connected sensors
-    - Local network health devices
-    """
-    
-    slug = "shh_device"
-    name = "SHH Network Device"
-    description = "SHH network-connected devices via MQTT"
-    auth_type = "local"
-    supported_vitals = [
-        VitalType.HEART_RATE.value,
-        VitalType.SPO2.value,
-        VitalType.TEMPERATURE.value,
-        VitalType.BLOOD_PRESSURE_SYSTOLIC.value,
-        VitalType.BLOOD_PRESSURE_DIASTOLIC.value,
-    ]
-    
-    @classmethod
-    def get_config_schema(cls) -> Dict[str, Any]:
-        """
-        Configuration for MQTT-connected SHH devices.
-        """
-        return {
-            "type": "object",
-            "properties": {
-                "mqtt_topic_prefix": {
-                    "type": "string",
-                    "title": "MQTT Topic Prefix",
-                    "description": "Topic prefix for this device (e.g., 'shh/bedroom')",
-                    "default": "shh",
-                },
-                "device_identifier": {
-                    "type": "string", 
-                    "title": "Device Identifier",
-                    "description": "Unique identifier for the device",
-                },
-            },
-            "required": ["device_identifier"],
-        }
-    
-    async def authenticate(self, auth_data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Validate MQTT device configuration.
-        """
-        return {
-            "authenticated": True,
-            "type": "mqtt",
-            "topic_prefix": auth_data.get("mqtt_topic_prefix", "shh"),
-            "device_id": auth_data.get("device_identifier"),
-        }
-    
-    async def refresh_credentials(self) -> Dict[str, Any]:
-        """
-        No refresh needed for MQTT devices.
-        """
-        return self.credentials if self.credentials else {}
-    
-    async def fetch_devices(self) -> List[DeviceInfo]:
-        """
-        Query MQTT for discovered devices.
-        
-        TODO: Implement MQTT device discovery
-        """
-        device_id = self.settings.get("device_identifier", "unknown")
-        return [
-            DeviceInfo(
-                device_id=device_id,
-                device_type="shh_hub",
-                device_name=f"SHH Device: {device_id}",
-                device_model="SHH Hub",
-                last_seen_at=datetime.utcnow(),
-            ),
-        ]
-    
-    async def sync_data(
-        self,
-        since: Optional[datetime] = None,
-        device_ids: Optional[List[str]] = None
-    ) -> SyncResult:
-        """
-        MQTT devices push data in real-time, no polling needed.
-        """
-        return SyncResult(
-            success=True,
-            readings_count=0,
-            readings=[],
-            error_message="SHH devices use real-time MQTT data flow.",
-            sync_timestamp=datetime.utcnow(),
-        )

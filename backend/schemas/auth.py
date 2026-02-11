@@ -66,6 +66,7 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     user: dict
     requires_full_password: bool = False
+    account_slug: Optional[str] = None  # Returned after first-run setup so user knows their login
 
 
 class SessionInfo(BaseModel):
@@ -85,12 +86,14 @@ class SessionInfo(BaseModel):
 
 
 class FirstRunSetup(BaseModel):
-    """First run admin user setup"""
+    """First run admin user and account setup"""
     username: str = Field(..., min_length=3, max_length=50)
-    password: str = Field(..., min_length=8)
+    password: str = Field(..., min_length=8, description="Password for the user profile")
     full_name: str = Field(..., min_length=1, max_length=100)
     email: Optional[str] = None
     pin: Optional[str] = Field(None, min_length=4, max_length=8)
+    account_name: Optional[str] = Field(None, max_length=100, description="Name for the account (defaults to full_name)")
+    account_password: str = Field(..., min_length=8, description="Password for account-level login")
 
 
 class FirstRunStatus(BaseModel):

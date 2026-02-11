@@ -11,10 +11,15 @@ export default function FirstRunSetup() {
     confirmPassword: '',
     full_name: '',
     email: '',
-    pin: ''
+    pin: '',
+    account_name: '',
+    account_password: '',
+    confirmAccountPassword: ''
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [setupComplete, setSetupComplete] = useState(false);
+  const [accountSlug, setAccountSlug] = useState('');
 
   const handleChange = (e) => {
     setFormData({
@@ -28,13 +33,23 @@ export default function FirstRunSetup() {
     setError('');
 
     // Validation
+    if (formData.account_password !== formData.confirmAccountPassword) {
+      setError('Account passwords do not match');
+      return;
+    }
+
+    if (formData.account_password.length < 8) {
+      setError('Account password must be at least 8 characters');
+      return;
+    }
+
     if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match');
+      setError('User passwords do not match');
       return;
     }
 
     if (formData.password.length < 8) {
-      setError('Password must be at least 8 characters');
+      setError('User password must be at least 8 characters');
       return;
     }
 
@@ -55,7 +70,9 @@ export default function FirstRunSetup() {
       password: formData.password,
       full_name: formData.full_name,
       email: formData.email || null,
-      pin: formData.pin || null
+      pin: formData.pin || null,
+      account_name: formData.account_name || null,
+      account_password: formData.account_password
     };
 
     const result = await completeFirstRunSetup(setupData);
@@ -63,8 +80,53 @@ export default function FirstRunSetup() {
     if (!result.success) {
       setError(result.error);
       setLoading(false);
+    } else {
+      // Show success message with account slug before redirecting
+      setAccountSlug(result.data.account_slug);
+      setSetupComplete(true);
+      setLoading(false);
+      // Auto-continue after 5 seconds
+      setTimeout(() => {
+        window.location.reload();
+      }, 5000);
     }
   };
+
+  // Show success screen with account slug
+  if (setupComplete) {
+    return (
+      <div className="first-run-container">
+        <div className="first-run-background">
+          <Dashboard />
+        </div>
+        <div className="first-run-card">
+          <div className="first-run-header">
+            <h1>✓ Setup Complete!</h1>
+            <p>Your account has been created successfully</p>
+          </div>
+          
+          <div className="success-info">
+            <div className="account-slug-display">
+              <label>Your Account Login ID:</label>
+              <div className="slug-value">{accountSlug}</div>
+              <small>Use this to log into your account in the future</small>
+            </div>
+            
+            <p className="redirect-message">
+              Redirecting to dashboard in 5 seconds...
+            </p>
+            
+            <button 
+              className="submit-button"
+              onClick={() => window.location.reload()}
+            >
+              Continue Now
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="first-run-container">
@@ -74,7 +136,7 @@ export default function FirstRunSetup() {
       <div className="first-run-card">
         <div className="first-run-header">
           <h1>Welcome to Smart Home Health Hub</h1>
-          <p>Let's set up your administrator account</p>
+          <p>Let's set up your account and administrator profile</p>
         </div>
 
         <form onSubmit={handleSubmit} className="first-run-form">
@@ -85,6 +147,52 @@ export default function FirstRunSetup() {
           )}
 
           <div className="form-grid">
+            <div className="form-group">
+              <label htmlFor="account_name">Account Name (Optional)</label>
+              <input
+                type="text"
+                id="account_name"
+                name="account_name"
+                value={formData.account_name}
+                onChange={handleChange}
+                placeholder="Smith Family"
+              />
+              <small className="form-hint">
+                Name for your account (defaults to your full name)
+              </small>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="account_password">Account Password *</label>
+              <input
+                type="password"
+                id="account_password"
+                name="account_password"
+                value={formData.account_password}
+                onChange={handleChange}
+                required
+                minLength={8}
+                placeholder="Minimum 8 characters"
+              />
+              <small className="form-hint">
+                Password for logging into the account
+              </small>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="confirmAccountPassword">Confirm Account Password *</label>
+              <input
+                type="password"
+                id="confirmAccountPassword"
+                name="confirmAccountPassword"
+                value={formData.confirmAccountPassword}
+                onChange={handleChange}
+                required
+                minLength={8}
+                placeholder="Re-enter account password"
+              />
+            </div>
+
             <div className="form-group">
               <label htmlFor="full_name">Full Name *</label>
               <input
@@ -143,7 +251,7 @@ export default function FirstRunSetup() {
             </div>
 
             <div className="form-group">
-              <label htmlFor="password">Password *</label>
+              <label htmlFor="password">User Password *</label>
               <input
                 type="password"
                 id="password"
@@ -154,10 +262,13 @@ export default function FirstRunSetup() {
                 minLength={8}
                 placeholder="Minimum 8 characters"
               />
+              <small className="form-hint">
+                Password for your user profile
+              </small>
             </div>
 
             <div className="form-group">
-              <label htmlFor="confirmPassword">Confirm Password *</label>
+              <label htmlFor="confirmPassword">Confirm User Password *</label>
               <input
                 type="password"
                 id="confirmPassword"
@@ -166,7 +277,7 @@ export default function FirstRunSetup() {
                 onChange={handleChange}
                 required
                 minLength={8}
-                placeholder="Re-enter your password"
+                placeholder="Re-enter user password"
               />
             </div>
           </div>
@@ -176,12 +287,12 @@ export default function FirstRunSetup() {
             className="submit-button"
             disabled={loading}
           >
-            {loading ? 'Creating Account...' : 'Create Administrator Account'}
+            {loading ? 'Creating Account...' : 'Create Account & Administrator'}
           </button>
         </form>
 
         <div className="first-run-footer">
-          <p>This account will have full system access</p>
+          <p>This will create your account and an administrator profile with full system access</p>
         </div>
       </div>
     </div>

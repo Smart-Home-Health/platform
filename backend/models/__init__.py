@@ -30,6 +30,7 @@ from schemas.symptom import Symptom
 from schemas.patient import Patient, PatientAccess, AccessLevel
 from schemas.diagnosis import Diagnosis, DiagnosisNote
 from schemas.implant import Implant, ImplantNote
+from models.readers import Reader
 
 # Schedule-related Pydantic models
 from models.schedule import CompleteItemRequest, BulkCompleteRequest
@@ -42,5 +43,5 @@ __all__ = [
     'BloodPressure', 'Temperature', 'Vital', 'Symptom', 'Patient', 'User', 'Role',
     'Permission', 'AuditLog', 'Diagnosis', 'DiagnosisNote', 'Implant', 'ImplantNote',
     'CompleteItemRequest', 'BulkCompleteRequest', 'Organization', 'OrganizationMembership',
-    'OrganizationType', 'PatientAccess', 'AccessLevel'
+    'OrganizationType', 'PatientAccess', 'AccessLevel', 'Reader'
 ]

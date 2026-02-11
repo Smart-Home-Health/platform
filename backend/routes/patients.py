@@ -130,12 +130,14 @@ def set_current_patient_by_id(patient_id: int, db: Session = Depends(get_db)):
 
 @router.post("/initialize", response_model=PatientResponse)
 def initialize_default_patient(db: Session = Depends(get_db)):
-    """Create default patient if no patients exist"""
-    patients = get_patients(db, active_only=True, limit=1)
-    if patients:
+    """Get default patient - use first-run setup to create patients.
+    This endpoint is deprecated. Patients are now created during first-run setup.
+    """
+    patient = get_active_patient(db)
+    if not patient:
         raise HTTPException(
-            status_code=400, 
-            detail="Patients already exist, cannot initialize default"
+            status_code=404, 
+            detail="No patients exist. Complete first-run setup to create a patient."
         )
     
-    return create_default_patient(db)
+    return patient

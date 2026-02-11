@@ -11,6 +11,7 @@ class EventSource(Enum):
     GPIO = "gpio"
     API = "api"
     SYSTEM = "system"
+    READER = "reader"  # External SHH Reader device
 
 @dataclass(frozen=True)
 class SensorUpdate:

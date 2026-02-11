@@ -158,3 +158,46 @@
   color: #a0aec0;
   font-size: 12px;
 }
+
+/* Success screen styles */
+.success-info {
+  text-align: center;
+  padding: 20px;
+}
+
+.account-slug-display {
+  background: rgba(102, 126, 234, 0.1);
+  border: 1px solid rgba(102, 126, 234, 0.3);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.account-slug-display label {
+  display: block;
+  color: #a0aec0;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.account-slug-display .slug-value {
+  font-size: 28px;
+  font-weight: bold;
+  color: #667eea;
+  font-family: monospace;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.account-slug-display small {
+  color: #718096;
+  font-size: 12px;
+}
+
+.redirect-message {
+  color: #a0aec0;
+  font-size: 14px;
+  margin-bottom: 16px;
+}

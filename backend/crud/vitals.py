@@ -25,6 +25,9 @@ def save_blood_pressure(db: Session, systolic, diastolic, map_value=None, timest
     # Get patient_id if not provided
     if patient_id is None:
         patient = get_or_create_default_patient(db)
+        if not patient:
+            logger.warning("No patient exists, cannot save blood pressure")
+            return None
         patient_id = patient.id
     
     # Ensure timestamp is timezone-aware
@@ -122,6 +125,9 @@ def save_temperature(db: Session, body_temp, skin_temp=None, timestamp=None, not
     # Get patient_id if not provided
     if patient_id is None:
         patient = get_or_create_default_patient(db)
+        if not patient:
+            logger.warning("No patient exists, cannot save temperature")
+            return None
         patient_id = patient.id
     
     # Ensure timestamp is timezone-aware
@@ -191,6 +197,9 @@ def save_vital(db: Session, vital_type, value, timestamp=None, notes=None, vital
     # Get patient_id if not provided
     if patient_id is None:
         patient = get_or_create_default_patient(db)
+        if not patient:
+            logger.warning("No patient exists, cannot save vital")
+            return None
         patient_id = patient.id
     
     # Ensure timestamp is timezone-aware (convert to UTC if naive)
@@ -230,6 +239,9 @@ def save_blood_pressure_as_vitals(db: Session, systolic, diastolic, map_value=No
     # Get patient_id if not provided
     if patient_id is None:
         patient = get_or_create_default_patient(db)
+        if not patient:
+            logger.warning("No patient exists, cannot save blood pressure as vitals")
+            return []
         patient_id = patient.id
     
     # Calculate MAP if not provided
@@ -263,6 +275,9 @@ def save_temperature_as_vitals(db: Session, body_temp=None, skin_temp=None, time
     # Get patient_id if not provided
     if patient_id is None:
         patient = get_or_create_default_patient(db)
+        if not patient:
+            logger.warning("No patient exists, cannot save temperature as vitals")
+            return []
         patient_id = patient.id
     
     # Save body temperature
@@ -410,6 +425,9 @@ def save_pulse_ox_data(db: Session, spo2, bpm, pa, status=None, motion=None, spo
         # Get patient_id if not provided
         if patient_id is None:
             patient = get_or_create_default_patient(db)
+            if not patient:
+                logger.warning("No patient exists, cannot save pulse ox data")
+                return None
             patient_id = patient.id
 
         pulse_ox = PulseOxData(
