@@ -266,13 +266,15 @@ def upgrade() -> None:
         sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
         sa.Column('account_id', sa.Integer(), nullable=True),
         sa.Column('patient_id', sa.Integer(), nullable=False),
-        sa.Column('group', sa.String(), nullable=True),
-        sa.Column('name', sa.String(), nullable=False),
-        sa.Column('unit', sa.String(), nullable=True),
-        sa.Column('value', sa.Float(), nullable=True),
-        sa.Column('value_text', sa.String(), nullable=True),
         sa.Column('timestamp', sa.TIMESTAMP(timezone=True), nullable=False),
-        sa.Column('source', sa.String(), nullable=True),
+        sa.Column('vital_type', sa.String(), nullable=False),
+        sa.Column('vital_group', sa.String(), nullable=True),
+        sa.Column('value', sa.Float(), nullable=False),
+        sa.Column('unit', sa.String(20), nullable=True),
+        sa.Column('source', sa.String(50), nullable=True, server_default="'manual'"),
+        sa.Column('device_id', sa.String(100), nullable=True),
+        sa.Column('external_id', sa.String(100), nullable=True),
+        sa.Column('raw_data', sa.JSON(), nullable=True),
         sa.Column('notes', sa.Text(), nullable=True),
         sa.Column('created_at', sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
         sa.PrimaryKeyConstraint('id'),
@@ -280,6 +282,9 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(['patient_id'], ['patients.id']),
     )
     op.create_index('ix_vitals_account_id', 'vitals', ['account_id'])
+    op.create_index('ix_vitals_patient_id', 'vitals', ['patient_id'])
+    op.create_index('ix_vitals_external_id', 'vitals', ['external_id'])
+    op.create_index('ix_vitals_vital_type', 'vitals', ['vital_type'])
     
     # Pulse ox data table
     op.create_table('pulse_ox_data',
