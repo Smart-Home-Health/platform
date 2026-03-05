@@ -268,6 +268,18 @@ export default function Dashboard() {
     }
   };
 
+  // Account-scoped equipment due count (matches Equipment List API)
+  const fetchEquipmentDueCount = () => {
+    fetch(`${config.apiUrl}/api/equipment/due/count`, { credentials: 'include' })
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => { if (data != null && typeof data.count === 'number') setEquipmentDueCount(data.count); })
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    fetchEquipmentDueCount();
+  }, []);
+
   useEffect(() => {
     console.log(`Connecting to WebSocket at: ${config.wsUrl}`);
     const ws = new WebSocket(config.wsUrl);
@@ -327,10 +339,8 @@ export default function Dashboard() {
           setVentNotifications(msg.state.vent_notifications);
         }
         
-        if (msg.state.equipment_due_count !== undefined) {
-          setEquipmentDueCount(msg.state.equipment_due_count);
-        }
-        
+        // Equipment due count: use account-scoped API (fetched on mount); WebSocket count is global so we don't use it for badge
+        // equipment_due_count: badge uses account-scoped API (see fetchEquipmentDueCount); skip WebSocket global count
         if (msg.state.medications !== undefined) {
           setMedicationDueCount(msg.state.medications);
         }
@@ -348,6 +358,11 @@ export default function Dashboard() {
         }
       }
       
+      else if (msg.type === "alarm_update") {
+        const alarmActive = !!(msg.alarm1 || msg.alarm2);
+        setIsAlarmActive(alarmActive);
+        prevAlarmActive.current = alarmActive;
+      }
       else if (msg.type === "alert_acknowledged") {
         if (msg.alerts_count !== undefined) {
           setPulseOxAlerts(msg.alerts_count);
@@ -918,7 +933,7 @@ export default function Dashboard() {
       {isVentModalOpen && (
         <EquipmentModal 
           isOpen={isVentModalOpen} 
-          onClose={() => setIsVentModalOpen(false)} 
+          onClose={() => { setIsVentModalOpen(false); fetchEquipmentDueCount(); }} 
           equipmentDueCount={equipmentDueCount} 
         />
       )}

@@ -2,12 +2,132 @@
 MQTT Settings and Configuration
 """
 import json
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from crud.settings import get_setting
 from db import get_db
 import logging
 
 logger = logging.getLogger('mqtt.settings')
+
+
+def get_patients_with_mqtt_enabled() -> List[Dict[str, Any]]:
+    """
+    Return list of { patient_id, patient_name, settings } for each patient that has MQTT
+    enabled (PatientIntegration for slug mqtt with enabled=True and settings.enabled True).
+    patient_name is first_name + last_name for discovery/display (e.g. "john" or "John Doe").
+    """
+    from schemas.integration import Integration as IntegrationModel, PatientIntegration
+    from schemas.patient import Patient
+    db = next(get_db())
+    try:
+        mqtt_int = db.query(IntegrationModel).filter(IntegrationModel.slug == "mqtt").first()
+        if not mqtt_int:
+            return []
+        rows = (
+            db.query(PatientIntegration)
+            .filter(
+                PatientIntegration.integration_id == mqtt_int.id,
+                PatientIntegration.is_enabled == True,
+            )
+            .all()
+        )
+        out = []
+        for pi in rows:
+            settings = pi.settings or {}
+            if not settings.get("enabled", True):
+                continue
+            patient = db.query(Patient).filter(Patient.id == pi.patient_id).first()
+            patient_name = (f"{patient.first_name} {patient.last_name}".strip() if patient else "") or f"Patient {pi.patient_id}"
+            out.append({"patient_id": pi.patient_id, "patient_name": patient_name, "settings": settings})
+        return out
+    finally:
+        db.close()
+
+
+def get_patient_mqtt_config(patient_id: int) -> Optional[Dict[str, Any]]:
+    """
+    Get MQTT config for a patient (from PatientIntegration for mqtt).
+    Returns settings dict with enabled, sections, topic_overrides, base_topic_override, or None.
+    """
+    from schemas.integration import Integration as IntegrationModel, PatientIntegration
+    db = next(get_db())
+    try:
+        mqtt_int = db.query(IntegrationModel).filter(IntegrationModel.slug == "mqtt").first()
+        if not mqtt_int:
+            return None
+        pi = (
+            db.query(PatientIntegration)
+            .filter(
+                PatientIntegration.patient_id == patient_id,
+                PatientIntegration.integration_id == mqtt_int.id,
+                PatientIntegration.is_enabled == True,
+            )
+            .first()
+        )
+        if not pi:
+            return None
+        return pi.settings or {}
+    finally:
+        db.close()
+
+
+def get_patient_state_topic(patient_id: int) -> Optional[str]:
+    """Get the state topic for a patient (combined JSON payload)."""
+    settings = get_mqtt_settings()
+    if not settings.get("enabled"):
+        return None
+    cfg = get_patient_mqtt_config(patient_id)
+    if not cfg or not cfg.get("enabled", True):
+        return None
+    base = settings.get("base_topic", "shh")
+    overrides = (cfg.get("topic_overrides") or {})
+    if overrides.get("state_topic"):
+        return overrides["state_topic"]
+    base_override = cfg.get("base_topic_override") or base
+    return f"{base_override}/patient/{patient_id}/state"
+
+
+def get_patient_set_topic(patient_id: int) -> Optional[str]:
+    """Get the set topic for a patient (HA -> device)."""
+    settings = get_mqtt_settings()
+    if not settings.get("enabled"):
+        return None
+    cfg = get_patient_mqtt_config(patient_id)
+    if not cfg or not cfg.get("enabled", True):
+        return None
+    base = settings.get("base_topic", "shh")
+    overrides = (cfg.get("topic_overrides") or {})
+    if overrides.get("set_topic"):
+        return overrides["set_topic"]
+    base_override = cfg.get("base_topic_override") or base
+    return f"{base_override}/patient/{patient_id}/set"
+
+
+def state_key_to_section(key: str) -> str:
+    """Map state dict key to section name for permission check."""
+    if key in ("systolic_bp", "diastolic_bp", "map_bp"):
+        return "blood_pressure"
+    if key in ("body_temp", "skin_temp"):
+        return "temperature"
+    return key
+
+
+def section_allows_get(patient_id: int, section: str) -> bool:
+    """True if this patient's MQTT config allows publishing (get) for this section."""
+    cfg = get_patient_mqtt_config(patient_id)
+    if not cfg or not cfg.get("enabled", True):
+        return False
+    perm = (cfg.get("sections") or {}).get(section, "off")
+    return perm in ("get", "both")
+
+
+def section_allows_set(patient_id: int, section: str) -> bool:
+    """True if this patient's MQTT config allows subscribing (set) for this section."""
+    cfg = get_patient_mqtt_config(patient_id)
+    if not cfg or not cfg.get("enabled", True):
+        return False
+    perm = (cfg.get("sections") or {}).get(section, "off")
+    return perm in ("set", "both")
 
 def get_mqtt_settings() -> Dict[str, Any]:
     """Get MQTT settings from database"""

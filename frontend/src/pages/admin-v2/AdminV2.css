@@ -858,13 +858,13 @@
 }
 
 .admin-v2-stat-icon.medications {
-  background: rgba(163, 113, 247, 0.2);
-  color: #a371f7;
+  background: rgba(247, 129, 102, 0.2);
+  color: #f78166;
 }
 
 .admin-v2-stat-icon.tasks {
-  background: rgba(63, 185, 80, 0.2);
-  color: #3fb950;
+  background: rgba(163, 113, 247, 0.2);
+  color: #a371f7;
 }
 
 .admin-v2-stat-icon.equipment {
@@ -3967,6 +3967,23 @@
   border-color: #58a6ff;
 }
 
+/* Schedule-aligned Summary Stats */
+.admin-v2-summary-stats.admin-v2-schedule-stats {
+  display: grid;
+  grid-template-columns: 80px 1fr 1fr 1fr;
+  gap: 0;
+  /* Match the schedule container's outer border offset */
+  padding: 0 1px;
+}
+
+.admin-v2-summary-stats.admin-v2-schedule-stats .admin-v2-stat-card {
+  margin: 0 0.5rem;
+}
+
+.admin-v2-schedule-stats-spacer {
+  /* Empty spacer to align with time column */
+}
+
 /* Schedule Container */
 .admin-v2-schedule-container {
   background: #161b22;
@@ -4748,6 +4765,53 @@
   padding-top: 1rem;
   margin-top: 1rem;
   border-top: 1px solid #21262d;
+}
+
+.admin-v2-settings-description {
+  font-size: 0.9rem;
+  color: #8b949e;
+  margin: 0 0 1rem 0;
+}
+
+.admin-v2-mqtt-table-wrap {
+  overflow-x: auto;
+  margin-bottom: 1rem;
+}
+
+.admin-v2-mqtt-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.admin-v2-mqtt-table th,
+.admin-v2-mqtt-table td {
+  padding: 0.5rem 0.4rem;
+  border: 1px solid #30363d;
+  text-align: left;
+}
+
+.admin-v2-mqtt-table th {
+  background: #21262d;
+  color: #e6edf3;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.admin-v2-mqtt-table select {
+  min-width: 4.5rem;
+  padding: 0.25rem 0.4rem;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  color: #e6edf3;
+  font-size: 0.8rem;
+}
+
+.admin-v2-muted {
+  color: #8b949e;
+  font-size: 0.9rem;
+  margin: 0;
 }
 
 /* Loading State */

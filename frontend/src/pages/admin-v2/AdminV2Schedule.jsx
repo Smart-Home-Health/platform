@@ -496,8 +496,9 @@ const AdminV2Schedule = () => {
               </button>
             </div>
 
-            {/* Summary Stats */}
-            <div className="admin-v2-summary-stats" style={{ marginBottom: '1.5rem' }}>
+            {/* Summary Stats - aligned to schedule columns */}
+            <div className="admin-v2-summary-stats admin-v2-schedule-stats" style={{ marginBottom: '1.5rem' }}>
+              <div className="admin-v2-schedule-stats-spacer" />
               <div className="admin-v2-stat-card">
                 <div className="admin-v2-stat-icon medications">
                   <MedicationsIcon size={24} />

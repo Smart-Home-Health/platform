@@ -43,16 +43,33 @@ class MQTTConnectionTest(BaseModel):
 
 class MQTTDiscoveryRequest(BaseModel):
     test_mode: bool = Field(default=True)
+    patient_id: Optional[int] = Field(default=None, description="If set, run discovery for this patient only; otherwise all enabled patients")
+
+
+class MQTTPatientConfigUpdate(BaseModel):
+    """Admin: enable MQTT for a patient and set section permissions (get/set/both/off)"""
+    enabled: bool = True
+    sections: Optional[Dict[str, str]] = Field(default_factory=dict)  # section -> "get"|"set"|"both"|"off"
+
+
+class MQTTPatientConfigResponse(BaseModel):
+    """Per-patient MQTT config for admin list"""
+    patient_id: int
+    patient_name: Optional[str] = None
+    enabled: bool
+    sections: Dict[str, str] = Field(default_factory=dict)
+    integration_id: Optional[int] = None  # PatientIntegration.id when exists
 
 
 class MQTTSettingsResponse(BaseModel):
-    mqtt_enabled: Optional[str] = None
+    """Response for GET /api/mqtt/settings - types match get_setting() stored values."""
+    mqtt_enabled: Optional[bool] = None
     mqtt_broker: Optional[str] = None
-    mqtt_port: Optional[str] = None
+    mqtt_port: Optional[int] = None
     mqtt_username: Optional[str] = None
     mqtt_password: Optional[str] = None
     mqtt_client_id: Optional[str] = None
-    mqtt_discovery_enabled: Optional[str] = None
-    mqtt_test_mode: Optional[str] = None
+    mqtt_discovery_enabled: Optional[bool] = None
+    mqtt_test_mode: Optional[bool] = None
     mqtt_base_topic: Optional[str] = None
     topics: Dict[str, Any] = {}

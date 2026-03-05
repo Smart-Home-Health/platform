@@ -14,7 +14,6 @@ class Integration(Base):
     name = Column(String(100), nullable=False)  # Display name: "Withings", "iHealth"
     slug = Column(String(50), nullable=False, unique=True)  # URL-safe identifier: "withings", "ihealth"
     description = Column(Text, nullable=True)
-    icon = Column(String(255), nullable=True)  # URL or icon name
     auth_type = Column(String(20), nullable=False, default='oauth2')  # oauth2, api_key, local, none
     config_schema = Column(JSON, nullable=True)  # JSON Schema for configuration form
     supported_vitals = Column(JSON, nullable=True)  # List of vital types this integration provides

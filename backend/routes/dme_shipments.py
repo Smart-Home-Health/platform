@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from db import get_db
-from dependencies import require_read_access
+from dependencies import get_current_user, require_permission
+from models.users import User
 from crud import dme_shipments as crud
 
 logger = logging.getLogger('app')
@@ -109,11 +110,11 @@ def parse_datetime(dt_str: Optional[str]) -> Optional[datetime]:
 
 # --- Shipment Endpoints ---
 
-@router.post("")
+@router.post("", dependencies=[Depends(require_permission("shipments.create"))])
 async def create_shipment(
     data: ShipmentCreate,
-    user_id: Optional[int] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """Create a new DME shipment"""
     try:
@@ -129,7 +130,7 @@ async def create_shipment(
             ship_method=data.ship_method,
             warehouse_loc=data.warehouse_loc,
             notes=data.notes,
-            created_by=user_id
+            created_by=current_user.id
         )
         
         if shipment:
@@ -140,7 +141,7 @@ async def create_shipment(
         return {"success": False, "error": str(e)}
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(require_permission("shipments.read"))])
 async def list_shipments(
     patient_id: Optional[int] = None,
     supplier_id: Optional[int] = None,
@@ -148,8 +149,7 @@ async def list_shipments(
     is_backorder: Optional[bool] = None,
     skip: int = 0,
     limit: int = 50,
-    db: Session = Depends(get_db),
-    _: bool = Depends(require_read_access)
+    db: Session = Depends(get_db)
 ):
     """List shipments with optional filters"""
     try:
@@ -168,11 +168,10 @@ async def list_shipments(
         return {"shipments": [], "error": str(e)}
 
 
-@router.get("/backorders")
+@router.get("/backorders", dependencies=[Depends(require_permission("shipments.read"))])
 async def get_pending_backorders(
     patient_id: Optional[int] = None,
-    db: Session = Depends(get_db),
-    _: bool = Depends(require_read_access)
+    db: Session = Depends(get_db)
 ):
     """Get all pending backorder shipments"""
     try:
@@ -183,7 +182,7 @@ async def get_pending_backorders(
         return {"backorders": [], "error": str(e)}
 
 
-@router.get("/alerts")
+@router.get("/alerts", dependencies=[Depends(require_permission("shipments.read"))])
 async def get_alerts(
     patient_id: Optional[int] = None,
     alert_type: Optional[str] = None,
@@ -204,11 +203,10 @@ async def get_alerts(
         return {"alerts": [], "count": 0, "error": str(e)}
 
 
-@router.get("/{shipment_id}")
+@router.get("/{shipment_id}", dependencies=[Depends(require_permission("shipments.read"))])
 async def get_shipment(
     shipment_id: int,
-    db: Session = Depends(get_db),
-    _: bool = Depends(require_read_access)
+    db: Session = Depends(get_db)
 ):
     """Get a specific shipment with all items and receipts"""
     try:
@@ -223,7 +221,7 @@ async def get_shipment(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/{shipment_id}")
+@router.put("/{shipment_id}", dependencies=[Depends(require_permission("shipments.update"))])
 async def update_shipment(
     shipment_id: int,
     data: ShipmentUpdate,
@@ -245,7 +243,7 @@ async def update_shipment(
         return {"success": False, "error": str(e)}
 
 
-@router.patch("/{shipment_id}")
+@router.patch("/{shipment_id}", dependencies=[Depends(require_permission("shipments.update"))])
 async def patch_shipment(
     shipment_id: int,
     data: ShipmentUpdate,
@@ -272,7 +270,7 @@ async def patch_shipment(
         return {"success": False, "error": str(e)}
 
 
-@router.delete("/{shipment_id}")
+@router.delete("/{shipment_id}", dependencies=[Depends(require_permission("shipments.delete"))])
 async def delete_shipment(
     shipment_id: int,
     db: Session = Depends(get_db)
@@ -286,7 +284,7 @@ async def delete_shipment(
         return {"success": False, "error": str(e)}
 
 
-@router.post("/{shipment_id}/copy")
+@router.post("/{shipment_id}/copy", dependencies=[Depends(require_permission("shipments.create"))])
 async def copy_shipment(
     shipment_id: int,
     db: Session = Depends(get_db)
@@ -348,7 +346,7 @@ async def copy_shipment(
 
 # --- Shipment Items Endpoints ---
 
-@router.post("/{shipment_id}/items")
+@router.post("/{shipment_id}/items", dependencies=[Depends(require_permission("shipments.update"))])
 async def add_shipment_item(
     shipment_id: int,
     data: ShipmentItemCreate,
@@ -370,7 +368,7 @@ async def add_shipment_item(
         return {"success": False, "error": str(e)}
 
 
-@router.put("/{shipment_id}/items/{item_id}")
+@router.put("/{shipment_id}/items/{item_id}", dependencies=[Depends(require_permission("shipments.update"))])
 async def update_shipment_item(
     shipment_id: int,
     item_id: int,
@@ -387,7 +385,7 @@ async def update_shipment_item(
         return {"success": False, "error": str(e)}
 
 
-@router.delete("/{shipment_id}/items/{item_id}")
+@router.delete("/{shipment_id}/items/{item_id}", dependencies=[Depends(require_permission("shipments.delete"))])
 async def delete_shipment_item(
     shipment_id: int,
     item_id: int,
@@ -404,12 +402,12 @@ async def delete_shipment_item(
 
 # --- Receiving Endpoints ---
 
-@router.post("/{shipment_id}/receive")
+@router.post("/{shipment_id}/receive", dependencies=[Depends(require_permission("shipments.receive"))])
 async def receive_items(
     shipment_id: int,
     items: List[ReceiveItem],
-    user_id: Optional[int] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Record receipt of one or more items.
@@ -422,7 +420,7 @@ async def receive_items(
                 db,
                 shipment_item_id=item_data.shipment_item_id,
                 qty_received=item_data.qty_received,
-                received_by=user_id,
+                received_by=current_user.id,
                 condition=item_data.condition,
                 discrepancy_notes=item_data.discrepancy_notes,
                 lot_number=item_data.lot_number,
@@ -443,12 +441,11 @@ async def receive_items(
         return {"success": False, "error": str(e)}
 
 
-@router.get("/{shipment_id}/items/{item_id}/receipts")
+@router.get("/{shipment_id}/items/{item_id}/receipts", dependencies=[Depends(require_permission("shipments.read"))])
 async def get_item_receipts(
     shipment_id: int,
     item_id: int,
-    db: Session = Depends(get_db),
-    _: bool = Depends(require_read_access)
+    db: Session = Depends(get_db)
 ):
     """Get all receipts for a specific item"""
     try:
@@ -465,11 +462,11 @@ async def get_item_receipts(
 
 # --- Finalization Endpoint ---
 
-@router.post("/{shipment_id}/finalize")
+@router.post("/{shipment_id}/finalize", dependencies=[Depends(require_permission("shipments.finalize"))])
 async def finalize_shipment(
     shipment_id: int,
-    user_id: Optional[int] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Finalize a shipment:
@@ -478,7 +475,7 @@ async def finalize_shipment(
     - Update status to complete or partial
     """
     try:
-        result = crud.finalize_shipment(db, shipment_id, finalized_by=user_id)
+        result = crud.finalize_shipment(db, shipment_id, finalized_by=current_user.id)
         return result
     except Exception as e:
         logger.error(f"Error finalizing shipment {shipment_id}: {e}")
@@ -487,11 +484,10 @@ async def finalize_shipment(
 
 # --- Alert Endpoints ---
 
-@router.get("/{shipment_id}/alerts")
+@router.get("/{shipment_id}/alerts", dependencies=[Depends(require_permission("shipments.read"))])
 async def get_shipment_alerts(
     shipment_id: int,
-    db: Session = Depends(get_db),
-    _: bool = Depends(require_read_access)
+    db: Session = Depends(get_db)
 ):
     """Get all alerts for a shipment"""
     try:
@@ -502,19 +498,19 @@ async def get_shipment_alerts(
         return {"alerts": [], "error": str(e)}
 
 
-@router.post("/alerts/{alert_id}/resolve")
+@router.post("/alerts/{alert_id}/resolve", dependencies=[Depends(require_permission("shipments.update"))])
 async def resolve_alert(
     alert_id: int,
     data: ResolveAlert,
-    user_id: Optional[int] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """Mark an alert as resolved"""
     try:
         success = crud.resolve_alert(
             db,
             alert_id,
-            resolved_by=user_id,
+            resolved_by=current_user.id,
             resolution_notes=data.resolution_notes
         )
         return {"success": success}
@@ -523,18 +519,18 @@ async def resolve_alert(
         return {"success": False, "error": str(e)}
 
 
-@router.post("/alerts/create-followup")
+@router.post("/alerts/create-followup", dependencies=[Depends(require_permission("shipments.create"))])
 async def create_followup_order(
     data: CreateFollowupOrder,
-    user_id: Optional[int] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """Create a follow-up order from one or more unresolved alerts"""
     try:
         result = crud.create_followup_order(
             db,
             alert_ids=data.alert_ids,
-            created_by=user_id
+            created_by=current_user.id
         )
         return result
     except Exception as e:

@@ -15,19 +15,27 @@ logger = logging.getLogger(__name__)
 async def get_current_account_id(request: Request) -> int:
     """
     Get the current account ID from request state.
-    
+
     This is set by the middleware after JWT validation.
     Returns the account_id from the token - available for both "account" and "full" auth levels.
     """
     account_id = getattr(request.state, "account_id", None) or request.scope.get("account_id")
-    
+
     if not account_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated to an account"
         )
-    
+
     return account_id
+
+
+async def get_optional_account_id(request: Request) -> Optional[int]:
+    """
+    Get the current account ID if authenticated, otherwise None.
+    Use for routes that scope by account when present but still work without auth.
+    """
+    return getattr(request.state, "account_id", None) or request.scope.get("account_id")
 
 
 async def get_current_account(

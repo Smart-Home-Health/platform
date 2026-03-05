@@ -109,12 +109,12 @@ async def list_patient_integrations(
     include_disabled: bool = False,
     db: Session = Depends(get_db),
     current_user=Depends(require_full_auth),
+    account_id: int = Depends(get_current_account_id),
     _: bool = Depends(require_read_access)
 ):
     """
     List all integrations configured for a patient.
     """
-    account_id = get_current_account_id(current_user)
     
     query = db.query(PatientIntegration).options(
         joinedload(PatientIntegration.integration)
@@ -155,12 +155,12 @@ async def create_patient_integration(
     patient_id: int,
     data: PatientIntegrationCreate,
     db: Session = Depends(get_db),
-    current_user=Depends(require_full_auth)
+    current_user=Depends(require_full_auth),
+    account_id: int = Depends(get_current_account_id)
 ):
     """
     Set up a new integration for a patient.
     """
-    account_id = get_current_account_id(current_user)
     
     # Verify patient exists and belongs to account
     patient = db.query(Patient).filter(
@@ -226,12 +226,12 @@ async def update_patient_integration(
     integration_id: int,
     settings: dict,
     db: Session = Depends(get_db),
-    current_user=Depends(require_full_auth)
+    current_user=Depends(require_full_auth),
+    account_id: int = Depends(get_current_account_id)
 ):
     """
     Update settings for a patient's integration.
     """
-    account_id = get_current_account_id(current_user)
     
     patient_integration = db.query(PatientIntegration).options(
         joinedload(PatientIntegration.integration)
@@ -271,12 +271,12 @@ async def delete_patient_integration(
     patient_id: int,
     integration_id: int,
     db: Session = Depends(get_db),
-    current_user=Depends(require_full_auth)
+    current_user=Depends(require_full_auth),
+    account_id: int = Depends(get_current_account_id)
 ):
     """
     Deactivate (soft delete) a patient's integration.
     """
-    account_id = get_current_account_id(current_user)
     
     patient_integration = db.query(PatientIntegration).filter(
         PatientIntegration.id == integration_id,
@@ -307,12 +307,12 @@ async def start_oauth_flow(
     request: Request = None,
     db: Session = Depends(get_db),
     current_user=Depends(require_full_auth),
+    account_id: int = Depends(get_current_account_id),
     _: bool = Depends(require_read_access)
 ):
     """
     Start OAuth flow for an integration.
     """
-    account_id = get_current_account_id(current_user)
     
     patient_integration = db.query(PatientIntegration).options(
         joinedload(PatientIntegration.integration)
@@ -440,12 +440,12 @@ async def sync_integration(
     integration_id: int,
     since: Optional[datetime] = None,
     db: Session = Depends(get_db),
-    current_user=Depends(require_full_auth)
+    current_user=Depends(require_full_auth),
+    account_id: int = Depends(get_current_account_id)
 ):
     """
     Trigger manual sync for an integration.
     """
-    account_id = get_current_account_id(current_user)
     
     patient_integration = db.query(PatientIntegration).options(
         joinedload(PatientIntegration.integration)
@@ -583,12 +583,12 @@ async def list_integration_devices(
     integration_id: int,
     db: Session = Depends(get_db),
     current_user=Depends(require_full_auth),
+    account_id: int = Depends(get_current_account_id),
     _: bool = Depends(require_read_access)
 ):
     """
     List devices discovered for an integration.
     """
-    account_id = get_current_account_id(current_user)
     
     # Verify integration exists and belongs to patient/account
     patient_integration = db.query(PatientIntegration).filter(
@@ -612,12 +612,12 @@ async def discover_devices(
     patient_id: int,
     integration_id: int,
     db: Session = Depends(get_db),
-    current_user=Depends(require_full_auth)
+    current_user=Depends(require_full_auth),
+    account_id: int = Depends(get_current_account_id)
 ):
     """
     Trigger device discovery for an integration.
     """
-    account_id = get_current_account_id(current_user)
     
     patient_integration = db.query(PatientIntegration).options(
         joinedload(PatientIntegration.integration)

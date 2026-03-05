@@ -43,6 +43,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             "/api/auth/session",  # Session check (can return 401)
             "/api/core/first-run",  # First run check (legacy)
             "/ws/",  # WebSocket connections
+            "/api/readers/ws/",  # Reader device WebSocket (auth via encryption key after connect)
             "/docs",  # API documentation
             "/openapi.json",  # OpenAPI schema
             "/redoc",  # Alternative docs
@@ -82,6 +83,8 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         # Validate token
         try:
             payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            if not isinstance(payload, dict):
+                raise jwt.InvalidTokenError("Token payload must be an object")
             user_id = payload.get("user_id")
             username = payload.get("username")
             exp = payload.get("exp")

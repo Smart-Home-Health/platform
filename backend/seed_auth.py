@@ -30,6 +30,7 @@ def seed_permissions(db: Session):
         ("vitals", "Vitals"),
         ("users", "Users"),
         ("roles", "Roles"),
+        ("shipments", "Shipments"),
         ("settings", "Settings"),
         ("audit", "Audit"),
     ]
@@ -59,6 +60,8 @@ def seed_permissions(db: Session):
         ("vitals.record", "Record Vitals", "Manually record vital signs", "vitals"),
         ("equipment.change", "Change Equipment", "Record equipment changes", "equipment"),
         ("monitoring.acknowledge", "Acknowledge Alerts", "Acknowledge monitoring alerts", "monitoring"),
+        ("shipments.receive", "Receive Shipments", "Record shipment item receipts", "shipments"),
+        ("shipments.finalize", "Finalize Shipments", "Finalize shipments and generate alerts", "shipments"),
     ]
     default_permissions.extend(legacy_permissions)
     
@@ -93,6 +96,7 @@ def seed_roles(db: Session):
                 "businesses.create", "businesses.read", "businesses.update", "businesses.delete",
                 "monitoring.create", "monitoring.read", "monitoring.update", "monitoring.delete", "monitoring.acknowledge",
                 "vitals.create", "vitals.read", "vitals.update", "vitals.delete", "vitals.record",
+                "shipments.create", "shipments.read", "shipments.update", "shipments.delete", "shipments.receive", "shipments.finalize",
                 "users.create", "users.read", "users.update", "users.delete",
                 "roles.create", "roles.read", "roles.update", "roles.delete",
                 "settings.create", "settings.read", "settings.update", "settings.delete",
@@ -112,6 +116,7 @@ def seed_roles(db: Session):
                 "businesses.read",
                 "monitoring.read", "monitoring.update", "monitoring.acknowledge",
                 "vitals.read", "vitals.record",
+                "shipments.create", "shipments.read", "shipments.update", "shipments.receive", "shipments.finalize",
                 "users.read",
                 "settings.read",
             ]
@@ -129,6 +134,7 @@ def seed_roles(db: Session):
                 "businesses.read",
                 "monitoring.read", "monitoring.acknowledge",
                 "vitals.read", "vitals.record",
+                "shipments.read", "shipments.receive",
             ]
         },
         "family": {
@@ -143,6 +149,7 @@ def seed_roles(db: Session):
                 "providers.read",
                 "monitoring.read",
                 "vitals.read",
+                "shipments.read",
             ]
         },
         "monitor": {

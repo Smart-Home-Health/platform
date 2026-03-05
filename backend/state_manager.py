@@ -16,10 +16,18 @@ logger = logging.getLogger("state_manager")
 # Database session wrapper for legacy compatibility
 @contextmanager
 def get_db_session():
-    """Context manager for database sessions - legacy compatibility"""
+    """Context manager for database sessions - legacy compatibility.
+    Rolls back on exception so the transaction is not left aborted for reuse.
+    """
     db = next(get_db())
     try:
         yield db
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise
     finally:
         db.close()
 

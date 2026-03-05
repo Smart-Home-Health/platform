@@ -7,6 +7,7 @@ Handles pairing, management, and WebSocket data ingestion from reader devices.
 import asyncio
 import json
 import logging
+import os
 import secrets
 from datetime import datetime
 from typing import Optional, Dict, Any
@@ -236,6 +237,20 @@ async def delete_reader_endpoint(
 pending_pairings: Dict[int, str] = {}
 
 
+def _reader_facing_ws_url(reader_id: int, request_host_url: Optional[str]) -> str:
+    """
+    URL the host gives to the reader during pairing. Uses READER_FACING_BASE_URL
+    when set (e.g. http://host.docker.internal:8000 so readers in Docker can reach host);
+    otherwise uses the URL provided by the client (e.g. from frontend API_BASE_URL).
+    Path must match the WebSocket route: /api/readers/ws/{reader_id}.
+    """
+    base = os.environ.get("READER_FACING_BASE_URL", "").strip() or request_host_url
+    if base:
+        ws = base.replace("http://", "ws://").replace("https://", "wss://").rstrip("/")
+        return f"{ws}/api/readers/ws/{reader_id}"
+    return f"ws://HOST_IP:8000/api/readers/ws/{reader_id}"
+
+
 @router.post("/pair")
 async def initiate_pairing(
     data: PairRequest,
@@ -245,7 +260,7 @@ async def initiate_pairing(
     Initiate pairing with a reader device.
     
     1. Creates reader record if needed
-    2. Sends pairing request to reader
+    2. Sends pairing request to reader (host gives reader the URL to connect back to)
     3. Returns pairing code from reader for user to confirm
     """
     # Check if reader exists or create new
@@ -259,14 +274,8 @@ async def initiate_pairing(
         if reader.port != data.port:
             update_reader(db, reader, port=data.port)
     
-    # Build WebSocket URL for reader to connect to
-    if data.host_url:
-        # Convert http to ws
-        ws_url = data.host_url.replace('http://', 'ws://').replace('https://', 'wss://')
-        host_ws_url = f"{ws_url}/ws/reader/{reader.id}"
-    else:
-        # Fallback - reader will need to be manually configured
-        host_ws_url = f"ws://HOST_IP:8000/ws/reader/{reader.id}"
+    # URL the host gives to the reader (reader will connect to this)
+    host_ws_url = _reader_facing_ws_url(reader.id, data.host_url)
     
     try:
         # Send pairing request to reader
@@ -329,12 +338,8 @@ async def confirm_pairing(
     if data.code != expected_code:
         raise HTTPException(status_code=400, detail="Invalid pairing code")
     
-    # Build actual WebSocket URL
-    if data.host_url:
-        ws_url = data.host_url.replace('http://', 'ws://').replace('https://', 'wss://')
-        host_ws_url = f"{ws_url}/ws/reader/{reader.id}"
-    else:
-        host_ws_url = f"ws://HOST_IP:8000/ws/reader/{reader.id}"
+    # Same URL the host gives to the reader (must match initiate_pairing)
+    host_ws_url = _reader_facing_ws_url(reader.id, data.host_url)
     
     try:
         # Confirm pairing with reader

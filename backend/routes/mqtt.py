@@ -4,22 +4,55 @@ MQTT configuration and management routes
 import logging
 import time
 import os
-from fastapi import APIRouter, Depends, Body
+from datetime import datetime
+from fastapi import APIRouter, Depends, Body, HTTPException
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from db import get_db
 from crud.settings import get_setting, save_setting
+from crud.patients import get_patient
 from mqtt import send_mqtt_discovery
 from models.mqtt import (
     MQTTSettings,
     MQTTConnectionTest,
     MQTTDiscoveryRequest,
     MQTTSettingsResponse,
+    MQTTPatientConfigUpdate,
+    MQTTPatientConfigResponse,
 )
+from schemas.patient import Patient
+from schemas.integration import Integration as IntegrationModel, PatientIntegration
+from integrations import get_integration
+from dependencies import require_full_auth, get_current_account_id, require_read_access
 
 logger = logging.getLogger("app")
 
 router = APIRouter(prefix="/api/mqtt", tags=["mqtt"])
+
+
+def _get_or_create_mqtt_integration(db: Session) -> IntegrationModel:
+    """Ensure MQTT integration row exists (created from registry)."""
+    integration = db.query(IntegrationModel).filter(IntegrationModel.slug == "mqtt").first()
+    if not integration:
+        integration_class = get_integration("mqtt")
+        if not integration_class:
+            raise HTTPException(status_code=500, detail="MQTT integration not registered")
+        now = datetime.utcnow()
+        integration = IntegrationModel(
+            name=integration_class.name,
+            slug=integration_class.slug,
+            description=integration_class.description,
+            auth_type=integration_class.auth_type,
+            config_schema=integration_class.get_config_schema(),
+            supported_vitals=integration_class.supported_vitals,
+            is_active=True,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(integration)
+        db.commit()
+        db.refresh(integration)
+    return integration
 
 
 def get_default_mqtt_topics():
@@ -192,10 +225,6 @@ async def restart_mqtt_if_enabled(db: Session):
     except Exception as e:
         logger.error(f"Error requesting MQTT restart: {e}")
         return f"Error: {str(e)}"
-            
-    except Exception as e:
-        logger.error(f"[restart_mqtt] Error restarting MQTT: {e}")
-        return f"MQTT restart failed: {str(e)}"
 
 
 @router.post("/test-connection")
@@ -274,11 +303,112 @@ async def test_mqtt_connection(settings: MQTTConnectionTest):
         )
 
 
+@router.get("/patients", response_model=list[MQTTPatientConfigResponse])
+async def list_mqtt_patients(
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_full_auth),
+    __: bool = Depends(require_read_access),
+    account_id: int = Depends(get_current_account_id),
+):
+    """
+    List all patients with their MQTT config (enabled, sections).
+    Used by admin Configuration > MQTT to show per-patient enable and section permissions.
+    """
+    mqtt_integration = _get_or_create_mqtt_integration(db)
+    patients = db.query(Patient).filter(
+        Patient.account_id == account_id,
+        Patient.is_active == True,
+    ).all()
+    out = []
+    for p in patients:
+        pi = (
+            db.query(PatientIntegration)
+            .filter(
+                PatientIntegration.patient_id == p.id,
+                PatientIntegration.integration_id == mqtt_integration.id,
+                PatientIntegration.account_id == account_id,
+            )
+            .first()
+        )
+        settings = (pi.settings or {}) if pi else {}
+        enabled = settings.get("enabled", False) if pi and pi.is_enabled else False
+        sections = settings.get("sections") or {}
+        out.append(
+            MQTTPatientConfigResponse(
+                patient_id=p.id,
+                patient_name=f"{p.first_name} {p.last_name}".strip() or None,
+                enabled=enabled,
+                sections=sections,
+                integration_id=pi.id if pi else None,
+            )
+        )
+    return out
+
+
+@router.put("/patients/{patient_id}", response_model=MQTTPatientConfigResponse)
+async def update_mqtt_patient_config(
+    patient_id: int,
+    body: MQTTPatientConfigUpdate,
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_full_auth),
+    account_id: int = Depends(get_current_account_id),
+):
+    """
+    Create or update MQTT config for a patient (enable + section permissions).
+    Creates or updates PatientIntegration for slug 'mqtt'.
+    """
+    patient = db.query(Patient).filter(
+        Patient.id == patient_id,
+        Patient.account_id == account_id,
+    ).first()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    mqtt_integration = _get_or_create_mqtt_integration(db)
+    pi = (
+        db.query(PatientIntegration)
+        .filter(
+            PatientIntegration.patient_id == patient_id,
+            PatientIntegration.integration_id == mqtt_integration.id,
+            PatientIntegration.account_id == account_id,
+        )
+        .first()
+    )
+    now = datetime.utcnow()
+    settings = (pi.settings or {}).copy() if pi else {}
+    settings["enabled"] = body.enabled
+    settings["sections"] = body.sections or {}
+    if not pi:
+        pi = PatientIntegration(
+            account_id=account_id,
+            patient_id=patient_id,
+            integration_id=mqtt_integration.id,
+            settings=settings,
+            is_enabled=body.enabled,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(pi)
+    else:
+        pi.settings = settings
+        pi.is_enabled = body.enabled
+        pi.updated_at = now
+    db.commit()
+    db.refresh(pi)
+    return MQTTPatientConfigResponse(
+        patient_id=patient_id,
+        patient_name=f"{patient.first_name} {patient.last_name}".strip() or None,
+        enabled=body.enabled,
+        sections=settings.get("sections") or {},
+        integration_id=pi.id,
+    )
+
+
 @router.post("/send-discovery")
 async def send_mqtt_discovery_endpoint(request: MQTTDiscoveryRequest):
-    """Send MQTT discovery messages to Home Assistant"""
+    """Send MQTT discovery messages to Home Assistant. Optional patient_id = that patient only."""
     try:
         test_mode = request.test_mode
+        patient_id = request.patient_id
         
         # Get the MQTT manager from modules
         from main import get_modules
@@ -286,7 +416,7 @@ async def send_mqtt_discovery_endpoint(request: MQTTDiscoveryRequest):
         mqtt_module = modules.get("mqtt")
         
         if mqtt_module and mqtt_module.mqtt_manager and mqtt_module.mqtt_manager.is_connected():
-            send_mqtt_discovery(mqtt_module.mqtt_manager.client, test_mode=test_mode)
+            send_mqtt_discovery(mqtt_module.mqtt_manager.client, test_mode=test_mode, patient_id=patient_id)
             return {"message": "MQTT discovery messages sent successfully"}
         else:
             return JSONResponse(

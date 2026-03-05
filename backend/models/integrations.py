@@ -23,7 +23,6 @@ class IntegrationDBResponse(BaseModel):
     name: str
     slug: str
     description: Optional[str] = None
-    icon: Optional[str] = None
     auth_type: str
     config_schema: Optional[dict] = None
     supported_vitals: Optional[List[str]] = None

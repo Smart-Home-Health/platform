@@ -11,7 +11,7 @@ class CareTask(Base):
     name = Column(String, nullable=False)
     description = Column(Text, nullable=True)
     category_id = Column(Integer, ForeignKey('care_task_category.id'), nullable=True)  # Reference to category
-    active = Column(Boolean, default=True)
+    active = Column('is_active', Boolean, default=True, nullable=False)
     created_at = Column(TIMESTAMP(timezone=True), nullable=False)
     updated_at = Column(TIMESTAMP(timezone=True), nullable=False)
     

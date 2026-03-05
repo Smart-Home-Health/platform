@@ -6,9 +6,10 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Body
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 
 from db import get_db
+from dependencies import get_optional_account_id
 from models.equipment import (
     EquipmentCreate,
     EquipmentUpdate,
@@ -34,12 +35,16 @@ router = APIRouter(prefix="/api/equipment", tags=["equipment"])
 
 
 @router.post("")
-async def api_add_equipment(data: EquipmentCreate, db: Session = Depends(get_db)):
-    """Add new equipment item."""
+async def api_add_equipment(
+    data: EquipmentCreate,
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id),
+):
+    """Add new equipment item. Scoped to current account when authenticated."""
     if data.scheduled_replacement and (not data.last_changed or not data.useful_days):
         return JSONResponse(status_code=400, content={"detail": "Last changed and useful days are required for scheduled replacements"})
-    
-    eid = add_equipment_simple(db, data.name, data.quantity, data.scheduled_replacement, data.last_changed, data.useful_days, data.patient_id)
+
+    eid = add_equipment_simple(db, data.name, data.quantity, data.scheduled_replacement, data.last_changed, data.useful_days, data.patient_id, account_id=account_id)
     return {"id": eid, "status": "success"}
 
 
@@ -166,6 +171,9 @@ async def api_delete_equipment(equipment_id: int, db: Session = Depends(get_db))
 
 
 @router.get("/due/count")
-async def api_get_equipment_due_count(db: Session = Depends(get_db)):
-    """Get count of equipment items that are due for replacement."""
-    return {"count": get_equipment_due_count(db)}
+async def api_get_equipment_due_count(
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id),
+):
+    """Get count of equipment items that are due for replacement. Scoped by account when authenticated."""
+    return {"count": get_equipment_due_count(db, account_id=account_id)}

@@ -13,16 +13,18 @@ logger = logging.getLogger('crud')
 
 # --- Equipment CRUD ---
 def add_equipment_simple(db: Session, name, quantity=1, scheduled_replacement=True, last_changed=None, useful_days=None, patient_id=None,
-                         item_number=None, description=None, category='equipment', tracking_level='item',
+                         account_id=None, item_number=None, description=None, category='equipment', tracking_level='item',
                          default_manufacturer=None, unit_of_measure=None, unit_size=None, unit_description=None,
                          reorder_point=None, par_level=None):
     """
-    Simple add equipment function matching the original signature for routes compatibility
+    Simple add equipment function matching the original signature for routes compatibility.
+    account_id scopes the equipment to an account (post-revision).
     """
     try:
         equipment = Equipment(
             name=name,
             patient_id=patient_id,  # Can be None for shared equipment
+            account_id=account_id,
             quantity=quantity,
             scheduled_replacement=scheduled_replacement,
             last_changed=last_changed if scheduled_replacement else None,
@@ -239,15 +241,18 @@ def search_equipment(db: Session, query):
 
 
 # --- Equipment Change Management ---
-def get_equipment_list(db: Session, patient_id: int = None):
+def get_equipment_list(db: Session, patient_id: int = None, account_id: int = None):
     """
     Get equipment list with calculated due dates for scheduled replacements.
-    Optionally filter by patient_id.
+    Optionally filter by patient_id and/or account_id (post-revision: scope to account).
     """
     try:
         query = db.query(Equipment)
         if patient_id is not None:
             query = query.filter(Equipment.patient_id == patient_id)
+        if account_id is not None:
+            from sqlalchemy import or_
+            query = query.filter(or_(Equipment.account_id == account_id, Equipment.account_id.is_(None)))
         equipment = query.all()
         result = []
         
@@ -411,10 +416,14 @@ def open_equipment(db: Session, equipment_id: int, amount: int = 1):
         return False
 
 
-def get_equipment_due_count(db: Session):
-    """Return the count of equipment items where due_date is today or past."""
+def get_equipment_due_count(db: Session, account_id: int = None):
+    """Return the count of equipment items where due_date is today or past. Optionally scope by account_id."""
     try:
-        equipment = db.query(Equipment).filter(Equipment.scheduled_replacement == True).all()
+        query = db.query(Equipment).filter(Equipment.scheduled_replacement == True)
+        if account_id is not None:
+            from sqlalchemy import or_
+            query = query.filter(or_(Equipment.account_id == account_id, Equipment.account_id.is_(None)))
+        equipment = query.all()
         due_count = 0
         today = datetime.now().date()
         

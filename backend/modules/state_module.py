@@ -336,28 +336,29 @@ class StateModule:
         """End the current pulse oximeter alert."""
         try:
             from state_manager import get_db_session
-            from crud.monitoring import update_monitoring_alert
-            
+            from crud.monitoring import update_monitoring_alert, acknowledge_alert
+
             if self.current_alert_id:
+                alert_id = self.current_alert_id
                 with get_db_session() as db:
                     update_monitoring_alert(
                         db=db,
-                        alert_id=self.current_alert_id,
-                        acknowledged=True,
-                        notes="Automatically resolved after recovery period"
+                        alert_id=alert_id,
+                        end_time=timestamp.isoformat(),
                     )
+                    acknowledge_alert(db=db, alert_id=alert_id)
                 
                 # Publish alert resolved event
                 alert_event = AlertResolved(
                     ts=timestamp,
-                    alert_id=self.current_alert_id,
+                    alert_id=alert_id,
                     resolution_type="automatic",
                     source=EventSource.SYSTEM
                 )
                 await self.event_bus.publish(alert_event, topic="alerts.resolved")
-                
-                logger.info(f"Pulse ox alert {self.current_alert_id} automatically resolved")
-                
+
+                logger.info(f"Pulse ox alert {alert_id} automatically resolved (end_time set)")
+
                 # Reset tracking
                 self.current_alert_id = None
                 self.alert_start_data_id = None

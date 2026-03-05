@@ -15,8 +15,8 @@ class CareTaskSchedule(Base):
     # Human-readable description of the schedule (optional, for display purposes)
     description = Column(String, nullable=True)
     
-    # Active indicator - allows users to temporarily disable schedules
-    active = Column(Boolean, default=True, nullable=False)
+    # Active indicator - allows users to temporarily disable schedules (DB column: is_active from 001)
+    active = Column('is_active', Boolean, default=True, nullable=False)
     
     # Optional notes for this specific schedule
     notes = Column(Text, nullable=True)

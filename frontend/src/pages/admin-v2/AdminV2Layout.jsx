@@ -94,6 +94,7 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess) => {
         ? [{ path: '/care/profile/implants', label: 'Implants' }] : []),
       ...(hasAnyPermission(['businesses.view', 'businesses.create', 'businesses.update', 'businesses.delete']) 
         ? [{ path: '/care/profile/businesses', label: 'Businesses' }] : []),
+      { path: '/care/profile/mqtt', label: 'MQTT' },
     ],
     configuration: [
       // System-wide configuration

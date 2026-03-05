@@ -255,27 +255,47 @@ class WebSocketModule:
             state = self.current_state.copy()
             
             with get_db_session() as db:
-                # Get alert counts
-                pulse_ox_alerts = get_unacknowledged_alerts_count(db)
-                vent_alerts = get_active_ventilator_alerts_count(db)
-                alerts_count = pulse_ox_alerts + vent_alerts
-                
-                # Get equipment and medication counts
-                equipment_due_count = get_equipment_due_count(db)
-                medications_due_count = get_due_and_upcoming_medications_count(db)
-                care_tasks_due_count = get_due_and_upcoming_care_tasks_count(db)
-                
-                # Get settings - handle the dict format returned by get_all_settings
-                settings_result = get_all_settings(db)
+                # Get alert counts (rollback on failure so later queries don't see aborted transaction)
+                try:
+                    pulse_ox_alerts = get_unacknowledged_alerts_count(db)
+                    vent_alerts = get_active_ventilator_alerts_count(db)
+                    alerts_count = pulse_ox_alerts + vent_alerts
+                except Exception as e:
+                    logger.warning(f"Error getting alert counts: {e}")
+                    db.rollback()
+                    alerts_count = 0
+
+                try:
+                    equipment_due_count = get_equipment_due_count(db)
+                except Exception as e:
+                    logger.warning(f"Error getting equipment due count: {e}")
+                    db.rollback()
+                    equipment_due_count = 0
+                try:
+                    medications_due_count = get_due_and_upcoming_medications_count(db)
+                except Exception as e:
+                    logger.warning(f"Error getting medications due count: {e}")
+                    db.rollback()
+                    medications_due_count = 0
+                try:
+                    care_tasks_due_count = get_due_and_upcoming_care_tasks_count(db)
+                except Exception as e:
+                    logger.warning(f"Error getting care tasks due count: {e}")
+                    db.rollback()
+                    care_tasks_due_count = 0
+
+                try:
+                    settings_result = get_all_settings(db)
+                except Exception as e:
+                    logger.warning(f"Error getting settings: {e}")
+                    db.rollback()
+                    settings_result = None
                 settings_dict = {}
-                
-                # Handle the dict format returned by get_all_settings
                 if settings_result and isinstance(settings_result, dict):
                     for key, value in settings_result.items():
                         settings_dict[key] = {"value": value, "type": type(value).__name__}
-                else:
+                elif settings_result is not None:
                     logger.warning(f"Unexpected settings result format: {type(settings_result)}")
-                    settings_dict = {}
                 
                 # Get recent vitals - try unified approach first, fallback to legacy
                 try:
@@ -288,6 +308,7 @@ class WebSocketModule:
                         bp_history = get_last_n_blood_pressure(db, 5)
                 except Exception as e:
                     logger.warning(f"Error getting unified BP data, falling back to legacy: {e}")
+                    db.rollback()
                     bp_history = get_last_n_blood_pressure(db, 5)
                 
                 try:
@@ -300,6 +321,7 @@ class WebSocketModule:
                         temp_history = get_last_n_temperature(db, 10)
                 except Exception as e:
                     logger.warning(f"Error getting unified temp data, falling back to legacy: {e}")
+                    db.rollback()
                     temp_history = get_last_n_temperature(db, 10)
                 
                 # Get dashboard chart data with safe defaults
@@ -314,12 +336,14 @@ class WebSocketModule:
                         chart_1_data = get_vitals_by_type(db, chart_1_vital, limit=20)
                 except Exception as e:
                     logger.warning(f"Error getting chart 1 data for {chart_1_vital}: {e}")
+                    db.rollback()
                 
                 try:
                     if chart_2_vital and chart_2_vital != chart_1_vital:
                         chart_2_data = get_vitals_by_type(db, chart_2_vital, limit=20)
                 except Exception as e:
                     logger.warning(f"Error getting chart 2 data for {chart_2_vital}: {e}")
+                    db.rollback()
             
             # Build comprehensive state
             state.update({
@@ -363,13 +387,8 @@ class WebSocketModule:
             if isinstance(bpm_val, (int, float)) and bpm_val != -1 and bpm_val is not None:
                 state['bpm_alarm'] = bpm_val < min_bpm or bpm_val > max_bpm
 
-            # Combined alarm flag
-            state['alarm'] = (
-                state.get('alarm1', False) or
-                state.get('alarm2', False) or
-                state['spo2_alarm'] or
-                state['bpm_alarm']
-            )
+            # Combined alarm flag: only vitals (SpO2/BPM) so banner clears when O2 and BPM are normal
+            state['alarm'] = state['spo2_alarm'] or state['bpm_alarm']
             # Per-patient readings for care dashboard (keys as strings for JSON)
             state['patient_readings'] = {
                 str(pid): data for pid, data in self.patient_readings.items()
