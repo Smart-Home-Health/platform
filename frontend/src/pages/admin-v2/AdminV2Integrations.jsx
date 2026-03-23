@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
-import { API_BASE_URL } from '../../config';
+import { API_BASE_URL, getApiBaseUrl } from '../../config';
 import AdminV2Layout from './AdminV2Layout';
 import {
   PlusIcon,
@@ -247,7 +247,7 @@ export default function AdminV2Integrations() {
           ip_address: readerIp.trim(),
           port: parseInt(readerPort, 10) || 8080,
           patient_id: patientId,
-          host_url: API_BASE_URL
+          host_url: getApiBaseUrl()
         })
       });
 
@@ -287,7 +287,7 @@ export default function AdminV2Integrations() {
         body: JSON.stringify({
           reader_id: pairingReader.id,
           code: pairingCode.trim(),
-          host_url: API_BASE_URL
+          host_url: getApiBaseUrl()
         })
       });
 

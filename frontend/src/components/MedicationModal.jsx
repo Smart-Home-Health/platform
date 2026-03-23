@@ -921,7 +921,8 @@ const MedicationModal = ({ onClose }) => {
           dose_amount: item.dose_amount,
           schedule_id: item.schedule_id,
           scheduled_time: item.scheduled_time,
-          notes: ''
+          notes: '',
+          ...(currentPatientId != null && { patient_id: currentPatientId })
         })
       });
       if (res.ok) {
@@ -1008,12 +1009,13 @@ const MedicationModal = ({ onClose }) => {
         const res = await fetch(`${config.apiUrl}/api/medications/${med.medication_id}/administer`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            dose_amount: med.dose_amount,
-            schedule_id: med.schedule_id,
-            scheduled_time: med.scheduled_time,
-            notes: 'Administered via bulk mark all'
-          })
+        body: JSON.stringify({
+          dose_amount: med.dose_amount,
+          schedule_id: med.schedule_id,
+          scheduled_time: med.scheduled_time,
+          notes: 'Administered via bulk mark all',
+          ...(currentPatientId != null && { patient_id: currentPatientId })
+        })
         });
         
         if (res.ok) {

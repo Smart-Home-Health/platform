@@ -251,8 +251,10 @@ async def toggle_medication_active_endpoint(med_id: int, db: Session = Depends(g
 
 @router.post("/medications/{med_id}/administer")
 async def administer_medication_endpoint(med_id: int, data: MedicationAdminister, db: Session = Depends(get_db)):
-    """Record a medication administration and deduct from quantity."""
-    result = administer_medication(db, med_id, data.dose_amount, data.schedule_id, data.scheduled_time, data.notes)
+    """Record a medication administration and deduct from quantity. Pass patient_id when administering a patient-specific medication without a global current patient."""
+    result = administer_medication(
+        db, med_id, data.dose_amount, data.schedule_id, data.scheduled_time, data.notes, patient_id=data.patient_id
+    )
     if not result:
         return JSONResponse(status_code=400, content={"detail": "Failed to administer medication"})
     return {"success": True}

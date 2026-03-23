@@ -41,15 +41,12 @@ logging.basicConfig(level=logging.INFO)
 # FastAPI app setup
 app = FastAPI()
 
-# Add CORS middleware (must be first)
+# Add CORS middleware (must be first).
+# With credentials=True we cannot use allow_origins=["*"]; use regex to allow localhost and LAN origins.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",  # Vite dev server
-        "http://localhost:3000",  # Alternative dev port
-        "http://localhost",       # Docker frontend
-        "*"  # Allow all for now - restrict in production
-    ],
+    allow_origins=[],  # No wildcard when credentials=True
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3})(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -210,6 +207,13 @@ async def startup_event():
     # 4. Start nutrition scheduled update task (hourly)
     asyncio.create_task(nutrition_scheduled_updater())
     logger.info("[main] Nutrition scheduled updater started")
+
+    # 5. Optional: realtime WebSocket bridge (e.g. ws://host:8080/api/realtime)
+    realtime_url = os.getenv("REALTIME_WS_URL", "").strip()
+    if realtime_url:
+        from realtime_bridge import run_realtime_bridge
+        asyncio.create_task(run_realtime_bridge(event_bus, realtime_url))
+        logger.info("[main] Realtime bridge started for %s", realtime_url)
     
     logger.info("[main] Event-driven system startup complete")
 

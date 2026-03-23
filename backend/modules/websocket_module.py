@@ -43,17 +43,29 @@ class WebSocketModule:
         
         logger.info("WebSocket module event subscribers started")
 
+    def _normalize_sensor_values(self, values: dict) -> dict:
+        """Normalize alternate key names (e.g. perf→perfusion, alarm_spo2→spo2_alarm)."""
+        out = dict(values)
+        if 'perf' in out and 'perfusion' not in out:
+            out['perfusion'] = out['perf']
+        if 'alarm_spo2' in out:
+            out['spo2_alarm'] = out['alarm_spo2']
+        if 'alarm_bpm' in out:
+            out['bpm_alarm'] = out['alarm_bpm']
+        return out
+
     async def _subscribe_to_sensor_updates(self):
         """Subscribe to sensor update events and broadcast to clients."""
         async for event in self.event_bus.subscribe_to_type(SensorUpdate):
             try:
-                # Update current state cache
-                self.current_state.update(event.values)
+                # Normalize keys (perf→perfusion, alarm_spo2/alarm_bpm) then update cache
+                normalized = self._normalize_sensor_values(event.values)
+                self.current_state.update(normalized)
                 # Per-patient readings for care dashboard
                 pid = getattr(event, 'patient_id', None)
                 if pid is not None:
                     self.patient_readings[pid] = {
-                        **event.values,
+                        **normalized,
                         'ts': event.ts.isoformat(),
                     }
                 # Broadcast to all connected clients
@@ -250,7 +262,7 @@ class WebSocketModule:
             from crud.scheduling import get_due_and_upcoming_care_tasks_count
             from crud.monitoring import get_unacknowledged_alerts_count, get_active_ventilator_alerts_count
             from crud.settings import get_all_settings
-            from crud.vitals import get_last_n_blood_pressure, get_last_n_temperature, get_vitals_by_type, _group_multi_value_vitals
+            from crud.vitals import get_last_n_blood_pressure, get_last_n_temperature, get_vitals_by_type
             
             state = self.current_state.copy()
             
@@ -298,12 +310,9 @@ class WebSocketModule:
                     logger.warning(f"Unexpected settings result format: {type(settings_result)}")
                 
                 # Get recent vitals - try unified approach first, fallback to legacy
+                # get_vitals_by_type already returns grouped dicts for blood_pressure/temperature
                 try:
-                    # Try to get blood pressure from unified vitals
-                    bp_vitals = get_vitals_by_type(db, 'blood_pressure', limit=5)
-                    bp_history = _group_multi_value_vitals(bp_vitals, 'blood_pressure')
-                    
-                    # If no unified data, fallback to legacy table
+                    bp_history = get_vitals_by_type(db, 'blood_pressure', limit=5)
                     if not bp_history:
                         bp_history = get_last_n_blood_pressure(db, 5)
                 except Exception as e:
@@ -312,11 +321,7 @@ class WebSocketModule:
                     bp_history = get_last_n_blood_pressure(db, 5)
                 
                 try:
-                    # Try to get temperature from unified vitals
-                    temp_vitals = get_vitals_by_type(db, 'temperature', limit=10)
-                    temp_history = _group_multi_value_vitals(temp_vitals, 'temperature')
-                    
-                    # If no unified data, fallback to legacy table
+                    temp_history = get_vitals_by_type(db, 'temperature', limit=10)
                     if not temp_history:
                         temp_history = get_last_n_temperature(db, 10)
                 except Exception as e:

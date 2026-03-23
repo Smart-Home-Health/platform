@@ -9,6 +9,20 @@ import logging
 
 logger = logging.getLogger('mqtt.settings')
 
+# Default topic config used when DB has no/saved topics (same as routes/mqtt get_default_mqtt_topics)
+DEFAULT_MQTT_TOPICS = {
+    'spo2': {'enabled': True, 'broadcast_topic': 'shh/spo2/state', 'listen_topic': 'shh/spo2/set'},
+    'bpm': {'enabled': True, 'broadcast_topic': 'shh/bpm/state', 'listen_topic': 'shh/bpm/set'},
+    'perfusion': {'enabled': True, 'broadcast_topic': 'shh/perfusion/state', 'listen_topic': 'shh/perfusion/set'},
+    'blood_pressure': {'enabled': True, 'broadcast_topic': 'shh/bp/state', 'listen_topic': 'shh/bp/set'},
+    'temperature': {'enabled': True, 'broadcast_topic': 'shh/temp/state', 'listen_topic': 'shh/temp/set'},
+    'nutrition': {'enabled': False, 'water_broadcast_topic': 'shh/water/state', 'water_listen_topic': 'shh/water/set', 'calories_broadcast_topic': 'shh/calories/state', 'calories_listen_topic': 'shh/calories/set'},
+    'weight': {'enabled': False, 'broadcast_topic': 'shh/weight/state', 'listen_topic': 'shh/weight/set'},
+    'bathroom': {'enabled': False, 'broadcast_topic': 'shh/bathroom/state', 'listen_topic': 'shh/bathroom/set'},
+    'spo2_alarm': {'enabled': True, 'broadcast_topic': 'shh/alarms/spo2', 'listen_topic': 'shh/alarms/spo2/set'},
+    'bpm_alarm': {'enabled': True, 'broadcast_topic': 'shh/alarms/bpm', 'listen_topic': 'shh/alarms/bpm/set'},
+}
+
 
 def get_patients_with_mqtt_enabled() -> List[Dict[str, Any]]:
     """
@@ -144,21 +158,21 @@ def get_mqtt_settings() -> Dict[str, Any]:
         settings['client_id'] = get_setting(db, 'mqtt_client_id', 'sensor_monitor')
         settings['base_topic'] = get_setting(db, 'mqtt_base_topic', 'shh')
         
-        # Get topic configurations
+        # Get topic configurations (merge with defaults so publisher always has e.g. temperature)
         topics_json = get_setting(db, 'mqtt_topics')
         if topics_json:
             try:
-                # Handle both dict and JSON string cases
                 if isinstance(topics_json, dict):
-                    settings['topics'] = topics_json
+                    saved_topics = topics_json
                 else:
-                    settings['topics'] = json.loads(topics_json)
+                    saved_topics = json.loads(topics_json)
             except (json.JSONDecodeError, TypeError) as e:
                 logger.error(f"Failed to parse MQTT topics from database: {e}")
-                settings['topics'] = {}
+                saved_topics = {}
         else:
-            settings['topics'] = {}
-            
+            saved_topics = {}
+        settings['topics'] = {**DEFAULT_MQTT_TOPICS, **saved_topics}
+
         return settings
     except Exception as e:
         logger.error(f"Error getting MQTT settings: {e}")

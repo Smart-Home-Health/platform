@@ -81,7 +81,7 @@ function AppContent() {
           
           {/* Protected Routes - wrapped in Layout */}
           <Route path="/live" element={
-            <ProtectedRoute>
+            <ProtectedRoute requireFullAuth={false}>
               <Layout>
                 <Dashboard />
               </Layout>

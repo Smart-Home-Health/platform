@@ -8,7 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
  * - If account-level only: redirects to /select-user
  * - If fully authenticated: renders children
  */
-export default function ProtectedRoute({ children }) {
+export default function ProtectedRoute({ children, requireFullAuth = true }) {
   const { isAuthenticated, isAccountAuthenticated, loading } = useAuth();
   const location = useLocation();
 
@@ -32,6 +32,11 @@ export default function ProtectedRoute({ children }) {
   // If not authenticated at all, redirect to login
   if (!isAccountAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  // If only account-level auth is required, allow rendering
+  if (!requireFullAuth) {
+    return children;
   }
 
   // If only account-level auth (no user selected), redirect to user selection

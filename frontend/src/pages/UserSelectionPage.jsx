@@ -25,12 +25,16 @@ export default function UserSelectionPage() {
   const [usePassword, setUsePassword] = useState(false);
 
   // Get the intended destination from location state or default to /care
-  const from = location.state?.from?.pathname || '/care';
+  const fromLocation = location.state?.from;
+  const from = fromLocation?.pathname
+    ? `${fromLocation.pathname}${fromLocation.search || ''}`
+    : '/care';
+  const openLiveModal = location.state?.openLiveModal || null;
 
   // If already fully authenticated, redirect to intended destination
   useEffect(() => {
     if (isAuthenticated) {
-      navigate(from, { replace: true });
+      navigate(from, { replace: true, state: openLiveModal ? { openLiveModal } : {} });
     } else if (!isAccountAuthenticated) {
       // No account logged in - redirect to login
       navigate('/login', { state: { from: location.state?.from }, replace: true });
@@ -81,7 +85,7 @@ export default function UserSelectionPage() {
 
     if (result.success) {
       // Redirect to intended destination
-      navigate(from, { replace: true });
+      navigate(from, { replace: true, state: openLiveModal ? { openLiveModal } : {} });
     } else {
       setError(result.error || 'Authentication failed');
     }

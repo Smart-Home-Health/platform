@@ -15,6 +15,7 @@ logger = logging.getLogger('mqtt.discovery')
 
 # Section key -> (value_template, unit_of_measurement, display_name) for discovery
 # Sections with get/both permission get one sensor each; state_topic is same for all (combined JSON).
+# blood_pressure is special-cased in the loop to create three sensors (systolic, diastolic, MAP).
 SECTION_DISCOVERY: Dict[str, Tuple[str, str, str]] = {
     "spo2": ("{{ value_json.spo2 }}", "%", "SpO₂"),
     "bpm": ("{{ value_json.bpm }}", "BPM", "Heart Rate"),
@@ -23,6 +24,13 @@ SECTION_DISCOVERY: Dict[str, Tuple[str, str, str]] = {
     "temperature": ("{{ value_json.body_temp | default(value_json.skin_temp) }}", "°F", "Temperature"),
     "blood_pressure": ("{{ value_json.map_bp | default(value_json.systolic_bp) }}", "mmHg", "Blood Pressure"),
 }
+
+# Blood pressure: three sensors per patient (systolic, diastolic, MAP) on same state_topic
+BLOOD_PRESSURE_SENSORS: List[Tuple[str, str, str]] = [
+    ("{{ value_json.systolic_bp }}", "mmHg", "Blood Pressure Systolic"),
+    ("{{ value_json.diastolic_bp }}", "mmHg", "Blood Pressure Diastolic"),
+    ("{{ value_json.map_bp }}", "mmHg", "Blood Pressure MAP"),
+]
 
 
 def _safe_device_id(name: str, patient_id: int) -> str:
@@ -87,9 +95,35 @@ def send_mqtt_discovery(mqtt_client, test_mode: bool = True, patient_id: Optiona
             "mdl": "Smart Healthcare Hub",
         }
 
-        # One sensor per section that allows get or both
+        # One sensor per section that allows get or both (blood_pressure → three sensors: systolic, diastolic, MAP)
         for section_key, perm in sections.items():
             if perm not in ("get", "both"):
+                continue
+            if section_key == "blood_pressure":
+                for idx, (val_tpl, unit, display_name) in enumerate(BLOOD_PRESSURE_SENSORS):
+                    safe_section = f"blood_pressure_{['systolic', 'diastolic', 'map'][idx]}"
+                    sensor_id = f"{device_ident}_{safe_section}"
+                    config = {
+                        "uniq_id": f"{base_topic}_patient_{pid}_{safe_section}",
+                        "name": f"{patient_name} {display_name}",
+                        "stat_t": state_topic,
+                        "val_tpl": val_tpl,
+                        "json_attr_t": state_topic,
+                        "avty_t": f"{base_topic}/availability",
+                        "unit_of_meas": unit,
+                        "stat_cla": "measurement",
+                        "dev": device_info,
+                    }
+                    discovery_topic = f"{discovery_prefix}/sensor/{sensor_id}/config"
+                    try:
+                        result = mqtt_client.publish(discovery_topic, json.dumps(config), retain=True)
+                        if result.rc == 0:
+                            logger.info(f"Sent MQTT Discovery for {patient_name} {display_name} to {discovery_topic}")
+                            success_count += 1
+                        else:
+                            logger.error(f"Failed to send discovery for {sensor_id}: rc={result.rc}")
+                    except Exception as e:
+                        logger.error(f"Error sending discovery for {sensor_id}: {e}")
                 continue
             section_config = SECTION_DISCOVERY.get(section_key)
             if not section_config:

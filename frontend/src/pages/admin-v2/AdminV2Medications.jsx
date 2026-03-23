@@ -513,7 +513,7 @@ const AdminV2Medications = () => {
             )}
 
             {/* Summary Stats */}
-            <div className="admin-v2-summary-stats" style={{ marginBottom: '1.5rem' }}>
+            <div className="admin-v2-summary-stats admin-v2-medications-summary" style={{ marginBottom: '1.5rem' }}>
               <div className="admin-v2-stat-card">
                 <div className="admin-v2-stat-icon medications">
                   <MedicationsIcon size={24} />

@@ -109,38 +109,73 @@ class MQTTModule:
             except Exception as e:
                 logger.error(f"Error handling vital_saved event: {e}")
                 
+    def _vital_data_to_patient_state(self, vital_type: str, vital_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Map vital_type + vital_data to patient combined-state keys (for shh/patient/{id}/state)."""
+        if vital_type == 'temperature':
+            body = vital_data.get('body_temp') if vital_data.get('body_temp') is not None else vital_data.get('temperature')
+            skin = vital_data.get('skin_temp')
+            out = {}
+            if body is not None:
+                out['body_temp'] = body
+            if skin is not None:
+                out['skin_temp'] = skin
+            return out
+        if vital_type == 'blood_pressure':
+            return {
+                k: v for k, v in {
+                    'systolic_bp': vital_data.get('systolic_bp') or vital_data.get('systolic'),
+                    'diastolic_bp': vital_data.get('diastolic_bp') or vital_data.get('diastolic'),
+                    'map_bp': vital_data.get('map_bp') or vital_data.get('map'),
+                }.items() if v is not None
+            }
+        return {}
+
     async def _handle_vital_saved(self, event: dict):
         """Handle vital_saved events by publishing to MQTT."""
         try:
             logger.info(f"Processing vital_saved event: {event}")
-            vital_type = event.get("data", {}).get("vital_type")
-            vital_data = event.get("data", {}).get("vital_data", {})
-            from_manual = event.get("data", {}).get("from_manual", False)
-            
-            logger.info(f"Extracted: vital_type={vital_type}, vital_data={vital_data}, from_manual={from_manual}")
-            
+            data = event.get("data", {})
+            vital_type = data.get("vital_type")
+            vital_data = data.get("vital_data", {})
+            from_manual = data.get("from_manual", False)
+            patient_id = data.get("patient_id")
+
+            logger.info(f"Extracted: vital_type={vital_type}, vital_data={vital_data}, from_manual={from_manual}, patient_id={patient_id}")
+
             # Skip nutrition types - they're handled by NutritionSensorUpdate events
-            # which publish daily totals instead of individual entries
             nutrition_vital_types = ['water', 'water_ml', 'calories']
             if vital_type in nutrition_vital_types:
                 logger.info(f"Skipping {vital_type} - handled by NutritionSensorUpdate with daily totals")
                 return
-            
+
             if vital_type and vital_data and from_manual:
                 logger.info(f"Publishing manually saved {vital_type} to MQTT: {vital_data}")
-                
-                # Use the publisher to send to MQTT
+
                 if self.mqtt_publisher and self.mqtt_publisher.is_available():
                     success = self.mqtt_publisher.publish_vital_data(vital_type, vital_data)
                     if success:
                         logger.info(f"Successfully published {vital_type} to MQTT")
                     else:
                         logger.warning(f"Failed to publish {vital_type} to MQTT")
+
+                    # So HA sees it: publish to patient combined state topic (discovery uses shh/patient/{id}/state)
+                    if patient_id is not None:
+                        state_update = self._vital_data_to_patient_state(vital_type, vital_data)
+                        if state_update:
+                            if patient_id not in self._patient_state_cache:
+                                self._patient_state_cache[patient_id] = {}
+                            self._patient_state_cache[patient_id].update(state_update)
+                            if self.mqtt_publisher.publish_patient_combined_state(
+                                patient_id, self._patient_state_cache[patient_id]
+                            ):
+                                logger.info(f"Published {vital_type} to patient {patient_id} state topic for HA")
+                            else:
+                                logger.debug(f"Patient {patient_id} state topic not configured or filtered out")
                 else:
                     logger.info(f"MQTT publisher not available for {vital_type} (MQTT disabled)")
             else:
                 logger.info(f"Skipping MQTT publish - vital_type={vital_type}, has_data={bool(vital_data)}, from_manual={from_manual}")
-                    
+
         except Exception as e:
             logger.error(f"Error handling vital_saved event: {e}")
         

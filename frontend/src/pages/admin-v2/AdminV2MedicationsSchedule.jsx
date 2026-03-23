@@ -201,7 +201,8 @@ const AdminV2MedicationsSchedule = () => {
         body: JSON.stringify({
           schedule_id: medication.schedule_id,
           dose_amount: medication.dose_amount,
-          notes: ''
+          notes: '',
+          ...(selectedPatient?.id != null && { patient_id: selectedPatient.id })
         })
       });
 
@@ -226,7 +227,8 @@ const AdminV2MedicationsSchedule = () => {
         body: JSON.stringify({
           schedule_id: medication.schedule_id,
           dose_amount: 0,
-          notes: 'Skipped'
+          notes: 'Skipped',
+          ...(selectedPatient?.id != null && { patient_id: selectedPatient.id })
         })
       });
 

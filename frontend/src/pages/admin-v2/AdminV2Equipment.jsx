@@ -443,10 +443,10 @@ const AdminV2Equipment = () => {
             <h1 className="schedule-section-title">Equipment Management</h1>
 
             {/* Stats Row */}
-            <div className="admin-v2-stats-row">
+            <div className="admin-v2-summary-stats admin-v2-equipment-summary">
               <div className="admin-v2-stat-card">
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(88, 166, 255, 0.15)' }}>
-                  <EquipmentIcon size={20} />
+                <div className="admin-v2-stat-icon equipment">
+                  <EquipmentIcon size={24} />
                 </div>
                 <div className="admin-v2-stat-info">
                   <h4>{stats.total}</h4>
@@ -454,8 +454,8 @@ const AdminV2Equipment = () => {
                 </div>
               </div>
               <div className="admin-v2-stat-card">
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(31, 111, 235, 0.15)' }}>
-                  <ClockIcon size={20} />
+                <div className="admin-v2-stat-icon admin-v2-stat-icon-info">
+                  <ClockIcon size={24} />
                 </div>
                 <div className="admin-v2-stat-info">
                   <h4>{stats.scheduled}</h4>
@@ -463,8 +463,8 @@ const AdminV2Equipment = () => {
                 </div>
               </div>
               <div className="admin-v2-stat-card">
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(248, 81, 73, 0.15)' }}>
-                  <ClockIcon size={20} />
+                <div className="admin-v2-stat-icon alerts">
+                  <ClockIcon size={24} />
                 </div>
                 <div className="admin-v2-stat-info">
                   <h4>{stats.due}</h4>
@@ -472,8 +472,8 @@ const AdminV2Equipment = () => {
                 </div>
               </div>
               <div className="admin-v2-stat-card">
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(158, 106, 3, 0.15)' }}>
-                  <EquipmentIcon size={20} />
+                <div className="admin-v2-stat-icon equipment">
+                  <EquipmentIcon size={24} />
                 </div>
                 <div className="admin-v2-stat-info">
                   <h4>{stats.lowStock}</h4>

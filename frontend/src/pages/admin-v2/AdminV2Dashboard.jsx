@@ -9,7 +9,7 @@ import {
   EquipmentIcon,
   PlusIcon
 } from '../../components/Icons';
-import config, { API_BASE_URL } from '../../config';
+import config, { API_BASE_URL, getApiBaseUrl } from '../../config';
 import './AdminV2.css';
 
 // Calculate age from DOB
@@ -75,7 +75,7 @@ const AdminV2Dashboard = () => {
     fetchReadings();
     const pollInterval = setInterval(fetchReadings, 8000);
 
-    const wsUrl = config.wsUrl || (API_BASE_URL.replace(/^http/, 'ws') + '/ws/sensors');
+    const wsUrl = config.wsUrl || (getApiBaseUrl().replace(/^http/, 'ws') + '/ws/sensors');
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
     ws.onmessage = (event) => {

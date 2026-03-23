@@ -18,7 +18,7 @@ from pydantic import BaseModel
 from cryptography.fernet import Fernet
 import httpx
 
-from db import get_db
+from db import get_db, SessionLocal
 from dependencies import require_read_access
 from models.readers import Reader
 from bus import EventBus
@@ -404,138 +404,144 @@ async def unpair_reader(
 
 # --- WebSocket Endpoint ---
 
-@router.websocket("/ws/{reader_id}")
-async def reader_websocket(
-    websocket: WebSocket,
+# Keys to exclude when treating a message as flat sensor payload
+_SENSOR_MSG_KEYS = frozenset(('type', 'ts', 'event_ids', 'records'))
+
+
+def _sensor_values_from_message(msg: dict) -> dict:
+    """Extract sensor values from message; accept nested 'values' or top-level keys."""
+    values = msg.get('values') if isinstance(msg.get('values'), dict) else None
+    if values:
+        return values
+    return {k: v for k, v in msg.items() if k not in _SENSOR_MSG_KEYS and v is not None}
+
+
+def _update_reader_activity(
     reader_id: int,
-    db: Session = Depends(get_db)
-):
+    *,
+    device_name: Optional[str] = None,
+    last_data: bool = False,
+) -> None:
+    """Update reader last_seen (and optionally name, last_data_at). Uses a short-lived session."""
+    db = SessionLocal()
+    try:
+        reader = db.query(Reader).filter(Reader.id == reader_id).first()
+        if not reader:
+            return
+        reader.last_seen = datetime.utcnow()
+        if device_name is not None:
+            reader.name = device_name
+        if last_data:
+            reader.last_data_at = datetime.utcnow()
+        db.commit()
+    finally:
+        db.close()
+
+
+@router.websocket("/ws/{reader_id}")
+async def reader_websocket(websocket: WebSocket, reader_id: int):
     """
     WebSocket endpoint for reader data ingestion.
-    
+    Uses short-lived DB sessions per operation so the connection pool is not held for the socket lifetime.
     Messages are encrypted with the reader's Fernet key.
     """
     from main import event_bus  # Import here to avoid circular import
-    
-    reader = get_reader(db, reader_id)
-    if not reader:
-        await websocket.close(code=4004, reason="Reader not found")
-        return
-    
-    if not reader.is_paired:
-        await websocket.close(code=4003, reason="Reader not paired")
-        return
-    
-    if not reader.encryption_key:
-        await websocket.close(code=4003, reason="No encryption key")
-        return
-    
-    await connection_manager.connect(reader_id, websocket, reader.encryption_key)
-    
-    # Update last seen
-    reader.last_seen = datetime.utcnow()
-    db.commit()
-    
+
+    db = SessionLocal()
+    try:
+        reader = get_reader(db, reader_id)
+        if not reader:
+            await websocket.close(code=4004, reason="Reader not found")
+            return
+        if not reader.is_paired:
+            await websocket.close(code=4003, reason="Reader not paired")
+            return
+        if not reader.encryption_key:
+            await websocket.close(code=4003, reason="No encryption key")
+            return
+        patient_id = reader.patient_id
+        encryption_key = reader.encryption_key
+    finally:
+        db.close()
+
+    await connection_manager.connect(reader_id, websocket, encryption_key)
+    _update_reader_activity(reader_id)
+
     try:
         while True:
-            # Receive encrypted message
             data = await websocket.receive_bytes()
-            
             try:
                 message = connection_manager.decrypt(reader_id, data)
             except Exception as e:
                 logger.error(f"Decryption failed for reader {reader_id}: {e}")
                 continue
-            
+
             msg_type = message.get('type')
-            
+
             if msg_type == 'handshake':
-                # Update reader name if provided
                 device_name = message.get('device_name')
-                if device_name:
-                    reader.name = device_name
-                reader.last_seen = datetime.utcnow()
-                db.commit()
-                
-                # Send acknowledgment
+                _update_reader_activity(reader_id, device_name=device_name)
                 await connection_manager.send(reader_id, {"type": "pong"})
-                
+
             elif msg_type == 'ping':
                 await connection_manager.send(reader_id, {"type": "pong"})
-                
+
             elif msg_type == 'sensor':
-                # Handle sensor data
-                values = message.get('values', {})
+                values = _sensor_values_from_message(message)
                 ts_str = message.get('ts')
-                
-                if event_bus:
+                if event_bus and values:
                     event = SensorUpdate(
                         ts=datetime.fromisoformat(ts_str) if ts_str else datetime.utcnow(),
                         values=values,
                         raw=json.dumps(message),
                         source=EventSource.READER,
-                        patient_id=reader.patient_id
+                        patient_id=patient_id
                     )
                     await event_bus.publish(event)
-                
-                reader.last_data_at = datetime.utcnow()
-                reader.last_seen = datetime.utcnow()
-                db.commit()
-                
+                    logger.debug("Reader %s: published sensor %s", reader_id, {k: values.get(k) for k in ('spo2', 'bpm', 'perfusion') if k in values})
+                _update_reader_activity(reader_id, last_data=True)
+
             elif msg_type == 'alarm':
-                # Handle alarm state
                 if event_bus:
                     event = AlarmPanelState(
                         ts=datetime.fromisoformat(message.get('ts')) if message.get('ts') else datetime.utcnow(),
                         alarm1=message.get('alarm1', False),
                         alarm2=message.get('alarm2', False),
                         source=EventSource.READER,
-                        patient_id=reader.patient_id
+                        patient_id=patient_id
                     )
                     await event_bus.publish(event)
-                
-                reader.last_seen = datetime.utcnow()
-                db.commit()
-                
+                _update_reader_activity(reader_id)
+
             elif msg_type == 'cache_sync':
-                # Handle batch of cached records
                 records = message.get('records', [])
                 event_ids = message.get('event_ids', [])
-                
                 for record in records:
                     record_type = record.get('type')
                     if record_type == 'sensor' and event_bus:
-                        values = record.get('values', {})
-                        event = SensorUpdate(
-                            ts=datetime.fromisoformat(record.get('ts')) if record.get('ts') else datetime.utcnow(),
-                            values=values,
-                            raw=json.dumps(record),
-                            source=EventSource.READER,
-                            patient_id=reader.patient_id
-                        )
-                        await event_bus.publish(event)
+                        values = _sensor_values_from_message(record)
+                        if values:
+                            event = SensorUpdate(
+                                ts=datetime.fromisoformat(record.get('ts')) if record.get('ts') else datetime.utcnow(),
+                                values=values,
+                                raw=json.dumps(record),
+                                source=EventSource.READER,
+                                patient_id=patient_id
+                            )
+                            await event_bus.publish(event)
                     elif record_type == 'alarm' and event_bus:
                         event = AlarmPanelState(
                             ts=datetime.fromisoformat(record.get('ts')) if record.get('ts') else datetime.utcnow(),
                             alarm1=record.get('alarm1', False),
                             alarm2=record.get('alarm2', False),
                             source=EventSource.READER,
-                            patient_id=reader.patient_id
+                            patient_id=patient_id
                         )
                         await event_bus.publish(event)
-                
-                # Acknowledge sync
-                await connection_manager.send(reader_id, {
-                    "type": "ack",
-                    "event_ids": event_ids
-                })
-                
-                reader.last_data_at = datetime.utcnow()
-                reader.last_seen = datetime.utcnow()
-                db.commit()
-                
+                await connection_manager.send(reader_id, {"type": "ack", "event_ids": event_ids})
+                _update_reader_activity(reader_id, last_data=True)
                 logger.info(f"Reader {reader_id} synced {len(records)} cached records")
-                
+
     except WebSocketDisconnect:
         logger.info(f"Reader {reader_id} disconnected")
     except Exception as e:

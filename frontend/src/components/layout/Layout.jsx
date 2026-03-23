@@ -93,9 +93,10 @@ const Layout = ({ children }) => {
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith('/admin');
   const isCareRoute = location.pathname.startsWith('/care');
+  const isLiveRoute = location.pathname.startsWith('/live');
   
   // Care routes have their own layout, but need the patient provider
-  if (isCareRoute) {
+  if (isCareRoute || isLiveRoute) {
     return (
       <AdminPatientProvider>
         <div className="layout">

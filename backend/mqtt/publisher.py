@@ -268,9 +268,15 @@ class MQTTPublisher:
                 "notes": vital_data.get('notes')
             })
         elif vital_type == 'temperature':
+            # Manual form may send single 'temperature' key; map to body_temp for MQTT
+            body_temp = vital_data.get('body_temp')
+            skin_temp = vital_data.get('skin_temp')
+            if body_temp is None and skin_temp is None and vital_data.get('temperature') is not None:
+                body_temp = vital_data.get('temperature')
             base_payload.update({
-                "skin_temp": vital_data.get('skin_temp'),
-                "body_temp": vital_data.get('body_temp')
+                "skin_temp": skin_temp,
+                "body_temp": body_temp,
+                "value": body_temp if body_temp is not None else skin_temp,
             })
         elif vital_type == 'blood_pressure':
             base_payload.update({

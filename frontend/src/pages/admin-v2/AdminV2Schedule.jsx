@@ -496,10 +496,15 @@ const AdminV2Schedule = () => {
               </button>
             </div>
 
-            {/* Summary Stats - aligned to schedule columns */}
+            {/* Summary Stats - on mobile: compact cards side-by-side, act as tab selector (no separate tab bar) */}
             <div className="admin-v2-summary-stats admin-v2-schedule-stats" style={{ marginBottom: '1.5rem' }}>
               <div className="admin-v2-schedule-stats-spacer" />
-              <div className="admin-v2-stat-card">
+              <button
+                type="button"
+                className={`admin-v2-stat-card admin-v2-schedule-stat-card ${mobileTab === 'medications' ? 'active' : ''}`}
+                onClick={() => setMobileTab('medications')}
+                aria-pressed={mobileTab === 'medications'}
+              >
                 <div className="admin-v2-stat-icon medications">
                   <MedicationsIcon size={24} />
                 </div>
@@ -507,8 +512,13 @@ const AdminV2Schedule = () => {
                   <h4>{completedMeds}/{totalMeds}</h4>
                   <p>Medications</p>
                 </div>
-              </div>
-              <div className="admin-v2-stat-card">
+              </button>
+              <button
+                type="button"
+                className={`admin-v2-stat-card admin-v2-schedule-stat-card ${mobileTab === 'nutrition' ? 'active' : ''}`}
+                onClick={() => setMobileTab('nutrition')}
+                aria-pressed={mobileTab === 'nutrition'}
+              >
                 <div className="admin-v2-stat-icon nutrition">
                   <NutritionIcon size={24} />
                 </div>
@@ -516,8 +526,13 @@ const AdminV2Schedule = () => {
                   <h4>{completedNutrition}/{totalNutrition}</h4>
                   <p>Nutrition</p>
                 </div>
-              </div>
-              <div className="admin-v2-stat-card">
+              </button>
+              <button
+                type="button"
+                className={`admin-v2-stat-card admin-v2-schedule-stat-card ${mobileTab === 'tasks' ? 'active' : ''}`}
+                onClick={() => setMobileTab('tasks')}
+                aria-pressed={mobileTab === 'tasks'}
+              >
                 <div className="admin-v2-stat-icon tasks">
                   <TasksIcon size={24} />
                 </div>
@@ -525,57 +540,32 @@ const AdminV2Schedule = () => {
                   <h4>{completedTasks}/{totalTasks}</h4>
                   <p>Care Tasks</p>
                 </div>
-              </div>
-            </div>
-
-            {/* Mobile Tab Toggle */}
-            <div className="admin-v2-schedule-mobile-tabs">
-              <button
-                className={`admin-v2-schedule-mobile-tab ${mobileTab === 'medications' ? 'active' : ''}`}
-                onClick={() => setMobileTab('medications')}
-              >
-                <MedicationsIcon size={16} />
-                <span>Meds</span>
-                <span className="admin-v2-schedule-mobile-tab-count">{completedMeds}/{totalMeds}</span>
-              </button>
-              <button
-                className={`admin-v2-schedule-mobile-tab ${mobileTab === 'nutrition' ? 'active' : ''}`}
-                onClick={() => setMobileTab('nutrition')}
-              >
-                <NutritionIcon size={16} />
-                <span>Nutrition</span>
-                <span className="admin-v2-schedule-mobile-tab-count">{completedNutrition}/{totalNutrition}</span>
-              </button>
-              <button
-                className={`admin-v2-schedule-mobile-tab ${mobileTab === 'tasks' ? 'active' : ''}`}
-                onClick={() => setMobileTab('tasks')}
-              >
-                <TasksIcon size={16} />
-                <span>Tasks</span>
-                <span className="admin-v2-schedule-mobile-tab-count">{completedTasks}/{totalTasks}</span>
               </button>
             </div>
 
-            {/* Schedule Grid */}
+            {/* Schedule Grid - which column(s) show is controlled by mobileTab (cards above are the selector) */}
             <div className={`admin-v2-schedule-container mobile-tab-${mobileTab}`}>
               {loading ? (
                 <div className="admin-v2-loading">Loading schedule...</div>
               ) : (
                 <>
-                  {/* Column Headers */}
+                  {/* Column Headers - long labels for desktop, short for mobile */}
                   <div className="admin-v2-schedule-header">
                     <div className="admin-v2-schedule-time-col">Time</div>
                     <div className="admin-v2-schedule-col medications">
                       <MedicationsIcon size={16} />
-                      <span>Medications</span>
+                      <span className="admin-v2-schedule-col-long">Medications</span>
+                      <span className="admin-v2-schedule-col-short">Meds</span>
                     </div>
                     <div className="admin-v2-schedule-col nutrition">
                       <NutritionIcon size={16} />
-                      <span>Nutrition</span>
+                      <span className="admin-v2-schedule-col-long">Nutrition</span>
+                      <span className="admin-v2-schedule-col-short">Nutrition</span>
                     </div>
                     <div className="admin-v2-schedule-col tasks">
                       <TasksIcon size={16} />
-                      <span>Care Tasks</span>
+                      <span className="admin-v2-schedule-col-long">Care Tasks</span>
+                      <span className="admin-v2-schedule-col-short">Tasks</span>
                     </div>
                   </div>
 

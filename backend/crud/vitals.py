@@ -360,41 +360,52 @@ def get_vitals_by_type(db: Session, vital_type, limit=100):
 
 def _group_multi_value_vitals(results, vital_type):
     """
-    Group multi-value vitals by timestamp to create combined entries
+    Group multi-value vitals by timestamp to create combined entries.
+    Accepts both ORM objects and dict-like items (e.g. from alternate query paths).
     """
     from collections import defaultdict
-    
+
+    def _ts(v):
+        return v.timestamp if hasattr(v, "timestamp") else v.get("timestamp") if isinstance(v, dict) else None
+
+    def _get(v, key, default=None):
+        return getattr(v, key, default) if not isinstance(v, dict) else v.get(key, default)
+
     grouped = defaultdict(dict)
-    
-    # Group by timestamp (rounded to nearest minute for grouping)
+
     for vital in results:
-        # Use timestamp as key (could round for grouping if needed)
-        ts_key = vital.timestamp
-        
+        ts_key = _ts(vital)
+        if ts_key is None:
+            continue
         if ts_key not in grouped:
             grouped[ts_key] = {
-                'datetime': vital.timestamp,
-                'notes': vital.notes
+                "datetime": ts_key,
+                "notes": _get(vital, "notes"),
             }
-        
-        # Add the specific value based on vital_group
-        if vital_type == 'blood_pressure':
-            if vital.vital_group == 'systolic':
-                grouped[ts_key]['systolic'] = int(vital.value)
-            elif vital.vital_group == 'diastolic':
-                grouped[ts_key]['diastolic'] = int(vital.value)
-            elif vital.vital_group == 'map':
-                grouped[ts_key]['map'] = int(vital.value)
-        elif vital_type == 'temperature':
-            if vital.vital_group == 'body':
-                grouped[ts_key]['body'] = vital.value
-            elif vital.vital_group == 'skin':
-                grouped[ts_key]['skin'] = vital.value
-    
-    # Convert to list and sort by datetime (newest first)
+        if vital_type == "blood_pressure":
+            grp = _get(vital, "vital_group")
+            val = _get(vital, "value")
+            if val is not None:
+                try:
+                    val = int(val)
+                except (TypeError, ValueError):
+                    pass
+            if grp == "systolic":
+                grouped[ts_key]["systolic"] = val
+            elif grp == "diastolic":
+                grouped[ts_key]["diastolic"] = val
+            elif grp == "map":
+                grouped[ts_key]["map"] = val
+        elif vital_type == "temperature":
+            grp = _get(vital, "vital_group")
+            val = _get(vital, "value")
+            if grp == "body":
+                grouped[ts_key]["body"] = val
+            elif grp == "skin":
+                grouped[ts_key]["skin"] = val
+
     result = list(grouped.values())
-    result.sort(key=lambda x: x['datetime'], reverse=True)
-    
+    result.sort(key=lambda x: x["datetime"] if x.get("datetime") is not None else "", reverse=True)
     return result
 
 

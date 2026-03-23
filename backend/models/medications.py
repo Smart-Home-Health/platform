@@ -114,6 +114,7 @@ class MedicationAdminister(BaseModel):
     schedule_id: Optional[int] = None
     scheduled_time: Optional[datetime] = None
     notes: Optional[str] = None
+    patient_id: Optional[int] = None  # When set, used for patient-specific meds instead of current_patient_id
 
 
 class ProviderInfo(BaseModel):

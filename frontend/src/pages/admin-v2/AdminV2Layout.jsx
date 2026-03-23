@@ -141,18 +141,38 @@ const AdminV2Layout = ({ children }) => {
     const saved = localStorage.getItem('adminV2SidebarCollapsed');
     return saved === 'true';
   });
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const dropdownRef = useRef(null);
   const currentSection = getCurrentSection(location.pathname);
-  
-  // Persist sidebar state
+
+  // Detect mobile viewport
   useEffect(() => {
-    localStorage.setItem('adminV2SidebarCollapsed', sidebarCollapsed);
-  }, [sidebarCollapsed]);
-  
-  // Toggle sidebar
+    const m = window.matchMedia('(max-width: 768px)');
+    const update = () => setIsMobile(m.matches);
+    update();
+    m.addEventListener('change', update);
+    return () => m.removeEventListener('change', update);
+  }, []);
+
+  // Persist sidebar state (desktop only)
+  useEffect(() => {
+    if (!isMobile) localStorage.setItem('adminV2SidebarCollapsed', sidebarCollapsed);
+  }, [sidebarCollapsed, isMobile]);
+
+  // Toggle sidebar (desktop: collapse/expand; mobile: open/close drawer)
   const toggleSidebar = () => {
-    setSidebarCollapsed(!sidebarCollapsed);
-    setShowPatientDropdown(false);
+    if (isMobile) {
+      setMobileMenuOpen((open) => !open);
+      setShowPatientDropdown(false);
+    } else {
+      setSidebarCollapsed(!sidebarCollapsed);
+      setShowPatientDropdown(false);
+    }
+  };
+
+  const closeMobileMenu = () => {
+    if (isMobile) setMobileMenuOpen(false);
   };
   
   // Close dropdown when clicking outside
@@ -188,6 +208,7 @@ const AdminV2Layout = ({ children }) => {
   const handleSelectPatient = (patient) => {
     selectPatient(patient);
     setShowPatientDropdown(false);
+    closeMobileMenu();
     
     // Update URL param if we're on a page that uses patient param
     const patientPages = ['/care/medications', '/care/care-tasks', '/care/equipment', '/care/nutrition', '/care/schedule', '/care/providers'];
@@ -266,9 +287,18 @@ const AdminV2Layout = ({ children }) => {
     }
   };
 
+  const activeNavLabel = visibleNavItems.find((item) => isActiveLink(item.path))?.label || 'Dashboard';
+
   return (
-    <div className={`admin-v2-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-      {/* Side Navigation */}
+    <div className={`admin-v2-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${mobileMenuOpen ? 'mobile-menu-open' : ''}`}>
+      {/* Mobile overlay - closes drawer when tapping outside */}
+      <div
+        className="admin-v2-sidebar-overlay"
+        aria-hidden={!mobileMenuOpen}
+        onClick={closeMobileMenu}
+      />
+
+      {/* Side Navigation - drawer on mobile, sidebar on desktop */}
       <aside className={`admin-v2-sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="admin-v2-sidebar-header">
           <Link to="/" className="admin-v2-logo-link">
@@ -394,6 +424,7 @@ const AdminV2Layout = ({ children }) => {
                 key={item.path}
                 to={item.path}
                 className={`admin-v2-sidebar-link ${isActiveLink(item.path) ? 'active' : ''}`}
+                onClick={closeMobileMenu}
               >
                 <span className="admin-v2-sidebar-icon">
                   <IconComponent size={18} />
@@ -405,17 +436,17 @@ const AdminV2Layout = ({ children }) => {
         </nav>
         
         <div className="admin-v2-sidebar-footer">
-          {!sidebarCollapsed && (
+          {(!sidebarCollapsed || isMobile) && (
             <>
-              <button onClick={handleSwitchUser} className="admin-v2-back-link">
+              <button onClick={() => { closeMobileMenu(); handleSwitchUser(); }} className="admin-v2-back-link">
                 <UsersIcon size={14} /> Switch User
               </button>
-              <button onClick={handleLogout} className="admin-v2-back-link admin-v2-logout-link">
+              <button onClick={() => { closeMobileMenu(); handleLogout(); }} className="admin-v2-back-link admin-v2-logout-link">
                 <BackArrowIcon size={14} /> Log Out
               </button>
             </>
           )}
-          {sidebarCollapsed && (
+          {sidebarCollapsed && !isMobile && (
             <>
               <button onClick={handleLogout} className="admin-v2-back-link" title="Log Out">
                 <BackArrowIcon size={14} />
@@ -427,6 +458,19 @@ const AdminV2Layout = ({ children }) => {
 
       {/* Main Content Area */}
       <div className="admin-v2-main">
+        {/* Mobile header - menu button and page title (visible only on small screens) */}
+        <header className="admin-v2-mobile-header">
+          <button
+            type="button"
+            className="admin-v2-mobile-menu-btn"
+            onClick={toggleSidebar}
+            aria-label="Open menu"
+          >
+            <MenuIcon size={24} />
+          </button>
+          <span className="admin-v2-mobile-header-title">{activeNavLabel}</span>
+        </header>
+
         {/* Restricted mode banner */}
         {!hasReadAccess && (
           <div className="admin-v2-restricted-banner">

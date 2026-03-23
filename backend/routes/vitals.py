@@ -9,10 +9,11 @@ from sqlalchemy import func, cast, Date
 from datetime import datetime, timedelta
 from db import get_db
 from dependencies import require_read_access
-from crud.vitals import (get_vitals_by_type, get_distinct_vital_types, get_vitals_by_type_paginated, 
-                  save_blood_pressure, save_temperature, save_vital, 
+from crud.vitals import (get_vitals_by_type, get_distinct_vital_types, get_vitals_by_type_paginated,
+                  save_blood_pressure, save_temperature, save_vital,
                   save_blood_pressure_as_vitals, save_temperature_as_vitals)
 from crud.nutrition import create_nutrition_intake
+from crud.patients import get_current_patient
 
 logger = logging.getLogger("app")
 
@@ -302,13 +303,21 @@ async def add_manual_vitals(vital_data: dict, db: Session = Depends(get_db)):
                         })
             
         # Publish vitals events to trigger WebSocket broadcast and MQTT publishing
+        event_patient_id = patient_id
+        if event_patient_id is None:
+            current = get_current_patient(db)
+            if current:
+                event_patient_id = current.id
         for vital in vitals_saved:
             print(f"[vitals] Publishing {vital['type']} to event system")
-            publish_event("vital_saved", {
-                "vital_type": vital['type'], 
+            evt = {
+                "vital_type": vital['type'],
                 "vital_data": vital['data'],
-                "from_manual": True
-            })
+                "from_manual": True,
+            }
+            if event_patient_id is not None:
+                evt["patient_id"] = event_patient_id
+            publish_event("vital_saved", evt)
         
         return {"status": "success", "message": "Vitals saved successfully"}
     except Exception as e:

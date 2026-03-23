@@ -192,25 +192,30 @@ def delete_medication(db: Session, med_id):
         return False
 
 
-def administer_medication(db: Session, med_id, dose_amount, schedule_id=None, scheduled_time=None, notes=None):
+def administer_medication(db: Session, med_id, dose_amount, schedule_id=None, scheduled_time=None, notes=None, patient_id=None):
     try:
         med = db.query(Medication).filter(Medication.id == med_id).first()
         if not med or med.quantity is None or dose_amount is None:
             return False
-        
-        # Get current patient ID
-        current_patient_id = get_setting(db, 'current_patient_id')
-        if current_patient_id:
-            try:
-                current_patient_id = int(current_patient_id)
-            except (ValueError, TypeError):
-                current_patient_id = None
-        
-        # For patient-specific medications, make sure we have a current patient
+
+        # Use provided patient_id or fall back to current patient from settings
+        current_patient_id = patient_id
+        if current_patient_id is None:
+            raw = get_setting(db, 'current_patient_id')
+            if raw:
+                try:
+                    current_patient_id = int(raw)
+                except (ValueError, TypeError):
+                    current_patient_id = None
+
+        # For patient-specific medications, we need a patient context (request body or current patient)
         if med.patient_id is not None and current_patient_id is None:
             logger.error("Cannot administer patient-specific medication without current patient set")
             return False
-        
+        if med.patient_id is not None and current_patient_id is not None and med.patient_id != current_patient_id:
+            logger.error("Patient context does not match medication's patient")
+            return False
+
         # Only deduct from quantity if dose_amount > 0 (don't deduct for skipped doses)
         if float(dose_amount) > 0:
             if med.quantity < float(dose_amount):

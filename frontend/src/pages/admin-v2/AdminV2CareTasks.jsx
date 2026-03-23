@@ -11,7 +11,10 @@ import {
   TrashIcon,
   XIcon,
   TasksIcon,
-  ClockIcon
+  ClockIcon,
+  CheckIcon,
+  PauseIcon,
+  ClipboardListIcon
 } from '../../components/Icons';
 import { localTimeToUTC } from '../../utils/timezone';
 import './AdminV2.css';
@@ -582,22 +585,42 @@ const AdminV2CareTasks = () => {
             )}
 
             {/* Stats Cards */}
-            <div className="admin-v2-stats-row">
+            <div className="admin-v2-summary-stats admin-v2-care-tasks-summary">
               <div className="admin-v2-stat-card">
-                <div className="admin-v2-stat-value">{careTasks.length}</div>
-                <div className="admin-v2-stat-label">Total Tasks</div>
+                <div className="admin-v2-stat-icon tasks">
+                  <ClipboardListIcon size={24} />
+                </div>
+                <div className="admin-v2-stat-info">
+                  <h4>{careTasks.length}</h4>
+                  <p>Total Tasks</p>
+                </div>
               </div>
               <div className="admin-v2-stat-card">
-                <div className="admin-v2-stat-value admin-v2-stat-success">{activeTasks.length}</div>
-                <div className="admin-v2-stat-label">Active</div>
+                <div className="admin-v2-stat-icon admin-v2-stat-icon-success">
+                  <CheckIcon size={24} />
+                </div>
+                <div className="admin-v2-stat-info">
+                  <h4>{activeTasks.length}</h4>
+                  <p>Active</p>
+                </div>
               </div>
               <div className="admin-v2-stat-card">
-                <div className="admin-v2-stat-value admin-v2-stat-muted">{inactiveTasks.length}</div>
-                <div className="admin-v2-stat-label">Paused</div>
+                <div className="admin-v2-stat-icon admin-v2-stat-icon-muted">
+                  <PauseIcon size={24} />
+                </div>
+                <div className="admin-v2-stat-info">
+                  <h4>{inactiveTasks.length}</h4>
+                  <p>Paused</p>
+                </div>
               </div>
               <div className="admin-v2-stat-card">
-                <div className="admin-v2-stat-value" style={{ color: '#a371f7' }}>{scheduledTasks.length}</div>
-                <div className="admin-v2-stat-label">Scheduled</div>
+                <div className="admin-v2-stat-icon tasks">
+                  <ClockIcon size={24} />
+                </div>
+                <div className="admin-v2-stat-info">
+                  <h4>{scheduledTasks.length}</h4>
+                  <p>Scheduled</p>
+                </div>
               </div>
             </div>
 
