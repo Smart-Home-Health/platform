@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from typing import Optional, List
 from datetime import datetime
 from db import get_db
+from dependencies import require_read_access
 from models.monitoring import (
     AlertAcknowledge,
     MonitoringAlertResponse,
@@ -30,14 +31,16 @@ async def get_monitoring_alerts_endpoint(
         limit: int = 50,
         include_acknowledged: bool = False,
         detailed: bool = False,
-        db: Session = Depends(get_db)
+        patient_id: Optional[int] = None,
+        db: Session = Depends(get_db),
+        _: bool = Depends(require_read_access)
 ):
     """Get monitoring alerts"""
-    return get_monitoring_alerts(db, limit, include_acknowledged, detailed)
+    return get_monitoring_alerts(db, limit, include_acknowledged, detailed, patient_id=patient_id)
 
 
 @router.get("/alerts/count")
-async def get_unacknowledged_alerts_count_endpoint(db: Session = Depends(get_db)):
+async def get_unacknowledged_alerts_count_endpoint(db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get count of unacknowledged alerts"""
     return {"count": get_unacknowledged_alerts_count(db)}
 
@@ -93,7 +96,8 @@ async def acknowledge_alert_endpoint(alert_id: int, data: AlertAcknowledge, db: 
 async def get_pulse_ox_data_endpoint(
         start_time: Optional[str] = None,
         end_time: Optional[str] = None,
-        limit: int = 1000
+        limit: int = 1000,
+        _: bool = Depends(require_read_access)
 ):
     """Get pulse ox data within a time range"""
     # This would require implementing a new function in crud.py
@@ -113,11 +117,15 @@ async def get_alert_data(alert_id: int, db: Session = Depends(get_db)):
 
 # Pulse Ox History Analysis endpoints
 @router.get("/history/dates")
-async def get_available_dates(db: Session = Depends(get_db)):
+async def get_available_dates(
+        patient_id: Optional[int] = None,
+        db: Session = Depends(get_db),
+        _: bool = Depends(require_read_access)
+):
     """Get list of dates that have pulse ox data"""
     try:
         logger.info("Fetching available pulse ox dates...")
-        dates = get_available_pulse_ox_dates(db)
+        dates = get_available_pulse_ox_dates(db, patient_id=patient_id)
         logger.info(f"Returning dates response: {dates}")
         return dates
     except Exception as e:
@@ -126,7 +134,11 @@ async def get_available_dates(db: Session = Depends(get_db)):
 
 
 @router.get("/history/analyze/{date}")
-async def analyze_pulse_ox_history(date: str, db: Session = Depends(get_db)):
+async def analyze_pulse_ox_history(
+        date: str,
+        patient_id: Optional[int] = None,
+        db: Session = Depends(get_db)
+):
     """Analyze pulse ox data for a specific date"""
     try:
         # Validate date format
@@ -135,7 +147,7 @@ async def analyze_pulse_ox_history(date: str, db: Session = Depends(get_db)):
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
         
-        analysis = analyze_pulse_ox_day(db, date)
+        analysis = analyze_pulse_ox_day(db, date, patient_id=patient_id)
         return analysis
     except HTTPException:
         raise
@@ -144,7 +156,12 @@ async def analyze_pulse_ox_history(date: str, db: Session = Depends(get_db)):
 
 
 @router.get("/history/raw/{date}", response_model=PulseOxDataResponse)
-async def get_raw_pulse_ox_data(date: str, db: Session = Depends(get_db)):
+async def get_raw_pulse_ox_data(
+        date: str,
+        patient_id: Optional[int] = None,
+        db: Session = Depends(get_db),
+        _: bool = Depends(require_read_access)
+):
     """Get raw pulse ox data for a specific date"""
     try:
         # Validate date format
@@ -153,7 +170,7 @@ async def get_raw_pulse_ox_data(date: str, db: Session = Depends(get_db)):
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
         
-        data = get_pulse_ox_data_by_date(db, date)
+        data = get_pulse_ox_data_by_date(db, date, patient_id=patient_id)
         
         # Convert to Pydantic models
         readings = [

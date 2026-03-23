@@ -11,6 +11,7 @@ class EventSource(Enum):
     GPIO = "gpio"
     API = "api"
     SYSTEM = "system"
+    READER = "reader"  # External SHH Reader device
 
 @dataclass(frozen=True)
 class SensorUpdate:
@@ -19,6 +20,7 @@ class SensorUpdate:
     values: Dict[str, Any]           # e.g. {"spo2": 97, "bpm": 88}
     raw: Optional[str] = None
     source: EventSource = EventSource.SERIAL
+    patient_id: Optional[int] = None
 
 @dataclass(frozen=True)
 class NutritionSensorUpdate:
@@ -36,6 +38,7 @@ class AlarmPanelState:
     alarm1: bool
     alarm2: bool
     source: EventSource = EventSource.GPIO
+    patient_id: Optional[int] = None
 
 @dataclass(frozen=True)
 class VitalSignRecorded:

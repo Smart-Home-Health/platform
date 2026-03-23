@@ -12,18 +12,34 @@ logger = logging.getLogger('crud')
 
 
 # --- Equipment CRUD ---
-def add_equipment_simple(db: Session, name, quantity=1, scheduled_replacement=True, last_changed=None, useful_days=None, patient_id=None):
+def add_equipment_simple(db: Session, name, quantity=1, scheduled_replacement=True, last_changed=None, useful_days=None, patient_id=None,
+                         account_id=None, item_number=None, description=None, category='equipment', tracking_level='item',
+                         default_manufacturer=None, unit_of_measure=None, unit_size=None, unit_description=None,
+                         reorder_point=None, par_level=None):
     """
-    Simple add equipment function matching the original signature for routes compatibility
+    Simple add equipment function matching the original signature for routes compatibility.
+    account_id scopes the equipment to an account (post-revision).
     """
     try:
         equipment = Equipment(
             name=name,
             patient_id=patient_id,  # Can be None for shared equipment
+            account_id=account_id,
             quantity=quantity,
             scheduled_replacement=scheduled_replacement,
             last_changed=last_changed if scheduled_replacement else None,
             useful_days=useful_days if scheduled_replacement else None,
+            # New supply tracking fields
+            item_number=item_number,
+            description=description,
+            category=category,
+            tracking_level=tracking_level,
+            default_manufacturer=default_manufacturer,
+            unit_of_measure=unit_of_measure,
+            unit_size=unit_size,
+            unit_description=unit_description,
+            reorder_point=reorder_point,
+            par_level=par_level,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()
         )
@@ -54,6 +70,17 @@ def get_equipment(db: Session, equipment_id):
                 'scheduled_replacement': equipment.scheduled_replacement,
                 'last_changed': equipment.last_changed.isoformat() if equipment.last_changed else None,
                 'useful_days': equipment.useful_days,
+                # New supply tracking fields
+                'item_number': equipment.item_number,
+                'description': equipment.description,
+                'category': equipment.category,
+                'tracking_level': equipment.tracking_level,
+                'default_manufacturer': equipment.default_manufacturer,
+                'unit_of_measure': equipment.unit_of_measure,
+                'unit_size': equipment.unit_size,
+                'unit_description': equipment.unit_description,
+                'reorder_point': equipment.reorder_point,
+                'par_level': equipment.par_level,
                 'created_at': equipment.created_at.isoformat() if equipment.created_at else None,
                 'updated_at': equipment.updated_at.isoformat() if equipment.updated_at else None
             }
@@ -63,7 +90,10 @@ def get_equipment(db: Session, equipment_id):
         return None
 
 
-def update_equipment(db: Session, equipment_id, name=None, quantity=None, scheduled_replacement=None, last_changed=None, useful_days=None, patient_id=None):
+def update_equipment(db: Session, equipment_id, name=None, quantity=None, scheduled_replacement=None, last_changed=None, useful_days=None, patient_id=None,
+                      item_number=None, description=None, category=None, tracking_level=None,
+                      default_manufacturer=None, unit_of_measure=None, unit_size=None, unit_description=None,
+                      reorder_point=None, par_level=None):
     """
     Update an equipment item
     """
@@ -84,6 +114,27 @@ def update_equipment(db: Session, equipment_id, name=None, quantity=None, schedu
             equipment.useful_days = useful_days
         if patient_id is not None:
             equipment.patient_id = patient_id
+        # New supply tracking fields
+        if item_number is not None:
+            equipment.item_number = item_number
+        if description is not None:
+            equipment.description = description
+        if category is not None:
+            equipment.category = category
+        if tracking_level is not None:
+            equipment.tracking_level = tracking_level
+        if default_manufacturer is not None:
+            equipment.default_manufacturer = default_manufacturer
+        if unit_of_measure is not None:
+            equipment.unit_of_measure = unit_of_measure
+        if unit_size is not None:
+            equipment.unit_size = unit_size
+        if unit_description is not None:
+            equipment.unit_description = unit_description
+        if reorder_point is not None:
+            equipment.reorder_point = reorder_point
+        if par_level is not None:
+            equipment.par_level = par_level
             
         equipment.updated_at = datetime.utcnow()
         db.commit()
@@ -124,6 +175,17 @@ def list_equipment(db: Session, patient_id=None, shared_only=False, skip=0, limi
                 'scheduled_replacement': eq.scheduled_replacement,
                 'last_changed': eq.last_changed.isoformat() if eq.last_changed else None,
                 'useful_days': eq.useful_days,
+                # New supply tracking fields
+                'item_number': eq.item_number,
+                'description': eq.description,
+                'category': eq.category,
+                'tracking_level': eq.tracking_level,
+                'default_manufacturer': eq.default_manufacturer,
+                'unit_of_measure': eq.unit_of_measure,
+                'unit_size': eq.unit_size,
+                'unit_description': eq.unit_description,
+                'reorder_point': eq.reorder_point,
+                'par_level': eq.par_level,
                 'created_at': eq.created_at.isoformat() if eq.created_at else None,
                 'updated_at': eq.updated_at.isoformat() if eq.updated_at else None
             }
@@ -179,12 +241,19 @@ def search_equipment(db: Session, query):
 
 
 # --- Equipment Change Management ---
-def get_equipment_list(db: Session):
+def get_equipment_list(db: Session, patient_id: int = None, account_id: int = None):
     """
-    Get equipment list with calculated due dates for scheduled replacements
+    Get equipment list with calculated due dates for scheduled replacements.
+    Optionally filter by patient_id and/or account_id (post-revision: scope to account).
     """
     try:
-        equipment = db.query(Equipment).all()
+        query = db.query(Equipment)
+        if patient_id is not None:
+            query = query.filter(Equipment.patient_id == patient_id)
+        if account_id is not None:
+            from sqlalchemy import or_
+            query = query.filter(or_(Equipment.account_id == account_id, Equipment.account_id.is_(None)))
+        equipment = query.all()
         result = []
         
         for item in equipment:
@@ -195,7 +264,18 @@ def get_equipment_list(db: Session):
                 'scheduled_replacement': item.scheduled_replacement,
                 'last_changed': item.last_changed.isoformat() if item.last_changed else None,
                 'useful_days': item.useful_days,
-                'due_date': None
+                'due_date': None,
+                # New supply tracking fields
+                'item_number': item.item_number,
+                'description': item.description,
+                'category': item.category,
+                'tracking_level': item.tracking_level,
+                'default_manufacturer': item.default_manufacturer,
+                'unit_of_measure': item.unit_of_measure,
+                'unit_size': item.unit_size,
+                'unit_description': item.unit_description,
+                'reorder_point': item.reorder_point,
+                'par_level': item.par_level
             }
             
             # Only calculate due date if scheduled replacement is enabled
@@ -336,10 +416,14 @@ def open_equipment(db: Session, equipment_id: int, amount: int = 1):
         return False
 
 
-def get_equipment_due_count(db: Session):
-    """Return the count of equipment items where due_date is today or past."""
+def get_equipment_due_count(db: Session, account_id: int = None):
+    """Return the count of equipment items where due_date is today or past. Optionally scope by account_id."""
     try:
-        equipment = db.query(Equipment).filter(Equipment.scheduled_replacement == True).all()
+        query = db.query(Equipment).filter(Equipment.scheduled_replacement == True)
+        if account_id is not None:
+            from sqlalchemy import or_
+            query = query.filter(or_(Equipment.account_id == account_id, Equipment.account_id.is_(None)))
+        equipment = query.all()
         due_count = 0
         today = datetime.now().date()
         

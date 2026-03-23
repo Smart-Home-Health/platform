@@ -552,3 +552,345 @@ def get_nutrition_intake_for_care_task(db: Session, care_task_log_id: int) -> Li
         .filter(NutritionIntake.care_task_log_id == care_task_log_id)\
         .order_by(NutritionIntake.consumed_at)\
         .all()
+
+
+# =============================================
+# NUTRITION GOALS CRUD
+# =============================================
+
+from schemas.nutrition_goal import NutritionGoal
+
+def create_nutrition_goal(db: Session, goal_data: dict) -> NutritionGoal:
+    """Create a new nutrition goal for a patient"""
+    try:
+        goal = NutritionGoal(
+            **goal_data,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+        db.add(goal)
+        db.commit()
+        db.refresh(goal)
+        logger.info(f"Created nutrition goal {goal.id} for patient {goal.patient_id}")
+        return goal
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error creating nutrition goal: {str(e)}")
+        raise
+
+
+def get_nutrition_goal_by_id(db: Session, goal_id: int) -> Optional[NutritionGoal]:
+    """Get a nutrition goal by ID"""
+    return db.query(NutritionGoal).filter(NutritionGoal.id == goal_id).first()
+
+
+def get_patient_nutrition_goals(db: Session, patient_id: int, active_only: bool = True) -> List[NutritionGoal]:
+    """Get all nutrition goals for a patient"""
+    query = db.query(NutritionGoal).filter(NutritionGoal.patient_id == patient_id)
+    if active_only:
+        query = query.filter(NutritionGoal.is_active == True)
+    return query.order_by(desc(NutritionGoal.effective_date)).all()
+
+
+def get_current_nutrition_goal(db: Session, patient_id: int) -> Optional[NutritionGoal]:
+    """Get the current active nutrition goal for a patient (most recent effective)"""
+    now = datetime.utcnow()
+    return db.query(NutritionGoal)\
+        .filter(
+            NutritionGoal.patient_id == patient_id,
+            NutritionGoal.is_active == True,
+            NutritionGoal.effective_date <= now,
+            (NutritionGoal.end_date == None) | (NutritionGoal.end_date > now)
+        )\
+        .order_by(desc(NutritionGoal.effective_date))\
+        .first()
+
+
+def update_nutrition_goal(db: Session, goal_id: int, update_data: dict) -> Optional[NutritionGoal]:
+    """Update a nutrition goal"""
+    try:
+        goal = db.query(NutritionGoal).filter(NutritionGoal.id == goal_id).first()
+        if not goal:
+            return None
+        
+        for field, value in update_data.items():
+            if hasattr(goal, field) and field not in ['id', 'created_at'] and value is not None:
+                setattr(goal, field, value)
+        
+        goal.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(goal)
+        logger.info(f"Updated nutrition goal {goal_id}")
+        return goal
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating nutrition goal {goal_id}: {str(e)}")
+        raise
+
+
+def delete_nutrition_goal(db: Session, goal_id: int) -> bool:
+    """Delete a nutrition goal"""
+    try:
+        goal = db.query(NutritionGoal).filter(NutritionGoal.id == goal_id).first()
+        if not goal:
+            return False
+        db.delete(goal)
+        db.commit()
+        logger.info(f"Deleted nutrition goal {goal_id}")
+        return True
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting nutrition goal {goal_id}: {str(e)}")
+        raise
+
+
+# =============================================
+# NUTRITION OUTPUTS CRUD
+# =============================================
+
+from schemas.nutrition_output import NutritionOutput
+
+def create_nutrition_output(db: Session, output_data: dict) -> NutritionOutput:
+    """Create a new output log entry"""
+    try:
+        output = NutritionOutput(
+            **output_data,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+        db.add(output)
+        db.commit()
+        db.refresh(output)
+        logger.info(f"Created nutrition output {output.id} for patient {output.patient_id}")
+        return output
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error creating nutrition output: {str(e)}")
+        raise
+
+
+def get_nutrition_output_by_id(db: Session, output_id: int) -> Optional[NutritionOutput]:
+    """Get an output log by ID"""
+    return db.query(NutritionOutput).filter(NutritionOutput.id == output_id).first()
+
+
+def get_patient_nutrition_outputs(
+    db: Session, 
+    patient_id: int, 
+    output_type: Optional[str] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    limit: int = 100
+) -> List[NutritionOutput]:
+    """Get output logs for a patient with optional filters"""
+    query = db.query(NutritionOutput).filter(NutritionOutput.patient_id == patient_id)
+    
+    if output_type:
+        query = query.filter(NutritionOutput.output_type == output_type)
+    if start_date:
+        query = query.filter(NutritionOutput.occurred_at >= start_date)
+    if end_date:
+        query = query.filter(NutritionOutput.occurred_at <= end_date)
+    
+    return query.order_by(desc(NutritionOutput.occurred_at)).limit(limit).all()
+
+
+def get_daily_nutrition_outputs(db: Session, patient_id: int, target_date: date = None) -> List[NutritionOutput]:
+    """Get output logs for a specific day"""
+    if target_date is None:
+        target_date = date.today()
+    
+    start = datetime.combine(target_date, datetime.min.time())
+    end = datetime.combine(target_date, datetime.max.time())
+    
+    return db.query(NutritionOutput)\
+        .filter(
+            NutritionOutput.patient_id == patient_id,
+            NutritionOutput.occurred_at >= start,
+            NutritionOutput.occurred_at <= end
+        )\
+        .order_by(NutritionOutput.occurred_at)\
+        .all()
+
+
+def get_output_summary(db: Session, patient_id: int, target_date: date = None) -> dict:
+    """Get output summary for a day"""
+    outputs = get_daily_nutrition_outputs(db, patient_id, target_date)
+    
+    summary = {
+        'urine_count': 0,
+        'urine_total_ml': 0,
+        'bowel_count': 0,
+        'vomit_count': 0,
+        'diaper_changes': 0,
+        'has_concerns': False,
+        'concerns': []
+    }
+    
+    for output in outputs:
+        if output.output_type == 'urine':
+            summary['urine_count'] += 1
+            if output.amount and output.amount_unit == 'ml':
+                summary['urine_total_ml'] += output.amount
+        elif output.output_type == 'bowel':
+            summary['bowel_count'] += 1
+        elif output.output_type == 'vomit':
+            summary['vomit_count'] += 1
+        
+        if output.is_diaper:
+            summary['diaper_changes'] += 1
+        
+        # Check for concerns
+        if output.has_blood:
+            summary['has_concerns'] = True
+            summary['concerns'].append(f"Blood detected in {output.output_type}")
+        if output.has_mucus:
+            summary['has_concerns'] = True
+            summary['concerns'].append(f"Mucus detected in {output.output_type}")
+        if output.pain_reported:
+            summary['has_concerns'] = True
+            summary['concerns'].append(f"Pain reported during {output.output_type}")
+    
+    return summary
+
+
+def update_nutrition_output(db: Session, output_id: int, update_data: dict) -> Optional[NutritionOutput]:
+    """Update an output log entry"""
+    try:
+        output = db.query(NutritionOutput).filter(NutritionOutput.id == output_id).first()
+        if not output:
+            return None
+        
+        for field, value in update_data.items():
+            if hasattr(output, field) and field not in ['id', 'created_at'] and value is not None:
+                setattr(output, field, value)
+        
+        output.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(output)
+        logger.info(f"Updated nutrition output {output_id}")
+        return output
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating nutrition output {output_id}: {str(e)}")
+        raise
+
+
+def delete_nutrition_output(db: Session, output_id: int) -> bool:
+    """Delete an output log entry"""
+    try:
+        output = db.query(NutritionOutput).filter(NutritionOutput.id == output_id).first()
+        if not output:
+            return False
+        db.delete(output)
+        db.commit()
+        logger.info(f"Deleted nutrition output {output_id}")
+        return True
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting nutrition output {output_id}: {str(e)}")
+        raise
+
+
+# =============================================
+# NUTRITION SCHEDULES CRUD
+# =============================================
+
+from schemas.nutrition_schedule import NutritionSchedule
+
+def create_nutrition_schedule(db: Session, schedule_data: dict) -> NutritionSchedule:
+    """Create a new nutrition schedule"""
+    try:
+        schedule = NutritionSchedule(
+            **schedule_data,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+        db.add(schedule)
+        db.commit()
+        db.refresh(schedule)
+        logger.info(f"Created nutrition schedule {schedule.id} for patient {schedule.patient_id}")
+        return schedule
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error creating nutrition schedule: {str(e)}")
+        raise
+
+
+def get_nutrition_schedule_by_id(db: Session, schedule_id: int) -> Optional[NutritionSchedule]:
+    """Get a nutrition schedule by ID"""
+    return db.query(NutritionSchedule).filter(NutritionSchedule.id == schedule_id).first()
+
+
+def get_patient_nutrition_schedules(
+    db: Session, 
+    patient_id: int, 
+    schedule_type: Optional[str] = None,
+    active_only: bool = True
+) -> List[NutritionSchedule]:
+    """Get nutrition schedules for a patient"""
+    query = db.query(NutritionSchedule).filter(NutritionSchedule.patient_id == patient_id)
+    
+    if schedule_type:
+        query = query.filter(NutritionSchedule.schedule_type == schedule_type)
+    if active_only:
+        query = query.filter(NutritionSchedule.is_active == True)
+    
+    return query.order_by(NutritionSchedule.schedule_type, NutritionSchedule.name).all()
+
+
+def update_nutrition_schedule(db: Session, schedule_id: int, update_data: dict) -> Optional[NutritionSchedule]:
+    """Update a nutrition schedule"""
+    try:
+        schedule = db.query(NutritionSchedule).filter(NutritionSchedule.id == schedule_id).first()
+        if not schedule:
+            return None
+        
+        for field, value in update_data.items():
+            if hasattr(schedule, field) and field not in ['id', 'created_at'] and value is not None:
+                setattr(schedule, field, value)
+        
+        schedule.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(schedule)
+        logger.info(f"Updated nutrition schedule {schedule_id}")
+        return schedule
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating nutrition schedule {schedule_id}: {str(e)}")
+        raise
+
+
+def toggle_nutrition_schedule(db: Session, schedule_id: int) -> Optional[NutritionSchedule]:
+    """Toggle a nutrition schedule active status"""
+    try:
+        schedule = db.query(NutritionSchedule).filter(NutritionSchedule.id == schedule_id).first()
+        if not schedule:
+            return None
+        
+        schedule.is_active = not schedule.is_active
+        schedule.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(schedule)
+        logger.info(f"Toggled nutrition schedule {schedule_id} to {schedule.is_active}")
+        return schedule
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error toggling nutrition schedule {schedule_id}: {str(e)}")
+        raise
+
+
+def delete_nutrition_schedule(db: Session, schedule_id: int) -> bool:
+    """Delete a nutrition schedule"""
+    try:
+        schedule = db.query(NutritionSchedule).filter(NutritionSchedule.id == schedule_id).first()
+        if not schedule:
+            return False
+        db.delete(schedule)
+        db.commit()
+        logger.info(f"Deleted nutrition schedule {schedule_id}")
+        return True
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting nutrition schedule {schedule_id}: {str(e)}")
+        raise

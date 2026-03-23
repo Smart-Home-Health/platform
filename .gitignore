@@ -11,3 +11,4 @@
 *.sql
 
 .env.docker
+docs/*

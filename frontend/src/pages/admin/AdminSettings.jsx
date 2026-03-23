@@ -167,38 +167,6 @@ const AdminSettings = () => {
         </div>
 
         <div className="admin-card">
-          <h3 className="admin-card-title">Hardware Settings</h3>
-          
-          <div style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600' }}>
-              Serial Baud Rate
-            </label>
-            <select
-              value={generalSettings.baud_rate}
-              onChange={(e) => handleChange('baud_rate', e.target.value)}
-              style={{ width: '100%', padding: '0.5rem', border: '1px solid #ddd', borderRadius: '4px' }}
-            >
-              <option value="9600">9600</option>
-              <option value="19200">19200</option>
-              <option value="38400">38400</option>
-              <option value="57600">57600</option>
-              <option value="115200">115200</option>
-            </select>
-          </div>
-
-          <div style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <input
-                type="checkbox"
-                checked={generalSettings.gpio_enabled}
-                onChange={(e) => handleChange('gpio_enabled', e.target.checked)}
-              />
-              Enable GPIO Monitoring
-            </label>
-          </div>
-        </div>
-
-        <div className="admin-card">
           <h3 className="admin-card-title">Alarm Thresholds</h3>
           
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>

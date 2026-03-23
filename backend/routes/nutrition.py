@@ -4,6 +4,7 @@ from datetime import datetime, date
 from typing import List, Optional
 import logging
 from db import get_db
+from dependencies import require_read_access
 from crud.nutrition import (
     create_nutrition_intake, 
     get_nutrition_intake_by_id,
@@ -92,7 +93,8 @@ async def create_nutrition_intake_endpoint(
 @router.get("/nutrition-intake/{intake_id}", response_model=NutritionIntakeResponse)
 async def get_nutrition_intake_endpoint(
     intake_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """Get a specific nutrition intake record"""
     intake = get_nutrition_intake_by_id(db, intake_id)
@@ -104,7 +106,8 @@ async def get_nutrition_intake_endpoint(
 async def get_patient_nutrition_intake_endpoint(
     patient_id: int,
     limit: int = 50,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """Get nutrition intake records for a patient"""
     intake_records = get_patient_nutrition_intake(db, patient_id, limit)
@@ -114,7 +117,8 @@ async def get_patient_nutrition_intake_endpoint(
 async def get_daily_nutrition_intake_endpoint(
     patient_id: int,
     target_date: Optional[date] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """Get nutrition intake records for a specific day"""
     intake_records = get_daily_nutrition_intake(db, patient_id, target_date)
@@ -127,7 +131,8 @@ async def get_daily_nutrition_intake_endpoint(
 async def get_nutrition_summary_endpoint(
     patient_id: int,
     target_date: Optional[date] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """Get daily nutrition summary with totals"""
     summary = get_nutrition_summary(db, patient_id, target_date)
@@ -139,7 +144,8 @@ async def get_nutrition_summary_endpoint(
 @router.get("/nutrition-intake/active-patient")
 async def get_active_patient_nutrition_endpoint(
     limit: int = 50,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """Get nutrition intake records for the active patient"""
     active_patient = get_active_patient(db)
@@ -155,7 +161,8 @@ async def get_active_patient_nutrition_endpoint(
 @router.get("/nutrition-summary/active-patient")
 async def get_active_patient_nutrition_summary_endpoint(
     target_date: Optional[date] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """Get nutrition summary for the active patient"""
     active_patient = get_active_patient(db)
@@ -204,7 +211,8 @@ async def delete_nutrition_intake_endpoint(
 @router.get("/care-task-logs/{care_task_log_id}/nutrition-intake", response_model=List[NutritionIntakeResponse])
 async def get_care_task_nutrition_intake_endpoint(
     care_task_log_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
 ):
     """Get nutrition intake records linked to a specific care task completion"""
     intake_records = get_nutrition_intake_for_care_task(db, care_task_log_id)
@@ -212,7 +220,7 @@ async def get_care_task_nutrition_intake_endpoint(
 
 # Common nutrition items/presets for quick entry
 @router.get("/nutrition-presets")
-async def get_nutrition_presets():
+async def get_nutrition_presets(_: bool = Depends(require_read_access)):
     """Get common nutrition items for quick entry"""
     return {
         "liquids": [
@@ -432,7 +440,7 @@ async def get_nutrition_dashboard_data(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/nutrition/has-data")
-async def check_nutrition_data(db: Session = Depends(get_db)):
+async def check_nutrition_data(db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Check if there is any nutrition data in the database"""
     try:
         from models import NutritionIntake
@@ -441,3 +449,467 @@ async def check_nutrition_data(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error checking nutrition data: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================
+# NUTRITION GOALS ROUTES
+# =============================================
+
+from models.nutrition import (
+    NutritionGoalCreate, NutritionGoalUpdate, NutritionGoalResponse,
+    NutritionOutputCreate, NutritionOutputUpdate, NutritionOutputResponse,
+    NutritionScheduleCreate, NutritionScheduleUpdate, NutritionScheduleResponse,
+    OUTPUT_TYPES, CONSISTENCY_TYPES, COLOR_TYPES, CLARITY_TYPES, DIAPER_WETNESS_TYPES,
+    SCHEDULE_TYPES
+)
+from crud.nutrition import (
+    create_nutrition_goal, get_nutrition_goal_by_id, get_patient_nutrition_goals,
+    get_current_nutrition_goal, update_nutrition_goal, delete_nutrition_goal,
+    create_nutrition_output, get_nutrition_output_by_id, get_patient_nutrition_outputs,
+    get_daily_nutrition_outputs, get_output_summary, update_nutrition_output, delete_nutrition_output,
+    create_nutrition_schedule, get_nutrition_schedule_by_id, get_patient_nutrition_schedules,
+    update_nutrition_schedule, toggle_nutrition_schedule, delete_nutrition_schedule
+)
+
+
+@router.post("/nutrition/goals", response_model=NutritionGoalResponse)
+async def create_goal(goal_data: NutritionGoalCreate, db: Session = Depends(get_db)):
+    """Create a new nutrition goal for a patient"""
+    try:
+        goal = create_nutrition_goal(db, goal_data.model_dump())
+        return goal
+    except Exception as e:
+        logger.error(f"Error creating nutrition goal: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/nutrition/goals/patient/{patient_id}", response_model=List[NutritionGoalResponse])
+async def get_goals_for_patient(
+    patient_id: int,
+    active_only: bool = True,
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
+):
+    """Get all nutrition goals for a patient"""
+    return get_patient_nutrition_goals(db, patient_id, active_only)
+
+
+@router.get("/nutrition/goals/patient/{patient_id}/current", response_model=Optional[NutritionGoalResponse])
+async def get_current_goal(patient_id: int, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
+    """Get the current active nutrition goal for a patient"""
+    return get_current_nutrition_goal(db, patient_id)
+
+
+@router.get("/nutrition/goals/{goal_id}", response_model=NutritionGoalResponse)
+async def get_goal(goal_id: int, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
+    """Get a specific nutrition goal"""
+    goal = get_nutrition_goal_by_id(db, goal_id)
+    if not goal:
+        raise HTTPException(status_code=404, detail="Nutrition goal not found")
+    return goal
+
+
+@router.put("/nutrition/goals/{goal_id}", response_model=NutritionGoalResponse)
+async def update_goal(goal_id: int, update_data: NutritionGoalUpdate, db: Session = Depends(get_db)):
+    """Update a nutrition goal"""
+    goal = update_nutrition_goal(db, goal_id, update_data.model_dump(exclude_unset=True))
+    if not goal:
+        raise HTTPException(status_code=404, detail="Nutrition goal not found")
+    return goal
+
+
+@router.delete("/nutrition/goals/{goal_id}")
+async def delete_goal(goal_id: int, db: Session = Depends(get_db)):
+    """Delete a nutrition goal"""
+    if not delete_nutrition_goal(db, goal_id):
+        raise HTTPException(status_code=404, detail="Nutrition goal not found")
+    return {"success": True}
+
+
+@router.get("/nutrition/patient/{patient_id}/summary")
+async def get_nutrition_intake_summary(
+    patient_id: int,
+    days: int = 30,
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
+):
+    """
+    Get daily nutrition summary for a patient over specified days.
+    Uses the correct nutrition goal for each day based on effective_date.
+    Returns daily intake totals, goals, and % deviation.
+    """
+    from sqlalchemy import func, cast, Date
+    from datetime import timedelta
+    from models import NutritionIntake
+    from schemas.nutrition_goal import NutritionGoal
+    
+    try:
+        end_date = date.today()
+        start_date = end_date - timedelta(days=days - 1)
+        
+        # Get all goals for this patient (including historical) sorted by effective_date desc
+        all_goals = db.query(NutritionGoal).filter(
+            NutritionGoal.patient_id == patient_id
+        ).order_by(NutritionGoal.effective_date.desc()).all()
+        
+        # Get daily aggregated intake data
+        # Group by date and sum calories, water
+        daily_intake = db.query(
+            cast(NutritionIntake.consumed_at, Date).label('date'),
+            func.sum(NutritionIntake.calories).label('total_calories'),
+            func.sum(
+                func.case(
+                    (NutritionIntake.item_type == 'liquid',
+                     func.case(
+                         (NutritionIntake.amount_unit.in_(['oz', 'ounces']), NutritionIntake.amount * 29.5735),
+                         (NutritionIntake.amount_unit.in_(['cup', 'cups']), NutritionIntake.amount * 236.588),
+                         (NutritionIntake.amount_unit.in_(['liter', 'liters', 'l']), NutritionIntake.amount * 1000),
+                         else_=NutritionIntake.amount
+                     )),
+                    else_=0
+                )
+            ).label('total_water_ml'),
+            func.sum(NutritionIntake.protein).label('total_protein'),
+            func.sum(NutritionIntake.carbs).label('total_carbs'),
+            func.sum(NutritionIntake.fat).label('total_fat')
+        ).filter(
+            NutritionIntake.patient_id == patient_id,
+            cast(NutritionIntake.consumed_at, Date) >= start_date,
+            cast(NutritionIntake.consumed_at, Date) <= end_date
+        ).group_by(
+            cast(NutritionIntake.consumed_at, Date)
+        ).all()
+        
+        # Convert to dict for easier lookup
+        intake_by_date = {
+            row.date: {
+                'calories': float(row.total_calories or 0),
+                'water_ml': float(row.total_water_ml or 0),
+                'protein': float(row.total_protein or 0),
+                'carbs': float(row.total_carbs or 0),
+                'fat': float(row.total_fat or 0)
+            }
+            for row in daily_intake
+        }
+        
+        def find_goal_for_date(target_date: date):
+            """Find the applicable goal for a specific date"""
+            target_datetime = datetime.combine(target_date, datetime.min.time())
+            for goal in all_goals:
+                # Check if goal was effective on this date
+                goal_effective = goal.effective_date.date() if isinstance(goal.effective_date, datetime) else goal.effective_date
+                if goal_effective <= target_date:
+                    # Check end_date if set
+                    if goal.end_date:
+                        goal_end = goal.end_date.date() if isinstance(goal.end_date, datetime) else goal.end_date
+                        if goal_end < target_date:
+                            continue
+                    if goal.is_active:
+                        return goal
+            return None
+        
+        # Build result for each day
+        result = []
+        current_date = start_date
+        while current_date <= end_date:
+            intake = intake_by_date.get(current_date, {
+                'calories': 0,
+                'water_ml': 0,
+                'protein': 0,
+                'carbs': 0,
+                'fat': 0
+            })
+            
+            goal = find_goal_for_date(current_date)
+            
+            day_data = {
+                'date': current_date.isoformat(),
+                'calories': round(intake['calories'], 1),
+                'water_ml': round(intake['water_ml'], 1),
+                'protein': round(intake['protein'], 1),
+                'carbs': round(intake['carbs'], 1),
+                'fat': round(intake['fat'], 1),
+                'calories_target': None,
+                'water_target': None,
+                'protein_target': None,
+                'carbs_target': None,
+                'fat_target': None
+            }
+            
+            if goal:
+                day_data['calories_target'] = goal.calories_target
+                day_data['water_target'] = goal.water_ml_target
+                day_data['protein_target'] = goal.protein_grams_target
+                day_data['carbs_target'] = goal.carbs_grams_target
+                day_data['fat_target'] = goal.fat_grams_target
+            
+            result.append(day_data)
+            current_date += timedelta(days=1)
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error getting nutrition summary: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================
+# NUTRITION OUTPUT ROUTES
+# =============================================
+
+@router.get("/nutrition/outputs/types")
+async def get_output_types():
+    """Get available output types and options"""
+    return {
+        "output_types": OUTPUT_TYPES,
+        "consistency_types": CONSISTENCY_TYPES,
+        "color_types": COLOR_TYPES,
+        "clarity_types": CLARITY_TYPES,
+        "diaper_wetness_types": DIAPER_WETNESS_TYPES
+    }
+
+
+@router.post("/nutrition/outputs", response_model=NutritionOutputResponse)
+async def create_output(output_data: NutritionOutputCreate, db: Session = Depends(get_db)):
+    """Create a new output log entry"""
+    try:
+        output = create_nutrition_output(db, output_data.model_dump())
+        return output
+    except Exception as e:
+        logger.error(f"Error creating nutrition output: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/nutrition/outputs/patient/{patient_id}", response_model=List[NutritionOutputResponse])
+async def get_outputs_for_patient(
+    patient_id: int,
+    output_type: Optional[str] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
+):
+    """Get output logs for a patient"""
+    return get_patient_nutrition_outputs(db, patient_id, output_type, start_date, end_date, limit)
+
+
+@router.get("/nutrition/outputs/patient/{patient_id}/daily")
+async def get_daily_outputs(
+    patient_id: int,
+    target_date: Optional[date] = None,
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
+):
+    """Get output logs for a specific day"""
+    outputs = get_daily_nutrition_outputs(db, patient_id, target_date)
+    return [NutritionOutputResponse.model_validate(o) for o in outputs]
+
+
+@router.get("/nutrition/outputs/patient/{patient_id}/summary")
+async def get_patient_output_summary(
+    patient_id: int,
+    target_date: Optional[date] = None,
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
+):
+    """Get output summary for a patient for a specific day"""
+    return get_output_summary(db, patient_id, target_date)
+
+
+@router.get("/nutrition/outputs/patient/{patient_id}/history")
+async def get_output_history_summary(
+    patient_id: int,
+    days: int = 30,
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
+):
+    """
+    Get daily output summary for a patient over specified days.
+    Uses the correct nutrition goal for each day based on effective_date.
+    Tracks urine output and bowel movement counts.
+    """
+    from sqlalchemy import func, cast, Date
+    from datetime import timedelta
+    from schemas.nutrition_output import NutritionOutput
+    from schemas.nutrition_goal import NutritionGoal
+    
+    try:
+        end_date_val = date.today()
+        start_date_val = end_date_val - timedelta(days=days - 1)
+        
+        # Get all goals for this patient (including historical) sorted by effective_date desc
+        all_goals = db.query(NutritionGoal).filter(
+            NutritionGoal.patient_id == patient_id
+        ).order_by(NutritionGoal.effective_date.desc()).all()
+        
+        # Get daily aggregated urine output (in ml)
+        daily_urine = db.query(
+            cast(NutritionOutput.occurred_at, Date).label('date'),
+            func.sum(
+                func.case(
+                    (NutritionOutput.amount_unit.in_(['oz', 'ounces']), NutritionOutput.amount * 29.5735),
+                    (NutritionOutput.amount_unit.in_(['cup', 'cups']), NutritionOutput.amount * 236.588),
+                    (NutritionOutput.amount_unit.in_(['liter', 'liters', 'l']), NutritionOutput.amount * 1000),
+                    else_=NutritionOutput.amount
+                )
+            ).label('total_urine_ml')
+        ).filter(
+            NutritionOutput.patient_id == patient_id,
+            NutritionOutput.output_type == 'urine',
+            cast(NutritionOutput.occurred_at, Date) >= start_date_val,
+            cast(NutritionOutput.occurred_at, Date) <= end_date_val
+        ).group_by(
+            cast(NutritionOutput.occurred_at, Date)
+        ).all()
+        
+        # Get daily bowel movement count
+        daily_bowel = db.query(
+            cast(NutritionOutput.occurred_at, Date).label('date'),
+            func.count(NutritionOutput.id).label('bowel_count')
+        ).filter(
+            NutritionOutput.patient_id == patient_id,
+            NutritionOutput.output_type == 'bowel',
+            cast(NutritionOutput.occurred_at, Date) >= start_date_val,
+            cast(NutritionOutput.occurred_at, Date) <= end_date_val
+        ).group_by(
+            cast(NutritionOutput.occurred_at, Date)
+        ).all()
+        
+        # Convert to dicts for lookup
+        urine_by_date = {row.date: float(row.total_urine_ml or 0) for row in daily_urine}
+        bowel_by_date = {row.date: int(row.bowel_count or 0) for row in daily_bowel}
+        
+        def find_goal_for_date(target_date: date):
+            """Find the applicable goal for a specific date"""
+            for goal in all_goals:
+                goal_effective = goal.effective_date.date() if isinstance(goal.effective_date, datetime) else goal.effective_date
+                if goal_effective <= target_date:
+                    if goal.end_date:
+                        goal_end = goal.end_date.date() if isinstance(goal.end_date, datetime) else goal.end_date
+                        if goal_end < target_date:
+                            continue
+                    if goal.is_active:
+                        return goal
+            return None
+        
+        # Build result for each day
+        result = []
+        current_date = start_date_val
+        while current_date <= end_date_val:
+            goal = find_goal_for_date(current_date)
+            
+            day_data = {
+                'date': current_date.isoformat(),
+                'urine_ml': round(urine_by_date.get(current_date, 0), 1),
+                'bowel_count': bowel_by_date.get(current_date, 0),
+                'urine_target': goal.urine_output_ml_min if goal else None,
+                'bowel_target': goal.bowel_movements_target if goal else None
+            }
+            
+            result.append(day_data)
+            current_date += timedelta(days=1)
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error getting output history: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/nutrition/outputs/{output_id}", response_model=NutritionOutputResponse)
+async def get_output(output_id: int, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
+    """Get a specific output log"""
+    output = get_nutrition_output_by_id(db, output_id)
+    if not output:
+        raise HTTPException(status_code=404, detail="Output log not found")
+    return output
+
+
+@router.put("/nutrition/outputs/{output_id}", response_model=NutritionOutputResponse)
+async def update_output(output_id: int, update_data: NutritionOutputUpdate, db: Session = Depends(get_db)):
+    """Update an output log entry"""
+    output = update_nutrition_output(db, output_id, update_data.model_dump(exclude_unset=True))
+    if not output:
+        raise HTTPException(status_code=404, detail="Output log not found")
+    return output
+
+
+@router.delete("/nutrition/outputs/{output_id}")
+async def delete_output(output_id: int, db: Session = Depends(get_db)):
+    """Delete an output log entry"""
+    if not delete_nutrition_output(db, output_id):
+        raise HTTPException(status_code=404, detail="Output log not found")
+    return {"success": True}
+
+
+# =============================================
+# NUTRITION SCHEDULE ROUTES
+# =============================================
+
+@router.get("/nutrition/schedules/types")
+async def get_schedule_types(_: bool = Depends(require_read_access)):
+    """Get available schedule types"""
+    return {"schedule_types": SCHEDULE_TYPES}
+
+
+@router.post("/nutrition/schedules", response_model=NutritionScheduleResponse)
+async def create_schedule(schedule_data: NutritionScheduleCreate, db: Session = Depends(get_db)):
+    """Create a new nutrition schedule"""
+    try:
+        schedule = create_nutrition_schedule(db, schedule_data.model_dump())
+        return schedule
+    except Exception as e:
+        logger.error(f"Error creating nutrition schedule: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/nutrition/schedules/patient/{patient_id}", response_model=List[NutritionScheduleResponse])
+async def get_schedules_for_patient(
+    patient_id: int,
+    schedule_type: Optional[str] = None,
+    active_only: bool = True,
+    db: Session = Depends(get_db)
+):
+    """Get nutrition schedules for a patient"""
+    return get_patient_nutrition_schedules(db, patient_id, schedule_type, active_only)
+
+
+@router.get("/nutrition/schedules/{schedule_id}", response_model=NutritionScheduleResponse)
+async def get_schedule(schedule_id: int, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
+    """Get a specific nutrition schedule"""
+    schedule = get_nutrition_schedule_by_id(db, schedule_id)
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Nutrition schedule not found")
+    return schedule
+
+
+@router.put("/nutrition/schedules/{schedule_id}", response_model=NutritionScheduleResponse)
+async def update_schedule(schedule_id: int, update_data: NutritionScheduleUpdate, db: Session = Depends(get_db)):
+    """Update a nutrition schedule"""
+    schedule = update_nutrition_schedule(db, schedule_id, update_data.model_dump(exclude_unset=True))
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Nutrition schedule not found")
+    return schedule
+
+
+@router.post("/nutrition/schedules/{schedule_id}/toggle", response_model=NutritionScheduleResponse)
+async def toggle_schedule(schedule_id: int, db: Session = Depends(get_db)):
+    """Toggle a nutrition schedule active status"""
+    schedule = toggle_nutrition_schedule(db, schedule_id)
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Nutrition schedule not found")
+    return schedule
+
+
+@router.delete("/nutrition/schedules/{schedule_id}")
+async def delete_schedule(schedule_id: int, db: Session = Depends(get_db)):
+    """Delete a nutrition schedule"""
+    if not delete_nutrition_schedule(db, schedule_id):
+        raise HTTPException(status_code=404, detail="Nutrition schedule not found")
+    return {"success": True}
+

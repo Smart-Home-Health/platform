@@ -2,7 +2,9 @@ import config from '../config';
 
 export const getSettings = async () => {
   try {
-    const response = await fetch(`${config.apiUrl}/api/settings`);
+    const response = await fetch(`${config.apiUrl}/api/settings`, {
+      credentials: 'include'
+    });
     
     if (!response.ok) {
       throw new Error(`Failed to fetch settings: ${response.status}`);
@@ -17,7 +19,9 @@ export const getSettings = async () => {
 
 export const getSetting = async (key, defaultValue = null) => {
   try {
-    const response = await fetch(`${config.apiUrl}/api/settings/${key}${defaultValue ? `?default=${defaultValue}` : ''}`);
+    const response = await fetch(`${config.apiUrl}/api/settings/${key}${defaultValue ? `?default=${defaultValue}` : ''}`, {
+      credentials: 'include'
+    });
     
     if (response.status === 404) {
       return defaultValue;
@@ -42,6 +46,7 @@ export const setSetting = async (key, value, dataType = 'string', description = 
       headers: {
         'Content-Type': 'application/json',
       },
+      credentials: 'include',
       body: JSON.stringify({
         value,
         data_type: dataType,
@@ -67,6 +72,7 @@ export const updateSettings = async (settingsObject) => {
       headers: {
         'Content-Type': 'application/json',
       },
+      credentials: 'include',
       body: JSON.stringify({
         settings: settingsObject,
       }),
@@ -87,6 +93,7 @@ export const deleteSetting = async (key) => {
   try {
     const response = await fetch(`${config.apiUrl}/api/settings/${key}`, {
       method: 'DELETE',
+      credentials: 'include'
     });
     
     if (!response.ok) {

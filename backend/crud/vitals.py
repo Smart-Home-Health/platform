@@ -25,6 +25,9 @@ def save_blood_pressure(db: Session, systolic, diastolic, map_value=None, timest
     # Get patient_id if not provided
     if patient_id is None:
         patient = get_or_create_default_patient(db)
+        if not patient:
+            logger.warning("No patient exists, cannot save blood pressure")
+            return None
         patient_id = patient.id
     
     # Ensure timestamp is timezone-aware
@@ -122,6 +125,9 @@ def save_temperature(db: Session, body_temp, skin_temp=None, timestamp=None, not
     # Get patient_id if not provided
     if patient_id is None:
         patient = get_or_create_default_patient(db)
+        if not patient:
+            logger.warning("No patient exists, cannot save temperature")
+            return None
         patient_id = patient.id
     
     # Ensure timestamp is timezone-aware
@@ -191,6 +197,9 @@ def save_vital(db: Session, vital_type, value, timestamp=None, notes=None, vital
     # Get patient_id if not provided
     if patient_id is None:
         patient = get_or_create_default_patient(db)
+        if not patient:
+            logger.warning("No patient exists, cannot save vital")
+            return None
         patient_id = patient.id
     
     # Ensure timestamp is timezone-aware (convert to UTC if naive)
@@ -230,6 +239,9 @@ def save_blood_pressure_as_vitals(db: Session, systolic, diastolic, map_value=No
     # Get patient_id if not provided
     if patient_id is None:
         patient = get_or_create_default_patient(db)
+        if not patient:
+            logger.warning("No patient exists, cannot save blood pressure as vitals")
+            return []
         patient_id = patient.id
     
     # Calculate MAP if not provided
@@ -263,6 +275,9 @@ def save_temperature_as_vitals(db: Session, body_temp=None, skin_temp=None, time
     # Get patient_id if not provided
     if patient_id is None:
         patient = get_or_create_default_patient(db)
+        if not patient:
+            logger.warning("No patient exists, cannot save temperature as vitals")
+            return []
         patient_id = patient.id
     
     # Save body temperature
@@ -345,41 +360,52 @@ def get_vitals_by_type(db: Session, vital_type, limit=100):
 
 def _group_multi_value_vitals(results, vital_type):
     """
-    Group multi-value vitals by timestamp to create combined entries
+    Group multi-value vitals by timestamp to create combined entries.
+    Accepts both ORM objects and dict-like items (e.g. from alternate query paths).
     """
     from collections import defaultdict
-    
+
+    def _ts(v):
+        return v.timestamp if hasattr(v, "timestamp") else v.get("timestamp") if isinstance(v, dict) else None
+
+    def _get(v, key, default=None):
+        return getattr(v, key, default) if not isinstance(v, dict) else v.get(key, default)
+
     grouped = defaultdict(dict)
-    
-    # Group by timestamp (rounded to nearest minute for grouping)
+
     for vital in results:
-        # Use timestamp as key (could round for grouping if needed)
-        ts_key = vital.timestamp
-        
+        ts_key = _ts(vital)
+        if ts_key is None:
+            continue
         if ts_key not in grouped:
             grouped[ts_key] = {
-                'datetime': vital.timestamp,
-                'notes': vital.notes
+                "datetime": ts_key,
+                "notes": _get(vital, "notes"),
             }
-        
-        # Add the specific value based on vital_group
-        if vital_type == 'blood_pressure':
-            if vital.vital_group == 'systolic':
-                grouped[ts_key]['systolic'] = int(vital.value)
-            elif vital.vital_group == 'diastolic':
-                grouped[ts_key]['diastolic'] = int(vital.value)
-            elif vital.vital_group == 'map':
-                grouped[ts_key]['map'] = int(vital.value)
-        elif vital_type == 'temperature':
-            if vital.vital_group == 'body':
-                grouped[ts_key]['body'] = vital.value
-            elif vital.vital_group == 'skin':
-                grouped[ts_key]['skin'] = vital.value
-    
-    # Convert to list and sort by datetime (newest first)
+        if vital_type == "blood_pressure":
+            grp = _get(vital, "vital_group")
+            val = _get(vital, "value")
+            if val is not None:
+                try:
+                    val = int(val)
+                except (TypeError, ValueError):
+                    pass
+            if grp == "systolic":
+                grouped[ts_key]["systolic"] = val
+            elif grp == "diastolic":
+                grouped[ts_key]["diastolic"] = val
+            elif grp == "map":
+                grouped[ts_key]["map"] = val
+        elif vital_type == "temperature":
+            grp = _get(vital, "vital_group")
+            val = _get(vital, "value")
+            if grp == "body":
+                grouped[ts_key]["body"] = val
+            elif grp == "skin":
+                grouped[ts_key]["skin"] = val
+
     result = list(grouped.values())
-    result.sort(key=lambda x: x['datetime'], reverse=True)
-    
+    result.sort(key=lambda x: x["datetime"] if x.get("datetime") is not None else "", reverse=True)
     return result
 
 
@@ -410,6 +436,9 @@ def save_pulse_ox_data(db: Session, spo2, bpm, pa, status=None, motion=None, spo
         # Get patient_id if not provided
         if patient_id is None:
             patient = get_or_create_default_patient(db)
+            if not patient:
+                logger.warning("No patient exists, cannot save pulse ox data")
+                return None
             patient_id = patient.id
 
         pulse_ox = PulseOxData(
@@ -474,13 +503,14 @@ def save_pulse_ox_batch(db: Session, data_points):
         return False
 
 
-def get_pulse_ox_data_by_date(db: Session, date_str):
+def get_pulse_ox_data_by_date(db: Session, date_str, patient_id=None):
     """
     Get all pulse ox data for a specific date
 
     Args:
         db (Session): Database session
         date_str (str): Date string in YYYY-MM-DD format
+        patient_id (int, optional): If set, filter to this patient only
 
     Returns:
         list: List of pulse ox readings for the date
@@ -492,10 +522,13 @@ def get_pulse_ox_data_by_date(db: Session, date_str):
         start_datetime = datetime.combine(date_obj, time.min)
         end_datetime = datetime.combine(date_obj, time.max)
         
-        data = db.query(PulseOxData).filter(
+        query = db.query(PulseOxData).filter(
             PulseOxData.timestamp >= start_datetime,
             PulseOxData.timestamp <= end_datetime
-        ).order_by(PulseOxData.timestamp.asc()).all()
+        )
+        if patient_id is not None:
+            query = query.filter(PulseOxData.patient_id == patient_id)
+        data = query.order_by(PulseOxData.timestamp.asc()).all()
         
         return data
     except Exception as e:
@@ -503,19 +536,20 @@ def get_pulse_ox_data_by_date(db: Session, date_str):
         return []
 
 
-def analyze_pulse_ox_day(db: Session, date_str):
+def analyze_pulse_ox_day(db: Session, date_str, patient_id=None):
     """
     Analyze pulse ox data for a specific day and return SpO2 distribution
 
     Args:
         db (Session): Database session
         date_str (str): Date string in YYYY-MM-DD format
+        patient_id (int, optional): If set, restrict to this patient only
 
     Returns:
         dict: Analysis results including time logged, SpO2 distribution, etc.
     """
     try:
-        data = get_pulse_ox_data_by_date(db, date_str)
+        data = get_pulse_ox_data_by_date(db, date_str, patient_id=patient_id)
         
         if not data:
             return {

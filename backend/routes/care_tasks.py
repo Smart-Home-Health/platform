@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from db import get_db
+from dependencies import require_read_access
 from models.care_tasks import (
     CareTaskCreate,
     CareTaskUpdate,
@@ -74,7 +75,7 @@ async def api_add_care_task(data: CareTaskCreate, db: Session = Depends(get_db))
 
 
 @router.get("/care-tasks/active")
-async def get_active_care_tasks_endpoint(patient_id: int = None, db: Session = Depends(get_db)):
+async def get_active_care_tasks_endpoint(patient_id: int = None, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get all active care tasks, optionally filtered by patient"""
     try:
         # If no patient_id provided, use current patient
@@ -90,7 +91,7 @@ async def get_active_care_tasks_endpoint(patient_id: int = None, db: Session = D
 
 
 @router.get("/care-tasks/inactive")
-async def get_inactive_care_tasks_endpoint(patient_id: int = None, db: Session = Depends(get_db)):
+async def get_inactive_care_tasks_endpoint(patient_id: int = None, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get all inactive care tasks, optionally filtered by patient"""
     try:
         # If no patient_id provided, use current patient
@@ -98,7 +99,7 @@ async def get_inactive_care_tasks_endpoint(patient_id: int = None, db: Session =
             current_patient = get_current_patient(db)
             patient_id = current_patient.id if current_patient else None
         
-        tasks = get_care_tasks(db, active_only=False, patient_id=patient_id)
+        tasks = get_care_tasks(db, active_only=False, inactive_only=True, patient_id=patient_id)
         return {"care_tasks": tasks}
     except Exception as e:
         logger.error(f"Error fetching inactive care tasks: {e}")
@@ -224,7 +225,7 @@ async def api_add_care_task_schedule(
 
 
 @router.get("/care-tasks/{care_task_id}/schedules")
-async def get_care_task_schedules_endpoint(care_task_id: int, patient_id: int = None, db: Session = Depends(get_db)):
+async def get_care_task_schedules_endpoint(care_task_id: int, patient_id: int = None, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get all schedules for a specific care task"""
     try:
         # If no patient_id provided, use current patient
@@ -240,7 +241,7 @@ async def get_care_task_schedules_endpoint(care_task_id: int, patient_id: int = 
 
 
 @router.get("/care-task-schedules")
-async def get_all_care_task_schedules_endpoint(active_only: bool = True, patient_id: int = None, db: Session = Depends(get_db)):
+async def get_all_care_task_schedules_endpoint(active_only: bool = True, patient_id: int = None, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get all care task schedules, optionally filtered by patient"""
     try:
         schedules = get_all_care_task_schedules(db, active_only, patient_id)
@@ -270,7 +271,7 @@ async def get_daily_care_task_schedule_endpoint(patient_id: int = None, db: Sess
 
 
 @router.get("/care-task-schedules/{schedule_id}")
-async def get_care_task_schedule_endpoint(schedule_id: int, db: Session = Depends(get_db)):
+async def get_care_task_schedule_endpoint(schedule_id: int, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get a specific care task schedule"""
     try:
         schedule = get_care_task_schedule(db, schedule_id)
@@ -461,15 +462,15 @@ async def get_admin_active_care_tasks_endpoint(patient_id: int = None, db: Sessi
 
 
 @router.get("/admin/care-tasks/inactive")
-async def get_admin_inactive_care_tasks_endpoint(patient_id: int = None, db: Session = Depends(get_db)):
+async def get_admin_inactive_care_tasks_endpoint(patient_id: int = None, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get inactive care tasks for admin view - can filter by patient_id or show all"""
     try:
         if patient_id:
-            # Get care tasks for specific patient + global care tasks
-            tasks = get_care_tasks(db, active_only=False, patient_id=patient_id)
+            # Get inactive care tasks for specific patient + global care tasks
+            tasks = get_care_tasks(db, active_only=False, inactive_only=True, patient_id=patient_id)
         else:
             # Get all inactive care tasks (admin overview) - pass None to get all
-            tasks = get_care_tasks(db, active_only=False, patient_id=-1)  # Use -1 to indicate "show all"
+            tasks = get_care_tasks(db, active_only=False, inactive_only=True, patient_id=-1)  # Use -1 to indicate "show all"
         
         return {"care_tasks": tasks}
     except Exception as e:
@@ -501,7 +502,7 @@ async def api_add_care_task_category(data: CareTaskCategoryCreate, db: Session =
 
 
 @router.get("/care-task-categories")
-async def get_care_task_categories_endpoint(db: Session = Depends(get_db)):
+async def get_care_task_categories_endpoint(db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get all care task categories"""
     try:
         categories = get_care_task_categories(db)
@@ -550,7 +551,97 @@ async def delete_care_task_category_endpoint(category_id: int, db: Session = Dep
         )
 
 
-# Additional endpoints using new CRUD functions
+# History and stats endpoints - MUST be before /care-tasks/{task_id} to avoid route conflicts
+@router.get("/care-tasks/history")
+async def get_care_task_history_endpoint(
+    patient_id: int = None,
+    task_id: int = None,
+    task_name: str = None,
+    category_id: int = None,
+    status_filter: str = None,
+    limit: int = 50,
+    start_date: str = None,
+    end_date: str = None,
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
+):
+    """
+    Get care task completion history with filtering options
+    
+    Query parameters:
+    - patient_id: Filter by patient ID
+    - task_id: Filter by specific task ID
+    - task_name: Filter by task name (partial match)
+    - category_id: Filter by category ID
+    - status_filter: Filter by status ('completed', 'skipped')
+    - limit: Maximum number of records (default 50)
+    - start_date: Filter by start date (YYYY-MM-DD format)
+    - end_date: Filter by end date (YYYY-MM-DD format)
+    """
+    try:
+        history = get_care_task_logs(
+            db=db,
+            task_id=task_id,
+            limit=limit,
+            start_date=start_date,
+            end_date=end_date,
+            patient_id=patient_id,
+            task_name=task_name,
+            category_id=category_id,
+            status_filter=status_filter
+        )
+        return {"history": history, "count": len(history)}
+    except Exception as e:
+        logger.error(f"Error getting care task history: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"Error retrieving care task history: {str(e)}"}
+        )
+
+
+@router.get("/care-tasks/completions/recent")
+async def get_recent_completions_endpoint(days: int = 7, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
+    """Get recent care task completions"""
+    try:
+        completions = get_recent_care_task_completions(db, days)
+        return {"completions": completions}
+    except Exception as e:
+        logger.error(f"Error getting recent care task completions: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"Error retrieving recent completions: {str(e)}"}
+        )
+
+
+@router.get("/care-tasks/stats/completion")
+async def get_completion_stats_endpoint(days: int = 30, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
+    """Get care task completion statistics"""
+    try:
+        stats = get_care_task_completion_stats(db, days)
+        return {"stats": stats}
+    except Exception as e:
+        logger.error(f"Error getting care task completion stats: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"Error retrieving completion stats: {str(e)}"}
+        )
+
+
+@router.get("/care-tasks/overdue")
+async def get_overdue_tasks_endpoint(db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
+    """Get overdue care tasks"""
+    try:
+        overdue_tasks = get_overdue_care_tasks(db)
+        return {"overdue_tasks": overdue_tasks}
+    except Exception as e:
+        logger.error(f"Error getting overdue care tasks: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"Error retrieving overdue tasks: {str(e)}"}
+        )
+
+
+# Dynamic task_id endpoint - MUST be after static routes like /history, /completions/recent, etc.
 @router.get("/care-tasks/{task_id}")
 async def get_care_task_endpoint(task_id: int, db: Session = Depends(get_db)):
     """Get a specific care task by ID"""
@@ -565,68 +656,6 @@ async def get_care_task_endpoint(task_id: int, db: Session = Depends(get_db)):
         return JSONResponse(
             status_code=500,
             content={"detail": f"Error retrieving care task: {str(e)}"}
-        )
-
-
-@router.get("/care-tasks/logs")
-async def get_care_task_logs_endpoint(
-    task_id: int = None, 
-    limit: int = 50, 
-    start_date: str = None, 
-    end_date: str = None, 
-    db: Session = Depends(get_db)
-):
-    """Get care task completion logs with optional filtering"""
-    try:
-        logs = get_care_task_logs(db, task_id, limit, start_date, end_date)
-        return {"logs": logs}
-    except Exception as e:
-        logger.error(f"Error getting care task logs: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={"detail": f"Error retrieving care task logs: {str(e)}"}
-        )
-
-
-@router.get("/care-tasks/completions/recent")
-async def get_recent_completions_endpoint(days: int = 7, db: Session = Depends(get_db)):
-    """Get recent care task completions"""
-    try:
-        completions = get_recent_care_task_completions(db, days)
-        return {"completions": completions}
-    except Exception as e:
-        logger.error(f"Error getting recent care task completions: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={"detail": f"Error retrieving recent completions: {str(e)}"}
-        )
-
-
-@router.get("/care-tasks/stats/completion")
-async def get_completion_stats_endpoint(days: int = 30, db: Session = Depends(get_db)):
-    """Get care task completion statistics"""
-    try:
-        stats = get_care_task_completion_stats(db, days)
-        return {"stats": stats}
-    except Exception as e:
-        logger.error(f"Error getting care task completion stats: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={"detail": f"Error retrieving completion stats: {str(e)}"}
-        )
-
-
-@router.get("/care-tasks/overdue")
-async def get_overdue_tasks_endpoint(db: Session = Depends(get_db)):
-    """Get overdue care tasks"""
-    try:
-        overdue_tasks = get_overdue_care_tasks(db)
-        return {"overdue_tasks": overdue_tasks}
-    except Exception as e:
-        logger.error(f"Error getting overdue care tasks: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={"detail": f"Error retrieving overdue tasks: {str(e)}"}
         )
 
 
@@ -656,7 +685,7 @@ async def validate_cron_expression_endpoint(data: CronValidation):
 
 
 @router.get("/care-task-schedules/{schedule_id}/next-times")
-async def get_next_scheduled_times_endpoint(schedule_id: int, count: int = 5, db: Session = Depends(get_db)):
+async def get_next_scheduled_times_endpoint(schedule_id: int, count: int = 5, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get the next N scheduled times for a specific schedule"""
     try:
         next_times = get_next_scheduled_times(db, schedule_id, count)

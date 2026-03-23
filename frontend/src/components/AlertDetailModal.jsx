@@ -27,7 +27,7 @@ const AlertDetailModal = ({ alert, onClose, onAcknowledge, initiateAcknowledge =
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch(`${config.apiUrl}/api/monitoring/alerts/${alert.id}/data`);
+      const response = await fetch(`${config.apiUrl}/api/monitoring/alerts/${alert.id}/data`, { credentials: 'include' });
       if (!response.ok) throw new Error(`Error fetching alert data: ${response.statusText}`);
       const data = await response.json();
       
@@ -72,7 +72,8 @@ const AlertDetailModal = ({ alert, onClose, onAcknowledge, initiateAcknowledge =
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        credentials: 'include'
       });
       
       // Log the response for debugging

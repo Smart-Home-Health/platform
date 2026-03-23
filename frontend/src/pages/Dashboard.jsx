@@ -20,15 +20,36 @@ import EquipmentModal from "../components/EquipmentModal";
 import HistoryModal from "../components/HistoryModal";
 import MedicationModal from "../components/MedicationModal";
 import CareTaskModal from "../components/CareTaskModal";
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { useAdminPatient } from '../contexts/AdminPatientContext';
 
 export default function Dashboard() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { isAuthenticated, readRestricted, unlockWithAccountPassword } = useAuth();
+  const { patients, selectedPatient, selectPatient, loadingPatients } = useAdminPatient();
+
   // Add mobile detection state
   const [isMobile, setIsMobile] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Add state for modal
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+
+  // Account unlock (24h) state
+  const [unlockPassword, setUnlockPassword] = useState('');
+  const [unlockError, setUnlockError] = useState('');
+  const [unlockLoading, setUnlockLoading] = useState(false);
+  const [forceRelock, setForceRelock] = useState(false);
+  const needsUnlock = !!readRestricted || !!forceRelock;
+
+  // Patient selection
+  const [showPatientModal, setShowPatientModal] = useState(false);
+
+  // Top-nav gating: after user selection, open requested modal
+  const [pendingOpenModal, setPendingOpenModal] = useState(null);
   
   // Add state for notification counts
   const [ventNotifications, setVentNotifications] = useState(2);
@@ -88,6 +109,79 @@ export default function Dashboard() {
   const [isAlarmBlinking, setIsAlarmBlinking] = useState(false);
   const alarmBlinkInterval = useRef(null);
 
+  // ------------------------------------------------------------
+  // Unlock (account password) & Patient selection gating
+  // ------------------------------------------------------------
+
+  // Enforce 24h unlock window (client-side)
+  useEffect(() => {
+    const raw = localStorage.getItem('dashboardUnlockedAt');
+    if (!raw) return;
+    const unlockedAt = Number(raw);
+    if (!Number.isFinite(unlockedAt)) return;
+    const ageMs = Date.now() - unlockedAt;
+    const maxMs = 24 * 60 * 60 * 1000;
+    if (ageMs >= maxMs) {
+      setForceRelock(true);
+    }
+  }, []);
+
+  // If we already have read access but no timestamp, set one so the 24h window applies
+  useEffect(() => {
+    if (readRestricted) return;
+    if (localStorage.getItem('dashboardUnlockedAt')) return;
+    localStorage.setItem('dashboardUnlockedAt', String(Date.now()));
+  }, [readRestricted]);
+
+  // URL -> patient selection sync
+  useEffect(() => {
+    const patientParam = searchParams.get('patient');
+    if (!patientParam) return;
+    if (loadingPatients || patients.length === 0) return;
+
+    const desiredId = Number(patientParam);
+    if (!Number.isFinite(desiredId)) return;
+    if (selectedPatient?.id === desiredId) return;
+
+    const found = patients.find(p => p.id === desiredId);
+    if (found) {
+      selectPatient(found);
+      setShowPatientModal(false);
+    }
+  }, [searchParams, loadingPatients, patients, selectedPatient, selectPatient]);
+
+  // If no patient selected, force patient picker (like Admin V2)
+  useEffect(() => {
+    if (loadingPatients) return;
+    const patientParam = searchParams.get('patient');
+    if (!patientParam && !selectedPatient) {
+      setShowPatientModal(true);
+    }
+  }, [loadingPatients, selectedPatient, searchParams]);
+
+  const handleSelectPatient = (patient) => {
+    selectPatient(patient);
+    setShowPatientModal(false);
+    if (patient?.id) {
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev);
+        next.set('patient', String(patient.id));
+        return next;
+      });
+    }
+  };
+
+  // After returning from /select-user, open a pending modal (top-nav)
+  useEffect(() => {
+    const requested = location.state?.openLiveModal || null;
+    if (!requested) return;
+    if (!isAuthenticated) return;
+    if (needsUnlock) return;
+    setPendingOpenModal(requested);
+    // Clear state so refresh doesn't re-open
+    navigate(location.pathname + location.search, { replace: true, state: {} });
+  }, [location.state, isAuthenticated, needsUnlock, navigate, location.pathname, location.search]);
+
   // Function to fetch chart data for a specific vital type
   const fetchChartData = async (vitalType, chartNumber) => {
     try {
@@ -102,21 +196,58 @@ export default function Dashboard() {
         return;
       }
       
+      if (!selectedPatient?.id || needsUnlock) {
+        if (chartNumber === 1) setDashboardChart1(prev => ({ ...prev, data: [] }));
+        else setDashboardChart2(prev => ({ ...prev, data: [] }));
+        return;
+      }
+
       console.log(`Fetching chart data for ${vitalType} (Chart ${chartNumber})`);
-      const response = await fetch(`${config.apiUrl}/api/vitals/${vitalType}?limit=20`);
+      const response = await fetch(
+        `${config.apiUrl}/api/vitals/patient/${selectedPatient.id}?vital_type=${encodeURIComponent(vitalType)}&limit=20`,
+        { credentials: 'include' }
+      );
       if (response.ok) {
-        const data = await response.json();
+        const raw = await response.json();
+        const data = Array.isArray(raw) ? raw : [];
         console.log(`Received ${data.length} records for ${vitalType}`);
+
+        const normalized = data.map((item) => {
+          // Patient vitals endpoint groups multi-value vitals under item.values and uses item.timestamp
+          if (vitalType === 'blood_pressure') {
+            return {
+              datetime: item.datetime || item.timestamp,
+              systolic: item.systolic ?? item.values?.systolic,
+              diastolic: item.diastolic ?? item.values?.diastolic,
+              map: item.map ?? item.values?.map,
+              value: item.value ?? item.values?.map ?? null,
+              notes: item.notes
+            };
+          }
+          if (vitalType === 'temperature') {
+            return {
+              datetime: item.datetime || item.timestamp,
+              body: item.body ?? item.values?.body ?? item.values?.body_temp,
+              skin: item.skin ?? item.values?.skin ?? item.values?.skin_temp,
+              value: item.value ?? item.values?.body ?? item.values?.body_temp ?? null,
+              notes: item.notes
+            };
+          }
+          return {
+            ...item,
+            datetime: item.datetime || item.timestamp
+          };
+        });
         
         if (chartNumber === 1) {
           setDashboardChart1(prev => ({
             ...prev,
-            data: data
+            data: normalized
           }));
         } else {
           setDashboardChart2(prev => ({
             ...prev,
-            data: data
+            data: normalized
           }));
         }
       } else {
@@ -144,10 +275,12 @@ export default function Dashboard() {
 
   // Load chart time range and perfusion display settings
   useEffect(() => {
+    if (needsUnlock) return;
+    if (!selectedPatient?.id) return;
     const loadSettings = async () => {
       try {
         console.log('Loading dashboard settings...');
-        const response = await fetch(`${config.apiUrl}/api/settings`);
+        const response = await fetch(`${config.apiUrl}/api/settings`, { credentials: 'include' });
         if (response.ok) {
           const settings = await response.json();
           console.log('All settings loaded:', settings);
@@ -200,14 +333,16 @@ export default function Dashboard() {
       }
     };
     loadSettings();
-  }, []);
+  }, [needsUnlock, selectedPatient?.id]);
 
   // Reload settings when settings modal is closed
   useEffect(() => {
+    if (needsUnlock) return;
+    if (!selectedPatient?.id) return;
     if (!isSettingsModalOpen) {
       const reloadSettings = async () => {
         try {
-          const response = await fetch(`${config.apiUrl}/api/settings`);
+          const response = await fetch(`${config.apiUrl}/api/settings`, { credentials: 'include' });
           if (response.ok) {
             const settings = await response.json();
             if (settings.chart_time_range) {
@@ -253,7 +388,7 @@ export default function Dashboard() {
       };
       reloadSettings();
     }
-  }, [isSettingsModalOpen]);
+  }, [isSettingsModalOpen, needsUnlock, selectedPatient?.id]);
 
   // Convert time range to data points
   const getMaxDataPoints = () => {
@@ -268,9 +403,24 @@ export default function Dashboard() {
     }
   };
 
+  // Account-scoped equipment due count (matches Equipment List API)
+  const fetchEquipmentDueCount = () => {
+    fetch(`${config.apiUrl}/api/equipment/due/count`, { credentials: 'include' })
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => { if (data != null && typeof data.count === 'number') setEquipmentDueCount(data.count); })
+      .catch(() => {});
+  };
+
   useEffect(() => {
-    console.log(`Connecting to WebSocket at: ${config.wsUrl}`);
-    const ws = new WebSocket(config.wsUrl);
+    fetchEquipmentDueCount();
+  }, []);
+
+  const wsRef = useRef(null);
+  useEffect(() => {
+    const url = config.wsUrl;
+    console.log(`Connecting to WebSocket at: ${url}`);
+    const ws = new WebSocket(url);
+    wsRef.current = ws;
 
     ws.onopen = () => console.log("WebSocket connected");
 
@@ -327,10 +477,8 @@ export default function Dashboard() {
           setVentNotifications(msg.state.vent_notifications);
         }
         
-        if (msg.state.equipment_due_count !== undefined) {
-          setEquipmentDueCount(msg.state.equipment_due_count);
-        }
-        
+        // Equipment due count: use account-scoped API (fetched on mount); WebSocket count is global so we don't use it for badge
+        // equipment_due_count: badge uses account-scoped API (see fetchEquipmentDueCount); skip WebSocket global count
         if (msg.state.medications !== undefined) {
           setMedicationDueCount(msg.state.medications);
         }
@@ -348,6 +496,11 @@ export default function Dashboard() {
         }
       }
       
+      else if (msg.type === "alarm_update") {
+        const alarmActive = !!(msg.alarm1 || msg.alarm2);
+        setIsAlarmActive(alarmActive);
+        prevAlarmActive.current = alarmActive;
+      }
       else if (msg.type === "alert_acknowledged") {
         if (msg.alerts_count !== undefined) {
           setPulseOxAlerts(msg.alerts_count);
@@ -355,9 +508,17 @@ export default function Dashboard() {
       }
     };
 
-    ws.onclose = () => console.log("WebSocket disconnected");
+    ws.onclose = () => {
+      if (wsRef.current === ws) wsRef.current = null;
+      console.log("WebSocket disconnected");
+    };
 
-    return () => ws.close();
+    return () => {
+      if (wsRef.current === ws) {
+        ws.close();
+        wsRef.current = null;
+      }
+    };
   }, []);
 
   const calculateAvg = (data) => {
@@ -412,11 +573,60 @@ export default function Dashboard() {
     setIsMobileMenuOpen(false);
   };
 
+  // Open a specific top-nav modal after user selection redirect
+  useEffect(() => {
+    if (!pendingOpenModal) return;
+    if (needsUnlock) return;
+    if (!isAuthenticated) return;
+
+    closeAllModals();
+    switch (pendingOpenModal) {
+      case 'equipment':
+        setIsVentModalOpen(true);
+        break;
+      case 'alerts':
+        setIsPulseOxModalOpen(true);
+        break;
+      case 'medications':
+        setIsMedicationModalOpen(true);
+        break;
+      case 'careTasks':
+        setIsCareTaskModalOpen(true);
+        break;
+      case 'history':
+        setIsHistoryModalOpen(true);
+        break;
+      case 'messages':
+        setIsMessagesModalOpen(true);
+        break;
+      case 'settings':
+        setIsSettingsModalOpen(true);
+        break;
+      default:
+        break;
+    }
+
+    setPendingOpenModal(null);
+  }, [pendingOpenModal, isAuthenticated, needsUnlock]);
+
+  const ensureUnlockAndUser = (modalKey) => {
+    if (needsUnlock) {
+      setUnlockError('Enter account password to unlock.');
+      return false;
+    }
+    if (!isAuthenticated) {
+      navigate('/select-user', { state: { from: location, openLiveModal: modalKey }, replace: false });
+      return false;
+    }
+    return true;
+  };
+
   // Add handler functions
   const handleVentClick = () => {
     if (isVentModalOpen) {
       setIsVentModalOpen(false);
     } else {
+      if (!ensureUnlockAndUser('equipment')) return;
       closeAllModals();
       setIsVentModalOpen(true);
     }
@@ -426,6 +636,7 @@ export default function Dashboard() {
     if (isPulseOxModalOpen) {
       setIsPulseOxModalOpen(false);
     } else {
+      if (!ensureUnlockAndUser('alerts')) return;
       closeAllModals();
       setIsPulseOxModalOpen(true);
     }
@@ -435,6 +646,7 @@ export default function Dashboard() {
     if (isSettingsModalOpen) {
       setIsSettingsModalOpen(false);
     } else {
+      if (!ensureUnlockAndUser('settings')) return;
       closeAllModals();
       setIsSettingsModalOpen(true);
     }
@@ -444,6 +656,7 @@ export default function Dashboard() {
     if (isHistoryModalOpen) {
       setIsHistoryModalOpen(false);
     } else {
+      if (!ensureUnlockAndUser('history')) return;
       closeAllModals();
       setIsHistoryModalOpen(true);
     }
@@ -453,6 +666,7 @@ export default function Dashboard() {
     if (isMessagesModalOpen) {
       setIsMessagesModalOpen(false);
     } else {
+      if (!ensureUnlockAndUser('messages')) return;
       closeAllModals();
       setIsMessagesModalOpen(true);
     }
@@ -462,6 +676,7 @@ export default function Dashboard() {
     if (isMedicationModalOpen) {
       setIsMedicationModalOpen(false);
     } else {
+      if (!ensureUnlockAndUser('medications')) return;
       closeAllModals();
       setIsMedicationModalOpen(true);
     }
@@ -471,6 +686,7 @@ export default function Dashboard() {
     if (isCareTaskModalOpen) {
       setIsCareTaskModalOpen(false);
     } else {
+      if (!ensureUnlockAndUser('careTasks')) return;
       closeAllModals();
       setIsCareTaskModalOpen(true);
     }
@@ -478,7 +694,7 @@ export default function Dashboard() {
 
   // Add this function to handle alert acknowledgment
   const handleAlertAcknowledged = (alertId) => {
-    fetch(`${config.apiUrl}/api/monitoring/alerts/count`)
+    fetch(`${config.apiUrl}/api/monitoring/alerts/count`, { credentials: 'include' })
       .then(response => response.json())
       .then(data => {
         if (data && data.count !== undefined) {
@@ -500,8 +716,119 @@ export default function Dashboard() {
     }
   }, [isPulseOxModalOpen, alertsViewedSent]);
 
+  const handleUnlockSubmit = async (e) => {
+    e.preventDefault();
+    setUnlockError('');
+    setUnlockLoading(true);
+    const result = await unlockWithAccountPassword(unlockPassword);
+    setUnlockLoading(false);
+    if (result.success) {
+      localStorage.setItem('dashboardUnlockedAt', String(Date.now()));
+      setForceRelock(false);
+      setUnlockPassword('');
+      setUnlockError('');
+    } else {
+      setUnlockError(result.error || 'Invalid account password');
+    }
+  };
+
   return (
     <div className="dashboard-wrapper">
+      <ModalBase
+        isOpen={needsUnlock}
+        onClose={() => {}}
+        title="Unlock"
+      >
+        <form onSubmit={handleUnlockSubmit}>
+          <p style={{ marginTop: 0 }}>
+            Enter the account unlock password to view dashboard data.
+          </p>
+          {unlockError && (
+            <div style={{ color: '#f85149', marginBottom: '0.75rem' }}>
+              {unlockError}
+            </div>
+          )}
+          <input
+            type="password"
+            value={unlockPassword}
+            onChange={(e) => setUnlockPassword(e.target.value)}
+            placeholder="Account password"
+            autoFocus
+            disabled={unlockLoading}
+            style={{
+              width: '100%',
+              padding: '0.75rem',
+              borderRadius: '8px',
+              border: '1px solid #30363d',
+              background: '#0d1117',
+              color: '#f0f6fc',
+              marginBottom: '0.75rem'
+            }}
+          />
+          <button
+            type="submit"
+            disabled={unlockLoading || !unlockPassword}
+            style={{
+              width: '100%',
+              padding: '0.75rem',
+              borderRadius: '8px',
+              border: '1px solid #2ea043',
+              background: '#238636',
+              color: '#fff',
+              cursor: unlockLoading ? 'default' : 'pointer'
+            }}
+          >
+            {unlockLoading ? 'Unlocking…' : 'Unlock'}
+          </button>
+        </form>
+      </ModalBase>
+
+      <ModalBase
+        isOpen={!needsUnlock && showPatientModal}
+        onClose={() => { if (selectedPatient) setShowPatientModal(false); }}
+        title="Select Patient"
+      >
+        {loadingPatients ? (
+          <div>Loading patients…</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {patients.filter(p => p.is_active).map((p) => (
+              <button
+                key={p.id}
+                onClick={() => handleSelectPatient(p)}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: '0.75rem',
+                  padding: '0.75rem',
+                  borderRadius: '10px',
+                  border: '1px solid #30363d',
+                  background: selectedPatient?.id === p.id ? 'rgba(88, 166, 255, 0.12)' : '#161b22',
+                  color: '#f0f6fc',
+                  cursor: 'pointer',
+                  textAlign: 'left'
+                }}
+              >
+                <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                  <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {p.first_name} {p.last_name}
+                  </strong>
+                  <span style={{ color: '#8b949e', fontSize: '0.85rem' }}>
+                    {p.room || 'No room assigned'}
+                  </span>
+                </div>
+                <span style={{ color: '#8b949e', whiteSpace: 'nowrap' }}>
+                  #{p.id}
+                </span>
+              </button>
+            ))}
+            {patients.filter(p => p.is_active).length === 0 && (
+              <div>No active patients found.</div>
+            )}
+          </div>
+        )}
+      </ModalBase>
+
       <div className={`header-section${isAlarmBlinking ? ' alarm-blink' : ''}${isAlarmActive ? ' alarm-active' : ''}`}>
         {isMobile ? (
           // Mobile Header
@@ -918,7 +1245,7 @@ export default function Dashboard() {
       {isVentModalOpen && (
         <EquipmentModal 
           isOpen={isVentModalOpen} 
-          onClose={() => setIsVentModalOpen(false)} 
+          onClose={() => { setIsVentModalOpen(false); fetchEquipmentDueCount(); }} 
           equipmentDueCount={equipmentDueCount} 
         />
       )}

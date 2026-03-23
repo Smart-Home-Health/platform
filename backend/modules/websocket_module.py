@@ -27,6 +27,8 @@ class WebSocketModule:
         
         # Current state cache for new client synchronization
         self.current_state = {}
+        # Per-patient latest readings (patient_id -> { spo2, bpm, ts, ... }) for care dashboard
+        self.patient_readings: Dict[int, Dict[str, Any]] = {}
         
     async def start_event_subscribers(self):
         """Start subscribing to relevant events."""
@@ -41,13 +43,31 @@ class WebSocketModule:
         
         logger.info("WebSocket module event subscribers started")
 
+    def _normalize_sensor_values(self, values: dict) -> dict:
+        """Normalize alternate key names (e.g. perf→perfusion, alarm_spo2→spo2_alarm)."""
+        out = dict(values)
+        if 'perf' in out and 'perfusion' not in out:
+            out['perfusion'] = out['perf']
+        if 'alarm_spo2' in out:
+            out['spo2_alarm'] = out['alarm_spo2']
+        if 'alarm_bpm' in out:
+            out['bpm_alarm'] = out['alarm_bpm']
+        return out
+
     async def _subscribe_to_sensor_updates(self):
         """Subscribe to sensor update events and broadcast to clients."""
         async for event in self.event_bus.subscribe_to_type(SensorUpdate):
             try:
-                # Update current state cache
-                self.current_state.update(event.values)
-                
+                # Normalize keys (perf→perfusion, alarm_spo2/alarm_bpm) then update cache
+                normalized = self._normalize_sensor_values(event.values)
+                self.current_state.update(normalized)
+                # Per-patient readings for care dashboard
+                pid = getattr(event, 'patient_id', None)
+                if pid is not None:
+                    self.patient_readings[pid] = {
+                        **normalized,
+                        'ts': event.ts.isoformat(),
+                    }
                 # Broadcast to all connected clients
                 await self._broadcast_sensor_update(event)
                 
@@ -61,6 +81,11 @@ class WebSocketModule:
                 # Update current state cache
                 self.current_state['alarm1'] = event.alarm1
                 self.current_state['alarm2'] = event.alarm2
+                # Per-patient alarm state for care dashboard
+                pid = getattr(event, 'patient_id', None)
+                if pid is not None and pid in self.patient_readings:
+                    self.patient_readings[pid]['alarm1'] = event.alarm1
+                    self.patient_readings[pid]['alarm2'] = event.alarm2
                 
                 # Broadcast to all connected clients
                 await self._broadcast_alarm_update(event)
@@ -237,56 +262,71 @@ class WebSocketModule:
             from crud.scheduling import get_due_and_upcoming_care_tasks_count
             from crud.monitoring import get_unacknowledged_alerts_count, get_active_ventilator_alerts_count
             from crud.settings import get_all_settings
-            from crud.vitals import get_last_n_blood_pressure, get_last_n_temperature, get_vitals_by_type, _group_multi_value_vitals
+            from crud.vitals import get_last_n_blood_pressure, get_last_n_temperature, get_vitals_by_type
             
             state = self.current_state.copy()
             
             with get_db_session() as db:
-                # Get alert counts
-                pulse_ox_alerts = get_unacknowledged_alerts_count(db)
-                vent_alerts = get_active_ventilator_alerts_count(db)
-                alerts_count = pulse_ox_alerts + vent_alerts
-                
-                # Get equipment and medication counts
-                equipment_due_count = get_equipment_due_count(db)
-                medications_due_count = get_due_and_upcoming_medications_count(db)
-                care_tasks_due_count = get_due_and_upcoming_care_tasks_count(db)
-                
-                # Get settings - handle the dict format returned by get_all_settings
-                settings_result = get_all_settings(db)
+                # Get alert counts (rollback on failure so later queries don't see aborted transaction)
+                try:
+                    pulse_ox_alerts = get_unacknowledged_alerts_count(db)
+                    vent_alerts = get_active_ventilator_alerts_count(db)
+                    alerts_count = pulse_ox_alerts + vent_alerts
+                except Exception as e:
+                    logger.warning(f"Error getting alert counts: {e}")
+                    db.rollback()
+                    alerts_count = 0
+
+                try:
+                    equipment_due_count = get_equipment_due_count(db)
+                except Exception as e:
+                    logger.warning(f"Error getting equipment due count: {e}")
+                    db.rollback()
+                    equipment_due_count = 0
+                try:
+                    medications_due_count = get_due_and_upcoming_medications_count(db)
+                except Exception as e:
+                    logger.warning(f"Error getting medications due count: {e}")
+                    db.rollback()
+                    medications_due_count = 0
+                try:
+                    care_tasks_due_count = get_due_and_upcoming_care_tasks_count(db)
+                except Exception as e:
+                    logger.warning(f"Error getting care tasks due count: {e}")
+                    db.rollback()
+                    care_tasks_due_count = 0
+
+                try:
+                    settings_result = get_all_settings(db)
+                except Exception as e:
+                    logger.warning(f"Error getting settings: {e}")
+                    db.rollback()
+                    settings_result = None
                 settings_dict = {}
-                
-                # Handle the dict format returned by get_all_settings
                 if settings_result and isinstance(settings_result, dict):
                     for key, value in settings_result.items():
                         settings_dict[key] = {"value": value, "type": type(value).__name__}
-                else:
+                elif settings_result is not None:
                     logger.warning(f"Unexpected settings result format: {type(settings_result)}")
-                    settings_dict = {}
                 
                 # Get recent vitals - try unified approach first, fallback to legacy
+                # get_vitals_by_type already returns grouped dicts for blood_pressure/temperature
                 try:
-                    # Try to get blood pressure from unified vitals
-                    bp_vitals = get_vitals_by_type(db, 'blood_pressure', limit=5)
-                    bp_history = _group_multi_value_vitals(bp_vitals, 'blood_pressure')
-                    
-                    # If no unified data, fallback to legacy table
+                    bp_history = get_vitals_by_type(db, 'blood_pressure', limit=5)
                     if not bp_history:
                         bp_history = get_last_n_blood_pressure(db, 5)
                 except Exception as e:
                     logger.warning(f"Error getting unified BP data, falling back to legacy: {e}")
+                    db.rollback()
                     bp_history = get_last_n_blood_pressure(db, 5)
                 
                 try:
-                    # Try to get temperature from unified vitals
-                    temp_vitals = get_vitals_by_type(db, 'temperature', limit=10)
-                    temp_history = _group_multi_value_vitals(temp_vitals, 'temperature')
-                    
-                    # If no unified data, fallback to legacy table
+                    temp_history = get_vitals_by_type(db, 'temperature', limit=10)
                     if not temp_history:
                         temp_history = get_last_n_temperature(db, 10)
                 except Exception as e:
                     logger.warning(f"Error getting unified temp data, falling back to legacy: {e}")
+                    db.rollback()
                     temp_history = get_last_n_temperature(db, 10)
                 
                 # Get dashboard chart data with safe defaults
@@ -301,12 +341,14 @@ class WebSocketModule:
                         chart_1_data = get_vitals_by_type(db, chart_1_vital, limit=20)
                 except Exception as e:
                     logger.warning(f"Error getting chart 1 data for {chart_1_vital}: {e}")
+                    db.rollback()
                 
                 try:
                     if chart_2_vital and chart_2_vital != chart_1_vital:
                         chart_2_data = get_vitals_by_type(db, chart_2_vital, limit=20)
                 except Exception as e:
                     logger.warning(f"Error getting chart 2 data for {chart_2_vital}: {e}")
+                    db.rollback()
             
             # Build comprehensive state
             state.update({
@@ -350,13 +392,12 @@ class WebSocketModule:
             if isinstance(bpm_val, (int, float)) and bpm_val != -1 and bpm_val is not None:
                 state['bpm_alarm'] = bpm_val < min_bpm or bpm_val > max_bpm
 
-            # Combined alarm flag
-            state['alarm'] = (
-                state.get('alarm1', False) or
-                state.get('alarm2', False) or
-                state['spo2_alarm'] or
-                state['bpm_alarm']
-            )
+            # Combined alarm flag: only vitals (SpO2/BPM) so banner clears when O2 and BPM are normal
+            state['alarm'] = state['spo2_alarm'] or state['bpm_alarm']
+            # Per-patient readings for care dashboard (keys as strings for JSON)
+            state['patient_readings'] = {
+                str(pid): data for pid, data in self.patient_readings.items()
+            }
             
             logger.debug(f"Built full state with {len(state)} keys")
             return state
@@ -384,7 +425,8 @@ class WebSocketModule:
                 'bpm_alarm': False,
                 'alarm': False,
                 'dashboard_chart_1': {'vital_type': 'blood_pressure', 'data': []},
-                'dashboard_chart_2': {'vital_type': 'temperature', 'data': []}
+                'dashboard_chart_2': {'vital_type': 'temperature', 'data': []},
+                'patient_readings': {},
             })
             
             return minimal_state

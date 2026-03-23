@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import config from '../../config';
 import AlertDetailModal from '../AlertDetailModal';
 
-const AlertsList = ({ onAlertAcknowledge }) => {
+const AlertsList = ({ onAlertAcknowledge, patientId }) => {
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -14,13 +14,17 @@ const AlertsList = ({ onAlertAcknowledge }) => {
 
   useEffect(() => {
     fetchAlerts();
-  }, [showAcknowledged]);
+  }, [showAcknowledged, patientId]);
 
   const fetchAlerts = async () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch(`${config.apiUrl}/api/monitoring/alerts?include_acknowledged=${showAcknowledged}`);
+      let url = `${config.apiUrl}/api/monitoring/alerts?include_acknowledged=${showAcknowledged}`;
+      if (patientId != null) {
+        url += `&patient_id=${patientId}`;
+      }
+      const response = await fetch(url, { credentials: 'include' });
       if (!response.ok) throw new Error(`Error fetching alerts: ${response.statusText}`);
       const data = await response.json();
       setAlerts(data);
@@ -51,14 +55,19 @@ const AlertsList = ({ onAlertAcknowledge }) => {
     setAcknowledgeAllLoading(true);
     try {
       // Get all unacknowledged alerts
-      const response = await fetch(`${config.apiUrl}/api/monitoring/alerts?include_acknowledged=false`);
+      let url = `${config.apiUrl}/api/monitoring/alerts?include_acknowledged=false`;
+      if (patientId != null) {
+        url += `&patient_id=${patientId}`;
+      }
+      const response = await fetch(url, { credentials: 'include' });
       if (!response.ok) throw new Error('Failed to fetch alerts');
       const alerts = await response.json();
       await Promise.all(alerts.map(alert =>
         fetch(`${config.apiUrl}/api/monitoring/alerts/${alert.id}/acknowledge`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}) // Always send a JSON body
+          body: JSON.stringify({}), // Always send a JSON body
+          credentials: 'include'
         })
       ));
       fetchAlerts(); // Refresh the alerts list

@@ -6,6 +6,7 @@ from schemas import Base
 class Medication(Base):
     __tablename__ = 'medication'
     id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey('accounts.id', ondelete='CASCADE'), nullable=True, index=True)  # Account this medication belongs to
     patient_id = Column(Integer, ForeignKey('patients.id'), nullable=True)  # NULL = global medication
     prescriber_id = Column(Integer, ForeignKey('providers.id'), nullable=True)  # Provider who prescribed this medication
     pharmacy_id = Column(Integer, ForeignKey('businesses.id'), nullable=True)  # Pharmacy business where medication is filled

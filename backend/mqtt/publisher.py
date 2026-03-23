@@ -5,7 +5,13 @@ import json
 import logging
 from datetime import datetime
 from typing import Dict, Any, Optional
-from .settings import get_mqtt_settings, get_vital_topic_config
+from .settings import (
+    get_mqtt_settings,
+    get_vital_topic_config,
+    get_patient_state_topic,
+    section_allows_get,
+    state_key_to_section,
+)
 
 logger = logging.getLogger('mqtt.publisher')
 
@@ -112,7 +118,35 @@ class MQTTPublisher:
         except Exception as e:
             logger.error(f"Error publishing {vital_type} data to MQTT: {str(e)}")
             return False
-            
+
+    def publish_patient_combined_state(self, patient_id: int, state: Dict[str, Any]) -> bool:
+        """
+        Publish combined state for one patient to {base}/patient/{id}/state.
+        Only includes keys for which this patient's MQTT config allows 'get'.
+        state: e.g. { "spo2": 99, "bpm": 100, "perfusion": 0.5, "alarm": false, ... }
+        """
+        if not self.is_available():
+            return False
+        topic = get_patient_state_topic(patient_id)
+        if not topic:
+            return False
+        filtered = {}
+        for key, value in state.items():
+            if value is None:
+                continue
+            section = state_key_to_section(key)
+            if section_allows_get(patient_id, section):
+                filtered[key] = value
+        if not filtered:
+            return False
+        payload = {**filtered, "timestamp": datetime.now().strftime("%y-%b-%d %H:%M:%S")}
+        try:
+            result = self.mqtt_client.publish(topic, json.dumps(payload, default=str), retain=True)
+            return result.rc == 0
+        except Exception as e:
+            logger.error(f"Error publishing patient {patient_id} state: {e}")
+            return False
+
     def _publish_pulse_ox_data(self, sensor_state: Dict[str, Any], settings: Dict[str, Any], timestamp: str) -> bool:
         """Publish SpO2, BPM, and Perfusion data"""
         topics = settings.get('topics', {})
@@ -234,9 +268,15 @@ class MQTTPublisher:
                 "notes": vital_data.get('notes')
             })
         elif vital_type == 'temperature':
+            # Manual form may send single 'temperature' key; map to body_temp for MQTT
+            body_temp = vital_data.get('body_temp')
+            skin_temp = vital_data.get('skin_temp')
+            if body_temp is None and skin_temp is None and vital_data.get('temperature') is not None:
+                body_temp = vital_data.get('temperature')
             base_payload.update({
-                "skin_temp": vital_data.get('skin_temp'),
-                "body_temp": vital_data.get('body_temp')
+                "skin_temp": skin_temp,
+                "body_temp": body_temp,
+                "value": body_temp if body_temp is not None else skin_temp,
             })
         elif vital_type == 'blood_pressure':
             base_payload.update({

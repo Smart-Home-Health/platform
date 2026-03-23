@@ -1,53 +1,170 @@
 """
 MQTT Discovery - Home Assistant MQTT Discovery functionality
+
+Multi-patient: one sensor entity per enabled vital per patient.
+State topic: { base_topic }/patient/{ patient_id }/state with JSON { spo2, bpm, perfusion, ... }.
+Device and entity names use the patient's name (e.g. "john"), not "Patient 1".
 """
 import json
 import logging
-from typing import Dict, Any, Optional
-from .settings import get_mqtt_settings
+import re
+from typing import Dict, Any, Optional, List, Tuple
+from .settings import get_mqtt_settings, get_patients_with_mqtt_enabled
 
 logger = logging.getLogger('mqtt.discovery')
 
-def send_mqtt_discovery(mqtt_client, test_mode: bool = True) -> bool:
+# Section key -> (value_template, unit_of_measurement, display_name) for discovery
+# Sections with get/both permission get one sensor each; state_topic is same for all (combined JSON).
+# blood_pressure is special-cased in the loop to create three sensors (systolic, diastolic, MAP).
+SECTION_DISCOVERY: Dict[str, Tuple[str, str, str]] = {
+    "spo2": ("{{ value_json.spo2 }}", "%", "SpO₂"),
+    "bpm": ("{{ value_json.bpm }}", "BPM", "Heart Rate"),
+    "heart_rate": ("{{ value_json.bpm }}", "BPM", "Heart Rate"),
+    "perfusion": ("{{ value_json.perfusion }}", "PI", "Perfusion"),
+    "temperature": ("{{ value_json.body_temp | default(value_json.skin_temp) }}", "°F", "Temperature"),
+    "blood_pressure": ("{{ value_json.map_bp | default(value_json.systolic_bp) }}", "mmHg", "Blood Pressure"),
+}
+
+# Blood pressure: three sensors per patient (systolic, diastolic, MAP) on same state_topic
+BLOOD_PRESSURE_SENSORS: List[Tuple[str, str, str]] = [
+    ("{{ value_json.systolic_bp }}", "mmHg", "Blood Pressure Systolic"),
+    ("{{ value_json.diastolic_bp }}", "mmHg", "Blood Pressure Diastolic"),
+    ("{{ value_json.map_bp }}", "mmHg", "Blood Pressure MAP"),
+]
+
+
+def _safe_device_id(name: str, patient_id: int) -> str:
+    """HA-friendly device identifier: lowercase alphanumeric + underscores, fallback to patient id."""
+    if not name:
+        return f"shh_patient_{patient_id}"
+    safe = re.sub(r"[^a-z0-9]+", "_", name.lower().strip()).strip("_")
+    return f"shh_{safe}" if safe else f"shh_patient_{patient_id}"
+
+
+def send_mqtt_discovery(mqtt_client, test_mode: bool = True, patient_id: Optional[int] = None) -> bool:
     """
     Send MQTT Discovery messages to Home Assistant.
-    
+
+    When patient_id is set, send discovery only for that patient.
+    When patient_id is None, send discovery for all patients with MQTT enabled.
+    Uses patient name (e.g. "john") for device/entity names, not "Patient #".
+    Sends one sensor per enabled section (SpO₂, Heart Rate, Perfusion, Temperature, Blood Pressure)
+    that has get or both permission.
+
     Args:
         mqtt_client: The connected MQTT client
         test_mode: If True, uses {base_topic}-test instead of {base_topic}
-        
+        patient_id: If set, only this patient; else all enabled patients
+
     Returns:
-        bool: True if discovery messages were sent successfully
+        bool: True if at least one discovery message was sent successfully
     """
     if not mqtt_client or not mqtt_client.is_connected():
         logger.error("MQTT client not available for discovery")
         return False
-        
+
     settings = get_mqtt_settings()
     if not settings['enabled']:
         logger.warning("MQTT disabled, skipping discovery")
         return False
-        
-    # Get base topic from database settings
+
     base_topic = settings.get('base_topic', 'shh')
-    
-    # Apply test mode suffix
     if test_mode:
         base_topic = f"{base_topic}-test"
-    
-    discovery_prefix = "homeassistant"
-    topics_config = settings.get('topics', {})
-    
-    device_info = {
-        "mf": "Smart Home Health",
-        "mdl": "Smart Healthcare Hub",
-        "name": "Medical Device Monitor",
-        "ids": ["shh_medical_hub"]
-    }
 
+    patients: List[Dict[str, Any]] = get_patients_with_mqtt_enabled()
+    if patient_id is not None:
+        patients = [p for p in patients if p["patient_id"] == patient_id]
+    if not patients:
+        logger.info("No patients with MQTT enabled for discovery")
+        return False
+
+    discovery_prefix = "homeassistant"
+    success_count = 0
+
+    for entry in patients:
+        pid = entry["patient_id"]
+        patient_name = entry.get("patient_name") or f"Patient {pid}"
+        sections = (entry.get("settings") or {}).get("sections") or {}
+        state_topic = f"{base_topic}/patient/{pid}/state"
+        device_ident = _safe_device_id(patient_name, pid)
+        device_info = {
+            "identifiers": [device_ident],
+            "name": patient_name,
+            "mf": "Smart Home Health",
+            "mdl": "Smart Healthcare Hub",
+        }
+
+        # One sensor per section that allows get or both (blood_pressure → three sensors: systolic, diastolic, MAP)
+        for section_key, perm in sections.items():
+            if perm not in ("get", "both"):
+                continue
+            if section_key == "blood_pressure":
+                for idx, (val_tpl, unit, display_name) in enumerate(BLOOD_PRESSURE_SENSORS):
+                    safe_section = f"blood_pressure_{['systolic', 'diastolic', 'map'][idx]}"
+                    sensor_id = f"{device_ident}_{safe_section}"
+                    config = {
+                        "uniq_id": f"{base_topic}_patient_{pid}_{safe_section}",
+                        "name": f"{patient_name} {display_name}",
+                        "stat_t": state_topic,
+                        "val_tpl": val_tpl,
+                        "json_attr_t": state_topic,
+                        "avty_t": f"{base_topic}/availability",
+                        "unit_of_meas": unit,
+                        "stat_cla": "measurement",
+                        "dev": device_info,
+                    }
+                    discovery_topic = f"{discovery_prefix}/sensor/{sensor_id}/config"
+                    try:
+                        result = mqtt_client.publish(discovery_topic, json.dumps(config), retain=True)
+                        if result.rc == 0:
+                            logger.info(f"Sent MQTT Discovery for {patient_name} {display_name} to {discovery_topic}")
+                            success_count += 1
+                        else:
+                            logger.error(f"Failed to send discovery for {sensor_id}: rc={result.rc}")
+                    except Exception as e:
+                        logger.error(f"Error sending discovery for {sensor_id}: {e}")
+                continue
+            section_config = SECTION_DISCOVERY.get(section_key)
+            if not section_config:
+                continue
+            val_tpl, unit, display_name = section_config
+            safe_section = section_key.replace(" ", "_").lower()
+            sensor_id = f"{device_ident}_{safe_section}"
+            config = {
+                "uniq_id": f"{base_topic}_patient_{pid}_{safe_section}",
+                "name": f"{patient_name} {display_name}",
+                "stat_t": state_topic,
+                "val_tpl": val_tpl,
+                "json_attr_t": state_topic,
+                "avty_t": f"{base_topic}/availability",
+                "unit_of_meas": unit,
+                "stat_cla": "measurement",
+                "dev": device_info,
+            }
+            discovery_topic = f"{discovery_prefix}/sensor/{sensor_id}/config"
+            try:
+                result = mqtt_client.publish(discovery_topic, json.dumps(config), retain=True)
+                if result.rc == 0:
+                    logger.info(f"Sent MQTT Discovery for {patient_name} {display_name} to {discovery_topic}")
+                    success_count += 1
+                else:
+                    logger.error(f"Failed to send discovery for {sensor_id}: rc={result.rc}")
+            except Exception as e:
+                logger.error(f"Error sending discovery for {sensor_id}: {e}")
+
+    logger.info(f"Sent {success_count} MQTT Discovery messages (per-vital per patient)")
+    return success_count > 0
+
+
+def _send_legacy_mqtt_discovery(mqtt_client, test_mode: bool, base_topic: str, topics_config: dict, device_info: dict) -> int:
+    """
+    Legacy: send one sensor per vital (old behavior). Used only when no patients have MQTT enabled.
+    Returns count of discovery messages sent.
+    """
+    discovery_prefix = "homeassistant"
     sensors = {}
     
-    # Generate sensors dynamically based on enabled topics
     for vital_name, config in topics_config.items():
         if not config.get('enabled', False):
             continue

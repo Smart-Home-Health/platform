@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, Boolean, TIMESTAMP
+from sqlalchemy import Column, Integer, String, Text, Boolean, TIMESTAMP, ForeignKey
 from sqlalchemy.orm import relationship
 from schemas import Base
 
@@ -6,6 +6,7 @@ from schemas import Base
 class CareTaskCategory(Base):
     __tablename__ = 'care_task_category'
     id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey('accounts.id', ondelete='CASCADE'), nullable=True, index=True)  # Account this category belongs to
     name = Column(String, nullable=False, unique=True)
     description = Column(Text, nullable=True)
     color = Column(String, nullable=True)  # Hex color code for category display

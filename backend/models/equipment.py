@@ -10,6 +10,7 @@ class EquipmentCreate(BaseModel):
     scheduled_replacement: bool = True
     last_changed: Optional[date] = None
     useful_days: Optional[int] = Field(None, gt=0)
+    patient_id: Optional[int] = None
 
 
 class EquipmentUpdate(BaseModel):

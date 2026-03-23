@@ -1,7 +1,6 @@
 import threading
 import asyncio
 import json  # Add this import
-import platform
 import logging
 import os
 from typing import Optional
@@ -15,19 +14,21 @@ from bus import EventBus
 from events import SensorUpdate, EventSource
 
 # Import modules
-from modules.serial_module import SerialModule
-from modules.gpio_module import GPIOModule
 from modules.websocket_module import WebSocketModule
 from modules.mqtt_module import MQTTModule
 from modules.state_module import StateModule
 
 # Import route modules
-from routes import core, settings, vitals, medications, care_tasks, equipment, monitoring, mqtt, serial, status, patients, nutrition, businesses, providers
+from routes import core, settings, vitals, medications, care_tasks, equipment, monitoring, mqtt, status, patients, nutrition, businesses, providers, auth, users, schedule, dashboard, symptoms, diagnoses, implants, dme_shipments, account, integrations, readers
 
 # Import legacy components
 from mqtt import initialize_mqtt_service, shutdown_mqtt_service
 from db import get_db
 from crud.settings import get_setting, save_setting
+
+# Import auth components
+from middleware import AuthenticationMiddleware
+from seed_auth import seed_default_data
 
 load_dotenv()
 
@@ -37,44 +38,27 @@ logger = logging.getLogger("app")
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 
-# Platform detection for GPIO functionality
-def is_raspberry_pi():
-    """Check if running on Raspberry Pi"""
-    try:
-        with open('/proc/cpuinfo', 'r') as f:
-            return any('BCM' in line for line in f)
-    except (FileNotFoundError, PermissionError):
-        return False
-
-def is_gpio_available():
-    """Check if GPIO functionality is available"""
-    if not is_raspberry_pi():
-        return False
-    try:
-        import lgpio
-        return True
-    except ImportError:
-        return False
-
-# Determine GPIO availability
-GPIO_AVAILABLE = is_gpio_available()
-if GPIO_AVAILABLE:
-    print("[main] GPIO functionality available - running on Raspberry Pi")
-else:
-    print("[main] GPIO functionality not available - running on non-Raspberry Pi system")
-
 # FastAPI app setup
 app = FastAPI()
 
+# Add CORS middleware (must be first).
+# With credentials=True we cannot use allow_origins=["*"]; use regex to allow localhost and LAN origins.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[],  # No wildcard when credentials=True
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3})(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
+# Add authentication middleware
+app.add_middleware(AuthenticationMiddleware)
+
 # Register route modules
+app.include_router(auth.router)  # Auth routes first (public)
+app.include_router(account.router)  # Account management
 app.include_router(core.router)
 app.include_router(settings.router)
 app.include_router(vitals.router)
@@ -83,17 +67,23 @@ app.include_router(care_tasks.router)
 app.include_router(equipment.router)
 app.include_router(monitoring.router)
 app.include_router(mqtt.router)
-app.include_router(serial.router)
 app.include_router(status.router)
 app.include_router(patients.router)
 app.include_router(nutrition.router)
 app.include_router(businesses.router)
 app.include_router(providers.router)
+app.include_router(users.router)
+app.include_router(schedule.router)
+app.include_router(dashboard.router)
+app.include_router(symptoms.router)
+app.include_router(diagnoses.router)
+app.include_router(implants.router)
+app.include_router(dme_shipments.router)
+app.include_router(integrations.router)
+app.include_router(readers.router)
 
 # Global event bus and modules
 event_bus = EventBus(maxsize=1000)
-serial_module: Optional[SerialModule] = None
-gpio_module: Optional[GPIOModule] = None
 websocket_module: Optional[WebSocketModule] = None
 mqtt_module: Optional[MQTTModule] = None
 state_module: Optional[StateModule] = None
@@ -143,7 +133,7 @@ def mqtt_update_bridge(*args, **kwargs):
 
 @app.on_event("startup")
 async def startup_event():
-    global serial_module, gpio_module, websocket_module, mqtt_module, state_module
+    global websocket_module, mqtt_module, state_module
     
     logger.info("[main] Starting event-driven backend system")
     
@@ -183,18 +173,12 @@ async def startup_event():
     if get_setting(db, "dark_mode") is None:
         save_setting(db, "dark_mode", True, "bool", "Dark mode enabled")
 
-    # Initialize default GPIO alarm settings if they don't exist
-    if get_setting(db, "alarm1_device") is None:
-        save_setting(db, "alarm1_device", "vent", "string", "Device type for Alarm 1 RJ9 port")
-
-    if get_setting(db, "alarm2_device") is None:
-        save_setting(db, "alarm2_device", "pulseox", "string", "Device type for Alarm 2 RJ9 port")
-
-    if get_setting(db, "alarm1_recovery_time") is None:
-        save_setting(db, "alarm1_recovery_time", 30, "int", "Recovery time in seconds for Alarm 1")
-
-    if get_setting(db, "alarm2_recovery_time") is None:
-        save_setting(db, "alarm2_recovery_time", 30, "int", "Recovery time in seconds for Alarm 2")
+    # Seed default roles and permissions for authentication system
+    try:
+        seed_default_data(db)
+        logger.info("[main] Default roles and permissions seeded")
+    except Exception as e:
+        logger.error(f"[main] Error seeding auth data: {e}")
 
     # Initialize modules
     
@@ -220,26 +204,16 @@ async def startup_event():
     else:
         logger.info("[main] MQTT system not initialized (disabled or failed)")
     
-    # 4. Serial module (handles serial port communication)
-    serial_module = SerialModule(event_bus, loop)
-    serial_module.start()
-    logger.info("[main] Serial module initialized")
-    
-    # 5. GPIO module (handles GPIO monitoring)
-    gpio_module = GPIOModule(event_bus, loop)
-    gpio_enabled = get_setting(db, "gpio_enabled", default=False)
-    
-    if gpio_enabled in [True, "true", "True", 1, "1"]:
-        if gpio_module.start():
-            logger.info("[main] GPIO module initialized and started")
-        else:
-            logger.warning("[main] GPIO module initialization failed")
-    else:
-        logger.info("[main] GPIO module disabled in settings")
-    
-    # 6. Start nutrition scheduled update task (hourly)
+    # 4. Start nutrition scheduled update task (hourly)
     asyncio.create_task(nutrition_scheduled_updater())
     logger.info("[main] Nutrition scheduled updater started")
+
+    # 5. Optional: realtime WebSocket bridge (e.g. ws://host:8080/api/realtime)
+    realtime_url = os.getenv("REALTIME_WS_URL", "").strip()
+    if realtime_url:
+        from realtime_bridge import run_realtime_bridge
+        asyncio.create_task(run_realtime_bridge(event_bus, realtime_url))
+        logger.info("[main] Realtime bridge started for %s", realtime_url)
     
     logger.info("[main] Event-driven system startup complete")
 
@@ -272,13 +246,6 @@ async def nutrition_scheduled_updater():
 async def shutdown_event():
     logger.info("[main] Shutting down event-driven system")
     
-    # Shutdown modules
-    if serial_module:
-        serial_module.stop()
-        
-    if gpio_module:
-        gpio_module.stop()
-    
     # Shutdown MQTT service
     shutdown_mqtt_service()
     
@@ -293,8 +260,6 @@ def get_modules():
     """Get references to all initialized modules."""
     return {
         "event_bus": event_bus,
-        "serial": serial_module,
-        "gpio": gpio_module,
         "websocket": websocket_module,
         "mqtt": mqtt_module,
         "state": state_module

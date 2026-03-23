@@ -2,8 +2,11 @@
 Pydantic models for API request/response validation
 """
 
+# Import User model first since other schemas reference it
+from models.users import User, Role, Permission, AuditLog, Organization, OrganizationMembership, OrganizationType, Account
+
 # Re-export SQLAlchemy models from schemas for backward compatibility
-from schemas.business import Business
+from schemas.business import Business, BusinessTypeAssignment
 from schemas.provider import Provider
 from schemas.nutrition_intake import NutritionIntake
 from schemas.care_task_category import CareTaskCategory
@@ -23,12 +26,22 @@ from schemas.setting import Setting
 from schemas.blood_pressure import BloodPressure
 from schemas.temperature import Temperature
 from schemas.vital import Vital
-from schemas.patient import Patient
+from schemas.symptom import Symptom
+from schemas.patient import Patient, PatientAccess, AccessLevel
+from schemas.diagnosis import Diagnosis, DiagnosisNote
+from schemas.implant import Implant, ImplantNote
+from models.readers import Reader
+
+# Schedule-related Pydantic models
+from models.schedule import CompleteItemRequest, BulkCompleteRequest
 
 __all__ = [
     'Business', 'Provider', 'NutritionIntake', 'CareTaskCategory', 'CareTask',
     'CareTaskSchedule', 'CareTaskLog', 'Medication', 'MedicationSchedule',
     'MedicationLog', 'Equipment', 'EquipmentChangeLog', 'MonitoringAlert',
     'VentilatorAlert', 'ExternalAlarm', 'PulseOxData', 'Setting',
-    'BloodPressure', 'Temperature', 'Vital', 'Patient'
+    'BloodPressure', 'Temperature', 'Vital', 'Symptom', 'Patient', 'User', 'Role',
+    'Permission', 'AuditLog', 'Diagnosis', 'DiagnosisNote', 'Implant', 'ImplantNote',
+    'CompleteItemRequest', 'BulkCompleteRequest', 'Organization', 'OrganizationMembership',
+    'OrganizationType', 'PatientAccess', 'AccessLevel', 'Reader'
 ]

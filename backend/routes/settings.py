@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from typing import Optional, Dict, Any
 from db import get_db
+from dependencies import require_read_access
 from crud.settings import get_all_settings, get_setting, save_setting, delete_setting
 from models.settings import (
     SettingIn,
@@ -42,7 +43,7 @@ async def get_all_settings_endpoint(db: Session = Depends(get_db)):
 
 
 @router.get("/{key}", response_model=SettingResponse)
-async def get_setting_api(key: str, default: Optional[str] = None, db: Session = Depends(get_db)):
+async def get_setting_api(key: str, default: Optional[str] = None, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get a specific setting by key"""
     value = get_setting(db, key, default)
     if value is None and default is None:
@@ -73,18 +74,8 @@ async def set_setting(key: str, setting: SettingIn, db: Session = Depends(get_db
 async def update_multiple_settings(settings: SettingUpdate, db: Session = Depends(get_db)):
     """Update multiple settings at once"""
     results = {}
-    gpio_enabled_changed = False
-    gpio_enabled_new = None
-    baud_rate_changed = False
     
     for key, value in settings.settings.items():
-        if key == "gpio_enabled":
-            gpio_enabled_changed = True
-            gpio_enabled_new = value
-        
-        if key == "baud_rate":
-            baud_rate_changed = True
-            
         if isinstance(value, dict) and "value" in value:
             # Handle objects with value, data_type, description
             success = save_setting(
@@ -102,33 +93,6 @@ async def update_multiple_settings(settings: SettingUpdate, db: Session = Depend
     
     # Publish settings change event to trigger WebSocket broadcast
     publish_event("settings_changed", {"results": results})
-    
-    # Handle GPIO state changes
-    if gpio_enabled_changed:
-        if gpio_enabled_new in [True, "true", "True", 1, "1"]:
-            try:
-                # Use event system to start GPIO monitoring
-                publish_event("gpio_control", {"action": "start"})
-                logger.info("[settings] GPIO monitoring start requested")
-            except Exception as e:
-                logger.error(f"[settings] Failed to request GPIO monitoring start: {e}")
-        else:
-            try:
-                # Use event system to stop GPIO monitoring
-                publish_event("gpio_control", {"action": "stop"})
-                logger.info("[settings] GPIO monitoring stop requested")
-            except Exception as e:
-                logger.error(f"[settings] Failed to request GPIO monitoring stop: {e}")
-    
-    # Handle baud rate changes - reconnect serial port
-    if baud_rate_changed:
-        try:
-            from main import serial_module
-            if serial_module:
-                serial_module.reconnect()
-                logger.info("[settings] Serial port reconnection triggered due to baud rate change")
-        except Exception as e:
-            logger.error(f"[settings] Failed to reconnect serial port: {e}")
     
     return results
 

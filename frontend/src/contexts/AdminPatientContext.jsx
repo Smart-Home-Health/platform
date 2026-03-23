@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import config from '../config';
 
 const AdminPatientContext = createContext();
 
@@ -11,21 +12,82 @@ export const useAdminPatient = () => {
 };
 
 export const AdminPatientProvider = ({ children }) => {
-  const [selectedPatientId, setSelectedPatientId] = useState(() => {
-    // Load from session storage on init
-    return sessionStorage.getItem('adminSelectedPatientId') || null;
-  });
+  const [patients, setPatients] = useState([]);
+  const [selectedPatient, setSelectedPatient] = useState(null);
+  const [loadingPatients, setLoadingPatients] = useState(true);
+  
+  // Legacy support - keep selectedPatientId as derived value
+  const selectedPatientId = selectedPatient?.id?.toString() || null;
 
-  const setPatientId = (patientId) => {
-    setSelectedPatientId(patientId);
-    if (patientId) {
-      sessionStorage.setItem('adminSelectedPatientId', patientId);
-    } else {
-      sessionStorage.removeItem('adminSelectedPatientId');
+  // Fetch patients on mount
+  useEffect(() => {
+    fetchPatients();
+  }, []);
+
+  // Load saved patient from session storage after patients are fetched
+  useEffect(() => {
+    if (patients.length > 0) {
+      const savedPatientId = sessionStorage.getItem('adminSelectedPatientId');
+      if (savedPatientId) {
+        const patient = patients.find(p => p.id === parseInt(savedPatientId));
+        if (patient) {
+          setSelectedPatient(patient);
+        }
+      }
+    }
+  }, [patients]);
+
+  const fetchPatients = async () => {
+    try {
+      setLoadingPatients(true);
+      const response = await fetch(`${config.apiUrl}/api/patients`, {
+        credentials: 'include'
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setPatients(data);
+      }
+    } catch (err) {
+      console.error('Error fetching patients:', err);
+    } finally {
+      setLoadingPatients(false);
     }
   };
 
+  const selectPatient = useCallback((patient) => {
+    setSelectedPatient(patient);
+    if (patient) {
+      sessionStorage.setItem('adminSelectedPatientId', patient.id.toString());
+    } else {
+      sessionStorage.removeItem('adminSelectedPatientId');
+    }
+  }, []);
+
+  // Legacy support - setPatientId for old components
+  const setPatientId = useCallback((patientId) => {
+    if (patientId) {
+      const patient = patients.find(p => p.id === parseInt(patientId));
+      if (patient) {
+        selectPatient(patient);
+      }
+    } else {
+      selectPatient(null);
+    }
+  }, [patients, selectPatient]);
+
+  const clearPatient = useCallback(() => {
+    selectPatient(null);
+  }, [selectPatient]);
+
   const value = {
+    // New API
+    patients,
+    selectedPatient,
+    selectPatient,
+    clearPatient,
+    loadingPatients,
+    refreshPatients: fetchPatients,
+    // Legacy API
     selectedPatientId,
     setPatientId
   };

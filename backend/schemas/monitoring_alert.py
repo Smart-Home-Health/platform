@@ -6,6 +6,7 @@ from schemas import Base
 class MonitoringAlert(Base):
     __tablename__ = 'monitoring_alerts'
     id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey('accounts.id', ondelete='CASCADE'), nullable=True, index=True)  # Account this alert belongs to
     patient_id = Column(Integer, ForeignKey('patients.id'), nullable=False)
     start_time = Column(TIMESTAMP(timezone=True), nullable=False)
     end_time = Column(TIMESTAMP(timezone=True))

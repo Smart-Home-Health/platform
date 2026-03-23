@@ -12,7 +12,7 @@ const AdminNav = () => {
   return (
     <nav className="admin-nav">
       <div className="admin-nav-header">
-        <Link to="/" className="logo-link">
+        <Link to="/live" className="logo-link">
           <img src={logoImage} alt="SHH Logo" className="nav-logo" />
           <span className="nav-title">Smart Home Health</span>
         </Link>
@@ -81,8 +81,8 @@ const AdminNav = () => {
       </div>
       
       <div className="admin-nav-footer">
-        <Link to="/" className="back-to-dashboard">
-          ← Back to Touch Dashboard
+        <Link to="/care" className="back-to-dashboard">
+          ← Care Dashboard
         </Link>
       </div>
     </nav>
@@ -92,6 +92,21 @@ const AdminNav = () => {
 const Layout = ({ children }) => {
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith('/admin');
+  const isCareRoute = location.pathname.startsWith('/care');
+  const isLiveRoute = location.pathname.startsWith('/live');
+  
+  // Care routes have their own layout, but need the patient provider
+  if (isCareRoute || isLiveRoute) {
+    return (
+      <AdminPatientProvider>
+        <div className="layout">
+          <main className="main-content">
+            {children}
+          </main>
+        </div>
+      </AdminPatientProvider>
+    );
+  }
   
   return (
     <div className="layout">

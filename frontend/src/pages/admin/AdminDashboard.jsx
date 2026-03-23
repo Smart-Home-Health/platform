@@ -236,6 +236,23 @@ const AdminDashboard = () => {
             </button>
           </div>
         </div>
+
+        <div className="admin-card" style={{ gridColumn: '1 / -1', background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)', border: '2px solid #58a6ff' }}>
+          <h3 className="admin-card-title" style={{ color: '#58a6ff' }}>Go to Care Dashboard</h3>
+          <p style={{ color: '#8b949e', marginBottom: '1rem' }}>
+            The Care Dashboard provides improved navigation and patient-focused views 
+            with better organization for managing care tasks, medications, and more.
+          </p>
+          <div className="admin-actions">
+            <a 
+              href="/care" 
+              className="btn btn-primary"
+              style={{ background: '#238636', borderColor: '#238636' }}
+            >
+              Open Care Dashboard
+            </a>
+          </div>
+        </div>
       </div>
     </div>
   );

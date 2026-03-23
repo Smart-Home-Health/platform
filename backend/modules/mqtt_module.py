@@ -21,11 +21,14 @@ class MQTTModule:
         self.mqtt_manager = None
         self.mqtt_publisher = None
         self.is_connected = False
+        self._patient_state_cache: Dict[int, Dict[str, Any]] = {}
         
     def set_mqtt_components(self, mqtt_manager, mqtt_publisher):
         """Set the MQTT manager and publisher components."""
         self.mqtt_manager = mqtt_manager
         self.mqtt_publisher = mqtt_publisher
+        if mqtt_manager:
+            mqtt_manager.set_patient_set_handler(self._sync_patient_set_handler)
         
     async def start_event_subscribers(self):
         """Start subscribing to relevant events."""
@@ -33,6 +36,8 @@ class MQTTModule:
         asyncio.create_task(self._subscribe_to_vital_saved())
         # Subscribe to SensorUpdate events for nutrition MQTT publishing
         asyncio.create_task(self._subscribe_to_sensor_updates())
+        # Subscribe to SensorUpdate for per-patient combined state publishing
+        asyncio.create_task(self._subscribe_to_sensor_updates_patient_state())
         logger.info("MQTT module event subscribers started")
     
     async def _subscribe_to_sensor_updates(self):
@@ -75,6 +80,24 @@ class MQTTModule:
                     
         except Exception as e:
             logger.error(f"Error handling SensorUpdate event: {e}")
+
+    async def _subscribe_to_sensor_updates_patient_state(self):
+        """Subscribe to SensorUpdate; when patient_id is set, merge into per-patient state and publish combined state to MQTT."""
+        logger.info("Starting subscription to SensorUpdate for per-patient MQTT state")
+        async for event in self.event_bus.subscribe_to_type(SensorUpdate):
+            try:
+                patient_id = getattr(event, "patient_id", None)
+                if patient_id is None:
+                    continue
+                if patient_id not in self._patient_state_cache:
+                    self._patient_state_cache[patient_id] = {}
+                self._patient_state_cache[patient_id].update(event.values)
+                if self.mqtt_publisher and self.mqtt_publisher.is_available():
+                    self.mqtt_publisher.publish_patient_combined_state(
+                        patient_id, self._patient_state_cache[patient_id]
+                    )
+            except Exception as e:
+                logger.error(f"Error publishing patient state to MQTT: {e}")
         
     async def _subscribe_to_vital_saved(self):
         """Subscribe to vital_saved events and publish them to MQTT."""
@@ -86,38 +109,73 @@ class MQTTModule:
             except Exception as e:
                 logger.error(f"Error handling vital_saved event: {e}")
                 
+    def _vital_data_to_patient_state(self, vital_type: str, vital_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Map vital_type + vital_data to patient combined-state keys (for shh/patient/{id}/state)."""
+        if vital_type == 'temperature':
+            body = vital_data.get('body_temp') if vital_data.get('body_temp') is not None else vital_data.get('temperature')
+            skin = vital_data.get('skin_temp')
+            out = {}
+            if body is not None:
+                out['body_temp'] = body
+            if skin is not None:
+                out['skin_temp'] = skin
+            return out
+        if vital_type == 'blood_pressure':
+            return {
+                k: v for k, v in {
+                    'systolic_bp': vital_data.get('systolic_bp') or vital_data.get('systolic'),
+                    'diastolic_bp': vital_data.get('diastolic_bp') or vital_data.get('diastolic'),
+                    'map_bp': vital_data.get('map_bp') or vital_data.get('map'),
+                }.items() if v is not None
+            }
+        return {}
+
     async def _handle_vital_saved(self, event: dict):
         """Handle vital_saved events by publishing to MQTT."""
         try:
             logger.info(f"Processing vital_saved event: {event}")
-            vital_type = event.get("data", {}).get("vital_type")
-            vital_data = event.get("data", {}).get("vital_data", {})
-            from_manual = event.get("data", {}).get("from_manual", False)
-            
-            logger.info(f"Extracted: vital_type={vital_type}, vital_data={vital_data}, from_manual={from_manual}")
-            
+            data = event.get("data", {})
+            vital_type = data.get("vital_type")
+            vital_data = data.get("vital_data", {})
+            from_manual = data.get("from_manual", False)
+            patient_id = data.get("patient_id")
+
+            logger.info(f"Extracted: vital_type={vital_type}, vital_data={vital_data}, from_manual={from_manual}, patient_id={patient_id}")
+
             # Skip nutrition types - they're handled by NutritionSensorUpdate events
-            # which publish daily totals instead of individual entries
             nutrition_vital_types = ['water', 'water_ml', 'calories']
             if vital_type in nutrition_vital_types:
                 logger.info(f"Skipping {vital_type} - handled by NutritionSensorUpdate with daily totals")
                 return
-            
+
             if vital_type and vital_data and from_manual:
                 logger.info(f"Publishing manually saved {vital_type} to MQTT: {vital_data}")
-                
-                # Use the publisher to send to MQTT
+
                 if self.mqtt_publisher and self.mqtt_publisher.is_available():
                     success = self.mqtt_publisher.publish_vital_data(vital_type, vital_data)
                     if success:
                         logger.info(f"Successfully published {vital_type} to MQTT")
                     else:
                         logger.warning(f"Failed to publish {vital_type} to MQTT")
+
+                    # So HA sees it: publish to patient combined state topic (discovery uses shh/patient/{id}/state)
+                    if patient_id is not None:
+                        state_update = self._vital_data_to_patient_state(vital_type, vital_data)
+                        if state_update:
+                            if patient_id not in self._patient_state_cache:
+                                self._patient_state_cache[patient_id] = {}
+                            self._patient_state_cache[patient_id].update(state_update)
+                            if self.mqtt_publisher.publish_patient_combined_state(
+                                patient_id, self._patient_state_cache[patient_id]
+                            ):
+                                logger.info(f"Published {vital_type} to patient {patient_id} state topic for HA")
+                            else:
+                                logger.debug(f"Patient {patient_id} state topic not configured or filtered out")
                 else:
                     logger.info(f"MQTT publisher not available for {vital_type} (MQTT disabled)")
             else:
                 logger.info(f"Skipping MQTT publish - vital_type={vital_type}, has_data={bool(vital_data)}, from_manual={from_manual}")
-                    
+
         except Exception as e:
             logger.error(f"Error handling vital_saved event: {e}")
         
@@ -154,7 +212,37 @@ class MQTTModule:
         except Exception as e:
             logger.error(f"Error handling MQTT message for topic {topic}: {e}")
 
-    async def _handle_blood_pressure_mqtt(self, vital_type: str, payload: dict, raw_data: str):
+    def _sync_patient_set_handler(self, patient_id: int, payload: dict, topic: str, raw_data: str):
+        """Sync entry for per-patient set topic; schedules async handler on the MQTT loop."""
+        import asyncio
+        loop = getattr(self.mqtt_manager, "loop", None) if self.mqtt_manager else None
+        if loop:
+            asyncio.run_coroutine_threadsafe(
+                self._handle_patient_set_async(patient_id, payload, topic, raw_data),
+                loop,
+            )
+        else:
+            logger.warning("No event loop for patient set handler")
+
+    async def _handle_patient_set_async(self, patient_id: int, payload: dict, topic: str, raw_data: str):
+        """Handle combined payload on .../patient/{id}/set and dispatch to vitals with patient_id."""
+        try:
+            if payload.get("systolic") is not None or payload.get("diastolic") is not None or payload.get("map") is not None:
+                await self._handle_blood_pressure_mqtt("blood_pressure", payload, raw_data, patient_id=patient_id)
+            if payload.get("skin_temp") is not None or payload.get("body_temp") is not None:
+                await self._handle_temperature_mqtt("temperature", payload, raw_data, patient_id=patient_id)
+            if payload.get("spo2") is not None:
+                await self._handle_pulse_ox_mqtt("spo2", {"value": payload["spo2"]}, raw_data, patient_id=patient_id)
+            if payload.get("bpm") is not None:
+                await self._handle_pulse_ox_mqtt("bpm", {"value": payload["bpm"]}, raw_data, patient_id=patient_id)
+            if payload.get("perfusion") is not None:
+                await self._handle_pulse_ox_mqtt("perfusion", {"value": payload["perfusion"]}, raw_data, patient_id=patient_id)
+            if payload.get("value") is not None and not any(k in payload for k in ("systolic", "diastolic", "skin_temp", "body_temp", "spo2", "bpm", "perfusion")):
+                await self._handle_simple_vital_mqtt("vital", payload, raw_data, patient_id=patient_id)
+        except Exception as e:
+            logger.error(f"Error handling patient {patient_id} set: {e}")
+
+    async def _handle_blood_pressure_mqtt(self, vital_type: str, payload: dict, raw_data: str, patient_id: int = None):
         """Handle blood pressure MQTT messages."""
         systolic = payload.get("systolic")
         diastolic = payload.get("diastolic")
@@ -175,6 +263,7 @@ class MQTTModule:
                     "raw_data": raw_data,
                     "use_unified_storage": True  # Flag to use unified vitals table
                 },
+                patient_id=patient_id,
                 source=EventSource.MQTT
             )
             await self.event_bus.publish(vital_event, topic="vitals.recorded")
@@ -190,11 +279,12 @@ class MQTTModule:
                 ts=datetime.now(),
                 values=sensor_values,
                 raw=raw_data,
-                source=EventSource.MQTT
+                source=EventSource.MQTT,
+                patient_id=patient_id,
             )
             await self.event_bus.publish(sensor_event, topic="sensors.update")
 
-    async def _handle_temperature_mqtt(self, vital_type: str, payload: dict, raw_data: str):
+    async def _handle_temperature_mqtt(self, vital_type: str, payload: dict, raw_data: str, patient_id: int = None):
         """Handle temperature MQTT messages."""
         skin_temp = payload.get("skin_temp")
         body_temp = payload.get("body_temp")
@@ -211,6 +301,7 @@ class MQTTModule:
                     "raw_data": raw_data,
                     "use_unified_storage": True  # Flag to use unified vitals table
                 },
+                patient_id=patient_id,
                 source=EventSource.MQTT
             )
             await self.event_bus.publish(vital_event, topic="vitals.recorded")
@@ -227,11 +318,12 @@ class MQTTModule:
                     ts=datetime.now(),
                     values=sensor_values,
                     raw=raw_data,
-                    source=EventSource.MQTT
+                    source=EventSource.MQTT,
+                    patient_id=patient_id,
                 )
                 await self.event_bus.publish(sensor_event, topic="sensors.update")
 
-    async def _handle_simple_vital_mqtt(self, vital_type: str, payload: dict, raw_data: str):
+    async def _handle_simple_vital_mqtt(self, vital_type: str, payload: dict, raw_data: str, patient_id: int = None):
         """Handle simple vital signs (bathroom, water, calories)."""
         value = payload.get("value")
         
@@ -243,11 +335,12 @@ class MQTTModule:
                 ts=datetime.now(),
                 values=sensor_values,
                 raw=raw_data,
-                source=EventSource.MQTT
+                source=EventSource.MQTT,
+                patient_id=patient_id,
             )
             await self.event_bus.publish(sensor_event, topic="sensors.update")
 
-    async def _handle_pulse_ox_mqtt(self, vital_type: str, payload: dict, raw_data: str):
+    async def _handle_pulse_ox_mqtt(self, vital_type: str, payload: dict, raw_data: str, patient_id: int = None):
         """Handle pulse oximeter MQTT messages."""
         value = payload.get("value")
         
@@ -259,11 +352,12 @@ class MQTTModule:
                 ts=datetime.now(),
                 values=sensor_values,
                 raw=raw_data,
-                source=EventSource.MQTT
+                source=EventSource.MQTT,
+                patient_id=patient_id,
             )
             await self.event_bus.publish(sensor_event, topic="sensors.update")
 
-    async def _handle_generic_vital_mqtt(self, vital_type: str, payload: dict, raw_data: str):
+    async def _handle_generic_vital_mqtt(self, vital_type: str, payload: dict, raw_data: str, patient_id: int = None):
         """Handle generic vital signs."""
         value = payload.get("value")
         
@@ -275,7 +369,8 @@ class MQTTModule:
                 ts=datetime.now(),
                 values=sensor_values,
                 raw=raw_data,
-                source=EventSource.MQTT
+                source=EventSource.MQTT,
+                patient_id=patient_id,
             )
             await self.event_bus.publish(sensor_event, topic="sensors.update")
 

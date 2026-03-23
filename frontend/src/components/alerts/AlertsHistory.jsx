@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import config from '../../config';
 
-const AlertsHistory = () => {
+const AlertsHistory = ({ patientId }) => {
   const [availableDates, setAvailableDates] = useState([]);
   const [selectedDate, setSelectedDate] = useState('');
   const [analysis, setAnalysis] = useState(null);
@@ -9,12 +9,17 @@ const AlertsHistory = () => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    setAnalysis(null);
     fetchAvailableDates();
-  }, []);
+  }, [patientId]);
 
   const fetchAvailableDates = async () => {
     try {
-      const response = await fetch(`${config.apiUrl}/api/monitoring/history/dates`);
+      let url = `${config.apiUrl}/api/monitoring/history/dates`;
+      if (patientId != null) {
+        url += `?patient_id=${patientId}`;
+      }
+      const response = await fetch(url, { credentials: 'include' });
       if (!response.ok) throw new Error('Failed to fetch dates');
       const data = await response.json();
       console.log('Received dates data:', data);
@@ -34,7 +39,11 @@ const AlertsHistory = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${config.apiUrl}/api/monitoring/history/analyze/${date}`);
+      let url = `${config.apiUrl}/api/monitoring/history/analyze/${date}`;
+      if (patientId != null) {
+        url += `?patient_id=${patientId}`;
+      }
+      const response = await fetch(url, { credentials: 'include' });
       if (!response.ok) throw new Error('Failed to fetch analysis');
       const data = await response.json();
       console.log('Received analysis data:', data);
@@ -56,10 +65,10 @@ const AlertsHistory = () => {
 
   // Auto-load analysis for initial date
   useEffect(() => {
-    if (selectedDate && !analysis) {
+    if (selectedDate) {
       fetchAnalysis(selectedDate);
     }
-  }, [selectedDate]);
+  }, [selectedDate, patientId]);
 
   const formatDate = (dateString) => {
     // Parse as local date to avoid timezone conversion

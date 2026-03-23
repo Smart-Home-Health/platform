@@ -5,7 +5,8 @@ from typing import List, Optional
 from db import get_db
 from crud.businesses import (
     get_business, get_businesses, get_businesses_by_type, create_business, 
-    update_business, delete_business, activate_business, search_businesses, get_business_types
+    update_business, delete_business, activate_business, search_businesses, 
+    get_business_types, add_business_type, remove_business_type
 )
 from models.businesses import (
     BusinessBase,
@@ -15,6 +16,32 @@ from models.businesses import (
 )
 
 router = APIRouter(prefix="/api/businesses", tags=["businesses"])
+
+
+def _business_to_response(business) -> dict:
+    """Convert a Business ORM object to a response dict with types array."""
+    return {
+        "id": business.id,
+        "name": business.name,
+        "business_types": business.types,  # Uses the @property
+        "business_type": business.business_type,  # Legacy field
+        "phone": business.phone,
+        "email": business.email,
+        "website": business.website,
+        "address_line1": business.address_line1,
+        "address_line2": business.address_line2,
+        "city": business.city,
+        "state": business.state,
+        "zip_code": business.zip_code,
+        "country": business.country,
+        "description": business.description,
+        "hours_of_operation": business.hours_of_operation,
+        "emergency_contact": business.emergency_contact,
+        "active": business.active,
+        "created_at": business.created_at,
+        "updated_at": business.updated_at,
+    }
+
 
 @router.get("/", response_model=List[BusinessResponse])
 def list_businesses(
@@ -26,13 +53,17 @@ def list_businesses(
 ):
     """Get all businesses with optional filtering."""
     if business_type:
-        return get_businesses_by_type(db, business_type, active_only)
-    return get_businesses(db, skip=skip, limit=limit, active_only=active_only)
+        businesses = get_businesses_by_type(db, business_type, active_only)
+    else:
+        businesses = get_businesses(db, skip=skip, limit=limit, active_only=active_only)
+    return [_business_to_response(b) for b in businesses]
+
 
 @router.get("/types", response_model=List[str])
 def list_business_types(db: Session = Depends(get_db)):
     """Get all unique business types."""
     return get_business_types(db)
+
 
 @router.get("/search", response_model=List[BusinessResponse])
 def search_businesses_endpoint(
@@ -41,7 +72,9 @@ def search_businesses_endpoint(
     db: Session = Depends(get_db)
 ):
     """Search businesses by name, type, or city."""
-    return search_businesses(db, q, active_only)
+    businesses = search_businesses(db, q, active_only)
+    return [_business_to_response(b) for b in businesses]
+
 
 @router.get("/{business_id}", response_model=BusinessResponse)
 def get_business_by_id(business_id: int, db: Session = Depends(get_db)):
@@ -49,15 +82,18 @@ def get_business_by_id(business_id: int, db: Session = Depends(get_db)):
     business = get_business(db, business_id)
     if not business:
         raise HTTPException(status_code=404, detail="Business not found")
-    return business
+    return _business_to_response(business)
+
 
 @router.post("/", response_model=BusinessResponse)
 def create_business_endpoint(business: BusinessCreate, db: Session = Depends(get_db)):
     """Create a new business."""
     try:
-        return create_business(db, business.model_dump())
+        new_business = create_business(db, business.model_dump())
+        return _business_to_response(new_business)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error creating business: {str(e)}")
+
 
 @router.put("/{business_id}", response_model=BusinessResponse)
 def update_business_endpoint(
@@ -76,7 +112,8 @@ def update_business_endpoint(
     if not updated_business:
         raise HTTPException(status_code=404, detail="Business not found")
     
-    return updated_business
+    return _business_to_response(updated_business)
+
 
 @router.delete("/{business_id}")
 def delete_business_endpoint(business_id: int, db: Session = Depends(get_db)):
@@ -86,6 +123,7 @@ def delete_business_endpoint(business_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Business not found")
     return {"message": "Business deactivated successfully"}
 
+
 @router.post("/{business_id}/activate")
 def activate_business_endpoint(business_id: int, db: Session = Depends(get_db)):
     """Reactivate a business."""
@@ -93,3 +131,21 @@ def activate_business_endpoint(business_id: int, db: Session = Depends(get_db)):
     if not success:
         raise HTTPException(status_code=404, detail="Business not found")
     return {"message": "Business activated successfully"}
+
+
+@router.post("/{business_id}/types/{type_name}")
+def add_type_to_business(business_id: int, type_name: str, db: Session = Depends(get_db)):
+    """Add a type to a business."""
+    success = add_business_type(db, business_id, type_name)
+    if not success:
+        raise HTTPException(status_code=404, detail="Business not found")
+    return {"message": f"Type '{type_name}' added successfully"}
+
+
+@router.delete("/{business_id}/types/{type_name}")
+def remove_type_from_business(business_id: int, type_name: str, db: Session = Depends(get_db)):
+    """Remove a type from a business."""
+    success = remove_business_type(db, business_id, type_name)
+    if not success:
+        raise HTTPException(status_code=404, detail="Business not found or type not assigned")
+    return {"message": f"Type '{type_name}' removed successfully"}

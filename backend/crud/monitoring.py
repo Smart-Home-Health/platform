@@ -15,7 +15,7 @@ from schemas.monitoring_alert import MonitoringAlert
 logger = logging.getLogger('crud')
 
 
-def get_monitoring_alerts(db: Session, limit=50, include_acknowledged=False, detailed=False):
+def get_monitoring_alerts(db: Session, limit=50, include_acknowledged=False, detailed=False, patient_id=None):
     """
     Get monitoring alert history
 
@@ -23,6 +23,7 @@ def get_monitoring_alerts(db: Session, limit=50, include_acknowledged=False, det
         limit (int): Maximum number of alerts to return
         include_acknowledged (bool): Whether to include acknowledged alerts
         detailed (bool): Whether to include detailed pulse ox data
+        patient_id (int, optional): If set, filter to this patient only
 
     Returns:
         list: List of alert records
@@ -32,6 +33,9 @@ def get_monitoring_alerts(db: Session, limit=50, include_acknowledged=False, det
 
         if not include_acknowledged:
             query = query.filter(MonitoringAlert.acknowledged == False)
+
+        if patient_id is not None:
+            query = query.filter(MonitoringAlert.patient_id == patient_id)
 
         query = query.order_by(MonitoringAlert.start_time.desc()).limit(limit)
 
@@ -322,12 +326,13 @@ def get_pulse_ox_data_for_alert(db: Session, alert_id):
         return []
 
 
-def get_pulse_ox_data_by_date(db: Session, date_str):
+def get_pulse_ox_data_by_date(db: Session, date_str, patient_id=None):
     """
     Get all pulse oximeter readings for a specific date
     
     Args:
         date_str: Date in YYYY-MM-DD format
+        patient_id (int, optional): If set, filter to this patient only
     
     Returns:
         List of pulse ox readings for that date
@@ -339,10 +344,13 @@ def get_pulse_ox_data_by_date(db: Session, date_str):
         end_datetime = datetime.combine(target_date, datetime.max.time())
         
         # Query for data within the date range
-        readings = db.query(PulseOxData).filter(
+        query = db.query(PulseOxData).filter(
             PulseOxData.timestamp >= start_datetime.isoformat(),
             PulseOxData.timestamp <= end_datetime.isoformat()
-        ).order_by(PulseOxData.timestamp.asc()).all()
+        )
+        if patient_id is not None:
+            query = query.filter(PulseOxData.patient_id == patient_id)
+        readings = query.order_by(PulseOxData.timestamp.asc()).all()
         
         logger.info(f"Retrieved {len(readings)} pulse ox readings for {date_str}")
         return readings
@@ -352,18 +360,19 @@ def get_pulse_ox_data_by_date(db: Session, date_str):
         return []
 
 
-def analyze_pulse_ox_day(db: Session, date_str):
+def analyze_pulse_ox_day(db: Session, date_str, patient_id=None):
     """
     Analyze pulse oximeter data for a specific day
     
     Args:
         date_str: Date in YYYY-MM-DD format
+        patient_id (int, optional): If set, restrict to this patient only
     
     Returns:
         Dict with analysis results including averages, ranges, alert counts, etc.
     """
     try:
-        readings = get_pulse_ox_data_by_date(db, date_str)
+        readings = get_pulse_ox_data_by_date(db, date_str, patient_id=patient_id)
         
         if not readings:
             return {
@@ -447,12 +456,13 @@ def analyze_pulse_ox_day(db: Session, date_str):
         }
 
 
-def get_available_pulse_ox_dates(db: Session, limit=30):
+def get_available_pulse_ox_dates(db: Session, limit=30, patient_id=None):
     """
     Get list of dates that have pulse oximeter data
     
     Args:
         limit: Maximum number of dates to return
+        patient_id (int, optional): If set, filter to this patient only
     
     Returns:
         Dict with list of date strings in YYYY-MM-DD format
@@ -462,9 +472,12 @@ def get_available_pulse_ox_dates(db: Session, limit=30):
         from sqlalchemy import func, distinct
         
         # Query for distinct dates using func.date for TIMESTAMP fields
-        results = db.query(
+        query = db.query(
             func.date(PulseOxData.timestamp).label('date')
-        ).distinct().order_by(
+        ).distinct()
+        if patient_id is not None:
+            query = query.filter(PulseOxData.patient_id == patient_id)
+        results = query.order_by(
             func.date(PulseOxData.timestamp).desc()
         ).limit(limit).all()
         

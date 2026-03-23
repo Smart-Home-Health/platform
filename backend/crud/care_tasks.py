@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from schemas.care_task_category import CareTaskCategory
 from schemas.care_task import CareTask
 from schemas.care_task_log import CareTaskLog
+from utils.datetime_utils import utc_now
 
 logger = logging.getLogger('crud')
 
@@ -17,7 +18,7 @@ def add_care_task_category(db: Session, name, description=None, color='#3B82F6')
     Add a new care task category
     """
     try:
-        now = datetime.now()
+        now = utc_now()
         category = CareTaskCategory(
             name=name,
             description=description,
@@ -49,6 +50,8 @@ def get_care_task_categories(db: Session):
                 'name': cat.name,
                 'description': cat.description,
                 'color': cat.color,
+                'active': cat.active,
+                'is_default': cat.is_default,
                 'created_at': cat.created_at.isoformat() if cat.created_at else None,
                 'updated_at': cat.updated_at.isoformat() if cat.updated_at else None
             }
@@ -73,7 +76,7 @@ def update_care_task_category(db: Session, category_id, **kwargs):
             if hasattr(category, key):
                 setattr(category, key, value)
         
-        category.updated_at = datetime.now()
+        category.updated_at = utc_now()
         db.commit()
         logger.info(f"Care task category updated: {category.name}")
         return True
@@ -123,7 +126,7 @@ def add_care_task(db: Session, name, category_id, description=None, active=True,
         # For now, we'll keep it as a global template unless explicitly specified
         # You can modify this logic based on your requirements
         
-        now = datetime.now()
+        now = utc_now()
         task = CareTask(
             name=name,
             patient_id=patient_id,  # Can be None for global templates
@@ -144,12 +147,13 @@ def add_care_task(db: Session, name, category_id, description=None, active=True,
         return None
 
 
-def get_care_tasks(db: Session, active_only=True, category_id=None, patient_id=None):
+def get_care_tasks(db: Session, active_only=True, inactive_only=False, category_id=None, patient_id=None):
     """
     Get care tasks with optional filtering
     
     Args:
         active_only: If True, only return active tasks
+        inactive_only: If True, only return inactive tasks
         category_id: If provided, filter by category
         patient_id: If provided, filter by patient (includes global tasks)
     """
@@ -160,6 +164,8 @@ def get_care_tasks(db: Session, active_only=True, category_id=None, patient_id=N
         
         if active_only:
             query = query.filter(CareTask.active == True)
+        elif inactive_only:
+            query = query.filter(CareTask.active == False)
         
         if category_id:
             query = query.filter(CareTask.category_id == category_id)
@@ -196,7 +202,18 @@ def get_care_tasks(db: Session, active_only=True, category_id=None, patient_id=N
                 'description': task.description,
                 'active': task.active,
                 'created_at': task.created_at.isoformat() if task.created_at else None,
-                'updated_at': task.updated_at.isoformat() if task.updated_at else None
+                'updated_at': task.updated_at.isoformat() if task.updated_at else None,
+                'schedules': [
+                    {
+                        'id': schedule.id,
+                        'cron_expression': schedule.cron_expression,
+                        'description': schedule.description,
+                        'active': schedule.active,
+                        'notes': schedule.notes,
+                        'patient_id': schedule.patient_id
+                    }
+                    for schedule in task.schedules
+                ] if task.schedules else []
             }
             for task in tasks
         ]
@@ -244,7 +261,7 @@ def update_care_task(db: Session, task_id, **kwargs):
             if hasattr(task, key):
                 setattr(task, key, value)
         
-        task.updated_at = datetime.now()
+        task.updated_at = utc_now()
         db.commit()
         logger.info(f"Care task updated: {task.name}")
         return True
@@ -264,7 +281,7 @@ def delete_care_task(db: Session, task_id):
             return False
         
         task.active = False
-        task.updated_at = datetime.now()
+        task.updated_at = utc_now()
         db.commit()
         logger.info(f"Care task deleted (soft): {task.name}")
         return True
@@ -284,7 +301,7 @@ def toggle_care_task_active(db: Session, task_id):
             return False, None
         
         task.active = not task.active
-        task.updated_at = datetime.now()
+        task.updated_at = utc_now()
         db.commit()
         logger.info(f"Care task {task_id} active status toggled to {task.active}")
         return True, task.active
@@ -306,7 +323,7 @@ def log_care_task(db: Session, task_id, completion_status='completed', notes=Non
         completed_by: Optional identifier of who completed the task
     """
     try:
-        now = datetime.now()
+        now = utc_now()
         log = CareTaskLog(
             task_id=task_id,
             completed_at=now,
@@ -326,7 +343,8 @@ def log_care_task(db: Session, task_id, completion_status='completed', notes=Non
         return None
 
 
-def get_care_task_logs(db: Session, task_id=None, limit=50, start_date=None, end_date=None):
+def get_care_task_logs(db: Session, task_id=None, limit=50, start_date=None, end_date=None,
+                       patient_id=None, task_name=None, category_id=None, status_filter=None):
     """
     Get care task completion logs with optional filtering
     
@@ -335,6 +353,10 @@ def get_care_task_logs(db: Session, task_id=None, limit=50, start_date=None, end
         limit: Maximum number of records to return
         start_date: Filter by start date (YYYY-MM-DD format)
         end_date: Filter by end date (YYYY-MM-DD format)
+        patient_id: Filter by patient ID
+        task_name: Filter by task name (partial match)
+        category_id: Filter by category ID
+        status_filter: Filter by completion status
     """
     try:
         query = db.query(CareTaskLog).join(CareTask)
@@ -342,13 +364,25 @@ def get_care_task_logs(db: Session, task_id=None, limit=50, start_date=None, end
         if task_id:
             query = query.filter(CareTaskLog.task_id == task_id)
         
+        if patient_id:
+            query = query.filter(CareTask.patient_id == patient_id)
+        
+        if task_name:
+            query = query.filter(CareTask.name.ilike(f"%{task_name}%"))
+        
+        if category_id:
+            query = query.filter(CareTask.category_id == category_id)
+        
+        if status_filter:
+            query = query.filter(CareTaskLog.completion_status == status_filter)
+        
         if start_date:
             start_dt = datetime.strptime(start_date, '%Y-%m-%d')
             query = query.filter(CareTaskLog.completed_at >= start_dt)
         
         if end_date:
-            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
-            query = query.filter(CareTaskLog.completed_at <= end_dt)
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
+            query = query.filter(CareTaskLog.completed_at < end_dt)
         
         logs = query.order_by(CareTaskLog.completed_at.desc()).limit(limit).all()
         
@@ -357,11 +391,16 @@ def get_care_task_logs(db: Session, task_id=None, limit=50, start_date=None, end
                 'id': log.id,
                 'task_id': log.task_id,
                 'task_name': log.task.name,
+                'task_description': log.task.description,
                 'task_category': log.task.category.name if log.task.category else None,
+                'task_category_id': log.task.category_id,
+                'task_category_color': log.task.category.color if log.task.category else '#6f42c1',
                 'completed_at': log.completed_at.isoformat(),
                 'completion_status': log.completion_status,
                 'notes': log.notes,
                 'completed_by': log.completed_by,
+                'schedule_id': log.schedule_id,
+                'scheduled_time': log.scheduled_time.isoformat() if log.scheduled_time else None,
                 'created_at': log.created_at.isoformat() if log.created_at else None
             }
             for log in logs
@@ -376,7 +415,7 @@ def get_recent_care_task_completions(db: Session, days=7):
     Get care task completions from the last N days
     """
     try:
-        cutoff_date = datetime.now() - timedelta(days=days)
+        cutoff_date = utc_now() - timedelta(days=days)
         
         logs = db.query(CareTaskLog).filter(
             CareTaskLog.completed_at >= cutoff_date
@@ -406,7 +445,7 @@ def get_care_task_completion_stats(db: Session, days=30):
     Get completion statistics for care tasks over the last N days
     """
     try:
-        cutoff_date = datetime.now() - timedelta(days=days)
+        cutoff_date = utc_now() - timedelta(days=days)
         
         # Get all logs from the period
         logs = db.query(CareTaskLog).filter(
@@ -466,7 +505,7 @@ def get_overdue_care_tasks(db: Session):
         tasks = db.query(CareTask).filter(CareTask.active == True).all()
         
         overdue_tasks = []
-        now = datetime.now()
+        now = utc_now()
         
         for task in tasks:
             if not task.frequency:

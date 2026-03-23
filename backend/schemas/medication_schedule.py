@@ -18,8 +18,8 @@ class MedicationSchedule(Base):
     # Dose information for this specific schedule
     dose_amount = Column(Float, nullable=True)  # Amount per dose (e.g., 1, 0.5, 2) - unit inherited from medication
     
-    # Active indicator - allows users to temporarily disable schedules
-    active = Column(Boolean, default=True, nullable=False)
+    # Active indicator - allows users to temporarily disable schedules (DB column: is_active from 001)
+    active = Column('is_active', Boolean, default=True, nullable=False)
     
     # Optional notes for this specific schedule
     notes = Column(Text, nullable=True)
