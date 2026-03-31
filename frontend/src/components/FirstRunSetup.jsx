@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import Dashboard from '../pages/Dashboard';
+import logoImage from '../assets/logo2.png';
 import './FirstRunSetup.css';
 
 export default function FirstRunSetup() {
+  const navigate = useNavigate();
   const { completeFirstRunSetup } = useAuth();
+  const [showAccountPwTip, setShowAccountPwTip] = useState(false);
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -81,46 +84,42 @@ export default function FirstRunSetup() {
       setError(result.error);
       setLoading(false);
     } else {
-      // Show success message with account slug before redirecting
       setAccountSlug(result.data.account_slug);
       setSetupComplete(true);
       setLoading(false);
-      // Auto-continue after 5 seconds
-      setTimeout(() => {
-        window.location.reload();
-      }, 5000);
     }
+  };
+
+  const handleContinue = () => {
+    navigate('/care', { replace: true });
   };
 
   // Show success screen with account slug
   if (setupComplete) {
     return (
-      <div className="first-run-container">
-        <div className="first-run-background">
-          <Dashboard />
+      <div className="first-run-page">
+        <div className="first-run-logo">
+          <img src={logoImage} alt="Smart Home Health Logo" />
+          <span>Smart Home Health</span>
         </div>
         <div className="first-run-card">
           <div className="first-run-header">
-            <h1>✓ Setup Complete!</h1>
+            <h1>Setup Complete!</h1>
             <p>Your account has been created successfully</p>
           </div>
-          
+
           <div className="success-info">
             <div className="account-slug-display">
               <label>Your Account Login ID:</label>
               <div className="slug-value">{accountSlug}</div>
               <small>Use this to log into your account in the future</small>
             </div>
-            
-            <p className="redirect-message">
-              Redirecting to dashboard in 5 seconds...
-            </p>
-            
-            <button 
+
+            <button
               className="submit-button"
-              onClick={() => window.location.reload()}
+              onClick={handleContinue}
             >
-              Continue Now
+              Continue to Dashboard
             </button>
           </div>
         </div>
@@ -129,9 +128,10 @@ export default function FirstRunSetup() {
   }
 
   return (
-    <div className="first-run-container">
-      <div className="first-run-background">
-        <Dashboard />
+    <div className="first-run-page">
+      <div className="first-run-logo">
+        <img src={logoImage} alt="Smart Home Health Logo" />
+        <span>Smart Home Health</span>
       </div>
       <div className="first-run-card">
         <div className="first-run-header">
@@ -163,7 +163,22 @@ export default function FirstRunSetup() {
             </div>
 
             <div className="form-group">
-              <label htmlFor="account_password">Account Password *</label>
+              <label htmlFor="account_password">
+                Account Password *
+                <span
+                  className="info-icon-wrap"
+                  onMouseEnter={() => setShowAccountPwTip(true)}
+                  onMouseLeave={() => setShowAccountPwTip(false)}
+                  onClick={() => setShowAccountPwTip(prev => !prev)}
+                >
+                  <span className="info-icon">i</span>
+                  {showAccountPwTip && (
+                    <div className="tooltip-box">
+                      This password serves as your account's encryption key and protects all stored health data. Without it, the application operates in write-only mode — you can record new entries using your user password, but existing data remains encrypted and inaccessible until the account password is provided. <strong>If this password is lost, encrypted data cannot be recovered.</strong> Please store it somewhere safe.
+                    </div>
+                  )}
+                </span>
+              </label>
               <input
                 type="password"
                 id="account_password"
@@ -175,7 +190,7 @@ export default function FirstRunSetup() {
                 placeholder="Minimum 8 characters"
               />
               <small className="form-hint">
-                Password for logging into the account
+                Encryption key for your account data — store this securely
               </small>
             </div>
 
