@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Layout from './components/layout/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -72,10 +72,9 @@ function AppContent() {
   return (
     <>
       <Router>
-        {isFirstRun && <FirstRunSetup />}
-        <Routes>
+        {isFirstRun ? <FirstRunSetup /> : <Routes>
           {/* Public Routes */}
-          <Route path="/" element={<LandingPage />} />
+          <Route path="/" element={<Navigate to="/care" replace />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/select-user" element={<UserSelectionPage />} />
           
@@ -161,7 +160,7 @@ function AppContent() {
           <Route path="/care/configuration/users/permissions" element={<ProtectedRoute><Layout><AdminV2Permissions /></Layout></ProtectedRoute>} />
             
           <Route path="/care/*" element={<ProtectedRoute><Layout><AdminV2Dashboard /></Layout></ProtectedRoute>} />
-        </Routes>
+        </Routes>}
       </Router>
     </>
   );

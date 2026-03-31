@@ -33,8 +33,19 @@ export const AuthProvider = ({ children }) => {
       const firstRunRes = await fetch(`${API_BASE_URL}/api/auth/first-run`, {
         credentials: 'include'
       });
+
+      if (!firstRunRes.ok) {
+        // Backend may still be starting up — treat as first run if 404/503
+        const status = firstRunRes.status;
+        if (status === 404 || status >= 500) {
+          setIsFirstRun(true);
+          setLoading(false);
+          return;
+        }
+      }
+
       const firstRunData = await firstRunRes.json();
-      
+
       if (firstRunData.is_first_run) {
         setIsFirstRun(true);
         setLoading(false);
@@ -92,6 +103,13 @@ export const AuthProvider = ({ children }) => {
       }
     } catch (error) {
       console.error('Error checking auth status:', error);
+      // Network error means backend is unreachable (e.g. still starting up after fresh deploy).
+      // Treat as first-run so the setup flow is shown instead of the login page.
+      if (error instanceof TypeError) {
+        setIsFirstRun(true);
+        setLoading(false);
+        return;
+      }
       setAccount(null);
       setUser(null);
       setAuthLevel(null);
@@ -147,6 +165,11 @@ export const AuthProvider = ({ children }) => {
 
       if (!res.ok) {
         const error = await res.json();
+        // No accounts exist at all — trigger first-run setup
+        if (res.status === 404 && error.detail === 'No account available') {
+          setIsFirstRun(true);
+          return { success: false, error: 'No account found. Starting setup...' };
+        }
         throw new Error(error.detail || 'Account access failed');
       }
 

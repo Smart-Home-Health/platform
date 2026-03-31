@@ -190,7 +190,7 @@
   color: #e2e8f0;
 }
 
-.form-group input {
+.login-page .form-group input {
   padding: 0.875rem 1rem;
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 8px;
@@ -200,13 +200,13 @@
   transition: all 0.2s ease;
 }
 
-.form-group input:focus {
+.login-page .form-group input:focus {
   outline: none;
   border-color: #4299e1;
   box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.2);
 }
 
-.form-group input::placeholder {
+.login-page .form-group input::placeholder {
   color: #718096;
 }
 
