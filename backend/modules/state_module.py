@@ -94,56 +94,30 @@ class StateModule:
         """Handle vital recording events by saving to database."""
         try:
             from state_manager import get_db_session
-            
-            # Check if unified storage should be used
-            use_unified = event.data.get("use_unified_storage", False)
-            
+
             if event.vital_type == "blood_pressure":
-                if use_unified:
-                    from crud.vitals import save_blood_pressure_as_vitals
-                    with get_db_session() as db:
-                        save_blood_pressure_as_vitals(
-                            db=db,
-                            systolic=event.data["systolic"],
-                            diastolic=event.data["diastolic"],
-                            map_value=event.data["map"],
-                            notes=event.data.get("raw_data")
-                        )
-                    logger.info(f"Saved blood pressure reading to unified vitals table")
-                else:
-                    from crud.vitals import save_blood_pressure
-                    with get_db_session() as db:
-                        save_blood_pressure(
-                            db=db,
-                            systolic=event.data["systolic"],
-                            diastolic=event.data["diastolic"],
-                            map_value=event.data["map"],
-                            raw_data=event.data.get("raw_data")
-                        )
-                    logger.info(f"Saved blood pressure reading to database")
-                
+                from crud.vitals import save_blood_pressure
+                with get_db_session() as db:
+                    save_blood_pressure(
+                        db=db,
+                        systolic=event.data["systolic"],
+                        diastolic=event.data["diastolic"],
+                        map_value=event.data.get("map"),
+                        notes=event.data.get("raw_data")
+                    )
+                logger.info(f"Saved blood pressure reading to vitals table")
+
             elif event.vital_type == "temperature":
-                if use_unified:
-                    from crud.vitals import save_temperature_as_vitals
-                    with get_db_session() as db:
-                        save_temperature_as_vitals(
-                            db=db,
-                            body_temp=event.data["body_temp"],
-                            skin_temp=event.data.get("skin_temp"),
-                            notes=event.data.get("raw_data")
-                        )
-                    logger.info(f"Saved temperature reading to unified vitals table")
-                else:
-                    from crud.vitals import save_temperature
-                    with get_db_session() as db:
-                        save_temperature(
-                            db=db,
-                            skin_temp=event.data["skin_temp"],
-                            body_temp=event.data["body_temp"],
-                            raw_data=event.data.get("raw_data")
-                        )
-                    logger.info(f"Saved temperature reading to database")
-                
+                from crud.vitals import save_temperature
+                with get_db_session() as db:
+                    save_temperature(
+                        db=db,
+                        body_temp=event.data.get("body_temp"),
+                        skin_temp=event.data.get("skin_temp"),
+                        notes=event.data.get("raw_data")
+                    )
+                logger.info(f"Saved temperature reading to vitals table")
+
         except Exception as e:
             logger.error(f"Error saving vital recording to database: {e}")
 

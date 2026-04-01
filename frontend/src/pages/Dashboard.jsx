@@ -833,7 +833,7 @@ export default function Dashboard() {
         {isMobile ? (
           // Mobile Header
           <>
-            <div className="mobile-logo-container">
+            <div className="mobile-logo-container" onClick={() => navigate('/care')} style={{ cursor: 'pointer' }}>
               <img src={logoImage} alt="Logo" className="header-logo" />
               <div className="logo-text">Smart Home Health</div>
             </div>
@@ -853,7 +853,7 @@ export default function Dashboard() {
         ) : (
           // Desktop Header
           <>
-            <div className="logo-container">
+            <div className="logo-container" onClick={() => navigate('/care')} style={{ cursor: 'pointer' }}>
               <img src={logoImage} alt="Logo" className="header-logo" />
               <div className="logo-text">Smart Home Health</div>
             </div>

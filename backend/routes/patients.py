@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 
 from db import get_db
-from dependencies import require_read_access
+from dependencies import require_read_access, get_current_account_id
 from crud.patients import (
     get_patient, get_patients, create_patient, update_patient, 
     deactivate_patient, activate_patient, get_active_patient,
@@ -19,7 +19,7 @@ from models.patients import (
 
 router = APIRouter(prefix="/api/patients", tags=["patients"])
 
-@router.get("/", response_model=List[PatientResponse])
+@router.get("", response_model=List[PatientResponse])
 def list_patients(
     active_only: bool = Query(True, description="Filter to active patients only"),
     skip: int = Query(0, ge=0),
@@ -44,8 +44,12 @@ def get_current_or_default_patient(db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="No patients found")
     return patient
 
-@router.post("/", response_model=PatientResponse)
-def create_new_patient(patient: PatientCreate, db: Session = Depends(get_db)):
+@router.post("", response_model=PatientResponse)
+def create_new_patient(
+    patient: PatientCreate,
+    db: Session = Depends(get_db),
+    account_id: int = Depends(get_current_account_id),
+):
     """Create a new patient"""
     # Check if MRN already exists
     if patient.medical_record_number:
@@ -53,11 +57,12 @@ def create_new_patient(patient: PatientCreate, db: Session = Depends(get_db)):
         existing = get_patient_by_mrn(db, patient.medical_record_number)
         if existing:
             raise HTTPException(
-                status_code=400, 
+                status_code=400,
                 detail="Medical record number already exists"
             )
-    
+
     patient_data = patient.model_dump()
+    patient_data["account_id"] = account_id
     return create_patient(db, patient_data)
 
 @router.get("/{patient_id}", response_model=PatientResponse)

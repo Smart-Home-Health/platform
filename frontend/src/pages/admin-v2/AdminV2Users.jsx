@@ -20,6 +20,7 @@ const AdminV2Users = () => {
   const { user } = useAuth();
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
+  const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
@@ -51,16 +52,18 @@ const AdminV2Users = () => {
     password: '',
     pin: '',
     is_active: true,
-    role_ids: []
+    role_ids: [],
+    patient_ids: []
   });
   const [formError, setFormError] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  // Fetch users and roles only when authenticated
+  // Fetch users, roles, and patients only when authenticated
   useEffect(() => {
     if (user) {
       fetchUsers();
       fetchRoles();
+      fetchPatients();
     }
   }, [user]);
 
@@ -99,6 +102,33 @@ const AdminV2Users = () => {
     }
   };
 
+  const fetchPatients = async () => {
+    try {
+      const response = await fetch(`${config.apiUrl}/api/patients`, {
+        credentials: 'include'
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setPatients(data);
+      }
+    } catch (err) {
+      console.error('Error fetching patients:', err);
+    }
+  };
+
+  const savePatientAssignments = async (userId, patientIds) => {
+    try {
+      await fetch(`${config.apiUrl}/api/users/${userId}/patients`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ patient_ids: patientIds })
+      });
+    } catch (err) {
+      console.error('Error saving patient assignments:', err);
+    }
+  };
+
   const handleCreateUser = async (e) => {
     e.preventDefault();
     setFormError(null);
@@ -124,6 +154,10 @@ const AdminV2Users = () => {
       });
 
       if (response.ok) {
+        const created = await response.json();
+        if (formData.patient_ids.length > 0) {
+          await savePatientAssignments(created.id, formData.patient_ids);
+        }
         setShowCreateModal(false);
         resetForm();
         fetchUsers();
@@ -165,6 +199,8 @@ const AdminV2Users = () => {
       if (response.ok) {
         // Update roles if changed
         await updateUserRoles(selectedUser.id, formData.role_ids);
+        // Update patient assignments
+        await savePatientAssignments(selectedUser.id, formData.patient_ids);
         setShowEditModal(false);
         resetForm();
         fetchUsers();
@@ -241,7 +277,8 @@ const AdminV2Users = () => {
       password: '',
       pin: '',
       is_active: user.is_active,
-      role_ids: user.roles?.map(r => r.id) || []
+      role_ids: user.roles?.map(r => r.id) || [],
+      patient_ids: user.patient_ids || []
     });
     setFormError(null);
     setShowEditModal(true);
@@ -266,7 +303,8 @@ const AdminV2Users = () => {
       password: '',
       pin: '',
       is_active: true,
-      role_ids: []
+      role_ids: [],
+      patient_ids: []
     });
     setFormError(null);
     setSelectedUser(null);
@@ -279,6 +317,23 @@ const AdminV2Users = () => {
         ? prev.role_ids.filter(id => id !== roleId)
         : [...prev.role_ids, roleId]
     }));
+  };
+
+  const handlePatientToggle = (patientId) => {
+    setFormData(prev => ({
+      ...prev,
+      patient_ids: prev.patient_ids.includes(patientId)
+        ? prev.patient_ids.filter(id => id !== patientId)
+        : [...prev.patient_ids, patientId]
+    }));
+  };
+
+  // Check if the user being created/edited has a system_admin role
+  const isFormSystemAdmin = () => {
+    return formData.role_ids.some(rid => {
+      const role = roles.find(r => r.id === rid);
+      return role && role.name === 'system_admin';
+    });
   };
 
   const getInitials = (name) => {
@@ -505,7 +560,7 @@ const AdminV2Users = () => {
                   </td>
                   <td>
                     <span className="admin-v2-patient-count">
-                      -- assigned
+                      {u.is_system_admin ? 'All' : `${(u.patient_ids || []).length} assigned`}
                     </span>
                   </td>
                   <td>
@@ -656,9 +711,29 @@ const AdminV2Users = () => {
 
                   <div className="admin-v2-form-group">
                     <label>Patient Assignments</label>
-                    <div className="admin-v2-placeholder-box">
-                      Patient assignment functionality coming soon
-                    </div>
+                    {isFormSystemAdmin() ? (
+                      <div className="admin-v2-placeholder-box">
+                        System admins have access to all patients automatically.
+                      </div>
+                    ) : patients.length === 0 ? (
+                      <div className="admin-v2-placeholder-box">No patients configured yet.</div>
+                    ) : (
+                      <div className="admin-v2-role-selector">
+                        {patients.map(p => (
+                          <label key={p.id} className="admin-v2-role-option">
+                            <input
+                              type="checkbox"
+                              checked={formData.patient_ids.includes(p.id)}
+                              onChange={() => handlePatientToggle(p.id)}
+                            />
+                            <span className="admin-v2-role-option-label">
+                              {p.first_name} {p.last_name}
+                              {p.medical_record_number && <small>MRN: {p.medical_record_number}</small>}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="admin-v2-modal-footer">
@@ -781,9 +856,29 @@ const AdminV2Users = () => {
 
                   <div className="admin-v2-form-group">
                     <label>Patient Assignments</label>
-                    <div className="admin-v2-placeholder-box">
-                      Patient assignment functionality coming soon
-                    </div>
+                    {isFormSystemAdmin() ? (
+                      <div className="admin-v2-placeholder-box">
+                        System admins have access to all patients automatically.
+                      </div>
+                    ) : patients.length === 0 ? (
+                      <div className="admin-v2-placeholder-box">No patients configured yet.</div>
+                    ) : (
+                      <div className="admin-v2-role-selector">
+                        {patients.map(p => (
+                          <label key={p.id} className="admin-v2-role-option">
+                            <input
+                              type="checkbox"
+                              checked={formData.patient_ids.includes(p.id)}
+                              onChange={() => handlePatientToggle(p.id)}
+                            />
+                            <span className="admin-v2-role-option-label">
+                              {p.first_name} {p.last_name}
+                              {p.medical_record_number && <small>MRN: {p.medical_record_number}</small>}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="admin-v2-modal-footer">

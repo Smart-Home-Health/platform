@@ -261,7 +261,6 @@ class MQTTModule:
                     "diastolic": diastolic,
                     "map": map_value,
                     "raw_data": raw_data,
-                    "use_unified_storage": True  # Flag to use unified vitals table
                 },
                 patient_id=patient_id,
                 source=EventSource.MQTT
@@ -299,7 +298,6 @@ class MQTTModule:
                     "skin_temp": skin_temp,
                     "body_temp": body_temp,
                     "raw_data": raw_data,
-                    "use_unified_storage": True  # Flag to use unified vitals table
                 },
                 patient_id=patient_id,
                 source=EventSource.MQTT

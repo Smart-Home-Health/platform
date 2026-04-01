@@ -20,13 +20,14 @@ from crud.users import (
 )
 from dependencies import get_current_user, require_permission
 from models.users import User, Role, Permission
+from schemas.patient import Patient, PatientAccess, AccessLevel
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/users", tags=["User Management"])
 
 
-@router.get("", response_model=List[UserListItem])
+@router.get("")
 def list_users(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -34,21 +35,31 @@ def list_users(
     """Get list of all users (requires authentication)"""
     users = get_all_users(db)
     
-    return [
-        UserListItem(
-            id=user.id,
-            username=user.username,
-            full_name=user.full_name,
-            email=user.email,
-            is_active=user.is_active,
-            is_system_admin=user.is_system_admin,
-            has_pin=bool(user.pin_hash),
-            roles=[{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles],
-            created_at=user.created_at,
-            last_login=user.last_login
+    # Pre-fetch patient assignments for all users
+    all_grants = db.query(PatientAccess).filter(PatientAccess.is_active == True).all()
+    user_patients = {}
+    for g in all_grants:
+        user_patients.setdefault(g.user_id, []).append(g.patient_id)
+
+    result = []
+    for u in users:
+        item = UserListItem(
+            id=u.id,
+            username=u.username,
+            full_name=u.full_name,
+            email=u.email,
+            is_active=u.is_active,
+            is_system_admin=u.is_system_admin,
+            has_pin=bool(u.pin_hash),
+            roles=[{"id": r.id, "name": r.name, "display_name": r.display_name} for r in u.roles],
+            created_at=u.created_at,
+            last_login=u.last_login
         )
-        for user in users
-    ]
+        # Attach patient_ids as extra field
+        item_dict = item.model_dump()
+        item_dict["patient_ids"] = user_patients.get(u.id, [])
+        result.append(item_dict)
+    return result
 
 
 @router.get("/roles")
@@ -273,7 +284,7 @@ def create_new_user(
             detail="Email already in use"
         )
     
-    # Create user
+    # Create user under the same account as the creating user
     try:
         user = create_user(
             db=db,
@@ -285,6 +296,10 @@ def create_new_user(
             is_active=user_data.is_active if hasattr(user_data, 'is_active') else True,
             role_ids=user_data.role_ids if hasattr(user_data, 'role_ids') else None
         )
+        if current_user.account_id and not user.account_id:
+            user.account_id = current_user.account_id
+            db.commit()
+            db.refresh(user)
         return user
     except Exception as e:
         logger.error(f"Error creating user: {e}")
@@ -420,6 +435,73 @@ def remove_user_role(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error removing role: {str(e)}"
         )
+
+
+# ==================== Patient Assignment Endpoints ====================
+
+
+@router.get("/{user_id}/patients")
+def get_user_patients(
+    user_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get patient IDs assigned to a user"""
+    grants = db.query(PatientAccess).filter(
+        PatientAccess.user_id == user_id,
+        PatientAccess.is_active == True,
+    ).all()
+    return {"patient_ids": [g.patient_id for g in grants]}
+
+
+@router.put("/{user_id}/patients")
+def set_user_patients(
+    user_id: int,
+    body: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Replace all patient assignments for a user.
+    Expects: { "patient_ids": [1, 2, 3] }
+    """
+    user = get_user_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    desired_ids = set(body.get("patient_ids", []))
+
+    # Current active grants for this user
+    existing = db.query(PatientAccess).filter(
+        PatientAccess.user_id == user_id,
+    ).all()
+    existing_map = {g.patient_id: g for g in existing}
+
+    # Deactivate removed
+    for pid, grant in existing_map.items():
+        if pid not in desired_ids:
+            db.delete(grant)
+
+    # Add new
+    from datetime import datetime
+    for pid in desired_ids:
+        if pid in existing_map:
+            # Re-activate if it was inactive
+            grant = existing_map[pid]
+            if not grant.is_active:
+                grant.is_active = True
+        else:
+            db.add(PatientAccess(
+                patient_id=pid,
+                user_id=user_id,
+                access_level=AccessLevel.CAREGIVER,
+                is_active=True,
+                granted_by_user_id=current_user.id,
+                granted_at=datetime.utcnow(),
+            ))
+
+    db.commit()
+    return {"success": True, "patient_ids": list(desired_ids)}
 
 
 # ==================== Role CRUD Endpoints ====================

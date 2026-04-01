@@ -6,8 +6,6 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, asc, and_, or_
 from schemas.vital import Vital
-from schemas.blood_pressure import BloodPressure
-from schemas.temperature import Temperature
 from schemas.pulse_ox_data import PulseOxData
 from schemas.setting import Setting
 from schemas.monitoring_alert import MonitoringAlert
@@ -698,91 +696,99 @@ def get_alerts_list(db: Session, limit=25, offset=0, severity_filter=None, vital
                             'message': f"Heart rate {reading.bpm} BPM is {'below' if reading.bpm < min_bpm else 'above'} normal range ({min_bpm}-{max_bpm} BPM)"
                         })
         
-        # Check blood pressure readings
+        # Check blood pressure readings from vitals table
         if not vital_type_filter or vital_type_filter == 'blood_pressure':
-            bp_query = db.query(BloodPressure)
-            
-            # Apply date filters
+            from collections import defaultdict
+            bp_vitals_query = db.query(Vital).filter(Vital.vital_type == 'blood_pressure')
             for date_f in date_filter:
-                bp_query = bp_query.filter(date_f(BloodPressure))
-            
-            bp_alerts = bp_query.filter(
-                or_(
-                    BloodPressure.systolic > max_systolic,
-                    BloodPressure.diastolic > max_diastolic,
-                    BloodPressure.systolic < min_systolic,
-                    BloodPressure.diastolic < min_diastolic
-                )
-            ).order_by(desc(BloodPressure.created_at)).all()
-            
-            for bp in bp_alerts:
+                bp_vitals_query = bp_vitals_query.filter(date_f(Vital))
+            bp_vitals = bp_vitals_query.order_by(desc(Vital.created_at)).all()
+
+            # Group by timestamp to reconstruct systolic/diastolic pairs
+            bp_grouped = defaultdict(dict)
+            for v in bp_vitals:
+                ts_key = v.timestamp
+                bp_grouped[ts_key]['id'] = bp_grouped[ts_key].get('id', v.id)
+                bp_grouped[ts_key]['created_at'] = v.created_at
+                if v.vital_group == 'systolic':
+                    bp_grouped[ts_key]['systolic'] = float(v.value) if v.value else None
+                elif v.vital_group == 'diastolic':
+                    bp_grouped[ts_key]['diastolic'] = float(v.value) if v.value else None
+
+            for ts_key, bp in bp_grouped.items():
+                systolic = bp.get('systolic')
+                diastolic = bp.get('diastolic')
+                if systolic is None or diastolic is None:
+                    continue
+
+                # Check if out of range
+                if not (systolic > max_systolic or diastolic > max_diastolic or
+                        systolic < min_systolic or diastolic < min_diastolic):
+                    continue
+
                 severity = 'low'
-                
-                # Determine severity based on how far out of range
-                if (bp.systolic > max_systolic + 20 or bp.diastolic > max_diastolic + 15 or
-                    bp.systolic < min_systolic - 20 or bp.diastolic < min_diastolic - 15):
+                if (systolic > max_systolic + 20 or diastolic > max_diastolic + 15 or
+                    systolic < min_systolic - 20 or diastolic < min_diastolic - 15):
                     severity = 'critical'
-                elif (bp.systolic > max_systolic + 10 or bp.diastolic > max_diastolic + 10 or
-                      bp.systolic < min_systolic - 10 or bp.diastolic < min_diastolic - 10):
+                elif (systolic > max_systolic + 10 or diastolic > max_diastolic + 10 or
+                      systolic < min_systolic - 10 or diastolic < min_diastolic - 10):
                     severity = 'high'
-                
+
                 if not severity_filter or severity_filter == severity:
-                    # Determine which value(s) are out of range
                     issues = []
-                    if bp.systolic > max_systolic:
-                        issues.append(f"systolic {bp.systolic} above {max_systolic}")
-                    elif bp.systolic < min_systolic:
-                        issues.append(f"systolic {bp.systolic} below {min_systolic}")
-                    
-                    if bp.diastolic > max_diastolic:
-                        issues.append(f"diastolic {bp.diastolic} above {max_diastolic}")
-                    elif bp.diastolic < min_diastolic:
-                        issues.append(f"diastolic {bp.diastolic} below {min_diastolic}")
-                    
+                    if systolic > max_systolic:
+                        issues.append(f"systolic {int(systolic)} above {max_systolic}")
+                    elif systolic < min_systolic:
+                        issues.append(f"systolic {int(systolic)} below {min_systolic}")
+                    if diastolic > max_diastolic:
+                        issues.append(f"diastolic {int(diastolic)} above {max_diastolic}")
+                    elif diastolic < min_diastolic:
+                        issues.append(f"diastolic {int(diastolic)} below {min_diastolic}")
+
                     alerts.append({
-                        'id': f"bp_{bp.id}",
+                        'id': f"bp_{bp['id']}",
                         'vital_type': 'blood_pressure',
-                        'value': f"{bp.systolic}/{bp.diastolic}",
+                        'value': f"{int(systolic)}/{int(diastolic)}",
                         'threshold_min': f"{min_systolic}/{min_diastolic}",
                         'threshold_max': f"{max_systolic}/{max_diastolic}",
                         'severity': severity,
-                        'timestamp': bp.created_at.isoformat(),
-                        'message': f"Blood pressure {bp.systolic}/{bp.diastolic} mmHg - {', '.join(issues)}"
+                        'timestamp': bp['created_at'].isoformat(),
+                        'message': f"Blood pressure {int(systolic)}/{int(diastolic)} mmHg - {', '.join(issues)}"
                     })
         
-        # Check temperature readings
+        # Check temperature readings from vitals table
         if not vital_type_filter or vital_type_filter == 'temperature':
-            temp_query = db.query(Temperature)
-            
-            # Apply date filters
+            temp_vitals_query = db.query(Vital).filter(
+                Vital.vital_type == 'temperature',
+                Vital.vital_group == 'body'
+            )
             for date_f in date_filter:
-                temp_query = temp_query.filter(date_f(Temperature))
-            
-            temp_alerts = temp_query.filter(
-                or_(
-                    Temperature.temperature < min_temp,
-                    Temperature.temperature > max_temp
-                )
-            ).order_by(desc(Temperature.created_at)).all()
-            
-            for temp in temp_alerts:
+                temp_vitals_query = temp_vitals_query.filter(date_f(Vital))
+            temp_vitals = temp_vitals_query.order_by(desc(Vital.created_at)).all()
+
+            for tv in temp_vitals:
+                temp_val = float(tv.value) if tv.value else None
+                if temp_val is None:
+                    continue
+                if not (temp_val < min_temp or temp_val > max_temp):
+                    continue
+
                 severity = 'low'
-                
-                if temp.temperature > max_temp + 2 or temp.temperature < min_temp - 2:
+                if temp_val > max_temp + 2 or temp_val < min_temp - 2:
                     severity = 'critical'
-                elif temp.temperature > max_temp + 1 or temp.temperature < min_temp - 1:
+                elif temp_val > max_temp + 1 or temp_val < min_temp - 1:
                     severity = 'high'
-                
+
                 if not severity_filter or severity_filter == severity:
                     alerts.append({
-                        'id': f"temp_{temp.id}",
+                        'id': f"temp_{tv.id}",
                         'vital_type': 'temperature',
-                        'value': temp.temperature,
+                        'value': temp_val,
                         'threshold_min': min_temp,
                         'threshold_max': max_temp,
                         'severity': severity,
-                        'timestamp': temp.created_at.isoformat(),
-                        'message': f"Temperature {temp.temperature}°F is {'below' if temp.temperature < min_temp else 'above'} normal range ({min_temp}-{max_temp}°F)"
+                        'timestamp': tv.created_at.isoformat(),
+                        'message': f"Temperature {temp_val}°F is {'below' if temp_val < min_temp else 'above'} normal range ({min_temp}-{max_temp}°F)"
                     })
         
         # Sort all alerts by timestamp (most recent first)
@@ -928,10 +934,27 @@ def get_monitoring_dashboard_data(db: Session):
         
         # Get latest readings for each vital type
         latest_pulse_ox = db.query(PulseOxData).order_by(desc(PulseOxData.created_at)).first()
-        latest_bp = db.query(BloodPressure).order_by(desc(BloodPressure.created_at)).first()
-        latest_temp = db.query(Temperature).order_by(desc(Temperature.created_at)).first()
-        latest_vital = db.query(Vital).order_by(desc(Vital.created_at)).first()
-        
+
+        # Get latest BP from vitals (grouped by timestamp)
+        from collections import defaultdict
+        latest_bp_vitals = db.query(Vital).filter(
+            Vital.vital_type == 'blood_pressure'
+        ).order_by(desc(Vital.created_at)).limit(3).all()
+        latest_bp = {}
+        if latest_bp_vitals:
+            for v in latest_bp_vitals:
+                if v.vital_group == 'systolic':
+                    latest_bp['systolic'] = float(v.value) if v.value else None
+                elif v.vital_group == 'diastolic':
+                    latest_bp['diastolic'] = float(v.value) if v.value else None
+                latest_bp['created_at'] = v.created_at
+
+        # Get latest temperature from vitals
+        latest_temp_vital = db.query(Vital).filter(
+            Vital.vital_type == 'temperature',
+            Vital.vital_group == 'body'
+        ).order_by(desc(Vital.created_at)).first()
+
         # Get thresholds
         min_spo2 = float(get_setting_value(db, 'MIN_SPO2', 95))
         max_spo2 = float(get_setting_value(db, 'MAX_SPO2', 100))
@@ -943,7 +966,7 @@ def get_monitoring_dashboard_data(db: Session):
         max_diastolic = float(get_setting_value(db, 'MAX_DIASTOLIC', 90))
         min_systolic = float(get_setting_value(db, 'MIN_SYSTOLIC', 90))
         min_diastolic = float(get_setting_value(db, 'MIN_DIASTOLIC', 60))
-        
+
         # Determine status for each vital
         def get_vital_status(value, min_val, max_val):
             if min_val <= value <= max_val:
@@ -952,7 +975,12 @@ def get_monitoring_dashboard_data(db: Session):
                 return 'critical'
             else:
                 return 'warning'
-        
+
+        bp_systolic = latest_bp.get('systolic')
+        bp_diastolic = latest_bp.get('diastolic')
+        bp_created_at = latest_bp.get('created_at')
+        temp_val = float(latest_temp_vital.value) if latest_temp_vital and latest_temp_vital.value else None
+
         current_vitals = {
             'spo2': {
                 'value': latest_pulse_ox.spo2 if latest_pulse_ox else None,
@@ -967,42 +995,50 @@ def get_monitoring_dashboard_data(db: Session):
                 'unit': 'BPM'
             },
             'blood_pressure': {
-                'value': f"{latest_bp.systolic}/{latest_bp.diastolic}" if latest_bp else None,
-                'systolic': latest_bp.systolic if latest_bp else None,
-                'diastolic': latest_bp.diastolic if latest_bp else None,
-                'status': 'normal' if latest_bp and (min_systolic <= latest_bp.systolic <= max_systolic and min_diastolic <= latest_bp.diastolic <= max_diastolic) else ('warning' if latest_bp else 'no_data'),
-                'timestamp': latest_bp.created_at.isoformat() if latest_bp else None,
+                'value': f"{int(bp_systolic)}/{int(bp_diastolic)}" if bp_systolic and bp_diastolic else None,
+                'systolic': bp_systolic,
+                'diastolic': bp_diastolic,
+                'status': 'normal' if bp_systolic and bp_diastolic and (min_systolic <= bp_systolic <= max_systolic and min_diastolic <= bp_diastolic <= max_diastolic) else ('warning' if bp_systolic else 'no_data'),
+                'timestamp': bp_created_at.isoformat() if bp_created_at else None,
                 'unit': 'mmHg'
             },
             'temperature': {
-                'value': latest_temp.temperature if latest_temp else None,
-                'status': get_vital_status(latest_temp.temperature, min_temp, max_temp) if latest_temp else 'no_data',
-                'timestamp': latest_temp.created_at.isoformat() if latest_temp else None,
+                'value': temp_val,
+                'status': get_vital_status(temp_val, min_temp, max_temp) if temp_val else 'no_data',
+                'timestamp': latest_temp_vital.created_at.isoformat() if latest_temp_vital else None,
                 'unit': '°F'
             }
         }
-        
+
         # Get recent trends (last 6 hours)
         six_hours_ago = now - timedelta(hours=6)
-        
+
         recent_pulse_ox = db.query(PulseOxData).filter(
             PulseOxData.created_at >= six_hours_ago
         ).order_by(PulseOxData.created_at).all()
-        
-        recent_bp = db.query(BloodPressure).filter(
-            BloodPressure.created_at >= six_hours_ago
-        ).order_by(BloodPressure.created_at).all()
-        
-        recent_temp = db.query(Temperature).filter(
-            Temperature.created_at >= six_hours_ago
-        ).order_by(Temperature.created_at).all()
-        
+
+        recent_bp_vitals = db.query(Vital).filter(
+            Vital.vital_type == 'blood_pressure',
+            Vital.created_at >= six_hours_ago
+        ).order_by(Vital.created_at).all()
+
+        recent_temp_vitals = db.query(Vital).filter(
+            Vital.vital_type == 'temperature',
+            Vital.vital_group == 'body',
+            Vital.created_at >= six_hours_ago
+        ).order_by(Vital.created_at).all()
+
+        # Group BP vitals by timestamp for trends
+        bp_trend_grouped = defaultdict(dict)
+        for v in recent_bp_vitals:
+            bp_trend_grouped[v.created_at][v.vital_group] = float(v.value) if v.value else None
+
         trends = {
             'spo2': [{'timestamp': r.created_at.isoformat(), 'value': r.spo2} for r in recent_pulse_ox],
             'heart_rate': [{'timestamp': r.created_at.isoformat(), 'value': r.bpm} for r in recent_pulse_ox],
-            'blood_pressure_systolic': [{'timestamp': r.created_at.isoformat(), 'value': r.systolic} for r in recent_bp],
-            'blood_pressure_diastolic': [{'timestamp': r.created_at.isoformat(), 'value': r.diastolic} for r in recent_bp],
-            'temperature': [{'timestamp': r.created_at.isoformat(), 'value': r.temperature} for r in recent_temp]
+            'blood_pressure_systolic': [{'timestamp': ts.isoformat(), 'value': vals.get('systolic')} for ts, vals in sorted(bp_trend_grouped.items())],
+            'blood_pressure_diastolic': [{'timestamp': ts.isoformat(), 'value': vals.get('diastolic')} for ts, vals in sorted(bp_trend_grouped.items())],
+            'temperature': [{'timestamp': r.created_at.isoformat(), 'value': float(r.value) if r.value else None} for r in recent_temp_vitals]
         }
         
         # Get alert summary
@@ -1091,29 +1127,38 @@ def get_vital_history_for_monitoring(db: Session, vital_type, hours=24, limit=10
             ]
         
         elif vital_type == 'blood_pressure':
-            readings = db.query(BloodPressure).filter(
-                BloodPressure.created_at >= cutoff_time
-            ).order_by(desc(BloodPressure.created_at)).limit(limit).all()
-            
+            from collections import defaultdict
+            bp_readings = db.query(Vital).filter(
+                Vital.vital_type == 'blood_pressure',
+                Vital.created_at >= cutoff_time
+            ).order_by(desc(Vital.created_at)).limit(limit * 3).all()
+
+            bp_grouped = defaultdict(dict)
+            for v in bp_readings:
+                bp_grouped[v.timestamp][v.vital_group] = float(v.value) if v.value else None
+                bp_grouped[v.timestamp]['created_at'] = v.created_at
+
             return [
                 {
-                    'timestamp': r.created_at.isoformat(),
-                    'systolic': r.systolic,
-                    'diastolic': r.diastolic,
+                    'timestamp': data['created_at'].isoformat(),
+                    'systolic': data.get('systolic'),
+                    'diastolic': data.get('diastolic'),
                     'unit': 'mmHg'
                 }
-                for r in reversed(readings)
+                for ts, data in sorted(bp_grouped.items())
             ]
-        
+
         elif vital_type == 'temperature':
-            readings = db.query(Temperature).filter(
-                Temperature.created_at >= cutoff_time
-            ).order_by(desc(Temperature.created_at)).limit(limit).all()
-            
+            readings = db.query(Vital).filter(
+                Vital.vital_type == 'temperature',
+                Vital.vital_group == 'body',
+                Vital.created_at >= cutoff_time
+            ).order_by(desc(Vital.created_at)).limit(limit).all()
+
             return [
                 {
                     'timestamp': r.created_at.isoformat(),
-                    'value': r.temperature,
+                    'value': float(r.value) if r.value else None,
                     'unit': '°F'
                 }
                 for r in reversed(readings)
@@ -1139,8 +1184,8 @@ def check_system_health(db: Session):
         
         # Check data freshness
         latest_pulse_ox = db.query(PulseOxData).order_by(desc(PulseOxData.created_at)).first()
-        latest_bp = db.query(BloodPressure).order_by(desc(BloodPressure.created_at)).first()
-        latest_temp = db.query(Temperature).order_by(desc(Temperature.created_at)).first()
+        latest_bp = db.query(Vital).filter(Vital.vital_type == 'blood_pressure').order_by(desc(Vital.created_at)).first()
+        latest_temp = db.query(Vital).filter(Vital.vital_type == 'temperature', Vital.vital_group == 'body').order_by(desc(Vital.created_at)).first()
         
         data_freshness = {
             'pulse_ox_minutes_ago': (now - latest_pulse_ox.created_at).total_seconds() / 60 if latest_pulse_ox else None,

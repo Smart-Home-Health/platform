@@ -5,7 +5,19 @@ import AdminV2Layout from './AdminV2Layout';
 import './AdminV2.css';
 
 export default function AdminV2AccountSettings() {
-  const { account } = useAuth();
+  const { account, user } = useAuth();
+
+  // Only system admins can access account settings
+  if (user && !user.is_system_admin) {
+    return (
+      <AdminV2Layout>
+        <div style={{ padding: '2rem', color: '#8b949e', textAlign: 'center' }}>
+          <h3 style={{ color: '#e6edf3' }}>Access Denied</h3>
+          <p>Account settings are only available to system administrators.</p>
+        </div>
+      </AdminV2Layout>
+    );
+  }
   const [accountData, setAccountData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

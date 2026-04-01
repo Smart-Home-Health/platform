@@ -26,7 +26,5 @@ from schemas.ventilator_alert import VentilatorAlert
 from schemas.external_alarm import ExternalAlarm
 from schemas.pulse_ox_data import PulseOxData
 from schemas.setting import Setting
-from schemas.blood_pressure import BloodPressure
-from schemas.temperature import Temperature
 from schemas.vital import Vital
 from schemas.patient import Patient

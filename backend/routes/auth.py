@@ -42,6 +42,7 @@ router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-this-secret-key-in-production")
 ALGORITHM = "HS256"
 SESSION_TIMEOUT_MINUTES = 30
+ACCOUNT_SESSION_HOURS = 24  # Account-level cookie lasts 24h per browser
 
 
 def create_access_token(
@@ -77,6 +78,27 @@ def create_access_token(
     }
 
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def _set_account_cookie(response: Response, account: Account, read_restricted: bool = False):
+    """Set a long-lived account_token cookie (24h) so the browser stays at account-level
+    auth even after the shorter session_token expires."""
+    expire = datetime.utcnow() + timedelta(hours=ACCOUNT_SESSION_HOURS)
+    payload = {
+        "account_id": account.id,
+        "auth_level": "account",
+        "read_restricted": read_restricted,
+        "exp": expire,
+    }
+    token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+    response.set_cookie(
+        key="account_token",
+        value=token,
+        httponly=True,
+        max_age=ACCOUNT_SESSION_HOURS * 3600,
+        samesite="none",
+        secure=False,
+    )
 
 
 def get_client_ip(request: Request) -> str:
@@ -305,8 +327,8 @@ def account_login(
     
     # Create account-level token (with password = full read access)
     token = create_access_token(account=account, auth_level="account", read_restricted=False)
-    
-    # Set httpOnly cookie
+
+    # Set httpOnly cookie (short-lived session)
     response.set_cookie(
         key="session_token",
         value=token,
@@ -315,7 +337,9 @@ def account_login(
         samesite="none",
         secure=False  # Set to True in production with HTTPS
     )
-    
+    # Set long-lived account cookie (24h) so password isn't re-prompted
+    _set_account_cookie(response, account, read_restricted=False)
+
     # Create audit log
     create_audit_log(
         db,
@@ -389,6 +413,7 @@ def account_access(
         samesite="none",
         secure=False,
     )
+    _set_account_cookie(response, account, read_restricted=read_restricted)
     create_audit_log(
         db,
         user_id=None,
@@ -486,6 +511,8 @@ def account_unlock(
         samesite="none",
         secure=False,
     )
+    # Refresh account cookie with unrestricted access
+    _set_account_cookie(response, account, read_restricted=False)
     create_audit_log(
         db,
         user_id=user_id,
@@ -884,8 +911,9 @@ def logout(response: Response, current_user: User = Depends(get_current_user), d
         details=json.dumps({"username": current_user.username})
     )
     
-    # Clear session cookie
+    # Clear both session and account cookies
     response.delete_cookie(key="session_token")
+    response.delete_cookie(key="account_token")
     
     logger.info(f"User logged out: {current_user.username}")
     
@@ -906,32 +934,31 @@ def get_session(
     - Account-only: account_id, auth_level="account"
     - Full: account_id, user info, auth_level="full"
     """
-    # Since /session is a public route, middleware doesn't run
-    # We need to parse the token ourselves
+    # Since /session is a public route, middleware doesn't run.
+    # Check session_token first, fall back to long-lived account_token.
+    from middleware import AuthenticationMiddleware as _mw
+
     token = request.cookies.get("session_token")
     if not token:
         auth_header = request.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
             token = auth_header[7:]
-    
-    # No token - not authenticated
-    if not token:
-        return SessionInfo(is_authenticated=False)
-    
-    # Parse the token
-    try:
-        import jwt
-        import os
-        SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-this-secret-key-in-production")
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-        
-        account_id = payload.get("account_id")
-        user_id = payload.get("user_id")
-        auth_level = payload.get("auth_level")
-        read_restricted = payload.get("read_restricted", False)
 
-    except jwt.InvalidTokenError:
+    payload = _mw._decode_token(token) if token else None
+
+    # Fall back to the 24h account cookie
+    if payload is None:
+        account_token = request.cookies.get("account_token")
+        if account_token:
+            payload = _mw._decode_token(account_token)
+
+    if payload is None:
         return SessionInfo(is_authenticated=False)
+
+    account_id = payload.get("account_id")
+    user_id = payload.get("user_id")
+    auth_level = payload.get("auth_level")
+    read_restricted = payload.get("read_restricted", False)
     
     # No account - not authenticated
     if not account_id:

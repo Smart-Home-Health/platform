@@ -197,33 +197,38 @@ async def save_mqtt_settings(settings: MQTTSettings, db: Session = Depends(get_d
 
 async def restart_mqtt_if_enabled(db: Session):
     """Restart MQTT connection if enabled in settings"""
-    # Import at function level to avoid circular imports
     import asyncio
-    from main import get_modules
-    
+    from main import get_modules, mqtt_update_bridge
+    from mqtt.settings import is_mqtt_enabled
+    from mqtt.service import get_mqtt_service, shutdown_mqtt_service
+
     try:
-        # Get event bus from modules
         modules = get_modules()
-        event_bus = modules.get("event_bus")
-        
-        # Check if MQTT is enabled
-        from mqtt.settings import is_mqtt_enabled
-        
+        mqtt_module = modules.get("mqtt")
+
         if not is_mqtt_enabled():
-            # Send event to stop MQTT
-            if event_bus:
-                event = {"type": "mqtt_control", "data": {"action": "stop"}}
-                asyncio.create_task(event_bus.publish(event, topic="mqtt_control"))
-            return "MQTT disabled - stop requested"
-        
-        # Send event to restart MQTT with new settings
-        if event_bus:
-            event = {"type": "mqtt_control", "data": {"action": "restart"}}
-            asyncio.create_task(event_bus.publish(event, topic="mqtt_control"))
-        return "MQTT restart requested through event system"
-        
+            shutdown_mqtt_service()
+            if mqtt_module:
+                mqtt_module.set_mqtt_components(None, None)
+            return "MQTT disabled - stopped"
+
+        # Shutdown existing connection
+        shutdown_mqtt_service()
+
+        # Re-initialize with current settings
+        loop = asyncio.get_event_loop()
+        service = get_mqtt_service()
+        mqtt_manager, mqtt_publisher = service.initialize(loop, mqtt_update_bridge)
+
+        if mqtt_manager and mqtt_publisher and mqtt_module:
+            mqtt_module.set_mqtt_components(mqtt_manager, mqtt_publisher)
+            await mqtt_module.start_event_subscribers()
+            return "MQTT restarted successfully"
+        else:
+            return "MQTT initialization failed - check settings"
+
     except Exception as e:
-        logger.error(f"Error requesting MQTT restart: {e}")
+        logger.error(f"Error restarting MQTT: {e}")
         return f"Error: {str(e)}"
 
 

@@ -67,10 +67,21 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             auth_header = request.headers.get("Authorization", "")
             if auth_header.startswith("Bearer "):
                 token = auth_header[7:]
-        
-        # No token found - require authentication
-        if not token:
-            logger.debug(f"No token found for protected route: {path}")
+
+        # Try to decode the primary session token
+        payload = self._decode_token(token) if token else None
+
+        # If the session token is missing or expired, fall back to the long-lived
+        # account_token cookie so the browser stays at account-level auth (user
+        # select) instead of being kicked back to the password prompt.
+        if payload is None:
+            account_token = request.cookies.get("account_token")
+            if account_token:
+                payload = self._decode_token(account_token)
+
+        # No valid token at all — require authentication
+        if payload is None:
+            logger.debug(f"No valid token for protected route: {path}")
             return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 content={
@@ -79,67 +90,54 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
                     "path": path
                 }
             )
-        
-        # Validate token
+
+        # Extract fields from whichever token was valid
+        user_id = payload.get("user_id")
+        username = payload.get("username")
+        account_id = payload.get("account_id")
+        auth_level = payload.get("auth_level", "full")
+        read_restricted = payload.get("read_restricted", False)
+
+        # Add user context to request state AND scope (for BaseHTTPMiddleware compatibility)
+        request.state.user_id = user_id
+        request.state.username = username
+        request.state.user_role = payload.get("role")
+        request.state.is_authenticated = True
+        request.state.account_id = account_id
+        request.state.auth_level = auth_level
+        request.state.read_restricted = read_restricted
+
+        # Also add to scope for persistence
+        request.scope["user_id"] = user_id
+        request.scope["username"] = username
+        request.scope["user_role"] = payload.get("role")
+        request.scope["account_id"] = account_id
+        request.scope["auth_level"] = auth_level
+        request.scope["read_restricted"] = read_restricted
+
+        # Continue with request
+        try:
+            response = await call_next(request)
+            return response
+        except Exception as e:
+            logger.error(f"Error processing request: {e}")
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"detail": "Internal server error"}
+            )
+
+    @staticmethod
+    def _decode_token(token: str) -> dict | None:
+        """Decode and validate a JWT token.  Returns the payload dict or None."""
         try:
             payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
             if not isinstance(payload, dict):
-                raise jwt.InvalidTokenError("Token payload must be an object")
-            user_id = payload.get("user_id")
-            username = payload.get("username")
-            exp = payload.get("exp")
-            
-            # Check if token expired
-            if datetime.utcnow().timestamp() > exp:
-                logger.debug(f"Expired token for user {username}")
-                return JSONResponse(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    content={
-                        "detail": "Session expired",
-                        "requires_auth": True,
-                        "path": path
-                    }
-                )
-            
-            # Extract account, auth level, and read_restricted from token
-            account_id = payload.get("account_id")
-            auth_level = payload.get("auth_level", "full")  # "account" or "full"
-            read_restricted = payload.get("read_restricted", False)  # backward compat
-
-            # Add user context to request state AND scope (for BaseHTTPMiddleware compatibility)
-            request.state.user_id = user_id
-            request.state.username = username
-            request.state.user_role = payload.get("role")
-            request.state.is_authenticated = True
-            request.state.account_id = account_id
-            request.state.auth_level = auth_level
-            request.state.read_restricted = read_restricted
-
-            # Also add to scope for persistence
-            request.scope["user_id"] = user_id
-            request.scope["username"] = username
-            request.scope["user_role"] = payload.get("role")
-            request.scope["account_id"] = account_id
-            request.scope["auth_level"] = auth_level
-            request.scope["read_restricted"] = read_restricted
-            
-            # Continue with request
-            response = await call_next(request)
-            return response
-            
-        except jwt.InvalidTokenError as e:
-            logger.warning(f"Invalid token: {e}")
-            return JSONResponse(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                content={
-                    "detail": "Invalid session",
-                    "requires_auth": True,
-                    "path": path
-                }
-            )
+                return None
+            if datetime.utcnow().timestamp() > payload.get("exp", 0):
+                return None
+            return payload
+        except jwt.InvalidTokenError:
+            return None
         except Exception as e:
-            logger.error(f"Error in auth middleware: {e}")
-            return JSONResponse(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                content={"detail": "Authentication error"}
-            )
+            logger.error(f"Error decoding token: {e}")
+            return None

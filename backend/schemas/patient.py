@@ -33,8 +33,6 @@ class Patient(Base):
     # Relationships
     vitals = relationship('Vital', back_populates='patient')
     pulse_ox_data = relationship('PulseOxData', back_populates='patient')
-    blood_pressure = relationship('BloodPressure', back_populates='patient')
-    temperature = relationship('Temperature', back_populates='patient')
     monitoring_alerts = relationship('MonitoringAlert', back_populates='patient')
     ventilator_alerts = relationship('VentilatorAlert', back_populates='patient')
     medication_logs = relationship('MedicationLog', back_populates='patient')

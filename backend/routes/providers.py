@@ -68,7 +68,7 @@ def get_provider_by_id(provider_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Provider not found")
     return provider
 
-@router.post("/", response_model=ProviderResponse)
+@router.post("", response_model=ProviderResponse)
 def create_provider_endpoint(provider: ProviderCreate, db: Session = Depends(get_db)):
     """Create a new provider."""
     # Validate business_id if provided

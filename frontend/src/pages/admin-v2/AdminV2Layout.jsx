@@ -37,11 +37,11 @@ const sideNavItems = [
   { path: '/care/equipment', label: 'Equipment & Supplies', Icon: EquipmentIcon, requiredPermissions: ['equipment.view', 'equipment.create', 'equipment.update', 'equipment.delete'] },
   { path: '/care/nutrition', label: 'Nutrition', Icon: NutritionIcon, requiredPermissions: ['nutrition.view', 'nutrition.create', 'nutrition.update', 'nutrition.delete'] },
   { path: '/care/profile', label: 'Profile', Icon: ProfileIcon },
-  { path: '/care/configuration', label: 'Configuration', Icon: ConfigIcon },
+  { path: '/care/configuration', label: 'Configuration', Icon: ConfigIcon, systemAdminOnly: true },
 ];
 
 // Get top nav items based on current section, permissions, and read access (restricted mode hides History/Active)
-const getTopNavItems = (section, hasAnyPermission, hasReadAccess) => {
+const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin) => {
   const navItems = {
     vitals: hasReadAccess
       ? [
@@ -99,7 +99,8 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess) => {
     configuration: [
       // System-wide configuration
       { path: '/care/configuration', label: 'General' },
-      { path: '/care/configuration/account', label: 'Account' },
+      ...(isSystemAdmin
+        ? [{ path: '/care/configuration/account', label: 'Account' }] : []),
       { path: '/care/configuration/integrations', label: 'Integrations' },
       ...(hasAnyPermission(['patients.view', 'patients.create', 'patients.update', 'patients.delete']) 
         ? [{ path: '/care/configuration/patients', label: 'Patients' }] : []),
@@ -237,7 +238,7 @@ const AdminV2Layout = ({ children }) => {
     navigate('/login');
   };
   
-  const topNavItems = getTopNavItems(currentSection, hasAnyPermission, hasReadAccess);
+  const topNavItems = getTopNavItems(currentSection, hasAnyPermission, hasReadAccess, user?.is_system_admin);
   
   // Get URL with preserved query params for certain sections
   const getNavUrl = (path) => {
@@ -262,7 +263,7 @@ const AdminV2Layout = ({ children }) => {
     return location.pathname === path;
   };
 
-  const visibleNavItems = hasReadAccess
+  const visibleNavItems = (hasReadAccess
     ? sideNavItems.filter(item => {
         if (!item.requiredPermissions) return true;
         return hasAnyPermission(item.requiredPermissions);
@@ -271,7 +272,8 @@ const AdminV2Layout = ({ children }) => {
         .filter(item => {
           if (!item.requiredPermissions) return true;
           return hasAnyPermission(item.requiredPermissions);
-        });
+        })
+  ).filter(item => !item.systemAdminOnly || user?.is_system_admin);
 
   const handleUnlockSubmit = async (e) => {
     e.preventDefault();

@@ -43,7 +43,7 @@ def _business_to_response(business) -> dict:
     }
 
 
-@router.get("/", response_model=List[BusinessResponse])
+@router.get("", response_model=List[BusinessResponse])
 def list_businesses(
     active_only: bool = Query(True, description="Filter to active businesses only"),
     business_type: Optional[str] = Query(None, description="Filter by business type"),
@@ -85,7 +85,7 @@ def get_business_by_id(business_id: int, db: Session = Depends(get_db)):
     return _business_to_response(business)
 
 
-@router.post("/", response_model=BusinessResponse)
+@router.post("", response_model=BusinessResponse)
 def create_business_endpoint(business: BusinessCreate, db: Session = Depends(get_db)):
     """Create a new business."""
     try:

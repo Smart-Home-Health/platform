@@ -94,7 +94,7 @@ async def get_implant(
     return implant_crud.format_implant_for_response(implant, include_notes=True)
 
 
-@router.post("/", response_model=dict)
+@router.post("", response_model=dict)
 async def create_implant(
     implant_data: ImplantCreate,
     db: Session = Depends(get_db),

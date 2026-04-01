@@ -6,7 +6,6 @@ import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from sqlalchemy.orm import Session
 from db import get_db
-from crud.vitals import get_latest_blood_pressure, get_blood_pressure_history, get_last_n_temperature
 from crud.users import has_any_admin_user
 
 logger = logging.getLogger("app")
@@ -65,29 +64,6 @@ def get_limits():
         "spo2": {"min": MIN_SPO2, "max": MAX_SPO2},
         "bpm": {"min": MIN_BPM, "max": MAX_BPM}
     }
-
-
-# Legacy blood pressure endpoints (keeping for backward compatibility)
-@router.get("/blood-pressure/latest")
-def latest_blood_pressure(db: Session = Depends(get_db)):
-    return get_latest_blood_pressure(db) or {"message": "No data available"}
-
-
-@router.get("/blood-pressure/history")
-def blood_pressure_history(limit: int = 100, db: Session = Depends(get_db)):
-    return get_blood_pressure_history(db, limit)
-
-
-# Legacy temperature endpoints (keeping for backward compatibility)
-@router.get("/temperature/latest")
-def latest_temperature(db: Session = Depends(get_db)):
-    temps = get_last_n_temperature(db, 1)
-    return temps[0] if temps else {"message": "No data available"}
-
-
-@router.get("/temperature/history")
-def temperature_history(limit: int = 100, db: Session = Depends(get_db)):
-    return get_last_n_temperature(db, limit)
 
 
 # Test endpoint

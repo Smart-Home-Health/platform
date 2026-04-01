@@ -33,8 +33,6 @@ from schemas import Base
 from schemas.patient import Patient
 from schemas.business import Business
 from schemas.provider import Provider
-from schemas.blood_pressure import BloodPressure
-from schemas.temperature import Temperature
 from schemas.vital import Vital
 from schemas.pulse_ox_data import PulseOxData
 from schemas.monitoring_alert import MonitoringAlert

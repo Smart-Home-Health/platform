@@ -208,13 +208,11 @@ async def startup_event():
     asyncio.create_task(nutrition_scheduled_updater())
     logger.info("[main] Nutrition scheduled updater started")
 
-    # 5. Optional: realtime WebSocket bridge (e.g. ws://host:8080/api/realtime)
-    realtime_url = os.getenv("REALTIME_WS_URL", "").strip()
-    if realtime_url:
-        from realtime_bridge import run_realtime_bridge
-        asyncio.create_task(run_realtime_bridge(event_bus, realtime_url))
-        logger.info("[main] Realtime bridge started for %s", realtime_url)
-    
+    # 5. Track reader activity from MQTT sensor data
+    from routes.readers import start_reader_activity_subscriber
+    asyncio.create_task(start_reader_activity_subscriber(event_bus))
+    logger.info("[main] Reader activity subscriber started")
+
     logger.info("[main] Event-driven system startup complete")
 
 

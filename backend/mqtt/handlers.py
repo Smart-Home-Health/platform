@@ -39,7 +39,7 @@ class MQTTMessageHandlers:
                     systolic=systolic,
                     diastolic=diastolic,
                     map_value=map_value,
-                    raw_data=raw_data
+                    notes=raw_data
                 )
                 # Update sensor state if callback is available
                 if self.update_sensor:
@@ -67,9 +67,9 @@ class MQTTMessageHandlers:
             try:
                 save_temperature(
                     db=db,
-                    skin_temp=skin_temp,
                     body_temp=body_temp,
-                    raw_data=raw_data
+                    skin_temp=skin_temp,
+                    notes=raw_data
                 )
                 # Update sensor state if callback is available
                 if self.update_sensor:

@@ -23,8 +23,6 @@ from schemas.ventilator_alert import VentilatorAlert
 from schemas.external_alarm import ExternalAlarm
 from schemas.pulse_ox_data import PulseOxData
 from schemas.setting import Setting
-from schemas.blood_pressure import BloodPressure
-from schemas.temperature import Temperature
 from schemas.vital import Vital
 from schemas.symptom import Symptom
 from schemas.patient import Patient, PatientAccess, AccessLevel
@@ -40,7 +38,7 @@ __all__ = [
     'CareTaskSchedule', 'CareTaskLog', 'Medication', 'MedicationSchedule',
     'MedicationLog', 'Equipment', 'EquipmentChangeLog', 'MonitoringAlert',
     'VentilatorAlert', 'ExternalAlarm', 'PulseOxData', 'Setting',
-    'BloodPressure', 'Temperature', 'Vital', 'Symptom', 'Patient', 'User', 'Role',
+    'Vital', 'Symptom', 'Patient', 'User', 'Role',
     'Permission', 'AuditLog', 'Diagnosis', 'DiagnosisNote', 'Implant', 'ImplantNote',
     'CompleteItemRequest', 'BulkCompleteRequest', 'Organization', 'OrganizationMembership',
     'OrganizationType', 'PatientAccess', 'AccessLevel', 'Reader'

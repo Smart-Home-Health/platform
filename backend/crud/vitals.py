@@ -5,185 +5,11 @@ import logging
 import pytz
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
-from schemas.blood_pressure import BloodPressure
-from schemas.temperature import Temperature
 from schemas.vital import Vital
 from schemas.pulse_ox_data import PulseOxData
 from crud.patients import get_or_create_default_patient
 
 logger = logging.getLogger('crud')
-
-
-# --- Blood Pressure CRUD ---
-def save_blood_pressure(db: Session, systolic, diastolic, map_value=None, timestamp=None, notes=None, patient_id=None):
-    """
-    Save blood pressure reading to database (Postgres)
-    """
-    now = datetime.now(timezone.utc)
-    ts = timestamp or now
-    
-    # Get patient_id if not provided
-    if patient_id is None:
-        patient = get_or_create_default_patient(db)
-        if not patient:
-            logger.warning("No patient exists, cannot save blood pressure")
-            return None
-        patient_id = patient.id
-    
-    # Ensure timestamp is timezone-aware
-    if ts and hasattr(ts, 'tzinfo') and ts.tzinfo is None:
-        eastern = pytz.timezone('US/Eastern')
-        ts = eastern.localize(ts).astimezone(timezone.utc)
-    elif isinstance(ts, str):
-        try:
-            ts = datetime.fromisoformat(ts.replace('Z', '+00:00'))
-        except:
-            ts = now
-    
-    bp = BloodPressure(
-        patient_id=patient_id,
-        timestamp=ts,
-        systolic=systolic,
-        diastolic=diastolic,
-        map=map_value,
-        raw_data=notes or "Manual entry",
-        created_at=now
-    )
-    db.add(bp)
-    db.commit()
-    db.refresh(bp)
-    logger.info(f"Blood pressure saved for patient {patient_id}: {systolic}/{diastolic} (MAP: {map_value})")
-    return bp.id
-
-
-def get_latest_blood_pressure(db: Session, patient_id=None):
-    """Get the most recent blood pressure reading."""
-    try:
-        query = db.query(BloodPressure)
-        if patient_id:
-            query = query.filter(BloodPressure.patient_id == patient_id)
-        return query.order_by(BloodPressure.timestamp.desc()).first()
-    except Exception as e:
-        logger.error(f"Error fetching latest blood pressure: {e}")
-        return None
-
-
-def get_blood_pressure_history(db: Session, limit=100):
-    """
-    Get blood pressure history
-
-    Args:
-        limit (int): Maximum number of records to return
-    """
-    try:
-        return db.query(BloodPressure).order_by(BloodPressure.timestamp.desc()).limit(limit).all()
-    except Exception as e:
-        logger.error(f"Error fetching blood pressure history: {e}")
-        return []
-
-
-def get_last_n_blood_pressure(db: Session, n=5):
-    """
-    Get the last n blood pressure readings
-
-    Args:
-        n (int): Number of readings to retrieve
-
-    Returns:
-        list: List of dictionaries containing BP readings
-    """
-    try:
-        results = db.query(BloodPressure).order_by(BloodPressure.timestamp.desc()).limit(n).all()
-
-        # If we have no results, only add a single empty entry
-        if len(results) == 0:
-            return [{'datetime': '', 'systolic_bp': None, 'diastolic_bp': None, 'map_bp': None}]
-
-        return [
-            {
-                'datetime': row.timestamp,
-                'systolic_bp': row.systolic,
-                'diastolic_bp': row.diastolic,
-                'map_bp': row.map
-            }
-            for row in results
-        ]
-    except Exception as e:
-        logger.error(f"Error fetching blood pressure history: {e}")
-        # Return just one empty entry on error
-        return [{'datetime': '', 'systolic_bp': None, 'diastolic_bp': None, 'map_bp': None}]
-
-
-# --- Temperature CRUD ---
-def save_temperature(db: Session, body_temp, skin_temp=None, timestamp=None, notes=None, patient_id=None):
-    """
-    Save temperature reading to database (Postgres)
-    """
-    now = datetime.now(timezone.utc)
-    ts = timestamp or now
-    
-    # Get patient_id if not provided
-    if patient_id is None:
-        patient = get_or_create_default_patient(db)
-        if not patient:
-            logger.warning("No patient exists, cannot save temperature")
-            return None
-        patient_id = patient.id
-    
-    # Ensure timestamp is timezone-aware
-    if ts and hasattr(ts, 'tzinfo') and ts.tzinfo is None:
-        eastern = pytz.timezone('US/Eastern')
-        ts = eastern.localize(ts).astimezone(timezone.utc)
-    elif isinstance(ts, str):
-        try:
-            ts = datetime.fromisoformat(ts.replace('Z', '+00:00'))
-        except:
-            ts = now
-    
-    temp = Temperature(
-        patient_id=patient_id,
-        timestamp=ts,
-        skin_temp=skin_temp,
-        body_temp=body_temp,
-        raw_data=notes or "Manual entry",
-        created_at=now
-    )
-    db.add(temp)
-    db.commit()
-    db.refresh(temp)
-    logger.info(f"Temperature saved for patient {patient_id}: Skin: {skin_temp}°, Body: {body_temp}°")
-    return temp.id
-
-
-def get_last_n_temperature(db: Session, n=5):
-    """
-    Get the last n temperature readings
-
-    Args:
-        n (int): Number of readings to retrieve
-
-    Returns:
-        list: List of dictionaries containing temperature readings
-    """
-    try:
-        results = db.query(Temperature).order_by(Temperature.timestamp.desc()).limit(n).all()
-
-        # If we have no results, only add a single empty entry
-        if len(results) == 0:
-            return [{'datetime': '', 'skin_temp': None, 'body_temp': None}]
-
-        return [
-            {
-                'datetime': row.timestamp,
-                'skin_temp': row.skin_temp,
-                'body_temp': row.body_temp
-            }
-            for row in results
-        ]
-    except Exception as e:
-        logger.error(f"Error fetching temperature history: {e}")
-        # Return just one empty entry on error
-        return [{'datetime': '', 'skin_temp': None, 'body_temp': None}]
 
 
 # --- Generic Vital CRUD ---
@@ -230,7 +56,7 @@ def save_vital(db: Session, vital_type, value, timestamp=None, notes=None, vital
     return vital.id
 
 
-def save_blood_pressure_as_vitals(db: Session, systolic, diastolic, map_value=None, timestamp=None, notes=None, patient_id=None):
+def save_blood_pressure(db: Session, systolic, diastolic, map_value=None, timestamp=None, notes=None, patient_id=None):
     """
     Save blood pressure reading as individual vital entries
     """
@@ -266,7 +92,7 @@ def save_blood_pressure_as_vitals(db: Session, systolic, diastolic, map_value=No
     return vital_ids
 
 
-def save_temperature_as_vitals(db: Session, body_temp=None, skin_temp=None, timestamp=None, notes=None, patient_id=None):
+def save_temperature(db: Session, body_temp=None, skin_temp=None, timestamp=None, notes=None, patient_id=None):
     """
     Save temperature readings as individual vital entries
     """

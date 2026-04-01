@@ -89,7 +89,7 @@ def get_body_locations():
     return COMMON_BODY_LOCATIONS
 
 
-@router.get("/", response_model=dict)
+@router.get("", response_model=dict)
 def list_symptoms(
     patient_id: Optional[int] = Query(None, description="Filter by patient ID"),
     symptom_type: Optional[str] = Query(None, description="Filter by symptom type"),
@@ -186,7 +186,7 @@ def get_symptom(symptom_id: int, db: Session = Depends(get_db)):
     }
 
 
-@router.post("/", status_code=201)
+@router.post("", status_code=201)
 def create_new_symptom(symptom_data: SymptomCreate, db: Session = Depends(get_db)):
     """Create a new symptom record."""
     try:

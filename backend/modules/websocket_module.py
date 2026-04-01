@@ -262,10 +262,10 @@ class WebSocketModule:
             from crud.scheduling import get_due_and_upcoming_care_tasks_count
             from crud.monitoring import get_unacknowledged_alerts_count, get_active_ventilator_alerts_count
             from crud.settings import get_all_settings
-            from crud.vitals import get_last_n_blood_pressure, get_last_n_temperature, get_vitals_by_type
-            
+            from crud.vitals import get_vitals_by_type
+
             state = self.current_state.copy()
-            
+
             with get_db_session() as db:
                 # Get alert counts (rollback on failure so later queries don't see aborted transaction)
                 try:
@@ -308,26 +308,21 @@ class WebSocketModule:
                         settings_dict[key] = {"value": value, "type": type(value).__name__}
                 elif settings_result is not None:
                     logger.warning(f"Unexpected settings result format: {type(settings_result)}")
-                
-                # Get recent vitals - try unified approach first, fallback to legacy
-                # get_vitals_by_type already returns grouped dicts for blood_pressure/temperature
+
+                # Get recent vitals from unified vitals table
                 try:
                     bp_history = get_vitals_by_type(db, 'blood_pressure', limit=5)
-                    if not bp_history:
-                        bp_history = get_last_n_blood_pressure(db, 5)
                 except Exception as e:
-                    logger.warning(f"Error getting unified BP data, falling back to legacy: {e}")
+                    logger.warning(f"Error getting BP data: {e}")
                     db.rollback()
-                    bp_history = get_last_n_blood_pressure(db, 5)
-                
+                    bp_history = []
+
                 try:
                     temp_history = get_vitals_by_type(db, 'temperature', limit=10)
-                    if not temp_history:
-                        temp_history = get_last_n_temperature(db, 10)
                 except Exception as e:
-                    logger.warning(f"Error getting unified temp data, falling back to legacy: {e}")
+                    logger.warning(f"Error getting temp data: {e}")
                     db.rollback()
-                    temp_history = get_last_n_temperature(db, 10)
+                    temp_history = []
                 
                 # Get dashboard chart data with safe defaults
                 chart_1_vital = settings_dict.get('dashboard_chart_1_vital', {}).get('value', 'blood_pressure')

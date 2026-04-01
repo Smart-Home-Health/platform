@@ -30,10 +30,6 @@ services:
     environment:
       TZ: UTC
       DATABASE_URL: postgresql://shh_user:shh_dev_pass@db:5432/shh
-      # URL the host sends to readers during pairing (readers in Docker use this to reach backend)
-      READER_FACING_BASE_URL: http://192.168.1.184:8000
-      # Optional: bridge external realtime feed (e.g. ws://host:8080/api/realtime) into dashboard
-      REALTIME_WS_URL: ws://192.168.1.184:8080/api/realtime
     volumes:
       - ./backend:/app
       - app_data:/app/data
