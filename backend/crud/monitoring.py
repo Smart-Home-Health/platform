@@ -509,8 +509,12 @@ def start_monitoring_alert(db: Session, spo2=None, bpm=None, data_id=None, spo2_
         
         # Get patient_id if not provided
         if patient_id is None:
-            from state_manager import ensure_default_patient
-            patient_id = ensure_default_patient()
+            from crud.patients import get_current_patient
+            patient = get_current_patient(db)
+            patient_id = patient.id if patient else None
+            if not patient_id:
+                logger.warning("No current patient, cannot start monitoring alert")
+                return None
 
         alert = MonitoringAlert(
             patient_id=patient_id,

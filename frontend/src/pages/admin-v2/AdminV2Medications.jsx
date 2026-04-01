@@ -565,7 +565,7 @@ const AdminV2Medications = () => {
                     <tr>
                       <th>Medication</th>
                       <th>Concentration</th>
-                      <th>Dose</th>
+                      <th>Qty</th>
                       <th>Instructions</th>
                       <th>Type</th>
                       <th>Status</th>

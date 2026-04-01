@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from schemas.vital import Vital
 from schemas.pulse_ox_data import PulseOxData
-from crud.patients import get_or_create_default_patient
+from crud.patients import get_or_create_default_patient, get_current_patient
 
 logger = logging.getLogger('crud')
 
@@ -261,7 +261,9 @@ def save_pulse_ox_data(db: Session, spo2, bpm, pa, status=None, motion=None, spo
         
         # Get patient_id if not provided
         if patient_id is None:
-            patient = get_or_create_default_patient(db)
+            patient = get_current_patient(db)
+            if not patient:
+                patient = get_or_create_default_patient(db)
             if not patient:
                 logger.warning("No patient exists, cannot save pulse ox data")
                 return None
@@ -304,9 +306,15 @@ def save_pulse_ox_batch(db: Session, data_points):
     """
     try:
         now = datetime.now().isoformat()
-        
+
+        # Resolve patient_id once for the batch
+        patient = get_current_patient(db)
+        batch_patient_id = patient.id if patient else None
+
         for data_point in data_points:
+            pid = data_point.get('patient_id') or batch_patient_id
             pulse_ox = PulseOxData(
+                patient_id=pid,
                 timestamp=data_point.get('timestamp', now),
                 spo2=data_point.get('spo2'),
                 bpm=data_point.get('bpm'),

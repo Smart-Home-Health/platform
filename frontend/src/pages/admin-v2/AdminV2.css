@@ -1045,11 +1045,13 @@
     width: 40px;
     height: 40px;
     min-width: 40px;
+    padding: 0;
     background: #21262d;
     border: 1px solid #30363d;
     border-radius: 8px;
     color: #e6edf3;
     cursor: pointer;
+    font-size: inherit;
   }
 
   .admin-v2-mobile-menu-btn:hover {

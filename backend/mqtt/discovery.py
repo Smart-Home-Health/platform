@@ -13,16 +13,23 @@ from .settings import get_mqtt_settings, get_patients_with_mqtt_enabled
 
 logger = logging.getLogger('mqtt.discovery')
 
-# Section key -> (value_template, unit_of_measurement, display_name) for discovery
+# Section key -> (value_template, unit_of_measurement, display_name, sensor_type) for discovery.
+# sensor_type is "sensor" for measurements, "binary_sensor" for alarms.
 # Sections with get/both permission get one sensor each; state_topic is same for all (combined JSON).
-# blood_pressure is special-cased in the loop to create three sensors (systolic, diastolic, MAP).
-SECTION_DISCOVERY: Dict[str, Tuple[str, str, str]] = {
-    "spo2": ("{{ value_json.spo2 }}", "%", "SpO₂"),
-    "bpm": ("{{ value_json.bpm }}", "BPM", "Heart Rate"),
-    "heart_rate": ("{{ value_json.bpm }}", "BPM", "Heart Rate"),
-    "perfusion": ("{{ value_json.perfusion }}", "PI", "Perfusion"),
-    "temperature": ("{{ value_json.body_temp | default(value_json.skin_temp) }}", "°F", "Temperature"),
-    "blood_pressure": ("{{ value_json.map_bp | default(value_json.systolic_bp) }}", "mmHg", "Blood Pressure"),
+# blood_pressure and nutrition are special-cased in the loop.
+SECTION_DISCOVERY: Dict[str, Tuple[str, str, str, str]] = {
+    "spo2": ("{{ value_json.spo2 }}", "%", "SpO₂", "sensor"),
+    "bpm": ("{{ value_json.bpm }}", "BPM", "Heart Rate", "sensor"),
+    "heart_rate": ("{{ value_json.bpm }}", "BPM", "Heart Rate", "sensor"),
+    "perfusion": ("{{ value_json.perfusion }}", "PI", "Perfusion", "sensor"),
+    "temperature": ("{{ value_json.body_temp | default(value_json.skin_temp) }}", "°F", "Temperature", "sensor"),
+    "blood_pressure": ("{{ value_json.map_bp | default(value_json.systolic_bp) }}", "mmHg", "Blood Pressure", "sensor"),
+    "weight": ("{{ value_json.weight }}", "lbs", "Weight", "sensor"),
+    "bathroom": ("{{ value_json.bathroom }}", "", "Bathroom Activity", "sensor"),
+    "spo2_alarm": ("{{ value_json.spo2_alarm }}", "", "SpO₂ Alarm", "binary_sensor"),
+    "bpm_alarm": ("{{ value_json.bpm_alarm }}", "", "Heart Rate Alarm", "binary_sensor"),
+    "alarm1": ("{{ value_json.alarm1 }}", "", "GPIO Alarm 1", "binary_sensor"),
+    "alarm2": ("{{ value_json.alarm2 }}", "", "GPIO Alarm 2", "binary_sensor"),
 }
 
 # Blood pressure: three sensors per patient (systolic, diastolic, MAP) on same state_topic
@@ -32,6 +39,16 @@ BLOOD_PRESSURE_SENSORS: List[Tuple[str, str, str]] = [
     ("{{ value_json.map_bp }}", "mmHg", "Blood Pressure MAP"),
 ]
 
+# Nutrition: multiple sensors per patient on same state_topic
+NUTRITION_SENSORS: List[Tuple[str, str, str, str]] = [
+    ("{{ value_json.water_intake }}", "ml", "Water Intake", "water_intake"),
+    ("{{ value_json.water_scheduled }}", "ml", "Water Scheduled", "water_scheduled"),
+    ("{{ value_json.water_target }}", "ml", "Water Target", "water_target"),
+    ("{{ value_json.calories_intake }}", "kcal", "Calorie Intake", "calories_intake"),
+    ("{{ value_json.calories_scheduled }}", "kcal", "Calories Scheduled", "calories_scheduled"),
+    ("{{ value_json.calories_target }}", "kcal", "Calories Target", "calories_target"),
+]
+
 
 def _safe_device_id(name: str, patient_id: int) -> str:
     """HA-friendly device identifier: lowercase alphanumeric + underscores, fallback to patient id."""
@@ -39,6 +56,39 @@ def _safe_device_id(name: str, patient_id: int) -> str:
         return f"shh_patient_{patient_id}"
     safe = re.sub(r"[^a-z0-9]+", "_", name.lower().strip()).strip("_")
     return f"shh_{safe}" if safe else f"shh_patient_{patient_id}"
+
+
+def _publish_discovery(
+    mqtt_client, discovery_prefix: str, sensor_type: str,
+    sensor_id: str, uniq_id: str, name: str,
+    state_topic: str, val_tpl: str, unit: str,
+    device_info: dict, **extra,
+) -> int:
+    """Publish a single discovery message. Returns 1 on success, 0 on failure."""
+    config = {
+        "uniq_id": uniq_id,
+        "name": name,
+        "stat_t": state_topic,
+        "val_tpl": val_tpl,
+        "json_attr_t": state_topic,
+        "avty_t": f"{state_topic.rsplit('/patient/', 1)[0]}/availability",
+        "dev": device_info,
+        **extra,
+    }
+    if unit:
+        config["unit_of_meas"] = unit
+    discovery_topic = f"{discovery_prefix}/{sensor_type}/{sensor_id}/config"
+    try:
+        result = mqtt_client.publish(discovery_topic, json.dumps(config), retain=True)
+        if result.rc == 0:
+            logger.info(f"Sent MQTT Discovery for {name} to {discovery_topic}")
+            return 1
+        else:
+            logger.error(f"Failed to send discovery for {sensor_id}: rc={result.rc}")
+            return 0
+    except Exception as e:
+        logger.error(f"Error sending discovery for {sensor_id}: {e}")
+        return 0
 
 
 def send_mqtt_discovery(mqtt_client, test_mode: bool = True, patient_id: Optional[int] = None) -> bool:
@@ -95,63 +145,65 @@ def send_mqtt_discovery(mqtt_client, test_mode: bool = True, patient_id: Optiona
             "mdl": "Smart Healthcare Hub",
         }
 
-        # One sensor per section that allows get or both (blood_pressure → three sensors: systolic, diastolic, MAP)
+        # One sensor per section that allows get or both.
+        # blood_pressure → three sensors (systolic, diastolic, MAP).
+        # nutrition → six sensors (water/calories intake, scheduled, target).
         for section_key, perm in sections.items():
             if perm not in ("get", "both"):
                 continue
+
+            # --- Blood pressure: expand to three sensors ---
             if section_key == "blood_pressure":
                 for idx, (val_tpl, unit, display_name) in enumerate(BLOOD_PRESSURE_SENSORS):
                     safe_section = f"blood_pressure_{['systolic', 'diastolic', 'map'][idx]}"
-                    sensor_id = f"{device_ident}_{safe_section}"
-                    config = {
-                        "uniq_id": f"{base_topic}_patient_{pid}_{safe_section}",
-                        "name": f"{patient_name} {display_name}",
-                        "stat_t": state_topic,
-                        "val_tpl": val_tpl,
-                        "json_attr_t": state_topic,
-                        "avty_t": f"{base_topic}/availability",
-                        "unit_of_meas": unit,
-                        "stat_cla": "measurement",
-                        "dev": device_info,
-                    }
-                    discovery_topic = f"{discovery_prefix}/sensor/{sensor_id}/config"
-                    try:
-                        result = mqtt_client.publish(discovery_topic, json.dumps(config), retain=True)
-                        if result.rc == 0:
-                            logger.info(f"Sent MQTT Discovery for {patient_name} {display_name} to {discovery_topic}")
-                            success_count += 1
-                        else:
-                            logger.error(f"Failed to send discovery for {sensor_id}: rc={result.rc}")
-                    except Exception as e:
-                        logger.error(f"Error sending discovery for {sensor_id}: {e}")
+                    success_count += _publish_discovery(
+                        mqtt_client, discovery_prefix, "sensor",
+                        f"{device_ident}_{safe_section}",
+                        f"{base_topic}_patient_{pid}_{safe_section}",
+                        f"{patient_name} {display_name}",
+                        state_topic, val_tpl, unit, device_info,
+                        stat_cla="measurement",
+                    )
                 continue
+
+            # --- Nutrition: expand to six sensors ---
+            if section_key == "nutrition":
+                for val_tpl, unit, display_name, suffix in NUTRITION_SENSORS:
+                    safe_section = f"nutrition_{suffix}"
+                    success_count += _publish_discovery(
+                        mqtt_client, discovery_prefix, "sensor",
+                        f"{device_ident}_{safe_section}",
+                        f"{base_topic}_patient_{pid}_{safe_section}",
+                        f"{patient_name} {display_name}",
+                        state_topic, val_tpl, unit, device_info,
+                        stat_cla="measurement",
+                    )
+                continue
+
+            # --- Standard and alarm sections ---
             section_config = SECTION_DISCOVERY.get(section_key)
             if not section_config:
+                logger.warning(f"Unknown MQTT section '{section_key}' for patient {pid}, skipping")
                 continue
-            val_tpl, unit, display_name = section_config
+            val_tpl, unit, display_name, sensor_type = section_config
             safe_section = section_key.replace(" ", "_").lower()
-            sensor_id = f"{device_ident}_{safe_section}"
-            config = {
-                "uniq_id": f"{base_topic}_patient_{pid}_{safe_section}",
-                "name": f"{patient_name} {display_name}",
-                "stat_t": state_topic,
-                "val_tpl": val_tpl,
-                "json_attr_t": state_topic,
-                "avty_t": f"{base_topic}/availability",
-                "unit_of_meas": unit,
-                "stat_cla": "measurement",
-                "dev": device_info,
-            }
-            discovery_topic = f"{discovery_prefix}/sensor/{sensor_id}/config"
-            try:
-                result = mqtt_client.publish(discovery_topic, json.dumps(config), retain=True)
-                if result.rc == 0:
-                    logger.info(f"Sent MQTT Discovery for {patient_name} {display_name} to {discovery_topic}")
-                    success_count += 1
-                else:
-                    logger.error(f"Failed to send discovery for {sensor_id}: rc={result.rc}")
-            except Exception as e:
-                logger.error(f"Error sending discovery for {sensor_id}: {e}")
+
+            extra = {}
+            if sensor_type == "binary_sensor":
+                extra["pl_on"] = "ON"
+                extra["pl_off"] = "OFF"
+                extra["dev_cla"] = "problem"
+            else:
+                extra["stat_cla"] = "measurement"
+
+            success_count += _publish_discovery(
+                mqtt_client, discovery_prefix, sensor_type,
+                f"{device_ident}_{safe_section}",
+                f"{base_topic}_patient_{pid}_{safe_section}",
+                f"{patient_name} {display_name}",
+                state_topic, val_tpl, unit, device_info,
+                **extra,
+            )
 
     logger.info(f"Sent {success_count} MQTT Discovery messages (per-vital per patient)")
     return success_count > 0

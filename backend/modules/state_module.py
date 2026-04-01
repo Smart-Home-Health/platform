@@ -84,7 +84,7 @@ class StateModule:
                 pulse_ox_values[key] = event.values[key]
         
         if pulse_ox_values:
-            await self._handle_pulse_ox_update(pulse_ox_values, event.raw)
+            await self._handle_pulse_ox_update(pulse_ox_values, event.raw, patient_id=event.patient_id)
         
         # Publish to MQTT if this didn't originate from MQTT
         if event.source != EventSource.MQTT:
@@ -121,13 +121,13 @@ class StateModule:
         except Exception as e:
             logger.error(f"Error saving vital recording to database: {e}")
 
-    async def _handle_pulse_ox_update(self, pulse_ox_data: dict, raw_data: Optional[str]):
+    async def _handle_pulse_ox_update(self, pulse_ox_data: dict, raw_data: Optional[str], patient_id: Optional[int] = None):
         """Handle pulse oximeter data and check for alerts."""
         try:
             spo2 = pulse_ox_data.get("spo2")
-            bpm = pulse_ox_data.get("bpm") 
+            bpm = pulse_ox_data.get("bpm")
             perfusion = pulse_ox_data.get("perfusion")
-            
+
             # Cache the data
             timestamp = datetime.now()
             data_point = {
@@ -137,41 +137,42 @@ class StateModule:
                 "perfusion": perfusion,
                 "raw": raw_data
             }
-            
+
             self.pulse_ox_cache.append(data_point)
-            
+
             # Keep only last 150 points (~30 seconds at 5Hz)
             if len(self.pulse_ox_cache) > 150:
                 self.pulse_ox_cache.pop(0)
-            
+
             # Save to database
-            await self._save_pulse_ox_data(spo2, bpm, perfusion, raw_data)
-            
+            await self._save_pulse_ox_data(spo2, bpm, perfusion, raw_data, patient_id=patient_id)
+
             # Check thresholds for alerts
-            await self._check_pulse_ox_thresholds(spo2, bpm, timestamp, data_point)
+            await self._check_pulse_ox_thresholds(spo2, bpm, timestamp, data_point, patient_id=patient_id)
             
         except Exception as e:
             logger.error(f"Error handling pulse ox update: {e}")
 
-    async def _save_pulse_ox_data(self, spo2, bpm, perfusion, raw_data):
+    async def _save_pulse_ox_data(self, spo2, bpm, perfusion, raw_data, patient_id=None):
         """Save pulse oximeter data to database."""
         try:
             from state_manager import get_db_session
             from crud.vitals import save_pulse_ox_data
-            
+
             with get_db_session() as db:
                 save_pulse_ox_data(
                     db=db,
                     spo2=spo2,
                     bpm=bpm,
-                    pa=perfusion,  # Fixed: pa parameter instead of perfusion
-                    raw_data=raw_data
+                    pa=perfusion,
+                    raw_data=raw_data,
+                    patient_id=patient_id
                 )
                 
         except Exception as e:
             logger.error(f"Error saving pulse ox data: {e}")
 
-    async def _check_pulse_ox_thresholds(self, spo2, bpm, timestamp, data_point):
+    async def _check_pulse_ox_thresholds(self, spo2, bpm, timestamp, data_point, patient_id=None):
         """Check pulse ox values against thresholds and manage alerts."""
         try:
             from crud.settings import get_setting
@@ -222,7 +223,7 @@ class StateModule:
                         
             elif current_thresholds_exceeded and not self.alert_thresholds_exceeded and not is_disconnected:
                 # Normal threshold alert started (device connected but values out of range)
-                await self._start_pulse_ox_alert(spo2, bpm, timestamp, data_point, alert_type="threshold")
+                await self._start_pulse_ox_alert(spo2, bpm, timestamp, data_point, alert_type="threshold", patient_id=patient_id)
                 self.alert_recovery_start_time = None
                 
             elif not current_thresholds_exceeded and self.alert_thresholds_exceeded and not is_disconnected:
@@ -247,7 +248,7 @@ class StateModule:
         except Exception as e:
             logger.error(f"Error checking pulse ox thresholds: {e}")
 
-    async def _start_pulse_ox_alert(self, spo2, bpm, timestamp, data_point, alert_type="threshold"):
+    async def _start_pulse_ox_alert(self, spo2, bpm, timestamp, data_point, alert_type="threshold", patient_id=None):
         """Start a new pulse oximeter alert."""
         try:
             from state_manager import get_db_session
@@ -270,10 +271,11 @@ class StateModule:
                     db=db,
                     spo2=spo2,
                     bpm=bpm,
-                    data_id=data_point.get("id"),  # If you track data point IDs
+                    data_id=data_point.get("id"),
                     spo2_alarm_triggered=1 if spo2_alarm else 0,
                     hr_alarm_triggered=1 if hr_alarm else 0,
-                    external_alarm_triggered=external_alarm_triggered
+                    external_alarm_triggered=external_alarm_triggered,
+                    patient_id=patient_id
                 )
                 if alert_data:
                     self.current_alert_id = alert_data.id if hasattr(alert_data, 'id') else alert_data
