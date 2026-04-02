@@ -3,6 +3,7 @@ import config from '../config';
 import ModalBase from './ModalBase';
 import SimpleEventChart from './SimpleEventChart';
 import VitalsForm from './history/VitalsForm';
+import { useAdminPatient } from '../contexts/AdminPatientContext';
 import Chart from 'chart.js/auto';
 import 'chartjs-adapter-date-fns';
 
@@ -113,6 +114,7 @@ const BathroomHistoryChart = ({ data, title }) => {
 };
 
 const HistoryModal = ({ onClose }) => {
+  const { selectedPatient } = useAdminPatient();
   const [vitalTypes, setVitalTypes] = useState([]);
   const [selectedType, setSelectedType] = useState(null);
   const [records, setRecords] = useState([]);
@@ -134,20 +136,30 @@ const HistoryModal = ({ onClose }) => {
   };
 
   useEffect(() => {
-    fetch(`${config.apiUrl}/api/vitals/types`)
+    fetch(`${config.apiUrl}/api/vitals/types`, { credentials: 'include' })
       .then((res) => res.json())
       .then((data) => setVitalTypes(data))
       .catch(() => setVitalTypes([]));
   }, []);
 
   useEffect(() => {
-    if (selectedType) {
+    if (selectedType && selectedPatient) {
       setLoading(true);
-      fetch(`${config.apiUrl}/api/vitals/history?vital_type=${selectedType}&page=${page}&page_size=${pageSize}`)
+      fetch(`${config.apiUrl}/api/vitals/patient/${selectedPatient.id}?vital_type=${selectedType}&limit=${pageSize}`, {
+        credentials: 'include'
+      })
         .then((res) => res.json())
         .then((data) => {
-          setRecords(data.records || []);
-          setTotalPages(data.total_pages || 1);
+          // Patient vitals endpoint returns array directly
+          const records = Array.isArray(data) ? data : (data.records || []);
+          setRecords(records.map(r => ({
+            datetime: r.datetime || r.timestamp,
+            value: r.value,
+            notes: r.notes,
+            vital_group: r.vital_group,
+            ...r
+          })));
+          setTotalPages(1);
           setLoading(false);
         })
         .catch(() => {
@@ -156,7 +168,7 @@ const HistoryModal = ({ onClose }) => {
           setLoading(false);
         });
     }
-  }, [selectedType, page, pageSize]);
+  }, [selectedType, page, pageSize, selectedPatient?.id]);
 
   const handleTypeSelect = (type) => {
     setSelectedType(type);

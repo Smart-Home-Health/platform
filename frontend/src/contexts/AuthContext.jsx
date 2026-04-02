@@ -3,12 +3,36 @@ import { API_BASE_URL } from '../config';
 
 const AuthContext = createContext();
 
+// Exported for use by components that make their own API calls
+export { authFetch, isIframe };
+
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
+};
+
+// Detect if we're running inside an iframe (cross-origin embedding, e.g. Home Assistant)
+const isIframe = (() => {
+  try { return window.self !== window.top; } catch { return true; }
+})();
+
+// Helper: build fetch options, adding Authorization header when cookies may not be sent (iframe)
+const authFetch = (url, options = {}) => {
+  const token = sessionStorage.getItem('auth_token');
+  if (token && isIframe) {
+    options.headers = { ...options.headers, Authorization: `Bearer ${token}` };
+  }
+  return fetch(url, { credentials: 'include', ...options });
+};
+
+// Store token from login/access responses for iframe fallback
+const storeToken = (data) => {
+  if (data?.access_token) {
+    sessionStorage.setItem('auth_token', data.access_token);
+  }
 };
 
 export const AuthProvider = ({ children }) => {
@@ -30,9 +54,7 @@ export const AuthProvider = ({ children }) => {
   const checkFirstRunAndSession = async () => {
     try {
       // Check if first run
-      const firstRunRes = await fetch(`${API_BASE_URL}/api/auth/first-run`, {
-        credentials: 'include'
-      });
+      const firstRunRes = await authFetch(`${API_BASE_URL}/api/auth/first-run`);
 
       if (!firstRunRes.ok) {
         // Backend may still be starting up — treat as first run if 404/503
@@ -53,9 +75,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       // Check existing session
-      const sessionRes = await fetch(`${API_BASE_URL}/api/auth/session`, {
-        credentials: 'include'
-      });
+      const sessionRes = await authFetch(`${API_BASE_URL}/api/auth/session`);
 
       if (sessionRes.ok) {
         const sessionData = await sessionRes.json();
@@ -123,10 +143,9 @@ export const AuthProvider = ({ children }) => {
   // Layer 1: Account login
   const accountLogin = async (slug, password) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/auth/account/login`, {
+      const res = await authFetch(`${API_BASE_URL}/api/auth/account/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ slug, password })
       });
 
@@ -136,8 +155,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       const data = await res.json();
-      
-      // Small delay to ensure cookie is fully set
+      storeToken(data);
       await new Promise(resolve => setTimeout(resolve, 100));
       
       // Set account-level auth
@@ -156,10 +174,9 @@ export const AuthProvider = ({ children }) => {
   // Account access: password only (single account). Omit password for restricted (add/chart only).
   const accountAccess = async (password = null) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/auth/account/access`, {
+      const res = await authFetch(`${API_BASE_URL}/api/auth/account/access`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ password: password && password.trim() ? password : null })
       });
 
@@ -174,6 +191,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       const data = await res.json();
+      storeToken(data);
       await new Promise(resolve => setTimeout(resolve, 100));
 
       setAccount(data.account);
@@ -191,10 +209,9 @@ export const AuthProvider = ({ children }) => {
   // Unlock read access with account password (when already in restricted session)
   const unlockWithAccountPassword = async (password) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/auth/account/unlock`, {
+      const res = await authFetch(`${API_BASE_URL}/api/auth/account/unlock`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ password })
       });
 
@@ -215,9 +232,7 @@ export const AuthProvider = ({ children }) => {
   // Get users for current account
   const getAccountUsers = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/auth/account/users`, {
-        credentials: 'include'
-      });
+      const res = await authFetch(`${API_BASE_URL}/api/auth/account/users`);
 
       if (!res.ok) {
         const error = await res.json();
@@ -238,10 +253,9 @@ export const AuthProvider = ({ children }) => {
       if (pin) body.pin = pin;
       if (password) body.password = password;
 
-      const res = await fetch(`${API_BASE_URL}/api/auth/user/select`, {
+      const res = await authFetch(`${API_BASE_URL}/api/auth/user/select`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify(body)
       });
 
@@ -251,12 +265,12 @@ export const AuthProvider = ({ children }) => {
       }
 
       const data = await res.json();
-      
+
       if (data.requires_full_password) {
         return { success: false, requiresPassword: true };
       }
 
-      // Small delay to ensure cookie is fully set
+      storeToken(data);
       await new Promise(resolve => setTimeout(resolve, 100));
 
       // Set full auth (include read_restricted from backend)
@@ -282,10 +296,9 @@ export const AuthProvider = ({ children }) => {
   // Legacy: Direct user login (bypasses account selection)
   const login = async (username, password) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
+      const res = await authFetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ username, password })
       });
 
@@ -295,8 +308,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       const data = await res.json();
-      
-      // Small delay to ensure cookie is fully set by browser before we update state
+      storeToken(data);
       await new Promise(resolve => setTimeout(resolve, 100));
       
       // Set full auth (legacy login gives full auth)
@@ -322,10 +334,9 @@ export const AuthProvider = ({ children }) => {
   // Legacy: PIN verification
   const verifyPin = async (userId, pin) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/auth/verify-pin`, {
+      const res = await authFetch(`${API_BASE_URL}/api/auth/verify-pin`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ user_id: userId, pin })
       });
 
@@ -340,7 +351,7 @@ export const AuthProvider = ({ children }) => {
         return { success: false, requiresPassword: true };
       }
 
-      // Small delay to ensure cookie is fully set by browser before we update state
+      storeToken(data);
       await new Promise(resolve => setTimeout(resolve, 100));
 
       // Set full auth
@@ -365,13 +376,11 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
-      await fetch(`${API_BASE_URL}/api/auth/logout`, {
-        method: 'POST',
-        credentials: 'include'
-      });
+      await authFetch(`${API_BASE_URL}/api/auth/logout`, { method: 'POST' });
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
+      sessionStorage.removeItem('auth_token');
       setAccount(null);
       setUser(null);
       setAuthLevel(null);
@@ -389,10 +398,9 @@ export const AuthProvider = ({ children }) => {
 
   const completeFirstRunSetup = async (setupData) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/auth/first-run/setup`, {
+      const res = await authFetch(`${API_BASE_URL}/api/auth/first-run/setup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify(setupData)
       });
 

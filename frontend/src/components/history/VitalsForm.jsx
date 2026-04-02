@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import config from '../../config';
+import { useAdminPatient } from '../../contexts/AdminPatientContext';
 
 const VitalsForm = ({ onSave, onClose }) => {
+  const { selectedPatient } = useAdminPatient();
   const [formData, setFormData] = useState({
     bloodPressure: { systolic: '', diastolic: '' },
     temperature: { body: '' },
@@ -46,7 +48,10 @@ const VitalsForm = ({ onSave, onClose }) => {
   };
 
   const buildPayload = () => {
-    const payload = { datetime: new Date().toISOString() };
+    const payload = {
+      datetime: new Date().toISOString(),
+      ...(selectedPatient && { patient_id: selectedPatient.id })
+    };
     // Blood Pressure
     if (formData.bloodPressure.systolic || formData.bloodPressure.diastolic) {
       payload.bp = {
@@ -120,6 +125,7 @@ const VitalsForm = ({ onSave, onClose }) => {
       const response = await fetch(`${config.apiUrl}/api/vitals/manual`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(payload),
       });
       const responseData = await response.json();

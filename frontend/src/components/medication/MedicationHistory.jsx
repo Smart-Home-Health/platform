@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import config from '../../config';
+import { useAdminPatient } from '../../contexts/AdminPatientContext';
 
 const MedicationHistory = ({ onBack }) => {
+  const { selectedPatient } = useAdminPatient();
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
   const [medicationNames, setMedicationNames] = useState([]);
@@ -20,7 +22,9 @@ const MedicationHistory = ({ onBack }) => {
 
   const fetchMedicationNames = async () => {
     try {
-      const response = await fetch(`${config.apiUrl}/api/medications/names`);
+      const response = await fetch(`${config.apiUrl}/api/medications/names`, {
+        credentials: 'include'
+      });
       if (response.ok) {
         const data = await response.json();
         setMedicationNames(data.medication_names || []);
@@ -36,14 +40,20 @@ const MedicationHistory = ({ onBack }) => {
     setLoading(true);
     try {
       const queryParams = new URLSearchParams();
-      
+
       Object.entries(filters).forEach(([key, value]) => {
         if (value && value !== '') {
           queryParams.append(key, value);
         }
       });
 
-      const response = await fetch(`${config.apiUrl}/api/medications/history?${queryParams}`);
+      if (selectedPatient) {
+        queryParams.append('patient_id', selectedPatient.id);
+      }
+
+      const response = await fetch(`${config.apiUrl}/api/medications/history?${queryParams}`, {
+        credentials: 'include'
+      });
       if (response.ok) {
         const data = await response.json();
         setHistory(data.history || []);

@@ -28,8 +28,18 @@ class EventBus:
             topic: Optional topic for topic-based routing
         """
         try:
-            # Put on main queue for global consumption
-            await self._q.put(event)
+            # Put on main queue for global consumption (non-blocking; drop oldest if full)
+            try:
+                self._q.put_nowait(event)
+            except asyncio.QueueFull:
+                try:
+                    self._q.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
+                try:
+                    self._q.put_nowait(event)
+                except asyncio.QueueFull:
+                    logger.warning("Main event queue full, dropping event")
             
             # Send to topic subscribers if topic specified
             if topic and topic in self._topic_subscribers:
@@ -48,7 +58,15 @@ class EventBus:
                     try:
                         sub_queue.put_nowait(event)
                     except asyncio.QueueFull:
-                        logger.warning(f"Type subscriber queue full for type: {event_type}")
+                        # Drop oldest event to make room for the latest
+                        try:
+                            sub_queue.get_nowait()
+                        except asyncio.QueueEmpty:
+                            pass
+                        try:
+                            sub_queue.put_nowait(event)
+                        except asyncio.QueueFull:
+                            logger.warning(f"Type subscriber queue still full for: {event_type}")
                     except Exception as e:
                         logger.error(f"Error sending to type subscriber: {e}")
             
@@ -76,7 +94,7 @@ class EventBus:
             except Exception as e:
                 logger.error(f"Error in global subscription: {e}")
 
-    async def subscribe_to_topic(self, topic: str, maxsize: int = 100) -> AsyncIterator[Any]:
+    async def subscribe_to_topic(self, topic: str, maxsize: int = 500) -> AsyncIterator[Any]:
         """Subscribe to events published to a specific topic."""
         sub_queue = asyncio.Queue(maxsize=maxsize)
         self._topic_subscribers[topic].add(sub_queue)
@@ -94,7 +112,7 @@ class EventBus:
         finally:
             self._topic_subscribers[topic].discard(sub_queue)
 
-    async def subscribe_to_type(self, event_type: Type, maxsize: int = 100) -> AsyncIterator[Any]:
+    async def subscribe_to_type(self, event_type: Type, maxsize: int = 500) -> AsyncIterator[Any]:
         """Subscribe to events of a specific type."""
         sub_queue = asyncio.Queue(maxsize=maxsize)
         self._type_subscribers[event_type].add(sub_queue)

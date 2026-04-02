@@ -1,5 +1,5 @@
 // Patient API service
-import config from '../config';
+import config, { apiFetch } from '../config';
 
 const API_BASE_URL = config.apiUrl;
 

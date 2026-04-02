@@ -41,8 +41,9 @@ logging.basicConfig(level=logging.INFO)
 # FastAPI app setup
 app = FastAPI()
 
-# Add CORS middleware (must be first).
-# With credentials=True we cannot use allow_origins=["*"]; use regex to allow localhost and LAN origins.
+# Middleware is a stack: last-added = outermost (runs first).
+# CORS must be outermost so ALL responses (including auth 401s) get CORS headers.
+app.add_middleware(AuthenticationMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[],  # No wildcard when credentials=True
@@ -52,9 +53,6 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
 )
-
-# Add authentication middleware
-app.add_middleware(AuthenticationMiddleware)
 
 # Register route modules
 app.include_router(auth.router)  # Auth routes first (public)

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import config from '../config';
+import config, { apiFetch } from '../config';
 
 const PatientContext = createContext();
 

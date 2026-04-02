@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import config from '../../config';
-import { patientService } from '../../services/patients';
+import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import { localTimeToUTC, parseCronExpression } from '../../utils/timezone';
 
 const CareTaskScheduleView = ({ taskId, taskName, onClose }) => {
+  const { selectedPatient } = useAdminPatient();
   const [schedules, setSchedules] = useState([]);
   const [scheduleMode, setScheduleMode] = useState('weekly'); // 'weekly' or 'monthly'
   const [selectedDays, setSelectedDays] = useState([]); // for weekly
@@ -12,7 +13,6 @@ const CareTaskScheduleView = ({ taskId, taskName, onClose }) => {
   const [loading, setLoading] = useState(false);
   const [taskDetails, setTaskDetails] = useState(null);
   const [isNutritionTask, setIsNutritionTask] = useState(false);
-  const [currentPatient, setCurrentPatient] = useState(null);
   
   // Nutrition-specific fields
   const [nutritionData, setNutritionData] = useState({
@@ -29,21 +29,11 @@ const CareTaskScheduleView = ({ taskId, taskName, onClose }) => {
   useEffect(() => {
     fetchSchedules();
     fetchTaskDetails();
-    fetchCurrentPatient();
   }, [taskId]);
-
-  const fetchCurrentPatient = async () => {
-    try {
-      const patient = await patientService.getCurrentPatient();
-      setCurrentPatient(patient);
-    } catch (error) {
-      console.error('Error fetching current patient:', error);
-    }
-  };
 
   const fetchTaskDetails = async () => {
     try {
-      const response = await fetch(`${config.apiUrl}/api/care-tasks/${taskId}`);
+      const response = await fetch(`${config.apiUrl}/api/care-tasks/${taskId}`, { credentials: 'include' });
       if (response.ok) {
         const data = await response.json();
         const task = data.care_task; // Extract the actual task from the nested response
@@ -66,7 +56,7 @@ const CareTaskScheduleView = ({ taskId, taskName, onClose }) => {
 
   const fetchSchedules = async () => {
     try {
-      const response = await fetch(`${config.apiUrl}/api/care-tasks/${taskId}/schedules`);
+      const response = await fetch(`${config.apiUrl}/api/care-tasks/${taskId}/schedules`, { credentials: 'include' });
       if (response.ok) {
         const data = await response.json();
         console.log('Fetched schedules:', data);
@@ -150,12 +140,13 @@ const CareTaskScheduleView = ({ taskId, taskName, onClose }) => {
       const response = await fetch(`${config.apiUrl}/api/add/care-task-schedule/${taskId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           cron_expression: cron,
           description: description,
           active: true,
           notes: notes,
-          patient_id: currentPatient ? currentPatient.id : null
+          patient_id: selectedPatient ? selectedPatient.id : null
         })
       });
       
@@ -194,7 +185,8 @@ const CareTaskScheduleView = ({ taskId, taskName, onClose }) => {
     try {
       setLoading(true);
       const response = await fetch(`${config.apiUrl}/api/care-task-schedules/${scheduleId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        credentials: 'include'
       });
       
       if (!response.ok) {
@@ -215,7 +207,8 @@ const CareTaskScheduleView = ({ taskId, taskName, onClose }) => {
     try {
       setLoading(true);
       const response = await fetch(`${config.apiUrl}/api/care-task-schedules/${scheduleId}/toggle-active`, {
-        method: 'POST'
+        method: 'POST',
+        credentials: 'include'
       });
       
       if (!response.ok) {
@@ -235,7 +228,7 @@ const CareTaskScheduleView = ({ taskId, taskName, onClose }) => {
   return (
     <div style={{ padding: 24 }}>
       {/* Current Patient Info */}
-      {currentPatient && (
+      {selectedPatient && (
         <div style={{ 
           marginBottom: 16, 
           padding: 12, 
@@ -251,7 +244,7 @@ const CareTaskScheduleView = ({ taskId, taskName, onClose }) => {
             color: '#0066cc', 
             fontWeight: 500 
           }}>
-            Scheduling for patient: {currentPatient.first_name} {currentPatient.last_name}
+            Scheduling for patient: {selectedPatient.first_name} {selectedPatient.last_name}
           </span>
         </div>
       )}

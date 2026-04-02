@@ -96,7 +96,7 @@ def _set_account_cookie(response: Response, account: Account, read_restricted: b
         value=token,
         httponly=True,
         max_age=ACCOUNT_SESSION_HOURS * 3600,
-        samesite="none",
+        samesite="lax",
         secure=False,
     )
 
@@ -250,14 +250,14 @@ def first_run_setup(
     token = create_access_token(user, account=account, is_full_password=True)
     
     # Set httpOnly cookie
-    # Note: samesite="none" requires secure=True in production
+    # samesite="lax" works for same-site cross-port requests over HTTP
     # For dev with different ports (5173->8000), we need none to allow cross-origin POST
     response.set_cookie(
         key="session_token",
         value=token,
         httponly=True,
         max_age=SESSION_TIMEOUT_MINUTES * 60,
-        samesite="none",
+        samesite="lax",
         secure=False  # Set to True in production with HTTPS
     )
     
@@ -334,7 +334,7 @@ def account_login(
         value=token,
         httponly=True,
         max_age=SESSION_TIMEOUT_MINUTES * 60,
-        samesite="none",
+        samesite="lax",
         secure=False  # Set to True in production with HTTPS
     )
     # Set long-lived account cookie (24h) so password isn't re-prompted
@@ -410,7 +410,7 @@ def account_access(
         value=token,
         httponly=True,
         max_age=SESSION_TIMEOUT_MINUTES * 60,
-        samesite="none",
+        samesite="lax",
         secure=False,
     )
     _set_account_cookie(response, account, read_restricted=read_restricted)
@@ -508,7 +508,7 @@ def account_unlock(
         value=token,
         httponly=True,
         max_age=SESSION_TIMEOUT_MINUTES * 60,
-        samesite="none",
+        samesite="lax",
         secure=False,
     )
     # Refresh account cookie with unrestricted access
@@ -645,7 +645,7 @@ def select_user(
         value=token,
         httponly=True,
         max_age=SESSION_TIMEOUT_MINUTES * 60,
-        samesite="none",
+        samesite="lax",
         secure=False  # Set to True in production with HTTPS
     )
     
@@ -760,14 +760,14 @@ def login(
     token = create_access_token(user=user, account=account, is_full_password=True, auth_level="full")
     
     # Set httpOnly cookie
-    # Note: samesite="none" requires secure=True in production
+    # samesite="lax" works for same-site cross-port requests over HTTP
     # For dev with different ports (5173->8000), we need none to allow cross-origin POST
     response.set_cookie(
         key="session_token",
         value=token,
         httponly=True,
         max_age=SESSION_TIMEOUT_MINUTES * 60,
-        samesite="none",
+        samesite="lax",
         secure=False  # Set to True in production with HTTPS
     )
     
@@ -870,14 +870,14 @@ def verify_user_pin(
     token = create_access_token(user=user, account=account, is_full_password=False, auth_level="full")
     
     # Set httpOnly cookie
-    # Note: samesite="none" requires secure=True in production
+    # samesite="lax" works for same-site cross-port requests over HTTP
     # For dev with different ports (5173->8000), we need none to allow cross-origin POST
     response.set_cookie(
         key="session_token",
         value=token,
         httponly=True,
         max_age=SESSION_TIMEOUT_MINUTES * 60,
-        samesite="none",
+        samesite="lax",
         secure=False  # Set to True in production with HTTPS
     )
     

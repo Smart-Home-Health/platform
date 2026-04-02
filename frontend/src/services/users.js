@@ -1,11 +1,9 @@
-import config from '../config';
+import config, { apiFetch } from '../config';
 
 export const userService = {
   // Get all users
   getUsers: async () => {
-    const response = await fetch(`${config.apiUrl}/api/auth/users`, {
-      credentials: 'include'
-    });
+    const response = await apiFetch(`${config.apiUrl}/api/auth/users`);
     if (!response.ok) {
       throw new Error('Failed to fetch users');
     }
@@ -14,9 +12,7 @@ export const userService = {
 
   // Get user by ID
   getUser: async (userId) => {
-    const response = await fetch(`${config.apiUrl}/api/auth/users/${userId}`, {
-      credentials: 'include'
-    });
+    const response = await apiFetch(`${config.apiUrl}/api/auth/users/${userId}`);
     if (!response.ok) {
       throw new Error('Failed to fetch user');
     }
@@ -25,12 +21,11 @@ export const userService = {
 
   // Create new user
   createUser: async (userData) => {
-    const response = await fetch(`${config.apiUrl}/api/auth/users`, {
+    const response = await apiFetch(`${config.apiUrl}/api/auth/users`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      credentials: 'include',
       body: JSON.stringify(userData),
     });
     if (!response.ok) {
@@ -42,12 +37,11 @@ export const userService = {
 
   // Update user
   updateUser: async (userId, userData) => {
-    const response = await fetch(`${config.apiUrl}/api/auth/users/${userId}`, {
+    const response = await apiFetch(`${config.apiUrl}/api/auth/users/${userId}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
       },
-      credentials: 'include',
       body: JSON.stringify(userData),
     });
     if (!response.ok) {
@@ -59,9 +53,8 @@ export const userService = {
 
   // Delete user
   deleteUser: async (userId) => {
-    const response = await fetch(`${config.apiUrl}/api/auth/users/${userId}`, {
+    const response = await apiFetch(`${config.apiUrl}/api/auth/users/${userId}`, {
       method: 'DELETE',
-      credentials: 'include',
     });
     if (!response.ok) {
       const error = await response.json();
@@ -72,9 +65,7 @@ export const userService = {
 
   // Get available roles
   getRoles: async () => {
-    const response = await fetch(`${config.apiUrl}/api/auth/roles`, {
-      credentials: 'include'
-    });
+    const response = await apiFetch(`${config.apiUrl}/api/auth/roles`);
     if (!response.ok) {
       throw new Error('Failed to fetch roles');
     }
@@ -83,12 +74,11 @@ export const userService = {
 
   // Assign role to user
   assignRole: async (userId, roleId, expiresAt = null) => {
-    const response = await fetch(`${config.apiUrl}/api/auth/users/${userId}/roles`, {
+    const response = await apiFetch(`${config.apiUrl}/api/auth/users/${userId}/roles`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      credentials: 'include',
       body: JSON.stringify({ role_id: roleId, expires_at: expiresAt }),
     });
     if (!response.ok) {
@@ -100,9 +90,8 @@ export const userService = {
 
   // Remove role from user
   removeRole: async (userId, roleId) => {
-    const response = await fetch(`${config.apiUrl}/api/auth/users/${userId}/roles/${roleId}`, {
+    const response = await apiFetch(`${config.apiUrl}/api/auth/users/${userId}/roles/${roleId}`, {
       method: 'DELETE',
-      credentials: 'include',
     });
     if (!response.ok) {
       const error = await response.json();

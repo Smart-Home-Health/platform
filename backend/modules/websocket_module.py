@@ -235,7 +235,7 @@ class WebSocketModule:
         disconnected_clients = []
         message_json = json.dumps(message, default=str)
         
-        for client_id, websocket in self.active_connections.items():
+        for client_id, websocket in list(self.active_connections.items()):
             try:
                 await websocket.send_text(message_json)
             except Exception as e:

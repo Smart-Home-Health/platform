@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import config from '../config';
 import ModalBase from './ModalBase';
+import { useAdminPatient } from '../contexts/AdminPatientContext';
 
 export default function EquipmentModal({ isOpen, onClose, noModal, equipmentDueCount }) {
+  const { selectedPatient } = useAdminPatient();
   const [tab, setTab] = useState('list');
   const [equipment, setEquipment] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -22,13 +24,16 @@ export default function EquipmentModal({ isOpen, onClose, noModal, equipmentDueC
   const [editLoading, setEditLoading] = useState(false);
 
   useEffect(() => {
-    if (isOpen) fetchEquipment();
-  }, [isOpen]);
+    if (isOpen && selectedPatient) fetchEquipment();
+  }, [isOpen, selectedPatient?.id]);
 
   const fetchEquipment = async () => {
+    if (!selectedPatient) return;
     setLoading(true);
     try {
-      const res = await fetch(`${config.apiUrl}/api/equipment`);
+      const res = await fetch(`${config.apiUrl}/api/equipment?patient_id=${selectedPatient.id}`, {
+        credentials: 'include'
+      });
       const data = await res.json();
       setEquipment(data);
     } catch (err) {
@@ -51,9 +56,11 @@ export default function EquipmentModal({ isOpen, onClose, noModal, equipmentDueC
         payload.last_changed = addForm.last_changed;
         payload.useful_days = parseInt(addForm.useful_days);
       }
+      if (selectedPatient) payload.patient_id = selectedPatient.id;
       await fetch(`${config.apiUrl}/api/equipment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(payload)
       });
       setAddForm({ 
@@ -81,6 +88,7 @@ export default function EquipmentModal({ isOpen, onClose, noModal, equipmentDueC
     await fetch(`${config.apiUrl}/api/equipment/${selectedEquip.id}/change`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ changed_at: new Date().toISOString() })
     });
     setSelectedEquip(null);
@@ -93,6 +101,7 @@ export default function EquipmentModal({ isOpen, onClose, noModal, equipmentDueC
     await fetch(`${config.apiUrl}/api/equipment/${equip.id}/receive`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ amount: parseInt(amount) })
     });
     fetchEquipment();
@@ -109,6 +118,7 @@ export default function EquipmentModal({ isOpen, onClose, noModal, equipmentDueC
     const response = await fetch(`${config.apiUrl}/api/equipment/${equip.id}/open`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ amount: numAmount })
     });
     const result = await response.json();
@@ -131,6 +141,7 @@ export default function EquipmentModal({ isOpen, onClose, noModal, equipmentDueC
       await fetch(`${config.apiUrl}/api/equipment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           ...editForm,
           id: editEquip.id,
@@ -154,7 +165,7 @@ export default function EquipmentModal({ isOpen, onClose, noModal, equipmentDueC
       // Fetch all logs for all equipment to get the last 20 items
       let logs = [];
       for (const equip of equipment) {
-        const res = await fetch(`${config.apiUrl}/api/equipment/${equip.id}/history`);
+        const res = await fetch(`${config.apiUrl}/api/equipment/${equip.id}/history`, { credentials: 'include' });
         const data = await res.json();
         logs = logs.concat(data.map(log => ({ ...log, equipment: equip.name, equipment_id: equip.id })));
       }
@@ -174,7 +185,7 @@ export default function EquipmentModal({ isOpen, onClose, noModal, equipmentDueC
         // Show last 20 items from all equipment
         let logs = [];
         for (const equip of equipment) {
-          const res = await fetch(`${config.apiUrl}/api/equipment/${equip.id}/history`);
+          const res = await fetch(`${config.apiUrl}/api/equipment/${equip.id}/history`, { credentials: 'include' });
           const data = await res.json();
           logs = logs.concat(data.map(log => ({ ...log, equipment: equip.name, equipment_id: equip.id })));
         }
@@ -183,7 +194,7 @@ export default function EquipmentModal({ isOpen, onClose, noModal, equipmentDueC
         setHistoryTab(t => ({ ...t, logs, loading: false }));
       } else {
         // Show history for specific equipment
-        const res = await fetch(`${config.apiUrl}/api/equipment/${equipmentId}/history`);
+        const res = await fetch(`${config.apiUrl}/api/equipment/${equipmentId}/history`, { credentials: 'include' });
         const data = await res.json();
         const equipName = equipment.find(e => e.id == equipmentId)?.name || '';
         const logs = data.map(log => ({ ...log, equipment: equipName, equipment_id: equipmentId }));

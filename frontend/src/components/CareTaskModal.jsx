@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import ModalBase from './ModalBase';
 import config from '../config';
-import { patientService } from '../services/patients';
+import { useAdminPatient } from '../contexts/AdminPatientContext';
 import CareTaskListView from './care-task/CareTaskListView';
 import CareTaskScheduleView from './care-task/CareTaskScheduleView';
 import CareTaskScheduledView from './care-task/CareTaskScheduledView';
 import NutritionTrackingModal from './nutrition/NutritionTrackingModal';
 
 const CareTaskModal = ({ onClose }) => {
+  const { selectedPatient } = useAdminPatient();
   const [tab, setTab] = useState('scheduled');
   const [activeTasks, setActiveTasks] = useState([]);
   const [inactiveTasks, setInactiveTasks] = useState([]);
@@ -18,7 +19,6 @@ const CareTaskModal = ({ onClose }) => {
   const [loading, setLoading] = useState(false);
   const [showScheduleFor, setShowScheduleFor] = useState(null); // task id or null
   const [showHistory, setShowHistory] = useState(false); // show history view
-  const [currentPatient, setCurrentPatient] = useState(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   
   // Add category modal state
@@ -158,18 +158,16 @@ const CareTaskModal = ({ onClose }) => {
   // Status filters visibility toggle
   const [showFilters, setShowFilters] = useState(false);
 
-  // Load tasks from API on component mount
+  // Load tasks when patient or tab changes
   useEffect(() => {
-    fetchCategories(); // Always fetch categories
-    fetchCurrentPatient(); // Fetch current patient
-    if (tab === 'active') {
-      fetchTasks();
-    } else if (tab === 'inactive') {
+    if (!selectedPatient) return;
+    fetchCategories();
+    if (tab === 'active' || tab === 'inactive') {
       fetchTasks();
     } else if (tab === 'scheduled') {
       fetchScheduledTasks();
     }
-  }, [tab]);
+  }, [tab, selectedPatient?.id]);
 
   // Pre-select first category when categories load and adding new task
   useEffect(() => {
@@ -180,26 +178,6 @@ const CareTaskModal = ({ onClose }) => {
       }));
     }
   }, [categories, editingTask, tab]);
-
-  // Refetch data when patient changes
-  useEffect(() => {
-    if (currentPatient) {
-      if (tab === 'scheduled') {
-        fetchScheduledTasks();
-      } else if (tab === 'active' || tab === 'inactive') {
-        fetchTasks();
-      }
-    }
-  }, [currentPatient]);
-
-  const fetchCurrentPatient = async () => {
-    try {
-      const patient = await patientService.getCurrentPatient();
-      setCurrentPatient(patient);
-    } catch (error) {
-      console.error('Error fetching current patient:', error);
-    }
-  };
 
   const fetchCategories = async () => {
     try {
@@ -219,17 +197,14 @@ const CareTaskModal = ({ onClose }) => {
   };
 
   const fetchTasks = async () => {
+    if (!selectedPatient) return;
     setLoading(true);
     try {
-      // Get current patient and include in API call for patient filtering
-      const patient = currentPatient || await patientService.getCurrentPatient();
-      const patientParam = patient ? `?patient_id=${patient.id}` : '';
-      
       const [activeResponse, inactiveResponse] = await Promise.all([
-        fetch(`${config.apiUrl}/api/care-tasks/active${patientParam}`, { credentials: 'include' }),
-        fetch(`${config.apiUrl}/api/care-tasks/inactive${patientParam}`, { credentials: 'include' })
+        fetch(`${config.apiUrl}/api/admin/care-tasks/active?patient_id=${selectedPatient.id}`, { credentials: 'include' }),
+        fetch(`${config.apiUrl}/api/admin/care-tasks/inactive?patient_id=${selectedPatient.id}`, { credentials: 'include' })
       ]);
-      
+
       if (activeResponse.ok && inactiveResponse.ok) {
         const activeData = await activeResponse.json();
         const inactiveData = await inactiveResponse.json();
@@ -244,13 +219,10 @@ const CareTaskModal = ({ onClose }) => {
   };
 
   const fetchScheduledTasks = async () => {
+    if (!selectedPatient) return;
     setLoading(true);
     try {
-      // Get current patient and include in API call for patient filtering
-      const patient = currentPatient || await patientService.getCurrentPatient();
-      const patientParam = patient ? `?patient_id=${patient.id}` : '';
-      
-      const response = await fetch(`${config.apiUrl}/api/care-task-schedules/daily${patientParam}`, {
+      const response = await fetch(`${config.apiUrl}/api/care-task-schedules/daily?patient_id=${selectedPatient.id}`, {
         credentials: 'include'
       });
       if (response.ok) {
@@ -266,10 +238,7 @@ const CareTaskModal = ({ onClose }) => {
 
   const fetchTaskSchedules = async (taskId) => {
     try {
-      // Get current patient and include in API call for patient filtering
-      const patient = currentPatient || await patientService.getCurrentPatient();
-      const patientParam = patient ? `?patient_id=${patient.id}` : '';
-      
+      const patientParam = selectedPatient ? `?patient_id=${selectedPatient.id}` : '';
       const response = await fetch(`${config.apiUrl}/api/care-tasks/${taskId}/schedules${patientParam}`, {
         credentials: 'include'
       });
@@ -303,10 +272,10 @@ const CareTaskModal = ({ onClose }) => {
       
       const method = editingTask ? 'PUT' : 'POST';
       
-      // For new care tasks, include current patient_id to assign to current patient
+      // For new care tasks, include patient_id to assign to selected patient
       const submitData = { ...formData };
-      if (!editingTask && currentPatient) {
-        submitData.patient_id = currentPatient.id;
+      if (!editingTask && selectedPatient) {
+        submitData.patient_id = selectedPatient.id;
       }
       
       const response = await fetch(url, {
@@ -866,21 +835,21 @@ const CareTaskModal = ({ onClose }) => {
           <div style={{ 
             marginBottom: 16, 
             padding: 12, 
-            backgroundColor: currentPatient ? '#e8f4fd' : '#fff3cd', 
+            backgroundColor: selectedPatient ? '#e8f4fd' : '#fff3cd', 
             borderRadius: 6, 
-            border: currentPatient ? '1px solid #b3d7ff' : '1px solid #ffeaa7',
+            border: selectedPatient ? '1px solid #b3d7ff' : '1px solid #ffeaa7',
             display: 'flex',
             alignItems: 'center',
             gap: 8
           }}>
             <span style={{ 
               fontSize: 14, 
-              color: currentPatient ? '#0066cc' : '#856404', 
+              color: selectedPatient ? '#0066cc' : '#856404', 
               fontWeight: 500 
             }}>
-              {currentPatient ? (
+              {selectedPatient ? (
                 <>
-                  {tab === 'scheduled' ? 'Viewing schedule for:' : 'Viewing care tasks for:'} {currentPatient.first_name} {currentPatient.last_name}
+                  {tab === 'scheduled' ? 'Viewing schedule for:' : 'Viewing care tasks for:'} {selectedPatient.first_name} {selectedPatient.last_name}
                 </>
               ) : (
                 'No patient selected - showing global templates only'
@@ -1168,20 +1137,20 @@ const CareTaskModal = ({ onClose }) => {
                   <div style={{ 
                     marginBottom: 8, 
                     padding: 12, 
-                    backgroundColor: currentPatient ? '#e8f4fd' : '#fff3cd', 
+                    backgroundColor: selectedPatient ? '#e8f4fd' : '#fff3cd', 
                     borderRadius: 6, 
-                    border: currentPatient ? '1px solid #b3d7ff' : '1px solid #ffeaa7',
+                    border: selectedPatient ? '1px solid #b3d7ff' : '1px solid #ffeaa7',
                     display: 'flex',
                     alignItems: 'center',
                     gap: 8
                   }}>
                     <span style={{ 
                       fontSize: 14, 
-                      color: currentPatient ? '#0066cc' : '#856404', 
+                      color: selectedPatient ? '#0066cc' : '#856404', 
                       fontWeight: 500 
                     }}>
-                      {currentPatient ? (
-                        <>Creating task for: {currentPatient.first_name} {currentPatient.last_name}</>
+                      {selectedPatient ? (
+                        <>Creating task for: {selectedPatient.first_name} {selectedPatient.last_name}</>
                       ) : (
                         'Creating global task template (no patient selected)'
                       )}

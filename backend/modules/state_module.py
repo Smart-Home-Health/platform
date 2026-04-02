@@ -46,21 +46,27 @@ class StateModule:
 
     async def start_event_subscribers(self):
         """Start subscribing to relevant events."""
-        # Subscribe to sensor updates
-        asyncio.create_task(self._subscribe_to_sensor_updates())
-        
-        # Subscribe to vital recordings
-        asyncio.create_task(self._subscribe_to_vital_recordings())
-        
+        asyncio.create_task(self._resilient_subscriber(
+            "sensor_updates", SensorUpdate, self._handle_sensor_update))
+        asyncio.create_task(self._resilient_subscriber(
+            "vital_recordings", VitalSignRecorded, self._handle_vital_recording))
         logger.info("State module event subscribers started")
 
-    async def _subscribe_to_sensor_updates(self):
-        """Subscribe to sensor update events and maintain state."""
-        async for event in self.event_bus.subscribe_to_type(SensorUpdate):
+    async def _resilient_subscriber(self, name, event_type, handler):
+        """Run a subscriber loop that auto-restarts on failure."""
+        while True:
             try:
-                await self._handle_sensor_update(event)
+                async for event in self.event_bus.subscribe_to_type(event_type):
+                    try:
+                        await handler(event)
+                    except Exception as e:
+                        logger.error(f"Error in {name} handler: {e}")
+            except (asyncio.CancelledError, GeneratorExit, KeyboardInterrupt):
+                logger.info(f"Subscriber {name} shutting down")
+                return
             except Exception as e:
-                logger.error(f"Error handling sensor update: {e}")
+                logger.error(f"Subscriber {name} died: {e} — restarting in 1s")
+                await asyncio.sleep(1)
 
     async def _subscribe_to_vital_recordings(self):
         """Subscribe to vital recording events and save to database."""
@@ -93,30 +99,34 @@ class StateModule:
     async def _handle_vital_recording(self, event: VitalSignRecorded):
         """Handle vital recording events by saving to database."""
         try:
-            from state_manager import get_db_session
+            def _sync_save():
+                from state_manager import get_db_session
+                if event.vital_type == "blood_pressure":
+                    from crud.vitals import save_blood_pressure
+                    with get_db_session() as db:
+                        save_blood_pressure(
+                            db=db,
+                            systolic=event.data["systolic"],
+                            diastolic=event.data["diastolic"],
+                            map_value=event.data.get("map"),
+                            notes=event.data.get("raw_data")
+                        )
+                elif event.vital_type == "temperature":
+                    from crud.vitals import save_temperature
+                    with get_db_session() as db:
+                        save_temperature(
+                            db=db,
+                            body_temp=event.data.get("body_temp"),
+                            skin_temp=event.data.get("skin_temp"),
+                            notes=event.data.get("raw_data")
+                        )
+                else:
+                    return None
+                return event.vital_type
 
-            if event.vital_type == "blood_pressure":
-                from crud.vitals import save_blood_pressure
-                with get_db_session() as db:
-                    save_blood_pressure(
-                        db=db,
-                        systolic=event.data["systolic"],
-                        diastolic=event.data["diastolic"],
-                        map_value=event.data.get("map"),
-                        notes=event.data.get("raw_data")
-                    )
-                logger.info(f"Saved blood pressure reading to vitals table")
-
-            elif event.vital_type == "temperature":
-                from crud.vitals import save_temperature
-                with get_db_session() as db:
-                    save_temperature(
-                        db=db,
-                        body_temp=event.data.get("body_temp"),
-                        skin_temp=event.data.get("skin_temp"),
-                        notes=event.data.get("raw_data")
-                    )
-                logger.info(f"Saved temperature reading to vitals table")
+            saved = await asyncio.to_thread(_sync_save)
+            if saved:
+                logger.info(f"Saved {saved} reading to vitals table")
 
         except Exception as e:
             logger.error(f"Error saving vital recording to database: {e}")
@@ -154,11 +164,10 @@ class StateModule:
             logger.error(f"Error handling pulse ox update: {e}")
 
     async def _save_pulse_ox_data(self, spo2, bpm, perfusion, raw_data, patient_id=None):
-        """Save pulse oximeter data to database."""
-        try:
+        """Save pulse oximeter data to database (runs in thread to avoid blocking event loop)."""
+        def _sync_save():
             from state_manager import get_db_session
             from crud.vitals import save_pulse_ox_data
-
             with get_db_session() as db:
                 save_pulse_ox_data(
                     db=db,
@@ -168,118 +177,103 @@ class StateModule:
                     raw_data=raw_data,
                     patient_id=patient_id
                 )
-                
+        try:
+            await asyncio.to_thread(_sync_save)
         except Exception as e:
             logger.error(f"Error saving pulse ox data: {e}")
 
     async def _check_pulse_ox_thresholds(self, spo2, bpm, timestamp, data_point, patient_id=None):
-        """Check pulse ox values against thresholds and manage alerts."""
+        """Check pulse ox values against thresholds and manage alerts.
+
+        State machine:
+          IDLE  → thresholds exceeded → ALARM (start alert)
+          ALARM → thresholds exceeded → ALARM (continue, reset recovery timer)
+          ALARM → thresholds normal   → RECOVERING (start 30s timer)
+          RECOVERING → thresholds exceeded → ALARM (cancel recovery)
+          RECOVERING → 30s elapsed        → IDLE (end alert)
+        """
         try:
-            from crud.settings import get_setting
-            from state_manager import get_db_session
-            
-            with get_db_session() as db:
-                min_spo2 = int(get_setting(db, 'min_spo2', 90))
-                max_spo2 = int(get_setting(db, 'max_spo2', 100))
-                min_bpm = int(get_setting(db, 'min_bpm', 55))
-                max_bpm = int(get_setting(db, 'max_bpm', 155))
-            
-            # Check if device is disconnected (timeout values)
+            def _load_thresholds():
+                from crud.settings import get_setting
+                from state_manager import get_db_session
+                with get_db_session() as db:
+                    return (
+                        int(get_setting(db, 'min_spo2', 90)),
+                        int(get_setting(db, 'max_spo2', 100)),
+                        int(get_setting(db, 'min_bpm', 55)),
+                        int(get_setting(db, 'max_bpm', 155)),
+                    )
+
+            min_spo2, max_spo2, min_bpm, max_bpm = await asyncio.to_thread(_load_thresholds)
+
             is_disconnected = (spo2 == -1) or (bpm == -1)
-            
-            # Check if thresholds are exceeded (only for valid data)
-            spo2_alarm = False
-            bpm_alarm = False
-            
-            if not is_disconnected:
-                if spo2 is not None:
-                    spo2_alarm = spo2 < min_spo2 or spo2 > max_spo2
-                
-                if bpm is not None:
-                    bpm_alarm = bpm < min_bpm or bpm > max_bpm
-            
-            current_thresholds_exceeded = spo2_alarm or bpm_alarm
-            
-            # NEW LOGIC: Don't trigger new alerts on disconnection
-            # If device disconnects while NOT in an alarm state, just ignore it
-            # If device disconnects while IN an alarm state, keep the alarm active
-            
+
             if is_disconnected:
-                # Device is disconnected - don't start new alerts
-                # Just keep existing alert active if there is one
-                if self.current_alert_id:
-                    # Keep tracking data points for the existing alert
+                # Don't start or end alerts while disconnected; just keep logging if active
+                return
+
+            # Evaluate current thresholds
+            spo2_alarm = spo2 is not None and (spo2 < min_spo2 or spo2 > max_spo2)
+            bpm_alarm = bpm is not None and (bpm < min_bpm or bpm > max_bpm)
+            thresholds_exceeded = spo2_alarm or bpm_alarm
+
+            if self.current_alert_id is None:
+                # --- IDLE ---
+                if thresholds_exceeded:
+                    await self._start_pulse_ox_alert(spo2, bpm, timestamp, data_point, alert_type="threshold", patient_id=patient_id)
+                    self.alert_recovery_start_time = None
+            else:
+                # --- ALARM or RECOVERING ---
+                if thresholds_exceeded:
+                    # Still in alarm (or re-entered during recovery) — reset recovery
+                    self.alert_recovery_start_time = None
                     self.event_data_points.append(data_point)
-                # Do nothing else - don't change alert state
-                
-            elif not is_disconnected and self.current_alert_id and not current_thresholds_exceeded:
-                # Device reconnected with good values - end the alert after recovery period
-                if not self.alert_recovery_start_time:
-                    self.alert_recovery_start_time = timestamp
                 else:
-                    recovery_duration = (timestamp - self.alert_recovery_start_time).total_seconds()
-                    if recovery_duration >= 30:  # 30 second recovery period
-                        await self._end_pulse_ox_alert(timestamp)
-                        
-            elif current_thresholds_exceeded and not self.alert_thresholds_exceeded and not is_disconnected:
-                # Normal threshold alert started (device connected but values out of range)
-                await self._start_pulse_ox_alert(spo2, bpm, timestamp, data_point, alert_type="threshold", patient_id=patient_id)
-                self.alert_recovery_start_time = None
-                
-            elif not current_thresholds_exceeded and self.alert_thresholds_exceeded and not is_disconnected:
-                # Threshold alert condition cleared - start recovery timer
-                if not self.alert_recovery_start_time:
-                    self.alert_recovery_start_time = timestamp
-                
-            elif not current_thresholds_exceeded and self.alert_recovery_start_time and not is_disconnected:
-                # Check if recovery period has elapsed (only for threshold alerts)
-                recovery_duration = (timestamp - self.alert_recovery_start_time).total_seconds()
-                if recovery_duration >= 30:  # 30 second recovery period
-                    await self._end_pulse_ox_alert(timestamp)
-            
-            # Update state - only track threshold exceeded state (ignore disconnection for state tracking)
-            if not is_disconnected:
-                self.alert_thresholds_exceeded = current_thresholds_exceeded
-            
-            # Add to event data if we're tracking an alert
-            if self.current_alert_id and not is_disconnected:
-                self.event_data_points.append(data_point)
-                
+                    # Values normal — start or continue recovery countdown
+                    if self.alert_recovery_start_time is None:
+                        self.alert_recovery_start_time = timestamp
+                        logger.info(f"Alert {self.current_alert_id}: values normal, starting 30s recovery timer")
+                    else:
+                        elapsed = (timestamp - self.alert_recovery_start_time).total_seconds()
+                        if elapsed >= 30:
+                            logger.info(f"Alert {self.current_alert_id}: 30s recovery complete, ending alert")
+                            await self._end_pulse_ox_alert(timestamp)
+
         except Exception as e:
             logger.error(f"Error checking pulse ox thresholds: {e}")
 
     async def _start_pulse_ox_alert(self, spo2, bpm, timestamp, data_point, alert_type="threshold", patient_id=None):
         """Start a new pulse oximeter alert."""
         try:
-            from state_manager import get_db_session
-            from crud.monitoring import start_monitoring_alert
-            
             # Determine alert flags based on alert type
             if alert_type == "disconnected":
-                # For disconnection alerts, mark as device disconnected
-                spo2_alarm = False  # Don't treat -1 as threshold violation
+                spo2_alarm = False
                 hr_alarm = False
-                external_alarm_triggered = 1  # Use external alarm flag for disconnection
+                external_alarm_triggered = 1
             else:
-                # For threshold alerts, use normal logic
                 spo2_alarm = spo2 and (spo2 < 85 or spo2 > 100) if spo2 and spo2 != -1 else False
                 hr_alarm = bpm and (bpm < 50 or bpm > 160) if bpm and bpm != -1 else False
                 external_alarm_triggered = 0
-            
-            with get_db_session() as db:
-                alert_data = start_monitoring_alert(
-                    db=db,
-                    spo2=spo2,
-                    bpm=bpm,
-                    data_id=data_point.get("id"),
-                    spo2_alarm_triggered=1 if spo2_alarm else 0,
-                    hr_alarm_triggered=1 if hr_alarm else 0,
-                    external_alarm_triggered=external_alarm_triggered,
-                    patient_id=patient_id
-                )
-                if alert_data:
-                    self.current_alert_id = alert_data.id if hasattr(alert_data, 'id') else alert_data
-                    self.alert_start_data_id = data_point.get("id")
+
+            def _sync_start_alert():
+                from state_manager import get_db_session
+                from crud.monitoring import start_monitoring_alert
+                with get_db_session() as db:
+                    return start_monitoring_alert(
+                        db=db,
+                        spo2=spo2,
+                        bpm=bpm,
+                        data_id=data_point.get("id"),
+                        spo2_alarm_triggered=1 if spo2_alarm else 0,
+                        hr_alarm_triggered=1 if hr_alarm else 0,
+                        external_alarm_triggered=external_alarm_triggered,
+                        patient_id=patient_id
+                    )
+
+            alert_data = await asyncio.to_thread(_sync_start_alert)
+            if alert_data:
+                self.current_alert_id = alert_data.id if hasattr(alert_data, 'id') else alert_data
+                self.alert_start_data_id = data_point.get("id")
             
             # Reset event tracking
             self.event_data_points = list(self.pulse_ox_cache)  # Copy current cache
@@ -316,13 +310,17 @@ class StateModule:
 
             if self.current_alert_id:
                 alert_id = self.current_alert_id
-                with get_db_session() as db:
-                    update_monitoring_alert(
-                        db=db,
-                        alert_id=alert_id,
-                        end_time=timestamp.isoformat(),
-                    )
-                    acknowledge_alert(db=db, alert_id=alert_id)
+
+                def _sync_end_alert():
+                    with get_db_session() as db:
+                        update_monitoring_alert(
+                            db=db,
+                            alert_id=alert_id,
+                            end_time=timestamp.isoformat(),
+                        )
+                        acknowledge_alert(db=db, alert_id=alert_id)
+
+                await asyncio.to_thread(_sync_end_alert)
                 
                 # Publish alert resolved event
                 alert_event = AlertResolved(

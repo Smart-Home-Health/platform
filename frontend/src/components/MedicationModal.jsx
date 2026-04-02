@@ -3,14 +3,14 @@ import ModalBase from './ModalBase';
 import config from '../config';
 import MedicationHistory from './medication/MedicationHistory';
 import MedicationScheduleView, { medicationStatusUtils } from './medication/MedicationScheduleView';
+import { useAdminPatient } from '../contexts/AdminPatientContext';
 
 const MedicationModal = ({ onClose }) => {
+  const { selectedPatient } = useAdminPatient();
   const [tab, setTab] = useState('scheduled');
   const [activeMedications, setActiveMedications] = useState([]);
   const [inactiveMedications, setInactiveMedications] = useState([]);
   const [scheduledMedications, setScheduledMedications] = useState({ scheduled_medications: [] });
-  const [patients, setPatients] = useState([]);
-  const [currentPatientId, setCurrentPatientId] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingMed, setEditingMed] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -77,41 +77,27 @@ const MedicationModal = ({ onClose }) => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Load medications from API on component mount
+  // Load medications when patient or tab changes
   useEffect(() => {
+    if (!selectedPatient) return;
     fetchMedications();
-    fetchPatients();
-    fetchCurrentPatient();
     fetchPharmacies();
+    fetchProviders();
     if (tab === 'scheduled') {
       fetchScheduledMedications();
     }
-  }, [tab]);
-
-  // Separate useEffect for providers that depends on currentPatientId
-  useEffect(() => {
-    console.log('Fetching providers for currentPatientId:', currentPatientId); // Debug log
-    fetchProviders();
-  }, [currentPatientId]);
-
-  // Fetch pharmacies on component mount
-  useEffect(() => {
-    console.log('Fetching pharmacies on component mount'); // Debug log
-    fetchPharmacies();
-  }, []);
+  }, [tab, selectedPatient?.id]);
 
   const fetchProviders = async () => {
+    if (!selectedPatient) return;
     try {
-      // Fetch providers for current patient if available
-      const url = currentPatientId ? 
-        `${config.apiUrl}/api/medications/providers?patient_id=${currentPatientId}` :
-        `${config.apiUrl}/api/medications/providers`;
-      console.log('Fetching providers from:', url); // Debug log
-      const response = await fetch(url);
+      const response = await fetch(
+        `${config.apiUrl}/api/providers/patient/${selectedPatient.id}?active_only=true`,
+        { credentials: 'include' }
+      );
       if (response.ok) {
         const data = await response.json();
-        console.log('Providers fetched:', data.providers); // Debug log
-        setProviders(data.providers || []);
+        setProviders(data || []);
       }
     } catch (error) {
       console.error('Error fetching providers:', error);
@@ -121,12 +107,11 @@ const MedicationModal = ({ onClose }) => {
 
   const fetchPharmacies = async () => {
     try {
-      const url = `${config.apiUrl}/api/medications/pharmacies`;
-      console.log('Fetching pharmacies from:', url); // Debug log
-      const response = await fetch(url);
+      const response = await fetch(`${config.apiUrl}/api/medications/pharmacies`, {
+        credentials: 'include'
+      });
       if (response.ok) {
         const data = await response.json();
-        console.log('Pharmacies fetched:', data.pharmacies); // Debug log
         setPharmacies(data.pharmacies || []);
       }
     } catch (error) {
@@ -135,59 +120,26 @@ const MedicationModal = ({ onClose }) => {
     }
   };
 
-  const fetchPatients = async () => {
-    try {
-      const response = await fetch(`${config.apiUrl}/api/patients/`);
-      if (response.ok) {
-        const data = await response.json();
-        setPatients(data);
-      }
-    } catch (error) {
-      console.error('Error fetching patients:', error);
-    }
-  };
-
-  const fetchCurrentPatient = async () => {
-    try {
-      const response = await fetch(`${config.apiUrl}/api/patients/current`);
-      if (response.ok) {
-        const currentPatient = await response.json();
-        setCurrentPatientId(currentPatient.id);
-      }
-    } catch (error) {
-      console.error('Error fetching current patient:', error);
-    }
-  };
-
   const fetchMedications = async () => {
+    if (!selectedPatient) return;
     setLoading(true);
     try {
       const [activeRes, inactiveRes] = await Promise.all([
-        fetch(`${config.apiUrl}/api/medications/active`),
-        fetch(`${config.apiUrl}/api/medications/inactive`)
+        fetch(`${config.apiUrl}/api/admin/medications/active?patient_id=${selectedPatient.id}`, {
+          credentials: 'include'
+        }),
+        fetch(`${config.apiUrl}/api/admin/medications/inactive?patient_id=${selectedPatient.id}`, {
+          credentials: 'include'
+        })
       ]);
-      
+
       if (activeRes.ok && inactiveRes.ok) {
         const active = await activeRes.json();
         const inactive = await inactiveRes.json();
-        
-        // Fetch schedules for each medication and attach them
-        const activeMedsWithSchedules = await Promise.all(
-          active.map(async (med) => {
-            const schedules = await fetchMedicationSchedules(med.id);
-            return { ...med, schedules };
-          })
-        );
-        
-        const inactiveMedsWithSchedules = await Promise.all(
-          inactive.map(async (med) => {
-            const schedules = await fetchMedicationSchedules(med.id);
-            return { ...med, schedules };
-          })
-        );
-        
-        setActiveMedications(activeMedsWithSchedules);
-        setInactiveMedications(inactiveMedsWithSchedules);
+
+        // Admin endpoints already include schedules
+        setActiveMedications(active);
+        setInactiveMedications(inactive);
       }
     } catch (error) {
       console.error('Error fetching medications:', error);
@@ -199,7 +151,9 @@ const MedicationModal = ({ onClose }) => {
   const fetchScheduledMedications = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${config.apiUrl}/api/schedules/daily`);
+      const response = await fetch(`${config.apiUrl}/api/schedules/daily${selectedPatient ? `?patient_id=${selectedPatient.id}` : ''}`, {
+        credentials: 'include'
+      });
       if (response.ok) {
         const data = await response.json();
         setScheduledMedications(data);
@@ -213,7 +167,9 @@ const MedicationModal = ({ onClose }) => {
 
   const fetchMedicationSchedules = async (medicationId) => {
     try {
-      const response = await fetch(`${config.apiUrl}/api/medications/${medicationId}/schedules`);
+      const response = await fetch(`${config.apiUrl}/api/medications/${medicationId}/schedules`, {
+        credentials: 'include'
+      });
       if (response.ok) {
         const data = await response.json();
         return data.schedules || [];
@@ -253,6 +209,7 @@ const MedicationModal = ({ onClose }) => {
         const response = await fetch(`${config.apiUrl}/api/medications/${editingMed.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({
             name: formData.name,
             concentration: formData.concentration,
@@ -267,7 +224,7 @@ const MedicationModal = ({ onClose }) => {
             pharmacy_id: formData.pharmacyId || null
           })
         });
-        
+
         if (!response.ok) {
           throw new Error('Failed to update medication');
         }
@@ -276,6 +233,7 @@ const MedicationModal = ({ onClose }) => {
         const response = await fetch(`${config.apiUrl}/api/add/medication`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({
             name: formData.name,
             concentration: formData.concentration,
@@ -287,7 +245,8 @@ const MedicationModal = ({ onClose }) => {
             notes: formData.notes,
             is_patient_specific: formData.isPatientSpecific,
             prescriber_id: formData.prescriberId || null,
-            pharmacy_id: formData.pharmacyId || null
+            pharmacy_id: formData.pharmacyId || null,
+            admin_patient_id: formData.isPatientSpecific && selectedPatient ? selectedPatient.id : null
           })
         });
         
@@ -337,7 +296,8 @@ const MedicationModal = ({ onClose }) => {
       setLoading(true);
       try {
         const response = await fetch(`${config.apiUrl}/api/medications/${id}`, {
-          method: 'DELETE'
+          method: 'DELETE',
+          credentials: 'include'
         });
         
         if (!response.ok) {
@@ -358,7 +318,8 @@ const MedicationModal = ({ onClose }) => {
     setLoading(true);
     try {
       const response = await fetch(`${config.apiUrl}/api/medications/${id}/toggle-active`, {
-        method: 'POST'
+        method: 'POST',
+        credentials: 'include'
       });
       
       if (!response.ok) {
@@ -917,12 +878,13 @@ const MedicationModal = ({ onClose }) => {
       const res = await fetch(`${config.apiUrl}/api/medications/${item.medication_id}/administer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           dose_amount: item.dose_amount,
           schedule_id: item.schedule_id,
           scheduled_time: item.scheduled_time,
           notes: '',
-          ...(currentPatientId != null && { patient_id: currentPatientId })
+          ...(selectedPatient && { patient_id: selectedPatient.id })
         })
       });
       if (res.ok) {
@@ -950,11 +912,13 @@ const MedicationModal = ({ onClose }) => {
       const res = await fetch(`${config.apiUrl}/api/medications/${item.medication_id}/administer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           dose_amount: 0,
           schedule_id: item.schedule_id,
           scheduled_time: item.scheduled_time,
-          notes: 'Dose skipped by user'
+          notes: 'Dose skipped by user',
+          ...(selectedPatient && { patient_id: selectedPatient.id })
         })
       });
       if (res.ok) {
@@ -1009,13 +973,14 @@ const MedicationModal = ({ onClose }) => {
         const res = await fetch(`${config.apiUrl}/api/medications/${med.medication_id}/administer`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          dose_amount: med.dose_amount,
-          schedule_id: med.schedule_id,
-          scheduled_time: med.scheduled_time,
-          notes: 'Administered via bulk mark all',
-          ...(currentPatientId != null && { patient_id: currentPatientId })
-        })
+          credentials: 'include',
+          body: JSON.stringify({
+            dose_amount: med.dose_amount,
+            schedule_id: med.schedule_id,
+            scheduled_time: med.scheduled_time,
+            notes: 'Administered via bulk mark all',
+            ...(selectedPatient && { patient_id: selectedPatient.id })
+          })
         });
         
         if (res.ok) {
@@ -1258,7 +1223,7 @@ const MedicationModal = ({ onClose }) => {
               scheduledMedications={scheduledMedications.scheduled_medications}
               showStatusFilters={true}
               patients={patients}
-              currentPatientId={currentPatientId}
+              currentPatientId={selectedPatient?.id}
             />
           ) : !loading && showHistory ? (
             <MedicationHistory onBack={() => { setShowHistory(false); setTab('scheduled'); }} />

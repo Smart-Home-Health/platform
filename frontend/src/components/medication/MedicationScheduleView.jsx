@@ -306,6 +306,7 @@ const MedicationScheduleView = ({
       const response = await fetch(`${config.apiUrl}/api/add/schedule/${medId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(scheduleData)
       });
       
@@ -337,7 +338,8 @@ const MedicationScheduleView = ({
     try {
       setLoading(true);
       const response = await fetch(`${config.apiUrl}/api/schedules/${scheduleId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        credentials: 'include'
       });
       
       if (!response.ok) {
@@ -358,7 +360,8 @@ const MedicationScheduleView = ({
     try {
       setLoading(true);
       const response = await fetch(`${config.apiUrl}/api/schedules/${scheduleId}/toggle-active`, {
-        method: 'POST'
+        method: 'POST',
+        credentials: 'include'
       });
       
       if (!response.ok) {

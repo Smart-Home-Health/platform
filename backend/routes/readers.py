@@ -425,13 +425,25 @@ def _sensor_values_from_message(msg: dict) -> dict:
     return {k: v for k, v in msg.items() if k not in _SENSOR_MSG_KEYS and v is not None}
 
 
+_reader_activity_cache: Dict[int, float] = {}  # reader_id -> last update timestamp
+_READER_ACTIVITY_INTERVAL = 5  # seconds between DB writes
+
 def _update_reader_activity(
     reader_id: int,
     *,
     device_name: Optional[str] = None,
     last_data: bool = False,
 ) -> None:
-    """Update reader last_seen (and optionally name, last_data_at). Uses a short-lived session."""
+    """Update reader last_seen (and optionally name, last_data_at). Throttled to avoid DB churn."""
+    import time
+    now = time.monotonic()
+    # Always write for device_name updates; throttle routine last_seen/last_data
+    if device_name is None:
+        last_write = _reader_activity_cache.get(reader_id, 0)
+        if now - last_write < _READER_ACTIVITY_INTERVAL:
+            return
+    _reader_activity_cache[reader_id] = now
+
     db = SessionLocal()
     try:
         reader = db.query(Reader).filter(Reader.id == reader_id).first()

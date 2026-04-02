@@ -1,4 +1,4 @@
-import config from '../config';
+import config, { apiFetch } from '../config';
 
 export const getSettings = async () => {
   try {

@@ -12,6 +12,25 @@ export function getApiBaseUrl() {
 // Coerce to string when used in template literals or .replace(); always returns current value.
 export const API_BASE_URL = { toString: getApiBaseUrl, valueOf: getApiBaseUrl };
 
+// Detect cross-origin iframe (e.g. Home Assistant embedding)
+const _isIframe = (() => { try { return window.self !== window.top; } catch { return true; } })();
+
+/**
+ * Drop-in fetch wrapper that attaches the stored auth token as a Bearer header
+ * when running inside a cross-origin iframe (where SameSite cookies are blocked).
+ * Use exactly like fetch(): apiFetch(url, { method, headers, body, ... })
+ */
+export function apiFetch(url, options = {}) {
+  const opts = { credentials: 'include', ...options };
+  if (_isIframe) {
+    const token = sessionStorage.getItem('auth_token');
+    if (token) {
+      opts.headers = { ...opts.headers, Authorization: `Bearer ${token}` };
+    }
+  }
+  return fetch(url, opts);
+}
+
 const config = {
   get apiUrl() {
     return getApiBaseUrl();
