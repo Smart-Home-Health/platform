@@ -27,6 +27,8 @@ services:
     container_name: shh_backend
     ports:
       - "8000:8000"
+    env_file:
+      - ./backend/.env
     environment:
       TZ: UTC
       DATABASE_URL: postgresql://shh_user:shh_dev_pass@db:5432/shh

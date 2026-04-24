@@ -8,7 +8,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
 from typing import Optional, List
-from datetime import datetime, date, time, timedelta
+from datetime import datetime, date, time, timedelta, timezone
+import pytz
 from db import get_db
 from dependencies import require_read_access
 from models.monitoring import (
@@ -22,10 +23,6 @@ from crud.monitoring import (get_monitoring_alerts, get_unacknowledged_alerts_co
                              acknowledge_alert, get_pulse_ox_data_for_alert, get_available_pulse_ox_dates,
                              get_pulse_ox_data_by_date)
 from crud.vitals import analyze_pulse_ox_day
-from crud.medications import get_medication_history
-from crud.care_tasks import get_care_task_logs
-from crud.nutrition import get_daily_nutrition_intake, get_daily_nutrition_outputs
-from schemas.pulse_ox_data import PulseOxData
 from schemas.vital import Vital
 
 logger = logging.getLogger("app")
@@ -225,11 +222,23 @@ async def get_timeline_data(
             date_obj = date.today()
 
         date_str = date_obj.strftime('%Y-%m-%d')
-        start_dt = datetime.combine(date_obj, time.min)
-        end_dt = datetime.combine(date_obj, time.max)
+
+        # Compute local Eastern day boundaries in UTC
+        eastern = pytz.timezone('US/Eastern')
+        local_start = eastern.localize(datetime.combine(date_obj, time.min))
+        local_end = eastern.localize(datetime.combine(date_obj, time.max))
+        start_dt = local_start.astimezone(pytz.utc).replace(tzinfo=None)
+        end_dt = local_end.astimezone(pytz.utc).replace(tzinfo=None)
 
         # 1. Pulse ox - get raw data and downsample to 1-minute averages
-        raw_pulse_ox = get_pulse_ox_data_by_date(db, date_str, patient_id=patient_id)
+        from schemas.pulse_ox_data import PulseOxData as PulseOxModel
+        pulse_query = db.query(PulseOxModel).filter(
+            PulseOxModel.timestamp >= start_dt,
+            PulseOxModel.timestamp <= end_dt
+        )
+        if patient_id is not None:
+            pulse_query = pulse_query.filter(PulseOxModel.patient_id == patient_id)
+        raw_pulse_ox = pulse_query.order_by(PulseOxModel.timestamp.asc()).all()
 
         # Group by minute and average (exclude -1 invalid/disconnected reads)
         minute_buckets = defaultdict(lambda: {'spo2': [], 'bpm': [], 'perfusion': []})
@@ -256,31 +265,45 @@ async def get_timeline_data(
             })
 
         # 2. Medications administered that day
-        med_history = get_medication_history(
-            db, limit=200, start_date=date_str, end_date=date_str, patient_id=patient_id
-        )
+        # Query directly with UTC boundaries instead of date strings
+        from schemas.medication_log import MedicationLog
+        from schemas.medication import Medication
+        med_logs = db.query(MedicationLog).join(Medication).filter(
+            MedicationLog.patient_id == patient_id,
+            MedicationLog.administered_at >= start_dt,
+            MedicationLog.administered_at <= end_dt
+        ).order_by(MedicationLog.administered_at.asc()).all()
         medications = [{
-            'ts': m['administered_at'],
-            'name': m['medication_name'],
-            'dose': f"{m['dose_amount']} {m['dose_unit']}" if m.get('dose_unit') else str(m['dose_amount']),
-            'status': m['status'],
-            'notes': m.get('notes', '')
-        } for m in med_history]
+            'ts': m.administered_at.isoformat() if m.administered_at else None,
+            'name': m.medication.name if m.medication else 'Unknown',
+            'dose': f"{m.dose_amount} {m.medication.quantity_unit}" if m.medication else str(m.dose_amount or ''),
+            'status': 'skipped' if m.dose_amount == 0 else ('late' if m.administered_late else 'on-time'),
+            'notes': m.notes or ''
+        } for m in med_logs]
 
         # 3. Care tasks completed that day
-        task_logs = get_care_task_logs(
-            db, start_date=date_str, end_date=date_str, patient_id=patient_id, limit=200
-        )
+        from schemas.care_task_log import CareTaskLog
+        from schemas.care_task import CareTask
+        task_log_query = db.query(CareTaskLog).join(CareTask).filter(
+            CareTaskLog.patient_id == patient_id,
+            CareTaskLog.completed_at >= start_dt,
+            CareTaskLog.completed_at <= end_dt
+        ).order_by(CareTaskLog.completed_at.asc()).all()
         care_tasks = [{
-            'ts': t['completed_at'],
-            'name': t['task_name'],
-            'category': t.get('task_category', ''),
-            'status': t.get('completion_status', ''),
-            'notes': t.get('notes', '')
-        } for t in task_logs]
+            'ts': t.completed_at.isoformat() if t.completed_at else None,
+            'name': t.care_task.name if t.care_task else 'Unknown',
+            'category': t.care_task.category.name if t.care_task and t.care_task.category else '',
+            'status': 'completed',
+            'notes': t.notes or ''
+        } for t in task_log_query]
 
         # 4. Nutrition intake
-        intake_records = get_daily_nutrition_intake(db, patient_id, date_obj)
+        from schemas.nutrition_intake import NutritionIntake
+        intake_records = db.query(NutritionIntake).filter(
+            NutritionIntake.patient_id == patient_id,
+            NutritionIntake.consumed_at >= start_dt,
+            NutritionIntake.consumed_at <= end_dt
+        ).order_by(NutritionIntake.consumed_at.asc()).all()
         nutrition_intake = [{
             'ts': r.consumed_at.isoformat() if r.consumed_at else None,
             'item_name': r.item_name,
@@ -291,7 +314,12 @@ async def get_timeline_data(
         } for r in intake_records if r.consumed_at]
 
         # 5. Nutrition output
-        output_records = get_daily_nutrition_outputs(db, patient_id, date_obj)
+        from schemas.nutrition_output import NutritionOutput
+        output_records = db.query(NutritionOutput).filter(
+            NutritionOutput.patient_id == patient_id,
+            NutritionOutput.occurred_at >= start_dt,
+            NutritionOutput.occurred_at <= end_dt
+        ).order_by(NutritionOutput.occurred_at.asc()).all()
         nutrition_output = [{
             'ts': r.occurred_at.isoformat() if r.occurred_at else None,
             'output_type': r.output_type,
@@ -304,7 +332,7 @@ async def get_timeline_data(
             'notes': r.notes
         } for r in output_records if r.occurred_at]
 
-        # 6. Manual vitals recorded that day
+        # 6. Vitals recorded that day
         vitals_query = db.query(Vital).filter(
             Vital.patient_id == patient_id,
             Vital.timestamp >= start_dt,
@@ -332,8 +360,9 @@ async def get_timeline_data(
                     alert_dt = datetime.fromisoformat(start_time)
                 else:
                     alert_dt = start_time
-                # Check if alert falls on our target date
-                if alert_dt.date() == date_obj:
+                # Check if alert falls within local day boundaries (in UTC)
+                naive_alert = alert_dt.replace(tzinfo=None) if alert_dt.tzinfo else alert_dt
+                if start_dt <= naive_alert <= end_dt:
                     end_time = a.get('end_time')
                     alerts.append({
                         'start': start_time.isoformat() if hasattr(start_time, 'isoformat') else start_time,

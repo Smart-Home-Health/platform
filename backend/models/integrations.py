@@ -45,6 +45,7 @@ class PatientIntegrationResponse(BaseModel):
     integration_id: int
     integration_slug: Optional[str] = None
     integration_name: Optional[str] = None
+    auth_type: Optional[str] = None
     is_enabled: bool
     settings: Optional[dict] = None
     last_sync_at: Optional[datetime] = None

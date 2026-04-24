@@ -36,21 +36,22 @@ WITHINGS_API_BASE = "https://wbsapi.withings.net"
 WITHINGS_AUTH_URL = "https://account.withings.com/oauth2_user/authorize2"
 WITHINGS_TOKEN_URL = "https://wbsapi.withings.net/v2/oauth2"
 
-# Withings measurement types to our vital types
+# Withings measurement types mapped to (vital_type, unit, vital_group)
+# vital_group is used by the app for multi-value vitals (BP, temperature)
 WITHINGS_MEASURE_TYPES = {
-    1: (VitalType.WEIGHT.value, VitalUnit.KG.value),
-    4: (VitalType.BLOOD_PRESSURE_SYSTOLIC.value, VitalUnit.MMHG.value),
-    5: (VitalType.BLOOD_PRESSURE_DIASTOLIC.value, VitalUnit.MMHG.value),
-    8: (VitalType.BODY_FAT.value, VitalUnit.PERCENT.value),
-    9: (VitalType.BLOOD_PRESSURE_DIASTOLIC.value, VitalUnit.MMHG.value),  # Min diastolic
-    10: (VitalType.BLOOD_PRESSURE_SYSTOLIC.value, VitalUnit.MMHG.value),  # Max systolic
-    11: (VitalType.HEART_RATE.value, VitalUnit.BPM.value),
-    12: (VitalType.TEMPERATURE.value, VitalUnit.CELSIUS.value),
-    54: (VitalType.SPO2.value, VitalUnit.PERCENT.value),
-    71: (VitalType.BONE_MASS.value, VitalUnit.KG.value),
-    73: (VitalType.MUSCLE_MASS.value, VitalUnit.KG.value),
-    77: (VitalType.WATER_PERCENTAGE.value, VitalUnit.PERCENT.value),
-    91: (VitalType.BLOOD_PRESSURE_MAP.value, VitalUnit.MMHG.value),  # Pulse Wave Velocity
+    1:  ("weight", VitalUnit.KG.value, None),
+    4:  ("blood_pressure", VitalUnit.MMHG.value, "systolic"),
+    5:  ("blood_pressure", VitalUnit.MMHG.value, "diastolic"),
+    8:  ("body_fat", VitalUnit.PERCENT.value, None),
+    9:  ("blood_pressure", VitalUnit.MMHG.value, "diastolic"),   # Min diastolic
+    10: ("blood_pressure", VitalUnit.MMHG.value, "systolic"),    # Max systolic
+    11: ("heart_rate", VitalUnit.BPM.value, None),
+    12: ("temperature", VitalUnit.CELSIUS.value, "body"),
+    54: ("spo2", VitalUnit.PERCENT.value, None),
+    71: ("bone_mass", VitalUnit.KG.value, None),
+    73: ("muscle_mass", VitalUnit.KG.value, None),
+    77: ("water_percentage", VitalUnit.PERCENT.value, None),
+    91: ("blood_pressure", VitalUnit.MMHG.value, "map"),
 }
 
 # Withings device models
@@ -160,6 +161,7 @@ class WithingsIntegration(BaseIntegration):
             "redirect_uri": redirect_uri,
             "scope": scope,
             "state": state,
+            "action": "login",
         }
         
         query = "&".join(f"{k}={v}" for k, v in params.items())
@@ -379,28 +381,28 @@ class WithingsIntegration(BaseIntegration):
                     
                     for measure in grp.get("measures", []):
                         type_id = measure.get("type")
-                        
+
                         if type_id not in WITHINGS_MEASURE_TYPES:
                             continue
-                        
-                        vital_type, unit = WITHINGS_MEASURE_TYPES[type_id]
-                        
+
+                        vital_type, unit, vital_group = WITHINGS_MEASURE_TYPES[type_id]
+
                         # Withings stores values as value * 10^unit
                         raw_value = measure.get("value", 0)
                         unit_power = measure.get("unit", 0)
                         value = raw_value * (10 ** unit_power)
-                        
+
                         # Convert Celsius to Fahrenheit if needed
-                        if vital_type == VitalType.TEMPERATURE.value:
+                        if vital_type == "temperature":
                             value = value * 9 / 5 + 32
                             unit = VitalUnit.FAHRENHEIT.value
-                        
+
                         readings.append(VitalReading(
                             vital_type=vital_type,
                             value=round(value, 2),
                             unit=unit,
                             timestamp=timestamp,
-                            vital_group=str(grp_id),
+                            vital_group=vital_group,
                             device_id=device_id,
                             external_id=f"withings_{grp_id}_{type_id}",
                             raw_data={
@@ -430,3 +432,46 @@ class WithingsIntegration(BaseIntegration):
                 error_message=str(e),
                 sync_timestamp=datetime.utcnow(),
             )
+
+    async def subscribe_notifications(self, callback_url: str) -> List[dict]:
+        """
+        Subscribe to Withings webhook notifications for real-time data push.
+
+        Withings appli codes:
+          1  = Weight, 4 = Blood Pressure, 12 = Temperature,
+          16 = Activity, 44 = Sleep, 54 = SpO2
+        """
+        headers = await self._get_headers()
+
+        # Subscribe to each relevant data type
+        appli_types = {
+            1: "Weight",
+            4: "Blood Pressure",
+            12: "Temperature",
+            44: "Sleep",
+            54: "SpO2",
+        }
+
+        results = []
+        async with httpx.AsyncClient() as client:
+            for appli, label in appli_types.items():
+                response = await client.post(
+                    f"{WITHINGS_API_BASE}/notify",
+                    headers=headers,
+                    data={
+                        "action": "subscribe",
+                        "callbackurl": callback_url,
+                        "appli": appli,
+                    },
+                )
+                data = response.json()
+                status = data.get("status", -1)
+                results.append({
+                    "appli": appli,
+                    "label": label,
+                    "success": status == 0,
+                    "status": status,
+                    "error": data.get("error") if status != 0 else None,
+                })
+
+        return results

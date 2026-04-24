@@ -7,18 +7,22 @@ Provides endpoints for:
 - OAuth callbacks
 - Manual sync triggers
 - Device discovery
+- Withings webhook notifications
 """
+import logging
 from datetime import datetime, timedelta
 from typing import Optional, List
 from uuid import uuid4
 import os
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, PlainTextResponse
 from sqlalchemy.orm import Session, joinedload
 
 from dependencies import get_db, require_read_access
 from routes.auth import require_full_auth, get_current_account_id
+
+logger = logging.getLogger("integrations")
 from schemas.patient import Patient
 from schemas.integration import Integration as IntegrationModel, PatientIntegration, IntegrationDevice
 from schemas.vital import Vital
@@ -137,6 +141,7 @@ async def list_patient_integrations(
             integration_id=pi.integration_id,
             integration_slug=pi.integration.slug if pi.integration else None,
             integration_name=pi.integration.name if pi.integration else None,
+            auth_type=pi.integration.auth_type if pi.integration else None,
             is_enabled=pi.is_enabled,
             settings=pi.settings,
             last_sync_at=pi.last_sync_at,
@@ -210,6 +215,7 @@ async def create_patient_integration(
         integration_id=patient_integration.integration_id,
         integration_slug=integration.slug,
         integration_name=integration.name,
+        auth_type=integration.auth_type,
         is_enabled=patient_integration.is_enabled,
         settings=patient_integration.settings,
         last_sync_at=patient_integration.last_sync_at,
@@ -256,6 +262,7 @@ async def update_patient_integration(
         integration_id=patient_integration.integration_id,
         integration_slug=patient_integration.integration.slug if patient_integration.integration else None,
         integration_name=patient_integration.integration.name if patient_integration.integration else None,
+        auth_type=patient_integration.integration.auth_type if patient_integration.integration else None,
         is_enabled=patient_integration.is_enabled,
         settings=patient_integration.settings,
         last_sync_at=patient_integration.last_sync_at,
@@ -418,9 +425,20 @@ async def oauth_callback(
         patient_integration.credentials = credentials
         patient_integration.is_enabled = True
         patient_integration.updated_at = datetime.utcnow()
-        
+
         db.commit()
-        
+
+        # Auto-subscribe to Withings webhook notifications
+        if slug == "withings":
+            try:
+                authed_integration = integration_class(patient_integration)
+                webhook_base = os.getenv("API_BASE_URL", base_url)
+                webhook_url = f"{webhook_base}/api/integrations/webhooks/withings"
+                await authed_integration.subscribe_notifications(webhook_url)
+                logger.info(f"Auto-subscribed Withings webhooks for patient_integration {patient_integration.id}")
+            except Exception as e:
+                logger.warning(f"Failed to auto-subscribe Withings webhooks: {e}")
+
         # Redirect to frontend success page
         redirect_url = state_data.get("redirect_url", "/care/integrations")
         return RedirectResponse(url=f"{redirect_url}?success=true")
@@ -676,5 +694,169 @@ async def discover_devices(
             "devices_added": devices_added,
         }
         
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Withings Webhook Notifications
+# ============================================================================
+
+@router.get("/webhooks/withings")
+async def withings_webhook_verify():
+    """
+    Withings sends a GET to verify the webhook URL exists.
+    Must return 200 with any body.
+    """
+    return PlainTextResponse("OK")
+
+
+@router.post("/webhooks/withings")
+async def withings_webhook_notify(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """
+    Receive Withings webhook notification.
+
+    Withings posts form-encoded data with:
+      userid, appli (data type), startdate, enddate
+
+    We find the patient integration for this Withings user ID and trigger a sync.
+    """
+    try:
+        form = await request.form()
+        userid = form.get("userid")
+        appli = form.get("appli")  # 1=weight, 4=BP, 12=temp, 16=activity, 44=sleep, 54=spo2
+        startdate = form.get("startdate")
+        enddate = form.get("enddate")
+
+        logger.info(f"Withings webhook: userid={userid}, appli={appli}, startdate={startdate}, enddate={enddate}")
+
+        if not userid:
+            return PlainTextResponse("OK")
+
+        # Find patient integration with this Withings user ID
+        patient_integrations = db.query(PatientIntegration).options(
+            joinedload(PatientIntegration.integration)
+        ).filter(
+            PatientIntegration.is_enabled == True
+        ).all()
+
+        matched = None
+        for pi in patient_integrations:
+            if pi.integration and pi.integration.slug == "withings":
+                creds = pi.credentials or {}
+                if str(creds.get("user_id")) == str(userid):
+                    matched = pi
+                    break
+
+        if not matched:
+            logger.warning(f"Withings webhook: no integration found for userid={userid}")
+            return PlainTextResponse("OK")
+
+        # Trigger sync in background
+        integration_class = get_integration("withings")
+        if not integration_class:
+            return PlainTextResponse("OK")
+
+        integration = integration_class(matched)
+
+        since = None
+        if startdate:
+            try:
+                since = datetime.fromtimestamp(int(startdate))
+            except (ValueError, TypeError):
+                pass
+
+        result = await integration.sync_data(since=since)
+
+        if result.success:
+            # Store readings
+            account_id = matched.account_id
+            patient_id = matched.patient_id
+            readings_stored = 0
+
+            for reading in result.readings:
+                if reading.external_id:
+                    existing = db.query(Vital).filter(
+                        Vital.external_id == reading.external_id
+                    ).first()
+                    if existing:
+                        continue
+
+                now = datetime.utcnow()
+                vital = Vital(
+                    account_id=account_id,
+                    patient_id=patient_id,
+                    vital_type=reading.vital_type,
+                    vital_group=reading.vital_group,
+                    value=reading.value,
+                    unit=reading.unit,
+                    source="withings",
+                    device_id=reading.device_id,
+                    external_id=reading.external_id,
+                    raw_data=reading.raw_data,
+                    notes=reading.notes,
+                    timestamp=reading.timestamp,
+                    created_at=now,
+                )
+                db.add(vital)
+                readings_stored += 1
+
+            matched.last_sync_at = datetime.utcnow()
+            matched.last_sync_status = "success"
+            matched.last_sync_error = None
+            matched.sync_count = (matched.sync_count or 0) + 1
+            matched.updated_at = datetime.utcnow()
+            db.commit()
+
+            logger.info(f"Withings webhook sync: stored {readings_stored} readings for patient {patient_id}")
+        else:
+            logger.error(f"Withings webhook sync failed: {result.error_message}")
+
+    except Exception as e:
+        logger.exception(f"Withings webhook error: {e}")
+
+    # Always return 200 to Withings
+    return PlainTextResponse("OK")
+
+
+@router.post("/patient/{patient_id}/{integration_id}/webhooks/subscribe")
+async def subscribe_withings_webhook(
+    patient_id: int,
+    integration_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_full_auth),
+    account_id: int = Depends(get_current_account_id),
+):
+    """
+    Subscribe to Withings webhook notifications for real-time data push.
+    """
+    patient_integration = db.query(PatientIntegration).options(
+        joinedload(PatientIntegration.integration)
+    ).filter(
+        PatientIntegration.id == integration_id,
+        PatientIntegration.patient_id == patient_id,
+        PatientIntegration.account_id == account_id,
+        PatientIntegration.is_enabled == True
+    ).first()
+
+    if not patient_integration:
+        raise HTTPException(status_code=404, detail="Active patient integration not found")
+
+    if patient_integration.integration.slug != "withings":
+        raise HTTPException(status_code=400, detail="Webhook subscription only available for Withings")
+
+    integration_class = get_integration("withings")
+    integration = integration_class(patient_integration)
+
+    base_url = os.getenv("API_BASE_URL", str(request.base_url).rstrip("/"))
+    callback_url = f"{base_url}/api/integrations/webhooks/withings"
+
+    try:
+        results = await integration.subscribe_notifications(callback_url)
+        return {"success": True, "subscriptions": results}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
