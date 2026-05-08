@@ -244,9 +244,9 @@ const AdminV2Symptoms = () => {
         timestamp: symptomFormData.timestamp
       };
       
-      const url = editingSymptom 
+      const url = editingSymptom
         ? `${config.apiUrl}/api/symptoms/${editingSymptom.id}`
-        : `${config.apiUrl}/api/symptoms/`;
+        : `${config.apiUrl}/api/symptoms`;
       
       const response = await fetch(url, {
         method: editingSymptom ? 'PUT' : 'POST',

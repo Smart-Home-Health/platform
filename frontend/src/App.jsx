@@ -43,15 +43,20 @@ import AdminV2Nutrition from './pages/admin-v2/AdminV2Nutrition';
 import AdminV2ProfileSummary from './pages/admin-v2/AdminV2ProfileSummary';
 import AdminV2Monitoring from './pages/admin-v2/AdminV2Monitoring';
 import AdminV2AccountSettings from './pages/admin-v2/AdminV2AccountSettings';
+import AdminV2Backup from './pages/admin-v2/AdminV2Backup';
 import AdminV2Integrations from './pages/admin-v2/AdminV2Integrations';
 import AdminV2Mqtt from './pages/admin-v2/AdminV2Mqtt';
 import AdminV2ProfileMqtt from './pages/admin-v2/AdminV2ProfileMqtt';
 import { AdminV2SettingsGeneral } from './pages/admin-v2/settings';
 import FirstRunSetup from './components/FirstRunSetup';
+import { ActiveInputProvider } from './contexts/ActiveInputContext';
+import VirtualKeyboard from './components/VirtualKeyboard/VirtualKeyboard';
+import { useVirtualKeyboard } from './hooks/useVirtualKeyboard';
 import "./App.css";
 
 function AppContent() {
   const { isFirstRun, loading } = useAuth();
+  const { showVKB } = useVirtualKeyboard();
 
   if (loading) {
     return (
@@ -70,7 +75,7 @@ function AppContent() {
   }
 
   return (
-    <>
+    <ActiveInputProvider>
       <Router>
         {isFirstRun ? <FirstRunSetup /> : <Routes>
           {/* Public Routes */}
@@ -156,6 +161,7 @@ function AppContent() {
           <Route path="/care/configuration/integrations" element={<ProtectedRoute><Layout><AdminV2Integrations /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/patients" element={<ProtectedRoute><Layout><AdminV2Patients /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/mqtt" element={<ProtectedRoute><Layout><AdminV2Mqtt /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/backup" element={<ProtectedRoute><Layout><AdminV2Backup /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/users" element={<ProtectedRoute><Layout><AdminV2Users /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/users/roles" element={<ProtectedRoute><Layout><AdminV2Roles /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/users/permissions" element={<ProtectedRoute><Layout><AdminV2Permissions /></Layout></ProtectedRoute>} />
@@ -163,7 +169,8 @@ function AppContent() {
           <Route path="/care/*" element={<ProtectedRoute><Layout><AdminV2Dashboard /></Layout></ProtectedRoute>} />
         </Routes>}
       </Router>
-    </>
+      <VirtualKeyboard show={showVKB} />
+    </ActiveInputProvider>
   );
 }
 

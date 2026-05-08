@@ -166,8 +166,8 @@ export default function AdminV2AccountSettings() {
     <AdminV2Layout>
       <div className="admin-v2-page">
         <div className="admin-v2-page-header">
-          <h1>Account Settings</h1>
-          <p className="admin-v2-page-description">
+          <h1 className="admin-v2-page-title">Account Settings</h1>
+          <p className="admin-v2-page-subtitle">
             Manage your account name, login credentials, and preferences
           </p>
         </div>

@@ -20,6 +20,7 @@
     "react-dom": "^19.1.0",
     "react-gauge-component": "^1.2.64",
     "react-router-dom": "^7.8.2",
+    "react-simple-keyboard": "^3.8.203",
     "recharts": "^3.0.2",
     "scichart": "^3.5.762",
     "scichart-react": "^0.1.13"

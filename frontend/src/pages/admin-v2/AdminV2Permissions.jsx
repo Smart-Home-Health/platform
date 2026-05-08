@@ -200,8 +200,8 @@ const AdminV2Permissions = () => {
       <div className="admin-v2-page">
         <div className="admin-v2-page-header">
           <div>
-            <h1>Permission Management</h1>
-            <p className="admin-v2-subtitle">Manage system permissions for role-based access control</p>
+            <h1 className="admin-v2-page-title">Permission Management</h1>
+            <p className="admin-v2-page-subtitle">Manage system permissions for role-based access control</p>
           </div>
           <button className="admin-v2-btn admin-v2-btn-primary" onClick={openCreateModal}>
             <PlusIcon size={16} />

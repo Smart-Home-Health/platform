@@ -446,11 +446,12 @@ export default function AdminV2Integrations() {
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
-        {/* Section Title */}
-        <h1 className="schedule-section-title">Integrations</h1>
-        <p className="admin-v2-text-muted" style={{ marginTop: '-0.5rem', marginBottom: '1.5rem' }}>
-          Connect smart devices and health services for {selectedPatient.name}
-        </p>
+        <div className="admin-v2-page-header">
+          <h1 className="admin-v2-page-title">Integrations</h1>
+          <p className="admin-v2-page-subtitle">
+            Connect smart devices and health services for {selectedPatient.name}
+          </p>
+        </div>
 
         {/* Alerts */}
         {error && (
@@ -530,19 +531,19 @@ export default function AdminV2Integrations() {
               )}
             </div>
 
-            {patientIntegrations.length === 0 ? (
+            {patientIntegrations.length === 0 && !hasConfiguredReaders ? (
               <div className="admin-v2-empty-state">
                 <LinkIcon size={48} />
                 <h3>No Integrations Configured</h3>
                 <p className="admin-v2-text-muted">Connect your first integration to start syncing health data.</p>
-                <button 
+                <button
                   className="admin-v2-btn admin-v2-btn-primary"
                   onClick={() => setShowAddModal(true)}
                 >
                   <PlusIcon size={16} /> Add Your First Integration
                 </button>
               </div>
-            ) : (
+            ) : patientIntegrations.length === 0 ? null : (
               <div className="admin-v2-table-container">
                 <table className="admin-v2-table">
                   <thead>

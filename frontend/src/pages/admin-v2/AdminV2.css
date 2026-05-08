@@ -2,8 +2,8 @@
 
 .admin-v2-layout {
   display: flex;
-  min-height: 100vh;
-  min-height: 100dvh;
+  min-height: calc(100vh - var(--vkb-height, 0px));
+  min-height: calc(100dvh - var(--vkb-height, 0px));
   background: #0d1117;
   color: #e6edf3;
 }
@@ -18,8 +18,8 @@
   position: fixed;
   top: 0;
   left: 0;
-  height: 100vh;
-  height: 100dvh;
+  height: calc(100vh - var(--vkb-height, 0px));
+  height: calc(100dvh - var(--vkb-height, 0px));
   z-index: 100;
   transition: width 0.2s ease;
 }
@@ -428,8 +428,8 @@
   margin-left: 280px;
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
-  min-height: 100dvh;
+  min-height: calc(100vh - var(--vkb-height, 0px));
+  min-height: calc(100dvh - var(--vkb-height, 0px));
   transition: margin-left 0.2s ease;
   min-width: 0;
   overflow-x: hidden;
@@ -965,8 +965,8 @@
 
   .admin-v2-main {
     margin-left: 0;
-    height: 100vh;
-    height: 100dvh;
+    height: calc(100vh - var(--vkb-height, 0px));
+    height: calc(100dvh - var(--vkb-height, 0px));
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
   }

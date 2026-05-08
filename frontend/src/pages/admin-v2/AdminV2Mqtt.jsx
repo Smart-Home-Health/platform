@@ -220,8 +220,11 @@ export default function AdminV2Mqtt() {
 
   return (
     <AdminV2Layout>
-      <div className="admin-v2-content-inner">
-        <h1 className="admin-v2-page-title">MQTT Configuration</h1>
+      <div className="admin-v2-page">
+        <div className="admin-v2-page-header">
+          <h1 className="admin-v2-page-title">MQTT Configuration</h1>
+          <p className="admin-v2-page-subtitle">Configure the MQTT broker connection used by sensors and integrations</p>
+        </div>
         {error && (
           <div className="admin-v2-alert admin-v2-alert-error" role="alert">
             {error}

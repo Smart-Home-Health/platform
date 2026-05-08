@@ -1,7 +1,7 @@
 /* Layout Styles */
 .layout {
   display: flex;
-  height: 100vh;
+  height: calc(100vh - var(--vkb-height, 0px));
   overflow: hidden;
 }
 
@@ -15,7 +15,7 @@
   position: fixed;
   top: 0;
   left: 0;
-  height: 100vh;
+  height: calc(100vh - var(--vkb-height, 0px));
   z-index: 1000;
 }
 
@@ -90,7 +90,7 @@
   flex: 1;
   overflow-x: hidden;
   overflow-y: auto;
-  height: 100vh;
+  height: calc(100vh - var(--vkb-height, 0px));
 }
 
 .main-content.with-nav {

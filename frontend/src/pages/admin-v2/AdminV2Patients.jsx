@@ -273,15 +273,8 @@ const AdminV2Patients = () => {
       <div className="admin-v2-page">
         {/* Page Header */}
         <div className="admin-v2-page-header">
-          <div className="admin-v2-header-content">
-            <div className="admin-v2-header-icon">
-              <PatientsIcon size={32} />
-            </div>
-            <div className="admin-v2-header-text">
-              <h1>Patients</h1>
-              <p>Manage patient records and health information</p>
-            </div>
-          </div>
+          <h1 className="admin-v2-page-title">Patients</h1>
+          <p className="admin-v2-page-subtitle">Manage patient records and health information</p>
         </div>
 
         {/* Stats Row */}

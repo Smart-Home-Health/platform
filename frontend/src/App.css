@@ -49,7 +49,7 @@ html, body, #root {
 .dashboard-wrapper {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: calc(100vh - var(--vkb-height, 0px));
   width: 100vw;
   background-color: #161e2e; /* Consistent background color */
   overflow: hidden;
@@ -236,7 +236,7 @@ html, body, #root {
   right: 0;
   bottom: 0;
   width: 100vw;
-  height: calc(100vh - 60px);
+  height: calc(100vh - 60px - var(--vkb-height, 0px));
   background-color: #161e2e;
   backdrop-filter: none;
   padding: 0;
@@ -251,7 +251,7 @@ html, body, #root {
   right: 0;
   bottom: 0;
   width: 100vw;
-  height: calc(100vh - 60px);
+  height: calc(100vh - 60px - var(--vkb-height, 0px));
   background-color: #161e2e;
   backdrop-filter: none;
   padding: 0;
@@ -275,9 +275,9 @@ html, body, #root {
 
 .modal-container.mobile {
   width: 100vw;
-  height: 100vh;
+  height: calc(100vh - var(--vkb-height, 0px));
   max-width: 100vw;
-  max-height: 100vh;
+  max-height: calc(100vh - var(--vkb-height, 0px));
   margin: 0; /* Remove any margin */
 }
 
@@ -360,7 +360,7 @@ html, body, #root {
 .modal-body.mobile {
   padding: 15px;
   overflow-y: auto;
-  height: calc(100vh - 65px); /* Account for mobile header height */
+  height: calc(100vh - 65px - var(--vkb-height, 0px)); /* Account for mobile header height */
 }
 
 /* Settings Form Styles */
@@ -2221,7 +2221,7 @@ html, body, #root {
 
 .dashboard-container.mobile {
   padding: 0;
-  height: calc(100vh - 60px);
+  height: calc(100vh - 60px - var(--vkb-height, 0px));
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -2369,7 +2369,7 @@ html, body, #root {
     right: 0 !important;
     bottom: 0 !important;
     width: 100vw !important;
-    height: 100vh !important;
+    height: calc(100vh - var(--vkb-height, 0px)) !important;
   }
   
   .modal-container.mobile {

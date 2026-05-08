@@ -112,6 +112,8 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
       ...(hasAnyPermission(['roles.view', 'roles.create', 'roles.update', 'roles.delete', 'users.view']) 
         ? [{ path: '/care/configuration/users/permissions', label: 'Permissions' }] : []),
       { path: '/care/configuration/mqtt', label: 'MQTT' },
+      ...(isSystemAdmin
+        ? [{ path: '/care/configuration/backup', label: 'Backup & Restore' }] : []),
     ],
   };
   return navItems[section] || [];

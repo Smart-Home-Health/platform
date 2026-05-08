@@ -405,15 +405,8 @@ const AdminV2Users = () => {
       <div className="admin-v2-page">
         {/* Page Header */}
         <div className="admin-v2-page-header">
-          <div className="admin-v2-header-content">
-            <div className="admin-v2-header-icon">
-              <UsersIcon size={32} />
-            </div>
-            <div className="admin-v2-header-text">
-              <h1>User Management</h1>
-              <p>Manage user accounts, roles, and permissions</p>
-            </div>
-          </div>
+          <h1 className="admin-v2-page-title">User Management</h1>
+          <p className="admin-v2-page-subtitle">Manage user accounts, roles, and permissions</p>
         </div>
 
         {error && (
