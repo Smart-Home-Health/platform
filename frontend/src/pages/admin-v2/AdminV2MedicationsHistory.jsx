@@ -381,7 +381,7 @@ const AdminV2MedicationsHistory = () => {
                         </td>
                         <td className="history-datetime">
                           {record.is_scheduled && record.scheduled_time ? (
-                            formatTime(record.scheduled_time)
+                            formatDateTime(record.scheduled_time)
                           ) : (
                             <span className="history-unscheduled">As Needed</span>
                           )}

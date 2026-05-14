@@ -20,6 +20,8 @@ class CompleteItemRequest(BaseModel):
     amount: Optional[float] = None
     amount_unit: Optional[str] = None
     item_name: Optional[str] = None
+    # Set to True to bypass the >1h-early administration guard
+    early_override: bool = False
 
 
 class BulkCompleteRequest(BaseModel):

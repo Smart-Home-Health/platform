@@ -630,7 +630,7 @@ const AdminV2ShipmentDetail = () => {
               <strong>Draft Shipment</strong>
               <p>Add items to this shipment, then mark it as Ordered when ready.</p>
             </div>
-            {hasPermission('equipment.edit') && canMarkOrdered && (
+            {hasPermission('equipment.update') && canMarkOrdered && (
               <button
                 className="admin-v2-btn admin-v2-btn-primary"
                 onClick={handleMarkAsOrdered}
@@ -648,7 +648,7 @@ const AdminV2ShipmentDetail = () => {
               <strong>Order Placed</strong>
               <p>When the shipment arrives, begin receiving to record quantities.</p>
             </div>
-            {hasPermission('equipment.edit') && canBeginReceiving && (
+            {hasPermission('equipment.update') && canBeginReceiving && (
               <button
                 className="admin-v2-btn admin-v2-btn-primary"
                 onClick={handleBeginReceiving}
@@ -689,7 +689,7 @@ const AdminV2ShipmentDetail = () => {
         <div className="admin-v2-section">
           <div className="admin-v2-section-header">
             <h2>Items</h2>
-            {hasPermission('equipment.edit') && !isFinalized && (
+            {hasPermission('equipment.update') && !isFinalized && (
               <button
                 className="admin-v2-btn admin-v2-btn-primary"
                 onClick={() => setShowAddItemModal(true)}
@@ -830,7 +830,7 @@ const AdminV2ShipmentDetail = () => {
             <div className="admin-v2-empty-state">
               <EquipmentIcon size={32} />
               <p>No items in this shipment yet.</p>
-              {hasPermission('equipment.edit') && !isFinalized && (
+              {hasPermission('equipment.update') && !isFinalized && (
                 <button
                   className="admin-v2-btn admin-v2-btn-primary"
                   onClick={() => setShowAddItemModal(true)}
@@ -884,7 +884,7 @@ const AdminV2ShipmentDetail = () => {
         )}
 
         {/* Finalize Button */}
-        {canFinalize && hasPermission('equipment.edit') && (
+        {canFinalize && hasPermission('equipment.update') && (
           <div className="admin-v2-finalize-section">
             <button
               className="admin-v2-btn admin-v2-btn-primary admin-v2-btn-lg"

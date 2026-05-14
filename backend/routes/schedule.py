@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, date, timedelta, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, Body
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
@@ -12,6 +13,7 @@ from db import get_db
 from utils.datetime_utils import utc_now
 from models.schedule import CompleteItemRequest, BulkCompleteRequest
 from crud.scheduling import get_scheduled_medications, get_scheduled_care_tasks, get_scheduled_nutrition
+from utils.early_administration import guard_early_administration
 from schemas.medication import Medication
 from schemas.medication_schedule import MedicationSchedule
 from schemas.medication_log import MedicationLog
@@ -164,13 +166,27 @@ async def complete_medication(
     try:
         # Parse scheduled time
         scheduled_dt = parse_scheduled_time(data.scheduled_time)
-        
+
+        # Block out-of-window administrations (>1h early or >1h late) unless
+        # the caller explicitly confirmed. dose_amount == 0 means skipped —
+        # not an administration, so not gated.
+        if (data.dose_amount is None or data.dose_amount > 0):
+            early = guard_early_administration(
+                scheduled_dt,
+                early_override=data.early_override,
+                item_label="medication",
+                schedule_id=data.schedule_id,
+                completed_at=data.completed_at,
+            )
+            if early is not None:
+                return early
+
         # Parse completed_at time if provided, otherwise use now
         if data.completed_at:
             completed_at = parse_scheduled_time(data.completed_at)
         else:
             completed_at = utc_now()
-        
+
         logger.info(f"Completing medication: schedule_id={data.schedule_id}, scheduled_time={data.scheduled_time}, completed_at={completed_at}")
         
         # Get the schedule to find medication ID
@@ -223,7 +239,17 @@ async def complete_nutrition(
     try:
         # Parse scheduled time
         scheduled_dt = parse_scheduled_time(data.scheduled_time)
-        
+
+        early = guard_early_administration(
+            scheduled_dt,
+            early_override=data.early_override,
+            item_label="nutrition item",
+            schedule_id=data.schedule_id,
+            completed_at=data.completed_at,
+        )
+        if early is not None:
+            return early
+
         # Parse completed_at time if provided, otherwise use now
         if data.completed_at:
             completed_at = parse_scheduled_time(data.completed_at)
@@ -274,7 +300,17 @@ async def complete_care_task(
     try:
         # Parse scheduled time
         scheduled_dt = parse_scheduled_time(data.scheduled_time)
-        
+
+        early = guard_early_administration(
+            scheduled_dt,
+            early_override=data.early_override,
+            item_label="care task",
+            schedule_id=data.schedule_id,
+            completed_at=data.completed_at,
+        )
+        if early is not None:
+            return early
+
         # Parse completed_at time if provided, otherwise use now
         if data.completed_at:
             completed_at = parse_scheduled_time(data.completed_at)
@@ -316,13 +352,77 @@ async def complete_bulk(
     db: Session = Depends(get_db)
 ):
     """Complete multiple schedule items at once (e.g., all items in an hour)"""
+    # Pre-flight: refuse the whole bulk if any item is outside the administration
+    # window (>1h early or >1h late) and was not individually overridden. Frontend
+    # can re-submit with early_override=true on the offending items after the user
+    # confirms.
+    from utils.early_administration import (
+        check_administration_window,
+        EARLY_ADMINISTRATION_THRESHOLD_MINUTES,
+        LATE_ADMINISTRATION_THRESHOLD_MINUTES,
+    )
+    off_window_items = []
+    sections = [
+        ("medication", medications),
+        ("nutrition item", nutrition),
+        ("care task", care_tasks),
+    ]
+    for label, items in sections:
+        for item in items:
+            # Skip doses are not gated (dose_amount == 0 == explicit skip)
+            if label == "medication" and item.dose_amount is not None and item.dose_amount == 0:
+                continue
+            if item.early_override:
+                continue
+            status, minutes_offset, parsed = check_administration_window(
+                item.scheduled_time,
+                completed_at=item.completed_at,
+            )
+            if status in ("early", "late"):
+                off_window_items.append({
+                    "type": label,
+                    "schedule_id": item.schedule_id,
+                    "scheduled_time": parsed.isoformat() if parsed else None,
+                    "status": status,
+                    "minutes_early": minutes_offset if status == "early" else 0,
+                    "minutes_late": -minutes_offset if status == "late" else 0,
+                })
+    if off_window_items:
+        has_early = any(i["status"] == "early" for i in off_window_items)
+        has_late = any(i["status"] == "late" for i in off_window_items)
+        if has_early and not has_late:
+            error_code = "early_administration"
+            window_msg = (
+                f"more than {EARLY_ADMINISTRATION_THRESHOLD_MINUTES} minutes from now"
+            )
+        elif has_late and not has_early:
+            error_code = "late_administration"
+            window_msg = (
+                f"more than {LATE_ADMINISTRATION_THRESHOLD_MINUTES} minutes past their scheduled time"
+            )
+        else:
+            error_code = "off_window_administration"
+            window_msg = "outside the administration window"
+        return JSONResponse(
+            status_code=409,
+            content={
+                "detail": (
+                    f"{len(off_window_items)} item(s) are {window_msg}. "
+                    "Re-submit with early_override=true on those items to confirm."
+                ),
+                "error": error_code,
+                "threshold_minutes": EARLY_ADMINISTRATION_THRESHOLD_MINUTES,
+                "early_items": off_window_items,
+            },
+        )
+
     results = {
         "medications": [],
         "nutrition": [],
         "care_tasks": [],
         "success": True
     }
-    
+
     try:
         # Process medications
         for item in medications:

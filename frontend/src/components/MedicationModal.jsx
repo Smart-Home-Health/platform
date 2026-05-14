@@ -4,6 +4,7 @@ import config from '../config';
 import MedicationHistory from './medication/MedicationHistory';
 import MedicationScheduleView, { medicationStatusUtils } from './medication/MedicationScheduleView';
 import { useAdminPatient } from '../contexts/AdminPatientContext';
+import { checkEarlyAdministration, formatDurationMinutes } from '../utils/timezone';
 
 const MedicationModal = ({ onClose }) => {
   const { selectedPatient } = useAdminPatient();
@@ -873,6 +874,9 @@ const MedicationModal = ({ onClose }) => {
 
   const handleConfirmMarkTaken = async () => {
     const { item } = confirmModal;
+    // The warning banner is visible in the confirm modal when this is true — clicking
+    // the (amber) Confirm button is the user's acknowledgement, so pass early_override.
+    const isEarly = checkEarlyAdministration(item?.scheduled_time).early;
     setLoading(true);
     try {
       const res = await fetch(`${config.apiUrl}/api/medications/${item.medication_id}/administer`, {
@@ -884,6 +888,7 @@ const MedicationModal = ({ onClose }) => {
           schedule_id: item.schedule_id,
           scheduled_time: item.scheduled_time,
           notes: '',
+          early_override: isEarly,
           ...(selectedPatient && { patient_id: selectedPatient.id })
         })
       });
@@ -892,7 +897,8 @@ const MedicationModal = ({ onClose }) => {
         fetchMedications();
         fetchScheduledMedications();
       } else {
-        alert('Failed to record medication administration.');
+        const data = await res.json().catch(() => ({}));
+        alert(data.detail || 'Failed to record medication administration.');
       }
     } catch (e) {
       alert('Error recording medication administration.');
@@ -970,6 +976,7 @@ const MedicationModal = ({ onClose }) => {
     
     for (const med of selectedMedications) {
       try {
+        const isEarly = checkEarlyAdministration(med.scheduled_time).early;
         const res = await fetch(`${config.apiUrl}/api/medications/${med.medication_id}/administer`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -979,6 +986,7 @@ const MedicationModal = ({ onClose }) => {
             schedule_id: med.schedule_id,
             scheduled_time: med.scheduled_time,
             notes: 'Administered via bulk mark all',
+            early_override: isEarly,
             ...(selectedPatient && { patient_id: selectedPatient.id })
           })
         });
@@ -1658,10 +1666,36 @@ const MedicationModal = ({ onClose }) => {
             boxShadow: '0 4px 16px rgba(0,0,0,0.2)'
           }}>
             <h3 style={{ margin: '0 0 16px 0', color: '#333' }}>Confirm Administration</h3>
-            <p style={{ margin: '0 0 24px 0', color: '#666' }}>
+            <p style={{ margin: '0 0 16px 0', color: '#666' }}>
               Mark <strong>{confirmModal.item?.medication_name}</strong> as taken?<br/>
               Dose: <strong>{confirmModal.item?.dose_amount} {confirmModal.item?.dose_unit}</strong>
             </p>
+            {(() => {
+              const check = checkEarlyAdministration(confirmModal.item?.scheduled_time);
+              if (!check.early) return null;
+              return (
+                <div
+                  role="alert"
+                  style={{
+                    background: '#fff8e1',
+                    border: '1px solid #f0ad4e',
+                    borderRadius: 6,
+                    padding: '10px 12px',
+                    marginBottom: 16,
+                    color: '#5a3e00'
+                  }}
+                >
+                  <div style={{ fontWeight: 600, color: '#b35a00', marginBottom: 4 }}>
+                    Warning: early administration
+                  </div>
+                  <div style={{ fontSize: 13 }}>
+                    This dose is scheduled for <strong>{check.scheduledLocal}</strong>
+                    {' '}— that's <strong>{formatDurationMinutes(check.minutesEarly)}</strong> from now.
+                    Giving a medication more than 1 hour early can be unsafe.
+                  </div>
+                </div>
+              );
+            })()}
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
               <button
                 onClick={() => setConfirmModal({ open: false, item: null })}
@@ -1677,22 +1711,27 @@ const MedicationModal = ({ onClose }) => {
               >
                 Cancel
               </button>
-              <button
-                onClick={handleConfirmMarkTaken}
-                style={{
-                  padding: '8px 16px',
-                  border: 'none',
-                  borderRadius: '4px',
-                  backgroundColor: '#28a745',
-                  color: '#fff',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '500'
-                }}
-                disabled={loading}
-              >
-                {loading ? 'Saving...' : 'Confirm'}
-              </button>
+              {(() => {
+                const isEarly = checkEarlyAdministration(confirmModal.item?.scheduled_time).early;
+                return (
+                  <button
+                    onClick={handleConfirmMarkTaken}
+                    style={{
+                      padding: '8px 16px',
+                      border: 'none',
+                      borderRadius: '4px',
+                      backgroundColor: isEarly ? '#f0ad4e' : '#28a745',
+                      color: '#fff',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      fontWeight: '500'
+                    }}
+                    disabled={loading}
+                  >
+                    {loading ? 'Saving...' : isEarly ? 'Confirm Early Administration' : 'Confirm'}
+                  </button>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -1792,7 +1831,46 @@ const MedicationModal = ({ onClose }) => {
             <p style={{ margin: '0 0 20px 0', color: '#666', fontSize: '14px' }}>
               Select which medications you want to mark as taken:
             </p>
-            
+
+            {(() => {
+              const earlyMeds = markAllModal.medications
+                .filter(med => markAllModal.selectedMeds.has(med.schedule_id))
+                .map(med => ({ med, check: checkEarlyAdministration(med.scheduled_time) }))
+                .filter(({ check }) => check.early);
+              if (earlyMeds.length === 0) return null;
+              return (
+                <div
+                  role="alert"
+                  style={{
+                    background: '#fff8e1',
+                    border: '1px solid #f0ad4e',
+                    borderRadius: 6,
+                    padding: '10px 12px',
+                    marginBottom: 16,
+                    color: '#5a3e00'
+                  }}
+                >
+                  <div style={{ fontWeight: 600, color: '#b35a00', marginBottom: 4 }}>
+                    Warning: early administration
+                  </div>
+                  <div style={{ fontSize: 13, marginBottom: 6 }}>
+                    {earlyMeds.length === 1
+                      ? '1 selected medication is scheduled more than 1 hour from now.'
+                      : `${earlyMeds.length} selected medications are scheduled more than 1 hour from now.`}
+                    {' '}Giving medications early can be unsafe — confirm this is intentional.
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: '#5a3e00' }}>
+                    {earlyMeds.map(({ med, check }) => (
+                      <li key={`early-${med.schedule_id}`}>
+                        <strong>{med.medication_name}</strong> — scheduled {check.scheduledLocal}
+                        {' '}({formatDurationMinutes(check.minutesEarly)} early)
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })()}
+
             <div style={{ maxHeight: '300px', overflow: 'auto', marginBottom: '20px' }}>
               {markAllModal.medications.map((med, index) => {
                 const isSelected = markAllModal.selectedMeds.has(med.schedule_id);
@@ -1878,36 +1956,51 @@ const MedicationModal = ({ onClose }) => {
               >
                 Cancel
               </button>
-              <button
-                onClick={handleMarkAllConfirm}
-                disabled={markAllModal.loading || markAllModal.selectedMeds.size === 0}
-                style={{
-                  padding: '10px 20px',
-                  border: 'none',
-                  borderRadius: '6px',
-                  backgroundColor: markAllModal.selectedMeds.size === 0 ? '#6c757d' : '#007bff',
-                  color: '#fff',
-                  cursor: (markAllModal.loading || markAllModal.selectedMeds.size === 0) ? 'not-allowed' : 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  opacity: markAllModal.loading ? 0.6 : 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}
-              >
-                {markAllModal.loading && (
-                  <div style={{
-                    width: '16px',
-                    height: '16px',
-                    border: '2px solid rgba(255,255,255,0.3)',
-                    borderTop: '2px solid #fff',
-                    borderRadius: '50%',
-                    animation: 'spin 1s linear infinite'
-                  }}></div>
-                )}
-                {markAllModal.loading ? 'Processing...' : `Mark ${markAllModal.selectedMeds.size} Selected`}
-              </button>
+              {(() => {
+                const hasEarly = markAllModal.medications
+                  .filter(med => markAllModal.selectedMeds.has(med.schedule_id))
+                  .some(med => checkEarlyAdministration(med.scheduled_time).early);
+                const disabled = markAllModal.loading || markAllModal.selectedMeds.size === 0;
+                const bg = markAllModal.selectedMeds.size === 0
+                  ? '#6c757d'
+                  : hasEarly ? '#f0ad4e' : '#007bff';
+                return (
+                  <button
+                    onClick={handleMarkAllConfirm}
+                    disabled={disabled}
+                    style={{
+                      padding: '10px 20px',
+                      border: 'none',
+                      borderRadius: '6px',
+                      backgroundColor: bg,
+                      color: '#fff',
+                      cursor: disabled ? 'not-allowed' : 'pointer',
+                      fontSize: '14px',
+                      fontWeight: '600',
+                      opacity: markAllModal.loading ? 0.6 : 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                  >
+                    {markAllModal.loading && (
+                      <div style={{
+                        width: '16px',
+                        height: '16px',
+                        border: '2px solid rgba(255,255,255,0.3)',
+                        borderTop: '2px solid #fff',
+                        borderRadius: '50%',
+                        animation: 'spin 1s linear infinite'
+                      }}></div>
+                    )}
+                    {markAllModal.loading
+                      ? 'Processing...'
+                      : hasEarly
+                        ? `Confirm Early — ${markAllModal.selectedMeds.size} Selected`
+                        : `Mark ${markAllModal.selectedMeds.size} Selected`}
+                  </button>
+                );
+              })()}
             </div>
           </div>
         </div>

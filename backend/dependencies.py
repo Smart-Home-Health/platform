@@ -174,7 +174,7 @@ class PermissionChecker:
     Dependency class to check if user has required permissions.
     
     Usage:
-        @app.get("/api/medications", dependencies=[Depends(PermissionChecker(["medications.view"]))])
+        @app.get("/api/medications", dependencies=[Depends(PermissionChecker(["medications.read"]))])
     """
     
     def __init__(self, required_permissions: List[str]):
@@ -243,7 +243,7 @@ def require_any_permission(*permissions: str):
     Create a dependency that requires ANY of the specified permissions.
     
     Usage:
-        @app.get("/api/data", dependencies=[Depends(require_any_permission("data.view", "data.manage"))])
+        @app.get("/api/data", dependencies=[Depends(require_any_permission("data.read", "data.manage"))])
     """
     class AnyPermissionChecker:
         async def __call__(self, current_user: User = Depends(get_current_user)):

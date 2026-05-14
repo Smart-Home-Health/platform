@@ -1058,11 +1058,11 @@ def list_users(
 @router.get("/users/{user_id}", response_model=UserResponse)
 def get_user(
     user_id: int,
-    current_user: User = Depends(require_permission("users.view")),
+    current_user: User = Depends(require_permission("users.read")),
     db: Session = Depends(get_db),
     _: bool = Depends(require_read_access)
 ):
-    """Get user by ID (requires users.view permission)"""
+    """Get user by ID (requires users.read permission)"""
     user = get_user_by_id(db, user_id)
     if not user:
         raise HTTPException(
@@ -1145,10 +1145,10 @@ def create_new_user(
 def update_existing_user(
     user_id: int,
     user_data: UserUpdate,
-    current_user: User = Depends(require_permission("users.edit")),
+    current_user: User = Depends(require_permission("users.update")),
     db: Session = Depends(get_db)
 ):
-    """Update user (requires users.edit permission)"""
+    """Update user (requires users.update permission)"""
     user = update_user(
         db,
         user_id=user_id,
@@ -1236,10 +1236,10 @@ def delete_existing_user(
 def add_role(
     user_id: int,
     role_data: dict,
-    current_user: User = Depends(require_permission("users.edit")),
+    current_user: User = Depends(require_permission("users.update")),
     db: Session = Depends(get_db)
 ):
-    """Assign role to user (requires users.edit permission)"""
+    """Assign role to user (requires users.update permission)"""
     user = get_user_by_id(db, user_id)
     if not user:
         raise HTTPException(
@@ -1272,10 +1272,10 @@ def add_role(
 def remove_role(
     user_id: int,
     role_id: int,
-    current_user: User = Depends(require_permission("users.edit")),
+    current_user: User = Depends(require_permission("users.update")),
     db: Session = Depends(get_db)
 ):
-    """Remove role from user (requires users.edit permission)"""
+    """Remove role from user (requires users.update permission)"""
     success = remove_role_from_user(db, user_id, role_id)
     if not success:
         raise HTTPException(

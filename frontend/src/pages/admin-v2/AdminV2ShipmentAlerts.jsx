@@ -384,7 +384,7 @@ const AdminV2ShipmentAlerts = () => {
                           )}
                         </td>
                         <td>
-                          {!alert.resolved && hasPermission('equipment.edit') && (
+                          {!alert.resolved && hasPermission('equipment.update') && (
                             <button
                               className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-ghost"
                               onClick={() => handleResolveAlert(alert.id)}

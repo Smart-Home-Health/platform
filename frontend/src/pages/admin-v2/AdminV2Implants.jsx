@@ -84,7 +84,7 @@ const AdminV2Implants = () => {
            user.permissions.includes('admin') ||
            user.permissions.includes('implants.*') ||
            // Fallback to providers permissions for now
-           user.permissions.includes('providers.view') ||
+           user.permissions.includes('providers.read') ||
            user.permissions.includes('providers.create') ||
            user.permissions.includes('providers.update') ||
            user.permissions.includes('providers.delete');

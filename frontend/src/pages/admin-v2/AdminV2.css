@@ -4301,6 +4301,22 @@
   min-width: 0; /* allow column to shrink inside grid */
 }
 
+/* Clickable hour-row cell — opens the PRN / quick-log modal */
+.admin-v2-schedule-col-clickable {
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+.admin-v2-schedule-col-clickable:hover {
+  background: #161b22;
+}
+.admin-v2-schedule-col-clickable:focus-visible {
+  outline: 2px solid #58a6ff;
+  outline-offset: -2px;
+}
+body.printing-schedule .admin-v2-schedule-col-clickable {
+  cursor: default;
+}
+
 /* Schedule Group (grouped items in one box) */
 .admin-v2-schedule-group {
   background: #21262d;
@@ -8881,4 +8897,123 @@
 
 .spinning {
   animation: spin 1s linear infinite;
+}
+
+/* ───────── Medications overview/manage: mobile card list ───────── */
+/* Hide the card list on desktop; the table is the primary view. */
+.admin-v2-meds-cards {
+  display: none;
+}
+
+/* Default .admin-v2-table-container clips overflow (overflow: hidden) so the
+   border-radius stays clean, but the manage table can exceed the viewport
+   width on narrow desktops. Let it scroll horizontally so action buttons
+   aren't cut off. */
+.admin-v2-table-container.admin-v2-meds-desktop {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 768px) {
+  /* Below 768px, swap the squished horizontal table for stacked cards. */
+  .admin-v2-meds-desktop {
+    display: none;
+  }
+  .admin-v2-meds-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+}
+
+.admin-v2-med-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 0.75rem 0.875rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.admin-v2-med-card-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.admin-v2-med-card-header {
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.admin-v2-med-card-title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  flex: 1;
+}
+.admin-v2-med-card-title strong {
+  color: #e6edf3;
+  font-size: 1rem;
+  line-height: 1.25;
+  word-break: break-word;
+}
+.admin-v2-med-card-concentration {
+  color: #8b949e;
+  font-size: 0.8rem;
+}
+.admin-v2-med-card-badges {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.admin-v2-med-card-instructions {
+  color: #c9d1d9;
+  font-size: 0.85rem;
+  background: #0d1117;
+  border-radius: 4px;
+  padding: 0.4rem 0.6rem;
+  word-break: break-word;
+}
+.admin-v2-med-card-meta {
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  font-size: 0.85rem;
+  color: #c9d1d9;
+}
+.admin-v2-med-card-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.admin-v2-med-card-label {
+  color: #6e7681;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.admin-v2-med-card-dose {
+  margin-top: 0.25rem;
+  padding: 0.6rem 1rem;
+  font-size: 0.95rem;
+  width: 100%;
+}
+
+/* Manage page only — row of action buttons at the bottom of each card */
+.admin-v2-med-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+.admin-v2-med-card-actions .admin-v2-action-btn {
+  flex: 1 1 auto;
+  justify-content: center;
+}
+.admin-v2-med-card-inactive {
+  opacity: 0.6;
 }
