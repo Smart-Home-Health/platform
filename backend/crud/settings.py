@@ -65,11 +65,11 @@ def save_setting(db: Session, key, value, data_type="string", description=None):
 def _publish_nutrition_targets_mqtt(db: Session):
     """Publish nutrition targets to MQTT when targets are updated"""
     try:
-        from crud.patients import get_active_patient
-        active_patient = get_active_patient(db)
-        if active_patient:
+        from crud.patients import get_background_patient_id
+        background_pid = get_background_patient_id(db)
+        if background_pid is not None:
             from crud.nutrition import _publish_nutrition_targets_mqtt
-            _publish_nutrition_targets_mqtt(db, active_patient.id)
+            _publish_nutrition_targets_mqtt(db, background_pid)
             logger.info("Published nutrition targets MQTT after settings update")
     except Exception as e:
         logger.error(f"Error publishing nutrition targets to MQTT: {e}")

@@ -37,6 +37,7 @@ from crud.scheduling import (
     validate_cron_expression, get_next_scheduled_times
 )
 from crud.patients import get_current_patient
+from utils.early_administration import guard_early_administration
 
 logger = logging.getLogger("app")
 
@@ -355,7 +356,18 @@ async def complete_care_task_schedule_endpoint(schedule_id: int, data: CareTaskS
         schedule = get_care_task_schedule(db, schedule_id)
         if not schedule:
             return JSONResponse(status_code=404, content={"detail": "Care task schedule not found"})
-        
+
+        # Block >1h-early completions unless the caller explicitly confirmed.
+        # Only gate when the caller supplied a scheduled_time we can compare against.
+        early = guard_early_administration(
+            data.scheduled_time,
+            early_override=data.early_override,
+            item_label="care task",
+            schedule_id=schedule_id,
+        )
+        if early is not None:
+            return early
+
         # Get the care task details to check if it's nutrition-related
         from crud.care_tasks import get_care_task
         care_task = get_care_task(db, schedule['care_task_id'])

@@ -115,6 +115,8 @@ class MedicationAdminister(BaseModel):
     scheduled_time: Optional[datetime] = None
     notes: Optional[str] = None
     patient_id: Optional[int] = None  # When set, used for patient-specific meds instead of current_patient_id
+    early_override: bool = False  # Set to True to bypass the >1h-early administration guard
+    administered_at: Optional[datetime] = None  # Caller-supplied admin timestamp; defaults to now
 
 
 class ProviderInfo(BaseModel):

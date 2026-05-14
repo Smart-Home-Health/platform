@@ -11,6 +11,7 @@ import {
   CheckIcon,
   XIcon
 } from '../../components/Icons';
+import { checkAdministrationWindow, formatDurationMinutes } from '../../utils/timezone';
 import './AdminV2.css';
 
 const AdminV2MedicationsSchedule = () => {
@@ -40,6 +41,9 @@ const AdminV2MedicationsSchedule = () => {
     completed: false,
     skipped: false
   });
+
+  // Off-window (early or late) administration confirmation modal state
+  const [windowConfirm, setWindowConfirm] = useState({ open: false, medication: null, check: null });
 
   // Permission helper
   const hasPermission = (permission) => {
@@ -193,6 +197,15 @@ const AdminV2MedicationsSchedule = () => {
   };
 
   const handleMarkTaken = async (medication) => {
+    const check = checkAdministrationWindow(medication.scheduled_time);
+    if (check.status === 'early' || check.status === 'late') {
+      setWindowConfirm({ open: true, medication, check });
+      return;
+    }
+    await submitMarkTaken(medication, false);
+  };
+
+  const submitMarkTaken = async (medication, earlyOverride = false) => {
     try {
       const response = await fetch(`${config.apiUrl}/api/medications/${medication.medication_id}/administer`, {
         method: 'POST',
@@ -200,8 +213,10 @@ const AdminV2MedicationsSchedule = () => {
         credentials: 'include',
         body: JSON.stringify({
           schedule_id: medication.schedule_id,
+          scheduled_time: medication.scheduled_time,
           dose_amount: medication.dose_amount,
           notes: '',
+          early_override: earlyOverride,
           ...(selectedPatient?.id != null && { patient_id: selectedPatient.id })
         })
       });
@@ -209,8 +224,22 @@ const AdminV2MedicationsSchedule = () => {
       if (response.ok) {
         await fetchSchedule();
       } else {
-        const data = await response.json();
-        alert(data.detail || 'Failed to mark as taken');
+        const data = await response.json().catch(() => ({}));
+        const offWindowError = response.status === 409 && (
+          data.error === 'early_administration' ||
+          data.error === 'late_administration' ||
+          data.error === 'off_window_administration'
+        );
+        if (offWindowError) {
+          // Backend caught what the frontend missed — surface the same warning modal.
+          setWindowConfirm({
+            open: true,
+            medication,
+            check: checkAdministrationWindow(medication.scheduled_time),
+          });
+        } else {
+          alert(data.detail || 'Failed to mark as taken');
+        }
       }
     } catch (err) {
       console.error('Error marking medication as taken:', err);
@@ -508,6 +537,74 @@ const AdminV2MedicationsSchedule = () => {
             loading={loadingPatients}
           />
         )}
+
+        {/* Off-window (early or late) administration confirmation modal */}
+        {windowConfirm.open && windowConfirm.medication && (() => {
+          const isLate = windowConfirm.check?.status === 'late';
+          const title = isLate ? 'Warning: Late Administration' : 'Warning: Early Administration';
+          const heading = isLate
+            ? 'This medication was scheduled earlier'
+            : 'This medication is scheduled later';
+          const offsetText = isLate
+            ? `${formatDurationMinutes(Math.abs(windowConfirm.check.minutesOffset))} ago`
+            : `${formatDurationMinutes(windowConfirm.check.minutesOffset)} from now`;
+          const consequence = isLate
+            ? 'Giving a medication more than 1 hour late can be unsafe.'
+            : 'Giving a medication more than 1 hour early can be unsafe.';
+          const confirmLabel = isLate ? 'Confirm Late Administration' : 'Confirm Early Administration';
+          const close = () => setWindowConfirm({ open: false, medication: null, check: null });
+          return (
+            <div className="admin-v2-modal-overlay" onClick={close}>
+              <div className="admin-v2-modal admin-v2-modal-sm" onClick={e => e.stopPropagation()}>
+                <div className="admin-v2-modal-header">
+                  <h2>{title}</h2>
+                  <button className="admin-v2-modal-close" onClick={close}>
+                    <XIcon size={20} />
+                  </button>
+                </div>
+                <div className="admin-v2-modal-body">
+                  <div
+                    role="alert"
+                    style={{
+                      background: 'rgba(187, 128, 9, 0.15)',
+                      border: '1px solid rgba(187, 128, 9, 0.6)',
+                      borderRadius: 6,
+                      padding: '0.75rem 1rem',
+                      color: '#e6edf3'
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, color: '#f0883e', marginBottom: '0.35rem' }}>
+                      {heading}
+                    </div>
+                    <div style={{ fontSize: '0.9rem' }}>
+                      <strong>{windowConfirm.medication.name}</strong> is scheduled for{' '}
+                      <strong>{windowConfirm.check.scheduledLocal}</strong>
+                      {' '}— that's <strong>{offsetText}</strong>.
+                      {' '}{consequence} Confirm this is intentional.
+                    </div>
+                  </div>
+                </div>
+                <div className="admin-v2-modal-footer">
+                  <button type="button" className="admin-v2-btn" onClick={close}>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="admin-v2-btn"
+                    style={{ background: '#bb8009', borderColor: '#bb8009', color: '#0d1117' }}
+                    onClick={async () => {
+                      const med = windowConfirm.medication;
+                      close();
+                      await submitMarkTaken(med, true);
+                    }}
+                  >
+                    {confirmLabel}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </AdminV2Layout>
   );

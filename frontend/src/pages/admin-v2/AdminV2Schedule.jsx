@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
-import { PatientSelectorModal } from './components';
+import { PatientSelectorModal, IntakeModal, OutputModal, MedicationDoseModal } from './components';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
@@ -19,7 +19,7 @@ import {
   EditIcon,
   PrintIcon
 } from '../../components/Icons';
-import { getCurrentLocalDateTime, localDateTimeToUTC } from '../../utils/timezone';
+import { getCurrentLocalDateTime, localDateTimeToUTC, checkAdministrationWindow, formatDurationMinutes } from '../../utils/timezone';
 import './AdminV2.css';
 
 const AdminV2Schedule = () => {
@@ -73,9 +73,54 @@ const AdminV2Schedule = () => {
     item_name: ''
   });
 
-  // Format date for API (YYYY-MM-DD)
+  // PRN / Quick-log modal state
+  const navigate = useNavigate();
+  const [prnModal, setPrnModal] = useState({
+    open: false,
+    type: null,          // 'medication' | 'nutrition' | 'care-task'
+    hour: null,
+    mode: null,          // nutrition: 'pick' | 'intake' | 'output'  |  medication: 'pick' | 'admin'
+    selectedMed: null,   // the PRN med chosen when mode === 'admin'
+  });
+  const [prnMeds, setPrnMeds] = useState([]);
+  const [prnMedsLoading, setPrnMedsLoading] = useState(false);
+  const [prnSaving, setPrnSaving] = useState(false);
+  const [prnError, setPrnError] = useState(null);
+  // PRN sub-modals — these own their form state internally.
+  const [showPrnIntakeModal, setShowPrnIntakeModal] = useState(false);
+  const [showPrnOutputModal, setShowPrnOutputModal] = useState(false);
+  const [prnNutritionDefaultDt, setPrnNutritionDefaultDt] = useState('');
+  const [showDoseModal, setShowDoseModal] = useState(false);
+  const [doseModalMed, setDoseModalMed] = useState(null);
+  const [doseModalDefaultDt, setDoseModalDefaultDt] = useState('');
+
+  // Build a default local datetime-local string for the clicked hour on the
+  // currently viewed date. If we're on today and the clicked hour is in the
+  // past, keep the clicked hour but use the current minute so retro-logs feel
+  // natural. Otherwise pin to :00 of the clicked hour.
+  const defaultDateTimeForHour = (hour) => {
+    const base = new Date(selectedDate);
+    const now = new Date();
+    base.setHours(hour);
+    const onToday = base.toDateString() === now.toDateString();
+    base.setMinutes(onToday && hour === now.getHours() ? now.getMinutes() : 0);
+    base.setSeconds(0, 0);
+    const year = base.getFullYear();
+    const month = String(base.getMonth() + 1).padStart(2, '0');
+    const day = String(base.getDate()).padStart(2, '0');
+    const hh = String(base.getHours()).padStart(2, '0');
+    const mm = String(base.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hh}:${mm}`;
+  };
+
+  // Format date for API (YYYY-MM-DD) in local time — using toISOString here would
+  // shift the date by one day in any timezone where the UTC offset has crossed midnight
+  // (e.g. an evening in the US would send tomorrow's date to the backend).
   const formatDateForApi = (date) => {
-    return date.toISOString().split('T')[0];
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
   // Format date for display
@@ -268,7 +313,18 @@ const AdminV2Schedule = () => {
       : `${type}-${items[0].schedule_id}-${items[0].scheduled_time}`;
     
     setCompleting(prev => ({ ...prev, [loadingKey]: true }));
-    
+
+    // The inline warning + amber "Confirm …" button serves as the user's
+    // acknowledgement; mark per-item early_override (which gates both edges of
+    // the window on the backend) so each off-window item is let through.
+    const completedAtUtc = completeFormData.completed_at
+      ? localDateTimeToUTC(completeFormData.completed_at)
+      : null;
+    const itemIsOffWindow = (item) => {
+      const { status } = checkAdministrationWindow(item.scheduled_time, completedAtUtc);
+      return status === 'early' || status === 'late';
+    };
+
     try {
       if (isBulk) {
         // Bulk completion
@@ -277,10 +333,10 @@ const AdminV2Schedule = () => {
           nutrition: [],
           care_tasks: []
         };
-        
-        const key = type === 'medication' ? 'medications' : 
+
+        const key = type === 'medication' ? 'medications' :
                    type === 'nutrition' ? 'nutrition' : 'care_tasks';
-        
+
         payload[key] = items.map(item => ({
           schedule_id: item.schedule_id,
           scheduled_time: item.scheduled_time,
@@ -288,6 +344,7 @@ const AdminV2Schedule = () => {
           user_id: user?.id || null,
           notes: completeFormData.notes || null,
           completed_at: localDateTimeToUTC(completeFormData.completed_at),
+          early_override: itemIsOffWindow(item),
           // Include type-specific data — use each item's own scheduled values for bulk
           ...(type === 'medication' && {
             dose_amount: item.dose_amount,
@@ -333,8 +390,9 @@ const AdminV2Schedule = () => {
             user_id: user?.id || null,
             notes: completeFormData.notes || null,
             completed_at: localDateTimeToUTC(completeFormData.completed_at),
+            early_override: itemIsOffWindow(item),
             // Include type-specific data
-            ...(type === 'medication' && { 
+            ...(type === 'medication' && {
               dose_amount: completeFormData.dose_amount,
               dose_unit: completeFormData.dose_unit
             }),
@@ -379,6 +437,65 @@ const AdminV2Schedule = () => {
     openCompleteHourModal(hour, type);
   };
 
+  // PRN / Quick-log modal handlers
+
+  const openPrnModal = (type, hour) => {
+    if (!selectedPatient) return;
+    const dt = defaultDateTimeForHour(hour);
+    setPrnError(null);
+    setPrnModal({
+      open: true,
+      type,
+      hour,
+      mode: type === 'nutrition' ? 'pick' : type === 'medication' ? 'pick' : null,
+      selectedMed: null,
+    });
+    setPrnNutritionDefaultDt(dt);
+    setDoseModalDefaultDt(dt);
+    if (type === 'medication') {
+      fetchPrnMeds();
+    }
+  };
+
+  const closePrnModal = () => {
+    setPrnModal({ open: false, type: null, hour: null, mode: null, selectedMed: null });
+    setPrnError(null);
+  };
+
+  const fetchPrnMeds = async () => {
+    if (!selectedPatient) return;
+    try {
+      setPrnMedsLoading(true);
+      const res = await fetch(
+        `${config.apiUrl}/api/admin/medications/active?patient_id=${selectedPatient.id}`,
+        { credentials: 'include' }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setPrnMeds(
+          (data || [])
+            .filter(m => m.as_needed)
+            .sort((a, b) => a.name.localeCompare(b.name))
+        );
+      } else {
+        setPrnError('Failed to load PRN medications');
+      }
+    } catch (err) {
+      console.error('Error fetching PRN meds:', err);
+      setPrnError('Error connecting to server');
+    } finally {
+      setPrnMedsLoading(false);
+    }
+  };
+
+  const pickPrnMed = (med) => {
+    // Close the picker and hand off to the shared dose modal. The dose
+    // modal owns the form (dose / unit / given-at / notes) and the POST.
+    closePrnModal();
+    setDoseModalMed(med);
+    setShowDoseModal(true);
+  };
+
   const handlePrintSchedule = () => {
     // Add print class to body for print-specific styles
     document.body.classList.add('printing-schedule');
@@ -389,7 +506,9 @@ const AdminV2Schedule = () => {
     }, 100);
   };
 
-  // Group items by hour
+  // Group items by hour. Within each hour: incomplete items float to the top,
+  // completed items sink to the bottom. Inside each group, keep the scheduled
+  // minute order so timing within the hour stays readable.
   const getItemsByHour = (items) => {
     const byHour = {};
     for (let h = 0; h < 24; h++) {
@@ -399,6 +518,12 @@ const AdminV2Schedule = () => {
       if (byHour[item.hour] !== undefined) {
         byHour[item.hour].push(item);
       }
+    });
+    Object.values(byHour).forEach(group => {
+      group.sort((a, b) => {
+        if (!!a.completed !== !!b.completed) return a.completed ? 1 : -1;
+        return (a.minute ?? 0) - (b.minute ?? 0);
+      });
     });
     return byHour;
   };
@@ -424,6 +549,28 @@ const AdminV2Schedule = () => {
 
   // Get current hour for highlighting
   const currentHour = isToday(selectedDate) ? new Date().getHours() : -1;
+
+  // For the time chip on each row: when an item has been completed, show the
+  // actual administered/completed time (local); otherwise show the scheduled
+  // time. Items still bucket into their scheduled hour either way (item.hour
+  // drives getItemsByHour above).
+  const itemDisplayTime = (item) => {
+    const scheduledText = `${String(item.hour).padStart(2, '0')}:${String(item.minute).padStart(2, '0')}`;
+    if (!item.completed || !item.completed_at) {
+      return { text: scheduledText, title: undefined };
+    }
+    const raw = item.completed_at;
+    const utc = raw.endsWith('Z') || raw.includes('+') ? raw : raw + 'Z';
+    const d = new Date(utc);
+    if (isNaN(d.getTime())) {
+      return { text: scheduledText, title: undefined };
+    }
+    const completedText = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    return {
+      text: completedText,
+      title: `Given at ${completedText} (scheduled ${scheduledText})`,
+    };
+  };
 
   // Count totals for summary
   const totalMeds = scheduleData.medications.length;
@@ -583,13 +730,19 @@ const AdminV2Schedule = () => {
                         </div>
 
                         {/* Medications Column */}
-                        <div className="admin-v2-schedule-col medications">
+                        <div
+                          className="admin-v2-schedule-col medications admin-v2-schedule-col-clickable"
+                          onClick={() => openPrnModal('medication', hour)}
+                          role="button"
+                          tabIndex={0}
+                          title="Log PRN medication"
+                        >
                           {medicationsByHour[hour]?.length > 0 && (
                             <div className="admin-v2-schedule-group medication">
                               {medicationsByHour[hour].some(m => !m.completed) && (
                                 <button
                                   className="admin-v2-schedule-complete-all"
-                                  onClick={() => handleCompleteHour(hour, 'medication')}
+                                  onClick={(e) => { e.stopPropagation(); handleCompleteHour(hour, 'medication'); }}
                                   disabled={completing[`hour-${hour}-medication`]}
                                   title="Complete all medications this hour"
                                 >
@@ -601,17 +754,22 @@ const AdminV2Schedule = () => {
                                 return (
                                   <React.Fragment key={`med-${med.schedule_id}-${idx}`}>
                                     {idx > 0 && <div className="admin-v2-schedule-divider" />}
-                                    <div 
+                                    <div
                                       className={`admin-v2-schedule-item ${med.completed ? 'completed' : 'clickable'} ${completing[itemKey] ? 'completing' : ''}`}
-                                      onClick={() => !med.completed && handleCompleteItem('medication', med)}
+                                      onClick={(e) => { e.stopPropagation(); if (!med.completed) handleCompleteItem('medication', med); }}
                                       role="button"
                                       tabIndex={med.completed ? -1 : 0}
                                     >
                                       <div className="admin-v2-schedule-item-header">
-                                        <span className="admin-v2-schedule-item-time">
-                                          <ClockIcon size={12} />
-                                          {String(med.hour).padStart(2, '0')}:{String(med.minute).padStart(2, '0')}
-                                        </span>
+                                        {(() => {
+                                          const t = itemDisplayTime(med);
+                                          return (
+                                            <span className="admin-v2-schedule-item-time" title={t.title}>
+                                              <ClockIcon size={12} />
+                                              {t.text}
+                                            </span>
+                                          );
+                                        })()}
                                         <span className="admin-v2-schedule-item-name">{med.name}</span>
                                         {med.dose_amount && (
                                           <span className="admin-v2-schedule-item-dose">
@@ -631,13 +789,19 @@ const AdminV2Schedule = () => {
                         </div>
 
                         {/* Nutrition Column */}
-                        <div className="admin-v2-schedule-col nutrition">
+                        <div
+                          className="admin-v2-schedule-col nutrition admin-v2-schedule-col-clickable"
+                          onClick={() => openPrnModal('nutrition', hour)}
+                          role="button"
+                          tabIndex={0}
+                          title="Log intake or output"
+                        >
                           {nutritionByHour[hour]?.length > 0 && (
                             <div className="admin-v2-schedule-group nutrition">
                               {nutritionByHour[hour].some(n => !n.completed) && (
                                 <button
                                   className="admin-v2-schedule-complete-all"
-                                  onClick={() => handleCompleteHour(hour, 'nutrition')}
+                                  onClick={(e) => { e.stopPropagation(); handleCompleteHour(hour, 'nutrition'); }}
                                   disabled={completing[`hour-${hour}-nutrition`]}
                                   title="Complete all nutrition this hour"
                                 >
@@ -649,17 +813,22 @@ const AdminV2Schedule = () => {
                                 return (
                                   <React.Fragment key={`nutr-${item.schedule_id}-${idx}`}>
                                     {idx > 0 && <div className="admin-v2-schedule-divider" />}
-                                    <div 
+                                    <div
                                       className={`admin-v2-schedule-item ${item.completed ? 'completed' : 'clickable'} ${completing[itemKey] ? 'completing' : ''}`}
-                                      onClick={() => !item.completed && handleCompleteItem('nutrition', item)}
+                                      onClick={(e) => { e.stopPropagation(); if (!item.completed) handleCompleteItem('nutrition', item); }}
                                       role="button"
                                       tabIndex={item.completed ? -1 : 0}
                                     >
                                       <div className="admin-v2-schedule-item-header">
-                                        <span className="admin-v2-schedule-item-time">
-                                          <ClockIcon size={12} />
-                                          {String(item.hour).padStart(2, '0')}:{String(item.minute).padStart(2, '0')}
-                                        </span>
+                                        {(() => {
+                                          const t = itemDisplayTime(item);
+                                          return (
+                                            <span className="admin-v2-schedule-item-time" title={t.title}>
+                                              <ClockIcon size={12} />
+                                              {t.text}
+                                            </span>
+                                          );
+                                        })()}
                                         <span className="admin-v2-schedule-item-name">{item.name}</span>
                                         {(item.default_amount || item.default_item) && (
                                           <span className="admin-v2-schedule-item-dose">
@@ -682,13 +851,19 @@ const AdminV2Schedule = () => {
                         </div>
 
                         {/* Care Tasks Column */}
-                        <div className="admin-v2-schedule-col tasks">
+                        <div
+                          className="admin-v2-schedule-col tasks admin-v2-schedule-col-clickable"
+                          onClick={() => openPrnModal('care-task', hour)}
+                          role="button"
+                          tabIndex={0}
+                          title="Log ad-hoc care task"
+                        >
                           {careTasksByHour[hour]?.length > 0 && (
                             <div className="admin-v2-schedule-group care-task">
                               {careTasksByHour[hour].some(t => !t.completed) && (
                                 <button
                                   className="admin-v2-schedule-complete-all"
-                                  onClick={() => handleCompleteHour(hour, 'care-task')}
+                                  onClick={(e) => { e.stopPropagation(); handleCompleteHour(hour, 'care-task'); }}
                                   disabled={completing[`hour-${hour}-care-task`]}
                                   title="Complete all care tasks this hour"
                                 >
@@ -700,7 +875,7 @@ const AdminV2Schedule = () => {
                                 return (
                                   <React.Fragment key={`task-${task.schedule_id}-${idx}`}>
                                     {idx > 0 && (
-                                      <div 
+                                      <div
                                         className="admin-v2-schedule-divider"
                                         style={task.category_color !== careTasksByHour[hour][idx-1]?.category_color ? {
                                           height: '2px',
@@ -708,18 +883,23 @@ const AdminV2Schedule = () => {
                                         } : {}}
                                       />
                                     )}
-                                    <div 
+                                    <div
                                       className={`admin-v2-schedule-item ${task.completed ? 'completed' : 'clickable'} ${completing[itemKey] ? 'completing' : ''}`}
-                                      onClick={() => !task.completed && handleCompleteItem('care-task', task)}
+                                      onClick={(e) => { e.stopPropagation(); if (!task.completed) handleCompleteItem('care-task', task); }}
                                       role="button"
                                       tabIndex={task.completed ? -1 : 0}
                                       style={task.category_color ? { borderLeft: `3px solid ${task.category_color}` } : {}}
                                     >
                                       <div className="admin-v2-schedule-item-header">
-                                        <span className="admin-v2-schedule-item-time">
-                                          <ClockIcon size={12} />
-                                          {String(task.hour).padStart(2, '0')}:{String(task.minute).padStart(2, '0')}
-                                        </span>
+                                        {(() => {
+                                          const t = itemDisplayTime(task);
+                                          return (
+                                            <span className="admin-v2-schedule-item-time" title={t.title}>
+                                              <ClockIcon size={12} />
+                                              {t.text}
+                                            </span>
+                                          );
+                                        })()}
                                         <span className="admin-v2-schedule-item-name">{task.name}</span>
                                         {task.category_name && (
                                           <span 
@@ -900,28 +1080,270 @@ const AdminV2Schedule = () => {
                     rows={2}
                   />
                 </div>
+
+                {/* Off-window (early or late) administration warning */}
+                {(() => {
+                  const completedAtUtc = completeFormData.completed_at
+                    ? localDateTimeToUTC(completeFormData.completed_at)
+                    : null;
+                  const checks = completeModalData.items.map(item => ({
+                    item,
+                    check: checkAdministrationWindow(item.scheduled_time, completedAtUtc),
+                  }));
+                  const earlyItems = checks.filter(({ check }) => check.status === 'early');
+                  const lateItems = checks.filter(({ check }) => check.status === 'late');
+                  if (earlyItems.length === 0 && lateItems.length === 0) return null;
+                  const typeLabel = completeModalData.type === 'medication'
+                    ? 'medication'
+                    : completeModalData.type === 'nutrition'
+                      ? 'nutrition item'
+                      : 'care task';
+                  const renderGroup = (group, kind) => {
+                    if (group.length === 0) return null;
+                    const direction = kind === 'early' ? 'before' : 'after';
+                    return (
+                      <>
+                        <div style={{ fontSize: '0.9rem', marginBottom: '0.35rem' }}>
+                          {group.length === 1
+                            ? `You are about to log this ${typeLabel} more than 1 hour ${direction} its scheduled time.`
+                            : `${group.length} items are being logged more than 1 hour ${direction} their scheduled time.`}
+                          {' '}Giving a {typeLabel} {kind} can be unsafe. Confirm this is intentional before continuing.
+                        </div>
+                        <ul style={{ margin: '0 0 0.5rem', paddingLeft: '1.25rem', fontSize: '0.85rem', color: '#c9d1d9' }}>
+                          {group.map(({ item, check }, idx) => (
+                            <li key={`${kind}-${idx}`}>
+                              <strong>{item.name}</strong> — scheduled {check.scheduledLocal}
+                              {' '}({formatDurationMinutes(Math.abs(check.minutesOffset))} {kind})
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    );
+                  };
+                  const headerText = earlyItems.length > 0 && lateItems.length > 0
+                    ? 'Warning: off-window administration'
+                    : earlyItems.length > 0
+                      ? 'Warning: early administration'
+                      : 'Warning: late administration';
+                  return (
+                    <div
+                      role="alert"
+                      style={{
+                        background: 'rgba(187, 128, 9, 0.15)',
+                        border: '1px solid rgba(187, 128, 9, 0.6)',
+                        borderRadius: 6,
+                        padding: '0.75rem 1rem',
+                        marginTop: '0.5rem',
+                        color: '#e6edf3'
+                      }}
+                    >
+                      <div style={{ fontWeight: 600, color: '#f0883e', marginBottom: '0.35rem' }}>
+                        {headerText}
+                      </div>
+                      {renderGroup(earlyItems, 'early')}
+                      {renderGroup(lateItems, 'late')}
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="admin-v2-modal-footer">
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   className="admin-v2-btn"
                   onClick={() => setShowCompleteModal(false)}
                 >
                   Cancel
                 </button>
-                <button 
-                  type="button" 
-                  className="admin-v2-btn admin-v2-btn-primary"
-                  onClick={handleSubmitCompletion}
-                  disabled={Object.values(completing).some(v => v)}
-                >
-                  {Object.values(completing).some(v => v) ? 'Saving...' : 'Mark Complete'}
-                </button>
+                {(() => {
+                  const completedAtUtc = completeFormData.completed_at
+                    ? localDateTimeToUTC(completeFormData.completed_at)
+                    : null;
+                  const statuses = completeModalData.items.map(
+                    item => checkAdministrationWindow(item.scheduled_time, completedAtUtc).status
+                  );
+                  const hasEarly = statuses.some(s => s === 'early');
+                  const hasLate = statuses.some(s => s === 'late');
+                  const isOffWindow = hasEarly || hasLate;
+                  const saving = Object.values(completing).some(v => v);
+                  const label = saving
+                    ? 'Saving...'
+                    : hasEarly && hasLate
+                      ? 'Confirm Off-Window Administration'
+                      : hasEarly
+                        ? 'Confirm Early Administration'
+                        : hasLate
+                          ? 'Confirm Late Administration'
+                          : 'Mark Complete';
+                  return (
+                    <button
+                      type="button"
+                      className={`admin-v2-btn ${isOffWindow ? 'admin-v2-btn-warning' : 'admin-v2-btn-primary'}`}
+                      onClick={handleSubmitCompletion}
+                      disabled={saving}
+                      style={isOffWindow ? { background: '#bb8009', borderColor: '#bb8009', color: '#0d1117' } : undefined}
+                    >
+                      {label}
+                    </button>
+                  );
+                })()}
               </div>
             </div>
           </div>
         )}
+
+        {/* PRN / Quick-log modal */}
+        {prnModal.open && (
+          <div className="admin-v2-modal-overlay" onClick={closePrnModal}>
+            <div className="admin-v2-modal admin-v2-modal-sm" onClick={e => e.stopPropagation()}>
+              <div className="admin-v2-modal-header">
+                <h2>
+                  {prnModal.type === 'medication' && 'Log PRN Medication'}
+                  {prnModal.type === 'nutrition' && 'Log Nutrition'}
+                  {prnModal.type === 'care-task' && 'Log Care Task'}
+                  {prnModal.hour != null && (
+                    <span style={{ color: '#8b949e', fontWeight: 400, marginLeft: '0.5rem', fontSize: '0.9rem' }}>
+                      — {formatHour(prnModal.hour)}
+                    </span>
+                  )}
+                </h2>
+                <button className="admin-v2-modal-close" onClick={closePrnModal}>
+                  <XIcon size={20} />
+                </button>
+              </div>
+
+              <div className="admin-v2-modal-body">
+                {prnError && <div className="admin-v2-error-banner" style={{ marginBottom: '1rem' }}>{prnError}</div>}
+
+                {/* ───────────── Medication ───────────── */}
+                {prnModal.type === 'medication' && prnModal.mode === 'pick' && (
+                  <>
+                    {prnMedsLoading ? (
+                      <div className="admin-v2-loading">Loading PRN medications...</div>
+                    ) : prnMeds.length === 0 ? (
+                      <div className="admin-v2-empty-state">
+                        <p>No PRN (as-needed) medications for this patient.</p>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {prnMeds.map(med => (
+                          <button
+                            key={med.id}
+                            type="button"
+                            className="admin-v2-btn"
+                            onClick={() => pickPrnMed(med)}
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              padding: '0.75rem 1rem',
+                              textAlign: 'left',
+                              background: '#21262d',
+                              border: '1px solid #30363d',
+                            }}
+                          >
+                            <span style={{ display: 'flex', flexDirection: 'column' }}>
+                              <strong style={{ color: '#e6edf3' }}>{med.name}</strong>
+                              <span style={{ color: '#8b949e', fontSize: '0.8rem' }}>
+                                {med.concentration ? `${med.concentration} • ` : ''}
+                                Last given: {med.last_administered
+                                  ? new Date(med.last_administered).toLocaleString(undefined, {
+                                      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true
+                                    })
+                                  : 'never'}
+                              </span>
+                            </span>
+                            <span className="admin-v2-badge admin-v2-badge-primary">Give</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+
+                
+                {/* ───────────── Nutrition ───────────── */}
+                {prnModal.type === 'nutrition' && prnModal.mode === 'pick' && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <button
+                      type="button"
+                      className="admin-v2-btn admin-v2-btn-primary"
+                      onClick={() => { closePrnModal(); setShowPrnIntakeModal(true); }}
+                      style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}
+                    >
+                      <NutritionIcon size={24} />
+                      <span>Log Intake</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="admin-v2-btn"
+                      onClick={() => { closePrnModal(); setShowPrnOutputModal(true); }}
+                      style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}
+                    >
+                      <NutritionIcon size={24} />
+                      <span>Log Output</span>
+                    </button>
+                  </div>
+                )}
+
+                
+                
+                {/* ───────────── Care tasks ───────────── */}
+                {prnModal.type === 'care-task' && (
+                  <div className="admin-v2-empty-state">
+                    <TasksIcon size={48} />
+                    <h3>Coming soon</h3>
+                    <p className="admin-v2-text-muted">
+                      Ad-hoc care task logging isn't wired up yet. For now, manage care tasks from the Care Tasks page.
+                    </p>
+                    <button
+                      type="button"
+                      className="admin-v2-btn admin-v2-btn-primary"
+                      onClick={() => {
+                        closePrnModal();
+                        navigate(`/care/care-tasks?patient=${selectedPatient.id}`);
+                      }}
+                      style={{ marginTop: '1rem' }}
+                    >
+                      Go to Care Tasks
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="admin-v2-modal-footer">
+                                                                {(prnModal.mode === 'pick' || prnModal.type === 'care-task') && (
+                  <button type="button" className="admin-v2-btn" onClick={closePrnModal}>
+                    Close
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+        {/* Shared sub-modals launched from the PRN flow */}
+        <IntakeModal
+          open={showPrnIntakeModal}
+          onClose={() => setShowPrnIntakeModal(false)}
+          onSaved={fetchSchedule}
+          patient={selectedPatient}
+          defaultDateTime={prnNutritionDefaultDt}
+        />
+        <OutputModal
+          open={showPrnOutputModal}
+          onClose={() => setShowPrnOutputModal(false)}
+          onSaved={fetchSchedule}
+          patient={selectedPatient}
+          defaultDateTime={prnNutritionDefaultDt}
+        />
+        <MedicationDoseModal
+          open={showDoseModal}
+          onClose={() => { setShowDoseModal(false); setDoseModalMed(null); }}
+          onSaved={fetchSchedule}
+          patient={selectedPatient}
+          medication={doseModalMed}
+          defaultDateTime={doseModalDefaultDt}
+        />
       </div>
     </AdminV2Layout>
   );

@@ -28,14 +28,14 @@ import './AdminV2.css';
 // Side navigation items - main app sections
 const sideNavItems = [
   { path: '/care', label: 'Dashboard', Icon: DashboardIcon },
-  { path: '/care/schedule', label: 'Schedule', Icon: CalendarIcon, requiredPermissions: ['medications.view', 'care_tasks.view'] },
-  { path: '/care/vitals', label: 'Vitals', Icon: ClipboardListIcon, requiredPermissions: ['vitals.view', 'vitals.create'] },
-  { path: '/care/symptoms', label: 'Symptoms', Icon: VirusIcon, requiredPermissions: ['vitals.view', 'vitals.create'] },
-  { path: '/care/monitoring', label: 'Monitoring', Icon: MonitoringIcon, requiredPermissions: ['monitoring.view', 'monitoring.create', 'monitoring.update', 'monitoring.delete'] },
-  { path: '/care/medications', label: 'Medications', Icon: MedicationsIcon, requiredPermissions: ['medications.view', 'medications.create', 'medications.update', 'medications.delete'] },
-  { path: '/care/care-tasks', label: 'Care Tasks', Icon: TasksIcon, requiredPermissions: ['care_tasks.view', 'care_tasks.create', 'care_tasks.update', 'care_tasks.delete'] },
-  { path: '/care/equipment', label: 'Equipment & Supplies', Icon: EquipmentIcon, requiredPermissions: ['equipment.view', 'equipment.create', 'equipment.update', 'equipment.delete'] },
-  { path: '/care/nutrition', label: 'Nutrition', Icon: NutritionIcon, requiredPermissions: ['nutrition.view', 'nutrition.create', 'nutrition.update', 'nutrition.delete'] },
+  { path: '/care/schedule', label: 'Schedule', Icon: CalendarIcon, requiredPermissions: ['medications.read', 'care_tasks.read'] },
+  { path: '/care/vitals', label: 'Vitals', Icon: ClipboardListIcon, requiredPermissions: ['vitals.read', 'vitals.create'] },
+  { path: '/care/symptoms', label: 'Symptoms', Icon: VirusIcon, requiredPermissions: ['vitals.read', 'vitals.create'] },
+  { path: '/care/monitoring', label: 'Monitoring', Icon: MonitoringIcon, requiredPermissions: ['monitoring.read', 'monitoring.create', 'monitoring.update', 'monitoring.delete'] },
+  { path: '/care/medications', label: 'Medications', Icon: MedicationsIcon, requiredPermissions: ['medications.read', 'medications.create', 'medications.update', 'medications.delete'] },
+  { path: '/care/care-tasks', label: 'Care Tasks', Icon: TasksIcon, requiredPermissions: ['care_tasks.read', 'care_tasks.create', 'care_tasks.update', 'care_tasks.delete'] },
+  { path: '/care/equipment', label: 'Equipment & Supplies', Icon: EquipmentIcon, requiredPermissions: ['equipment.read', 'equipment.create', 'equipment.update', 'equipment.delete'] },
+  { path: '/care/nutrition', label: 'Nutrition', Icon: NutritionIcon, requiredPermissions: ['nutrition.read', 'nutrition.create', 'nutrition.update', 'nutrition.delete'] },
   { path: '/care/profile', label: 'Profile', Icon: ProfileIcon },
   { path: '/care/configuration', label: 'Configuration', Icon: ConfigIcon, systemAdminOnly: true },
 ];
@@ -60,6 +60,7 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
       { path: '/care/medications', label: 'Overview' },
       { path: '/care/medications/schedule', label: 'Schedule' },
       { path: '/care/medications/history', label: 'History' },
+      { path: '/care/medications/manage', label: 'Manage' },
     ],
     'care-tasks': [
       { path: '/care/care-tasks', label: 'Overview' },
@@ -87,13 +88,13 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
     profile: [
       // Patient profile sections
       { path: '/care/profile', label: 'Summary' },
-      ...(hasAnyPermission(['providers.view', 'providers.create', 'providers.update', 'providers.delete']) 
+      ...(hasAnyPermission(['providers.read', 'providers.create', 'providers.update', 'providers.delete'])
         ? [{ path: '/care/profile/providers', label: 'Providers' }] : []),
-      ...(hasAnyPermission(['providers.view', 'providers.create', 'providers.update', 'providers.delete', 'diagnoses.view', 'diagnoses.create', 'diagnoses.update', 'diagnoses.delete']) 
+      ...(hasAnyPermission(['providers.read', 'providers.create', 'providers.update', 'providers.delete', 'diagnoses.read', 'diagnoses.create', 'diagnoses.update', 'diagnoses.delete'])
         ? [{ path: '/care/profile/diagnoses', label: 'Diagnoses' }] : []),
-      ...(hasAnyPermission(['providers.view', 'providers.create', 'providers.update', 'providers.delete', 'implants.view', 'implants.create', 'implants.update', 'implants.delete']) 
+      ...(hasAnyPermission(['providers.read', 'providers.create', 'providers.update', 'providers.delete', 'implants.read', 'implants.create', 'implants.update', 'implants.delete'])
         ? [{ path: '/care/profile/implants', label: 'Implants' }] : []),
-      ...(hasAnyPermission(['businesses.view', 'businesses.create', 'businesses.update', 'businesses.delete']) 
+      ...(hasAnyPermission(['businesses.read', 'businesses.create', 'businesses.update', 'businesses.delete'])
         ? [{ path: '/care/profile/businesses', label: 'Businesses' }] : []),
       { path: '/care/profile/mqtt', label: 'MQTT' },
     ],
@@ -103,13 +104,13 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
       ...(isSystemAdmin
         ? [{ path: '/care/configuration/account', label: 'Account' }] : []),
       { path: '/care/configuration/integrations', label: 'Integrations' },
-      ...(hasAnyPermission(['patients.view', 'patients.create', 'patients.update', 'patients.delete']) 
+      ...(hasAnyPermission(['patients.read', 'patients.create', 'patients.update', 'patients.delete'])
         ? [{ path: '/care/configuration/patients', label: 'Patients' }] : []),
-      ...(hasAnyPermission(['users.view', 'users.create', 'users.update', 'users.delete']) 
+      ...(hasAnyPermission(['users.read', 'users.create', 'users.update', 'users.delete'])
         ? [{ path: '/care/configuration/users', label: 'Users' }] : []),
-      ...(hasAnyPermission(['roles.view', 'roles.create', 'roles.update', 'roles.delete', 'users.view']) 
+      ...(hasAnyPermission(['roles.read', 'roles.create', 'roles.update', 'roles.delete', 'users.read'])
         ? [{ path: '/care/configuration/users/roles', label: 'Roles' }] : []),
-      ...(hasAnyPermission(['roles.view', 'roles.create', 'roles.update', 'roles.delete', 'users.view']) 
+      ...(hasAnyPermission(['roles.read', 'roles.create', 'roles.update', 'roles.delete', 'users.read'])
         ? [{ path: '/care/configuration/users/permissions', label: 'Permissions' }] : []),
       { path: '/care/configuration/mqtt', label: 'MQTT' },
       ...(isSystemAdmin

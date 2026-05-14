@@ -118,6 +118,64 @@ def get_current_patient(db: Session) -> Optional[Patient]:
     return fallback_patient
 
 
+DEFAULT_BACKGROUND_PATIENT_SETTING = "default_background_patient_id"
+LEGACY_CURRENT_PATIENT_SETTING = "current_patient_id"
+
+
+def get_background_patient_id(db: Session) -> Optional[int]:
+    """Return the patient_id that background / non-request work should target.
+
+    Background paths (MQTT publishers, sensor-event handlers, the hourly
+    nutrition updater, etc.) have no logged-in user, so they need a setting
+    that isn't whatever a UI user happens to have selected.
+
+    Resolution order:
+      1. ``default_background_patient_id`` setting (the dedicated key)
+      2. ``current_patient_id`` setting (legacy global picker — back-compat
+         while waves 1+ migrate callers off it; remove once retired)
+      3. First active patient by id (read-only — does NOT persist, unlike
+         :func:`get_current_patient`, so background reads can't race the
+         user picker into writing a value)
+
+    Returns None when no active patients exist.
+    """
+    for key in (DEFAULT_BACKGROUND_PATIENT_SETTING, LEGACY_CURRENT_PATIENT_SETTING):
+        raw = get_setting(db, key)
+        if raw is None:
+            continue
+        try:
+            pid = int(raw)
+        except (ValueError, TypeError):
+            continue
+        patient = db.query(Patient).filter(
+            Patient.id == pid, Patient.is_active == True
+        ).first()
+        if patient:
+            return patient.id
+
+    fallback = (
+        db.query(Patient)
+        .filter(Patient.is_active == True)
+        .order_by(Patient.id)
+        .first()
+    )
+    return fallback.id if fallback else None
+
+
+def set_background_patient_id(db: Session, patient_id: int) -> bool:
+    """Set the patient_id that background work should target."""
+    patient = get_patient(db, patient_id)
+    if not patient or not patient.is_active:
+        return False
+    return save_setting(
+        db,
+        DEFAULT_BACKGROUND_PATIENT_SETTING,
+        patient_id,
+        data_type="integer",
+        description="Patient ID used by background/event-driven work that has no user context",
+    )
+
+
 def set_current_patient(db: Session, patient_id: int) -> bool:
     """Set the current patient for dashboard tracking"""
     # Validate patient exists and is active

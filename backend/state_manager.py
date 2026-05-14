@@ -33,12 +33,17 @@ def get_db_session():
 
 
 def get_current_patient_id() -> Optional[int]:
-    """Get the current active patient ID for single-patient workflows"""
+    """Get the patient_id for background/no-user-context work.
+
+    Kept for API stability — internally resolves to the background-patient
+    setting (see crud.patients.get_background_patient_id). At the time of
+    writing this helper has no live callers; left in place so any future
+    background path that imports it gets the right semantics.
+    """
     try:
         with get_db_session() as db:
-            from crud.patients import get_active_patient
-            active_patient = get_active_patient(db)
-            return active_patient.id if active_patient else None
+            from crud.patients import get_background_patient_id
+            return get_background_patient_id(db)
     except Exception as e:
         logger.error(f"Error getting current patient ID: {e}")
         return None

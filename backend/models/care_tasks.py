@@ -76,6 +76,8 @@ class CareTaskScheduleComplete(BaseModel):
     scheduled_time: Optional[datetime] = None
     notes: Optional[str] = None
     completed_by: Optional[str] = None
+    # Set to True to bypass the >1h-early administration guard
+    early_override: bool = False
 
 
 class CareTaskCategoryCreate(BaseModel):

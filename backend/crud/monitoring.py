@@ -507,13 +507,14 @@ def start_monitoring_alert(db: Session, spo2=None, bpm=None, data_id=None, spo2_
     try:
         now = datetime.now().isoformat()
         
-        # Get patient_id if not provided
+        # Get patient_id if not provided. This path runs from sensor-event handlers
+        # (no user context), so resolve via the background-patient setting rather
+        # than reading whatever a UI user happens to have selected.
         if patient_id is None:
-            from crud.patients import get_current_patient
-            patient = get_current_patient(db)
-            patient_id = patient.id if patient else None
+            from crud.patients import get_background_patient_id
+            patient_id = get_background_patient_id(db)
             if not patient_id:
-                logger.warning("No current patient, cannot start monitoring alert")
+                logger.warning("No background patient configured, cannot start monitoring alert")
                 return None
 
         alert = MonitoringAlert(

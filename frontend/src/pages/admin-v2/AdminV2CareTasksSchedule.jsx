@@ -6,6 +6,7 @@ import { TasksIcon, ClockIcon, CheckIcon, XIcon } from '../../components/Icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import config from '../../config';
+import { checkAdministrationWindow, formatDurationMinutes } from '../../utils/timezone';
 import './AdminV2.css';
 
 const AdminV2CareTasksSchedule = () => {
@@ -38,6 +39,9 @@ const AdminV2CareTasksSchedule = () => {
     completed: false,
     skipped: false
   });
+
+  // Off-window (early or late) administration confirmation modal state
+  const [windowConfirm, setWindowConfirm] = useState({ open: false, task: null, check: null });
 
   // Permission helper
   const hasPermission = (permission) => {
@@ -180,21 +184,45 @@ const AdminV2CareTasksSchedule = () => {
   };
 
   const handleMarkCompleted = async (task) => {
+    const check = checkAdministrationWindow(task.scheduled_time);
+    if (check.status === 'early' || check.status === 'late') {
+      setWindowConfirm({ open: true, task, check });
+      return;
+    }
+    await submitMarkCompleted(task, false);
+  };
+
+  const submitMarkCompleted = async (task, earlyOverride = false) => {
     try {
-      const response = await fetch(`${config.apiUrl}/api/care-task-schedules/${task.schedule_id}/complete`, {
+      const response = await fetch(`${config.apiUrl}/api/care-task-schedule/${task.schedule_id}/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          notes: ''
+          scheduled_time: task.scheduled_time,
+          notes: '',
+          early_override: earlyOverride,
         })
       });
 
       if (response.ok) {
         fetchSchedule();
       } else {
-        const errorData = await response.json();
-        alert(errorData.detail || 'Failed to mark task as completed');
+        const errorData = await response.json().catch(() => ({}));
+        const offWindowError = response.status === 409 && (
+          errorData.error === 'early_administration' ||
+          errorData.error === 'late_administration' ||
+          errorData.error === 'off_window_administration'
+        );
+        if (offWindowError) {
+          setWindowConfirm({
+            open: true,
+            task,
+            check: checkAdministrationWindow(task.scheduled_time),
+          });
+        } else {
+          alert(errorData.detail || 'Failed to mark task as completed');
+        }
       }
     } catch (err) {
       console.error('Error marking task as completed:', err);
@@ -512,6 +540,71 @@ const AdminV2CareTasksSchedule = () => {
             loading={loadingPatients}
           />
         )}
+
+        {/* Off-window (early or late) completion confirmation modal */}
+        {windowConfirm.open && windowConfirm.task && (() => {
+          const isLate = windowConfirm.check?.status === 'late';
+          const title = isLate ? 'Warning: Late Completion' : 'Warning: Early Completion';
+          const heading = isLate
+            ? 'This care task was scheduled earlier'
+            : 'This care task is scheduled later';
+          const offsetText = isLate
+            ? `${formatDurationMinutes(Math.abs(windowConfirm.check.minutesOffset))} ago`
+            : `${formatDurationMinutes(windowConfirm.check.minutesOffset)} from now`;
+          const confirmLabel = isLate ? 'Confirm Late Completion' : 'Confirm Early Completion';
+          const close = () => setWindowConfirm({ open: false, task: null, check: null });
+          return (
+            <div className="admin-v2-modal-overlay" onClick={close}>
+              <div className="admin-v2-modal admin-v2-modal-sm" onClick={e => e.stopPropagation()}>
+                <div className="admin-v2-modal-header">
+                  <h2>{title}</h2>
+                  <button className="admin-v2-modal-close" onClick={close}>
+                    <XIcon size={20} />
+                  </button>
+                </div>
+                <div className="admin-v2-modal-body">
+                  <div
+                    role="alert"
+                    style={{
+                      background: 'rgba(187, 128, 9, 0.15)',
+                      border: '1px solid rgba(187, 128, 9, 0.6)',
+                      borderRadius: 6,
+                      padding: '0.75rem 1rem',
+                      color: '#e6edf3'
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, color: '#f0883e', marginBottom: '0.35rem' }}>
+                      {heading}
+                    </div>
+                    <div style={{ fontSize: '0.9rem' }}>
+                      <strong>{windowConfirm.task.care_task_name || windowConfirm.task.name}</strong> is scheduled for{' '}
+                      <strong>{windowConfirm.check.scheduledLocal}</strong>
+                      {' '}— that's <strong>{offsetText}</strong>.
+                      {' '}Confirm this is intentional before marking it complete.
+                    </div>
+                  </div>
+                </div>
+                <div className="admin-v2-modal-footer">
+                  <button type="button" className="admin-v2-btn" onClick={close}>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="admin-v2-btn"
+                    style={{ background: '#bb8009', borderColor: '#bb8009', color: '#0d1117' }}
+                    onClick={async () => {
+                      const task = windowConfirm.task;
+                      close();
+                      await submitMarkCompleted(task, true);
+                    }}
+                  >
+                    {confirmLabel}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </AdminV2Layout>
   );

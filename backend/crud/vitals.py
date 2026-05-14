@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from schemas.vital import Vital
 from schemas.pulse_ox_data import PulseOxData
-from crud.patients import get_or_create_default_patient, get_current_patient
+from crud.patients import get_or_create_default_patient, get_current_patient, get_background_patient_id
 
 logger = logging.getLogger('crud')
 
@@ -260,15 +260,17 @@ def save_pulse_ox_data(db: Session, spo2, bpm, pa, status=None, motion=None, spo
         now = datetime.now().isoformat()
         ts = timestamp or now  # Use provided timestamp or current time
         
-        # Get patient_id if not provided
+        # Get patient_id if not provided. Pulse-ox data arrives from sensor
+        # events (no user context), so resolve via the background-patient
+        # setting rather than the global user picker.
         if patient_id is None:
-            patient = get_current_patient(db)
-            if not patient:
-                patient = get_or_create_default_patient(db)
-            if not patient:
+            patient_id = get_background_patient_id(db)
+            if patient_id is None:
+                fallback = get_or_create_default_patient(db)
+                patient_id = fallback.id if fallback else None
+            if patient_id is None:
                 logger.warning("No patient exists, cannot save pulse ox data")
                 return None
-            patient_id = patient.id
 
         pulse_ox = PulseOxData(
             patient_id=patient_id,
@@ -308,9 +310,8 @@ def save_pulse_ox_batch(db: Session, data_points):
     try:
         now = datetime.now().isoformat()
 
-        # Resolve patient_id once for the batch
-        patient = get_current_patient(db)
-        batch_patient_id = patient.id if patient else None
+        # Resolve patient_id once for the batch (background sensor batch — no user)
+        batch_patient_id = get_background_patient_id(db)
 
         for data_point in data_points:
             pid = data_point.get('patient_id') or batch_patient_id

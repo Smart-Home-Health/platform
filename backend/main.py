@@ -225,12 +225,12 @@ async def nutrition_scheduled_updater():
             # Publish scheduled nutrition values
             db = next(get_db())
             try:
-                from crud.patients import get_active_patient
+                from crud.patients import get_background_patient_id
                 from crud.nutrition import _publish_nutrition_scheduled_mqtt
-                
-                active_patient = get_active_patient(db)
-                if active_patient:
-                    _publish_nutrition_scheduled_mqtt(db, active_patient.id)
+
+                background_pid = get_background_patient_id(db)
+                if background_pid is not None:
+                    _publish_nutrition_scheduled_mqtt(db, background_pid)
                     logger.info("[nutrition_updater] Published hourly nutrition scheduled update")
             finally:
                 db.close()

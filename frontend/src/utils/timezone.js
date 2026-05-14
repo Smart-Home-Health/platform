@@ -123,3 +123,99 @@ export const getLocalDateTimeString = (date = new Date()) => {
   const local = new Date(date.getTime() - offset * 60 * 1000);
   return local.toISOString().slice(0, 16);
 };
+
+/**
+ * Threshold (minutes) on either side of the scheduled time that defines the
+ * acceptable administration window. Matches the backend constants in
+ * `backend/utils/early_administration.py`.
+ */
+export const EARLY_ADMINISTRATION_THRESHOLD_MINUTES = 60;
+export const LATE_ADMINISTRATION_THRESHOLD_MINUTES = 60;
+
+/**
+ * Check whether an administration is inside, before, or after its scheduled window.
+ * Returns a three-state status so callers can mirror the backend gate (which now
+ * blocks both edges) and pick appropriate UI.
+ *
+ * `scheduledTimeIso` may be a UTC ISO string with `Z`/offset, or a naive ISO string
+ * (which is treated as UTC — that's how the API serializes some legacy columns).
+ * `completedAt` may be a Date, a UTC ISO string, or a `datetime-local` value (local
+ * wall-clock time, no offset). Pass `null` to mean "right now".
+ *
+ * `minutesOffset` is positive when the administration is early (scheduled time is
+ * in the future relative to `completedAt`) and negative when late.
+ *
+ * @param {string|null|undefined} scheduledTimeIso
+ * @param {string|Date|null} [completedAt=null]
+ * @param {{ earlyThresholdMinutes?: number, lateThresholdMinutes?: number }} [opts]
+ * @returns {{ status: 'early'|'late'|'on_window'|'unknown', minutesOffset: number, scheduledLocal: string }}
+ */
+export const checkAdministrationWindow = (
+  scheduledTimeIso,
+  completedAt = null,
+  {
+    earlyThresholdMinutes = EARLY_ADMINISTRATION_THRESHOLD_MINUTES,
+    lateThresholdMinutes = LATE_ADMINISTRATION_THRESHOLD_MINUTES,
+  } = {}
+) => {
+  if (!scheduledTimeIso) return { status: 'unknown', minutesOffset: 0, scheduledLocal: '' };
+  const normalized = (scheduledTimeIso.endsWith('Z') || scheduledTimeIso.includes('+'))
+    ? scheduledTimeIso
+    : scheduledTimeIso + 'Z';
+  const sched = new Date(normalized);
+  const done = completedAt instanceof Date
+    ? completedAt
+    : completedAt
+      ? new Date(completedAt)
+      : new Date();
+  if (isNaN(sched.getTime()) || isNaN(done.getTime())) {
+    return { status: 'unknown', minutesOffset: 0, scheduledLocal: '' };
+  }
+  const minutesOffset = Math.round((sched.getTime() - done.getTime()) / 60000);
+  const scheduledLocal = sched.toLocaleString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
+  });
+  let status = 'on_window';
+  if (minutesOffset > earlyThresholdMinutes) status = 'early';
+  else if (-minutesOffset > lateThresholdMinutes) status = 'late';
+  return { status, minutesOffset, scheduledLocal };
+};
+
+/**
+ * Backwards-compatible wrapper. Prefer {@link checkAdministrationWindow} for new code —
+ * it surfaces the late case as well, which the backend now blocks.
+ *
+ * @returns {{ early: boolean, late: boolean, minutesEarly: number, minutesLate: number, scheduledLocal: string }}
+ */
+export const checkEarlyAdministration = (scheduledTimeIso, completedAt = null, thresholdMinutes = EARLY_ADMINISTRATION_THRESHOLD_MINUTES) => {
+  const { status, minutesOffset, scheduledLocal } = checkAdministrationWindow(
+    scheduledTimeIso,
+    completedAt,
+    { earlyThresholdMinutes: thresholdMinutes }
+  );
+  return {
+    early: status === 'early',
+    late: status === 'late',
+    minutesEarly: status === 'early' ? minutesOffset : 0,
+    minutesLate: status === 'late' ? -minutesOffset : 0,
+    scheduledLocal,
+  };
+};
+
+/**
+ * Format a positive number of minutes as "Xh Ym" / "Xh" / "Ym".
+ * @param {number} mins
+ * @returns {string}
+ */
+export const formatDurationMinutes = (mins) => {
+  const n = Math.max(0, Math.round(mins));
+  if (n < 60) return `${n}m`;
+  const h = Math.floor(n / 60);
+  const m = n % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+};

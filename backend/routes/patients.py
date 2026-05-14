@@ -3,12 +3,13 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 
 from db import get_db
-from dependencies import require_read_access, get_current_account_id
+from dependencies import require_read_access, get_current_account_id, get_current_user
 from crud.patients import (
-    get_patient, get_patients, create_patient, update_patient, 
+    get_patient, get_patients, create_patient, update_patient,
     deactivate_patient, activate_patient, get_active_patient,
     create_default_patient, get_current_patient, set_current_patient,
-    get_or_create_default_patient
+    get_or_create_default_patient,
+    get_background_patient_id, set_background_patient_id,
 )
 from models.patients import (
     PatientBase,
@@ -16,6 +17,8 @@ from models.patients import (
     PatientUpdate,
     PatientResponse,
 )
+from models.users import User
+from schemas.patient import Patient, PatientAccess
 
 router = APIRouter(prefix="/api/patients", tags=["patients"])
 
@@ -25,10 +28,31 @@ def list_patients(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """Get list of patients. Allowed in restricted mode so user can select a patient to perform care."""
-    patients = get_patients(db, active_only=active_only, skip=skip, limit=limit)
-    return patients
+    """Get list of patients visible to the current user.
+
+    System admins see every patient. Other users see only the patients
+    explicitly granted to them via PatientAccess (set on the user-edit page).
+    Allowed in restricted mode so the user can still pick a patient to perform care.
+    """
+    if current_user.is_system_admin:
+        return get_patients(db, active_only=active_only, skip=skip, limit=limit)
+
+    allowed_ids = [
+        row.patient_id
+        for row in db.query(PatientAccess.patient_id).filter(
+            PatientAccess.user_id == current_user.id,
+            PatientAccess.is_active == True,
+        ).all()
+    ]
+    if not allowed_ids:
+        return []
+
+    query = db.query(Patient).filter(Patient.id.in_(allowed_ids))
+    if active_only:
+        query = query.filter(Patient.is_active == True)
+    return query.offset(skip).limit(limit).all()
 
 @router.get("/active", response_model=Optional[PatientResponse])
 def get_current_active_patient(db: Session = Depends(get_db)):
@@ -128,11 +152,38 @@ def set_current_patient_by_id(patient_id: int, db: Session = Depends(get_db)):
     success = set_current_patient(db, patient_id)
     if not success:
         raise HTTPException(
-            status_code=404, 
+            status_code=404,
             detail="Patient not found or not active"
         )
-    
+
     return {"message": "Current patient updated successfully"}
+
+
+@router.get("/background")
+def get_background_patient_endpoint(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return the patient_id used by background/event-driven work (MQTT
+    publishers, sensor handlers, scheduled jobs). System-admin-only."""
+    if not current_user.is_system_admin:
+        raise HTTPException(status_code=403, detail="System admin required")
+    pid = get_background_patient_id(db)
+    return {"patient_id": pid}
+
+
+@router.put("/background/{patient_id}")
+def set_background_patient_endpoint(
+    patient_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Set the patient_id used by background/event-driven work. System-admin-only."""
+    if not current_user.is_system_admin:
+        raise HTTPException(status_code=403, detail="System admin required")
+    if not set_background_patient_id(db, patient_id):
+        raise HTTPException(status_code=404, detail="Patient not found or not active")
+    return {"patient_id": patient_id}
 
 @router.post("/initialize", response_model=PatientResponse)
 def initialize_default_patient(db: Session = Depends(get_db)):
