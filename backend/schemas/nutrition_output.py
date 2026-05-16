@@ -42,6 +42,11 @@ class NutritionOutput(Base):
     # Catheter specific
     is_catheter = Column(Boolean, default=False, nullable=False)
     catheter_bag_emptied = Column(Boolean, nullable=True)
+
+    # Uncontained / accident (e.g. on the floor, in clothes). Mutually
+    # exclusive with is_diaper / is_catheter in the UI, but stored as an
+    # independent flag for query simplicity.
+    is_accident = Column(Boolean, default=False, nullable=False)
     
     # Timing
     occurred_at = Column(TIMESTAMP(timezone=True), nullable=False)

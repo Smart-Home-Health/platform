@@ -1486,7 +1486,16 @@
   margin-bottom: 1rem;
 }
 
-.admin-v2-form-row .admin-v2-form-group {
+/* 3-column variant for triples (e.g. macros: calories/protein/carbs). */
+.admin-v2-form-row-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.admin-v2-form-row .admin-v2-form-group,
+.admin-v2-form-row-3 .admin-v2-form-group {
   margin-bottom: 0;
 }
 
@@ -6939,8 +6948,50 @@ body.printing-schedule .admin-v2-schedule-prn-add {
 
 .admin-v2-output-type-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 0.5rem;
+}
+
+/* Step-1 location picker — large thumb-friendly tiles */
+.admin-v2-output-location-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+}
+.admin-v2-output-location-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 1.5rem 1rem;
+  min-height: 110px;
+  background: #161b22;
+  border: 2px solid #30363d;
+  border-radius: 10px;
+  color: #e6edf3;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.admin-v2-output-location-btn:hover,
+.admin-v2-output-location-btn:focus-visible {
+  border-color: #58a6ff;
+  background: #1c2230;
+  outline: none;
+}
+.admin-v2-output-location-label {
+  font-size: 1rem;
+  font-weight: 600;
+}
+.admin-v2-output-location-desc {
+  font-size: 0.75rem;
+  color: #8b949e;
+}
+@media (max-width: 480px) {
+  .admin-v2-output-location-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .admin-v2-output-type-btn {
@@ -7221,13 +7272,100 @@ body.printing-schedule .admin-v2-schedule-prn-add {
   .admin-v2-output-type-grid {
     grid-template-columns: repeat(2, 1fr);
   }
-  
+
   .admin-v2-output-concerns-grid {
     grid-template-columns: repeat(2, 1fr);
   }
-  
+
   .admin-v2-output-method-options {
     flex-direction: column;
+  }
+}
+
+/* Mobile sizing for any admin-v2 modal (intake, output, etc).
+   - Edge-to-edge so we don't waste viewport on padding around the modal
+   - Modal pinned to top so iOS dvh fluctuations don't drift the content
+   - Body uses explicit flex:1 1 0 + touch momentum scroll so the first
+     row of content never sits underneath the header
+   - font-size: 16px on inputs prevents iOS auto-zoom on focus */
+@media (max-width: 768px) {
+  /* Admin-v2 has a sticky mobile header (~64px) that the modal overlay
+     was sliding underneath. Pin the overlay to start just below it so
+     the modal's own header is fully visible and the page menu button
+     stays reachable. */
+  .admin-v2-modal-overlay {
+    padding: 0;
+    align-items: flex-start;
+    justify-content: stretch;
+    top: 64px;
+  }
+  .admin-v2-modal {
+    width: 100vw;
+    max-width: 100vw;
+    height: calc(100vh - 64px);
+    height: calc(100dvh - 64px);
+    max-height: calc(100vh - 64px);
+    max-height: calc(100dvh - 64px);
+    border-radius: 0;
+    border: none;
+    margin: 0;
+  }
+  .admin-v2-modal form {
+    flex: 1 1 0;
+    min-height: 0;
+  }
+  .admin-v2-modal-header {
+    padding: 0.75rem 1rem;
+    flex: 0 0 auto;
+  }
+  .admin-v2-modal-header h2,
+  .admin-v2-modal-header h3 {
+    font-size: 1rem;
+  }
+  .admin-v2-modal-body {
+    padding: 0.875rem;
+    flex: 1 1 0;
+    min-height: 0;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+  .admin-v2-modal-footer {
+    padding: 0.75rem 1rem;
+    flex: 0 0 auto;
+  }
+  .admin-v2-form-row,
+  .admin-v2-form-row-3 {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+  .admin-v2-output-details-card {
+    padding: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+  .admin-v2-output-card-title {
+    font-size: 0.85rem;
+    margin-bottom: 0.625rem;
+    padding-bottom: 0.4rem;
+  }
+  .admin-v2-form-group input,
+  .admin-v2-form-group select,
+  .admin-v2-form-group textarea,
+  .admin-v2-output-notes-section textarea {
+    padding: 0.75rem;
+    font-size: 16px;
+  }
+  /* Output location tiles — shrink so all four fit without needing
+     scroll on the location step. Still ≥44px tall for touch. */
+  .admin-v2-output-location-btn {
+    min-height: 80px;
+    padding: 0.875rem 0.75rem;
+  }
+  .admin-v2-output-location-label {
+    font-size: 0.95rem;
+  }
+  .admin-v2-output-location-desc {
+    font-size: 0.7rem;
   }
 }
 

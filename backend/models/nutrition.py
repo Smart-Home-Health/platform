@@ -176,6 +176,7 @@ class NutritionOutputCreate(BaseModel):
     diaper_soiled: Optional[bool] = None
     is_catheter: bool = False
     catheter_bag_emptied: Optional[bool] = None
+    is_accident: bool = False
     occurred_at: datetime
     notes: Optional[str] = None
     recorded_by: Optional[int] = None
@@ -198,6 +199,7 @@ class NutritionOutputUpdate(BaseModel):
     diaper_soiled: Optional[bool] = None
     is_catheter: Optional[bool] = None
     catheter_bag_emptied: Optional[bool] = None
+    is_accident: Optional[bool] = None
     occurred_at: Optional[datetime] = None
     notes: Optional[str] = None
     has_blood: Optional[bool] = None
@@ -222,6 +224,7 @@ class NutritionOutputResponse(BaseModel):
     diaper_soiled: Optional[bool]
     is_catheter: bool
     catheter_bag_emptied: Optional[bool]
+    is_accident: bool
     occurred_at: datetime
     notes: Optional[str]
     recorded_by: Optional[int]

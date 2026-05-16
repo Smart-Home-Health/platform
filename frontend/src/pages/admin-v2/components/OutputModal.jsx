@@ -4,7 +4,6 @@ import {
   XIcon,
   UrineIcon,
   BowelIcon,
-  VomitIcon,
   NotesIcon,
   DiaperIcon,
   CatheterIcon,
@@ -26,18 +25,30 @@ import {
   getLocalDateTimeString,
 } from '../../../utils/timezone';
 
+const LOCATIONS = [
+  { key: 'toilet',   label: 'Restroom',  Icon: NotesIcon,    desc: 'Used the toilet' },
+  { key: 'diaper',   label: 'Diaper',    Icon: DiaperIcon,   desc: 'Caught by diaper' },
+  { key: 'accident', label: 'Accident',  Icon: PainIcon,     desc: 'Uncontained — floor / clothes' },
+  { key: 'catheter', label: 'Catheter',  Icon: CatheterIcon, desc: 'Catheter drainage' },
+];
+
+// A single bathroom event may contain both urine and stool. We track each
+// independently so the form can collect details for one or both, then split
+// into 1 or 2 NutritionOutput rows on save (DB has one output_type per row).
 const emptyForm = () => ({
-  output_type: 'urine',
+  has_urine: false,
+  has_stool: false,
+  // Stool-specific
   consistency: '',
   color: '',
-  amount: '',
-  amount_unit: 'ml',
+  stool_amount_unit: 'medium',
+  // Urine-specific
+  urine_amount: '',     // ml
   clarity: '',
-  is_diaper: false,
+  // Diaper / catheter specifics
   diaper_wetness: '',
-  diaper_soiled: false,
-  is_catheter: false,
   catheter_bag_emptied: false,
+  // Shared
   notes: '',
   has_blood: false,
   has_mucus: false,
@@ -46,19 +57,25 @@ const emptyForm = () => ({
   occurred_at: '',
 });
 
+// Map DB flags back to a single location key for editing.
+const inferLocation = (record) => {
+  if (record?.is_catheter) return 'catheter';
+  if (record?.is_diaper) return 'diaper';
+  if (record?.is_accident) return 'accident';
+  return 'toilet';
+};
+
 /**
- * Shared "Log Output" modal used by AdminV2Nutrition and AdminV2Schedule's
- * PRN flow. Owns its form state internally so callers only manage open/close.
+ * Two-step output logging modal:
+ *   Step 1 — pick location (toilet / diaper / accident / catheter)
+ *   Step 2 — pick content (urine vs stool) and fill details
  *
- * Props:
- *   open        — boolean
- *   onClose     — () => void
- *   onSaved     — () => void              (fires after a successful save)
- *   patient     — { id }
- *   editing     — existing output record (optional; switches to update mode)
- *   defaultDateTime — datetime-local string to seed occurred_at on a fresh open
+ * Catheter skips the urine/stool picker (catheter drainage is always urine)
+ * and goes straight to catheter details on step 2.
  */
 const OutputModal = ({ open, onClose, onSaved, patient, editing, defaultDateTime }) => {
+  const [step, setStep] = useState(1);
+  const [location, setLocation] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [outputTypes, setOutputTypes] = useState({});
   const [saving, setSaving] = useState(false);
@@ -77,17 +94,20 @@ const OutputModal = ({ open, onClose, onSaved, patient, editing, defaultDateTime
     if (!open) return;
     setFormError(null);
     if (editing) {
+      const loc = inferLocation(editing);
+      const isUrineRow = editing.output_type === 'urine';
+      const isBowelRow = editing.output_type === 'bowel';
+      setLocation(loc);
+      setStep(2); // jump past the picker when editing an existing row
       setForm({
-        output_type: editing.output_type || 'urine',
+        has_urine: isUrineRow || loc === 'catheter',
+        has_stool: isBowelRow,
         consistency: editing.consistency || '',
         color: editing.color || '',
-        amount: editing.amount ?? '',
-        amount_unit: editing.amount_unit || 'ml',
+        stool_amount_unit: isBowelRow ? (editing.amount_unit || 'medium') : 'medium',
+        urine_amount: isUrineRow ? (editing.amount ?? '') : '',
         clarity: editing.clarity || '',
-        is_diaper: editing.is_diaper || false,
         diaper_wetness: editing.diaper_wetness || '',
-        diaper_soiled: editing.diaper_soiled || false,
-        is_catheter: editing.is_catheter || false,
         catheter_bag_emptied: editing.catheter_bag_emptied || false,
         notes: editing.notes || '',
         has_blood: editing.has_blood || false,
@@ -99,6 +119,8 @@ const OutputModal = ({ open, onClose, onSaved, patient, editing, defaultDateTime
           : getCurrentLocalDateTime(),
       });
     } else {
+      setLocation(null);
+      setStep(1);
       setForm({
         ...emptyForm(),
         occurred_at: defaultDateTime || getCurrentLocalDateTime(),
@@ -108,30 +130,114 @@ const OutputModal = ({ open, onClose, onSaved, patient, editing, defaultDateTime
 
   if (!open) return null;
 
+  const pickLocation = (loc) => {
+    setLocation(loc);
+    // Catheter only logs urine drainage; skip the content picker.
+    setForm(prev => ({
+      ...prev,
+      has_urine: loc === 'catheter' ? true : prev.has_urine,
+      has_stool: loc === 'catheter' ? false : prev.has_stool,
+    }));
+    setStep(2);
+  };
+
+  // Build a NutritionOutput payload for one content type (urine or bowel).
+  // Shared metadata (location flags, concerns, notes, occurred_at) is identical
+  // across both payloads so the rows cluster on display.
+  const buildPayload = (type) => {
+    const occurredAtUtc = localDateTimeToUTC(form.occurred_at);
+    const shared = {
+      patient_id: patient.id,
+      occurred_at: occurredAtUtc,
+      is_diaper:   location === 'diaper',
+      is_catheter: location === 'catheter',
+      is_accident: location === 'accident',
+      notes: form.notes || null,
+      has_blood: form.has_blood,
+      has_mucus: form.has_mucus,
+      pain_reported: form.pain_reported,
+      straining: form.straining,
+    };
+    if (type === 'urine') {
+      return {
+        ...shared,
+        output_type: 'urine',
+        clarity: form.clarity || null,
+        amount: form.urine_amount === '' || form.urine_amount === null
+          ? null
+          : parseFloat(form.urine_amount),
+        amount_unit: form.urine_amount ? 'ml' : null,
+        diaper_wetness: location === 'diaper' ? (form.diaper_wetness || null) : null,
+        catheter_bag_emptied: location === 'catheter' ? form.catheter_bag_emptied : null,
+        // Stool-only fields explicitly null
+        consistency: null,
+        color: null,
+        diaper_soiled: false,
+      };
+    }
+    // type === 'bowel'
+    return {
+      ...shared,
+      output_type: 'bowel',
+      consistency: form.consistency || null,
+      color: form.color || null,
+      amount: null,                  // stool uses qualitative size
+      amount_unit: form.stool_amount_unit || null,
+      // For diaper + stool, mark the diaper as soiled.
+      diaper_soiled: location === 'diaper',
+      // Urine-only fields explicitly null
+      clarity: null,
+      diaper_wetness: null,
+      catheter_bag_emptied: null,
+    };
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
-    if (!patient) return;
+    if (!patient || !location) return;
+    if (!form.has_urine && !form.has_stool) {
+      setFormError('Pick urine, stool, or both before saving.');
+      return;
+    }
     setSaving(true);
     setFormError(null);
+
     try {
-      const payload = {
-        ...form,
-        patient_id: patient.id,
-        amount: form.amount ? parseFloat(form.amount) : null,
-        occurred_at: localDateTimeToUTC(form.occurred_at),
-      };
-      const url = editing
-        ? `${config.apiUrl}/api/nutrition/outputs/${editing.id}`
-        : `${config.apiUrl}/api/nutrition/outputs`;
-      const res = await fetch(url, {
-        method: editing ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || 'Failed to save output');
+      if (editing) {
+        // Editing a single existing row: keep its output_type stable. Submit
+        // the matching payload via PUT. We don't try to add a second row in
+        // edit mode — that's done via a fresh "Log Output" entry.
+        const editType = editing.output_type === 'bowel' ? 'bowel' : 'urine';
+        const payload = buildPayload(editType);
+        const res = await fetch(`${config.apiUrl}/api/nutrition/outputs/${editing.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || 'Failed to save output');
+        }
+      } else {
+        const types = [];
+        if (form.has_urine) types.push('urine');
+        if (form.has_stool) types.push('bowel');
+        // Fire both POSTs in parallel — same backend, same DB, same auth, so
+        // success/failure tend to be all-or-nothing in practice.
+        const results = await Promise.all(types.map(t =>
+          fetch(`${config.apiUrl}/api/nutrition/outputs`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(buildPayload(t)),
+          })
+        ));
+        const failed = results.find(r => !r.ok);
+        if (failed) {
+          const err = await failed.json().catch(() => ({}));
+          throw new Error(err.detail || 'Failed to save output');
+        }
       }
       onSaved?.();
       onClose?.();
@@ -142,168 +248,121 @@ const OutputModal = ({ open, onClose, onSaved, patient, editing, defaultDateTime
     }
   };
 
+  const isCatheter = location === 'catheter';
+  const isDiaper = location === 'diaper';
+  const showUrine = form.has_urine;
+  const showStool = form.has_stool;
+
   return (
     <div className="admin-v2-modal-overlay" onClick={onClose}>
       <div className="admin-v2-modal admin-v2-modal-lg" onClick={e => e.stopPropagation()}>
         <div className="admin-v2-modal-header">
-          <h3>{editing ? 'Edit Output' : 'Log Output'}</h3>
+          <h3>
+            {editing ? 'Edit Output' : (step === 1 ? 'Log Output — Where?' : 'Log Output — Details')}
+          </h3>
           <button className="admin-v2-modal-close" onClick={onClose}>
             <XIcon size={20} />
           </button>
         </div>
+
         <form onSubmit={handleSave}>
           <div className="admin-v2-modal-body">
             {formError && <div className="admin-v2-form-error">{formError}</div>}
 
-            <div className="admin-v2-form-group" style={{ marginBottom: '1rem' }}>
-              <label>Date & Time *</label>
-              <input
-                type="datetime-local"
-                value={form.occurred_at}
-                onChange={e => setForm({ ...form, occurred_at: e.target.value })}
-                required
-              />
-            </div>
-
-            {/* Output Type Selection */}
-            <div className="admin-v2-output-type-section">
-              <label className="admin-v2-output-section-label">Output Type *</label>
-              <div className="admin-v2-output-type-grid">
-                {(outputTypes.output_types || ['urine', 'bowel', 'vomit', 'other']).map(type => (
+            {/* ─────────── STEP 1: location ─────────── */}
+            {step === 1 && (
+              <div className="admin-v2-output-location-grid">
+                {LOCATIONS.map(loc => (
                   <button
-                    key={type}
+                    key={loc.key}
                     type="button"
-                    className={`admin-v2-output-type-btn ${form.output_type === type ? 'active' : ''}`}
-                    onClick={() => setForm({ ...form, output_type: type })}
+                    className="admin-v2-output-location-btn"
+                    onClick={() => pickLocation(loc.key)}
                   >
-                    {type === 'urine' && <UrineIcon size={20} />}
-                    {type === 'bowel' && <BowelIcon size={20} />}
-                    {type === 'vomit' && <VomitIcon size={20} />}
-                    {type === 'other' && <NotesIcon size={20} />}
-                    <span>{type.charAt(0).toUpperCase() + type.slice(1)}</span>
+                    <loc.Icon size={28} />
+                    <span className="admin-v2-output-location-label">{loc.label}</span>
+                    <span className="admin-v2-output-location-desc">{loc.desc}</span>
                   </button>
                 ))}
               </div>
-            </div>
-
-            {/* Method Selection */}
-            <div className="admin-v2-output-method-section">
-              <div className="admin-v2-output-method-options">
-                <label className={`admin-v2-output-method-option ${form.is_diaper ? 'active' : ''}`}>
-                  <input
-                    type="checkbox"
-                    checked={form.is_diaper}
-                    onChange={e => setForm({ ...form, is_diaper: e.target.checked })}
-                  />
-                  <span className="admin-v2-output-method-icon"><DiaperIcon size={18} /></span>
-                  <span>Diaper</span>
-                </label>
-                <label className={`admin-v2-output-method-option ${form.is_catheter ? 'active' : ''}`}>
-                  <input
-                    type="checkbox"
-                    checked={form.is_catheter}
-                    onChange={e => setForm({ ...form, is_catheter: e.target.checked })}
-                  />
-                  <span className="admin-v2-output-method-icon"><CatheterIcon size={18} /></span>
-                  <span>Catheter</span>
-                </label>
-              </div>
-            </div>
-
-            {/* Bowel Movement Details */}
-            {form.output_type === 'bowel' && (
-              <div className="admin-v2-output-details-card">
-                <h4 className="admin-v2-output-card-title">Bowel Movement Details</h4>
-
-                <div className="admin-v2-form-group">
-                  <label>Amount</label>
-                  <div className="admin-v2-output-amount-grid">
-                    {['smear', 'small', 'medium', 'large'].map(size => (
-                      <button
-                        key={size}
-                        type="button"
-                        className={`admin-v2-output-amount-btn ${form.amount_unit === size ? 'active' : ''}`}
-                        onClick={() => setForm({ ...form, amount_unit: size, amount: null })}
-                      >
-                        <span className="admin-v2-output-amount-icon">
-                          {size === 'smear' && <SizeSmearIcon size={20} />}
-                          {size === 'small' && <SizeSmallIcon size={20} />}
-                          {size === 'medium' && <SizeMediumIcon size={20} />}
-                          {size === 'large' && <SizeLargeIcon size={20} />}
-                        </span>
-                        <span>{size.charAt(0).toUpperCase() + size.slice(1)}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="admin-v2-form-row">
-                  <div className="admin-v2-form-group">
-                    <label>Consistency</label>
-                    <select
-                      value={form.consistency}
-                      onChange={e => setForm({ ...form, consistency: e.target.value })}
-                    >
-                      <option value="">Select...</option>
-                      {(outputTypes.consistency_types || []).map(type => (
-                        <option key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ')}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="admin-v2-form-group">
-                    <label>Color</label>
-                    <select
-                      value={form.color}
-                      onChange={e => setForm({ ...form, color: e.target.value })}
-                    >
-                      <option value="">Select...</option>
-                      {(outputTypes.color_types || []).map(type => (
-                        <option key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ')}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
             )}
 
-            {/* Urine Details */}
-            {form.output_type === 'urine' && (
-              <div className="admin-v2-output-details-card">
-                <h4 className="admin-v2-output-card-title">Urine Details</h4>
-                <div className="admin-v2-form-row">
-                  <div className="admin-v2-form-group">
-                    <label>Clarity</label>
-                    <select
-                      value={form.clarity}
-                      onChange={e => setForm({ ...form, clarity: e.target.value })}
+            {/* ─────────── STEP 2: details ─────────── */}
+            {step === 2 && (
+              <>
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  background: '#21262d', borderRadius: 6, padding: '8px 12px', marginBottom: '1rem',
+                }}>
+                  <span style={{ color: '#8b949e', fontSize: '0.85rem' }}>
+                    Location:&nbsp;
+                    <strong style={{ color: '#e6edf3' }}>
+                      {LOCATIONS.find(l => l.key === location)?.label}
+                    </strong>
+                  </span>
+                  {!editing && (
+                    <button
+                      type="button"
+                      className="admin-v2-btn admin-v2-btn-sm"
+                      onClick={() => { setStep(1); setLocation(null); }}
                     >
-                      <option value="">Select...</option>
-                      {(outputTypes.clarity_types || []).map(type => (
-                        <option key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1)}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="admin-v2-form-group">
-                    <label>Amount (ml)</label>
-                    <input
-                      type="number"
-                      step="1"
-                      value={form.amount ?? ''}
-                      onChange={e => setForm({ ...form, amount: e.target.value })}
-                      placeholder="Enter ml"
-                    />
-                  </div>
+                      ← Change
+                    </button>
+                  )}
                 </div>
-              </div>
-            )}
 
-            {/* Diaper Details */}
-            {form.is_diaper && (
-              <div className="admin-v2-output-details-card">
-                <h4 className="admin-v2-output-card-title">Diaper Details</h4>
-                <div className="admin-v2-form-row">
-                  <div className="admin-v2-form-group">
-                    <label>Wetness Level</label>
+                <div className="admin-v2-form-group" style={{ marginBottom: '1rem' }}>
+                  <label>Date &amp; Time *</label>
+                  <input
+                    type="datetime-local"
+                    value={form.occurred_at}
+                    onChange={e => setForm({ ...form, occurred_at: e.target.value })}
+                    required
+                  />
+                </div>
+
+                {/* Content picker — toggle urine, stool, or both. Hidden for
+                    catheter (always urine). In edit mode the toggle for the
+                    NOT-being-edited type is hidden so a single record stays
+                    single-type. */}
+                {!isCatheter && (
+                  <div className="admin-v2-output-type-section">
+                    <label className="admin-v2-output-section-label">
+                      What was it? * <span style={{ color: '#8b949e', fontWeight: 400, fontSize: '0.8rem' }}>(pick one or both)</span>
+                    </label>
+                    <div className="admin-v2-output-type-grid">
+                      {(!editing || editing.output_type === 'urine') && (
+                        <button
+                          type="button"
+                          className={`admin-v2-output-type-btn ${showUrine ? 'active' : ''}`}
+                          onClick={() => setForm(prev => ({ ...prev, has_urine: !prev.has_urine }))}
+                          disabled={editing && editing.output_type === 'urine'}
+                          title={editing && editing.output_type === 'urine' ? 'Editing this urine record' : undefined}
+                        >
+                          <UrineIcon size={20} />
+                          <span>Urine</span>
+                        </button>
+                      )}
+                      {(!editing || editing.output_type === 'bowel') && (
+                        <button
+                          type="button"
+                          className={`admin-v2-output-type-btn ${showStool ? 'active' : ''}`}
+                          onClick={() => setForm(prev => ({ ...prev, has_stool: !prev.has_stool }))}
+                          disabled={editing && editing.output_type === 'bowel'}
+                          title={editing && editing.output_type === 'bowel' ? 'Editing this stool record' : undefined}
+                        >
+                          <BowelIcon size={20} />
+                          <span>Stool</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Diaper wetness — only for diaper + urine */}
+                {isDiaper && showUrine && (
+                  <div className="admin-v2-output-details-card">
+                    <h4 className="admin-v2-output-card-title">Diaper Wetness</h4>
                     <div className="admin-v2-output-wetness-grid">
                       {(outputTypes.diaper_wetness_types || ['dry', 'wet', 'soaked']).map(type => (
                         <button
@@ -320,110 +379,181 @@ const OutputModal = ({ open, onClose, onSaved, patient, editing, defaultDateTime
                       ))}
                     </div>
                   </div>
-                  <div className="admin-v2-form-group">
-                    <label className={`admin-v2-output-toggle-option ${form.diaper_soiled ? 'active' : ''}`}>
+                )}
+
+                {/* Stool details */}
+                {showStool && (
+                  <div className="admin-v2-output-details-card">
+                    <h4 className="admin-v2-output-card-title">Stool Details</h4>
+                    <div className="admin-v2-form-group">
+                      <label>Amount</label>
+                      <div className="admin-v2-output-amount-grid">
+                        {['smear', 'small', 'medium', 'large'].map(size => (
+                          <button
+                            key={size}
+                            type="button"
+                            className={`admin-v2-output-amount-btn ${form.stool_amount_unit === size ? 'active' : ''}`}
+                            onClick={() => setForm({ ...form, stool_amount_unit: size })}
+                          >
+                            <span className="admin-v2-output-amount-icon">
+                              {size === 'smear' && <SizeSmearIcon size={20} />}
+                              {size === 'small' && <SizeSmallIcon size={20} />}
+                              {size === 'medium' && <SizeMediumIcon size={20} />}
+                              {size === 'large' && <SizeLargeIcon size={20} />}
+                            </span>
+                            <span>{size.charAt(0).toUpperCase() + size.slice(1)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="admin-v2-form-row">
+                      <div className="admin-v2-form-group">
+                        <label>Consistency</label>
+                        <select
+                          value={form.consistency}
+                          onChange={e => setForm({ ...form, consistency: e.target.value })}
+                        >
+                          <option value="">Select...</option>
+                          {(outputTypes.consistency_types || []).map(type => (
+                            <option key={type} value={type}>
+                              {type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ')}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="admin-v2-form-group">
+                        <label>Color</label>
+                        <select
+                          value={form.color}
+                          onChange={e => setForm({ ...form, color: e.target.value })}
+                        >
+                          <option value="">Select...</option>
+                          {(outputTypes.color_types || []).map(type => (
+                            <option key={type} value={type}>
+                              {type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ')}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Urine details */}
+                {showUrine && (
+                  <div className="admin-v2-output-details-card">
+                    <h4 className="admin-v2-output-card-title">Urine Details</h4>
+                    <div className="admin-v2-form-row">
+                      <div className="admin-v2-form-group">
+                        <label>Clarity</label>
+                        <select
+                          value={form.clarity}
+                          onChange={e => setForm({ ...form, clarity: e.target.value })}
+                        >
+                          <option value="">Select...</option>
+                          {(outputTypes.clarity_types || []).map(type => (
+                            <option key={type} value={type}>
+                              {type.charAt(0).toUpperCase() + type.slice(1)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="admin-v2-form-group">
+                        <label>Amount (ml)</label>
+                        <input
+                          type="number"
+                          step="1"
+                          value={form.urine_amount ?? ''}
+                          onChange={e => setForm({ ...form, urine_amount: e.target.value })}
+                          placeholder="Enter ml"
+                        />
+                      </div>
+                    </div>
+                    {isCatheter && (
+                      <div className="admin-v2-form-group" style={{ marginTop: '0.75rem' }}>
+                        <label className={`admin-v2-output-toggle-option ${form.catheter_bag_emptied ? 'active' : ''}`}>
+                          <input
+                            type="checkbox"
+                            checked={form.catheter_bag_emptied}
+                            onChange={e => setForm({ ...form, catheter_bag_emptied: e.target.checked })}
+                          />
+                          <span>Bag emptied</span>
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Concerns Section */}
+                <div className="admin-v2-output-details-card admin-v2-output-concerns-card">
+                  <h4 className="admin-v2-output-card-title">Concerns</h4>
+                  <div className="admin-v2-output-concerns-grid">
+                    <label className={`admin-v2-output-concern-option ${form.has_blood ? 'active warning' : ''}`}>
                       <input
                         type="checkbox"
-                        checked={form.diaper_soiled}
-                        onChange={e => setForm({ ...form, diaper_soiled: e.target.checked })}
+                        checked={form.has_blood}
+                        onChange={e => setForm({ ...form, has_blood: e.target.checked })}
                       />
-                      <span>Soiled (Bowel Movement)</span>
+                      <span className="admin-v2-concern-icon"><BloodIcon size={20} /></span>
+                      <span>Blood</span>
+                    </label>
+                    <label className={`admin-v2-output-concern-option ${form.has_mucus ? 'active warning' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={form.has_mucus}
+                        onChange={e => setForm({ ...form, has_mucus: e.target.checked })}
+                      />
+                      <span className="admin-v2-concern-icon"><MucusIcon size={20} /></span>
+                      <span>Mucus</span>
+                    </label>
+                    <label className={`admin-v2-output-concern-option ${form.pain_reported ? 'active warning' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={form.pain_reported}
+                        onChange={e => setForm({ ...form, pain_reported: e.target.checked })}
+                      />
+                      <span className="admin-v2-concern-icon"><PainIcon size={20} /></span>
+                      <span>Pain</span>
+                    </label>
+                    <label className={`admin-v2-output-concern-option ${form.straining ? 'active warning' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={form.straining}
+                        onChange={e => setForm({ ...form, straining: e.target.checked })}
+                      />
+                      <span className="admin-v2-concern-icon"><StrainingIcon size={20} /></span>
+                      <span>Straining</span>
                     </label>
                   </div>
                 </div>
-              </div>
-            )}
 
-            {/* Catheter Details */}
-            {form.is_catheter && (
-              <div className="admin-v2-output-details-card">
-                <h4 className="admin-v2-output-card-title">Catheter Details</h4>
-                <div className="admin-v2-form-row">
-                  <div className="admin-v2-form-group">
-                    <label className={`admin-v2-output-toggle-option ${form.catheter_bag_emptied ? 'active' : ''}`}>
-                      <input
-                        type="checkbox"
-                        checked={form.catheter_bag_emptied}
-                        onChange={e => setForm({ ...form, catheter_bag_emptied: e.target.checked })}
-                      />
-                      <span>Bag Emptied</span>
-                    </label>
-                  </div>
-                  <div className="admin-v2-form-group">
-                    <label>Amount (ml)</label>
-                    <input
-                      type="number"
-                      step="1"
-                      value={form.amount ?? ''}
-                      onChange={e => setForm({ ...form, amount: e.target.value })}
-                      placeholder="Enter ml"
-                    />
-                  </div>
+                {/* Notes */}
+                <div className="admin-v2-output-notes-section">
+                  <label>Notes</label>
+                  <textarea
+                    value={form.notes}
+                    onChange={e => setForm({ ...form, notes: e.target.value })}
+                    rows={3}
+                    placeholder="Any additional observations..."
+                  />
                 </div>
-              </div>
+              </>
             )}
-
-            {/* Concerns Section */}
-            <div className="admin-v2-output-details-card admin-v2-output-concerns-card">
-              <h4 className="admin-v2-output-card-title">Concerns</h4>
-              <div className="admin-v2-output-concerns-grid">
-                <label className={`admin-v2-output-concern-option ${form.has_blood ? 'active warning' : ''}`}>
-                  <input
-                    type="checkbox"
-                    checked={form.has_blood}
-                    onChange={e => setForm({ ...form, has_blood: e.target.checked })}
-                  />
-                  <span className="admin-v2-concern-icon"><BloodIcon size={20} /></span>
-                  <span>Blood</span>
-                </label>
-                <label className={`admin-v2-output-concern-option ${form.has_mucus ? 'active warning' : ''}`}>
-                  <input
-                    type="checkbox"
-                    checked={form.has_mucus}
-                    onChange={e => setForm({ ...form, has_mucus: e.target.checked })}
-                  />
-                  <span className="admin-v2-concern-icon"><MucusIcon size={20} /></span>
-                  <span>Mucus</span>
-                </label>
-                <label className={`admin-v2-output-concern-option ${form.pain_reported ? 'active warning' : ''}`}>
-                  <input
-                    type="checkbox"
-                    checked={form.pain_reported}
-                    onChange={e => setForm({ ...form, pain_reported: e.target.checked })}
-                  />
-                  <span className="admin-v2-concern-icon"><PainIcon size={20} /></span>
-                  <span>Pain</span>
-                </label>
-                <label className={`admin-v2-output-concern-option ${form.straining ? 'active warning' : ''}`}>
-                  <input
-                    type="checkbox"
-                    checked={form.straining}
-                    onChange={e => setForm({ ...form, straining: e.target.checked })}
-                  />
-                  <span className="admin-v2-concern-icon"><StrainingIcon size={20} /></span>
-                  <span>Straining</span>
-                </label>
-              </div>
-            </div>
-
-            {/* Notes */}
-            <div className="admin-v2-output-notes-section">
-              <label>Notes</label>
-              <textarea
-                value={form.notes}
-                onChange={e => setForm({ ...form, notes: e.target.value })}
-                rows={3}
-                placeholder="Any additional observations..."
-              />
-            </div>
           </div>
+
           <div className="admin-v2-modal-footer">
             <button type="button" className="admin-v2-btn admin-v2-btn-secondary" onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" className="admin-v2-btn admin-v2-btn-primary" disabled={saving}>
-              {saving ? 'Saving...' : (editing ? 'Update' : 'Save')}
-            </button>
+            {step === 2 && (
+              <button
+                type="submit"
+                className="admin-v2-btn admin-v2-btn-primary"
+                disabled={saving || (!isCatheter && !form.has_urine && !form.has_stool)}
+              >
+                {saving ? 'Saving...' : (editing ? 'Update' : 'Save')}
+              </button>
+            )}
           </div>
         </form>
       </div>
