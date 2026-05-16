@@ -697,8 +697,48 @@ def get_scheduled_medications(db: Session, target_date, patient_id: int):
                 logger.error(f"Error processing cron expression {schedule.cron_expression}: {cron_error}")
                 continue
         
+        # PRN / ad-hoc administrations for the same date — logs with no
+        # schedule attached. Surface them on the schedule view at the hour
+        # they were administered so caregivers see a unified picture of
+        # what's been given. is_prn=True lets the frontend render them as
+        # an info row (no mark-taken / skip controls).
+        prn_logs = db.query(MedicationLog).filter(
+            MedicationLog.patient_id == patient_id,
+            MedicationLog.schedule_id.is_(None),
+            MedicationLog.dose_amount > 0,
+            cast(MedicationLog.administered_at, Date) == target_date,
+        ).all()
+
+        for log in prn_logs:
+            medication = log.medication
+            if medication is None:
+                continue
+            given_at = log.administered_at
+            if given_at is None:
+                continue
+            # Match the local-naive convention used for scheduled rows above.
+            if given_at.tzinfo is not None:
+                given_at_local = given_at.astimezone().replace(tzinfo=None)
+            else:
+                given_at_local = given_at
+            scheduled_meds.append({
+                'schedule_id': None,
+                'medication_id': medication.id,
+                'medication_name': medication.name,
+                'dose_amount': log.dose_amount,
+                'dose_unit': medication.quantity_unit,
+                'scheduled_time': given_at_local,
+                'description': None,
+                'cron_expression': None,
+                'completed': True,
+                'completed_at': log.administered_at.isoformat() if log.administered_at else None,
+                'completed_by': log.administered_by,
+                'is_prn': True,
+                'log_id': log.id,
+            })
+
         return sorted(scheduled_meds, key=lambda x: x['scheduled_time'])
-        
+
     except Exception as e:
         logger.error(f"Error getting scheduled medications: {e}")
         return []

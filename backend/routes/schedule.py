@@ -106,7 +106,9 @@ async def get_daily_schedule(
                 "completed": med["completed"],
                 "completed_at": med["completed_at"],
                 "completed_by": med["completed_by"],
-                "type": "medication"
+                "is_prn": med.get("is_prn", False),
+                "log_id": med.get("log_id"),
+                "type": "medication",
             })
         
         for nutr in nutrition_items:

@@ -3515,6 +3515,13 @@
   color: #58a6ff;
 }
 
+.admin-v2-badge-prn {
+  background: rgba(159, 122, 234, 0.18);
+  color: #b794f6;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.65rem;
+}
+
 .admin-v2-badge-type-medical {
   background: rgba(63, 185, 80, 0.2);
   color: #3fb950;
@@ -4376,6 +4383,36 @@ body.printing-schedule .admin-v2-schedule-col-clickable {
 
 .admin-v2-schedule-group {
   position: relative;
+}
+
+/* "+ PRN" tap target at the bottom of a populated medication group. Sized
+   for thumbs (≥44px on touch via the media query below). */
+.admin-v2-schedule-prn-add {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  background: rgba(159, 122, 234, 0.12);
+  color: #b794f6;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  cursor: pointer;
+  text-align: center;
+  transition: background-color 120ms ease;
+}
+.admin-v2-schedule-prn-add:hover,
+.admin-v2-schedule-prn-add:focus-visible {
+  background: rgba(159, 122, 234, 0.22);
+  outline: none;
+}
+@media (pointer: coarse), (max-width: 768px) {
+  .admin-v2-schedule-prn-add {
+    padding: 0.75rem 0.75rem;
+    font-size: 0.8rem;
+  }
+}
+body.printing-schedule .admin-v2-schedule-prn-add {
+  display: none;
 }
 
 /* Schedule Items */
@@ -8905,6 +8942,36 @@ body.printing-schedule .admin-v2-schedule-col-clickable {
   display: none;
 }
 
+/* Title row + Table/Cards view toggle (overview page). */
+.admin-v2-meds-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.admin-v2-meds-header .schedule-section-title {
+  margin: 1.5rem 0 1rem 0;
+  flex: 1;
+  min-width: 0;
+}
+.admin-v2-meds-view-toggle {
+  display: inline-flex;
+  gap: 0.25rem;
+}
+
+/* When the user chooses "Cards" explicitly, force the card layout at any
+   viewport width — including iPad/desktop where the media query below
+   would otherwise show the dense table. */
+.admin-v2-meds-force-cards .admin-v2-meds-desktop {
+  display: none;
+}
+.admin-v2-meds-force-cards .admin-v2-meds-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
 /* Default .admin-v2-table-container clips overflow (overflow: hidden) so the
    border-radius stays clean, but the manage table can exceed the viewport
    width on narrow desktops. Let it scroll horizontally so action buttons
@@ -8995,6 +9062,10 @@ body.printing-schedule .admin-v2-schedule-col-clickable {
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+.admin-v2-med-card-sub {
+  color: #8b949e;
+  font-size: 0.78rem;
 }
 .admin-v2-med-card-dose {
   margin-top: 0.25rem;

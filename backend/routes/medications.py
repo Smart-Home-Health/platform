@@ -130,8 +130,8 @@ async def get_inactive_medications_endpoint(db: Session = Depends(get_db), _: bo
 async def get_admin_active_medications_endpoint(patient_id: Optional[int] = None, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get active medications for admin view - can filter by patient_id or show all"""
     from schemas.medication_log import MedicationLog
-    from sqlalchemy import func
-    
+
+
     try:
         if patient_id:
             # Get medications for specific patient + global medications
@@ -147,23 +147,26 @@ async def get_admin_active_medications_endpoint(patient_id: Optional[int] = None
                 (Medication.end_date == None) | (Medication.end_date > datetime.now().date())
             ).order_by(Medication.name).all()
         
-        # Get last administered dates for all medications in one query
+        # Get the most recent log per medication in one query (timestamp + dose
+        # amount). Postgres DISTINCT ON keeps the first row per partition once
+        # ordered, so this is one round-trip instead of a join+subquery.
         med_ids = [med.id for med in medications]
-        last_administered_query = db.query(
+        last_log_query = db.query(
             MedicationLog.medication_id,
-            func.max(MedicationLog.administered_at).label('last_administered')
+            MedicationLog.administered_at,
+            MedicationLog.dose_amount,
         ).filter(
             MedicationLog.medication_id.in_(med_ids)
         )
-        
-        # If patient_id provided, also filter logs by patient
         if patient_id:
-            last_administered_query = last_administered_query.filter(
+            last_log_query = last_log_query.filter(
                 MedicationLog.patient_id == patient_id
             )
-        
-        last_administered_query = last_administered_query.group_by(MedicationLog.medication_id)
-        last_administered_map = {row.medication_id: row.last_administered for row in last_administered_query.all()}
+        last_log_query = last_log_query.distinct(MedicationLog.medication_id).order_by(
+            MedicationLog.medication_id,
+            MedicationLog.administered_at.desc(),
+        )
+        last_log_map = {row.medication_id: row for row in last_log_query.all()}
         
         result = []
         for med in medications:
@@ -187,7 +190,8 @@ async def get_admin_active_medications_endpoint(patient_id: Optional[int] = None
                 'prescriber_id': med.prescriber_id,
                 'prescriber_name': f"{med.prescriber.first_name} {med.prescriber.last_name}".strip() if med.prescriber and (med.prescriber.first_name or med.prescriber.last_name) else (med.prescriber.name if med.prescriber else None),
                 'pharmacy_id': med.pharmacy_id,
-                'last_administered': last_administered_map.get(med.id).isoformat() if last_administered_map.get(med.id) else None,
+                'last_administered': last_log_map[med.id].administered_at.isoformat() if med.id in last_log_map else None,
+                'last_dose_amount': last_log_map[med.id].dose_amount if med.id in last_log_map else None,
                 'next_due': _next_due_from_schedules(schedules),
                 'schedules': schedules,
             })

@@ -10,9 +10,6 @@ const ThresholdSettings = () => {
     max_spo2: 100,
     min_bpm: 55,
     max_bpm: 155,
-    daily_calories: 2000,
-    daily_water: 2000,
-    day_start_hour: 7,
   });
 
   const [isLoading, setIsLoading] = useState(true);
@@ -29,8 +26,8 @@ const ThresholdSettings = () => {
         
         const thresholdFormData = {};
         for (const [key, value] of Object.entries(settings)) {
-          // Only include threshold-related settings
-          if (key.includes('spo2') || key.includes('bpm') || key.includes('daily_calories') || key.includes('daily_water') || key === 'day_start_hour') {
+          // Only include vital-sign threshold settings
+          if (key.includes('spo2') || key.includes('bpm')) {
             thresholdFormData[key] = value;
           }
         }
@@ -66,7 +63,7 @@ const ThresholdSettings = () => {
     console.log('Form submitted with data:', formData);
     
     // Validate that all fields have values
-    const requiredFields = ['min_spo2', 'max_spo2', 'min_bpm', 'max_bpm', 'daily_calories', 'daily_water', 'day_start_hour'];
+    const requiredFields = ['min_spo2', 'max_spo2', 'min_bpm', 'max_bpm'];
     const missingFields = requiredFields.filter(field => !formData[field] || formData[field] === '');
     
     if (missingFields.length > 0) {
@@ -87,11 +84,6 @@ const ThresholdSettings = () => {
         setSetting('max_spo2', parseInt(formData.max_spo2), 'int', 'Maximum SpO2 threshold'),
         setSetting('min_bpm', parseInt(formData.min_bpm), 'int', 'Minimum heart rate threshold'),
         setSetting('max_bpm', parseInt(formData.max_bpm), 'int', 'Maximum heart rate threshold'),
-        setSetting('daily_calories', parseInt(formData.daily_calories), 'int', 'Daily calorie target in kcal'),
-        setSetting('daily_water', parseInt(formData.daily_water), 'int', 'Daily water target in ml'),
-        setSetting('target_calories', parseInt(formData.daily_calories), 'int', 'Daily calorie target in kcal (alias)'),
-        setSetting('target_water', parseInt(formData.daily_water), 'int', 'Daily water target in ml (alias)'),
-        setSetting('day_start_hour', parseInt(formData.day_start_hour), 'int', 'Hour when daily tracking resets (0-23)'),
       ];
       
       console.log('Save promises created, executing...');
@@ -242,106 +234,6 @@ const ThresholdSettings = () => {
                 boxSizing: 'border-box'
               }}
             />
-          </div>
-        </div>
-      </div>
-
-      <div style={{ marginBottom: '24px' }}>
-        <h3 style={{ 
-          color: '#ffffff', 
-          fontSize: '1.25rem', 
-          marginBottom: '16px',
-          fontWeight: '600'
-        }}>Daily Targets</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
-          <div>
-            <label style={{ 
-              color: '#e2e8f0', 
-              fontSize: '13px', 
-              fontWeight: '500', 
-              marginBottom: '6px', 
-              display: 'block' 
-            }}>Daily Calories (kcal)</label>
-            <input
-              type="number"
-              value={formData.daily_calories}
-              onChange={(e) => handleInputChange('daily_calories', e.target.value)}
-              min="500"
-              max="5000"
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                backgroundColor: '#2d3748',
-                border: '1px solid #4a5568',
-                borderRadius: '6px',
-                color: '#ffffff',
-                fontSize: '14px',
-                outline: 'none',
-                boxSizing: 'border-box'
-              }}
-            />
-          </div>
-          <div>
-            <label style={{ 
-              color: '#e2e8f0', 
-              fontSize: '13px', 
-              fontWeight: '500', 
-              marginBottom: '6px', 
-              display: 'block' 
-            }}>Daily Water (ml)</label>
-            <input
-              type="number"
-              value={formData.daily_water}
-              onChange={(e) => handleInputChange('daily_water', e.target.value)}
-              min="500"
-              max="5000"
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                backgroundColor: '#2d3748',
-                border: '1px solid #4a5568',
-                borderRadius: '6px',
-                color: '#ffffff',
-                fontSize: '14px',
-                outline: 'none',
-                boxSizing: 'border-box'
-              }}
-            />
-          </div>
-          <div>
-            <label style={{ 
-              color: '#e2e8f0', 
-              fontSize: '13px', 
-              fontWeight: '500', 
-              marginBottom: '6px', 
-              display: 'block' 
-            }}>Day Start Hour (24-hour format)</label>
-            <input
-              type="number"
-              value={formData.day_start_hour}
-              onChange={(e) => handleInputChange('day_start_hour', e.target.value)}
-              min="0"
-              max="23"
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                backgroundColor: '#2d3748',
-                border: '1px solid #4a5568',
-                borderRadius: '6px',
-                color: '#ffffff',
-                fontSize: '14px',
-                outline: 'none',
-                boxSizing: 'border-box'
-              }}
-            />
-            <div style={{ 
-              color: '#a0aec0', 
-              fontSize: '11px', 
-              marginTop: '4px',
-              fontStyle: 'italic'
-            }}>
-              Hour when daily nutrition tracking resets (e.g., 7 = 7:00 AM)
-            </div>
           </div>
         </div>
       </div>

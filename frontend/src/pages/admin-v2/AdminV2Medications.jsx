@@ -64,6 +64,15 @@ const AdminV2Medications = () => {
   const [doseModalMed, setDoseModalMed] = useState(null);
   const [showDoseModal, setShowDoseModal] = useState(false);
 
+  // 'auto' = table on desktop, cards on mobile (via CSS media query).
+  // 'cards' = force the card layout at any width (handy on iPad).
+  const [viewMode, setViewMode] = useState(
+    () => localStorage.getItem('adminV2MedsViewMode') || 'auto'
+  );
+  useEffect(() => {
+    localStorage.setItem('adminV2MedsViewMode', viewMode);
+  }, [viewMode]);
+
   // Sync URL <-> context patient
   useEffect(() => {
     const patientId = searchParams.get('patient');
@@ -135,7 +144,27 @@ const AdminV2Medications = () => {
       <div className="admin-v2-page">
         {selectedPatient ? (
           <>
-            <h1 className="schedule-section-title">Medications Overview</h1>
+            <div className="admin-v2-meds-header">
+              <h1 className="schedule-section-title">Medications Overview</h1>
+              <div className="admin-v2-meds-view-toggle" role="group" aria-label="View mode">
+                <button
+                  type="button"
+                  className={`admin-v2-btn admin-v2-btn-sm${viewMode === 'auto' ? ' admin-v2-btn-primary' : ''}`}
+                  onClick={() => setViewMode('auto')}
+                  aria-pressed={viewMode === 'auto'}
+                >
+                  Table
+                </button>
+                <button
+                  type="button"
+                  className={`admin-v2-btn admin-v2-btn-sm${viewMode === 'cards' ? ' admin-v2-btn-primary' : ''}`}
+                  onClick={() => setViewMode('cards')}
+                  aria-pressed={viewMode === 'cards'}
+                >
+                  Cards
+                </button>
+              </div>
+            </div>
 
             {error && <div className="admin-v2-error-banner">{error}</div>}
 
@@ -147,7 +176,7 @@ const AdminV2Medications = () => {
                 <p>No active medications for this patient</p>
               </div>
             ) : (
-              <>
+              <div className={viewMode === 'cards' ? 'admin-v2-meds-force-cards' : ''}>
                 {/* Desktop: dense table */}
                 <div className="admin-v2-table-container admin-v2-meds-desktop">
                   <table className="admin-v2-table">
@@ -256,6 +285,11 @@ const AdminV2Medications = () => {
                           <div className="admin-v2-med-card-meta-item">
                             <span className="admin-v2-med-card-label">Last given</span>
                             <span>{formatDateTime(med.last_administered)}</span>
+                            {med.last_administered && med.last_dose_amount != null && (
+                              <span className="admin-v2-med-card-sub">
+                                {med.last_dose_amount} {med.quantity_unit}
+                              </span>
+                            )}
                           </div>
                           <div className="admin-v2-med-card-meta-item">
                             <span className="admin-v2-med-card-label">Next due</span>
@@ -280,7 +314,7 @@ const AdminV2Medications = () => {
                     );
                   })}
                 </div>
-              </>
+              </div>
             )}
           </>
         ) : (

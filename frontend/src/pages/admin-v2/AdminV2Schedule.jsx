@@ -750,15 +750,19 @@ const AdminV2Schedule = () => {
                                 </button>
                               )}
                               {medicationsByHour[hour].map((med, idx) => {
-                                const itemKey = `medication-${med.schedule_id}-${med.scheduled_time}`;
+                                // PRN doses have no schedule_id; key off log_id instead.
+                                const rowId = med.schedule_id ?? `prn-${med.log_id}`;
+                                const itemKey = `medication-${rowId}-${med.scheduled_time}`;
+                                const isPrn = !!med.is_prn;
                                 return (
-                                  <React.Fragment key={`med-${med.schedule_id}-${idx}`}>
+                                  <React.Fragment key={`med-${rowId}-${idx}`}>
                                     {idx > 0 && <div className="admin-v2-schedule-divider" />}
                                     <div
                                       className={`admin-v2-schedule-item ${med.completed ? 'completed' : 'clickable'} ${completing[itemKey] ? 'completing' : ''}`}
                                       onClick={(e) => { e.stopPropagation(); if (!med.completed) handleCompleteItem('medication', med); }}
                                       role="button"
-                                      tabIndex={med.completed ? -1 : 0}
+                                      tabIndex={med.completed || isPrn ? -1 : 0}
+                                      title={isPrn ? 'PRN dose — administered ad-hoc' : undefined}
                                     >
                                       <div className="admin-v2-schedule-item-header">
                                         {(() => {
@@ -771,6 +775,11 @@ const AdminV2Schedule = () => {
                                           );
                                         })()}
                                         <span className="admin-v2-schedule-item-name">{med.name}</span>
+                                        {isPrn && (
+                                          <span className="admin-v2-badge admin-v2-badge-prn" title="As-needed dose">
+                                            PRN
+                                          </span>
+                                        )}
                                         {med.dose_amount && (
                                           <span className="admin-v2-schedule-item-dose">
                                             {med.dose_amount} {med.dose_unit}
@@ -784,6 +793,18 @@ const AdminV2Schedule = () => {
                                   </React.Fragment>
                                 );
                               })}
+                              {/* Explicit PRN tap target — the column itself is clickable,
+                                  but when items fill the cell there's no white space to hit
+                                  on touch devices. */}
+                              <div className="admin-v2-schedule-divider" />
+                              <button
+                                type="button"
+                                className="admin-v2-schedule-prn-add"
+                                onClick={(e) => { e.stopPropagation(); openPrnModal('medication', hour); }}
+                                title="Log PRN medication"
+                              >
+                                + PRN
+                              </button>
                             </div>
                           )}
                         </div>
