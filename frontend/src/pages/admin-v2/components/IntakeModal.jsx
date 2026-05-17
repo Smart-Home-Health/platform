@@ -229,7 +229,7 @@ const IntakeModal = ({ open, onClose, onSaved, patient, editing, defaultDateTime
             {/* Nutrition Details Card */}
             <div className="admin-v2-output-details-card">
               <h4 className="admin-v2-output-card-title"><FlameIcon size={16} /> Nutrition (Optional)</h4>
-              <div className="admin-v2-form-row">
+              <div className="admin-v2-form-row-3">
                 <div className="admin-v2-form-group">
                   <label>Calories</label>
                   <input

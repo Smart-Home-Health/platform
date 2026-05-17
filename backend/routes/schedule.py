@@ -106,7 +106,7 @@ async def get_daily_schedule(
 
         # Get all scheduled items (now includes completion status from joined logs)
         medications = get_scheduled_medications(db, schedule_date, patient_id, tz_offset_minutes=tz_offset_minutes)
-        nutrition_items = get_scheduled_nutrition(db, schedule_date, patient_id)
+        nutrition_items = get_scheduled_nutrition(db, schedule_date, patient_id, tz_offset_minutes=tz_offset_minutes)
         care_tasks = get_scheduled_care_tasks(db, schedule_date, patient_id)
         
         # Build response - completion status already included from get_scheduled_* functions
@@ -154,7 +154,11 @@ async def get_daily_schedule(
                 "completed": nutr["completed"],
                 "completed_at": nutr["completed_at"],
                 "completed_by": nutr["completed_by"],
-                "type": "nutrition"
+                "is_prn": nutr.get("is_prn", False),
+                "intake_type": nutr.get("intake_type", "intake"),
+                "output_type": nutr.get("output_type"),
+                "log_id": nutr.get("log_id"),
+                "type": "nutrition",
             })
         
         for task in care_tasks:

@@ -37,6 +37,78 @@ export const utcTimeToLocal = (utcHour, utcMinute) => {
 };
 
 /**
+ * Day-of-week shift when converting a local wall-clock time to UTC.
+ *
+ * If localTimeToUTC rolls the date forward (e.g. 21:00 EDT → 01:00 UTC next day),
+ * a cron firing at that UTC time on UTC-day-N actually corresponds to local-day-(N-1).
+ * Same idea in reverse for positive offsets that roll back.
+ *
+ * Returns 0 (same day), 1 (UTC is one day ahead of local), or -1 (UTC is one day
+ * behind local) for the given local HH:MM.
+ *
+ * @param {string} timeStr - Local time in HH:MM format
+ * @returns {number} day shift in {-1, 0, 1}
+ */
+export const utcDayShiftForLocalTime = (timeStr) => {
+  const [hour, minute] = timeStr.split(':').map(Number);
+  const now = new Date();
+  const localDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minute);
+  // Compare the LOCAL calendar date of localDate to the UTC calendar date.
+  // We use day-of-month + month + year to avoid any edge case across week boundaries.
+  const localDay = localDate.getDate();
+  const utcDay = localDate.getUTCDate();
+  const localMonth = localDate.getMonth();
+  const utcMonth = localDate.getUTCMonth();
+  const localYear = localDate.getFullYear();
+  const utcYear = localDate.getUTCFullYear();
+  // Build comparable values
+  const localKey = localYear * 10000 + localMonth * 100 + localDay;
+  const utcKey = utcYear * 10000 + utcMonth * 100 + utcDay;
+  if (utcKey > localKey) return 1;   // UTC is the next calendar day
+  if (utcKey < localKey) return -1;  // UTC is the previous calendar day
+  return 0;
+};
+
+/**
+ * Build the (minute, hour, days) tuple of a weekly cron expression from a local
+ * time and a list of local day-of-week numbers (0=Sun..6=Sat). Properly shifts
+ * the day list when local→UTC conversion crosses midnight.
+ *
+ * @param {string} timeStr - Local time in HH:MM format
+ * @param {Array<number|string>} localDays - day-of-week numbers in local time
+ * @returns {{ hour: number, minute: number, days: number[] }}
+ */
+export const localTimeAndDaysToUTC = (timeStr, localDays) => {
+  const utc = localTimeToUTC(timeStr);
+  const shift = utcDayShiftForLocalTime(timeStr);
+  const utcDays = Array.from(new Set(
+    (localDays || []).map(d => ((parseInt(d, 10) + shift) % 7 + 7) % 7)
+  )).sort((a, b) => a - b);
+  return { hour: utc.hour, minute: utc.minute, days: utcDays };
+};
+
+/**
+ * Inverse of localTimeAndDaysToUTC: given a cron firing's UTC hour/minute and
+ * UTC day-of-week list, return the local HH:MM and local day-of-week list.
+ *
+ * @param {number} utcHour
+ * @param {number} utcMinute
+ * @param {Array<number|string>} utcDays - day-of-week numbers in UTC
+ * @returns {{ time: string, days: number[] }}
+ */
+export const utcCronToLocalDaysAndTime = (utcHour, utcMinute, utcDays) => {
+  const time = utcTimeToLocal(utcHour, utcMinute);
+  // To shift back to local, figure out the local day-of-week that `time` corresponds
+  // to relative to today's UTC day-of-week. The shift from UTC→local is the negation
+  // of the local→UTC shift for the resulting local time.
+  const reverseShift = -utcDayShiftForLocalTime(time);
+  const localDays = Array.from(new Set(
+    (utcDays || []).map(d => ((parseInt(d, 10) + reverseShift) % 7 + 7) % 7)
+  )).sort((a, b) => a - b);
+  return { time, days: localDays };
+};
+
+/**
  * Parse a cron expression and return display-friendly info
  * Converts UTC times in cron to local time for display
  * @param {string} cronExpression - Cron expression (minute hour dayOfMonth month dayOfWeek)
@@ -49,16 +121,24 @@ export const parseCronExpression = (cronExpression) => {
   if (parts.length !== 5) return null;
   
   const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
-  
-  // Convert UTC hour/minute to local time for display
-  const timeStr = utcTimeToLocal(parseInt(hour), parseInt(minute));
-  
+
   // Check if it's weekly (dayOfWeek is not *)
   if (dayOfWeek !== '*') {
+    // Shift UTC days back to local days so the displayed weekdays match what
+    // the user actually sees in their timezone (the cron's days are UTC days).
+    const utcDayList = dayOfWeek.split(',').map(d => parseInt(d, 10));
+    const { time: timeStr, days: localDayNums } = utcCronToLocalDaysAndTime(
+      parseInt(hour, 10),
+      parseInt(minute, 10),
+      utcDayList,
+    );
     const daysMap = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const days = dayOfWeek.split(',').map(d => daysMap[parseInt(d)]).join(', ');
-    return { type: 'weekly', time: timeStr, days };
+    const days = localDayNums.map(d => daysMap[d]).join(', ');
+    return { type: 'weekly', time: timeStr, days, dayNumbers: localDayNums };
   }
+
+  // Convert UTC hour/minute to local time for display
+  const timeStr = utcTimeToLocal(parseInt(hour), parseInt(minute));
   
   // Check if it's monthly (dayOfMonth is not *)
   if (dayOfMonth !== '*') {

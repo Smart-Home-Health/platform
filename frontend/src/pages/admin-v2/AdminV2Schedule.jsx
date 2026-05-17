@@ -834,15 +834,20 @@ const AdminV2Schedule = () => {
                                 </button>
                               )}
                               {nutritionByHour[hour].map((item, idx) => {
-                                const itemKey = `nutrition-${item.schedule_id}-${item.scheduled_time}`;
+                                // PRN intakes/outputs have no schedule_id — key off log_id.
+                                const rowId = item.schedule_id ?? `prn-${item.intake_type || 'intake'}-${item.log_id}`;
+                                const itemKey = `nutrition-${rowId}-${item.scheduled_time}`;
+                                const isPrn = !!item.is_prn;
+                                const isOutput = item.intake_type === 'output';
                                 return (
-                                  <React.Fragment key={`nutr-${item.schedule_id}-${idx}`}>
+                                  <React.Fragment key={`nutr-${rowId}-${idx}`}>
                                     {idx > 0 && <div className="admin-v2-schedule-divider" />}
                                     <div
                                       className={`admin-v2-schedule-item ${item.completed ? 'completed' : 'clickable'} ${completing[itemKey] ? 'completing' : ''}`}
-                                      onClick={(e) => { e.stopPropagation(); if (!item.completed) handleCompleteItem('nutrition', item); }}
+                                      onClick={(e) => { e.stopPropagation(); if (!item.completed && !isPrn) handleCompleteItem('nutrition', item); }}
                                       role="button"
-                                      tabIndex={item.completed ? -1 : 0}
+                                      tabIndex={item.completed || isPrn ? -1 : 0}
+                                      title={isPrn ? (isOutput ? 'Output logged ad-hoc' : 'Intake logged ad-hoc') : undefined}
                                     >
                                       <div className="admin-v2-schedule-item-header">
                                         {(() => {
@@ -855,6 +860,14 @@ const AdminV2Schedule = () => {
                                           );
                                         })()}
                                         <span className="admin-v2-schedule-item-name">{item.name}</span>
+                                        {isPrn && (
+                                          <span
+                                            className={`admin-v2-badge admin-v2-badge-prn admin-v2-badge-prn-${isOutput ? 'out' : 'in'}`}
+                                            title={isOutput ? 'Output (PRN)' : 'Intake (PRN)'}
+                                          >
+                                            {isOutput ? 'PRN Out' : 'PRN In'}
+                                          </span>
+                                        )}
                                         {(item.default_amount || item.default_item) && (
                                           <span className="admin-v2-schedule-item-dose">
                                             {item.default_item && <span>{item.default_item}</span>}
@@ -871,6 +884,16 @@ const AdminV2Schedule = () => {
                                   </React.Fragment>
                                 );
                               })}
+                              {/* Explicit PRN tap target — mirrors the meds column. */}
+                              <div className="admin-v2-schedule-divider" />
+                              <button
+                                type="button"
+                                className="admin-v2-schedule-prn-add"
+                                onClick={(e) => { e.stopPropagation(); openPrnModal('nutrition', hour); }}
+                                title="Log PRN intake or output"
+                              >
+                                + PRN
+                              </button>
                             </div>
                           )}
                         </div>

@@ -43,7 +43,7 @@ import {
   SnackIcon,
   TubeIcon
 } from '../../components/Icons';
-import { localTimeToUTC, formatCronExpression, getCurrentLocalDateTime, localDateTimeToUTC, getLocalDateTimeString } from '../../utils/timezone';
+import { localTimeToUTC, localTimeAndDaysToUTC, utcCronToLocalDaysAndTime, formatCronExpression, getCurrentLocalDateTime, localDateTimeToUTC, getLocalDateTimeString } from '../../utils/timezone';
 import './AdminV2.css';
 
 const AdminV2Nutrition = () => {
@@ -332,31 +332,53 @@ const AdminV2Nutrition = () => {
     if (!cronExpr) return;
     const parts = cronExpr.split(' ');
     if (parts.length < 5) return;
-    
+
     const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
-    setScheduleTime(`${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`);
-    
+
     if (dayOfMonth !== '*') {
+      // Cron times are stored in UTC; convert hour/minute to local for display.
+      const utc = new Date();
+      utc.setUTCHours(parseInt(hour, 10), parseInt(minute, 10), 0, 0);
+      setScheduleTime(
+        `${String(utc.getHours()).padStart(2, '0')}:${String(utc.getMinutes()).padStart(2, '0')}`
+      );
       setScheduleMode('monthly');
       setSelectedDayOfMonth(parseInt(dayOfMonth) || 1);
     } else if (dayOfWeek !== '*') {
+      // Shift UTC days back to local days so the day checkboxes match what the
+      // user originally picked. utcCronToLocalDaysAndTime also returns the
+      // local HH:MM derived from the UTC hour/minute.
+      const utcDayList = dayOfWeek.split(',').map(d => parseInt(d, 10));
+      const { time, days } = utcCronToLocalDaysAndTime(
+        parseInt(hour, 10),
+        parseInt(minute, 10),
+        utcDayList,
+      );
+      setScheduleTime(time);
       setScheduleMode('weekly');
-      setSelectedDays(dayOfWeek.split(',').map(d => parseInt(d)));
+      setSelectedDays(days);
     } else {
+      const utc = new Date();
+      utc.setUTCHours(parseInt(hour, 10), parseInt(minute, 10), 0, 0);
+      setScheduleTime(
+        `${String(utc.getHours()).padStart(2, '0')}:${String(utc.getMinutes()).padStart(2, '0')}`
+      );
       setScheduleMode('daily');
     }
   };
 
   const buildCronExpression = () => {
-    // Convert local time to UTC for cron expression (DB stores in UTC)
-    const utc = localTimeToUTC(scheduleTime);
-    
     if (scheduleMode === 'daily') {
+      const utc = localTimeToUTC(scheduleTime);
       return `${utc.minute} ${utc.hour} * * *`;
     } else if (scheduleMode === 'weekly') {
       if (selectedDays.length === 0) return null;
-      return `${utc.minute} ${utc.hour} * * ${selectedDays.sort().join(',')}`;
+      // Convert local time AND local days-of-week to UTC together — the cron's
+      // day list must shift when the time conversion crosses midnight.
+      const utc = localTimeAndDaysToUTC(scheduleTime, selectedDays);
+      return `${utc.minute} ${utc.hour} * * ${utc.days.join(',')}`;
     } else if (scheduleMode === 'monthly') {
+      const utc = localTimeToUTC(scheduleTime);
       return `${utc.minute} ${utc.hour} ${selectedDayOfMonth} * *`;
     }
     return null;

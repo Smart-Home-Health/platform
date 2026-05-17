@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import config from '../../config';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
-import { localTimeToUTC, parseCronExpression } from '../../utils/timezone';
+import { localTimeToUTC, localTimeAndDaysToUTC, parseCronExpression } from '../../utils/timezone';
 
 const CareTaskScheduleView = ({ taskId, taskName, onClose }) => {
   const { selectedPatient } = useAdminPatient();
@@ -101,21 +101,26 @@ const CareTaskScheduleView = ({ taskId, taskName, onClose }) => {
   const handleAddSchedule = async () => {
     let cron = '';
     let description = '';
-    // Convert local time to UTC for cron expression (DB stores in UTC)
-    const utc = localTimeToUTC(time);
-    
+
     if (scheduleMode === 'weekly') {
       if (selectedDays.length === 0) return;
-      const dow = selectedDays.sort().join(',');
-      cron = `${utc.minute} ${utc.hour} * * ${dow}`;
-      
+      // Convert local time AND local days-of-week to UTC together — the cron's
+      // day list must shift when the time conversion crosses midnight.
+      const utc = localTimeAndDaysToUTC(time, selectedDays);
+      cron = `${utc.minute} ${utc.hour} * * ${utc.days.join(',')}`;
+
       // Generate human-readable description for weekly schedule
       const daysMap = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-      const dayNames = selectedDays.map(d => daysMap[parseInt(d)]).join(', ');
+      const dayNames = selectedDays
+        .slice()
+        .sort((a, b) => parseInt(a) - parseInt(b))
+        .map(d => daysMap[parseInt(d)])
+        .join(', ');
       description = `${dayNames} at ${time}`;
     } else {
+      const utc = localTimeToUTC(time);
       cron = `${utc.minute} ${utc.hour} ${selectedDayOfMonth} * *`;
-      
+
       // Generate human-readable description for monthly schedule
       description = `Day ${selectedDayOfMonth} of each month at ${time}`;
     }

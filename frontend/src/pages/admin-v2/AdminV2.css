@@ -1486,7 +1486,16 @@
   margin-bottom: 1rem;
 }
 
-.admin-v2-form-row .admin-v2-form-group {
+/* 3-column variant for triples (e.g. macros: calories/protein/carbs). */
+.admin-v2-form-row-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.admin-v2-form-row .admin-v2-form-group,
+.admin-v2-form-row-3 .admin-v2-form-group {
   margin-bottom: 0;
 }
 
@@ -3522,6 +3531,18 @@
   font-size: 0.65rem;
 }
 
+/* Nutrition PRN variants: green for intake (matches nutrition column accent),
+   amber for output so caregivers can tell them apart at a glance. */
+.admin-v2-badge-prn-in {
+  background: rgba(126, 231, 135, 0.18);
+  color: #7ee787;
+}
+
+.admin-v2-badge-prn-out {
+  background: rgba(210, 153, 34, 0.18);
+  color: #d29922;
+}
+
 .admin-v2-badge-type-medical {
   background: rgba(63, 185, 80, 0.2);
   color: #3fb950;
@@ -4570,48 +4591,103 @@ body.printing-schedule .admin-v2-schedule-prn-add {
     padding-left: 1rem;
     padding-right: 1rem;
   }
-  /* Date nav: wrap so nothing is cramped */
+  /* On the schedule page: kill .admin-v2-content's top padding so the
+     sticky nav sits flush against the mobile header instead of floating
+     1rem below it. :has() lets us scope this without a JSX change. */
+  .admin-v2-content:has(.admin-v2-schedule-nav) {
+    padding-top: 0;
+  }
+
+  /* Date nav on mobile: slim, single row, sticky at the top of the scroll
+     area so the user can change days from anywhere in the schedule. Today
+     and Print buttons are hidden — the inline TODAY badge marks "today" and
+     Print is rarely used on phones. Bleeds to the horizontal edges of
+     .admin-v2-content (1rem padding) so the sticky bar spans full width. */
   .admin-v2-schedule-nav {
-    flex-wrap: wrap;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    flex-wrap: nowrap;
     gap: 0.5rem;
-    padding: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    margin: 0 -1rem;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    border-top: none;
   }
+  .admin-v2-schedule-nav .admin-v2-btn-sm,
+  .admin-v2-schedule-nav .admin-v2-btn-primary {
+    display: none;
+  }
+  /* Hide the redundant formatted date text on mobile — the native date
+     picker on the right of the nav already displays the full date and is
+     a tap target. Keep only the TODAY badge as an "is today" indicator. */
   .admin-v2-schedule-date {
-    flex: 1 1 100%;
-    order: 1;
-    justify-content: center;
-    padding: 0.25rem 0;
-    font-size: 0.95rem;
+    flex: 0 0 auto;
+    order: 0;
+    padding: 0;
+    gap: 0;
   }
-  .admin-v2-schedule-date span:first-of-type {
-    flex: 1;
-    min-width: 0;
-    text-align: center;
+  .admin-v2-schedule-date > svg,
+  .admin-v2-schedule-date > span:not(.admin-v2-today-badge) {
+    display: none;
+  }
+  /* When not viewing today, the badge isn't rendered, leaving a visually-
+     empty .admin-v2-schedule-date that still claims a flex gap. Collapse it. */
+  .admin-v2-schedule-date:not(:has(.admin-v2-today-badge)) {
+    display: none;
   }
   .admin-v2-today-badge {
     flex-shrink: 0;
   }
   .admin-v2-schedule-nav .admin-v2-btn-icon {
+    flex: 0 0 auto;
     order: 0;
+    width: 32px;
+    height: 32px;
   }
-  .admin-v2-schedule-nav .admin-v2-btn-sm,
-  .admin-v2-schedule-nav .admin-v2-date-picker,
-  .admin-v2-schedule-nav .admin-v2-btn-primary {
-    order: 2;
-    margin-left: 0 !important;
-  }
+  /* Date picker is now the sole date display on mobile (formatted span hidden
+     above) — let it fill available space between the chevrons and TODAY badge. */
   .admin-v2-schedule-nav .admin-v2-date-picker {
-    flex: 1;
+    flex: 1 1 auto;
+    order: 0;
+    margin-left: 0 !important;
+    padding: 0.35rem 0.5rem;
+    font-size: 0.85rem;
+    width: auto;
     min-width: 0;
-    max-width: 140px;
-  }
-  .admin-v2-schedule-nav .admin-v2-btn-primary {
-    margin-left: auto;
+    max-width: none;
+    text-align: center;
   }
   .admin-v2-schedule-nav,
   .admin-v2-summary-stats.admin-v2-schedule-stats,
   .admin-v2-schedule-container {
     max-width: 100%;
+  }
+
+  /* Monitoring → Timeline reuses the schedule date nav. The page wraps the
+     timeline in .admin-v2-monitoring with an h1 + subtitle header that's
+     redundant with the mobile top bar — hide it so the sticky date nav
+     sits flush against the top, and let timeline content scroll cleanly
+     beneath. Scoped with :has() so the Alerts/History/Settings sub-views
+     (no schedule-nav) keep their page header. */
+  .admin-v2-monitoring:has(.admin-v2-schedule-nav) .admin-v2-monitoring-header {
+    display: none;
+  }
+  /* Everything after the sticky date nav inside the timeline must stack
+     below it (z-index: 50) so it slides under cleanly. The chart container
+     uses inline position:relative; pinning siblings to z-index 0 makes that
+     positioned chart respect the nav's stacking order. */
+  .admin-v2-monitoring .admin-v2-schedule-nav ~ * {
+    position: relative;
+    z-index: 0;
+  }
+  /* Breathing room between the sticky nav and the filter chip bar that
+     follows it — the nav's margin: 0 -1rem (above) zeroes its bottom margin,
+     so the filter bar would otherwise sit flush against it. */
+  .admin-v2-monitoring .admin-v2-schedule-nav + * {
+    margin-top: 0.5rem;
   }
 
   /* Dashboard summary stats on mobile: same style as schedule - small cards, icon + value only */
@@ -4763,12 +4839,20 @@ body.printing-schedule .admin-v2-schedule-prn-add {
     min-width: 560px;
   }
 
-  /* Summary stats on mobile: side-by-side compact cards (icon + X/Y only) */
+  /* Summary stats on mobile: side-by-side compact cards (icon + X/Y only).
+     Sticky directly below the date nav so the schedule items scroll under
+     both. top: 49px ≈ nav padding (8+8) + button (32) + border (1). */
   .admin-v2-summary-stats.admin-v2-schedule-stats {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
     gap: 0.5rem;
-    margin-bottom: 1rem;
+    margin: 0 -1rem 1rem !important;
+    padding: 0.5rem 1rem 0.75rem;
+    position: sticky;
+    top: 49px;
+    z-index: 45;
+    background: #0d1117;
+    border-bottom: 1px solid #30363d;
   }
   .admin-v2-schedule-stats-spacer {
     display: none;
@@ -6939,8 +7023,50 @@ body.printing-schedule .admin-v2-schedule-prn-add {
 
 .admin-v2-output-type-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 0.5rem;
+}
+
+/* Step-1 location picker — large thumb-friendly tiles */
+.admin-v2-output-location-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+}
+.admin-v2-output-location-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 1.5rem 1rem;
+  min-height: 110px;
+  background: #161b22;
+  border: 2px solid #30363d;
+  border-radius: 10px;
+  color: #e6edf3;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.admin-v2-output-location-btn:hover,
+.admin-v2-output-location-btn:focus-visible {
+  border-color: #58a6ff;
+  background: #1c2230;
+  outline: none;
+}
+.admin-v2-output-location-label {
+  font-size: 1rem;
+  font-weight: 600;
+}
+.admin-v2-output-location-desc {
+  font-size: 0.75rem;
+  color: #8b949e;
+}
+@media (max-width: 480px) {
+  .admin-v2-output-location-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .admin-v2-output-type-btn {
@@ -7221,13 +7347,100 @@ body.printing-schedule .admin-v2-schedule-prn-add {
   .admin-v2-output-type-grid {
     grid-template-columns: repeat(2, 1fr);
   }
-  
+
   .admin-v2-output-concerns-grid {
     grid-template-columns: repeat(2, 1fr);
   }
-  
+
   .admin-v2-output-method-options {
     flex-direction: column;
+  }
+}
+
+/* Mobile sizing for any admin-v2 modal (intake, output, etc).
+   - Edge-to-edge so we don't waste viewport on padding around the modal
+   - Modal pinned to top so iOS dvh fluctuations don't drift the content
+   - Body uses explicit flex:1 1 0 + touch momentum scroll so the first
+     row of content never sits underneath the header
+   - font-size: 16px on inputs prevents iOS auto-zoom on focus */
+@media (max-width: 768px) {
+  /* Admin-v2 has a sticky mobile header (~64px) that the modal overlay
+     was sliding underneath. Pin the overlay to start just below it so
+     the modal's own header is fully visible and the page menu button
+     stays reachable. */
+  .admin-v2-modal-overlay {
+    padding: 0;
+    align-items: flex-start;
+    justify-content: stretch;
+    top: 64px;
+  }
+  .admin-v2-modal {
+    width: 100vw;
+    max-width: 100vw;
+    height: calc(100vh - 64px);
+    height: calc(100dvh - 64px);
+    max-height: calc(100vh - 64px);
+    max-height: calc(100dvh - 64px);
+    border-radius: 0;
+    border: none;
+    margin: 0;
+  }
+  .admin-v2-modal form {
+    flex: 1 1 0;
+    min-height: 0;
+  }
+  .admin-v2-modal-header {
+    padding: 0.75rem 1rem;
+    flex: 0 0 auto;
+  }
+  .admin-v2-modal-header h2,
+  .admin-v2-modal-header h3 {
+    font-size: 1rem;
+  }
+  .admin-v2-modal-body {
+    padding: 0.875rem;
+    flex: 1 1 0;
+    min-height: 0;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+  .admin-v2-modal-footer {
+    padding: 0.75rem 1rem;
+    flex: 0 0 auto;
+  }
+  .admin-v2-form-row,
+  .admin-v2-form-row-3 {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+  .admin-v2-output-details-card {
+    padding: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+  .admin-v2-output-card-title {
+    font-size: 0.85rem;
+    margin-bottom: 0.625rem;
+    padding-bottom: 0.4rem;
+  }
+  .admin-v2-form-group input,
+  .admin-v2-form-group select,
+  .admin-v2-form-group textarea,
+  .admin-v2-output-notes-section textarea {
+    padding: 0.75rem;
+    font-size: 16px;
+  }
+  /* Output location tiles — shrink so all four fit without needing
+     scroll on the location step. Still ≥44px tall for touch. */
+  .admin-v2-output-location-btn {
+    min-height: 80px;
+    padding: 0.875rem 0.75rem;
+  }
+  .admin-v2-output-location-label {
+    font-size: 0.95rem;
+  }
+  .admin-v2-output-location-desc {
+    font-size: 0.7rem;
   }
 }
 

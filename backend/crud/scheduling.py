@@ -614,6 +614,7 @@ from schemas.medication_schedule import MedicationSchedule
 from schemas.medication_log import MedicationLog
 from schemas.nutrition_schedule import NutritionSchedule
 from schemas.nutrition_intake import NutritionIntake
+from schemas.nutrition_output import NutritionOutput
 
 
 def get_scheduled_medications(db: Session, target_date, patient_id: int, tz_offset_minutes=None):
@@ -842,11 +843,23 @@ def get_scheduled_care_tasks(db: Session, target_date, patient_id: int):
         return []
 
 
-def get_scheduled_nutrition(db: Session, target_date, patient_id: int):
+def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset_minutes=None):
     """
     Get all nutrition items scheduled for a specific date for a patient.
     Uses the nutrition_schedules table for meals, hydration, bathroom checks, etc.
     Returns completion status by joining to nutrition_intake.
+
+    Also surfaces ad-hoc / PRN logs whose timestamp falls on `target_date` so
+    the unified schedule view shows what was actually consumed/output:
+      - NutritionIntake rows with schedule_id IS NULL (PRN intakes)
+      - NutritionOutput rows (outputs are always ad-hoc; no schedule table)
+    Both are marked with is_prn=True and intake_type='intake'|'output' so the
+    frontend can render them as info-only rows (no mark-complete affordance).
+
+    `tz_offset_minutes` is the minutes the caller's local time is ahead of UTC
+    (matches the meds path). When provided, PRN logs are bucketed by the
+    caller's local day rather than UTC midnight — otherwise an evening log in
+    a negative-offset timezone (e.g. 9pm EDT) would land on the next UTC day.
     """
     try:
         # Get all active nutrition schedules for this patient
@@ -854,44 +867,44 @@ def get_scheduled_nutrition(db: Session, target_date, patient_id: int):
             NutritionSchedule.is_active == True,
             NutritionSchedule.patient_id == patient_id
         ).all()
-        
+
         # Get all nutrition intake logs for the target date for this patient
         nutrition_logs = db.query(NutritionIntake).filter(
             NutritionIntake.patient_id == patient_id,
             NutritionIntake.schedule_id.isnot(None),
             cast(NutritionIntake.scheduled_time, Date) == target_date
         ).all()
-        
+
         # Build a lookup dict: {(schedule_id, HH:MM): log}
         log_lookup = {}
         for log in nutrition_logs:
             if log.scheduled_time:
                 key = (log.schedule_id, log.scheduled_time.strftime('%H:%M'))
                 log_lookup[key] = log
-        
+
         scheduled_nutrition = []
-        
+
         for schedule in schedules:
             try:
                 # Cron expressions are stored in UTC
                 start_of_day_utc = datetime.combine(target_date, datetime.min.time()).replace(tzinfo=timezone.utc)
-                
+
                 # Initialize croniter with a time before the target date (in UTC)
                 base_time = start_of_day_utc - timedelta(days=1)
                 cron = croniter(schedule.cron_expression, base_time)
-                
+
                 # Find all scheduled times, checking their LOCAL date
                 while True:
                     next_time_utc = cron.get_next(datetime).replace(tzinfo=timezone.utc)
                     next_time_local = next_time_utc.astimezone()
-                    
+
                     if next_time_local.date() > target_date:
                         break
                     if next_time_local.date() == target_date:
                         # Check if completed
                         key = (schedule.id, next_time_local.strftime('%H:%M'))
                         log = log_lookup.get(key)
-                        
+
                         scheduled_nutrition.append({
                             'schedule_id': schedule.id,
                             'name': schedule.name,
@@ -907,14 +920,118 @@ def get_scheduled_nutrition(db: Session, target_date, patient_id: int):
                             # Completion info
                             'completed': log is not None,
                             'completed_at': log.consumed_at.isoformat() if log else None,
-                            'completed_by': log.recorded_by if log else None
+                            'completed_by': log.recorded_by if log else None,
+                            'is_prn': False,
+                            'intake_type': 'intake',
+                            'log_id': log.id if log else None,
                         })
             except Exception as cron_error:
                 logger.error(f"Error processing nutrition cron expression {schedule.cron_expression}: {cron_error}")
                 continue
-        
+
+        # Mirror the PRN-medication behavior: ad-hoc intakes & outputs that
+        # happened during the local day get surfaced at the hour they
+        # occurred. They are already "done" so they render as completed.
+        # Range is the caller's local-midnight-to-midnight expressed in UTC
+        # so a 9pm EDT log doesn't slide onto the next UTC day.
+        if tz_offset_minutes is None:
+            local_start_utc = datetime.combine(target_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+            local_end_utc = local_start_utc + timedelta(days=1)
+        else:
+            offset = timedelta(minutes=tz_offset_minutes)
+            local_midnight_naive = datetime.combine(target_date, datetime.min.time())
+            local_start_utc = (local_midnight_naive - offset).replace(tzinfo=timezone.utc)
+            local_end_utc = local_start_utc + timedelta(days=1)
+
+        prn_intakes = db.query(NutritionIntake).filter(
+            NutritionIntake.patient_id == patient_id,
+            NutritionIntake.schedule_id.is_(None),
+            NutritionIntake.consumed_at >= local_start_utc,
+            NutritionIntake.consumed_at < local_end_utc,
+        ).all()
+
+        for intake in prn_intakes:
+            consumed = intake.consumed_at
+            if consumed is None:
+                continue
+            if consumed.tzinfo is None:
+                consumed = consumed.replace(tzinfo=timezone.utc)
+            consumed_local = consumed.astimezone()
+            scheduled_nutrition.append({
+                'schedule_id': None,
+                'name': intake.item_name,
+                'schedule_type': intake.item_type,
+                'default_item_name': intake.item_name,
+                'default_amount': intake.amount,
+                'default_amount_unit': intake.amount_unit,
+                'default_calories': intake.calories,
+                'scheduled_time': consumed_local.replace(tzinfo=None),
+                'instructions': None,
+                'notes': intake.notes,
+                'cron_expression': None,
+                'completed': True,
+                'completed_at': consumed.isoformat(),
+                'completed_by': intake.recorded_by,
+                'is_prn': True,
+                'intake_type': 'intake',
+                'log_id': intake.id,
+            })
+
+        prn_outputs = db.query(NutritionOutput).filter(
+            NutritionOutput.patient_id == patient_id,
+            NutritionOutput.occurred_at >= local_start_utc,
+            NutritionOutput.occurred_at < local_end_utc,
+        ).all()
+
+        # Human-readable label for the row name. We don't keep a free-text
+        # "name" on outputs, so synthesize one from the output_type plus the
+        # most-distinguishing flag (diaper/catheter/accident).
+        def _output_label(o):
+            type_labels = {
+                'urine': 'Urine',
+                'bowel': 'Bowel movement',
+                'vomit': 'Vomit',
+                'other': 'Output',
+            }
+            label = type_labels.get(o.output_type, (o.output_type or 'Output').replace('_', ' ').title())
+            if o.is_diaper:
+                return f"{label} (diaper)"
+            if o.is_catheter:
+                return f"{label} (catheter)"
+            if o.is_accident:
+                return f"{label} (accident)"
+            return label
+
+        for output in prn_outputs:
+            occurred = output.occurred_at
+            if occurred is None:
+                continue
+            if occurred.tzinfo is None:
+                occurred = occurred.replace(tzinfo=timezone.utc)
+            occurred_local = occurred.astimezone()
+            scheduled_nutrition.append({
+                'schedule_id': None,
+                'name': _output_label(output),
+                'schedule_type': 'output',
+                'default_item_name': None,
+                'default_amount': output.amount,
+                'default_amount_unit': output.amount_unit,
+                'default_calories': None,
+                'scheduled_time': occurred_local.replace(tzinfo=None),
+                'instructions': None,
+                'notes': output.notes,
+                'cron_expression': None,
+                'completed': True,
+                'completed_at': occurred.isoformat(),
+                'completed_by': output.recorded_by,
+                'is_prn': True,
+                'intake_type': 'output',
+                'log_id': output.id,
+                'output_type': output.output_type,
+            })
+
         return sorted(scheduled_nutrition, key=lambda x: x['scheduled_time'])
-        
+
     except Exception as e:
         logger.error(f"Error getting scheduled nutrition: {e}")
         return []

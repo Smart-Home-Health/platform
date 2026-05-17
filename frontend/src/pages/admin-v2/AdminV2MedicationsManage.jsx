@@ -13,7 +13,7 @@ import {
   MedicationsIcon,
   ClockIcon
 } from '../../components/Icons';
-import { localTimeToUTC, utcTimeToLocal, parseCronExpression } from '../../utils/timezone';
+import { localTimeToUTC, localTimeAndDaysToUTC, utcTimeToLocal, parseCronExpression } from '../../utils/timezone';
 import './AdminV2.css';
 
 const AdminV2MedicationsManage = () => {
@@ -361,16 +361,20 @@ const AdminV2MedicationsManage = () => {
     try {
       let cron = '';
       let description = '';
-      // Convert local time to UTC for cron expression (DB stores in UTC)
-      const utc = localTimeToUTC(scheduleTime);
-      const [localHour, localMinute] = scheduleTime.split(':').map(Number);
-      
+
       if (scheduleMode === 'weekly') {
-        const dow = selectedDays.sort((a,b) => parseInt(a) - parseInt(b)).join(',');
-        cron = `${utc.minute} ${utc.hour} * * ${dow}`;
-        const dayNames = selectedDays.map(d => daysOfWeek[parseInt(d)]).join(', ');
+        // Convert local time AND local days-of-week to UTC together — the cron's
+        // day list must shift when the time conversion crosses midnight.
+        const utc = localTimeAndDaysToUTC(scheduleTime, selectedDays);
+        cron = `${utc.minute} ${utc.hour} * * ${utc.days.join(',')}`;
+        const dayNames = selectedDays
+          .slice()
+          .sort((a, b) => parseInt(a) - parseInt(b))
+          .map(d => daysOfWeek[parseInt(d)])
+          .join(', ');
         description = `${dayNames} at ${scheduleTime}`;
       } else {
+        const utc = localTimeToUTC(scheduleTime);
         cron = `${utc.minute} ${utc.hour} ${selectedDayOfMonth} * *`;
         description = `Day ${selectedDayOfMonth} of each month at ${scheduleTime}`;
       }
