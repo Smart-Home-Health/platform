@@ -368,6 +368,7 @@ async def complete_care_task(
             schedule_id=data.schedule_id,
             scheduled_time=scheduled_dt,
             completed_at=completed_at,
+            is_scheduled=True,
             status="completed",
             notes=data.notes,
             performed_by=data.user_id,
@@ -544,9 +545,11 @@ async def complete_bulk(
                         schedule_id=item.schedule_id,
                         scheduled_time=scheduled_dt,
                         completed_at=completed_at,
+                        is_scheduled=True,
                         status="completed",
                         notes=item.notes,
-                        completed_by=item.user_id
+                        performed_by=item.user_id,
+                        created_at=utc_now()
                     )
                     db.add(log)
                     results["care_tasks"].append({"schedule_id": item.schedule_id, "success": True})

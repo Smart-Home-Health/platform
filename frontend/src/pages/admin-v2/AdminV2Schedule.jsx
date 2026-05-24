@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
-import { PatientSelectorModal, IntakeModal, OutputModal, MedicationDoseModal } from './components';
+import { PatientSelectorModal, IntakeModal, OutputModal, MedicationDoseModal, CareTaskCompleteModal } from './components';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
@@ -93,6 +93,12 @@ const AdminV2Schedule = () => {
   const [showDoseModal, setShowDoseModal] = useState(false);
   const [doseModalMed, setDoseModalMed] = useState(null);
   const [doseModalDefaultDt, setDoseModalDefaultDt] = useState('');
+  // Care-task PRN flow
+  const [prnCareTasks, setPrnCareTasks] = useState([]);
+  const [prnCareTasksLoading, setPrnCareTasksLoading] = useState(false);
+  const [showCareTaskCompleteModal, setShowCareTaskCompleteModal] = useState(false);
+  const [careTaskModalTask, setCareTaskModalTask] = useState(null);
+  const [careTaskModalDefaultDt, setCareTaskModalDefaultDt] = useState('');
 
   // Build a default local datetime-local string for the clicked hour on the
   // currently viewed date. If we're on today and the clicked hour is in the
@@ -451,14 +457,14 @@ const AdminV2Schedule = () => {
       open: true,
       type,
       hour,
-      mode: type === 'nutrition' ? 'pick' : type === 'medication' ? 'pick' : null,
+      mode: type === 'care-task' ? 'pick' : type === 'nutrition' ? 'pick' : type === 'medication' ? 'pick' : null,
       selectedMed: null,
     });
     setPrnNutritionDefaultDt(dt);
     setDoseModalDefaultDt(dt);
-    if (type === 'medication') {
-      fetchPrnMeds();
-    }
+    setCareTaskModalDefaultDt(dt);
+    if (type === 'medication') fetchPrnMeds();
+    if (type === 'care-task') fetchPrnCareTasks();
   };
 
   const closePrnModal = () => {
@@ -498,6 +504,55 @@ const AdminV2Schedule = () => {
     closePrnModal();
     setDoseModalMed(med);
     setShowDoseModal(true);
+  };
+
+  const fetchPrnCareTasks = async () => {
+    if (!selectedPatient) return;
+    try {
+      setPrnCareTasksLoading(true);
+      const res = await fetch(
+        `${config.apiUrl}/api/care-tasks/active?patient_id=${selectedPatient.id}`,
+        { credentials: 'include' }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setPrnCareTasks(data.care_tasks || []);
+      } else {
+        setPrnError('Failed to load care tasks');
+      }
+    } catch (err) {
+      console.error('Error fetching care tasks:', err);
+      setPrnError('Error connecting to server');
+    } finally {
+      setPrnCareTasksLoading(false);
+    }
+  };
+
+  const pickPrnCareTask = (task) => {
+    closePrnModal();
+    setCareTaskModalTask(task);
+    setShowCareTaskCompleteModal(true);
+  };
+
+  // Group care tasks by category (sorted, color-coded) for the PRN picker.
+  const groupCareTasksByCategory = (tasks) => {
+    const groups = new Map();
+    for (const t of tasks) {
+      const key = t.category_id ?? -1;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          id: t.category_id,
+          name: t.category_name || 'Uncategorized',
+          color: t.category_color || '#a371f7',
+          tasks: [],
+        });
+      }
+      groups.get(key).tasks.push(t);
+    }
+    const arr = Array.from(groups.values());
+    arr.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    for (const g of arr) g.tasks.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    return arr;
   };
 
   const handlePrintSchedule = () => {
@@ -965,6 +1020,16 @@ const AdminV2Schedule = () => {
                                   </React.Fragment>
                                 );
                               })}
+                              {/* Explicit PRN tap target — mirrors meds/nutrition columns. */}
+                              <div className="admin-v2-schedule-divider" />
+                              <button
+                                type="button"
+                                className="admin-v2-schedule-prn-add"
+                                onClick={(e) => { e.stopPropagation(); openPrnModal('care-task', hour); }}
+                                title="Log ad-hoc care task"
+                              >
+                                + PRN
+                              </button>
                             </div>
                           )}
                         </div>
@@ -1337,30 +1402,73 @@ const AdminV2Schedule = () => {
                 
                 
                 {/* ───────────── Care tasks ───────────── */}
-                {prnModal.type === 'care-task' && (
-                  <div className="admin-v2-empty-state">
-                    <TasksIcon size={48} />
-                    <h3>Coming soon</h3>
-                    <p className="admin-v2-text-muted">
-                      Ad-hoc care task logging isn't wired up yet. For now, manage care tasks from the Care Tasks page.
-                    </p>
-                    <button
-                      type="button"
-                      className="admin-v2-btn admin-v2-btn-primary"
-                      onClick={() => {
-                        closePrnModal();
-                        navigate(`/care/care-tasks?patient=${selectedPatient.id}`);
-                      }}
-                      style={{ marginTop: '1rem' }}
-                    >
-                      Go to Care Tasks
-                    </button>
-                  </div>
+                {prnModal.type === 'care-task' && prnModal.mode === 'pick' && (
+                  <>
+                    {prnCareTasksLoading ? (
+                      <div className="admin-v2-loading">Loading care tasks...</div>
+                    ) : prnCareTasks.length === 0 ? (
+                      <div className="admin-v2-empty-state">
+                        <TasksIcon size={48} />
+                        <p className="admin-v2-text-muted">No active care tasks for this patient.</p>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        {groupCareTasksByCategory(prnCareTasks).map(group => (
+                          <div key={group.id ?? 'uncat'}>
+                            <div style={{
+                              display: 'flex', alignItems: 'center', gap: 8,
+                              marginBottom: 6,
+                              fontSize: '0.8rem', fontWeight: 700,
+                              color: group.color, textTransform: 'uppercase', letterSpacing: 0.5,
+                            }}>
+                              <span style={{
+                                width: 10, height: 10, borderRadius: '50%',
+                                backgroundColor: group.color,
+                              }} />
+                              {group.name}
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                              {group.tasks.map(task => (
+                                <button
+                                  key={task.id}
+                                  type="button"
+                                  className="admin-v2-btn"
+                                  onClick={() => pickPrnCareTask(task)}
+                                  style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    padding: '0.75rem 1rem',
+                                    textAlign: 'left',
+                                    background: '#21262d',
+                                    border: '1px solid #30363d',
+                                    borderLeft: `4px solid ${group.color}`,
+                                  }}
+                                >
+                                  <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                                    <strong style={{ color: '#e6edf3' }}>{task.name}</strong>
+                                    {task.description && (
+                                      <span style={{ color: '#8b949e', fontSize: '0.8rem', lineHeight: 1.3 }}>
+                                        {task.description}
+                                      </span>
+                                    )}
+                                  </span>
+                                  <span className="admin-v2-badge admin-v2-badge-primary" style={{ flexShrink: 0, marginLeft: 8 }}>
+                                    Log
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 
               <div className="admin-v2-modal-footer">
-                                                                {(prnModal.mode === 'pick' || prnModal.type === 'care-task') && (
+                {prnModal.mode === 'pick' && (
                   <button type="button" className="admin-v2-btn" onClick={closePrnModal}>
                     Close
                   </button>
@@ -1391,6 +1499,14 @@ const AdminV2Schedule = () => {
           patient={selectedPatient}
           medication={doseModalMed}
           defaultDateTime={doseModalDefaultDt}
+        />
+        <CareTaskCompleteModal
+          open={showCareTaskCompleteModal}
+          onClose={() => { setShowCareTaskCompleteModal(false); setCareTaskModalTask(null); }}
+          onSaved={fetchSchedule}
+          patient={selectedPatient}
+          task={careTaskModalTask}
+          defaultDateTime={careTaskModalDefaultDt}
         />
       </div>
     </AdminV2Layout>

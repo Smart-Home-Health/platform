@@ -25,6 +25,7 @@ import AdminV2MedicationsManage from './pages/admin-v2/AdminV2MedicationsManage'
 import AdminV2MedicationsSchedule from './pages/admin-v2/AdminV2MedicationsSchedule';
 import AdminV2MedicationsHistory from './pages/admin-v2/AdminV2MedicationsHistory';
 import AdminV2CareTasks from './pages/admin-v2/AdminV2CareTasks';
+import AdminV2CareTasksOverview from './pages/admin-v2/AdminV2CareTasksOverview';
 import AdminV2CareTasksSchedule from './pages/admin-v2/AdminV2CareTasksSchedule';
 import AdminV2CareTasksHistory from './pages/admin-v2/AdminV2CareTasksHistory';
 import AdminV2Equipment from './pages/admin-v2/AdminV2Equipment';
@@ -114,7 +115,8 @@ function AppContent() {
           <Route path="/care/medications/schedule" element={<ProtectedRoute><Layout><AdminV2MedicationsSchedule /></Layout></ProtectedRoute>} />
           <Route path="/care/medications/history" element={<ProtectedRoute><Layout><AdminV2MedicationsHistory /></Layout></ProtectedRoute>} />
           <Route path="/care/medications/manage" element={<ProtectedRoute><Layout><AdminV2MedicationsManage /></Layout></ProtectedRoute>} />
-          <Route path="/care/care-tasks" element={<ProtectedRoute><Layout><AdminV2CareTasks /></Layout></ProtectedRoute>} />
+          <Route path="/care/care-tasks" element={<ProtectedRoute><Layout><AdminV2CareTasksOverview /></Layout></ProtectedRoute>} />
+          <Route path="/care/care-tasks/manage" element={<ProtectedRoute><Layout><AdminV2CareTasks /></Layout></ProtectedRoute>} />
           <Route path="/care/care-tasks/schedule" element={<ProtectedRoute><Layout><AdminV2CareTasksSchedule /></Layout></ProtectedRoute>} />
           <Route path="/care/care-tasks/history" element={<ProtectedRoute><Layout><AdminV2CareTasksHistory /></Layout></ProtectedRoute>} />
           <Route path="/care/equipment" element={<ProtectedRoute><Layout><AdminV2Equipment /></Layout></ProtectedRoute>} />

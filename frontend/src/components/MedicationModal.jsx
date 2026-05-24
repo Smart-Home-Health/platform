@@ -502,44 +502,57 @@ const MedicationModal = ({ onClose }) => {
   return (
     <ModalBase isOpen={true} onClose={onClose} title={
       isMobile ? (
-        <select
-          value={tab}
-          onChange={(e) => {
-            const value = e.target.value;
-            if (value === 'prn') {
-              // PRN is a modal overlay — don't change tab
-              openPrnPicker();
-              e.target.value = tab;
-              return;
-            }
-            setTab(value);
-          }}
-          style={{
-            width: '100%',
-            padding: '12px 16px',
-            fontSize: '15px',
-            fontWeight: '600',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            borderRadius: '8px',
-            backgroundColor: '#1a2332',
-            color: '#fff',
-            cursor: 'pointer',
-            outline: 'none',
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
-            WebkitAppearance: 'none',
-            MozAppearance: 'none',
-            appearance: 'none',
-            backgroundImage: 'url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'white\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3e%3cpolyline points=\'6 9 12 15 18 9\'%3e%3c/polyline%3e%3c/svg%3e")',
-            backgroundRepeat: 'no-repeat',
-            backgroundPosition: 'right 12px center',
-            backgroundSize: '20px',
-            paddingRight: '40px'
-          }}
-        >
-          <option value="scheduled" style={{ backgroundColor: '#1a2332', color: '#fff' }}>📅 Scheduled</option>
-          <option value="active" style={{ backgroundColor: '#1a2332', color: '#fff' }}>✓ Active ({activeMedications.length})</option>
-          <option value="prn" disabled={!selectedPatient} style={{ backgroundColor: '#1a2332', color: '#fff' }}>💊 Give PRN</option>
-        </select>
+        <div style={{ display: 'flex', gap: 8, width: '100%' }}>
+          <select
+            value={tab}
+            onChange={(e) => setTab(e.target.value)}
+            style={{
+              flex: 1,
+              padding: '12px 16px',
+              fontSize: '15px',
+              fontWeight: '600',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              borderRadius: '8px',
+              backgroundColor: '#1a2332',
+              color: '#fff',
+              cursor: 'pointer',
+              outline: 'none',
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+              WebkitAppearance: 'none',
+              MozAppearance: 'none',
+              appearance: 'none',
+              backgroundImage: 'url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'white\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3e%3cpolyline points=\'6 9 12 15 18 9\'%3e%3c/polyline%3e%3c/svg%3e")',
+              backgroundRepeat: 'no-repeat',
+              backgroundPosition: 'right 12px center',
+              backgroundSize: '20px',
+              paddingRight: '40px',
+              minWidth: 0,
+            }}
+          >
+            <option value="scheduled" style={{ backgroundColor: '#1a2332', color: '#fff' }}>Scheduled</option>
+            <option value="active" style={{ backgroundColor: '#1a2332', color: '#fff' }}>Active ({activeMedications.length})</option>
+          </select>
+          <button
+            onClick={openPrnPicker}
+            disabled={!selectedPatient}
+            style={{
+              padding: '12px 18px',
+              border: 'none',
+              borderRadius: '8px',
+              backgroundColor: '#6f42c1',
+              color: '#fff',
+              cursor: selectedPatient ? 'pointer' : 'not-allowed',
+              opacity: selectedPatient ? 1 : 0.6,
+              fontWeight: '600',
+              fontSize: '15px',
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+              flexShrink: 0,
+            }}
+            title={selectedPatient ? 'Give an as-needed (PRN) medication' : 'Select a patient first'}
+          >
+            PRN
+          </button>
+        </div>
       ) : (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -830,79 +843,88 @@ const MedicationModal = ({ onClose }) => {
                                             key={`scheduled-${dayKey}-${timeStr}-${idx}`}
                                             style={{
                                               backgroundColor: colors.bg,
-                                              borderRadius: 12,
-                                              padding: '14px 18px',
+                                              borderRadius: isMobile ? 10 : 12,
+                                              padding: isMobile ? '12px 14px' : '14px 18px',
                                               boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
                                               border: `1.5px solid ${colors.border}`,
+                                              borderLeft: `6px solid ${colors.border}`,
                                               display: 'flex',
-                                              alignItems: 'center',
-                                              gap: '12px',
+                                              flexDirection: isMobile ? 'column' : 'row',
+                                              alignItems: isMobile ? 'stretch' : 'center',
+                                              gap: isMobile ? '10px' : '12px',
                                               marginBottom: 0,
                                               opacity: isCompleted && isToday ? 0.7 : 1,
-                                              order: isCompleted && isToday ? 1 : 0
+                                              order: isCompleted && isToday ? 1 : 0,
                                             }}
                                           >
-                                            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10 }}>
-                                              <span style={{ color: colors.text, fontSize: '16px', fontWeight: '600' }}>
+                                            <div style={{
+                                              flex: 1,
+                                              display: 'flex',
+                                              flexDirection: isMobile ? 'column' : 'row',
+                                              alignItems: isMobile ? 'flex-start' : 'center',
+                                              gap: isMobile ? 6 : 10,
+                                            }}>
+                                              <span style={{ color: colors.text, fontSize: isMobile ? '15px' : '16px', fontWeight: '600', lineHeight: 1.3 }}>
                                                 {item.medication_name}{item.concentration ? ` (${item.concentration})` : ''}
                                               </span>
-                                              <span style={{ color: colors.text, fontSize: '14px', fontWeight: 500 }}>
-                                                - {item.dose_amount} {item.dose_unit}
+                                              <span style={{ color: colors.text, fontSize: isMobile ? '13px' : '14px', fontWeight: 500, opacity: 0.85 }}>
+                                                {isMobile ? '' : '- '}{item.dose_amount} {item.dose_unit}
+                                                {item.type ? ` (${item.type})` : ''}
                                               </span>
-                                              <span style={{ color: colors.text, fontSize: '14px', fontWeight: 500 }}>
-                                                {item.type ? `(${item.type})` : ''}
-                                              </span>
-                                              <span 
-                                                style={{ 
-                                                  backgroundColor: colors.border, 
-                                                  color: '#fff', 
-                                                  padding: '2px 8px', 
-                                                  borderRadius: '12px', 
-                                                  fontSize: '12px',
+                                              <span
+                                                style={{
+                                                  backgroundColor: colors.border,
+                                                  color: '#fff',
+                                                  padding: '2px 8px',
+                                                  borderRadius: '12px',
+                                                  fontSize: isMobile ? '11px' : '12px',
                                                   fontWeight: '500',
-                                                  marginLeft: 8
+                                                  marginLeft: isMobile ? 0 : 8,
+                                                  alignSelf: isMobile ? 'flex-start' : 'center',
                                                 }}
                                               >
                                                 {getStatusText(item)}
                                               </span>
                                             </div>
-                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                            <div style={{
+                                              display: 'flex',
+                                              gap: isMobile ? '6px' : '8px',
+                                              width: isMobile ? '100%' : 'auto',
+                                            }}>
                                               {!isCompleted && (
                                                 <>
                                                   <button
                                                     style={{
-                                                      padding: '6px 14px',
+                                                      padding: isMobile ? '10px 14px' : '6px 14px',
                                                       border: 'none',
                                                       borderRadius: '8px',
                                                       backgroundColor: '#28a745',
                                                       color: '#fff',
                                                       cursor: 'pointer',
-                                                      fontSize: '13px',
+                                                      fontSize: isMobile ? '14px' : '13px',
                                                       fontWeight: '500',
-                                                      boxShadow: '0 1px 2px rgba(0,0,0,0.07)'
+                                                      boxShadow: '0 1px 2px rgba(0,0,0,0.07)',
+                                                      flex: isMobile ? '1' : '0 0 auto',
                                                     }}
-                                                    onClick={() => {
-                                                      handleMarkTaken(item);
-                                                    }}
+                                                    onClick={() => handleMarkTaken(item)}
                                                   >
-                                                    {item.status === 'missed' ? 'Take Now' : 'Mark Taken'}
+                                                    {item.status === 'missed' ? (isMobile ? 'Take Now' : 'Take Now') : (isMobile ? 'Mark Taken' : 'Mark Taken')}
                                                   </button>
                                                   {item.status === 'missed' && (
                                                     <button
                                                       style={{
-                                                        padding: '6px 14px',
+                                                        padding: isMobile ? '10px 14px' : '6px 14px',
                                                         border: '2px solid #6c757d',
                                                         borderRadius: '8px',
                                                         backgroundColor: '#fff',
                                                         color: '#6c757d',
                                                         cursor: 'pointer',
-                                                        fontSize: '13px',
+                                                        fontSize: isMobile ? '14px' : '13px',
                                                         fontWeight: '500',
-                                                        boxShadow: '0 1px 2px rgba(0,0,0,0.07)'
+                                                        boxShadow: '0 1px 2px rgba(0,0,0,0.07)',
+                                                        flex: isMobile ? '1' : '0 0 auto',
                                                       }}
-                                                      onClick={() => {
-                                                        handleSkipDose(item);
-                                                      }}
+                                                      onClick={() => handleSkipDose(item)}
                                                     >
                                                       Skip
                                                     </button>

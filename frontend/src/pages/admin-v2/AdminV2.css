@@ -838,6 +838,60 @@
   min-width: 150px;
 }
 
+.admin-v2-stats-row-compact {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.admin-v2-stats-row-compact .admin-v2-stat-card {
+  flex: none;
+  min-width: 0;
+  padding: 0.6rem 0.4rem;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.35rem;
+}
+
+.admin-v2-stats-row-compact .admin-v2-stat-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+}
+
+.admin-v2-stats-row-compact .admin-v2-stat-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.admin-v2-stats-row-compact .admin-v2-stat-info h4 {
+  font-size: 1.1rem;
+  margin: 0;
+  line-height: 1.1;
+}
+
+.admin-v2-stats-row-compact .admin-v2-stat-info p {
+  font-size: 0.7rem;
+  margin: 0;
+  line-height: 1.1;
+}
+
+@media (max-width: 600px) {
+  .admin-v2-stats-row-compact {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.35rem;
+  }
+
+  .admin-v2-stats-row-compact .admin-v2-stat-card {
+    padding: 0.5rem 0.25rem;
+  }
+
+  .admin-v2-stats-row-compact .admin-v2-stat-info p {
+    font-size: 0.65rem;
+  }
+}
+
 .admin-v2-stat-card {
   background: #161b22;
   border: 1px solid #30363d;

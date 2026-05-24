@@ -264,6 +264,10 @@ def get_scheduled_care_tasks_for_date(db: Session, target_date=None, patient_id=
                 start_of_day = datetime.combine(target_date, datetime.min.time(), tzinfo=timezone.utc)
                 cron = croniter(schedule.cron_expression, start_of_day)
 
+                category = schedule.care_task.category
+                category_name = category.name if category else None
+                category_color = category.color if category else '#6f42c1'
+
                 current_time = cron.get_next(datetime)
                 while current_time.date() == target_date:
                     scheduled_tasks.append({
@@ -271,6 +275,8 @@ def get_scheduled_care_tasks_for_date(db: Session, target_date=None, patient_id=
                         'care_task_id': schedule.care_task_id,
                         'care_task_name': schedule.care_task.name,
                         'care_task_description': schedule.care_task.description,
+                        'care_task_category_name': category_name,
+                        'care_task_category_color': category_color,
                         'scheduled_time': current_time,
                         'schedule_description': schedule.description,
                         'notes': schedule.notes
@@ -353,41 +359,51 @@ def get_daily_care_task_schedule(db: Session, patient_id=None):
         
         all_scheduled = []
         
+        def _apply_completion(item, completion_log):
+            if completion_log:
+                item['status'] = completion_log.status  # 'completed', 'skipped', etc.
+                item['is_completed'] = True
+                completed_at_iso = (
+                    completion_log.completed_at.isoformat()
+                    if completion_log.completed_at else None
+                )
+                item['completed_at'] = completed_at_iso
+                item['completed_time'] = completed_at_iso
+                item['notes'] = completion_log.notes
+                item['performed_by'] = completion_log.performed_by
+            else:
+                item['is_completed'] = False
+                item['completed_at'] = None
+                item['completed_time'] = None
+                item['performed_by'] = None
+
         # Process yesterday's schedules (check if missed or completed)
         for item in yesterday_scheduled:
-            # Check if this task was completed/skipped for this specific time
             completion_log = db.query(CareTaskLog).filter(
                 CareTaskLog.schedule_id == item['schedule_id'],
                 CareTaskLog.scheduled_time == item['scheduled_time']
             ).first()
-            
-            if completion_log:
-                item['status'] = completion_log.status  # 'completed', 'skipped', etc.
-                item['completed_at'] = completion_log.completed_at.isoformat() if completion_log.completed_at else None
-                item['notes'] = completion_log.notes
-            else:
+
+            _apply_completion(item, completion_log)
+            if not completion_log:
                 item['status'] = 'missed'  # Default to missed for yesterday
-            
+
             item['is_yesterday'] = True
             all_scheduled.append(item)
-        
+
         # Process today's schedules
         for item in today_scheduled:
-            # Check if this task was completed/skipped for this specific time
             completion_log = db.query(CareTaskLog).filter(
                 CareTaskLog.schedule_id == item['schedule_id'],
                 CareTaskLog.scheduled_time == item['scheduled_time']
             ).first()
-            
-            if completion_log:
-                item['status'] = completion_log.status  # 'completed', 'skipped', etc.
-                item['completed_at'] = completion_log.completed_at.isoformat() if completion_log.completed_at else None
-                item['notes'] = completion_log.notes
-            else:
+
+            _apply_completion(item, completion_log)
+            if not completion_log:
                 # Only set time-based status if not completed
                 scheduled_time = item['scheduled_time']
                 time_diff = (current_time - scheduled_time).total_seconds() / 60
-                
+
                 if time_diff < -30:
                     item['status'] = 'pending'
                 elif time_diff < -15:
@@ -396,7 +412,7 @@ def get_daily_care_task_schedule(db: Session, patient_id=None):
                     item['status'] = 'due_on_time'
                 else:
                     item['status'] = 'due_late'
-            
+
             item['is_yesterday'] = False
             all_scheduled.append(item)
         
@@ -412,76 +428,82 @@ def get_daily_care_task_schedule(db: Session, patient_id=None):
         logger.error(f"Error getting daily care task schedule: {e}")
         return {
             'scheduled_care_tasks': [],
-            'generated_at': datetime.now().isoformat()
+            'generated_at': utc_now().isoformat()
         }
 
 
-def complete_care_task(db: Session, task_id, schedule_id=None, scheduled_time=None, notes=None, status='completed', completed_by=None):
+def complete_care_task(db: Session, task_id, schedule_id=None, scheduled_time=None, notes=None, status='completed', performed_by=None, completed_at=None, patient_id=None):
     """
     Complete a care task (either scheduled or ad-hoc)
-    
+
     Args:
         task_id: ID of the care task
         schedule_id: ID of the schedule (if this is a scheduled completion)
         scheduled_time: The originally scheduled time (for timing analysis)
         notes: Optional notes about the completion
         status: Completion status ('completed', 'skipped', 'partial')
-        completed_by: Optional identifier of who completed the task
-    
+        performed_by: Optional user ID of who completed the task
+        completed_at: When the task was actually performed (defaults to now)
+        patient_id: Patient to attribute the completion to. Required when the
+            care task is global (patient_id IS NULL); otherwise falls back to
+            the task's patient and then the active patient.
+
     Returns:
         ID of the created log entry, or None if failed
     """
     try:
         now = utc_now()
-        
+        completed_at = completed_at or now
+        if isinstance(completed_at, str):
+            completed_at = datetime.fromisoformat(completed_at.replace('Z', '+00:00'))
+
         # Get the care task to retrieve patient_id
         care_task = db.query(CareTask).filter(CareTask.id == task_id).first()
         if not care_task:
             logger.error(f"Care task {task_id} not found")
             return None
-        
-        # Determine patient_id: use care_task's patient_id or get active patient
-        patient_id = care_task.patient_id
-        if patient_id is None:
-            # For global care tasks, use the active patient
+
+        # Determine patient_id: explicit > task's own > active patient
+        resolved_patient_id = patient_id or care_task.patient_id
+        if resolved_patient_id is None:
             active_patient = get_active_patient(db)
             if active_patient:
-                patient_id = active_patient.id
+                resolved_patient_id = active_patient.id
             else:
                 logger.error("No patient_id found for care task and no active patient available")
                 return None
-        
+
         # Calculate timing flags if this is a scheduled task
         is_scheduled = bool(schedule_id)
         completed_early = False
         completed_late = False
-        
+
         if is_scheduled and scheduled_time:
             if isinstance(scheduled_time, str):
                 scheduled_dt = datetime.fromisoformat(scheduled_time.replace('Z', '+00:00'))
             else:
                 scheduled_dt = scheduled_time
-                
-            diff_minutes = (now - scheduled_dt).total_seconds() / 60
-            
+
+            diff_minutes = (completed_at - scheduled_dt).total_seconds() / 60
+
             if diff_minutes < -15:  # More than 15 minutes early
                 completed_early = True
             elif diff_minutes > 15:  # More than 15 minutes late
                 completed_late = True
-        
+
         # Create the completion log
         log = CareTaskLog(
             care_task_id=task_id,
-            patient_id=patient_id,  # Use the determined patient_id
+            patient_id=resolved_patient_id,
             schedule_id=schedule_id,
-            completed_at=now,
+            completed_at=completed_at,
             is_scheduled=is_scheduled,
             scheduled_time=scheduled_time,
             completed_early=completed_early,
             completed_late=completed_late,
             status=status,
             notes=notes,
-            completed_by=completed_by,
+            performed_by=performed_by,
             created_at=now
         )
         
@@ -1115,4 +1137,53 @@ def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset
     except Exception as e:
         logger.error(f"Error getting scheduled nutrition: {e}")
         return []
+
+
+def get_due_and_upcoming_nutrition_count(db: Session):
+    """
+    Returns the count of scheduled nutrition items that need attention:
+    - missed (yesterday or today, scheduled >1h ago and not completed)
+    - due/late (today, scheduled 15min–1h ago and not completed)
+    - ready (today, within ±15min of now and not completed)
+    - upcoming (today, scheduled within the next hour and not completed)
+
+    PRN (ad-hoc) intakes and outputs are excluded — they're already done.
+    """
+    try:
+        active_patient = get_active_patient(db)
+        if not active_patient:
+            return 0
+
+        today = utc_today()
+        yesterday = today - timedelta(days=1)
+        now = utc_now()
+
+        items = (
+            get_scheduled_nutrition(db, yesterday, active_patient.id) +
+            get_scheduled_nutrition(db, today, active_patient.id)
+        )
+
+        count = 0
+        for item in items:
+            if item.get('is_prn'):
+                continue
+            if item.get('completed'):
+                continue
+            scheduled_time = item.get('scheduled_time')
+            if isinstance(scheduled_time, str):
+                scheduled_time = datetime.fromisoformat(scheduled_time)
+            if scheduled_time is None:
+                continue
+            if scheduled_time.tzinfo is None:
+                scheduled_time = scheduled_time.replace(tzinfo=timezone.utc)
+
+            diff_seconds = (scheduled_time - now).total_seconds()
+            # missed/late/ready, OR upcoming within the next hour
+            if diff_seconds < -900 or abs(diff_seconds) <= 900 or (0 < diff_seconds <= 3600):
+                count += 1
+
+        return count
+    except Exception as e:
+        logger.error(f"Error getting due/upcoming nutrition count: {e}")
+        return 0
 

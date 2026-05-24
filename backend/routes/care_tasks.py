@@ -7,7 +7,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from db import get_db
-from dependencies import require_read_access
+from dependencies import require_read_access, get_current_user, require_permission
+from models.users import User
 from models.care_tasks import (
     CareTaskCreate,
     CareTaskUpdate,
@@ -16,6 +17,7 @@ from models.care_tasks import (
     CareTaskScheduleUpdate,
     CareTaskScheduleResponse,
     CareTaskScheduleComplete,
+    CareTaskAdHocComplete,
     CareTaskCategoryCreate,
     CareTaskCategoryUpdate,
     CareTaskCategoryResponse,
@@ -27,7 +29,8 @@ from crud.care_tasks import (
     delete_care_task, toggle_care_task_active,
     add_care_task_category, get_care_task_categories, update_care_task_category,
     delete_care_task_category, get_care_task_logs, get_recent_care_task_completions,
-    get_care_task_completion_stats, get_overdue_care_tasks
+    get_care_task_completion_stats, get_overdue_care_tasks,
+    get_care_task_adherence_overview, get_care_task_stats_by_user,
 )
 from crud.scheduling import (
     add_care_task_schedule, get_care_task_schedules, get_all_care_task_schedules,
@@ -44,7 +47,7 @@ router = APIRouter(prefix="/api", tags=["care_tasks"])
 
 
 # Care Task CRUD endpoints
-@router.post("/add/care-task")
+@router.post("/add/care-task", dependencies=[Depends(require_permission("care_tasks.create"))])
 async def api_add_care_task(data: CareTaskCreate, db: Session = Depends(get_db)):
     """Add a new care task"""
     try:
@@ -106,7 +109,7 @@ async def get_inactive_care_tasks_endpoint(patient_id: int = None, db: Session =
         return JSONResponse(status_code=500, content={"detail": str(e)})
 
 
-@router.put("/care-tasks/{task_id}")
+@router.put("/care-tasks/{task_id}", dependencies=[Depends(require_permission("care_tasks.update"))])
 async def update_care_task_endpoint(task_id: int, data: CareTaskUpdate, db: Session = Depends(get_db)):
     """Update an existing care task"""
     try:
@@ -125,7 +128,7 @@ async def update_care_task_endpoint(task_id: int, data: CareTaskUpdate, db: Sess
         )
 
 
-@router.delete("/care-tasks/{task_id}")
+@router.delete("/care-tasks/{task_id}", dependencies=[Depends(require_permission("care_tasks.delete"))])
 async def delete_care_task_endpoint(task_id: int, db: Session = Depends(get_db)):
     """Delete (deactivate) a care task"""
     try:
@@ -142,7 +145,7 @@ async def delete_care_task_endpoint(task_id: int, db: Session = Depends(get_db))
         )
 
 
-@router.post("/care-tasks/{task_id}/toggle-active")
+@router.post("/care-tasks/{task_id}/toggle-active", dependencies=[Depends(require_permission("care_tasks.update"))])
 async def toggle_care_task_active_endpoint(task_id: int, db: Session = Depends(get_db)):
     """Toggle active status of a care task"""
     try:
@@ -161,7 +164,7 @@ async def toggle_care_task_active_endpoint(task_id: int, db: Session = Depends(g
 
 
 # Care Task Schedule endpoints
-@router.post("/add/care-task-schedule/{care_task_id}")
+@router.post("/add/care-task-schedule/{care_task_id}", dependencies=[Depends(require_permission("care_tasks.create"))])
 async def api_add_care_task_schedule(
     care_task_id: int, 
     data: CareTaskScheduleCreate, 
@@ -264,7 +267,7 @@ async def get_care_task_schedule_endpoint(schedule_id: int, db: Session = Depend
         )
 
 
-@router.put("/care-task-schedules/{schedule_id}")
+@router.put("/care-task-schedules/{schedule_id}", dependencies=[Depends(require_permission("care_tasks.update"))])
 async def update_care_task_schedule_endpoint(schedule_id: int, data: CareTaskScheduleUpdate, db: Session = Depends(get_db)):
     """Update an existing care task schedule"""
     try:
@@ -290,7 +293,7 @@ async def update_care_task_schedule_endpoint(schedule_id: int, data: CareTaskSch
         )
 
 
-@router.delete("/care-task-schedules/{schedule_id}")
+@router.delete("/care-task-schedules/{schedule_id}", dependencies=[Depends(require_permission("care_tasks.delete"))])
 async def delete_care_task_schedule_endpoint(schedule_id: int, db: Session = Depends(get_db)):
     """Delete a care task schedule"""
     try:
@@ -307,7 +310,7 @@ async def delete_care_task_schedule_endpoint(schedule_id: int, db: Session = Dep
         )
 
 
-@router.post("/care-task-schedules/{schedule_id}/toggle-active")
+@router.post("/care-task-schedules/{schedule_id}/toggle-active", dependencies=[Depends(require_permission("care_tasks.update"))])
 async def toggle_care_task_schedule_active_endpoint(schedule_id: int, db: Session = Depends(get_db)):
     """Toggle active status of a care task schedule"""
     try:
@@ -324,8 +327,13 @@ async def toggle_care_task_schedule_active_endpoint(schedule_id: int, db: Sessio
         )
 
 
-@router.post("/care-task-schedule/{schedule_id}/complete")
-async def complete_care_task_schedule_endpoint(schedule_id: int, data: CareTaskScheduleComplete, db: Session = Depends(get_db)):
+@router.post("/care-task-schedules/{schedule_id}/complete", dependencies=[Depends(require_permission("care_tasks.perform"))])
+async def complete_care_task_schedule_endpoint(
+    schedule_id: int,
+    data: CareTaskScheduleComplete,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Complete a scheduled care task"""
     try:
         # Get the schedule to find the care task ID
@@ -355,7 +363,7 @@ async def complete_care_task_schedule_endpoint(schedule_id: int, data: CareTaskS
             scheduled_time=data.scheduled_time,
             notes=data.notes,
             status="completed",
-            completed_by=data.completed_by
+            performed_by=current_user.id,
         )
         
         if log_id:
@@ -401,15 +409,69 @@ async def complete_care_task_schedule_endpoint(schedule_id: int, data: CareTaskS
         )
 
 
-@router.post("/care-task-schedule/{schedule_id}/skip")
-async def skip_care_task_schedule_endpoint(schedule_id: int, data: CareTaskScheduleComplete, db: Session = Depends(get_db)):
+@router.post("/care-tasks/{task_id}/complete", dependencies=[Depends(require_permission("care_tasks.perform"))])
+async def complete_care_task_ad_hoc_endpoint(
+    task_id: int,
+    data: CareTaskAdHocComplete,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Mark a care task done outside of any schedule (PRN)."""
+    try:
+        care_task = get_care_task(db, task_id)
+        if not care_task:
+            return JSONResponse(status_code=404, content={"detail": "Care task not found"})
+
+        log_id = complete_care_task(
+            db=db,
+            task_id=task_id,
+            schedule_id=None,
+            scheduled_time=None,
+            completed_at=data.completed_at,
+            notes=data.notes,
+            status="completed",
+            performed_by=current_user.id,
+            patient_id=data.patient_id,
+        )
+        if not log_id:
+            return JSONResponse(status_code=500, content={"detail": "Failed to record care task"})
+
+        nutrition_keywords = ['nutrition', 'feeding', 'meal', 'food', 'drink', 'supplement']
+        is_nutrition_task = bool(
+            care_task.get('category_name')
+            and any(k in care_task['category_name'].lower() for k in nutrition_keywords)
+        )
+        return {
+            "id": log_id,
+            "status": "success",
+            "care_task": {
+                "id": care_task['id'],
+                "name": care_task['name'],
+                "category": care_task.get('category_name'),
+                "is_nutrition_related": is_nutrition_task,
+            },
+            "requires_nutrition_tracking": is_nutrition_task,
+            "nutrition_data": None,
+        }
+    except Exception as e:
+        logger.error(f"Error completing care task {task_id} ad-hoc: {e}")
+        return JSONResponse(status_code=500, content={"detail": f"Error completing care task: {str(e)}"})
+
+
+@router.post("/care-task-schedules/{schedule_id}/skip", dependencies=[Depends(require_permission("care_tasks.perform"))])
+async def skip_care_task_schedule_endpoint(
+    schedule_id: int,
+    data: CareTaskScheduleComplete,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Skip a scheduled care task"""
     try:
         # Get the schedule to find the care task ID
         schedule = get_care_task_schedule(db, schedule_id)
         if not schedule:
             return JSONResponse(status_code=404, content={"detail": "Care task schedule not found"})
-        
+
         log_id = complete_care_task(
             db=db,
             task_id=schedule['care_task_id'],
@@ -417,7 +479,7 @@ async def skip_care_task_schedule_endpoint(schedule_id: int, data: CareTaskSched
             scheduled_time=data.scheduled_time,
             notes=data.notes or "Task skipped",
             status="skipped",
-            completed_by=data.completed_by
+            performed_by=current_user.id,
         )
         if log_id:
             return {"id": log_id, "status": "success"}
@@ -467,7 +529,7 @@ async def get_admin_inactive_care_tasks_endpoint(patient_id: int = None, db: Ses
 
 
 # Care Task Category endpoints
-@router.post("/add/care-task-category")
+@router.post("/add/care-task-category", dependencies=[Depends(require_permission("care_tasks.create"))])
 async def api_add_care_task_category(data: CareTaskCategoryCreate, db: Session = Depends(get_db)):
     """Add a new care task category"""
     try:
@@ -503,7 +565,7 @@ async def get_care_task_categories_endpoint(db: Session = Depends(get_db), _: bo
         )
 
 
-@router.put("/care-task-categories/{category_id}")
+@router.put("/care-task-categories/{category_id}", dependencies=[Depends(require_permission("care_tasks.update"))])
 async def update_care_task_category_endpoint(category_id: int, data: CareTaskCategoryUpdate, db: Session = Depends(get_db)):
     """Update an existing care task category"""
     try:
@@ -522,7 +584,7 @@ async def update_care_task_category_endpoint(category_id: int, data: CareTaskCat
         )
 
 
-@router.delete("/care-task-categories/{category_id}")
+@router.delete("/care-task-categories/{category_id}", dependencies=[Depends(require_permission("care_tasks.delete"))])
 async def delete_care_task_category_endpoint(category_id: int, db: Session = Depends(get_db)):
     """Delete a care task category (only if not default and no tasks assigned)"""
     try:
@@ -602,10 +664,10 @@ async def get_recent_completions_endpoint(days: int = 7, db: Session = Depends(g
 
 
 @router.get("/care-tasks/stats/completion")
-async def get_completion_stats_endpoint(days: int = 30, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
-    """Get care task completion statistics"""
+async def get_completion_stats_endpoint(days: int = 30, patient_id: int = None, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
+    """Per-task completion statistics over the last N days"""
     try:
-        stats = get_care_task_completion_stats(db, days)
+        stats = get_care_task_completion_stats(db, days, patient_id=patient_id)
         return {"stats": stats}
     except Exception as e:
         logger.error(f"Error getting care task completion stats: {e}")
@@ -615,11 +677,38 @@ async def get_completion_stats_endpoint(days: int = 30, db: Session = Depends(ge
         )
 
 
+@router.get("/care-tasks/stats/overview")
+async def get_adherence_overview_endpoint(days: int = 30, patient_id: int = None, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
+    """High-level adherence summary over the last N days"""
+    try:
+        return get_care_task_adherence_overview(db, days, patient_id=patient_id)
+    except Exception as e:
+        logger.error(f"Error getting care task adherence overview: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"Error retrieving adherence overview: {str(e)}"}
+        )
+
+
+@router.get("/care-tasks/stats/by-user")
+async def get_stats_by_user_endpoint(days: int = 30, patient_id: int = None, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
+    """Per-user activity over the last N days"""
+    try:
+        stats = get_care_task_stats_by_user(db, days, patient_id=patient_id)
+        return {"stats": stats}
+    except Exception as e:
+        logger.error(f"Error getting care task stats by user: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"Error retrieving per-user stats: {str(e)}"}
+        )
+
+
 @router.get("/care-tasks/overdue")
-async def get_overdue_tasks_endpoint(db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
+async def get_overdue_tasks_endpoint(patient_id: int = None, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get overdue care tasks"""
     try:
-        overdue_tasks = get_overdue_care_tasks(db)
+        overdue_tasks = get_overdue_care_tasks(db, patient_id=patient_id)
         return {"overdue_tasks": overdue_tasks}
     except Exception as e:
         logger.error(f"Error getting overdue care tasks: {e}")
