@@ -85,7 +85,7 @@ const AdminV2CareTasksSchedule = () => {
       setError(null);
       
       const response = await fetch(
-        `${config.apiUrl}/api/schedules/daily?patient_id=${selectedPatient.id}`,
+        `${config.apiUrl}/api/care-task-schedules/daily?patient_id=${selectedPatient.id}`,
         { credentials: 'include' }
       );
 
@@ -194,7 +194,7 @@ const AdminV2CareTasksSchedule = () => {
 
   const submitMarkCompleted = async (task, earlyOverride = false) => {
     try {
-      const response = await fetch(`${config.apiUrl}/api/care-task-schedule/${task.schedule_id}/complete`, {
+      const response = await fetch(`${config.apiUrl}/api/care-task-schedules/${task.schedule_id}/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -237,6 +237,7 @@ const AdminV2CareTasksSchedule = () => {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
+          scheduled_time: task.scheduled_time,
           notes: 'Skipped'
         })
       });
@@ -285,7 +286,7 @@ const AdminV2CareTasksSchedule = () => {
             <h1 className="schedule-section-title">Daily Care Tasks Schedule</h1>
 
             {/* Stats Row */}
-            <div className="admin-v2-stats-row">
+            <div className="admin-v2-stats-row admin-v2-stats-row-compact">
               <div 
                 className={`admin-v2-stat-card ${statusFilters.due_on_time && statusFilters.due_warning && statusFilters.due_late ? 'selected' : ''}`}
                 onClick={() => setStatusFilters(f => ({ 
@@ -334,7 +335,7 @@ const AdminV2CareTasksSchedule = () => {
                   <p>Missed</p>
                 </div>
               </div>
-              <div 
+              <div
                 className={`admin-v2-stat-card ${statusFilters.completed ? 'selected' : ''}`}
                 onClick={() => setStatusFilters(f => ({ ...f, completed: !f.completed }))}
                 style={{ cursor: 'pointer' }}
@@ -345,6 +346,19 @@ const AdminV2CareTasksSchedule = () => {
                 <div className="admin-v2-stat-info">
                   <h4>{stats.completed}</h4>
                   <p>Completed</p>
+                </div>
+              </div>
+              <div
+                className={`admin-v2-stat-card ${statusFilters.skipped ? 'selected' : ''}`}
+                onClick={() => setStatusFilters(f => ({ ...f, skipped: !f.skipped }))}
+                style={{ cursor: 'pointer' }}
+              >
+                <div className="admin-v2-stat-icon" style={{ background: 'rgba(139, 148, 158, 0.15)' }}>
+                  <XIcon size={20} />
+                </div>
+                <div className="admin-v2-stat-info">
+                  <h4>{stats.skipped}</h4>
+                  <p>Skipped</p>
                 </div>
               </div>
             </div>
@@ -414,20 +428,6 @@ const AdminV2CareTasksSchedule = () => {
                                   <div className="admin-v2-schedule-item-main">
                                     <span className="admin-v2-schedule-med-name">
                                       {item.care_task_name}
-                                      {item.care_task_category_name && (
-                                        <span 
-                                          className="admin-v2-schedule-concentration"
-                                          style={{ 
-                                            backgroundColor: categoryColor + '30',
-                                            color: categoryColor,
-                                            padding: '2px 8px',
-                                            borderRadius: '4px',
-                                            marginLeft: '8px'
-                                          }}
-                                        >
-                                          {item.care_task_category_name}
-                                        </span>
-                                      )}
                                     </span>
                                     {item.care_task_description && (
                                       <span className="admin-v2-schedule-dose" style={{ opacity: 0.8 }}>
@@ -465,14 +465,12 @@ const AdminV2CareTasksSchedule = () => {
                                     >
                                       {item.status === 'missed' ? 'Complete Now' : 'Mark Complete'}
                                     </button>
-                                    {item.status === 'missed' && (
-                                      <button
-                                        className="admin-v2-btn admin-v2-btn-sm"
-                                        onClick={() => handleSkipTask(item)}
-                                      >
-                                        Skip
-                                      </button>
-                                    )}
+                                    <button
+                                      className="admin-v2-btn admin-v2-btn-sm"
+                                      onClick={() => handleSkipTask(item)}
+                                    >
+                                      Skip
+                                    </button>
                                   </div>
                                 )}
                               </div>

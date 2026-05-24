@@ -838,6 +838,60 @@
   min-width: 150px;
 }
 
+.admin-v2-stats-row-compact {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.admin-v2-stats-row-compact .admin-v2-stat-card {
+  flex: none;
+  min-width: 0;
+  padding: 0.6rem 0.4rem;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.35rem;
+}
+
+.admin-v2-stats-row-compact .admin-v2-stat-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+}
+
+.admin-v2-stats-row-compact .admin-v2-stat-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.admin-v2-stats-row-compact .admin-v2-stat-info h4 {
+  font-size: 1.1rem;
+  margin: 0;
+  line-height: 1.1;
+}
+
+.admin-v2-stats-row-compact .admin-v2-stat-info p {
+  font-size: 0.7rem;
+  margin: 0;
+  line-height: 1.1;
+}
+
+@media (max-width: 600px) {
+  .admin-v2-stats-row-compact {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.35rem;
+  }
+
+  .admin-v2-stats-row-compact .admin-v2-stat-card {
+    padding: 0.5rem 0.25rem;
+  }
+
+  .admin-v2-stats-row-compact .admin-v2-stat-info p {
+    font-size: 0.65rem;
+  }
+}
+
 .admin-v2-stat-card {
   background: #161b22;
   border: 1px solid #30363d;
@@ -6329,6 +6383,246 @@ body.printing-schedule .admin-v2-schedule-prn-add {
   padding-top: 0.5rem;
   border-top: 1px solid #21262d;
   margin-top: 0.5rem;
+}
+
+/* ===== NUTRITION OVERVIEW ===== */
+.nutrition-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.nutrition-overview-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.nutrition-overview-summary {
+  margin-bottom: 0;
+}
+
+/* Output presence indicator on summary cards. `present` = something logged
+   today; `absent` = nothing logged. The dot+check makes the day's state
+   readable at a glance without reading numbers. */
+.nutrition-output-status {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.nutrition-output-status.present {
+  background: rgba(63, 185, 80, 0.18);
+  color: #3fb950;
+  border: 1px solid rgba(63, 185, 80, 0.4);
+}
+.nutrition-output-status.absent {
+  background: rgba(110, 118, 129, 0.12);
+  border: 1px solid rgba(110, 118, 129, 0.35);
+}
+.nutrition-output-card.no-events .admin-v2-schedule-summary-icon {
+  opacity: 0.55;
+}
+
+.nutrition-overview-count {
+  font-size: 0.85rem;
+  color: #8b949e;
+  font-weight: 500;
+}
+
+/* Combined intake+output table. Keeps shared admin-v2-table styling but
+   adds row-kind hints (subtle left border) so caregivers can scan by type. */
+.nutrition-overview-table .nutrition-row-intake td:first-child {
+  border-left: 3px solid #58a6ff;
+}
+.nutrition-overview-table .nutrition-row-output td:first-child {
+  border-left: 3px solid #a371f7;
+}
+.nutrition-overview-table tbody tr:hover {
+  background: rgba(88, 166, 255, 0.04);
+}
+
+.nutrition-row-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  background: rgba(88, 166, 255, 0.12);
+  color: #58a6ff;
+  border: 1px solid rgba(88, 166, 255, 0.3);
+}
+.nutrition-row-pill.output {
+  background: rgba(163, 113, 247, 0.12);
+  color: #a371f7;
+  border-color: rgba(163, 113, 247, 0.3);
+}
+.nutrition-row-pill.output.urine {
+  background: rgba(88, 166, 255, 0.12);
+  color: #58a6ff;
+  border-color: rgba(88, 166, 255, 0.3);
+}
+.nutrition-row-pill.output.bowel {
+  background: rgba(187, 128, 9, 0.15);
+  color: #d29922;
+  border-color: rgba(187, 128, 9, 0.35);
+}
+.nutrition-row-pill.output.vomit {
+  background: rgba(248, 81, 73, 0.12);
+  color: #f85149;
+  border-color: rgba(248, 81, 73, 0.3);
+}
+.nutrition-row-pill.output.mixed_diaper {
+  background: linear-gradient(90deg, rgba(88, 166, 255, 0.15), rgba(210, 153, 34, 0.15));
+  color: #e3b341;
+  border-color: rgba(210, 153, 34, 0.4);
+}
+
+.nutrition-row-notes {
+  color: #8b949e;
+  font-size: 0.85rem;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Asterisk after the time when actual given-at diverges from scheduled.
+   Tooltip on the parent <td> reveals the real time. */
+.nutrition-row-given-hint {
+  margin-left: 2px;
+  color: #d29922;
+  font-weight: 700;
+  cursor: help;
+}
+
+@media (max-width: 768px) {
+  .nutrition-overview-actions {
+    width: 100%;
+  }
+  .nutrition-overview-actions .admin-v2-btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+  .nutrition-overview-count {
+    display: none;
+  }
+
+  /* Transform the overview log table into stacked cards on mobile. The
+     <table>/<tr>/<td> markup is unchanged — we just restyle table parts as
+     blocks/grids so dense rows become readable cards. Cells map to grid
+     areas by column position (nth-child), which is stable because the JSX
+     always renders the same six columns in the same order. */
+  .nutrition-overview-table {
+    border: none;
+    /* The <table> defaults to display:table, which auto-sizes to its
+       content's intrinsic width — that's what was making the row wider than
+       the viewport. Block + width:100% pins it to the container. */
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  .nutrition-overview-table thead { display: none; }
+  .nutrition-overview-table tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    width: 100%;
+    min-width: 0;
+  }
+  .nutrition-overview-table tr {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "pill time actions"
+      "name name name"
+      "details details details"
+      "notes notes notes";
+    gap: 0.35rem 0.5rem;
+    align-items: center;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 0.75rem;
+    /* Prevent any cell from forcing the card wider than its container. */
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+  /* Card-left accent in place of the desktop td:first-child border */
+  .nutrition-overview-table .nutrition-row-intake { border-left: 3px solid #58a6ff; }
+  .nutrition-overview-table .nutrition-row-output { border-left: 3px solid #a371f7; }
+  .nutrition-overview-table .nutrition-row-intake td:first-child,
+  .nutrition-overview-table .nutrition-row-output td:first-child {
+    border-left: none;
+  }
+  /* Drop hover state on touch UI */
+  .nutrition-overview-table tbody tr:hover { background: #161b22; }
+
+  .nutrition-overview-table td {
+    padding: 0;
+    border: none;
+    display: block;
+    min-width: 0;        /* let grid cells shrink */
+    overflow-wrap: anywhere; /* break long unbreakable strings */
+  }
+  .nutrition-overview-table td:nth-child(1) {
+    grid-area: time;
+    font-size: 0.85rem;
+    color: #8b949e;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .nutrition-overview-table td:nth-child(2) {
+    grid-area: pill;
+    justify-self: start;
+  }
+  .nutrition-overview-table td:nth-child(3) {
+    grid-area: name;
+    font-size: 1rem;
+    line-height: 1.3;
+  }
+  .nutrition-overview-table td:nth-child(4) {
+    grid-area: details;
+    color: #c9d1d9;
+    font-size: 0.85rem;
+    line-height: 1.4;
+  }
+  /* Notes cell: undo desktop ellipsis/nowrap so it wraps inside the card,
+     and collapse when there's no content (React renders {''} as no children
+     so :empty matches). */
+  .nutrition-overview-table td:nth-child(5),
+  .nutrition-overview-table .nutrition-row-notes {
+    grid-area: notes;
+    color: #8b949e;
+    font-size: 0.8rem;
+    font-style: italic;
+    white-space: normal;
+    overflow: visible;
+    max-width: none;
+  }
+  .nutrition-overview-table td:nth-child(5):empty {
+    display: none;
+  }
+  .nutrition-overview-table td:nth-child(6) {
+    grid-area: actions;
+    justify-self: end;
+  }
+
+  /* Also make sure the table container itself doesn't scroll horizontally. */
+  .admin-v2-section .admin-v2-table-container:has(.nutrition-overview-table) {
+    overflow-x: hidden;
+  }
 }
 
 /* Filters Card Styles */

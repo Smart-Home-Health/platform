@@ -10,6 +10,7 @@ import {
   MinimalistPulseOxIcon, 
   HistoryIcon,
   MedicationIcon,
+  NutritionIcon,
   CareTasksIcon,
   MessagesIcon
 } from "../components/Icons";
@@ -19,6 +20,7 @@ import AlertsModal from "../components/AlertsModal";
 import EquipmentModal from "../components/EquipmentModal";
 import HistoryModal from "../components/HistoryModal";
 import MedicationModal from "../components/MedicationModal";
+import NutritionModal from "../components/NutritionModal";
 import CareTaskModal from "../components/CareTaskModal";
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -57,6 +59,7 @@ export default function Dashboard() {
   const [pulseOxAlerts, setPulseOxAlerts] = useState(0);
   const [equipmentDueCount, setEquipmentDueCount] = useState(0);
   const [medicationDueCount, setMedicationDueCount] = useState(0);
+  const [nutritionDueCount, setNutritionDueCount] = useState(0);
   const [careTaskDueCount, setCareTaskDueCount] = useState(0);
 
   const [sensorValues, setSensorValues] = useState({
@@ -103,6 +106,7 @@ export default function Dashboard() {
   const [isPulseOxModalOpen, setIsPulseOxModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [isMedicationModalOpen, setIsMedicationModalOpen] = useState(false);
+  const [isNutritionModalOpen, setIsNutritionModalOpen] = useState(false);
   const [isCareTaskModalOpen, setIsCareTaskModalOpen] = useState(false);
   const [isMessagesModalOpen, setIsMessagesModalOpen] = useState(false);
   const [isAlarmActive, setIsAlarmActive] = useState(false);
@@ -486,6 +490,10 @@ export default function Dashboard() {
         if (msg.state.care_tasks !== undefined) {
           setCareTaskDueCount(msg.state.care_tasks);
         }
+
+        if (msg.state.nutrition !== undefined) {
+          setNutritionDueCount(msg.state.nutrition);
+        }
         
         if (msg.state.dashboard_chart_1) {
           setDashboardChart1(msg.state.dashboard_chart_1);
@@ -568,6 +576,7 @@ export default function Dashboard() {
     setIsSettingsModalOpen(false);
     setIsHistoryModalOpen(false);
     setIsMedicationModalOpen(false);
+    setIsNutritionModalOpen(false);
     setIsCareTaskModalOpen(false);
     setIsMessagesModalOpen(false);
     setIsMobileMenuOpen(false);
@@ -589,6 +598,9 @@ export default function Dashboard() {
         break;
       case 'medications':
         setIsMedicationModalOpen(true);
+        break;
+      case 'nutrition':
+        setIsNutritionModalOpen(true);
         break;
       case 'careTasks':
         setIsCareTaskModalOpen(true);
@@ -689,6 +701,16 @@ export default function Dashboard() {
       if (!ensureUnlockAndUser('careTasks')) return;
       closeAllModals();
       setIsCareTaskModalOpen(true);
+    }
+  };
+
+  const handleNutritionClick = () => {
+    if (isNutritionModalOpen) {
+      setIsNutritionModalOpen(false);
+    } else {
+      if (!ensureUnlockAndUser('nutrition')) return;
+      closeAllModals();
+      setIsNutritionModalOpen(true);
     }
   };
 
@@ -871,7 +893,7 @@ export default function Dashboard() {
               </div>
               
               <div className="icon-wrapper">
-                <button 
+                <button
                   className={`menu-button ${isMedicationModalOpen ? 'active' : ''}`}
                   onClick={handleMedicationClick}
                   aria-label="Medication Tracker"
@@ -880,9 +902,20 @@ export default function Dashboard() {
                   {medicationDueCount > 0 && <div className="badge">{medicationDueCount}</div>}
                 </button>
               </div>
-              
+
               <div className="icon-wrapper">
-                <button 
+                <button
+                  className={`menu-button ${isNutritionModalOpen ? 'active' : ''}`}
+                  onClick={handleNutritionClick}
+                  aria-label="Nutrition"
+                >
+                  <NutritionIcon />
+                  {nutritionDueCount > 0 && <div className="badge">{nutritionDueCount}</div>}
+                </button>
+              </div>
+
+              <div className="icon-wrapper">
+                <button
                   className={`menu-button ${isCareTaskModalOpen ? 'active' : ''}`}
                   onClick={handleCareTaskClick}
                   aria-label="Care Tasks"
@@ -956,7 +989,13 @@ export default function Dashboard() {
               <span>Medications</span>
               {medicationDueCount > 0 && <div className="mobile-badge">{medicationDueCount}</div>}
             </div>
-            
+
+            <div className="mobile-menu-item" onClick={() => { handleNutritionClick(); setIsMobileMenuOpen(false); }}>
+              <NutritionIcon />
+              <span>Nutrition</span>
+              {nutritionDueCount > 0 && <div className="mobile-badge">{nutritionDueCount}</div>}
+            </div>
+
             <div className="mobile-menu-item" onClick={() => { handleCareTaskClick(); setIsMobileMenuOpen(false); }}>
               <CareTasksIcon />
               <span>Care Tasks</span>
@@ -1293,6 +1332,11 @@ export default function Dashboard() {
       {/* Medication Modal */}
       {isMedicationModalOpen && (
         <MedicationModal onClose={() => setIsMedicationModalOpen(false)} />
+      )}
+
+      {/* Nutrition Modal */}
+      {isNutritionModalOpen && (
+        <NutritionModal onClose={() => setIsNutritionModalOpen(false)} />
       )}
 
       {/* Care Task Modal */}

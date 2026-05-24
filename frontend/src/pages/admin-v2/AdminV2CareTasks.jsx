@@ -583,7 +583,7 @@ const AdminV2CareTasks = () => {
         {selectedPatient ? (
           <>
             {/* Section Title */}
-            <h1 className="schedule-section-title">Care Tasks Overview</h1>
+            <h1 className="schedule-section-title">Manage Care Tasks</h1>
 
             {error && (
               <div className="admin-v2-error-banner">{error}</div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useLocation } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
-import { PatientHeader, PatientSelectorModal, IntakeModal, OutputModal } from './components';
+import { PatientHeader, PatientSelectorModal, IntakeModal, OutputModal, NutritionOverview } from './components';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
@@ -41,7 +41,12 @@ import {
   LunchIcon,
   DinnerIcon,
   SnackIcon,
-  TubeIcon
+  TubeIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CalendarIcon,
+  CheckIcon,
+  TargetIcon
 } from '../../components/Icons';
 import { localTimeToUTC, localTimeAndDaysToUTC, utcCronToLocalDaysAndTime, formatCronExpression, getCurrentLocalDateTime, localDateTimeToUTC, getLocalDateTimeString } from '../../utils/timezone';
 import './AdminV2.css';
@@ -63,10 +68,11 @@ const AdminV2Nutrition = () => {
   // Derive active tab from URL path
   const getActiveTabFromPath = () => {
     const path = location.pathname;
+    if (path.includes('/nutrition/intake')) return 'intake';
     if (path.includes('/nutrition/output')) return 'output';
     if (path.includes('/nutrition/schedules')) return 'schedules';
     if (path.includes('/nutrition/goals')) return 'goals';
-    return 'intake'; // default
+    return 'overview'; // default — /care/nutrition lands here
   };
   
   const activeTab = getActiveTabFromPath();
@@ -81,6 +87,12 @@ const AdminV2Nutrition = () => {
   const [schedules, setSchedules] = useState([]);
   const [goals, setGoals] = useState([]);
   const [currentGoal, setCurrentGoal] = useState(null);
+
+  // Overview-tab state — single date the page is showing, plus that day's
+  // intake + output records pulled from the daily endpoints.
+  const [overviewDate, setOverviewDate] = useState(new Date());
+  const [dailyIntakes, setDailyIntakes] = useState([]);
+  const [dailyOutputs, setDailyOutputs] = useState([]);
   
   // Reference data
   const [outputTypes, setOutputTypes] = useState({});
@@ -171,12 +183,30 @@ const AdminV2Nutrition = () => {
     fetchScheduleTypes();
   }, []);
 
-  // Fetch data when patient is selected
+  // Fetch data when patient is selected. Overview also refetches on date change.
   useEffect(() => {
     if (selectedPatient) {
       fetchData();
     }
-  }, [selectedPatient, activeTab]);
+  }, [selectedPatient, activeTab, overviewDate]);
+
+  // The Overview page needs the current goal to compute % targets — but
+  // currentGoal is only loaded by the goals tab in fetchData. Load it once
+  // when a patient is selected so Overview always has it on first render.
+  useEffect(() => {
+    if (!selectedPatient) return;
+    (async () => {
+      try {
+        const res = await fetch(
+          `${config.apiUrl}/api/nutrition/goals/patient/${selectedPatient.id}/current`,
+          { credentials: 'include' }
+        );
+        if (res.ok) setCurrentGoal(await res.json());
+      } catch (err) {
+        console.error('Error fetching current goal:', err);
+      }
+    })();
+  }, [selectedPatient]);
 
   const fetchOutputTypes = async () => {
     try {
@@ -208,12 +238,42 @@ const AdminV2Nutrition = () => {
 
   const fetchData = async () => {
     if (!selectedPatient) return;
-    
+
     setLoading(true);
     setError(null);
-    
+
     try {
-      if (activeTab === 'intake') {
+      if (activeTab === 'overview') {
+        const dateParam = formatDateForApi(overviewDate);
+        // Minutes the caller's local time is ahead of UTC — Schedule's
+        // /api/schedule/daily expects the same sign convention. JS's
+        // getTimezoneOffset() returns the opposite sign (UTC-minus-local),
+        // so we negate it.
+        const tzOffsetMinutes = -new Date().getTimezoneOffset();
+        const [intakeRes, outputRes] = await Promise.all([
+          fetch(
+            `${config.apiUrl}/api/patients/${selectedPatient.id}/nutrition-intake/daily?target_date=${dateParam}&tz_offset_minutes=${tzOffsetMinutes}`,
+            { credentials: 'include' }
+          ),
+          fetch(
+            `${config.apiUrl}/api/nutrition/outputs/patient/${selectedPatient.id}/daily?target_date=${dateParam}&tz_offset_minutes=${tzOffsetMinutes}`,
+            { credentials: 'include' }
+          ),
+        ]);
+        if (intakeRes.ok) {
+          const data = await intakeRes.json();
+          // /daily wraps records in { date, intake_records: [...] }
+          setDailyIntakes(data.intake_records || []);
+        } else {
+          setDailyIntakes([]);
+        }
+        if (outputRes.ok) {
+          // /outputs/.../daily returns a plain array
+          setDailyOutputs(await outputRes.json());
+        } else {
+          setDailyOutputs([]);
+        }
+      } else if (activeTab === 'intake') {
         const response = await fetch(
           `${config.apiUrl}/api/patients/${selectedPatient.id}/nutrition-intake`,
           { credentials: 'include' }
@@ -610,6 +670,64 @@ const AdminV2Nutrition = () => {
     return date.toLocaleDateString();
   };
 
+  // YYYY-MM-DD in local time. toISOString() would shift by a day in any
+  // timezone where the UTC offset has crossed midnight; mirror the Schedule
+  // page's local-date approach so the backend filters the user's actual day.
+  const formatDateForApi = (date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  const formatDisplayDate = (date) =>
+    date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+
+  const isToday = (date) => date.toDateString() === new Date().toDateString();
+
+  const goToPreviousDay = () => {
+    const d = new Date(overviewDate);
+    d.setDate(d.getDate() - 1);
+    setOverviewDate(d);
+  };
+  const goToNextDay = () => {
+    const d = new Date(overviewDate);
+    d.setDate(d.getDate() + 1);
+    setOverviewDate(d);
+  };
+  const goToToday = () => setOverviewDate(new Date());
+
+  // Time only — used in the combined log table.
+  const formatTimeShort = (dateStr) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  };
+
+  // Convert any intake amount to ml so we can sum total fluids consistently.
+  // Counts liquids and hydration-schedule completions (which store
+  // item_type='hydration' from the schedule_type). Solid foods are excluded.
+  const FLUID_ITEM_TYPES = new Set(['liquid', 'hydration']);
+  const intakeToMl = (intake) => {
+    if (!FLUID_ITEM_TYPES.has(intake.item_type) || !intake.amount) return 0;
+    const unit = (intake.amount_unit || 'ml').toLowerCase();
+    const amount = parseFloat(intake.amount) || 0;
+    if (unit === 'oz' || unit === 'ounces') return amount * 29.5735;
+    if (unit === 'cup' || unit === 'cups') return amount * 236.588;
+    if (unit === 'l' || unit === 'liter' || unit === 'liters') return amount * 1000;
+    return amount; // assume ml
+  };
+
+  const outputToMl = (output) => {
+    if (!output.amount) return 0;
+    const unit = (output.amount_unit || 'ml').toLowerCase();
+    const amount = parseFloat(output.amount) || 0;
+    if (unit === 'oz' || unit === 'ounces') return amount * 29.5735;
+    if (unit === 'cup' || unit === 'cups') return amount * 236.588;
+    if (unit === 'l' || unit === 'liter' || unit === 'liters') return amount * 1000;
+    return amount;
+  };
+
   // Calculate daily occurrences from cron expression
   const getDailyOccurrences = (cronExpr) => {
     if (!cronExpr) return 0;
@@ -725,7 +843,40 @@ const AdminV2Nutrition = () => {
           <>
             {error && <div className="admin-v2-error">{error}</div>}
 
+            {/* OVERVIEW TAB — rendered outside .admin-v2-content so the
+                sticky date nav binds to the outer Layout scroll container. */}
+            {activeTab === 'overview' && (
+              <NutritionOverview
+                selectedDate={overviewDate}
+                onPrevDay={goToPreviousDay}
+                onNextDay={goToNextDay}
+                onGoToToday={goToToday}
+                onPickDate={(d) => setOverviewDate(d)}
+                formatDateForApi={formatDateForApi}
+                formatDisplayDate={formatDisplayDate}
+                isToday={isToday}
+                intakes={dailyIntakes}
+                outputs={dailyOutputs}
+                currentGoal={currentGoal}
+                loading={loading}
+                onLogIntake={() => openIntakeModal()}
+                onLogOutput={() => openOutputModal()}
+                onEditIntake={openIntakeModal}
+                onEditOutput={openOutputModal}
+                onDeleteIntake={(item) => openDeleteModal(item, 'intake')}
+                onDeleteOutput={(item) => openDeleteModal(item, 'output')}
+                canCreate={hasPermission('nutrition.create')}
+                canUpdate={hasPermission('nutrition.update')}
+                canDelete={hasPermission('nutrition.delete')}
+                outputTypes={outputTypes}
+                intakeToMl={intakeToMl}
+                outputToMl={outputToMl}
+                formatTimeShort={formatTimeShort}
+              />
+            )}
+
             {/* Content based on active tab */}
+            {activeTab !== 'overview' && (
             <div className="admin-v2-content">
               {/* INTAKE TAB */}
               {activeTab === 'intake' && (
@@ -1321,6 +1472,7 @@ const AdminV2Nutrition = () => {
                 </div>
               )}
             </div>
+            )}
           </>
         )}
       </div>

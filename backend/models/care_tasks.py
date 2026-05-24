@@ -35,12 +35,6 @@ class CareTaskResponse(BaseModel):
         from_attributes = True
 
 
-class CareTaskComplete(BaseModel):
-    status: str = Field(default="completed", pattern="^(completed|skipped|missed)$")
-    notes: Optional[str] = None
-    completed_by: Optional[str] = None
-
-
 class CareTaskScheduleCreate(BaseModel):
     cron_expression: str = Field(..., min_length=1)
     description: Optional[str] = Field(None, max_length=500)
@@ -75,9 +69,15 @@ class CareTaskScheduleResponse(BaseModel):
 class CareTaskScheduleComplete(BaseModel):
     scheduled_time: Optional[datetime] = None
     notes: Optional[str] = None
-    completed_by: Optional[str] = None
     # Set to True to bypass the >1h-early administration guard
     early_override: bool = False
+
+
+class CareTaskAdHocComplete(BaseModel):
+    """Body for marking a care task done outside of a schedule (PRN)."""
+    completed_at: Optional[datetime] = None
+    notes: Optional[str] = None
+    patient_id: Optional[int] = None
 
 
 class CareTaskCategoryCreate(BaseModel):

@@ -117,11 +117,16 @@ async def get_patient_nutrition_intake_endpoint(
 async def get_daily_nutrition_intake_endpoint(
     patient_id: int,
     target_date: Optional[date] = None,
+    tz_offset_minutes: Optional[int] = None,
     db: Session = Depends(get_db),
     _: bool = Depends(require_read_access)
 ):
-    """Get nutrition intake records for a specific day"""
-    intake_records = get_daily_nutrition_intake(db, patient_id, target_date)
+    """Get nutrition intake records for a specific day.
+
+    `tz_offset_minutes` (minutes the caller's local time is ahead of UTC)
+    bounds the day to the caller's local midnight; omitted -> UTC day.
+    """
+    intake_records = get_daily_nutrition_intake(db, patient_id, target_date, tz_offset_minutes=tz_offset_minutes)
     return {
         "date": target_date or date.today(),
         "intake_records": intake_records
@@ -131,11 +136,12 @@ async def get_daily_nutrition_intake_endpoint(
 async def get_nutrition_summary_endpoint(
     patient_id: int,
     target_date: Optional[date] = None,
+    tz_offset_minutes: Optional[int] = None,
     db: Session = Depends(get_db),
     _: bool = Depends(require_read_access)
 ):
     """Get daily nutrition summary with totals"""
-    summary = get_nutrition_summary(db, patient_id, target_date)
+    summary = get_nutrition_summary(db, patient_id, target_date, tz_offset_minutes=tz_offset_minutes)
     return {
         "date": target_date or date.today(),
         "summary": summary
@@ -530,6 +536,7 @@ async def delete_goal(goal_id: int, db: Session = Depends(get_db)):
 async def get_nutrition_intake_summary(
     patient_id: int,
     days: int = 30,
+    tz_offset_minutes: Optional[int] = None,
     db: Session = Depends(get_db),
     _: bool = Depends(require_read_access)
 ):
@@ -537,30 +544,54 @@ async def get_nutrition_intake_summary(
     Get daily nutrition summary for a patient over specified days.
     Uses the correct nutrition goal for each day based on effective_date.
     Returns daily intake totals, goals, and % deviation.
+
+    Bucketing rules (matching the Overview):
+    - Use scheduled_time when present (a 9pm feed logged at 12:30am belongs
+      to the day it was scheduled for), else fall back to consumed_at.
+    - Bucket by the caller's local day when tz_offset_minutes is supplied.
+    - water_ml sums both liquid- and hydration-typed intakes (hydration is
+      the item_type assigned when a hydration *schedule* is completed).
     """
-    from sqlalchemy import func, cast, Date
+    from sqlalchemy import func, cast, Date, text, case
     from datetime import timedelta
     from models import NutritionIntake
     from schemas.nutrition_goal import NutritionGoal
-    
+
     try:
-        end_date = date.today()
+        # "Today" in the caller's local time when an offset is provided;
+        # otherwise UTC today (back-compat).
+        if tz_offset_minutes is not None:
+            now_local = datetime.utcnow() + timedelta(minutes=tz_offset_minutes)
+            end_date = now_local.date()
+        else:
+            end_date = date.today()
         start_date = end_date - timedelta(days=days - 1)
-        
+
         # Get all goals for this patient (including historical) sorted by effective_date desc
         all_goals = db.query(NutritionGoal).filter(
             NutritionGoal.patient_id == patient_id
         ).order_by(NutritionGoal.effective_date.desc()).all()
-        
-        # Get daily aggregated intake data
-        # Group by date and sum calories, water
+
+        # Event-time expression: prefer scheduled_time, fall back to consumed_at.
+        event_time = func.coalesce(NutritionIntake.scheduled_time, NutritionIntake.consumed_at)
+        # Shift into caller's local time before casting to Date so daily
+        # buckets align with their day, not UTC's. PostgreSQL supports
+        # `timestamptz + interval` naturally.
+        if tz_offset_minutes is not None:
+            local_event_time = event_time + text(f"INTERVAL '{tz_offset_minutes} minutes'")
+        else:
+            local_event_time = event_time
+        bucket_date = cast(local_event_time, Date)
+
+        # Daily aggregated intake. Column names corrected (protein_grams etc.)
+        # and water sum extended to include `hydration` (schedule-completion item_type).
         daily_intake = db.query(
-            cast(NutritionIntake.consumed_at, Date).label('date'),
+            bucket_date.label('date'),
             func.sum(NutritionIntake.calories).label('total_calories'),
             func.sum(
-                func.case(
-                    (NutritionIntake.item_type == 'liquid',
-                     func.case(
+                case(
+                    (NutritionIntake.item_type.in_(['liquid', 'hydration']),
+                     case(
                          (NutritionIntake.amount_unit.in_(['oz', 'ounces']), NutritionIntake.amount * 29.5735),
                          (NutritionIntake.amount_unit.in_(['cup', 'cups']), NutritionIntake.amount * 236.588),
                          (NutritionIntake.amount_unit.in_(['liter', 'liters', 'l']), NutritionIntake.amount * 1000),
@@ -569,15 +600,15 @@ async def get_nutrition_intake_summary(
                     else_=0
                 )
             ).label('total_water_ml'),
-            func.sum(NutritionIntake.protein).label('total_protein'),
-            func.sum(NutritionIntake.carbs).label('total_carbs'),
-            func.sum(NutritionIntake.fat).label('total_fat')
+            func.sum(NutritionIntake.protein_grams).label('total_protein'),
+            func.sum(NutritionIntake.carbs_grams).label('total_carbs'),
+            func.sum(NutritionIntake.fat_grams).label('total_fat')
         ).filter(
             NutritionIntake.patient_id == patient_id,
-            cast(NutritionIntake.consumed_at, Date) >= start_date,
-            cast(NutritionIntake.consumed_at, Date) <= end_date
+            bucket_date >= start_date,
+            bucket_date <= end_date
         ).group_by(
-            cast(NutritionIntake.consumed_at, Date)
+            bucket_date
         ).all()
         
         # Convert to dict for easier lookup
@@ -639,6 +670,9 @@ async def get_nutrition_intake_summary(
             if goal:
                 day_data['calories_target'] = goal.calories_target
                 day_data['water_target'] = goal.water_ml_target
+                # Broader target that includes meals/tube feeds as fluid —
+                # matches the Overview's fluid card semantics.
+                day_data['total_fluid_target'] = goal.total_fluid_ml_target
                 day_data['protein_target'] = goal.protein_grams_target
                 day_data['carbs_target'] = goal.carbs_grams_target
                 day_data['fat_target'] = goal.fat_grams_target
@@ -700,11 +734,15 @@ async def get_outputs_for_patient(
 async def get_daily_outputs(
     patient_id: int,
     target_date: Optional[date] = None,
+    tz_offset_minutes: Optional[int] = None,
     db: Session = Depends(get_db),
     _: bool = Depends(require_read_access)
 ):
-    """Get output logs for a specific day"""
-    outputs = get_daily_nutrition_outputs(db, patient_id, target_date)
+    """Get output logs for a specific day.
+
+    `tz_offset_minutes` bounds the day to the caller's local midnight.
+    """
+    outputs = get_daily_nutrition_outputs(db, patient_id, target_date, tz_offset_minutes=tz_offset_minutes)
     return [NutritionOutputResponse.model_validate(o) for o in outputs]
 
 
@@ -712,74 +750,95 @@ async def get_daily_outputs(
 async def get_patient_output_summary(
     patient_id: int,
     target_date: Optional[date] = None,
+    tz_offset_minutes: Optional[int] = None,
     db: Session = Depends(get_db),
     _: bool = Depends(require_read_access)
 ):
     """Get output summary for a patient for a specific day"""
-    return get_output_summary(db, patient_id, target_date)
+    return get_output_summary(db, patient_id, target_date, tz_offset_minutes=tz_offset_minutes)
 
 
 @router.get("/nutrition/outputs/patient/{patient_id}/history")
 async def get_output_history_summary(
     patient_id: int,
     days: int = 30,
+    tz_offset_minutes: Optional[int] = None,
     db: Session = Depends(get_db),
     _: bool = Depends(require_read_access)
 ):
     """
     Get daily output summary for a patient over specified days.
     Uses the correct nutrition goal for each day based on effective_date.
-    Tracks urine output and bowel movement counts.
+    Tracks urine count + volume and bowel movement counts.
+
+    `tz_offset_minutes` shifts the day boundary to the caller's local
+    midnight (matches the intake summary endpoint). Without it, falls back
+    to UTC-day buckets.
     """
-    from sqlalchemy import func, cast, Date
+    from sqlalchemy import func, cast, Date, case, text
     from datetime import timedelta
     from schemas.nutrition_output import NutritionOutput
     from schemas.nutrition_goal import NutritionGoal
-    
+
     try:
-        end_date_val = date.today()
+        if tz_offset_minutes is not None:
+            now_local = datetime.utcnow() + timedelta(minutes=tz_offset_minutes)
+            end_date_val = now_local.date()
+        else:
+            end_date_val = date.today()
         start_date_val = end_date_val - timedelta(days=days - 1)
-        
+
         # Get all goals for this patient (including historical) sorted by effective_date desc
         all_goals = db.query(NutritionGoal).filter(
             NutritionGoal.patient_id == patient_id
         ).order_by(NutritionGoal.effective_date.desc()).all()
-        
-        # Get daily aggregated urine output (in ml)
+
+        # Shifted-by-offset event time so buckets are caller's local days.
+        if tz_offset_minutes is not None:
+            local_occurred = NutritionOutput.occurred_at + text(f"INTERVAL '{tz_offset_minutes} minutes'")
+        else:
+            local_occurred = NutritionOutput.occurred_at
+        bucket_date = cast(local_occurred, Date)
+
+        # Daily urine — both total ml and count. Caregivers want to see
+        # frequency (count) and volume (ml) together; the chart pairs them
+        # on dual axes.
         daily_urine = db.query(
-            cast(NutritionOutput.occurred_at, Date).label('date'),
+            bucket_date.label('date'),
             func.sum(
-                func.case(
+                case(
                     (NutritionOutput.amount_unit.in_(['oz', 'ounces']), NutritionOutput.amount * 29.5735),
                     (NutritionOutput.amount_unit.in_(['cup', 'cups']), NutritionOutput.amount * 236.588),
                     (NutritionOutput.amount_unit.in_(['liter', 'liters', 'l']), NutritionOutput.amount * 1000),
                     else_=NutritionOutput.amount
                 )
-            ).label('total_urine_ml')
+            ).label('total_urine_ml'),
+            func.count(NutritionOutput.id).label('urine_count')
         ).filter(
             NutritionOutput.patient_id == patient_id,
             NutritionOutput.output_type == 'urine',
-            cast(NutritionOutput.occurred_at, Date) >= start_date_val,
-            cast(NutritionOutput.occurred_at, Date) <= end_date_val
+            bucket_date >= start_date_val,
+            bucket_date <= end_date_val
         ).group_by(
-            cast(NutritionOutput.occurred_at, Date)
+            bucket_date
         ).all()
-        
-        # Get daily bowel movement count
+
+        # Daily bowel movement count
         daily_bowel = db.query(
-            cast(NutritionOutput.occurred_at, Date).label('date'),
+            bucket_date.label('date'),
             func.count(NutritionOutput.id).label('bowel_count')
         ).filter(
             NutritionOutput.patient_id == patient_id,
             NutritionOutput.output_type == 'bowel',
-            cast(NutritionOutput.occurred_at, Date) >= start_date_val,
-            cast(NutritionOutput.occurred_at, Date) <= end_date_val
+            bucket_date >= start_date_val,
+            bucket_date <= end_date_val
         ).group_by(
-            cast(NutritionOutput.occurred_at, Date)
+            bucket_date
         ).all()
-        
+
         # Convert to dicts for lookup
-        urine_by_date = {row.date: float(row.total_urine_ml or 0) for row in daily_urine}
+        urine_ml_by_date = {row.date: float(row.total_urine_ml or 0) for row in daily_urine}
+        urine_count_by_date = {row.date: int(row.urine_count or 0) for row in daily_urine}
         bowel_by_date = {row.date: int(row.bowel_count or 0) for row in daily_bowel}
         
         def find_goal_for_date(target_date: date):
@@ -803,7 +862,8 @@ async def get_output_history_summary(
             
             day_data = {
                 'date': current_date.isoformat(),
-                'urine_ml': round(urine_by_date.get(current_date, 0), 1),
+                'urine_ml': round(urine_ml_by_date.get(current_date, 0), 1),
+                'urine_count': urine_count_by_date.get(current_date, 0),
                 'bowel_count': bowel_by_date.get(current_date, 0),
                 'urine_target': goal.urine_output_ml_min if goal else None,
                 'bowel_target': goal.bowel_movements_target if goal else None

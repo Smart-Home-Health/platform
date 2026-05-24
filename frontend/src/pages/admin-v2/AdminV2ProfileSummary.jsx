@@ -197,12 +197,15 @@ const AdminV2ProfileSummary = () => {
       }
     };
     
-    // Fetch nutrition intake summary (30-day with goals)
+    // Fetch nutrition intake summary (30-day with goals). Pass local tz
+    // offset so the backend buckets by the caller's day, matching the
+    // Overview's behavior (otherwise late-evening logs slide a day off).
     const fetchNutritionSummary = async () => {
       setLoadingNutrition(true);
       try {
+        const tzOffsetMinutes = -new Date().getTimezoneOffset();
         const response = await fetch(
-          `${config.apiUrl}/api/nutrition/patient/${selectedPatient.id}/summary?days=30`,
+          `${config.apiUrl}/api/nutrition/patient/${selectedPatient.id}/summary?days=30&tz_offset_minutes=${tzOffsetMinutes}`,
           { credentials: 'include' }
         );
         if (response.ok) {
@@ -216,12 +219,14 @@ const AdminV2ProfileSummary = () => {
       }
     };
     
-    // Fetch nutrition output history (30-day with goals)
+    // Fetch nutrition output history (30-day with goals). Same TZ shaping
+    // as the intake summary so days align with the Overview / Schedule view.
     const fetchNutritionOutput = async () => {
       setLoadingNutritionOutput(true);
       try {
+        const tzOffsetMinutes = -new Date().getTimezoneOffset();
         const response = await fetch(
-          `${config.apiUrl}/api/nutrition/outputs/patient/${selectedPatient.id}/history?days=30`,
+          `${config.apiUrl}/api/nutrition/outputs/patient/${selectedPatient.id}/history?days=30&tz_offset_minutes=${tzOffsetMinutes}`,
           { credentials: 'include' }
         );
         if (response.ok) {
@@ -282,14 +287,18 @@ const AdminV2ProfileSummary = () => {
       // Calculate % deviation: ((actual - target) / target) * 100
       let caloriesDeviation = null;
       let fluidsDeviation = null;
-      
+
       if (d.calories_target && d.calories_target > 0) {
         caloriesDeviation = Math.round(((d.calories - d.calories_target) / d.calories_target) * 100);
       }
-      if (d.water_target && d.water_target > 0) {
-        fluidsDeviation = Math.round(((d.water_ml - d.water_target) / d.water_target) * 100);
+      // Backend may emit total_fluid_ml_target or water_ml_target; goal API
+      // gives both. Prefer the broader total-fluid target since the chart
+      // sums liquid + hydration intakes.
+      const fluidTarget = d.total_fluid_target || d.water_target;
+      if (fluidTarget && fluidTarget > 0) {
+        fluidsDeviation = Math.round(((d.water_ml - fluidTarget) / fluidTarget) * 100);
       }
-      
+
       return {
         date: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
         calories: caloriesDeviation,
@@ -298,11 +307,24 @@ const AdminV2ProfileSummary = () => {
     });
   };
 
+  // Symmetric Y domain so the 0 (goal) line sits exactly in the middle.
+  // Floor at ±50% so a perfect-streak chart still shows axis context, and
+  // grow in 25% steps when real data pushes past 50%.
+  const nutritionChartDomain = () => {
+    const data = formatNutritionChartData();
+    const vals = data.flatMap(d => [d.calories, d.fluids]).filter(v => v != null);
+    if (!vals.length) return [-50, 50];
+    const maxAbs = Math.max(50, ...vals.map(Math.abs));
+    const bound = Math.ceil(maxAbs / 25) * 25;
+    return [-bound, bound];
+  };
+
   // Helper to format output chart data
   const formatOutputChartData = () => {
     return nutritionOutput.map(d => ({
       date: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
       urine: d.urine_ml || 0,
+      urineCount: d.urine_count || 0,
       bowel: d.bowel_count || 0,
       urineTarget: d.urine_target,
       bowelTarget: d.bowel_target
@@ -595,16 +617,16 @@ const AdminV2ProfileSummary = () => {
               <div className="empty-state">No nutrition data available</div>
             ) : (
               <div className="nutrition-chart-container">
-                <ResponsiveContainer width="100%" height={220}>
+                <ResponsiveContainer width="100%" height={240}>
                   <LineChart data={formatNutritionChartData()} margin={{ top: 10, right: 30, bottom: 5, left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                     <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#9ca3af' }} interval={4} />
-                    <YAxis 
-                      domain={[-50, 50]} 
-                      tick={{ fontSize: 10, fill: '#9ca3af' }} 
+                    <YAxis
+                      domain={nutritionChartDomain()}
+                      tick={{ fontSize: 10, fill: '#9ca3af' }}
                       tickFormatter={(value) => `${value > 0 ? '+' : ''}${value}%`}
                     />
-                    <Tooltip 
+                    <Tooltip
                       contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px' }}
                       formatter={(value, name) => {
                         if (value === null) return ['No target set', name];
@@ -612,7 +634,11 @@ const AdminV2ProfileSummary = () => {
                       }}
                     />
                     <Legend />
-                    <ReferenceLine y={0} stroke="#6b7280" strokeWidth={2} label={{ value: 'Goal', fill: '#6b7280', fontSize: 10, position: 'right' }} />
+                    {/* Subtle ±25% bands as soft "near-goal" markers; the
+                        bold y=0 line is the goal itself. */}
+                    <ReferenceLine y={25} stroke="#374151" strokeDasharray="2 4" />
+                    <ReferenceLine y={-25} stroke="#374151" strokeDasharray="2 4" />
+                    <ReferenceLine y={0} stroke="#9ca3af" strokeWidth={2} label={{ value: 'Goal', fill: '#9ca3af', fontSize: 10, position: 'right' }} />
                     <Line type="monotone" dataKey="calories" stroke="#f59e0b" strokeWidth={2} dot={false} name="Calories" connectNulls />
                     <Line type="monotone" dataKey="fluids" stroke="#3b82f6" strokeWidth={2} dot={false} name="Fluids" connectNulls />
                   </LineChart>
@@ -631,22 +657,64 @@ const AdminV2ProfileSummary = () => {
             ) : (
               <div className="nutrition-output-grid">
                 <div className="output-chart-container">
-                  <h3>Urine Output (mL)</h3>
+                  <h3>Urine Output <span className="chart-subtitle">— count (left) · volume mL (right)</span></h3>
                   <ResponsiveContainer width="100%" height={180}>
                     <LineChart data={formatOutputChartData()} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                       <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#9ca3af' }} interval={6} />
-                      <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} />
-                      <Tooltip 
+                      {/* Primary axis: count of voids per day. Most caregivers
+                          watch frequency first; volume is the supporting metric. */}
+                      <YAxis
+                        yAxisId="count"
+                        orientation="left"
+                        allowDecimals={false}
+                        tick={{ fontSize: 10, fill: '#a855f7' }}
+                      />
+                      {/* Secondary axis: total volume per day. */}
+                      <YAxis
+                        yAxisId="ml"
+                        orientation="right"
+                        tick={{ fontSize: 10, fill: '#06b6d4' }}
+                      />
+                      <Tooltip
                         contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px' }}
                         formatter={(value, name) => {
-                          if (name === 'urine') return [`${value} mL`, 'Urine Output'];
-                          if (name === 'urineTarget') return [`${value} mL`, 'Minimum Target'];
+                          if (name === 'Volume (ml)') return [`${value} mL`, name];
                           return [value, name];
                         }}
                       />
-                      <ReferenceLine y={nutritionOutput[0]?.urine_target || 800} stroke="#22c55e" strokeDasharray="3 3" label={{ value: 'Min', fill: '#22c55e', fontSize: 10 }} />
-                      <Line type="monotone" dataKey="urine" stroke="#06b6d4" strokeWidth={2} dot={false} connectNulls />
+                      <Legend />
+                      {/* Min-volume target sits on the mL axis */}
+                      {nutritionOutput[0]?.urine_target && (
+                        <ReferenceLine
+                          yAxisId="ml"
+                          y={nutritionOutput[0].urine_target}
+                          stroke="#22c55e"
+                          strokeDasharray="3 3"
+                          label={{ value: 'Min mL', fill: '#22c55e', fontSize: 10 }}
+                        />
+                      )}
+                      <Line
+                        yAxisId="count"
+                        type="monotone"
+                        dataKey="urineCount"
+                        stroke="#a855f7"
+                        strokeWidth={2}
+                        dot={false}
+                        connectNulls
+                        name="Voids"
+                      />
+                      <Line
+                        yAxisId="ml"
+                        type="monotone"
+                        dataKey="urine"
+                        stroke="#06b6d4"
+                        strokeWidth={2}
+                        strokeDasharray="4 2"
+                        dot={false}
+                        connectNulls
+                        name="Volume (ml)"
+                      />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>

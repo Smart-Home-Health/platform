@@ -259,7 +259,7 @@ class WebSocketModule:
             from state_manager import get_db_session
             from crud.equipment import get_equipment_due_count
             from crud.medications import get_due_and_upcoming_medications_count
-            from crud.scheduling import get_due_and_upcoming_care_tasks_count
+            from crud.scheduling import get_due_and_upcoming_care_tasks_count, get_due_and_upcoming_nutrition_count
             from crud.monitoring import get_unacknowledged_alerts_count, get_active_ventilator_alerts_count
             from crud.settings import get_all_settings
             from crud.vitals import get_vitals_by_type
@@ -295,6 +295,12 @@ class WebSocketModule:
                     logger.warning(f"Error getting care tasks due count: {e}")
                     db.rollback()
                     care_tasks_due_count = 0
+                try:
+                    nutrition_due_count = get_due_and_upcoming_nutrition_count(db)
+                except Exception as e:
+                    logger.warning(f"Error getting nutrition due count: {e}")
+                    db.rollback()
+                    nutrition_due_count = 0
 
                 try:
                     settings_result = get_all_settings(db)
@@ -353,6 +359,7 @@ class WebSocketModule:
                 'alerts_count': alerts_count,
                 'equipment_due_count': equipment_due_count,
                 'medications': medications_due_count,
+                'nutrition': nutrition_due_count,
                 'care_tasks': care_tasks_due_count,
                 'dashboard_chart_1': {
                     'vital_type': chart_1_vital,
@@ -415,6 +422,7 @@ class WebSocketModule:
                 'alerts_count': 0,
                 'equipment_due_count': 0,
                 'medications': 0,
+                'nutrition': 0,
                 'care_tasks': 0,
                 'spo2_alarm': False,
                 'bpm_alarm': False,

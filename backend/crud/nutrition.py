@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, and_, func
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from typing import List, Optional
 from schemas.nutrition_intake import NutritionIntake
 from schemas.patient import Patient
@@ -402,28 +402,51 @@ def get_patient_nutrition_intake(db: Session, patient_id: int, limit: int = 50) 
         .limit(limit)\
         .all()
 
-def get_daily_nutrition_intake(db: Session, patient_id: int, target_date: date = None) -> List[NutritionIntake]:
-    """Get nutrition intake records for a specific day"""
+def get_daily_nutrition_intake(
+    db: Session,
+    patient_id: int,
+    target_date: date = None,
+    tz_offset_minutes: int = None,
+) -> List[NutritionIntake]:
+    """Get nutrition intake records for a specific day.
+
+    `tz_offset_minutes` is the minutes the caller's local time is ahead of UTC
+    (US Eastern in DST = -240). When provided, the day window is the caller's
+    local midnight-to-midnight converted to UTC. Without it the function falls
+    back to UTC-day boundaries for backward compatibility.
+
+    Bucketing prefers `scheduled_time` over `consumed_at`: a 9pm feed logged
+    half an hour late at 12:30am still belongs to the day it was *meant* for,
+    not the day it was actually given. Falls back to consumed_at for PRN /
+    ad-hoc entries where scheduled_time is NULL.
+    """
     if not target_date:
         target_date = date.today()
-    
-    start_of_day = datetime.combine(target_date, datetime.min.time())
-    end_of_day = datetime.combine(target_date, datetime.max.time())
-    
+
+    local_midnight = datetime.combine(target_date, datetime.min.time())
+    if tz_offset_minutes is None:
+        start_utc = local_midnight.replace(tzinfo=timezone.utc)
+    else:
+        # Subtract the local offset to translate local midnight into UTC.
+        start_utc = (local_midnight - timedelta(minutes=tz_offset_minutes)).replace(tzinfo=timezone.utc)
+    end_utc = start_utc + timedelta(days=1)
+
+    bucket_time = func.coalesce(NutritionIntake.scheduled_time, NutritionIntake.consumed_at)
+
     return db.query(NutritionIntake)\
         .filter(
             and_(
                 NutritionIntake.patient_id == patient_id,
-                NutritionIntake.consumed_at >= start_of_day,
-                NutritionIntake.consumed_at <= end_of_day
+                bucket_time >= start_utc,
+                bucket_time < end_utc,
             )
         )\
-        .order_by(NutritionIntake.consumed_at)\
+        .order_by(bucket_time)\
         .all()
 
-def get_nutrition_summary(db: Session, patient_id: int, target_date: date = None) -> dict:
+def get_nutrition_summary(db: Session, patient_id: int, target_date: date = None, tz_offset_minutes: int = None) -> dict:
     """Get daily nutrition summary (totals for calories, water, etc.)"""
-    daily_intake = get_daily_nutrition_intake(db, patient_id, target_date)
+    daily_intake = get_daily_nutrition_intake(db, patient_id, target_date, tz_offset_minutes=tz_offset_minutes)
     
     summary = {
         'total_calories': 0,
@@ -695,27 +718,39 @@ def get_patient_nutrition_outputs(
     return query.order_by(desc(NutritionOutput.occurred_at)).limit(limit).all()
 
 
-def get_daily_nutrition_outputs(db: Session, patient_id: int, target_date: date = None) -> List[NutritionOutput]:
-    """Get output logs for a specific day"""
+def get_daily_nutrition_outputs(
+    db: Session,
+    patient_id: int,
+    target_date: date = None,
+    tz_offset_minutes: int = None,
+) -> List[NutritionOutput]:
+    """Get output logs for a specific day.
+
+    See get_daily_nutrition_intake for the tz_offset_minutes contract.
+    """
     if target_date is None:
         target_date = date.today()
-    
-    start = datetime.combine(target_date, datetime.min.time())
-    end = datetime.combine(target_date, datetime.max.time())
-    
+
+    local_midnight = datetime.combine(target_date, datetime.min.time())
+    if tz_offset_minutes is None:
+        start_utc = local_midnight.replace(tzinfo=timezone.utc)
+    else:
+        start_utc = (local_midnight - timedelta(minutes=tz_offset_minutes)).replace(tzinfo=timezone.utc)
+    end_utc = start_utc + timedelta(days=1)
+
     return db.query(NutritionOutput)\
         .filter(
             NutritionOutput.patient_id == patient_id,
-            NutritionOutput.occurred_at >= start,
-            NutritionOutput.occurred_at <= end
+            NutritionOutput.occurred_at >= start_utc,
+            NutritionOutput.occurred_at < end_utc,
         )\
         .order_by(NutritionOutput.occurred_at)\
         .all()
 
 
-def get_output_summary(db: Session, patient_id: int, target_date: date = None) -> dict:
+def get_output_summary(db: Session, patient_id: int, target_date: date = None, tz_offset_minutes: int = None) -> dict:
     """Get output summary for a day"""
-    outputs = get_daily_nutrition_outputs(db, patient_id, target_date)
+    outputs = get_daily_nutrition_outputs(db, patient_id, target_date, tz_offset_minutes=tz_offset_minutes)
     
     summary = {
         'urine_count': 0,

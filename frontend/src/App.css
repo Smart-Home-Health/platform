@@ -2223,8 +2223,16 @@ html, body, #root {
 
 .dashboard-container.mobile {
   padding: 0;
-  height: calc(100vh - 60px - var(--vkb-height, 0px));
-  overflow-y: auto;
+  /* Was `height: calc(100vh - 60px - vkb)`, which fights with the wrapper:
+     .dashboard-wrapper is already 100vh (clamped by overflow:hidden) and
+     contains .header-section at 10%. Setting an absolute height here meant
+     header+dashboard wanted ~140vh, so the dashboard got clipped past the
+     fold. iOS Safari's 100vh also includes URL-bar space that isn't
+     actually visible, compounding the problem.
+     Fix: be a flex child of the wrapper and consume whatever's left. */
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto; /* safety net for very small screens */
   display: flex;
   flex-direction: column;
 }
@@ -2232,34 +2240,40 @@ html, body, #root {
 .mobile-values-container {
   display: flex;
   flex-direction: column;
-  gap: 15px;
-  padding: 15px 15px 25px 15px;
+  gap: 8px;
+  padding: 8px 10px 10px 10px;
   height: 100%;
-  justify-content: space-evenly;
   flex: 1;
+  /* Critical for flex shrink: without this, children with content force the
+     container taller than 100%, causing scroll. */
+  min-height: 0;
 }
 
 .mobile-values-container .value-display {
   background-color: #161e2e;
   border-radius: 8px;
-  padding: 20px;
+  padding: 10px 14px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  flex: 1;
-  min-height: 180px;
+  flex: 1 1 0;
+  /* No min-height — let flex divide the available viewport evenly between
+     all three cards. Was 180px which broke fit on phones in portrait. */
+  min-height: 0;
   display: flex;
   flex-direction: column;
   justify-content: center;
   position: relative;
   color: white;
+  /* Hide any overflow if a value somehow gets long. */
+  overflow: hidden;
 }
 
 .mobile-values-container .value-display .value-title {
   position: absolute;
-  top: 15px;
-  left: 20px;
+  top: 8px;
+  left: 14px;
   margin: 0;
-  font-size: 1rem;
+  font-size: 0.9rem;
   font-weight: 500;
 }
 
@@ -2268,29 +2282,33 @@ html, body, #root {
   align-items: center;
   justify-content: center;
   flex: 1;
+  min-height: 0;
 }
 
 .mobile-values-container .value-display .value {
-  font-size: 5.5rem;
+  /* Viewport-relative so the number scales with the card slot. Bound by a
+     readable minimum and a sane max so it doesn't get tiny on small phones
+     or absurdly huge on tablets in portrait. */
+  font-size: clamp(2.5rem, 11vh, 4.25rem);
   font-weight: 700;
   text-align: center;
   line-height: 1;
 }
 
 .mobile-values-container .value-display .unit {
-  font-size: 1.5rem;
-  margin-left: 5px;
+  font-size: 1.1rem;
+  margin-left: 4px;
   align-self: flex-start;
-  margin-top: 15px;
+  margin-top: 8px;
 }
 
 .mobile-values-container .value-display .value-stats {
   display: flex;
   justify-content: space-around;
-  font-size: 0.8rem;
-  margin-top: 5px;
+  font-size: 0.75rem;
+  margin-top: 4px;
   border-top: 1px solid rgba(255, 255, 255, 0.15);
-  padding-top: 8px;
+  padding-top: 6px;
 }
 
 .mobile-values-container .value-display .value-stats span {

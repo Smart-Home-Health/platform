@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import SimpleEventChart from './SimpleEventChart';
 import config from '../config';
 import ModalBase from './ModalBase';
+import { AlertIcon, CheckIcon, ClockIcon, HeartIcon } from './Icons';
 
 const AlertDetailModal = ({ alert, onClose, onAcknowledge, initiateAcknowledge = false }) => {
   const [eventData, setEventData] = useState(null);
@@ -12,16 +13,25 @@ const AlertDetailModal = ({ alert, onClose, onAcknowledge, initiateAcknowledge =
   const [oxygenValue, setOxygenValue] = useState('');
   const [oxygenUnit, setOxygenUnit] = useState('L/min');
   const [acknowledgingAlert, setAcknowledgingAlert] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
+
+  useEffect(() => { fetchEventData(); }, [alert.id]);
 
   useEffect(() => {
-    fetchEventData();
-  }, [alert.id]);
-
-  useEffect(() => {
-    if (initiateAcknowledge) {
-      setShowOxygenForm(true);
-    }
+    if (initiateAcknowledge) setShowOxygenForm(true);
   }, [initiateAcknowledge]);
+
+  // Inject keyframes once
+  useEffect(() => {
+    if (document.getElementById('alert-detail-modal-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'alert-detail-modal-styles';
+    style.textContent = `
+      @keyframes alertModalFade { 0% { opacity: 0; } 100% { opacity: 1; } }
+      @keyframes alertModalSlide { 0% { opacity: 0; transform: translateY(20px); } 100% { opacity: 1; transform: translateY(0); } }
+    `;
+    document.head.appendChild(style);
+  }, []);
 
   const fetchEventData = async () => {
     try {
@@ -29,16 +39,7 @@ const AlertDetailModal = ({ alert, onClose, onAcknowledge, initiateAcknowledge =
       setError(null);
       const response = await fetch(`${config.apiUrl}/api/monitoring/alerts/${alert.id}/data`, { credentials: 'include' });
       if (!response.ok) throw new Error(`Error fetching alert data: ${response.statusText}`);
-      const data = await response.json();
-      
-      // Add debug logs to check the data
-      console.log(`Received ${data.length} data points for alert ${alert.id}`);
-      if (data.length > 0) {
-        console.log(`First data point:`, data[0]);
-        console.log(`Data has spo2: ${data[0].spo2 !== undefined}, bpm: ${data[0].bpm !== undefined}`);
-      }
-      
-      setEventData(data);
+      setEventData(await response.json());
     } catch (err) {
       console.error(`Error fetching data for alert ${alert.id}:`, err);
       setError('Failed to load event data. Please try again.');
@@ -47,279 +48,387 @@ const AlertDetailModal = ({ alert, onClose, onAcknowledge, initiateAcknowledge =
     }
   };
 
-  // Handle initial acknowledge button click
-  const handleAcknowledgeClick = () => {
-    setShowOxygenForm(true);
-  };
-  
-  // Handle final submission with oxygen data
+  const handleAcknowledgeClick = () => setShowOxygenForm(true);
+
   const handleSubmitAcknowledge = async () => {
     try {
       setAcknowledgingAlert(true);
-      
-      // Prepare the payload with oxygen usage data
+      setSubmitError(null);
       const payload = {
         oxygen_used: oxygenUsed ? 1 : 0,
-        // Only include these fields if oxygen was used, otherwise send null explicitly
         oxygen_highest: oxygenUsed && oxygenValue ? parseFloat(oxygenValue) : null,
-        oxygen_unit: oxygenUsed && oxygenValue ? oxygenUnit : null
+        oxygen_unit: oxygenUsed && oxygenValue ? oxygenUnit : null,
       };
-      
-      console.log('Acknowledging alert with payload:', payload);
-      
       const response = await fetch(`${config.apiUrl}/api/monitoring/alerts/${alert.id}/acknowledge`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-        credentials: 'include'
+        credentials: 'include',
       });
-      
-      // Log the response for debugging
-      const responseText = await response.text();
-      console.log('Acknowledge response:', response.status, responseText);
-      
       if (!response.ok) {
-        throw new Error(`Failed to acknowledge alert: ${responseText}`);
+        const text = await response.text();
+        throw new Error(text || `Failed (${response.status})`);
       }
-      
-      // Call the parent component's handler to update the UI
       onAcknowledge(alert.id);
-      
-      // Close the modal
       onClose();
     } catch (err) {
       console.error('Error acknowledging alert:', err);
-      setError(`Failed to acknowledge alert: ${err.message}`);
+      setSubmitError(err.message);
     } finally {
       setAcknowledgingAlert(false);
     }
   };
 
-  // Reset form if cancelled
   const handleCancelOxygenForm = () => {
     setShowOxygenForm(false);
     setOxygenUsed(false);
     setOxygenValue('');
     setOxygenUnit('L/min');
+    setSubmitError(null);
   };
 
   const formatDateTime = (isoString) => {
     if (!isoString) return 'N/A';
-    return new Date(isoString).toLocaleString();
+    return new Date(isoString).toLocaleString(undefined, {
+      month: 'short', day: 'numeric', year: 'numeric',
+      hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true,
+    });
   };
 
   const formatDuration = (start, end) => {
-    if (!start || !end) return 'Ongoing';
-    const durationMs = new Date(end) - new Date(start);
-    const minutes = Math.floor(durationMs / 60000);
-    const seconds = Math.floor((durationMs % 60000) / 1000);
-    return `${minutes}m ${seconds}s`;
+    if (!start) return '—';
+    const endTime = end ? new Date(end) : new Date();
+    const ms = endTime - new Date(start);
+    if (ms < 0) return 'Ongoing';
+    const total = Math.floor(ms / 1000);
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    if (h > 0) return `${h}h ${m}m`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
   };
 
   const spo2ChartData = useMemo(() => {
     if (!eventData || eventData.length === 0) return [];
-    return eventData.map((point) => ({
-      x: new Date(point.timestamp).toLocaleTimeString(),
-      y: point.spo2
-    }));
+    return eventData.map(p => ({ x: new Date(p.timestamp).toLocaleTimeString(), y: p.spo2 }));
   }, [eventData]);
 
   const bpmChartData = useMemo(() => {
     if (!eventData || eventData.length === 0) return [];
-    return eventData.map((point) => ({
-      x: new Date(point.timestamp).toLocaleTimeString(),
-      y: point.bpm
-    }));
+    return eventData.map(p => ({ x: new Date(p.timestamp).toLocaleTimeString(), y: p.bpm }));
   }, [eventData]);
 
-  // Render the oxygen usage form
-  const renderOxygenUsageForm = () => {
-    return (
-      <div className="oxygen-form-overlay">
-        <div className="oxygen-form">
-          <h3>Acknowledge Alert</h3>
-          <p className="form-instructions">
-            Please confirm if oxygen was administered during this alert. If not, simply click "Submit".
-          </p>
-          
-          <div className="form-group">
-            <label className="checkbox-label">
-              <input 
-                type="checkbox" 
-                checked={oxygenUsed} 
-                onChange={(e) => setOxygenUsed(e.target.checked)} 
-              />
-              <span>Oxygen was administered during this alert</span>
-            </label>
+  const severity = !alert.end_time ? 'active' : alert.acknowledged ? 'acknowledged' : 'unacknowledged';
+  const SEV = {
+    active:         { color: '#dc3545', bg: 'rgba(220,53,69,0.12)', label: 'Active', icon: <AlertIcon size={14} /> },
+    unacknowledged: { color: '#f0883e', bg: 'rgba(240,136,62,0.12)', label: 'Unacknowledged', icon: <ClockIcon size={14} /> },
+    acknowledged:   { color: '#3fb950', bg: 'rgba(63,185,80,0.12)', label: 'Acknowledged', icon: <CheckIcon size={14} /> },
+  }[severity];
+
+  const triggeredAlarms = [];
+  if (alert.alarm1_triggered) triggeredAlarms.push('Alarm 1');
+  if (alert.alarm2_triggered) triggeredAlarms.push('Alarm 2');
+  if (alert.spo2_alarm_triggered) triggeredAlarms.push('SpO₂');
+  if (alert.hr_alarm_triggered) triggeredAlarms.push('BPM');
+
+  const infoItem = (label, value) => (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 4,
+      padding: '10px 12px',
+      background: 'rgba(255,255,255,0.04)',
+      border: '1px solid rgba(255,255,255,0.08)',
+      borderRadius: 8, minWidth: 0,
+    }}>
+      <span style={{ color: '#a0aec0', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        {label}
+      </span>
+      <span style={{ color: '#e6edf3', fontSize: 14, fontWeight: 500, wordBreak: 'break-word' }}>
+        {value}
+      </span>
+    </div>
+  );
+
+  return (
+    <ModalBase isOpen={true} onClose={onClose} title="Alert Event Details">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, color: '#e6edf3' }}>
+        {/* Status banner */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
+          background: SEV.bg, border: `1px solid ${SEV.color}40`,
+          borderRadius: 8,
+        }}>
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '4px 10px', borderRadius: 12,
+            background: SEV.color, color: '#0d1117',
+            fontSize: 12, fontWeight: 700,
+          }}>
+            {SEV.icon} {SEV.label}
+          </span>
+          {triggeredAlarms.length > 0 && (
+            <span style={{ color: '#cbd5e0', fontSize: 13 }}>
+              Alarms: <strong>{triggeredAlarms.join(', ')}</strong>
+            </span>
+          )}
+        </div>
+
+        {/* Info grid */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+          gap: 10,
+        }}>
+          {infoItem('Start Time', formatDateTime(alert.start_time))}
+          {infoItem('End Time', alert.end_time ? formatDateTime(alert.end_time) : 'Ongoing')}
+          {infoItem('Duration', formatDuration(alert.start_time, alert.end_time))}
+        </div>
+
+        {/* Metric cards */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+          gap: 12,
+        }}>
+          <div style={{
+            background: 'rgba(72,187,120,0.1)',
+            border: '1px solid rgba(72,187,120,0.3)',
+            borderRadius: 10, padding: '14px 16px',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <span style={{ color: '#9ae6b4', fontSize: 13, fontWeight: 600 }}>SpO₂ Range</span>
+              {alert.spo2_alarm_triggered && (
+                <span style={{
+                  background: '#f56565', color: '#fff',
+                  padding: '2px 8px', borderRadius: 10,
+                  fontSize: 10, fontWeight: 700,
+                }}>ALARM</span>
+              )}
+            </div>
+            <div style={{ color: '#e6edf3', fontSize: 22, fontWeight: 700 }}>
+              {alert.spo2_min !== null && alert.spo2_max !== null
+                ? (alert.spo2_min === alert.spo2_max
+                    ? `${alert.spo2_min}%`
+                    : `${alert.spo2_min} – ${alert.spo2_max}%`)
+                : 'N/A'}
+            </div>
           </div>
-          
-          {oxygenUsed && (
-            <>
-              <div className="form-group">
-                <label>Highest Flow Rate / Concentration:</label>
-                <div className="input-with-unit">
-                  <input 
-                    type="number" 
-                    value={oxygenValue} 
+
+          <div style={{
+            background: 'rgba(245,101,101,0.1)',
+            border: '1px solid rgba(245,101,101,0.3)',
+            borderRadius: 10, padding: '14px 16px',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#feb2b2', fontSize: 13, fontWeight: 600 }}>
+                <HeartIcon size={14} /> Heart Rate Range
+              </span>
+              {alert.hr_alarm_triggered && (
+                <span style={{
+                  background: '#f56565', color: '#fff',
+                  padding: '2px 8px', borderRadius: 10,
+                  fontSize: 10, fontWeight: 700,
+                }}>ALARM</span>
+              )}
+            </div>
+            <div style={{ color: '#e6edf3', fontSize: 22, fontWeight: 700 }}>
+              {alert.bpm_min !== null && alert.bpm_max !== null
+                ? (alert.bpm_min === alert.bpm_max
+                    ? `${alert.bpm_min} BPM`
+                    : `${alert.bpm_min} – ${alert.bpm_max} BPM`)
+                : 'N/A'}
+            </div>
+          </div>
+        </div>
+
+        {/* Charts */}
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: 30, color: '#a0aec0' }}>Loading data…</div>
+        ) : error ? (
+          <div role="alert" style={{
+            padding: '12px 14px', borderRadius: 8,
+            background: 'rgba(220,53,69,0.15)',
+            border: '1px solid rgba(220,53,69,0.5)',
+            color: '#f8d7da', fontSize: 13,
+          }}>{error}</div>
+        ) : !eventData || eventData.length === 0 ? (
+          <div style={{
+            textAlign: 'center', padding: 24,
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px dashed rgba(255,255,255,0.15)',
+            borderRadius: 8, color: '#a0aec0',
+          }}>No data available for this event</div>
+        ) : (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: 12,
+          }}>
+            <div style={{ background: '#1a202c', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: 12 }}>
+              <SimpleEventChart title="Blood Oxygen" color="#48BB78" unit="SpO₂ (%)" data={spo2ChartData} />
+            </div>
+            <div style={{ background: '#1a202c', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: 12 }}>
+              <SimpleEventChart title="Pulse Rate" color="#F56565" unit="BPM" data={bpmChartData} />
+            </div>
+          </div>
+        )}
+
+        {/* Footer actions */}
+        <div style={{
+          display: 'flex', justifyContent: 'flex-end', gap: 10,
+          paddingTop: 12,
+          borderTop: '1px solid rgba(255,255,255,0.08)',
+        }}>
+          <button onClick={onClose} style={{
+            padding: '9px 18px', borderRadius: 6,
+            border: '1px solid rgba(255,255,255,0.15)',
+            background: 'transparent', color: '#e6edf3',
+            cursor: 'pointer', fontSize: 14, fontWeight: 500,
+          }}>Close</button>
+          {!alert.acknowledged && (
+            <button onClick={handleAcknowledgeClick} style={{
+              padding: '9px 18px', borderRadius: 6, border: 'none',
+              background: '#3fb950', color: '#0d1117',
+              cursor: 'pointer', fontSize: 14, fontWeight: 600,
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+              <CheckIcon size={14} /> Acknowledge
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Acknowledge form modal-over-modal */}
+      {showOxygenForm && (
+        <div
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 1100, animation: 'alertModalFade 0.2s ease-out',
+          }}
+          onClick={handleCancelOxygenForm}
+        >
+          <div
+            style={{
+              backgroundColor: '#1a2332', borderRadius: 12, padding: 24,
+              maxWidth: 440, width: '90%',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              animation: 'alertModalSlide 0.25s ease-out',
+              color: '#e6edf3',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              marginBottom: 16, paddingBottom: 12,
+              borderBottom: '1px solid rgba(255,255,255,0.08)',
+            }}>
+              <div style={{
+                width: 32, height: 32, borderRadius: 8,
+                backgroundColor: 'rgba(63,185,80,0.2)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#3fb950',
+              }}><CheckIcon size={18} /></div>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Acknowledge Alert</h3>
+            </div>
+
+            <p style={{ margin: '0 0 16px 0', color: '#cbd5e0', fontSize: 14, lineHeight: 1.4 }}>
+              Confirm if oxygen was administered during this alert.
+            </p>
+
+            <label style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              cursor: 'pointer', padding: '10px 12px',
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: 8, marginBottom: 12,
+              userSelect: 'none',
+            }}>
+              <input
+                type="checkbox"
+                checked={oxygenUsed}
+                onChange={(e) => setOxygenUsed(e.target.checked)}
+                style={{ width: 18, height: 18, cursor: 'pointer', accentColor: '#3fb950' }}
+              />
+              <span style={{ fontSize: 14 }}>Oxygen was administered</span>
+            </label>
+
+            {oxygenUsed && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', marginBottom: 6, fontSize: 13, fontWeight: 600 }}>
+                  Highest flow / concentration
+                </label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    type="number"
+                    value={oxygenValue}
                     onChange={(e) => {
-                      // Validate the input to ensure it's a valid number
-                      const value = e.target.value;
-                      if (value === '' || (!isNaN(parseFloat(value)) && parseFloat(value) >= 0)) {
-                        setOxygenValue(value);
-                      }
+                      const v = e.target.value;
+                      if (v === '' || (!isNaN(parseFloat(v)) && parseFloat(v) >= 0)) setOxygenValue(v);
                     }}
-                    step="0.1"
-                    min="0"
-                    required={oxygenUsed}
-                    placeholder="Enter value"
+                    step="0.1" min="0" placeholder="Enter value"
+                    style={{
+                      flex: 1, padding: 10, fontSize: 14,
+                      background: '#2d3748', color: '#fff',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      borderRadius: 6, boxSizing: 'border-box',
+                    }}
                   />
-                  <select 
-                    value={oxygenUnit} 
+                  <select
+                    value={oxygenUnit}
                     onChange={(e) => setOxygenUnit(e.target.value)}
+                    style={{
+                      padding: 10, fontSize: 14,
+                      background: '#2d3748', color: '#fff',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      borderRadius: 6,
+                    }}
                   >
                     <option value="L/min">L/min</option>
                     <option value="%">%</option>
                   </select>
                 </div>
               </div>
-            </>
-          )}
-          
-          <div className="form-actions">
-            <button 
-              className="secondary-button" 
-              onClick={handleCancelOxygenForm}
-              disabled={acknowledgingAlert}
-            >
-              Cancel
-            </button>
-            <button 
-              className="primary-button" 
-              onClick={handleSubmitAcknowledge}
-              disabled={acknowledgingAlert || (oxygenUsed && !oxygenValue)}
-            >
-              {acknowledgingAlert ? 'Submitting...' : 'Submit'}
-            </button>
+            )}
+
+            {submitError && (
+              <div role="alert" style={{
+                padding: '10px 12px', borderRadius: 6,
+                background: 'rgba(220,53,69,0.15)',
+                border: '1px solid rgba(220,53,69,0.5)',
+                color: '#f8d7da', fontSize: 13, marginBottom: 12,
+              }}>{submitError}</div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                onClick={handleCancelOxygenForm}
+                disabled={acknowledgingAlert}
+                style={{
+                  padding: '9px 18px', borderRadius: 6,
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  background: 'transparent', color: '#e6edf3',
+                  cursor: acknowledgingAlert ? 'not-allowed' : 'pointer',
+                  fontSize: 14, fontWeight: 500,
+                }}
+              >Cancel</button>
+              <button
+                onClick={handleSubmitAcknowledge}
+                disabled={acknowledgingAlert || (oxygenUsed && !oxygenValue)}
+                style={{
+                  padding: '9px 18px', borderRadius: 6, border: 'none',
+                  background: '#3fb950', color: '#0d1117',
+                  cursor: (acknowledgingAlert || (oxygenUsed && !oxygenValue)) ? 'not-allowed' : 'pointer',
+                  fontSize: 14, fontWeight: 600,
+                  opacity: (acknowledgingAlert || (oxygenUsed && !oxygenValue)) ? 0.6 : 1,
+                }}
+              >{acknowledgingAlert ? 'Submitting…' : 'Submit'}</button>
+            </div>
           </div>
         </div>
-      </div>
-    );
-  };
-
-  return (
-    <ModalBase isOpen={true} onClose={onClose} title="Alert Event Details">
-      <div className="alert-detail-content">
-        <div className="alert-info-grid">
-            <div className="info-item">
-              <span className="label">Start Time:</span>
-              <span className="value">{formatDateTime(alert.start_time)}</span>
-            </div>
-            <div className="info-item">
-              <span className="label">End Time:</span>
-              <span className="value">{formatDateTime(alert.end_time) || 'Ongoing'}</span>
-            </div>
-            <div className="info-item">
-              <span className="label">Duration:</span>
-              <span className="value">{formatDuration(alert.start_time, alert.end_time)}</span>
-            </div>
-            <div className="info-item">
-              <span className="label">Status:</span>
-              <span className={`value status ${!alert.end_time ? 'active' : alert.acknowledged ? 'acknowledged' : 'unacknowledged'}`}>
-                {!alert.end_time ? 'Active' : alert.acknowledged ? 'Acknowledged' : 'Unacknowledged'}
-              </span>
-            </div>
-            <div className="info-item">
-              <span className="label">Alarms Triggered:</span>
-              <span className="value">
-                {alert.alarm1_triggered ? 'Alarm1 ' : ''}
-                {alert.alarm2_triggered ? 'Alarm2 ' : ''}
-                {alert.spo2_alarm_triggered ? 'SpO₂ ' : ''}
-                {alert.hr_alarm_triggered ? 'BPM ' : ''}
-                {!alert.alarm1_triggered && !alert.alarm2_triggered && !alert.spo2_alarm_triggered && !alert.hr_alarm_triggered ? 'None' : ''}
-              </span>
-            </div>
-          </div>
-
-          <div className="metrics-grid">
-            <div className="metric-card">
-              <div className="metric-header">
-                <h3>SpO<sub>2</sub> Range</h3>
-                {alert.spo2_alarm_triggered && <div className="alarm-indicator">Alarm Triggered</div>}
-              </div>
-              <div className="metric-value">
-                {alert.spo2_min !== null && alert.spo2_max !== null
-                  ? `${alert.spo2_min} - ${alert.spo2_max}%`
-                  : 'N/A'}
-              </div>
-            </div>
-            
-            <div className="metric-card">
-              <div className="metric-header">
-                <h3>Heart Rate Range</h3>
-                {alert.hr_alarm_triggered ? 
-                  <div className="alarm-indicator">Alarm Triggered</div> : 
-                  <div className="safe-indicator">Safe</div>
-                }
-              </div>
-              <div className="metric-value">
-                {alert.bpm_min !== null && alert.bpm_max !== null
-                  ? `${alert.bpm_min} - ${alert.bpm_max} BPM`
-                  : 'N/A'}
-              </div>
-            </div>
-          </div>
-
-          {/* Charts - without "Event Data" header */}
-          {loading ? (
-            <div className="loading">Loading data...</div>
-          ) : error ? (
-            <div className="error-message">{error}</div>
-          ) : !eventData || eventData.length === 0 ? (
-            <div className="no-data">No data available for this event</div>
-          ) : (
-            <div className="charts-grid">
-              <div className="chart-container">
-                <div className="chart">
-                  <SimpleEventChart
-                    title="Blood Oxygen"
-                    color="#48BB78"
-                    unit="SpO₂ (%)"
-                    data={spo2ChartData}
-                  />
-                </div>
-              </div>
-              
-              <div className="chart-container">
-                <div className="chart">
-                  <SimpleEventChart
-                    title="Pulse Rate"
-                    color="#F56565"
-                    unit="BPM"
-                    data={bpmChartData}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="modal-footer">
-          {!alert.acknowledged && (
-            <button 
-              onClick={handleAcknowledgeClick} 
-              className="primary-button acknowledge-button"
-            >
-              Acknowledge
-            </button>
-          )}
-          <button onClick={onClose} className="secondary-button">Close</button>
-        </div>
-        
-        {/* Render the oxygen form if shown */}
-        {showOxygenForm && renderOxygenUsageForm()}
-      
+      )}
     </ModalBase>
   );
 };
