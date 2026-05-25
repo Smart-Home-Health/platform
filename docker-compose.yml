@@ -34,7 +34,9 @@ services:
       DATABASE_URL: postgresql://shh_user:shh_dev_pass@db:5432/shh
     volumes:
       - ./backend:/app
-      - app_data:/app/data
+      # Host-visible data dir for uploaded artifacts (vent log tar balls, etc.).
+      # Browse on the host at ./data/ for easy inspection during parser dev.
+      - ./data:/app/data
     depends_on:
       db:
         condition: service_healthy
@@ -67,7 +69,6 @@ services:
 
 volumes:
   postgres_data:
-  app_data:
 
 networks:
   shh-network:

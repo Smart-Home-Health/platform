@@ -1,0 +1,17 @@
+{
+  "id": "9594d35b176d4b57afc1448b4a17b1fe",
+  "patient_id": 1,
+  "integration_id": 1,
+  "integration_slug": "ventilator",
+  "vendor": "ventilator",
+  "model": "vocsn",
+  "file_name": "fake.tar.gz",
+  "file_size_bytes": 21,
+  "storage_path": "/app/data/vent_imports/9594d35b176d4b57afc1448b4a17b1fe/upload.tar.gz",
+  "status": "failed",
+  "error": "Uploaded file is not a valid tar archive",
+  "uploaded_at": "2026-05-24T18:36:27.112076",
+  "uploaded_by": null,
+  "parsed_at": null,
+  "updated_at": "2026-05-24T18:36:27.113113"
+}

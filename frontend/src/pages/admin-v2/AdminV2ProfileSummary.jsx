@@ -60,6 +60,8 @@ const AdminV2ProfileSummary = () => {
   const [loadingVitals, setLoadingVitals] = useState(false);
   const [pulseOxSummary, setPulseOxSummary] = useState(null);
   const [loadingPulseOx, setLoadingPulseOx] = useState(false);
+  const [ventBreathRate, setVentBreathRate] = useState(null);   // {has_data, points}
+  const [loadingVentBreath, setLoadingVentBreath] = useState(false);
   const [nutritionSummary, setNutritionSummary] = useState([]);
   const [loadingNutrition, setLoadingNutrition] = useState(false);
   const [nutritionOutput, setNutritionOutput] = useState([]);
@@ -197,6 +199,29 @@ const AdminV2ProfileSummary = () => {
       }
     };
     
+    // Fetch vent breath-rate hourly aggregate (used to override the manual
+    // respiratory_rate chart when a ventilator integration is present and
+    // has data). Falls back silently when neither holds.
+    const fetchVentBreathRate = async () => {
+      setLoadingVentBreath(true);
+      try {
+        const response = await fetch(
+          `${config.apiUrl}/api/integrations/patient/${selectedPatient.id}/vent/breath-rate-hourly?days=30`,
+          { credentials: 'include' }
+        );
+        if (response.ok) {
+          setVentBreathRate(await response.json());
+        } else {
+          setVentBreathRate({ has_data: false, points: [] });
+        }
+      } catch (error) {
+        console.error('Error fetching vent breath rate:', error);
+        setVentBreathRate({ has_data: false, points: [] });
+      } finally {
+        setLoadingVentBreath(false);
+      }
+    };
+
     // Fetch nutrition intake summary (30-day with goals). Pass local tz
     // offset so the backend buckets by the caller's day, matching the
     // Overview's behavior (otherwise late-evening logs slide a day off).
@@ -248,6 +273,7 @@ const AdminV2ProfileSummary = () => {
     fetchImplants();
     fetchVitalsSummary();
     fetchPulseOxSummary();
+    fetchVentBreathRate();
     fetchNutritionSummary();
     fetchNutritionOutput();
   }, [selectedPatient]);
@@ -261,6 +287,21 @@ const AdminV2ProfileSummary = () => {
       avg: d.avg,
       max: d.max
     }));
+  };
+
+  // Helper for the vent breath-rate hourly series (same shape as the
+  // pulse-ox formatter so the chart can reuse the area+line look).
+  const formatVentBreathChartData = () => {
+    if (!ventBreathRate || !ventBreathRate.points) return [];
+    return ventBreathRate.points.map(d => {
+      const dt = new Date(d.date);
+      return {
+        date: dt.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric' }),
+        min: d.min != null ? Math.round(d.min) : null,
+        avg: d.avg != null ? Math.round(d.avg * 10) / 10 : null,
+        max: d.max != null ? Math.round(d.max) : null,
+      };
+    });
   };
 
   // Helper to format hourly pulse-ox data for SpO2 and BPM charts
@@ -554,21 +595,42 @@ const AdminV2ProfileSummary = () => {
                   )}
                 </div>
 
-                {/* Respiratory Rate Chart */}
-                <div className="vital-chart-container">
-                  <h3>Respiratory Rate</h3>
-                  <ResponsiveContainer width="100%" height={180}>
-                    <ComposedChart data={formatVitalChartData('respiratory_rate')} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                      <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#9ca3af' }} interval={6} />
-                      <YAxis domain={[10, 30]} tick={{ fontSize: 10, fill: '#9ca3af' }} />
-                      <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px' }} />
-                      <Area type="monotone" dataKey="max" stroke="none" fill="#22c55e" fillOpacity={0.15} />
-                      <Area type="monotone" dataKey="min" stroke="none" fill="#1f2937" fillOpacity={1} />
-                      <Line type="monotone" dataKey="avg" stroke="#22c55e" strokeWidth={2} dot={false} connectNulls />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                </div>
+                {/* Respiratory Rate Chart — prefers ventilator-measured breath
+                    rate (hourly) when a vent integration has parsed data, else
+                    falls back to manual respiratory_rate (daily). */}
+                {(() => {
+                  const useVent = ventBreathRate?.has_data;
+                  const data = useVent
+                    ? formatVentBreathChartData()
+                    : formatVitalChartData('respiratory_rate');
+                  return (
+                    <div className="vital-chart-container">
+                      <h3>
+                        {useVent ? 'Breath Rate (vent, hourly)' : 'Respiratory Rate'}
+                      </h3>
+                      {(useVent ? loadingVentBreath : loadingVitals) ? (
+                        <div className="loading-state">Loading…</div>
+                      ) : (
+                        <ResponsiveContainer width="100%" height={180}>
+                          <ComposedChart data={data} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                            <XAxis
+                              dataKey="date"
+                              tick={{ fontSize: 10, fill: '#9ca3af' }}
+                              interval={useVent ? 'preserveStartEnd' : 6}
+                              minTickGap={useVent ? 40 : undefined}
+                            />
+                            <YAxis domain={[0, 40]} tick={{ fontSize: 10, fill: '#9ca3af' }} />
+                            <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px' }} />
+                            <Area type="monotone" dataKey="max" stroke="none" fill="#22c55e" fillOpacity={0.15} />
+                            <Area type="monotone" dataKey="min" stroke="none" fill="#1f2937" fillOpacity={1} />
+                            <Line type="monotone" dataKey="avg" stroke="#22c55e" strokeWidth={2} dot={false} connectNulls />
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Temperature Chart */}
                 <div className="vital-chart-container">

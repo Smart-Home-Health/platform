@@ -11,6 +11,7 @@ import {
   ClockIcon,
   LinkIcon
 } from '../../components/Icons';
+import { VentImportPanel } from './components';
 import './AdminV2.css';
 
 export default function AdminV2Integrations() {
@@ -28,6 +29,8 @@ export default function AdminV2Integrations() {
   
   // Modal state
   const [showAddModal, setShowAddModal] = useState(false);
+  // Vent imports panel — keyed on PatientIntegration id
+  const [importsPanel, setImportsPanel] = useState({ open: false, integration: null });
   const [selectedIntegration, setSelectedIntegration] = useState(null);
   const [addingIntegration, setAddingIntegration] = useState(false);
   
@@ -99,6 +102,20 @@ export default function AdminV2Integrations() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Seed newSettings with any defaults declared on the integration's
+  // config_schema so values reach the POST body even when the user never
+  // touches a field. Without this, defaults render in the UI but the state
+  // object stays empty.
+  const pickIntegration = (integration) => {
+    const defaults = {};
+    const props = integration?.config_schema?.properties || {};
+    for (const [key, schema] of Object.entries(props)) {
+      if (schema?.default !== undefined) defaults[key] = schema.default;
+    }
+    setNewSettings(defaults);
+    setSelectedIntegration(integration);
   };
 
   const handleAddIntegration = async () => {
@@ -581,7 +598,7 @@ export default function AdminV2Integrations() {
                                 <LinkIcon size={14} /> Connect
                               </button>
                             )}
-                            {integration.is_enabled && (
+                            {integration.is_enabled && integration.integration_slug !== 'ventilator' && (
                               <button
                                 className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-ghost"
                                 onClick={() => handleSync(integration)}
@@ -590,6 +607,15 @@ export default function AdminV2Integrations() {
                               >
                                 <RefreshIcon size={14} className={syncingId === integration.id ? 'spinning' : ''} />
                                 {syncingId === integration.id ? 'Syncing...' : 'Sync'}
+                              </button>
+                            )}
+                            {integration.is_enabled && integration.integration_slug === 'ventilator' && (
+                              <button
+                                className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-ghost"
+                                onClick={() => setImportsPanel({ open: true, integration })}
+                                title="Upload + view log exports"
+                              >
+                                Logs
                               </button>
                             )}
                             <button
@@ -704,7 +730,7 @@ export default function AdminV2Integrations() {
                           if (isSHHDevice) {
                             setShowReaderModal(true);
                           } else {
-                            setSelectedIntegration(integration);
+                            pickIntegration(integration);
                             setShowAddModal(true);
                           }
                         }}
@@ -914,7 +940,7 @@ export default function AdminV2Integrations() {
                       <button
                         key={integration.slug}
                         className="admin-v2-integration-option"
-                        onClick={() => setSelectedIntegration(integration)}
+                        onClick={() => pickIntegration(integration)}
                       >
                         <div className="admin-v2-integration-option-info">
                           <strong>{integration.name}</strong>
@@ -961,6 +987,21 @@ export default function AdminV2Integrations() {
                                 />
                                 <span>{schema.description}</span>
                               </label>
+                            ) : Array.isArray(schema.enum) ? (
+                              <select
+                                className="admin-v2-input"
+                                value={newSettings[key] ?? schema.default ?? ''}
+                                onChange={(e) => setNewSettings({
+                                  ...newSettings,
+                                  [key]: e.target.value
+                                })}
+                              >
+                                {schema.enum.map((opt, idx) => (
+                                  <option key={opt} value={opt}>
+                                    {(schema.enumLabels && schema.enumLabels[idx]) || opt}
+                                  </option>
+                                ))}
+                              </select>
                             ) : (
                               <input
                                 type="text"
@@ -1019,6 +1060,14 @@ export default function AdminV2Integrations() {
             </div>
           </div>
         )}
+
+        <VentImportPanel
+          open={importsPanel.open}
+          onClose={() => setImportsPanel({ open: false, integration: null })}
+          patientId={selectedPatient?.id}
+          integrationId={importsPanel.integration?.id}
+          integrationName={importsPanel.integration?.integration_name || 'Ventilator'}
+        />
       </div>
     </AdminV2Layout>
   );

@@ -1,0 +1,17 @@
+{
+  "id": "7bac58afa58b46dc9ed565e73474b31f",
+  "patient_id": 2,
+  "integration_id": 5,
+  "integration_slug": "ventilator",
+  "vendor": "ventilator",
+  "model": null,
+  "file_name": "0001_SN138511_Date2026y05m24d_Time13h46m45s.tar",
+  "file_size_bytes": 24842240,
+  "storage_path": "/app/data/vent_imports/7bac58afa58b46dc9ed565e73474b31f/upload.tar",
+  "status": "completed",
+  "error": null,
+  "uploaded_at": "2026-05-24T19:32:54.309799",
+  "uploaded_by": null,
+  "parsed_at": "2026-05-24T19:32:54.342878",
+  "updated_at": "2026-05-24T19:32:54.342918"
+}

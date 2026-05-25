@@ -1,0 +1,404 @@
+{
+  "files": [
+    {
+      "relative_path": "batch_000968.csv",
+      "size_bytes": 212075
+    },
+    {
+      "relative_path": "batch_000959.csv",
+      "size_bytes": 211860
+    },
+    {
+      "relative_path": "batch_000930.csv",
+      "size_bytes": 216424
+    },
+    {
+      "relative_path": "batch_001002.csv",
+      "size_bytes": 213000
+    },
+    {
+      "relative_path": "batch_000931.csv",
+      "size_bytes": 184931
+    },
+    {
+      "relative_path": "batch_000976.csv",
+      "size_bytes": 209146
+    },
+    {
+      "relative_path": "batch_000989.csv",
+      "size_bytes": 208110
+    },
+    {
+      "relative_path": "batch_000945.csv",
+      "size_bytes": 213718
+    },
+    {
+      "relative_path": "batch_000981.csv",
+      "size_bytes": 209528
+    },
+    {
+      "relative_path": "batch_000924.csv",
+      "size_bytes": 215778
+    },
+    {
+      "relative_path": "batch_000935.csv",
+      "size_bytes": 209079
+    },
+    {
+      "relative_path": "batch_000998.csv",
+      "size_bytes": 212842
+    },
+    {
+      "relative_path": "batch_000973.csv",
+      "size_bytes": 211073
+    },
+    {
+      "relative_path": "batch_001004.csv",
+      "size_bytes": 214449
+    },
+    {
+      "relative_path": "batch_000943.csv",
+      "size_bytes": 214425
+    },
+    {
+      "relative_path": "paramBackup.bin",
+      "size_bytes": 4595
+    },
+    {
+      "relative_path": "batch_000952.csv",
+      "size_bytes": 215270
+    },
+    {
+      "relative_path": "batch_000940.csv",
+      "size_bytes": 207451
+    },
+    {
+      "relative_path": "batch_000953.csv",
+      "size_bytes": 217279
+    },
+    {
+      "relative_path": "batch_000997.csv",
+      "size_bytes": 211022
+    },
+    {
+      "relative_path": "batch_000949.csv",
+      "size_bytes": 224243
+    },
+    {
+      "relative_path": "batch_000969.csv",
+      "size_bytes": 220474
+    },
+    {
+      "relative_path": "batch_000985.csv",
+      "size_bytes": 219081
+    },
+    {
+      "relative_path": "slogger.log2",
+      "size_bytes": 59892
+    },
+    {
+      "relative_path": "batch_000970.csv",
+      "size_bytes": 212675
+    },
+    {
+      "relative_path": "batch_001000.csv",
+      "size_bytes": 216060
+    },
+    {
+      "relative_path": "batch_000990.csv",
+      "size_bytes": 210376
+    },
+    {
+      "relative_path": "batch_000995.csv",
+      "size_bytes": 212125
+    },
+    {
+      "relative_path": "batch_000974.csv",
+      "size_bytes": 211440
+    },
+    {
+      "relative_path": "batch_000962.csv",
+      "size_bytes": 211955
+    },
+    {
+      "relative_path": "batch_000916.csv",
+      "size_bytes": 210637
+    },
+    {
+      "relative_path": "batch_000980.csv",
+      "size_bytes": 208623
+    },
+    {
+      "relative_path": "batch_001007.csv",
+      "size_bytes": 133681
+    },
+    {
+      "relative_path": "batch_000941.csv",
+      "size_bytes": 208072
+    },
+    {
+      "relative_path": "batch_000923.csv",
+      "size_bytes": 222928
+    },
+    {
+      "relative_path": "batch_000972.csv",
+      "size_bytes": 221908
+    },
+    {
+      "relative_path": "batch_000921.csv",
+      "size_bytes": 216245
+    },
+    {
+      "relative_path": "batch_000922.csv",
+      "size_bytes": 216914
+    },
+    {
+      "relative_path": "batch_000956.csv",
+      "size_bytes": 212360
+    },
+    {
+      "relative_path": "batch_000948.csv",
+      "size_bytes": 213841
+    },
+    {
+      "relative_path": "batch_000961.csv",
+      "size_bytes": 210565
+    },
+    {
+      "relative_path": "batch_000929.csv",
+      "size_bytes": 214338
+    },
+    {
+      "relative_path": "crashLog.bin",
+      "size_bytes": 248
+    },
+    {
+      "relative_path": "batch_000994.csv",
+      "size_bytes": 212279
+    },
+    {
+      "relative_path": "batch_000944.csv",
+      "size_bytes": 211495
+    },
+    {
+      "relative_path": "batch_000937.csv",
+      "size_bytes": 215446
+    },
+    {
+      "relative_path": "TrendMetaData.json",
+      "size_bytes": 203987
+    },
+    {
+      "relative_path": "batch_000938.csv",
+      "size_bytes": 214749
+    },
+    {
+      "relative_path": "batch_000927.csv",
+      "size_bytes": 215407
+    },
+    {
+      "relative_path": "batch_000954.csv",
+      "size_bytes": 213479
+    },
+    {
+      "relative_path": "batch_000999.csv",
+      "size_bytes": 219379
+    },
+    {
+      "relative_path": "batch_000942.csv",
+      "size_bytes": 211454
+    },
+    {
+      "relative_path": "batch_000977.csv",
+      "size_bytes": 211431
+    },
+    {
+      "relative_path": "batch_001003.csv",
+      "size_bytes": 214998
+    },
+    {
+      "relative_path": "batch_000958.csv",
+      "size_bytes": 215219
+    },
+    {
+      "relative_path": "batch_000947.csv",
+      "size_bytes": 213623
+    },
+    {
+      "relative_path": "batch_000920.csv",
+      "size_bytes": 217470
+    },
+    {
+      "relative_path": "batch_000932.csv",
+      "size_bytes": 212265
+    },
+    {
+      "relative_path": "batch_000939.csv",
+      "size_bytes": 209201
+    },
+    {
+      "relative_path": "batch_000955.csv",
+      "size_bytes": 213183
+    },
+    {
+      "relative_path": "batch_000957.csv",
+      "size_bytes": 217141
+    },
+    {
+      "relative_path": "batch_000919.csv",
+      "size_bytes": 212217
+    },
+    {
+      "relative_path": "batch_000991.csv",
+      "size_bytes": 213767
+    },
+    {
+      "relative_path": "batch_001006.csv",
+      "size_bytes": 213795
+    },
+    {
+      "relative_path": "batch_000984.csv",
+      "size_bytes": 209249
+    },
+    {
+      "relative_path": "batch_000983.csv",
+      "size_bytes": 208364
+    },
+    {
+      "relative_path": "batch_000950.csv",
+      "size_bytes": 223304
+    },
+    {
+      "relative_path": "slogger.log1",
+      "size_bytes": 5141996
+    },
+    {
+      "relative_path": "batch_000951.csv",
+      "size_bytes": 223166
+    },
+    {
+      "relative_path": "batch_000926.csv",
+      "size_bytes": 127943
+    },
+    {
+      "relative_path": "batch_000917.csv",
+      "size_bytes": 213238
+    },
+    {
+      "relative_path": "batch_000982.csv",
+      "size_bytes": 215649
+    },
+    {
+      "relative_path": "batch_000971.csv",
+      "size_bytes": 66949
+    },
+    {
+      "relative_path": "batch_000946.csv",
+      "size_bytes": 216328
+    },
+    {
+      "relative_path": "batch_000918.csv",
+      "size_bytes": 209579
+    },
+    {
+      "relative_path": "batch_000960.csv",
+      "size_bytes": 211881
+    },
+    {
+      "relative_path": "batch_000936.csv",
+      "size_bytes": 214803
+    },
+    {
+      "relative_path": "batch_000988.csv",
+      "size_bytes": 215737
+    },
+    {
+      "relative_path": "batch_000966.csv",
+      "size_bytes": 224574
+    },
+    {
+      "relative_path": "batch_000965.csv",
+      "size_bytes": 209412
+    },
+    {
+      "relative_path": "usageMonitors.dat",
+      "size_bytes": 1024
+    },
+    {
+      "relative_path": "batch_000928.csv",
+      "size_bytes": 213543
+    },
+    {
+      "relative_path": "batch_000996.csv",
+      "size_bytes": 210178
+    },
+    {
+      "relative_path": "batch_000933.csv",
+      "size_bytes": 212412
+    },
+    {
+      "relative_path": "batch_000975.csv",
+      "size_bytes": 213511
+    },
+    {
+      "relative_path": "batch_000963.csv",
+      "size_bytes": 214249
+    },
+    {
+      "relative_path": "deviceconfig",
+      "size_bytes": 420
+    },
+    {
+      "relative_path": "batch_001001.csv",
+      "size_bytes": 209355
+    },
+    {
+      "relative_path": "batch_000987.csv",
+      "size_bytes": 210080
+    },
+    {
+      "relative_path": "batch_000934.csv",
+      "size_bytes": 212153
+    },
+    {
+      "relative_path": "batch_000986.csv",
+      "size_bytes": 215389
+    },
+    {
+      "relative_path": "batch_000964.csv",
+      "size_bytes": 212668
+    },
+    {
+      "relative_path": "batch_000925.csv",
+      "size_bytes": 214789
+    },
+    {
+      "relative_path": "batch_000967.csv",
+      "size_bytes": 217261
+    },
+    {
+      "relative_path": "batch_000978.csv",
+      "size_bytes": 215532
+    },
+    {
+      "relative_path": "batch_000992.csv",
+      "size_bytes": 217725
+    },
+    {
+      "relative_path": "batch_001005.csv",
+      "size_bytes": 226898
+    },
+    {
+      "relative_path": "batch_000979.csv",
+      "size_bytes": 216899
+    },
+    {
+      "relative_path": "batch_000993.csv",
+      "size_bytes": 213426
+    },
+    {
+      "relative_path": "counters.dat",
+      "size_bytes": 1024
+    }
+  ]
+}

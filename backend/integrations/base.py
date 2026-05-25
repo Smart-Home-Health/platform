@@ -147,6 +147,9 @@ class BaseIntegration(ABC):
     description: str = ""
     auth_type: str = "oauth2"  # oauth2, api_key, local, none
     supported_vitals: List[str] = []  # List of VitalType values this integration provides
+    # Set True if the integration accepts file/archive uploads (e.g. vent log exports).
+    # When True the integration must implement import_file().
+    supports_import: bool = False
     
     def __init__(self, patient_integration=None):
         """
@@ -251,7 +254,7 @@ class BaseIntegration(ABC):
     async def test_connection(self) -> bool:
         """
         Test if the integration connection is working.
-        
+
         Returns:
             True if connection is healthy
         """
@@ -260,3 +263,29 @@ class BaseIntegration(ABC):
             return True
         except Exception:
             return False
+
+    def import_file(self, *, import_id: str, archive_path: str, extracted_dir: str,
+                    db=None, patient_integration=None, vent_import=None) -> Dict[str, Any]:
+        """
+        Parse an uploaded archive for this integration. Runs in a background
+        thread; concrete integrations override this when supports_import=True.
+
+        Args (keyword-only):
+            import_id: UUID assigned by the upload route.
+            archive_path: Absolute path to the persisted tar/tar.gz on disk.
+            extracted_dir: Absolute path of the already-extracted directory.
+            db: SQLAlchemy Session the worker owns (commit when needed).
+            patient_integration: The active PatientIntegration row. Read
+                `settings` for vendor config; writes are persisted by the
+                parser when applicable (e.g. clock calibration anchoring).
+            vent_import: The VentImport row being parsed. Mutate
+                `parser_summary` to surface progress; status transitions are
+                handled by the caller.
+
+        Returns:
+            Dict stored in `vent_imports.parser_summary` (counts, file
+            ranges, etc.).
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not support file imports"
+        )
