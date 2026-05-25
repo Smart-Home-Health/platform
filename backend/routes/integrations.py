@@ -296,10 +296,39 @@ async def delete_patient_integration(
     
     patient_integration.is_enabled = False
     patient_integration.updated_at = datetime.utcnow()
-    
+
     db.commit()
-    
+
     return {"status": "success", "message": "Integration deactivated"}
+
+
+@router.delete("/patient/{patient_id}/{integration_id}/permanent")
+async def permanently_delete_patient_integration(
+    patient_id: int,
+    integration_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_full_auth),
+    account_id: int = Depends(get_current_account_id)
+):
+    """
+    Permanently delete a patient's integration and its associated devices.
+    """
+
+    from sqlalchemy import text
+
+    row = db.execute(
+        text("SELECT id FROM patient_integrations WHERE id = :id AND patient_id = :pid AND account_id = :aid"),
+        {"id": integration_id, "pid": patient_id, "aid": account_id}
+    ).first()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Patient integration not found")
+
+    db.execute(text("DELETE FROM integration_devices WHERE patient_integration_id = :id"), {"id": integration_id})
+    db.execute(text("DELETE FROM patient_integrations WHERE id = :id"), {"id": integration_id})
+    db.commit()
+
+    return {"status": "success", "message": "Integration permanently deleted"}
 
 
 # ============================================================================

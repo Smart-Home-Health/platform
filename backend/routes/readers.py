@@ -107,7 +107,10 @@ def _is_reader_connected(reader) -> bool:
     if connection_manager.is_connected(reader.id):
         return True
     if reader.last_data_at:
-        return (datetime.utcnow() - reader.last_data_at).total_seconds() < 60
+        from datetime import timezone
+        now = datetime.now(timezone.utc)
+        last = reader.last_data_at if reader.last_data_at.tzinfo else reader.last_data_at.replace(tzinfo=timezone.utc)
+        return (now - last).total_seconds() < 60
     return False
 
 
