@@ -5,6 +5,8 @@ import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import AlertsList from '../../components/alerts/AlertsList';
 import AlertsHistory from '../../components/alerts/AlertsHistory';
 import AdminV2MonitoringTimeline from './AdminV2MonitoringTimeline';
+import AdminV2MonitoringVentilator from './AdminV2MonitoringVentilator';
+import AdminV2MonitoringInteractions from './AdminV2MonitoringInteractions';
 import './AdminV2.css';
 
 const AdminV2Monitoring = () => {
@@ -12,9 +14,11 @@ const AdminV2Monitoring = () => {
   const { selectedPatient } = useAdminPatient();
 
   const isTimelineView = location.pathname.includes('/care/monitoring/timeline');
+  const isVentilatorView = location.pathname.includes('/care/monitoring/ventilator');
   const isHistoryView = location.pathname.includes('/care/monitoring/history');
   const isSettingsView = location.pathname.includes('/care/monitoring/settings');
-  const isAlertsView = !isHistoryView && !isSettingsView && !isTimelineView;
+  const isInteractionsView = location.pathname.includes('/care/monitoring/interactions');
+  const isAlertsView = !isHistoryView && !isSettingsView && !isTimelineView && !isVentilatorView && !isInteractionsView;
 
   const renderContent = () => {
     if (!selectedPatient) {
@@ -27,6 +31,14 @@ const AdminV2Monitoring = () => {
 
     if (isTimelineView) {
       return <AdminV2MonitoringTimeline />;
+    }
+
+    if (isVentilatorView) {
+      return <AdminV2MonitoringVentilator patientId={selectedPatient.id} />;
+    }
+
+    if (isInteractionsView) {
+      return <AdminV2MonitoringInteractions />;
     }
 
     if (isSettingsView) {

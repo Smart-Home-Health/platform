@@ -30,3 +30,4 @@ __all__ = [
 from . import manual
 from . import withings
 from . import mqtt
+from . import ventilator

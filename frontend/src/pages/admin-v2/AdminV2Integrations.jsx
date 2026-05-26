@@ -9,8 +9,10 @@ import {
   XIcon,
   CheckIcon,
   ClockIcon,
-  LinkIcon
+  LinkIcon,
+  TrashIcon
 } from '../../components/Icons';
+import { VentImportPanel } from './components';
 import './AdminV2.css';
 
 export default function AdminV2Integrations() {
@@ -28,6 +30,8 @@ export default function AdminV2Integrations() {
   
   // Modal state
   const [showAddModal, setShowAddModal] = useState(false);
+  // Vent imports panel — keyed on PatientIntegration id
+  const [importsPanel, setImportsPanel] = useState({ open: false, integration: null });
   const [selectedIntegration, setSelectedIntegration] = useState(null);
   const [addingIntegration, setAddingIntegration] = useState(false);
   
@@ -36,6 +40,9 @@ export default function AdminV2Integrations() {
   
   // Syncing state
   const [syncingId, setSyncingId] = useState(null);
+
+  // Track in-flight delete
+  const [deletingId, setDeletingId] = useState(null);
 
   // Reader state
   const [readers, setReaders] = useState([]);
@@ -99,6 +106,20 @@ export default function AdminV2Integrations() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Seed newSettings with any defaults declared on the integration's
+  // config_schema so values reach the POST body even when the user never
+  // touches a field. Without this, defaults render in the UI but the state
+  // object stays empty.
+  const pickIntegration = (integration) => {
+    const defaults = {};
+    const props = integration?.config_schema?.properties || {};
+    for (const [key, schema] of Object.entries(props)) {
+      if (schema?.default !== undefined) defaults[key] = schema.default;
+    }
+    setNewSettings(defaults);
+    setSelectedIntegration(integration);
   };
 
   const handleAddIntegration = async () => {
@@ -222,6 +243,28 @@ export default function AdminV2Integrations() {
       await fetchIntegrations();
     } catch (err) {
       setError(err.message);
+    }
+  };
+
+  const handleDelete = async (integration) => {
+    setDeletingId(integration.id);
+    setError('');
+
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/api/integrations/patient/${patientId}/${integration.id}/permanent`,
+        { method: 'DELETE', credentials: 'include' }
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || `Delete failed (${res.status})`);
+      }
+      setSuccess(`${integration.integration_name} deleted`);
+      await fetchIntegrations();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -372,6 +415,9 @@ export default function AdminV2Integrations() {
     if (integration.last_sync_at) {
       return <span className="admin-v2-badge admin-v2-badge-success">Connected</span>;
     }
+    if (integration.auth_type === 'none') {
+      return <span className="admin-v2-badge admin-v2-badge-success">Active</span>;
+    }
     return <span className="admin-v2-badge admin-v2-badge-warning">Pending Setup</span>;
   };
 
@@ -402,13 +448,16 @@ export default function AdminV2Integrations() {
     supported_vitals: ['spo2', 'bpm', 'perfusion']
   };
 
+  // Filter out "manual" — the app natively supports manual vitals entry
+  const externalIntegrations = availableIntegrations.filter(i => i.slug !== 'manual');
+
   // Get integrations not yet configured for this patient
-  const unconfiguredIntegrations = availableIntegrations.filter(
+  const unconfiguredIntegrations = externalIntegrations.filter(
     avail => !patientIntegrations.some(pi => pi.integration_slug === avail.slug)
   );
 
   // Add SHH Pulse Oximeter to available integrations list
-  const allAvailableIntegrations = [shhPulseOxIntegration, ...availableIntegrations];
+  const allAvailableIntegrations = [shhPulseOxIntegration, ...externalIntegrations];
 
   // Check if any readers are configured for this patient
   const patientReaders = readers.filter(r => r.patient_id === patientId || !r.patient_id);
@@ -544,118 +593,127 @@ export default function AdminV2Integrations() {
                 </button>
               </div>
             ) : patientIntegrations.length === 0 ? null : (
-              <div className="admin-v2-table-container">
-                <table className="admin-v2-table">
-                  <thead>
-                    <tr>
-                      <th>Integration</th>
-                      <th>Status</th>
-                      <th>Last Sync</th>
-                      <th>Syncs</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {patientIntegrations.map(integration => (
-                      <tr key={integration.id} className={!integration.is_enabled ? 'admin-v2-row-disabled' : ''}>
-                        <td>
-                          <span className="admin-v2-integration-name">{integration.integration_name}</span>
-                          <div className="admin-v2-text-muted admin-v2-text-small">{integration.integration_slug}</div>
-                        </td>
-                        <td>{getStatusBadge(integration)}</td>
-                        <td>
-                          <span>{formatDate(integration.last_sync_at)}</span>
-                          {integration.last_sync_error && (
-                            <div className="admin-v2-text-danger admin-v2-text-small">{integration.last_sync_error}</div>
-                          )}
-                        </td>
-                        <td>{integration.sync_count || 0}</td>
-                        <td>
-                          <div className="admin-v2-table-actions">
-                            {integration.is_enabled && integration.auth_type === 'oauth2' && !integration.last_sync_at && (
-                              <button
-                                className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-ghost"
-                                onClick={() => startOAuthFlow(integration.id)}
-                                title="Connect OAuth"
-                              >
-                                <LinkIcon size={14} /> Connect
-                              </button>
-                            )}
-                            {integration.is_enabled && (
-                              <button
-                                className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-ghost"
-                                onClick={() => handleSync(integration)}
-                                disabled={syncingId === integration.id}
-                                title="Sync Now"
-                              >
-                                <RefreshIcon size={14} className={syncingId === integration.id ? 'spinning' : ''} />
-                                {syncingId === integration.id ? 'Syncing...' : 'Sync'}
-                              </button>
-                            )}
-                            <button
-                              className={`admin-v2-btn admin-v2-btn-sm ${integration.is_enabled ? 'admin-v2-btn-danger-ghost' : 'admin-v2-btn-success-ghost'}`}
-                              onClick={() => handleToggle(integration, !integration.is_enabled)}
-                            >
-                              {integration.is_enabled ? 'Disable' : 'Enable'}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="admin-v2-cards-grid">
+                {patientIntegrations.map(integration => (
+                  <div key={integration.id} className={`admin-v2-card ${!integration.is_enabled ? 'inactive' : ''}`}>
+                    <div className="admin-v2-card-header">
+                      <div className="admin-v2-card-title-row">
+                        <h3>{integration.integration_name}</h3>
+                        {getStatusBadge(integration)}
+                      </div>
+                    </div>
+                    <div className="admin-v2-card-body">
+                      {integration.last_sync_error && (
+                        <div className="admin-v2-text-danger admin-v2-text-small" style={{ marginBottom: '0.25rem' }}>
+                          {integration.last_sync_error}
+                        </div>
+                      )}
+                      <div className="admin-v2-card-row">
+                        <span className="label">Last Sync:</span>
+                        <span className="value">{formatDate(integration.last_sync_at)}</span>
+                      </div>
+                      <div className="admin-v2-card-row">
+                        <span className="label">Syncs:</span>
+                        <span className="value">{integration.sync_count || 0}</span>
+                      </div>
+                      <div className="admin-v2-card-row">
+                        <span className="label">Type:</span>
+                        <span className="value">{integration.integration_slug}</span>
+                      </div>
+                    </div>
+                    <div className="admin-v2-card-actions">
+                      {integration.is_enabled && integration.auth_type === 'oauth2' && !integration.last_sync_at && (
+                        <button
+                          className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-ghost"
+                          onClick={() => startOAuthFlow(integration.id)}
+                          title="Connect OAuth"
+                        >
+                          <LinkIcon size={14} /> Connect
+                        </button>
+                      )}
+                      {integration.is_enabled && integration.integration_slug !== 'ventilator' && (
+                        <button
+                          className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-ghost"
+                          onClick={() => handleSync(integration)}
+                          disabled={syncingId === integration.id}
+                          title="Sync Now"
+                        >
+                          <RefreshIcon size={14} className={syncingId === integration.id ? 'spinning' : ''} />
+                          {syncingId === integration.id ? 'Syncing...' : 'Sync'}
+                        </button>
+                      )}
+                      {integration.is_enabled && integration.integration_slug === 'ventilator' && (
+                        <button
+                          className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-ghost"
+                          onClick={() => setImportsPanel({ open: true, integration })}
+                          title="Upload + view log exports"
+                        >
+                          Logs
+                        </button>
+                      )}
+                      <button
+                        className={`admin-v2-btn admin-v2-btn-sm ${integration.is_enabled ? 'admin-v2-btn-danger-ghost' : 'admin-v2-btn-success-ghost'}`}
+                        onClick={() => handleToggle(integration, !integration.is_enabled)}
+                      >
+                        {integration.is_enabled ? 'Disable' : 'Enable'}
+                      </button>
+                      <button
+                        className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-danger-ghost"
+                        onClick={() => handleDelete(integration)}
+                        disabled={deletingId === integration.id}
+                        title="Delete integration"
+                        style={{ marginLeft: 'auto' }}
+                      >
+                        <TrashIcon size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 
-            {/* Connected Readers - shown in same table style */}
+            {/* Connected Readers */}
             {patientReaders.filter(r => r.is_paired).length > 0 && (
-              <div className="admin-v2-table-container" style={{ marginTop: '1rem' }}>
-                <table className="admin-v2-table">
-                  <thead>
-                    <tr>
-                      <th>Device</th>
-                      <th>Status</th>
-                      <th>Last Seen</th>
-                      <th>IP Address</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {patientReaders.filter(r => r.is_paired).map(reader => (
-                      <tr key={`reader-${reader.id}`}>
-                        <td>
-                          <span className="admin-v2-integration-name">{reader.name}</span>
-                          <div className="admin-v2-text-muted admin-v2-text-small">SHH Pulse Oximeter</div>
-                        </td>
-                        <td>
-                          {reader.connected ? (
-                            <span className="admin-v2-badge admin-v2-badge-success">
-                              <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#3fb950', marginRight: 6 }}></span>
-                              Online
-                            </span>
-                          ) : (
-                            <span className="admin-v2-badge admin-v2-badge-muted">Offline</span>
-                          )}
-                        </td>
-                        <td>{formatDate(reader.last_seen)}</td>
-                        <td>
-                          <code style={{ fontSize: '0.85rem', color: '#8b949e' }}>{reader.ip_address}</code>
-                        </td>
-                        <td>
-                          <div className="admin-v2-table-actions">
-                            <button 
-                              className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-danger-ghost"
-                              onClick={() => handleUnpairReader(reader.id)}
-                              title="Disconnect"
-                            >
-                              Disconnect
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="admin-v2-cards-grid" style={{ marginTop: '1rem' }}>
+                {patientReaders.filter(r => r.is_paired).map(reader => (
+                  <div key={`reader-${reader.id}`} className="admin-v2-card">
+                    <div className="admin-v2-card-header">
+                      <div className="admin-v2-card-title-row">
+                        <h3>{reader.name}</h3>
+                        {reader.connected ? (
+                          <span className="admin-v2-badge admin-v2-badge-success">
+                            <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#3fb950', marginRight: 6 }}></span>
+                            Online
+                          </span>
+                        ) : (
+                          <span className="admin-v2-badge admin-v2-badge-muted">Offline</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="admin-v2-card-body">
+                      <div className="admin-v2-card-row">
+                        <span className="label">Type:</span>
+                        <span className="value">SHH Pulse Oximeter</span>
+                      </div>
+                      <div className="admin-v2-card-row">
+                        <span className="label">IP:</span>
+                        <span className="value"><code style={{ fontSize: '0.85rem', color: '#8b949e' }}>{reader.ip_address}</code></span>
+                      </div>
+                      <div className="admin-v2-card-row">
+                        <span className="label">Last Seen:</span>
+                        <span className="value">{formatDate(reader.last_seen)}</span>
+                      </div>
+                    </div>
+                    <div className="admin-v2-card-actions">
+                      <button
+                        className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-danger-ghost"
+                        onClick={() => handleUnpairReader(reader.id)}
+                      >
+                        Disconnect
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 
@@ -704,7 +762,7 @@ export default function AdminV2Integrations() {
                           if (isSHHDevice) {
                             setShowReaderModal(true);
                           } else {
-                            setSelectedIntegration(integration);
+                            pickIntegration(integration);
                             setShowAddModal(true);
                           }
                         }}
@@ -914,7 +972,7 @@ export default function AdminV2Integrations() {
                       <button
                         key={integration.slug}
                         className="admin-v2-integration-option"
-                        onClick={() => setSelectedIntegration(integration)}
+                        onClick={() => pickIntegration(integration)}
                       >
                         <div className="admin-v2-integration-option-info">
                           <strong>{integration.name}</strong>
@@ -961,6 +1019,21 @@ export default function AdminV2Integrations() {
                                 />
                                 <span>{schema.description}</span>
                               </label>
+                            ) : Array.isArray(schema.enum) ? (
+                              <select
+                                className="admin-v2-input"
+                                value={newSettings[key] ?? schema.default ?? ''}
+                                onChange={(e) => setNewSettings({
+                                  ...newSettings,
+                                  [key]: e.target.value
+                                })}
+                              >
+                                {schema.enum.map((opt, idx) => (
+                                  <option key={opt} value={opt}>
+                                    {(schema.enumLabels && schema.enumLabels[idx]) || opt}
+                                  </option>
+                                ))}
+                              </select>
                             ) : (
                               <input
                                 type="text"
@@ -1019,6 +1092,14 @@ export default function AdminV2Integrations() {
             </div>
           </div>
         )}
+
+        <VentImportPanel
+          open={importsPanel.open}
+          onClose={() => setImportsPanel({ open: false, integration: null })}
+          patientId={selectedPatient?.id}
+          integrationId={importsPanel.integration?.id}
+          integrationName={importsPanel.integration?.integration_name || 'Ventilator'}
+        />
       </div>
     </AdminV2Layout>
   );

@@ -62,6 +62,7 @@ def seed_permissions(db: Session):
         ("monitoring.acknowledge", "Acknowledge Alerts", "Acknowledge monitoring alerts", "monitoring"),
         ("shipments.receive", "Receive Shipments", "Record shipment item receipts", "shipments"),
         ("shipments.finalize", "Finalize Shipments", "Finalize shipments and generate alerts", "shipments"),
+        ("integrations.upload", "Upload Integration Data", "Upload data exports (vent logs, etc.) to an integration", "integrations"),
     ]
     default_permissions.extend(legacy_permissions)
     
@@ -101,6 +102,7 @@ def seed_roles(db: Session):
                 "roles.create", "roles.read", "roles.update", "roles.delete",
                 "settings.create", "settings.read", "settings.update", "settings.delete",
                 "audit.create", "audit.read", "audit.update", "audit.delete",
+                "integrations.upload",
             ]
         },
         "nurse": {
@@ -119,6 +121,7 @@ def seed_roles(db: Session):
                 "shipments.create", "shipments.read", "shipments.update", "shipments.receive", "shipments.finalize",
                 "users.read",
                 "settings.read",
+                "integrations.upload",
             ]
         },
         "caregiver": {
