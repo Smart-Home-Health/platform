@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import config from '../../config';
-import AlertDetailModal from '../AlertDetailModal';
+import AlertDetailInline from '../AlertDetailInline';
 import { AlertIcon, CheckIcon, ClockIcon, HeartIcon } from '../Icons';
 
 const AlertsList = ({ onAlertAcknowledge, patientId }) => {
@@ -106,9 +106,14 @@ const AlertsList = ({ onAlertAcknowledge, patientId }) => {
     });
   };
 
+  const adjustedEnd = (end) => {
+    if (!end) return null;
+    return new Date(new Date(end).getTime() - 30000);
+  };
+
   const formatDuration = (start, end) => {
     if (!start) return '—';
-    const endTime = end ? new Date(end) : new Date();
+    const endTime = end ? adjustedEnd(end) : new Date();
     const durationMs = endTime - new Date(start);
     if (durationMs < 0) return 'Ongoing';
     const totalSec = Math.floor(durationMs / 1000);
@@ -140,6 +145,22 @@ const AlertsList = ({ onAlertAcknowledge, patientId }) => {
     if (alert.hr_alarm_triggered) out.push('BPM');
     return out;
   };
+
+  if (selectedAlert) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <AlertDetailInline
+          alert={selectedAlert}
+          onClose={() => {
+            setSelectedAlert(null);
+            setShowAcknowledgeForm(false);
+          }}
+          onAcknowledge={acknowledgeAlert}
+          initiateAcknowledge={showAcknowledgeForm}
+        />
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -363,17 +384,6 @@ const AlertsList = ({ onAlertAcknowledge, patientId }) => {
         </div>
       )}
 
-      {selectedAlert && (
-        <AlertDetailModal
-          alert={selectedAlert}
-          onClose={() => {
-            setSelectedAlert(null);
-            setShowAcknowledgeForm(false);
-          }}
-          onAcknowledge={acknowledgeAlert}
-          initiateAcknowledge={showAcknowledgeForm}
-        />
-      )}
     </div>
   );
 };

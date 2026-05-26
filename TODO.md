@@ -153,6 +153,31 @@ Add a `[data-theme="high-contrast"]` block. Requirements: WCAG AAA (7:1 ratio fo
 
 ---
 
+## Custom Vitals
+
+Allow per-patient custom vital definitions (e.g. insulin, blood glucose, HbA1c) so caregivers can track condition-specific metrics alongside built-in vitals.
+
+### Backend
+
+- [ ] **Migration** — new `custom_vital_definitions` table: `(id, patient_id FK, name VARCHAR, unit VARCHAR(20), display_label VARCHAR, created_at TIMESTAMP)`. Scoped per-patient. Re-export from `models/__init__.py` so Alembic sees it.
+- [ ] **Routes** — `GET/POST/DELETE /api/vitals/custom-definitions?patient_id=` in `backend/routes/vitals.py` (or a new `custom_vitals.py`). POST body: `{ patient_id, name, unit, display_label }`. DELETE by id. Use `require_permission` guard.
+- [ ] **No changes needed** to `Vital` ORM, `save_vital()`, or `/api/vitals/manual` — the generic fallback path at `routes/vitals.py:287` already stores arbitrary `vital_type` strings with a unit. Custom vitals just flow through.
+
+### Frontend — AdminV2Vitals.jsx
+
+- [ ] **Definition management panel** — new sub-section on the Record view (or a separate "Custom" tab). Form: name field + unit field + Add button. List existing definitions with a delete button. Calls the new API routes.
+- [ ] **Merge custom vitals into toggle bar** — after fetching definitions, append them to the `vitalTypes` array and `activeVitals` state so they appear as toggleable cards alongside built-ins.
+- [ ] **Dynamic form fields** — add `customVitalsData` state object keyed by definition id. Render a generic `vital-input-card` for each active custom vital. Include in `handleVitalsSubmit` loop (POST with `vital_type: def.name`, `unit: def.unit`).
+- [ ] **History filter dropdown** — the `<select>` at line 502 is hardcoded to `vitalTypes`; merge in fetched custom definitions so they appear as filter options.
+
+### Not needed (works as-is)
+
+- `GET /api/vitals/patient/{patient_id}` — already returns all stored vital types dynamically.
+- `GET /api/vitals/types` — already returns distinct strings from the table.
+- The `/summary` trend chart endpoint hardcodes 5 built-in types — custom vitals won't appear in charts, which is acceptable for now.
+
+---
+
 ## Medications
 
 - **Undo med on admin-v2 schedule** — fix undo medication action on the admin-v2 schedule page
