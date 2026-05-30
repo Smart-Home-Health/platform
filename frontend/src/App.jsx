@@ -44,6 +44,9 @@ import AdminV2Implants from './pages/admin-v2/AdminV2Implants';
 import AdminV2Nutrition from './pages/admin-v2/AdminV2Nutrition';
 import AdminV2ProfileSummary from './pages/admin-v2/AdminV2ProfileSummary';
 import AdminV2Monitoring from './pages/admin-v2/AdminV2Monitoring';
+import AdminV2Reports from './pages/admin-v2/AdminV2Reports';
+import AdminV2ReportsOvernight from './pages/admin-v2/AdminV2ReportsOvernight';
+import AdminV2ReportsWeekly from './pages/admin-v2/AdminV2ReportsWeekly';
 import AdminV2AccountSettings from './pages/admin-v2/AdminV2AccountSettings';
 import AdminV2Backup from './pages/admin-v2/AdminV2Backup';
 import AdminV2Integrations from './pages/admin-v2/AdminV2Integrations';
@@ -160,7 +163,13 @@ function AppContent() {
           <Route path="/care/monitoring/ventilator" element={<ProtectedRoute><Layout><AdminV2Monitoring /></Layout></ProtectedRoute>} />
           <Route path="/care/monitoring/interactions" element={<ProtectedRoute><Layout><AdminV2Monitoring /></Layout></ProtectedRoute>} />
           <Route path="/care/monitoring/settings" element={<ProtectedRoute><Layout><AdminV2Monitoring /></Layout></ProtectedRoute>} />
-            
+
+          {/* Care Reports Routes */}
+          <Route path="/care/reports" element={<ProtectedRoute><Layout><AdminV2Reports /></Layout></ProtectedRoute>} />
+          <Route path="/care/reports/day-over-day" element={<ProtectedRoute><Layout><AdminV2Reports /></Layout></ProtectedRoute>} />
+          <Route path="/care/reports/overnight" element={<ProtectedRoute><Layout><AdminV2ReportsOvernight /></Layout></ProtectedRoute>} />
+          <Route path="/care/reports/weekly" element={<ProtectedRoute><Layout><AdminV2ReportsWeekly /></Layout></ProtectedRoute>} />
+
           {/* Care Configuration Routes (System-wide) */}
           <Route path="/care/configuration" element={<ProtectedRoute><Layout><AdminV2SettingsGeneral /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/account" element={<ProtectedRoute><Layout><AdminV2AccountSettings /></Layout></ProtectedRoute>} />

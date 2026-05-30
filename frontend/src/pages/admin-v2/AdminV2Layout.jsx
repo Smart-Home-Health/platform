@@ -21,7 +21,8 @@ import {
   XIcon,
   ClipboardListIcon,
   VirusIcon,
-  MenuIcon
+  MenuIcon,
+  BarChartIcon
 } from '../../components/Icons';
 import './AdminV2.css';
 
@@ -32,6 +33,7 @@ const sideNavItems = [
   { path: '/care/vitals', label: 'Vitals', Icon: ClipboardListIcon, requiredPermissions: ['vitals.read', 'vitals.create'] },
   { path: '/care/symptoms', label: 'Symptoms', Icon: VirusIcon, requiredPermissions: ['vitals.read', 'vitals.create'] },
   { path: '/care/monitoring', label: 'Monitoring', Icon: MonitoringIcon, requiredPermissions: ['monitoring.read', 'monitoring.create', 'monitoring.update', 'monitoring.delete'] },
+  { path: '/care/reports', label: 'Reports', Icon: BarChartIcon, requiredPermissions: ['vitals.read'] },
   { path: '/care/medications', label: 'Medications', Icon: MedicationsIcon, requiredPermissions: ['medications.read', 'medications.create', 'medications.update', 'medications.delete'] },
   { path: '/care/care-tasks', label: 'Care Tasks', Icon: TasksIcon, requiredPermissions: ['care_tasks.read', 'care_tasks.create', 'care_tasks.update', 'care_tasks.delete'] },
   { path: '/care/equipment', label: 'Equipment & Supplies', Icon: EquipmentIcon, requiredPermissions: ['equipment.read', 'equipment.create', 'equipment.update', 'equipment.delete'] },
@@ -88,6 +90,11 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
       { path: '/care/monitoring/ventilator', label: 'Ventilator' },
       { path: '/care/monitoring/interactions', label: 'Interactions' },
       { path: '/care/monitoring/settings', label: 'Alert Settings' },
+    ],
+    reports: [
+      { path: '/care/reports', label: 'Day over Day' },
+      { path: '/care/reports/overnight', label: 'Overnight' },
+      { path: '/care/reports/weekly', label: 'Weekly Summary' },
     ],
     profile: [
       // Patient profile sections

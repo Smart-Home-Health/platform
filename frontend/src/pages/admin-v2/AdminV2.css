@@ -9722,3 +9722,945 @@ body.printing-schedule .admin-v2-schedule-prn-add {
 .admin-v2-med-card-inactive {
   opacity: 0.6;
 }
+
+/* ───────────── Day over Day Report ───────────── */
+
+.dod-report {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  overflow: hidden;
+  max-width: 100%;
+}
+
+.dod-controls {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.dod-vital-select {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 200px;
+}
+
+.dod-label {
+  font-size: 0.8rem;
+  color: #8b949e;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.dod-select {
+  padding: 0.5rem 0.75rem;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #e6edf3;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.dod-select:focus {
+  outline: none;
+  border-color: #58a6ff;
+}
+
+/* Hour range */
+.dod-hour-range {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.dod-hour-selects {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.dod-select-hour {
+  min-width: 70px;
+  width: auto;
+}
+
+.dod-hour-sep {
+  color: #8b949e;
+  font-size: 0.8rem;
+}
+
+.dod-hour-reset {
+  background: none;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #8b949e;
+  font-size: 0.75rem;
+  padding: 0.35rem 0.6rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dod-hour-reset:hover {
+  background: rgba(255,255,255,0.06);
+  color: #e6edf3;
+}
+
+/* Calendar */
+.dod-calendar {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 1rem;
+  min-width: 300px;
+  max-width: 340px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.dod-calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.dod-cal-month {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #e6edf3;
+}
+
+.dod-cal-nav {
+  background: none;
+  border: none;
+  color: #8b949e;
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+}
+.dod-cal-nav:hover {
+  background: rgba(255,255,255,0.06);
+  color: #e6edf3;
+}
+
+.dod-calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  margin-bottom: 0.25rem;
+}
+
+.dod-weekday {
+  font-size: 0.75rem;
+  color: #8b949e;
+  font-weight: 600;
+  padding: 0.25rem 0;
+}
+
+.dod-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+
+.dod-cal-cell {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background: none;
+  color: #c9d1d9;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  padding: 0;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.dod-cal-cell:not(.dod-cal-empty):not(.disabled):hover {
+  background: rgba(255,255,255,0.08);
+}
+.dod-cal-cell.today:not(.selected) {
+  border-color: #30363d;
+  font-weight: 700;
+}
+.dod-cal-cell.selected {
+  font-weight: 700;
+}
+.dod-cal-cell.disabled {
+  color: #484f58;
+  cursor: default;
+}
+.dod-cal-empty {
+  cursor: default;
+}
+
+.dod-cal-limit {
+  font-size: 0.75rem;
+  color: #f0883e;
+  text-align: center;
+  margin: 0.4rem 0 0;
+}
+
+/* Date chips */
+.dod-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.dod-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.6rem;
+  background: #161b22;
+  border: 1px solid;
+  border-radius: 16px;
+  font-size: 0.8rem;
+  color: #e6edf3;
+}
+
+.dod-chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dod-chip-label {
+  font-weight: 500;
+}
+
+.dod-chip-source {
+  font-size: 0.7rem;
+  color: #8b949e;
+  background: rgba(255,255,255,0.06);
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+}
+
+.dod-chip-remove {
+  background: none;
+  border: none;
+  color: #8b949e;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  line-height: 1;
+}
+.dod-chip-remove:hover {
+  color: #f85149;
+}
+
+/* Chart area */
+.dod-chart-area {
+  position: relative;
+  min-height: 200px;
+}
+
+.dod-chart-container {
+  position: relative;
+  height: 440px;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.dod-loading,
+.dod-error,
+.dod-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  font-size: 0.9rem;
+}
+
+.dod-loading { color: #8b949e; }
+.dod-error { color: #f85149; }
+.dod-empty { color: #8b949e; }
+
+/* Responsive */
+@media (max-width: 640px) {
+  .dod-controls {
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .dod-calendar {
+    max-width: 100%;
+    min-width: auto;
+    padding: 1rem;
+  }
+  .dod-vital-select {
+    min-width: auto;
+    width: 100%;
+  }
+  .dod-select {
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+  }
+  .dod-label {
+    font-size: 0.85rem;
+  }
+  .dod-select-hour {
+    min-width: 80px;
+    padding: 0.75rem 0.5rem;
+    font-size: 1rem;
+  }
+  .dod-hour-sep {
+    font-size: 1rem;
+  }
+  .dod-cal-month {
+    font-size: 1.15rem;
+  }
+  .dod-cal-nav {
+    padding: 0.5rem;
+  }
+  .dod-weekday {
+    font-size: 0.85rem;
+    padding: 0.35rem 0;
+  }
+  .dod-calendar-grid {
+    gap: 4px;
+  }
+  .dod-cal-cell {
+    font-size: 1rem;
+    border-radius: 8px;
+    min-height: 40px;
+  }
+  .dod-chart-container {
+    height: 320px;
+  }
+  .dod-chip {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.9rem;
+  }
+}
+
+/* ───────────── Overnight Report ───────────── */
+
+.overnight-controls {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.overnight-date-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.overnight-date-input {
+  padding: 0.5rem 0.75rem;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #e6edf3;
+  font-size: 0.9rem;
+  color-scheme: dark;
+}
+
+.overnight-hour-range {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.overnight-loading,
+.overnight-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  font-size: 0.9rem;
+}
+.overnight-loading { color: #8b949e; }
+.overnight-error { color: #f85149; }
+
+.overnight-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.overnight-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 1rem;
+  text-align: center;
+}
+
+.overnight-card.danger {
+  border-color: #f85149;
+  background: rgba(248, 81, 73, 0.08);
+}
+
+.overnight-card.warning {
+  border-color: #d29922;
+  background: rgba(210, 153, 34, 0.08);
+}
+
+.overnight-card-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #e6edf3;
+  line-height: 1.1;
+}
+
+.overnight-card-unit {
+  font-size: 0.9rem;
+  font-weight: 400;
+  color: #8b949e;
+  margin-left: 2px;
+}
+
+.overnight-card-label {
+  font-size: 0.8rem;
+  color: #8b949e;
+  margin-top: 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.overnight-card-detail {
+  font-size: 0.75rem;
+  color: #6e7681;
+  margin-top: 0.25rem;
+}
+
+.overnight-section {
+  margin-bottom: 1.25rem;
+}
+
+.overnight-section-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #e6edf3;
+  margin: 0 0 0.75rem 0;
+}
+
+.overnight-chart-container {
+  position: relative;
+  height: 300px;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.overnight-vitals-stats {
+  display: flex;
+  gap: 1.5rem;
+  margin-top: 0.5rem;
+}
+
+.overnight-stat {
+  font-size: 0.8rem;
+  color: #8b949e;
+}
+
+/* Alerts table */
+.overnight-alerts-table {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.overnight-alert-header,
+.overnight-alert-row {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr 1fr 1fr 0.6fr;
+  padding: 0.6rem 1rem;
+  font-size: 0.85rem;
+  gap: 0.5rem;
+}
+
+.overnight-alert-header {
+  background: #0d1117;
+  color: #8b949e;
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.overnight-alert-row {
+  color: #c9d1d9;
+  border-top: 1px solid #21262d;
+}
+
+/* Care checklist */
+.overnight-checklist-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.overnight-checklist-heading {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #8b949e;
+  margin: 0 0 0.5rem 0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.overnight-checklist-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: #c9d1d9;
+  background: #161b22;
+  border: 1px solid #21262d;
+  margin-bottom: 0.35rem;
+}
+
+.overnight-checklist-item.missed {
+  border-color: rgba(248, 81, 73, 0.3);
+  background: rgba(248, 81, 73, 0.06);
+}
+
+.overnight-checklist-item.skipped {
+  border-color: rgba(139, 148, 158, 0.3);
+  background: rgba(139, 148, 158, 0.06);
+  opacity: 0.75;
+}
+
+.overnight-checklist-item.skipped .overnight-checklist-name {
+  text-decoration: line-through;
+  color: #8b949e;
+}
+
+.overnight-checklist-name {
+  flex: 1;
+  font-weight: 500;
+}
+
+.overnight-checklist-time {
+  color: #8b949e;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.overnight-checklist-actual {
+  color: #6e7681;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.overnight-status-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.overnight-status-icon.on-time { color: #3fb950; }
+.overnight-status-icon.late { color: #d29922; }
+.overnight-status-icon.missed { color: #f85149; }
+.overnight-status-icon.skipped {
+  color: #8b949e;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+/* Symptoms */
+.overnight-symptom {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: #161b22;
+  border: 1px solid #21262d;
+  border-radius: 6px;
+  margin-bottom: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.overnight-symptom-type {
+  font-weight: 500;
+  color: #e6edf3;
+  text-transform: capitalize;
+}
+
+.overnight-symptom-severity {
+  color: #d29922;
+  font-size: 0.8rem;
+}
+
+.overnight-symptom-desc {
+  color: #8b949e;
+  font-size: 0.8rem;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .overnight-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .overnight-checklist-grid {
+    grid-template-columns: 1fr;
+  }
+  .overnight-alert-header,
+  .overnight-alert-row {
+    grid-template-columns: 1fr 0.7fr 1fr;
+    font-size: 0.8rem;
+  }
+  .overnight-alert-header span:nth-child(4),
+  .overnight-alert-header span:nth-child(5),
+  .overnight-alert-row span:nth-child(4),
+  .overnight-alert-row span:nth-child(5) {
+    display: none;
+  }
+  .overnight-chart-container {
+    height: 220px;
+  }
+  .overnight-date-input {
+    font-size: 1rem;
+    padding: 0.75rem;
+  }
+}
+
+/* ───────────── Weekly Summary Report ───────────── */
+
+.weekly-report {
+  max-width: 1200px;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.weekly-period-label {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #e6edf3;
+  white-space: nowrap;
+}
+
+.weekly-section {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.weekly-section-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #e6edf3;
+  margin: 0 0 0.75rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.weekly-section-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 0.4rem;
+  border-radius: 11px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(248, 81, 73, 0.2);
+  color: #f85149;
+}
+
+.weekly-section-badge.warning {
+  background: rgba(210, 153, 34, 0.2);
+  color: #d29922;
+}
+
+/* Sparklines */
+.weekly-sparklines {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+}
+
+.weekly-sparkline-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.weekly-sparkline-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.weekly-sparkline-card {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.weekly-sparkline-chart {
+  height: 50px;
+  width: 100%;
+  min-width: 0;
+}
+
+.weekly-sparkline-chart canvas {
+  max-width: 100% !important;
+}
+
+.weekly-sparkline-stats {
+  display: flex;
+  justify-content: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: #8b949e;
+}
+
+.weekly-sparkline-val {
+  font-weight: 500;
+}
+
+.weekly-sparkline-sep {
+  color: #484f58;
+}
+
+.weekly-sparkline-unit {
+  font-size: 0.7rem;
+  color: #6e7681;
+}
+
+/* Row layout */
+.weekly-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  min-width: 0;
+}
+
+.weekly-half {
+  margin-bottom: 0;
+  min-width: 0;
+}
+
+/* Compliance */
+.weekly-compliance {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.weekly-donut-container {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  flex-shrink: 0;
+}
+
+.weekly-donut-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.weekly-donut-pct {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #e6edf3;
+}
+
+.weekly-compliance-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.weekly-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: #c9d1d9;
+}
+
+.weekly-legend-item strong {
+  margin-left: auto;
+  color: #e6edf3;
+}
+
+.weekly-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Small chart */
+.weekly-chart-sm {
+  height: 140px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.weekly-chart-sm canvas {
+  max-width: 100% !important;
+}
+
+.weekly-avg-text {
+  font-size: 0.8rem;
+  color: #8b949e;
+  margin-top: 0.4rem;
+}
+
+.weekly-empty-note {
+  color: #6e7681;
+  font-size: 0.85rem;
+  padding: 1rem 0;
+  text-align: center;
+}
+
+/* Equipment */
+.weekly-equip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.weekly-equip-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  background: #0d1117;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: #c9d1d9;
+}
+
+.weekly-equip-item.overdue {
+  border: 1px solid rgba(248, 81, 73, 0.3);
+}
+
+.weekly-equip-name {
+  font-weight: 500;
+}
+
+.weekly-equip-due {
+  font-size: 0.8rem;
+  color: #8b949e;
+}
+
+.weekly-overdue-badge {
+  color: #f85149;
+  font-weight: 600;
+}
+
+/* Symptom status */
+.weekly-symptom-status {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 10px;
+  font-weight: 500;
+}
+
+.weekly-symptom-status.active {
+  background: rgba(210, 153, 34, 0.2);
+  color: #d29922;
+}
+
+.weekly-symptom-status.resolved {
+  background: rgba(63, 185, 80, 0.2);
+  color: #3fb950;
+}
+
+.weekly-symptoms-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.weekly-print-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.5rem;
+}
+
+@media (max-width: 640px) {
+  .weekly-row {
+    grid-template-columns: 1fr;
+  }
+  .weekly-sparklines {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .weekly-compliance {
+    flex-direction: column;
+  }
+  .weekly-donut-container {
+    width: 100px;
+    height: 100px;
+  }
+}
+
+@media print {
+  .admin-v2-sidebar,
+  .admin-v2-mobile-header,
+  .admin-v2-topnav,
+  .admin-v2-restricted-banner,
+  .overnight-controls,
+  .weekly-print-row {
+    display: none !important;
+  }
+  .admin-v2-main {
+    margin-left: 0 !important;
+  }
+  .admin-v2-layout {
+    position: static;
+  }
+  .weekly-section,
+  .overnight-card {
+    break-inside: avoid;
+  }
+  body {
+    background: #fff;
+    color: #000;
+  }
+  .weekly-report,
+  .admin-v2-monitoring {
+    color: #000;
+  }
+}
