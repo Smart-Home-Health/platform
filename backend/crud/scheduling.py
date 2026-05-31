@@ -415,7 +415,51 @@ def get_daily_care_task_schedule(db: Session, patient_id=None):
 
             item['is_yesterday'] = False
             all_scheduled.append(item)
-        
+
+        # Include ad-hoc / PRN completions (logs with no schedule_id) for
+        # yesterday & today. These have no scheduled occurrence to attach to, so
+        # without this they only show in History, never on the schedule.
+        start_window = datetime.combine(yesterday, datetime.min.time(), tzinfo=timezone.utc)
+        end_window = datetime.combine(today + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+        adhoc_query = db.query(CareTaskLog).filter(
+            CareTaskLog.schedule_id.is_(None),
+            CareTaskLog.completed_at >= start_window,
+            CareTaskLog.completed_at < end_window,
+        )
+        # Scope to the same patient set as the scheduled tasks above.
+        if patient_id is None:
+            active_patient = get_active_patient(db)
+            if active_patient:
+                adhoc_query = adhoc_query.filter(CareTaskLog.patient_id == active_patient.id)
+        elif patient_id == -1:
+            pass  # Admin mode: all patients
+        else:
+            adhoc_query = adhoc_query.filter(CareTaskLog.patient_id == patient_id)
+
+        for log in adhoc_query.all():
+            task = log.care_task
+            category = task.category if task else None
+            completed_at_iso = log.completed_at.isoformat() if log.completed_at else None
+            all_scheduled.append({
+                'schedule_id': None,
+                'care_task_id': log.care_task_id,
+                'care_task_name': task.name if task else 'Care Task',
+                'care_task_description': task.description if task else None,
+                'care_task_category_name': category.name if category else None,
+                'care_task_category_color': category.color if category else '#6f42c1',
+                # Position the PRN entry at the time it was actually performed.
+                'scheduled_time': log.completed_at,
+                'schedule_description': None,
+                'notes': log.notes,
+                'is_prn': True,
+                'is_completed': True,
+                'status': log.status or 'completed',
+                'completed_at': completed_at_iso,
+                'completed_time': completed_at_iso,
+                'performed_by': log.performed_by,
+                'is_yesterday': log.completed_at.date() == yesterday,
+            })
+
         # Sort by scheduled time chronologically
         all_scheduled.sort(key=lambda x: x['scheduled_time'])
         
@@ -872,6 +916,46 @@ def get_scheduled_care_tasks(db: Session, target_date, patient_id: int, tz_offse
             except Exception as cron_error:
                 logger.error(f"Error processing cron expression {schedule.cron_expression}: {cron_error}")
                 continue
+
+        # PRN / ad-hoc completions (no schedule_id) whose completed_at falls in
+        # the caller's local day. Surface them at the hour they were performed so
+        # the schedule shows a unified picture. is_prn=True lets the frontend
+        # render them as an info row (no mark-complete / skip controls) and keeps
+        # them out of the scheduled-adherence ratio.
+        prn_logs = db.query(CareTaskLog).filter(
+            CareTaskLog.patient_id == patient_id,
+            CareTaskLog.schedule_id.is_(None),
+            CareTaskLog.completed_at >= local_start_utc,
+            CareTaskLog.completed_at < local_end_utc,
+        ).all()
+
+        for log in prn_logs:
+            task = log.care_task
+            if task is None:
+                continue
+            given_at = log.completed_at
+            if given_at is None:
+                continue
+            if given_at.tzinfo is None:
+                given_at = given_at.replace(tzinfo=timezone.utc)
+            category = task.category
+            scheduled_tasks.append({
+                'schedule_id': None,
+                'care_task_id': task.id,
+                'care_task_name': task.name,
+                'care_task_description': task.description,
+                'scheduled_time': given_at,
+                'schedule_description': None,
+                'notes': log.notes,
+                'category_id': category.id if category else None,
+                'category_name': category.name if category else None,
+                'category_color': category.color if category else None,
+                'completed': True,
+                'completed_at': given_at.isoformat(),
+                'completed_by': log.performed_by,
+                'is_prn': True,
+                'log_id': log.id,
+            })
 
         return sorted(scheduled_tasks, key=lambda x: x['scheduled_time'])
 

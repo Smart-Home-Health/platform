@@ -6,13 +6,17 @@ Stuff to pick up when there's time. No particular order.
 
 ## Live Dashboard
 
-- **Per-modal re-auth (5 min)** — main live view keeps the one-per-day unlock, but opening any modal (meds / tasks / nutrition / etc.) should require a fresh user auth if more than 5 min has passed since the last verification, so we capture the *correct* user for every action logged from that modal.
+- **Per-modal re-auth (5 min)** — _IN TESTING_. Account password 1×/24h unchanged; opening any live-dashboard modal now requires a fresh user PIN (idle 5-min window), with the 3 large vital readings pinned visible during auth. Built via `PinChallengeContext` + `PinChallengeModal`. Spec: rolling idle, full user picker each re-auth.
 
 ---
 
-## General
+## Frigate Integration
 
-- **Number-pad virtual keyboard for numeric inputs** — virtual keyboard should switch to a num-pad layout whenever the focused input is `type="number"` (or otherwise marked numeric), instead of showing the full alpha keyboard.
+- **Live stream stability** — _FIX IN TESTING_. Live HLS failed most of the time while proxied MP4 clips worked. Two root causes, both now addressed:
+  1. **Transport** — `live_url` pointed **directly at Frigate** (`http://<frigate>:5000/api/go2rtc/api/stream.m3u8`), so hls.js fetched it cross-origin (CORS + go2rtc cold-start → "works only when already warm"). Fix: backend **proxies + rewrites** the go2rtc HLS playlist same-site (`/live.m3u8` + `/live-seg`, SSRF-guarded + cold-start retry) in `backend/routes/frigate.py`; `CameraLiveModal.jsx` sends credentials via hls.js `xhrSetup`. _Confirmed working_ — segments now fetch/buffer.
+  2. **Codec** — after the transport fix, hls.js threw `mediaError / bufferAppendError`, i.e. the source is a codec the browser's MSE can't decode (camera "Vent" is almost certainly H.265). Fix: the live upstream now requests `&video=h264&audio=aac` so go2rtc hands back H.264 (copies if already H.264; transcodes only if needed). Overridable via the `live_hls_codecs` setting.
+  - **Still needs a device retest** against the real Frigate (`192.168.1.10:5000`, patient 5 / camera "Vent"). Diagnostic: `GET /api/integrations/frigate/patient/5/live-probe` reports go2rtc's detected codecs. If it still fails with H.265 reported, go2rtc likely lacks ffmpeg for transcode → enable a transcode in Frigate's `go2rtc` config. WebRTC mode still uses the direct URL.
+- **VOD playback** — _RESOLVED (no action)_. Inline VOD already plays the **proxied saved MP4** (`/clips/file`, native `<video>`, same-site, range/seek), which works on Apple devices — the old direct-to-Frigate HLS-VOD path was the flaky one and has been **deleted** (`get_vod_hls_url`, `/clip`, `/clip-urls`). Known limitation left as-is per decision: H.265 MP4 won't play in non-Apple browsers (Chrome/Firefox/Android); closing that would need backend H.264 transcoding (adds ffmpeg to the image).
 
 ---
 

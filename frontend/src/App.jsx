@@ -6,6 +6,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
 import UserSelectionPage from './pages/UserSelectionPage';
+import PasswordResetPage from './pages/PasswordResetPage';
 import Dashboard from './pages/Dashboard';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminSchedule from './pages/admin/AdminSchedule';
@@ -55,6 +56,7 @@ import AdminV2ProfileMqtt from './pages/admin-v2/AdminV2ProfileMqtt';
 import { AdminV2SettingsGeneral } from './pages/admin-v2/settings';
 import FirstRunSetup from './components/FirstRunSetup';
 import { ActiveInputProvider } from './contexts/ActiveInputContext';
+import { PinChallengeProvider } from './contexts/PinChallengeContext';
 import VirtualKeyboard from './components/VirtualKeyboard/VirtualKeyboard';
 import { useVirtualKeyboard } from './hooks/useVirtualKeyboard';
 import "./App.css";
@@ -81,12 +83,14 @@ function AppContent() {
 
   return (
     <ActiveInputProvider>
+      <PinChallengeProvider>
       <Router>
         {isFirstRun ? <FirstRunSetup /> : <Routes>
           {/* Public Routes */}
           <Route path="/" element={<Navigate to="/care" replace />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/select-user" element={<UserSelectionPage />} />
+          <Route path="/first-login" element={<PasswordResetPage />} />
           
           {/* Protected Routes - wrapped in Layout */}
           <Route path="/live" element={
@@ -185,6 +189,7 @@ function AppContent() {
         </Routes>}
       </Router>
       <VirtualKeyboard show={showVKB} />
+      </PinChallengeProvider>
     </ActiveInputProvider>
   );
 }

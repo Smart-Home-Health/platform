@@ -13,7 +13,6 @@ Frigate API endpoints used:
 - GET /api/<cam>/latest.jpg -> still snapshot
 - HLS live (when restream is configured): /live/<cam>/index.m3u8
 - Recording clip MP4:        /api/<cam>/start/<unix>/end/<unix>/clip.mp4
-- Recording HLS VOD:         /vod/<cam>/start/<unix>/end/<unix>/master.m3u8
 """
 from datetime import datetime
 from typing import Dict, Any, Optional, List
@@ -176,17 +175,35 @@ class FrigateIntegration(BaseIntegration):
         # Frigate proxies go2rtc's HLS endpoint under /api/go2rtc.
         return f"{base}/api/go2rtc/api/stream.m3u8?src={quote(camera)}"
 
+    def get_live_upstream_m3u8(self, camera: str) -> str:
+        """Upstream go2rtc HLS playlist URL for the backend live proxy to fetch.
+
+        The browser cannot fetch this directly (cross-origin to Frigate, and
+        subject to go2rtc cold-start), so routes/frigate.py proxies it same-site
+        and rewrites the segment URLs. Frigate proxies go2rtc under /api/go2rtc.
+
+        We request `video=h264&audio=aac` so go2rtc hands back a codec the
+        browser's Media Source Extensions can actually decode (many cameras are
+        H.265, which fails with hls.js `bufferAppendError`). go2rtc copies the
+        track when the source is already H.264 (no transcode cost) and only
+        spins up ffmpeg when a conversion is genuinely needed. Set the
+        `live_hls_codecs` setting to override (e.g. "" to disable transcoding).
+        """
+        codecs = (self.settings or {}).get("live_hls_codecs", "video=h264&audio=aac")
+        url = f"{self._base_url()}/api/go2rtc/api/stream.m3u8?src={quote(camera)}"
+        if codecs:
+            url += f"&{codecs}"
+        return url
+
+    def base_url_public(self) -> str:
+        """Configured Frigate base URL, used by the live proxy as an SSRF allowlist."""
+        return self._base_url()
+
     def get_clip_url(self, camera: str, start_unix: int, end_unix: int) -> str:
         padding = int((self.settings or {}).get("clip_padding_seconds", DEFAULT_CLIP_PADDING_SECONDS))
         s = max(0, int(start_unix) - padding)
         e = int(end_unix) + padding
         return f"{self._base_url()}/api/{quote(camera)}/start/{s}/end/{e}/clip.mp4"
-
-    def get_vod_hls_url(self, camera: str, start_unix: int, end_unix: int) -> str:
-        padding = int((self.settings or {}).get("clip_padding_seconds", DEFAULT_CLIP_PADDING_SECONDS))
-        s = max(0, int(start_unix) - padding)
-        e = int(end_unix) + padding
-        return f"{self._base_url()}/vod/{quote(camera)}/start/{s}/end/{e}/master.m3u8"
 
     async def test_connection(self) -> bool:
         try:

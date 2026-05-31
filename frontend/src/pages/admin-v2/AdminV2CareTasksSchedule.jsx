@@ -139,6 +139,9 @@ const AdminV2CareTasksSchedule = () => {
 
   const getFilteredTasks = () => {
     return scheduledTasks.filter(task => {
+      // PRN / ad-hoc completions have no scheduled slot and are always already
+      // done — show them regardless of the (default-off) "completed" filter.
+      if (task.is_prn) return true;
       return statusFilters[task.status] !== false;
     });
   };
@@ -436,9 +439,18 @@ const AdminV2CareTasksSchedule = () => {
                                     )}
                                   </div>
                                   <div className="admin-v2-schedule-item-status">
-                                    <span 
+                                    {item.is_prn && (
+                                      <span
+                                        className="admin-v2-schedule-status-badge"
+                                        style={{ backgroundColor: '#6f42c1', color: '#fff' }}
+                                        title="Completed as-needed (PRN), not a scheduled occurrence"
+                                      >
+                                        PRN
+                                      </span>
+                                    )}
+                                    <span
                                       className="admin-v2-schedule-status-badge"
-                                      style={{ 
+                                      style={{
                                         backgroundColor: statusInfo.border,
                                         color: '#fff'
                                       }}

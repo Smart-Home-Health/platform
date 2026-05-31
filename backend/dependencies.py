@@ -151,6 +151,23 @@ async def get_current_active_user(
     return current_user
 
 
+async def require_system_admin(
+    current_user: User = Depends(get_current_user)
+) -> User:
+    """
+    Dependency that requires the current user to be a system administrator.
+
+    Stricter than a role/permission check: only users with is_system_admin=True pass,
+    regardless of granted permissions.
+    """
+    if not current_user.is_system_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="System administrator access required"
+        )
+    return current_user
+
+
 async def get_optional_user(
     request: Request, 
     db: Session = Depends(get_db)

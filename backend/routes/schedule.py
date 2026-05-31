@@ -194,6 +194,8 @@ async def get_daily_schedule(
                 "category_id": task.get("category_id"),
                 "category_name": task.get("category_name"),
                 "category_color": task.get("category_color"),
+                "is_prn": task.get("is_prn", False),
+                "log_id": task.get("log_id"),
                 "type": "care_task"
             })
         

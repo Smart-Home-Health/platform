@@ -258,16 +258,16 @@ export default function RecordVitalsForm({
             </div>
             <div className="vital-input-fields bp-fields">
               <div className="vital-input-group">
-                <input type="number" value={vitalsFormData.systolic}
+                <input type="text" inputMode="decimal" value={vitalsFormData.systolic}
                   onChange={e => setVitalsFormData(p => ({ ...p, systolic: e.target.value }))}
-                  className="vital-input" placeholder="120" min="60" max="250" />
+                  className="vital-input" placeholder="120" />
                 <span className="vital-input-label">Systolic</span>
               </div>
               <span className="bp-separator">/</span>
               <div className="vital-input-group">
-                <input type="number" value={vitalsFormData.diastolic}
+                <input type="text" inputMode="decimal" value={vitalsFormData.diastolic}
                   onChange={e => setVitalsFormData(p => ({ ...p, diastolic: e.target.value }))}
-                  className="vital-input" placeholder="80" min="40" max="150" />
+                  className="vital-input" placeholder="80" />
                 <span className="vital-input-label">Diastolic</span>
               </div>
               <span className="vital-unit">mmHg</span>
@@ -275,32 +275,32 @@ export default function RecordVitalsForm({
           </div>
         );
       case 'heart_rate':
-        return singleCard('heart_rate', 'Heart Rate', 'bpm', '72', 30, 250);
+        return singleCard('heart_rate', 'Heart Rate', 'bpm', '72');
       case 'spo2':
-        return singleCard('spo2', 'SpO2', '%', '98', 50, 100);
+        return singleCard('spo2', 'SpO2', '%', '98');
       case 'respiratory_rate':
-        return singleCard('respiratory_rate', 'Respiratory Rate', '/min', '16', 5, 60);
+        return singleCard('respiratory_rate', 'Respiratory Rate', '/min', '16');
       case 'temperature':
-        return singleCard('temperature', 'Temperature', '°F', '98.6', 90, 110, '0.1');
+        return singleCard('temperature', 'Temperature', '°F', '98.6');
       case 'weight':
-        return singleCard('weight', 'Weight', 'lbs', '150', 1, 1000, '0.1');
+        return singleCard('weight', 'Weight', 'lbs', '150');
       default:
         return null;
     }
   };
 
-  const singleCard = (key, title, unit, placeholder, min, max, step) => (
+  const singleCard = (key, title, unit, placeholder) => (
     <div className="vital-input-card" key={key}>
       <div className="vital-input-header">
         <span className="vital-input-title">{title}</span>
       </div>
       <div className="vital-input-fields single-field">
         <input
-          type="number" step={step}
+          type="text" inputMode="decimal"
           value={vitalsFormData[key]}
           onChange={e => setVitalsFormData(p => ({ ...p, [key]: e.target.value }))}
           className="vital-input large"
-          placeholder={placeholder} min={min} max={max}
+          placeholder={placeholder}
         />
         <span className="vital-unit">{unit}</span>
       </div>
@@ -428,7 +428,7 @@ export default function RecordVitalsForm({
                 </div>
                 <div className="vital-input-fields single-field">
                   <input
-                    type="number" step="any"
+                    type="text" inputMode="decimal"
                     value={customVitalsData[def.name] || ''}
                     onChange={e => setCustomVitalsData(p => ({ ...p, [def.name]: e.target.value }))}
                     className="vital-input large"

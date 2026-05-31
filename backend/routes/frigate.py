@@ -7,15 +7,18 @@ specific operations (camera list, camera selection, live URL, event clip).
 All endpoints are patient-scoped and require an enabled Frigate
 PatientIntegration for that patient/account.
 """
+import asyncio
 import os
+import re
 import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List
+from urllib.parse import urljoin, urlencode
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import RedirectResponse, StreamingResponse, FileResponse
+from fastapi.responses import StreamingResponse, FileResponse, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 
@@ -69,14 +72,6 @@ class FrigateLiveResponse(BaseModel):
     live_mode: str
 
 
-class FrigateClipUrlsResponse(BaseModel):
-    camera: str
-    hls_url: str   # direct Frigate VOD playlist (for inline playback via hls.js)
-    mp4_url: str   # our proxied download endpoint (Content-Disposition: attachment)
-    start: int
-    end: int
-
-
 class FrigateClipStatusResponse(BaseModel):
     camera: str
     start: int
@@ -119,6 +114,37 @@ def _make_client(pi: PatientIntegration) -> FrigateIntegration:
     if not cls:
         raise HTTPException(status_code=500, detail="Frigate integration not registered")
     return cls(pi)
+
+
+_URI_ATTR_RE = re.compile(r'URI="([^"]+)"')
+
+
+def _rewrite_hls_playlist(text: str, upstream_url: str, proxy_seg_base: str) -> str:
+    """Rewrite every segment / init-map / key / sub-playlist URI in an HLS
+    playlist so the browser fetches it through our authenticated, same-site
+    `live-seg` proxy instead of directly from Frigate.
+
+    Relative URIs are resolved against `upstream_url`, so this is agnostic to
+    whether go2rtc emits TS or fMP4 segments and to absolute vs relative URIs.
+    """
+    out = []
+    for line in text.splitlines():
+        if not line:
+            out.append(line)
+            continue
+        if line.startswith("#"):
+            # Rewrite a URI="..." attribute if present (EXT-X-MAP, EXT-X-KEY).
+            m = _URI_ATTR_RE.search(line)
+            if m:
+                abs_uri = urljoin(upstream_url, m.group(1))
+                proxied = proxy_seg_base + "?" + urlencode({"u": abs_uri})
+                line = line[:m.start(1)] + proxied + line[m.end(1):]
+            out.append(line)
+            continue
+        # Bare line => a media segment or a nested playlist URI.
+        abs_uri = urljoin(upstream_url, line)
+        out.append(proxy_seg_base + "?" + urlencode({"u": abs_uri}))
+    return "\n".join(out) + "\n"
 
 
 # ---------------------------------------------------------------------------
@@ -199,100 +225,185 @@ async def select_camera(
 @router.get("/patient/{patient_id}/live", response_model=FrigateLiveResponse)
 async def get_live(
     patient_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user=Depends(require_full_auth),
     account_id: int = Depends(get_current_account_id),
     _: bool = Depends(require_read_access),
 ):
-    """Return live stream URL + snapshot URL for the selected camera."""
+    """Return live stream URL + snapshot URL for the selected camera.
+
+    For HLS mode the `live_url` points at our same-site proxy
+    (`/live.m3u8`) rather than directly at Frigate — the browser can't reliably
+    fetch go2rtc cross-origin (CORS / cold-start). WebRTC mode still returns the
+    direct go2rtc URL since it isn't a simple playlist fetch.
+    """
     pi = _get_active_frigate(db, patient_id, account_id)
     client = _make_client(pi)
 
     camera = client.selected_camera()
     if not camera:
         raise HTTPException(status_code=400, detail="No camera selected for this patient")
+
+    mode = (pi.settings or {}).get("live_mode", "hls")
+    if mode == "hls":
+        base = str(request.base_url).rstrip("/")
+        live_url = f"{base}/api/integrations/frigate/patient/{patient_id}/live.m3u8"
+    else:
+        live_url = client.get_live_url(camera)
 
     return FrigateLiveResponse(
         camera=camera,
-        live_url=client.get_live_url(camera),
+        live_url=live_url,
         snapshot_url=client.get_snapshot_url(camera),
-        live_mode=(pi.settings or {}).get("live_mode", "hls"),
+        live_mode=mode,
     )
 
 
-@router.get("/patient/{patient_id}/clip")
-async def get_clip(
+@router.get("/patient/{patient_id}/live.m3u8")
+async def live_playlist(
     patient_id: int,
-    start: int = Query(..., description="Event start time (unix seconds)"),
-    end: int = Query(..., description="Event end time (unix seconds)"),
-    format: str = Query("mp4", regex="^(mp4|hls)$"),
+    request: Request,
     db: Session = Depends(get_db),
     current_user=Depends(require_full_auth),
     account_id: int = Depends(get_current_account_id),
     _: bool = Depends(require_read_access),
 ):
+    """Proxy + rewrite the go2rtc HLS playlist for the selected camera.
+
+    Fetched same-site by hls.js, so no browser CORS/mixed-content. Retries a few
+    times to ride out go2rtc's cold-start (empty playlist right after the first
+    request) before giving up.
     """
-    302-redirect to the recording clip on Frigate.
-
-    `format=mp4` -> /api/<cam>/start/<s>/end/<e>/clip.mp4
-    `format=hls` -> /vod/<cam>/start/<s>/end/<e>/master.m3u8
-    """
-    if end <= start:
-        raise HTTPException(status_code=400, detail="end must be > start")
-
-    pi = _get_active_frigate(db, patient_id, account_id)
-    client = _make_client(pi)
-
-    camera = client.selected_camera()
-    if not camera:
-        raise HTTPException(status_code=400, detail="No camera selected for this patient")
-
-    if format == "hls":
-        url = client.get_vod_hls_url(camera, start, end)
-    else:
-        url = client.get_clip_url(camera, start, end)
-
-    return RedirectResponse(url=url, status_code=302)
-
-
-@router.get("/patient/{patient_id}/clip-urls", response_model=FrigateClipUrlsResponse)
-async def get_clip_urls(
-    patient_id: int,
-    start: int = Query(..., description="Event start time (unix seconds)"),
-    end: int = Query(..., description="Event end time (unix seconds)"),
-    request: Request = None,
-    db: Session = Depends(get_db),
-    current_user=Depends(require_full_auth),
-    account_id: int = Depends(get_current_account_id),
-    _: bool = Depends(require_read_access),
-):
-    """
-    Return URLs for inline playback (HLS) and downloadable MP4.
-
-    `hls_url` points directly at Frigate so hls.js can stream it without
-    needing to attach auth headers. `mp4_url` points at our /download
-    endpoint, which proxies the bytes with a Content-Disposition header to
-    trigger a real browser download.
-    """
-    if end <= start:
-        raise HTTPException(status_code=400, detail="end must be > start")
-
     pi = _get_active_frigate(db, patient_id, account_id)
     client = _make_client(pi)
     camera = client.selected_camera()
     if not camera:
         raise HTTPException(status_code=400, detail="No camera selected for this patient")
 
-    base = str(request.base_url).rstrip("/") if request else ""
-    mp4_url = f"{base}/api/integrations/frigate/patient/{patient_id}/download?start={start}&end={end}"
+    upstream = client.get_live_upstream_m3u8(camera)
+    headers = client._headers()
+    base = str(request.base_url).rstrip("/")
+    proxy_seg_base = f"{base}/api/integrations/frigate/patient/{patient_id}/live-seg"
 
-    return FrigateClipUrlsResponse(
-        camera=camera,
-        hls_url=client.get_vod_hls_url(camera, start, end),
-        mp4_url=mp4_url,
-        start=start,
-        end=end,
+    last = None
+    async with httpx.AsyncClient(timeout=10.0) as http:
+        for _attempt in range(6):
+            try:
+                resp = await http.get(upstream, headers=headers)
+            except httpx.HTTPError as e:
+                last = f"connect error: {e}"
+                await asyncio.sleep(0.5)
+                continue
+            body = resp.text
+            ready = (
+                resp.status_code == 200
+                and "#EXTM3U" in body
+                and ("#EXTINF" in body or ".m3u8" in body)
+            )
+            if ready:
+                rewritten = _rewrite_hls_playlist(body, upstream, proxy_seg_base)
+                return Response(
+                    content=rewritten,
+                    media_type="application/vnd.apple.mpegurl",
+                    headers={"Cache-Control": "no-store"},
+                )
+            last = f"status={resp.status_code}, len={len(body)}"
+            await asyncio.sleep(0.5)
+
+    raise HTTPException(status_code=502, detail=f"Frigate live stream not ready ({last})")
+
+
+@router.get("/patient/{patient_id}/live-seg")
+async def live_segment(
+    patient_id: int,
+    request: Request,
+    u: str = Query(..., description="Absolute upstream Frigate segment/playlist URL"),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_full_auth),
+    account_id: int = Depends(get_current_account_id),
+    _: bool = Depends(require_read_access),
+):
+    """Fetch a single live segment (or nested playlist) from Frigate and return it.
+
+    `u` is the absolute upstream URL produced by `_rewrite_hls_playlist`; it is
+    SSRF-guarded to the configured Frigate base URL. Live HLS segments are short,
+    so we buffer each one and pass the upstream content-type straight through.
+    """
+    pi = _get_active_frigate(db, patient_id, account_id)
+    client = _make_client(pi)
+
+    base_url = client.base_url_public()
+    if u != base_url and not u.startswith(base_url + "/"):
+        raise HTTPException(status_code=403, detail="Upstream URL not allowed")
+
+    headers = client._headers()
+    async with httpx.AsyncClient(timeout=httpx.Timeout(15.0, read=30.0)) as http:
+        resp = await http.get(u, headers=headers)
+
+    if resp.status_code != 200:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Frigate returned {resp.status_code} for live segment",
+        )
+
+    # A nested playlist needs its URIs rewritten too; a segment is passed through.
+    if u.split("?", 1)[0].endswith(".m3u8"):
+        base = str(request.base_url).rstrip("/")
+        proxy_seg_base = f"{base}/api/integrations/frigate/patient/{patient_id}/live-seg"
+        rewritten = _rewrite_hls_playlist(resp.text, u, proxy_seg_base)
+        return Response(
+            content=rewritten,
+            media_type="application/vnd.apple.mpegurl",
+            headers={"Cache-Control": "no-store"},
+        )
+
+    return Response(
+        content=resp.content,
+        media_type=resp.headers.get("content-type", "application/octet-stream"),
+        headers={"Cache-Control": "no-store"},
     )
+
+
+@router.get("/patient/{patient_id}/live-probe")
+async def live_probe(
+    patient_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_full_auth),
+    account_id: int = Depends(get_current_account_id),
+    _: bool = Depends(require_read_access),
+):
+    """Diagnostic: report the codecs go2rtc sees for the selected camera.
+
+    Helps distinguish a browser-incompatible source codec (e.g. H.265 ->
+    `bufferAppendError`) from a transport problem. Returns the raw go2rtc
+    stream info plus a flat list of detected codecs.
+    """
+    pi = _get_active_frigate(db, patient_id, account_id)
+    client = _make_client(pi)
+    camera = client.selected_camera()
+    if not camera:
+        raise HTTPException(status_code=400, detail="No camera selected for this patient")
+
+    from urllib.parse import quote as _q
+    url = f"{client.base_url_public()}/api/go2rtc/api/streams?src={_q(camera)}"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as http:
+            resp = await http.get(url, headers=client._headers())
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Could not reach go2rtc: {e}")
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"go2rtc /streams returned {resp.status_code}")
+
+    data = resp.json()
+    # go2rtc shape: { "<name>": { "producers": [ { "medias": ["video, recvonly, H265 ...", ...] } ] } }
+    codecs: List[str] = []
+    for stream in (data.values() if isinstance(data, dict) else []):
+        for producer in (stream or {}).get("producers", []) or []:
+            for media in (producer or {}).get("medias", []) or []:
+                codecs.append(media)
+
+    return {"camera": camera, "codecs": codecs, "raw": data}
 
 
 @router.get("/patient/{patient_id}/download")

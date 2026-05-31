@@ -16,9 +16,9 @@ from crud.users import (
     assign_role_to_user, remove_role_from_user,
     get_all_permissions, get_permission_by_id, get_permission_by_name,
     create_permission, update_permission, delete_permission,
-    assign_permission_to_role
+    assign_permission_to_role, set_force_password_reset, create_audit_log
 )
-from dependencies import get_current_user, require_permission
+from dependencies import get_current_user, require_permission, require_system_admin
 from models.users import User, Role, Permission
 from schemas.patient import Patient, PatientAccess, AccessLevel
 
@@ -51,6 +51,7 @@ def list_users(
             is_active=u.is_active,
             is_system_admin=u.is_system_admin,
             has_pin=bool(u.pin_hash),
+            force_password_reset=u.force_password_reset,
             roles=[{"id": r.id, "name": r.name, "display_name": r.display_name} for r in u.roles],
             created_at=u.created_at,
             last_login=u.last_login
@@ -351,6 +352,38 @@ def update_existing_user(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error updating user: {str(e)}"
         )
+
+
+@router.post("/{user_id}/force-password-reset", response_model=UserResponse)
+def force_user_password_reset(
+    user_id: int,
+    current_user: User = Depends(require_system_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Flag a user for a forced first-login password reset (system administrators only).
+
+    Flag-only: the user keeps their current password and is forced to choose a new one
+    (and may optionally set a PIN) the next time they sign in.
+    """
+    user = get_user_by_id(db, user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    updated_user = set_force_password_reset(db, user_id, True)
+
+    import json
+    create_audit_log(
+        db,
+        user_id=current_user.id,
+        action="user.password_reset.forced",
+        details=json.dumps({"target_user_id": user_id, "username": user.username})
+    )
+
+    return updated_user
 
 
 @router.delete("/{user_id}")

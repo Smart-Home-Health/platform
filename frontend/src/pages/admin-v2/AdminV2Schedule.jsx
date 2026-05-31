@@ -631,13 +631,15 @@ const AdminV2Schedule = () => {
     };
   };
 
-  // Count totals for summary
-  const totalMeds = scheduleData.medications.length;
-  const completedMeds = scheduleData.medications.filter(m => m.completed).length;
-  const totalNutrition = scheduleData.nutrition.length;
-  const completedNutrition = scheduleData.nutrition.filter(n => n.completed).length;
-  const totalTasks = scheduleData.care_tasks.length;
-  const completedTasks = scheduleData.care_tasks.filter(t => t.completed).length;
+  // Count totals for summary. These are scheduled-adherence ratios, so PRN /
+  // ad-hoc entries (is_prn) are excluded — they still render on the timeline,
+  // but they're extra care, not part of "X of Y scheduled items done".
+  const totalMeds = scheduleData.medications.filter(m => !m.is_prn).length;
+  const completedMeds = scheduleData.medications.filter(m => !m.is_prn && m.completed).length;
+  const totalNutrition = scheduleData.nutrition.filter(n => !n.is_prn).length;
+  const completedNutrition = scheduleData.nutrition.filter(n => !n.is_prn && n.completed).length;
+  const totalTasks = scheduleData.care_tasks.filter(t => !t.is_prn).length;
+  const completedTasks = scheduleData.care_tasks.filter(t => !t.is_prn && t.completed).length;
 
   return (
     <AdminV2Layout>
@@ -974,9 +976,12 @@ const AdminV2Schedule = () => {
                                 </button>
                               )}
                               {careTasksByHour[hour].map((task, idx) => {
-                                const itemKey = `care-task-${task.schedule_id}-${task.scheduled_time}`;
+                                // PRN completions have no schedule_id; key off log_id instead.
+                                const rowId = task.schedule_id ?? `prn-${task.log_id}`;
+                                const itemKey = `care-task-${rowId}-${task.scheduled_time}`;
+                                const isPrn = !!task.is_prn;
                                 return (
-                                  <React.Fragment key={`task-${task.schedule_id}-${idx}`}>
+                                  <React.Fragment key={`task-${rowId}-${idx}`}>
                                     {idx > 0 && (
                                       <div
                                         className="admin-v2-schedule-divider"
@@ -990,7 +995,8 @@ const AdminV2Schedule = () => {
                                       className={`admin-v2-schedule-item ${task.completed ? 'completed' : 'clickable'} ${completing[itemKey] ? 'completing' : ''}`}
                                       onClick={(e) => { e.stopPropagation(); if (!task.completed) handleCompleteItem('care-task', task); }}
                                       role="button"
-                                      tabIndex={task.completed ? -1 : 0}
+                                      tabIndex={task.completed || isPrn ? -1 : 0}
+                                      title={isPrn ? 'PRN care task — completed ad-hoc' : undefined}
                                       style={task.category_color ? { borderLeft: `3px solid ${task.category_color}` } : {}}
                                     >
                                       <div className="admin-v2-schedule-item-header">
@@ -1004,6 +1010,11 @@ const AdminV2Schedule = () => {
                                           );
                                         })()}
                                         <span className="admin-v2-schedule-item-name">{task.name}</span>
+                                        {isPrn && (
+                                          <span className="admin-v2-badge admin-v2-badge-prn" title="As-needed care task">
+                                            PRN
+                                          </span>
+                                        )}
                                         {task.category_name && (
                                           <span 
                                             className="admin-v2-schedule-item-category"

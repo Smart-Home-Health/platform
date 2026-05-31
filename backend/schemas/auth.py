@@ -42,7 +42,16 @@ class UserSelectResponse(BaseModel):
     account: dict
     user: dict
     requires_full_password: bool = False
+    requires_password_reset: bool = False  # Forced first-login: must reset password before full auth
     read_restricted: bool = False
+
+
+class UserResetPasswordRequest(BaseModel):
+    """First-login forced password reset (Layer 2, account-auth level)"""
+    user_id: int
+    current_password: str = Field(..., description="Current/temporary password")
+    new_password: str = Field(..., min_length=8)
+    pin: Optional[str] = Field(None, min_length=4, max_length=8, description="Optional PIN to set")
 
 
 class AccountUserItem(BaseModel):

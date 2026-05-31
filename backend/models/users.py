@@ -55,6 +55,7 @@ class User(Base):
     pin_hash = Column(String(255), nullable=True)  # Optional 4-8 digit PIN for quick re-auth
     is_active = Column(Boolean, default=True, nullable=False)
     is_system_admin = Column(Boolean, default=False, nullable=False)  # Superuser flag
+    force_password_reset = Column(Boolean, default=False, nullable=False)  # Force first-login password reset
     last_login = Column(DateTime, nullable=True)
     last_activity = Column(DateTime, nullable=True)
     last_full_password_login = Column(DateTime, nullable=True)  # Track daily password requirement

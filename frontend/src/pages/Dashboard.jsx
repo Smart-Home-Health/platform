@@ -28,6 +28,7 @@ import { formatVitalDisplayName } from "../utils/vitals";
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useAdminPatient } from '../contexts/AdminPatientContext';
+import { usePinChallenge } from '../contexts/PinChallengeContext';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -35,6 +36,7 @@ export default function Dashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { isAuthenticated, readRestricted, unlockWithAccountPassword } = useAuth();
   const { patients, selectedPatient, selectPatient, loadingPatients } = useAdminPatient();
+  const { requirePinAuth, pinChallengeOpen } = usePinChallenge();
 
   // Add mobile detection state
   const [isMobile, setIsMobile] = useState(false);
@@ -121,6 +123,21 @@ export default function Dashboard() {
   // ------------------------------------------------------------
   // Unlock (account password) & Patient selection gating
   // ------------------------------------------------------------
+
+  // On mobile, both the unlock modal and the PIN challenge modal fill the
+  // viewport. Set a CSS variable that the modal CSS reads, so the modal
+  // docks under a small banner showing the 3 large vital readings — vitals
+  // must remain visible during any auth prompt.
+  const authModalActive = needsUnlock || pinChallengeOpen;
+  useEffect(() => {
+    const root = document.documentElement;
+    if (isMobile && authModalActive) {
+      root.style.setProperty('--auth-banner-height', '96px');
+    } else {
+      root.style.setProperty('--auth-banner-height', '0px');
+    }
+    return () => root.style.setProperty('--auth-banner-height', '0px');
+  }, [isMobile, authModalActive]);
 
   // Enforce 24h unlock window (client-side)
   useEffect(() => {
@@ -638,107 +655,90 @@ export default function Dashboard() {
     setPendingOpenModal(null);
   }, [pendingOpenModal, isAuthenticated, needsUnlock]);
 
-  const ensureUnlockAndUser = (modalKey) => {
+  // Async modal-open guard.
+  //   - 24h account unlock must be valid (else show unlock modal).
+  //   - User identity must be fresh within the 5-min idle window managed by
+  //     PinChallengeContext. If stale, the global PIN challenge modal opens
+  //     and this awaits its outcome. Cancel → caller bails.
+  // Returns true when the caller may proceed to open its modal.
+  const requireUnlockAndFreshUser = async () => {
     if (needsUnlock) {
       setUnlockError('Enter account password to unlock.');
       return false;
     }
+    const ok = await requirePinAuth();
+    if (!ok) return false;
+    // Defensive fallback: if for some reason auth state still says no user
+    // after the challenge resolved true, send to the legacy picker.
     if (!isAuthenticated) {
-      navigate('/select-user', { state: { from: location, openLiveModal: modalKey }, replace: false });
+      navigate('/select-user', { state: { from: location }, replace: false });
       return false;
     }
     return true;
   };
 
   // Add handler functions
-  const handleVentClick = () => {
-    if (isVentModalOpen) {
-      setIsVentModalOpen(false);
-    } else {
-      if (!ensureUnlockAndUser('equipment')) return;
-      closeAllModals();
-      setIsVentModalOpen(true);
-    }
+  const handleVentClick = async () => {
+    if (isVentModalOpen) { setIsVentModalOpen(false); return; }
+    if (!(await requireUnlockAndFreshUser())) return;
+    closeAllModals();
+    setIsVentModalOpen(true);
   };
 
-  const handlePulseOxClick = () => {
-    if (isPulseOxModalOpen) {
-      setIsPulseOxModalOpen(false);
-    } else {
-      if (!ensureUnlockAndUser('alerts')) return;
-      closeAllModals();
-      setIsPulseOxModalOpen(true);
-    }
+  const handlePulseOxClick = async () => {
+    if (isPulseOxModalOpen) { setIsPulseOxModalOpen(false); return; }
+    if (!(await requireUnlockAndFreshUser())) return;
+    closeAllModals();
+    setIsPulseOxModalOpen(true);
   };
 
-  const handleSettingsClick = () => {
-    if (isSettingsModalOpen) {
-      setIsSettingsModalOpen(false);
-    } else {
-      if (!ensureUnlockAndUser('settings')) return;
-      closeAllModals();
-      setIsSettingsModalOpen(true);
-    }
+  const handleSettingsClick = async () => {
+    if (isSettingsModalOpen) { setIsSettingsModalOpen(false); return; }
+    if (!(await requireUnlockAndFreshUser())) return;
+    closeAllModals();
+    setIsSettingsModalOpen(true);
   };
 
-  const handleHistoryClick = () => {
-    if (isHistoryModalOpen) {
-      setIsHistoryModalOpen(false);
-    } else {
-      if (!ensureUnlockAndUser('history')) return;
-      closeAllModals();
-      setIsHistoryModalOpen(true);
-    }
+  const handleHistoryClick = async () => {
+    if (isHistoryModalOpen) { setIsHistoryModalOpen(false); return; }
+    if (!(await requireUnlockAndFreshUser())) return;
+    closeAllModals();
+    setIsHistoryModalOpen(true);
   };
 
-  const handleMessagesClick = () => {
-    if (isMessagesModalOpen) {
-      setIsMessagesModalOpen(false);
-    } else {
-      if (!ensureUnlockAndUser('messages')) return;
-      closeAllModals();
-      setIsMessagesModalOpen(true);
-    }
+  const handleMessagesClick = async () => {
+    if (isMessagesModalOpen) { setIsMessagesModalOpen(false); return; }
+    if (!(await requireUnlockAndFreshUser())) return;
+    closeAllModals();
+    setIsMessagesModalOpen(true);
   };
 
-  const handleCameraClick = () => {
-    if (isCameraModalOpen) {
-      setIsCameraModalOpen(false);
-    } else {
-      if (!ensureUnlockAndUser('camera')) return;
-      closeAllModals();
-      setIsCameraModalOpen(true);
-    }
+  const handleCameraClick = async () => {
+    if (isCameraModalOpen) { setIsCameraModalOpen(false); return; }
+    if (!(await requireUnlockAndFreshUser())) return;
+    closeAllModals();
+    setIsCameraModalOpen(true);
   };
 
-  const handleMedicationClick = () => {
-    if (isMedicationModalOpen) {
-      setIsMedicationModalOpen(false);
-    } else {
-      if (!ensureUnlockAndUser('medications')) return;
-      closeAllModals();
-      setIsMedicationModalOpen(true);
-    }
+  const handleMedicationClick = async () => {
+    if (isMedicationModalOpen) { setIsMedicationModalOpen(false); return; }
+    if (!(await requireUnlockAndFreshUser())) return;
+    closeAllModals();
+    setIsMedicationModalOpen(true);
   };
 
-  const handleCareTaskClick = () => {
-    if (isCareTaskModalOpen) {
-      setIsCareTaskModalOpen(false);
-    } else {
-      if (!ensureUnlockAndUser('careTasks')) return;
-      closeAllModals();
-      setIsCareTaskModalOpen(true);
-    }
+  const handleCareTaskClick = async () => {
+    if (isCareTaskModalOpen) { setIsCareTaskModalOpen(false); return; }
+    if (!(await requireUnlockAndFreshUser())) return;
+    closeAllModals();
+    setIsCareTaskModalOpen(true);
   };
 
-  const handleNutritionClick = () => {
-    if (isNutritionModalOpen) {
-      setIsNutritionModalOpen(false);
-    } else {
-      if (!ensureUnlockAndUser('nutrition')) return;
-      closeAllModals();
-      setIsNutritionModalOpen(true);
-    }
+  const handleNutritionClick = async () => {
+    if (isNutritionModalOpen) { setIsNutritionModalOpen(false); return; }
+    if (!(await requireUnlockAndFreshUser())) return;
+    closeAllModals();
+    setIsNutritionModalOpen(true);
   };
 
   // Add this function to handle alert acknowledgment
@@ -1080,6 +1080,28 @@ export default function Dashboard() {
         </div>
       )}
       
+      {/* Compact vitals banner shown only while an auth modal is up on
+          mobile, so the 3 large readings stay visible above the modal. */}
+      {isMobile && authModalActive && (
+        <div className="mobile-auth-vitals-banner">
+          <div className="bar-vital spo2">
+            <span className="bar-label">SpO₂</span>
+            <span className="bar-value">{sensorValues.spo2 ?? '--'}</span>
+            <span className="bar-unit">%</span>
+          </div>
+          <div className="bar-vital bpm">
+            <span className="bar-label">HR</span>
+            <span className="bar-value">{sensorValues.bpm ?? '--'}</span>
+            <span className="bar-unit">bpm</span>
+          </div>
+          <div className="bar-vital perfusion">
+            <span className="bar-label">PI</span>
+            <span className="bar-value">{sensorValues.perfusion ?? '--'}</span>
+            <span className="bar-unit">{perfusionAsPercent ? '%' : 'PI'}</span>
+          </div>
+        </div>
+      )}
+
       <div className={`dashboard-container ${isMobile ? 'mobile' : ''}`}>
         {isMobile ? (
           // Mobile Layout - Only show the three value cards
@@ -1251,7 +1273,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="charts-column">
+            {!needsUnlock && <div className="charts-column">
               <div className="chart-block">
                 <div className="chart-inner">
                   <ChartBlock
@@ -1296,9 +1318,9 @@ export default function Dashboard() {
                   />
                 </div>
               </div>
-            </div>
+            </div>}
 
-            <div className="right-column">
+            {!needsUnlock && <div className="right-column">
               <div className="dynamic-chart-container">
                 <DynamicVitalsCard
                   vitalType={dashboardChart1.vital_type}
@@ -1318,7 +1340,7 @@ export default function Dashboard() {
                   onSaved={() => fetchChartData(dashboardChart2.vital_type, 2)}
                 />
               </div>
-            </div>
+            </div>}
           </>
         )}
       </div>
