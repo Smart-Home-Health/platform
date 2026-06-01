@@ -157,10 +157,10 @@ async def require_system_admin(
     """
     Dependency that requires the current user to be a system administrator.
 
-    Stricter than a role/permission check: only users with is_system_admin=True pass,
-    regardless of granted permissions.
+    Passes for users with the is_system_admin flag set, or who hold the
+    system_admin role (which is defined as full system access).
     """
-    if not current_user.is_system_admin:
+    if not current_user.is_superuser:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="System administrator access required"

@@ -273,7 +273,7 @@ def first_run_setup(
             "username": user.username,
             "full_name": user.full_name,
             "account_id": account.id,
-            "is_system_admin": user.is_system_admin,
+            "is_system_admin": user.is_superuser,
             "roles": [{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles]
         },
         requires_full_password=False,
@@ -706,7 +706,7 @@ def select_user(
             "id": user.id,
             "username": user.username,
             "full_name": user.full_name,
-            "is_system_admin": user.is_system_admin,
+            "is_system_admin": user.is_superuser,
             "has_pin": bool(user.pin_hash),
             "roles": [{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles],
             "permissions": [p.name for r in user.roles for p in r.permissions]
@@ -826,7 +826,7 @@ def reset_user_password(
             "id": user.id,
             "username": user.username,
             "full_name": user.full_name,
-            "is_system_admin": user.is_system_admin,
+            "is_system_admin": user.is_superuser,
             "has_pin": bool(user.pin_hash),
             "roles": [{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles],
             "permissions": [p.name for r in user.roles for p in r.permissions]
@@ -933,7 +933,7 @@ def login(
             "id": user.id,
             "username": user.username,
             "full_name": user.full_name,
-            "is_system_admin": user.is_system_admin,
+            "is_system_admin": user.is_superuser,
             "has_pin": bool(user.pin_hash),
             "account_id": user.account_id,
             "roles": [{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles],
@@ -1043,7 +1043,7 @@ def verify_user_pin(
             "id": user.id,
             "username": user.username,
             "full_name": user.full_name,
-            "is_system_admin": user.is_system_admin,
+            "is_system_admin": user.is_superuser,
             "has_pin": bool(user.pin_hash),
             "account_id": user.account_id,
             "roles": [{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles],
@@ -1141,7 +1141,7 @@ def get_session(
     
     # Get user permissions
     permissions = []
-    if current_user.is_system_admin:
+    if current_user.is_superuser:
         permissions = ["*"]  # Indicate all permissions
     else:
         permissions = list(set([

@@ -92,6 +92,19 @@ class User(Base):
         """Check if user has a PIN set"""
         return self.pin_hash is not None
     
+    @property
+    def is_superuser(self) -> bool:
+        """Effective superuser status.
+
+        True if the explicit ``is_system_admin`` flag is set OR the user holds
+        the ``system_admin`` role. Use this for "full system access" gates so a
+        user granted the System Administrator role in the admin UI gets the same
+        access as one with the boolean flag set directly.
+        """
+        if self.is_system_admin:
+            return True
+        return any(role.name == "system_admin" and role.is_active for role in self.roles)
+
     def has_role(self, role_name: str) -> bool:
         """Check if user has a specific role"""
         if self.is_system_admin:

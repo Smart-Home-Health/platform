@@ -8,7 +8,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from db import get_db
-from dependencies import require_read_access
+from dependencies import require_read_access, get_current_user
+from crud.patients import get_visible_patient_ids
+from models.users import User
 from schemas.patient import Patient
 from schemas.medication import Medication
 from schemas.medication_schedule import MedicationSchedule
@@ -44,20 +46,28 @@ async def get_patient_readings(_: bool = Depends(require_read_access)):
 
 
 @router.get("/summary")
-async def get_dashboard_summary(db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
+async def get_dashboard_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: bool = Depends(require_read_access),
+):
     """
-    Get dashboard summary data including all patients with their due counts.
+    Get dashboard summary data with due counts, scoped to the patients the
+    current user is allowed to see (system admins see all; other users see only
+    patients granted to them via PatientAccess).
     """
     try:
         today = date.today()
         now = datetime.now()
-        
-        patients = (
-            db.query(Patient)
-            .filter(Patient.is_active == True)
-            .order_by(Patient.first_name, Patient.last_name)
-            .all()
-        )
+
+        allowed_ids = get_visible_patient_ids(db, current_user)
+        if allowed_ids is not None and not allowed_ids:
+            patients = []
+        else:
+            query = db.query(Patient).filter(Patient.is_active == True)
+            if allowed_ids is not None:
+                query = query.filter(Patient.id.in_(allowed_ids))
+            patients = query.order_by(Patient.first_name, Patient.last_name).all()
 
         # One query for all Frigate-enabled patient integrations.
         frigate_rows = (
