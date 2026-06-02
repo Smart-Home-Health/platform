@@ -30,6 +30,12 @@ from crud.settings import get_setting, save_setting
 from middleware import AuthenticationMiddleware
 from seed_auth import seed_default_data
 
+# Install the global soft-delete filter so undone (voided) completion logs are
+# excluded from every read path. Imported after the route modules above so all
+# ORM models are registered first.
+from soft_delete import register_soft_delete_filter
+register_soft_delete_filter()
+
 load_dotenv()
 
 # Initialize a logger for your application

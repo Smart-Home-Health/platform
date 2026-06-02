@@ -772,6 +772,7 @@ def get_scheduled_medications(db: Session, target_date, patient_id: int, tz_offs
                         'completed': log is not None,
                         'completed_at': log.administered_at.isoformat() if log else None,
                         'completed_by': log.administered_by if log else None,
+                        'log_id': log.id if log else None,
                     })
             except Exception as cron_error:
                 logger.error(f"Error processing cron expression {schedule.cron_expression}: {cron_error}")
@@ -911,7 +912,8 @@ def get_scheduled_care_tasks(db: Session, target_date, patient_id: int, tz_offse
                         # Completion info
                         'completed': log is not None,
                         'completed_at': log.completed_at.isoformat() if log else None,
-                        'completed_by': log.performed_by if log else None
+                        'completed_by': log.performed_by if log else None,
+                        'log_id': log.id if log else None,
                     })
             except Exception as cron_error:
                 logger.error(f"Error processing cron expression {schedule.cron_expression}: {cron_error}")

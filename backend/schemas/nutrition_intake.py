@@ -39,7 +39,12 @@ class NutritionIntake(Base):
     # Timestamps
     created_at = Column(TIMESTAMP(timezone=True), nullable=False)
     updated_at = Column(TIMESTAMP(timezone=True), nullable=False)
-    
+
+    # Soft delete (undo). When voided_at is set the intake was undone and is
+    # excluded from schedule/history/nutrition totals by the global filter.
+    voided_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    voided_by = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+
     # Relationships
     patient = relationship('Patient', foreign_keys=[patient_id])
     care_task_log = relationship('CareTaskLog', back_populates='nutrition_intake')

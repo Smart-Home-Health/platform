@@ -45,6 +45,12 @@ const sideNavItems = [
 // Get top nav items based on current section, permissions, and read access (restricted mode hides History/Active)
 const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin) => {
   const navItems = {
+    schedule: [
+      { path: '/care/schedule', label: 'Schedule' },
+      // Undo Log is an audit view — only surface it to users with audit access.
+      ...(hasAnyPermission(['audit.read'])
+        ? [{ path: '/care/schedule/undo-log', label: 'Undo Log' }] : []),
+    ],
     vitals: hasReadAccess
       ? [
           { path: '/care/vitals', label: 'Record' },
@@ -63,12 +69,16 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
       { path: '/care/medications/schedule', label: 'Schedule' },
       { path: '/care/medications/history', label: 'History' },
       { path: '/care/medications/manage', label: 'Manage' },
+      ...(hasAnyPermission(['audit.read'])
+        ? [{ path: '/care/schedule/undo-log', label: 'Undo Log' }] : []),
     ],
     'care-tasks': [
       { path: '/care/care-tasks', label: 'Overview' },
       { path: '/care/care-tasks/manage', label: 'Manage' },
       { path: '/care/care-tasks/schedule', label: 'Schedule' },
       { path: '/care/care-tasks/history', label: 'History' },
+      ...(hasAnyPermission(['audit.read'])
+        ? [{ path: '/care/schedule/undo-log', label: 'Undo Log' }] : []),
     ],
     equipment: [
       { path: '/care/equipment', label: 'Overview' },
@@ -82,6 +92,8 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
       { path: '/care/nutrition/output', label: 'Output Log' },
       { path: '/care/nutrition/schedules', label: 'Schedules' },
       { path: '/care/nutrition/goals', label: 'Daily Goals' },
+      ...(hasAnyPermission(['audit.read'])
+        ? [{ path: '/care/schedule/undo-log', label: 'Undo Log' }] : []),
     ],
     monitoring: [
       { path: '/care/monitoring', label: 'Alerts' },

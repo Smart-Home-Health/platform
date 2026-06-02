@@ -763,7 +763,8 @@ def get_daily_medication_schedule(db: Session, patient_id=None):
                     'status': status,
                     'administered_at': log_entry.administered_at,
                     'actual_dose': log_entry.dose_amount,
-                    'is_completed': True
+                    'is_completed': True,
+                    'log_id': log_entry.id
                 })
             else:
                 # Show as missed if it's from yesterday (before local today start)
@@ -825,7 +826,8 @@ def get_daily_medication_schedule(db: Session, patient_id=None):
                     'status': status,
                     'administered_at': log_entry.administered_at,
                     'actual_dose': log_entry.dose_amount,
-                    'is_completed': True
+                    'is_completed': True,
+                    'log_id': log_entry.id
                 })
             else:
                 # Check timing status for pending dose

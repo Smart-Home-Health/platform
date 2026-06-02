@@ -64,7 +64,12 @@ class NutritionOutput(Base):
     # Timestamps
     created_at = Column(TIMESTAMP(timezone=True), default=datetime.utcnow, nullable=False)
     updated_at = Column(TIMESTAMP(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-    
+
+    # Soft delete (undo). When voided_at is set the output was undone and is
+    # excluded from schedule/history by the global soft-delete filter.
+    voided_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    voided_by = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+
     # Relationships
     patient = relationship('Patient', foreign_keys=[patient_id])
     care_task_log = relationship('CareTaskLog', foreign_keys=[care_task_log_id])

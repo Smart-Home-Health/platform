@@ -17,7 +17,8 @@ import {
   PatientsIcon,
   XIcon,
   EditIcon,
-  PrintIcon
+  PrintIcon,
+  UndoIcon
 } from '../../components/Icons';
 import { getCurrentLocalDateTime, localDateTimeToUTC, checkAdministrationWindow, formatDurationMinutes } from '../../utils/timezone';
 import './AdminV2.css';
@@ -466,6 +467,39 @@ const AdminV2Schedule = () => {
     openCompleteHourModal(hour, type);
   };
 
+  // Undo a completed item — deletes its log row (and, for medications, restores
+  // the deducted on-hand quantity). `type` is the frontend item type
+  // ('medication' | 'nutrition' | 'care_task'); nutrition splits into
+  // intake/output based on the row's intake_type.
+  const handleUndoItem = async (type, item) => {
+    if (!item.log_id) return;
+    let endpointType;
+    if (type === 'medication') endpointType = 'medication';
+    else if (type === 'care_task') endpointType = 'care_task';
+    else if (type === 'nutrition') endpointType = item.intake_type === 'output' ? 'nutrition_output' : 'nutrition_intake';
+    else return;
+
+    const label = item.name || 'this item';
+    const extra = type === 'medication' ? ' and restores the on-hand quantity' : '';
+    if (!window.confirm(`Undo "${label}"? This removes the completion record${extra}.`)) return;
+
+    try {
+      const response = await fetch(
+        `${config.apiUrl}/api/schedule/log/${endpointType}/${item.log_id}`,
+        { method: 'DELETE', credentials: 'include' }
+      );
+      if (response.ok) {
+        await fetchSchedule();
+      } else {
+        const data = await response.json().catch(() => ({}));
+        alert(data.detail || 'Failed to undo');
+      }
+    } catch (err) {
+      console.error('Error undoing item:', err);
+      alert('Error connecting to server');
+    }
+  };
+
   // PRN / Quick-log modal handlers
 
   const openPrnModal = (type, hour) => {
@@ -865,9 +899,21 @@ const AdminV2Schedule = () => {
                                             {med.dose_amount} {med.dose_unit}
                                           </span>
                                         )}
-                                        <span className={`admin-v2-schedule-item-check ${med.completed ? 'checked' : ''}`}>
-                                          {completing[itemKey] ? '...' : <CheckIcon size={14} />}
-                                        </span>
+                                        {med.completed && med.log_id ? (
+                                          <button
+                                            type="button"
+                                            className="admin-v2-schedule-item-undo"
+                                            onClick={(e) => { e.stopPropagation(); handleUndoItem('medication', med); }}
+                                            title="Undo — mark as not done"
+                                            aria-label="Undo"
+                                          >
+                                            <UndoIcon size={14} />
+                                          </button>
+                                        ) : (
+                                          <span className={`admin-v2-schedule-item-check ${med.completed ? 'checked' : ''}`}>
+                                            {completing[itemKey] ? '...' : <CheckIcon size={14} />}
+                                          </span>
+                                        )}
                                       </div>
                                     </div>
                                   </React.Fragment>
@@ -952,9 +998,21 @@ const AdminV2Schedule = () => {
                                             )}
                                           </span>
                                         )}
-                                        <span className={`admin-v2-schedule-item-check ${item.completed ? 'checked' : ''}`}>
-                                          {completing[itemKey] ? '...' : <CheckIcon size={14} />}
-                                        </span>
+                                        {item.completed && item.log_id ? (
+                                          <button
+                                            type="button"
+                                            className="admin-v2-schedule-item-undo"
+                                            onClick={(e) => { e.stopPropagation(); handleUndoItem('nutrition', item); }}
+                                            title="Undo — mark as not done"
+                                            aria-label="Undo"
+                                          >
+                                            <UndoIcon size={14} />
+                                          </button>
+                                        ) : (
+                                          <span className={`admin-v2-schedule-item-check ${item.completed ? 'checked' : ''}`}>
+                                            {completing[itemKey] ? '...' : <CheckIcon size={14} />}
+                                          </span>
+                                        )}
                                       </div>
                                     </div>
                                   </React.Fragment>
@@ -1042,9 +1100,21 @@ const AdminV2Schedule = () => {
                                             {task.category_name}
                                           </span>
                                         )}
-                                        <span className={`admin-v2-schedule-item-check ${task.completed ? 'checked' : ''}`}>
-                                          {completing[itemKey] ? '...' : <CheckIcon size={14} />}
-                                        </span>
+                                        {task.completed && task.log_id ? (
+                                          <button
+                                            type="button"
+                                            className="admin-v2-schedule-item-undo"
+                                            onClick={(e) => { e.stopPropagation(); handleUndoItem('care_task', task); }}
+                                            title="Undo — mark as not done"
+                                            aria-label="Undo"
+                                          >
+                                            <UndoIcon size={14} />
+                                          </button>
+                                        ) : (
+                                          <span className={`admin-v2-schedule-item-check ${task.completed ? 'checked' : ''}`}>
+                                            {completing[itemKey] ? '...' : <CheckIcon size={14} />}
+                                          </span>
+                                        )}
                                       </div>
                                     </div>
                                   </React.Fragment>

@@ -1,10 +1,11 @@
 """
 Schedule routes - Daily schedule view combining medications, nutrition schedules, and care tasks
 """
+import json
 import logging
 from datetime import datetime, date, timedelta, timezone
 from typing import List, Optional
-from fastapi import APIRouter, Depends, Query, Body
+from fastapi import APIRouter, Depends, Query, Body, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
@@ -13,6 +14,9 @@ from db import get_db
 from utils.datetime_utils import utc_now
 from models.schedule import CompleteItemRequest, BulkCompleteRequest
 from crud.scheduling import get_scheduled_medications, get_scheduled_care_tasks, get_scheduled_nutrition
+from crud.users import create_audit_log
+from dependencies import get_current_user, require_permission
+from models.users import AuditLog, User
 from utils.early_administration import guard_early_administration
 from utils.medication_quantity import insufficient_quantity_response
 from schemas.medication import Medication
@@ -24,6 +28,7 @@ from schemas.care_task_log import CareTaskLog
 from schemas.care_task_category import CareTaskCategory
 from schemas.nutrition_schedule import NutritionSchedule
 from schemas.nutrition_intake import NutritionIntake
+from schemas.nutrition_output import NutritionOutput
 from croniter import croniter
 
 logger = logging.getLogger("app")
@@ -599,8 +604,198 @@ async def complete_bulk(
         
         db.commit()
         return results
-        
+
     except Exception as e:
         logger.error(f"Error in bulk complete: {e}")
         db.rollback()
         return {"success": False, "error": str(e)}
+
+
+# ===== Undo Endpoint =====
+
+def _record_undo_audit(db, request, user, item_type, log_id, details):
+    """Write an audit_logs row so undos are traceable (who/what/when)."""
+    try:
+        create_audit_log(
+            db,
+            user_id=user.id if user else None,
+            action="schedule.undo",
+            resource_type=item_type,
+            resource_id=details.get("primary_id"),
+            details=json.dumps(details),
+            ip_address=request.client.host if request and request.client else None,
+            user_agent=request.headers.get("user-agent") if request else None,
+        )
+    except Exception as e:
+        # An audit failure must not block the undo itself.
+        logger.error(f"Failed to write undo audit log ({item_type}/{log_id}): {e}")
+
+
+@router.delete("/log/{item_type}/{log_id}")
+async def undo_completion(
+    item_type: str,
+    log_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """
+    Undo a completed schedule item. The log row is *soft-deleted* — marked
+    voided (`voided_at`/`voided_by`) rather than removed — so the undo stays
+    auditable and the original record survives. The global soft-delete filter
+    excludes voided rows from every read path. An audit_logs entry is written
+    recording who undid what and when.
+
+    Used when a dose, feed, or care task was marked on the wrong day or by
+    mistake. `item_type` is one of: medication, nutrition_intake,
+    nutrition_output, care_task. For medications the on-hand quantity deducted at
+    administration is added back.
+
+    `log_id` is normally an integer. Merged-diaper nutrition outputs arrive as a
+    composite "mixed-<id>-<id>" key (see get_scheduled_nutrition) — every member
+    output is voided.
+    """
+    now = utc_now()
+    uid = current_user.id if current_user else None
+    try:
+        if item_type == "medication":
+            log = db.query(MedicationLog).filter(MedicationLog.id == int(log_id)).first()
+            if not log:
+                return JSONResponse(status_code=404, content={"detail": "Medication log not found"})
+            # Mirror the deduction done at administration time so on-hand stock
+            # is restored. Skips (dose_amount == 0) never deducted, so nothing to add.
+            restored = None
+            if log.dose_amount and log.dose_amount > 0:
+                medication = db.query(Medication).filter(Medication.id == log.medication_id).first()
+                if medication and medication.quantity is not None:
+                    medication.quantity = medication.quantity + float(log.dose_amount)
+                    restored = float(log.dose_amount)
+            med_name = log.medication.name if log.medication else None
+            log.voided_at = now
+            log.voided_by = uid
+            _record_undo_audit(db, request, current_user, item_type, log_id, {
+                "primary_id": log.id,
+                "item_name": med_name,
+                "patient_id": log.patient_id,
+                "dose_amount": log.dose_amount,
+                "quantity_restored": restored,
+                "scheduled_time": log.scheduled_time.isoformat() if log.scheduled_time else None,
+                "administered_at": log.administered_at.isoformat() if log.administered_at else None,
+            })
+            db.commit()
+            return {"success": True}
+
+        if item_type == "care_task":
+            log = db.query(CareTaskLog).filter(CareTaskLog.id == int(log_id)).first()
+            if not log:
+                return JSONResponse(status_code=404, content={"detail": "Care task log not found"})
+            task_name = log.care_task.name if log.care_task else None
+            log.voided_at = now
+            log.voided_by = uid
+            _record_undo_audit(db, request, current_user, item_type, log_id, {
+                "primary_id": log.id,
+                "item_name": task_name,
+                "patient_id": log.patient_id,
+                "scheduled_time": log.scheduled_time.isoformat() if log.scheduled_time else None,
+                "completed_at": log.completed_at.isoformat() if log.completed_at else None,
+            })
+            db.commit()
+            return {"success": True}
+
+        if item_type == "nutrition_intake":
+            intake = db.query(NutritionIntake).filter(NutritionIntake.id == int(log_id)).first()
+            if not intake:
+                return JSONResponse(status_code=404, content={"detail": "Nutrition intake not found"})
+            intake.voided_at = now
+            intake.voided_by = uid
+            _record_undo_audit(db, request, current_user, item_type, log_id, {
+                "primary_id": intake.id,
+                "item_name": intake.item_name,
+                "patient_id": intake.patient_id,
+                "amount": intake.amount,
+                "amount_unit": intake.amount_unit,
+                "scheduled_time": intake.scheduled_time.isoformat() if intake.scheduled_time else None,
+                "consumed_at": intake.consumed_at.isoformat() if intake.consumed_at else None,
+            })
+            db.commit()
+            return {"success": True}
+
+        if item_type == "nutrition_output":
+            # Merged diaper rows carry a composite "mixed-<id>-<id>" key.
+            raw = str(log_id)
+            ids = raw[len("mixed-"):].split("-") if raw.startswith("mixed-") else [raw]
+            voided_ids = []
+            first = None
+            for oid in ids:
+                output = db.query(NutritionOutput).filter(NutritionOutput.id == int(oid)).first()
+                if output:
+                    output.voided_at = now
+                    output.voided_by = uid
+                    voided_ids.append(output.id)
+                    if first is None:
+                        first = output
+            if not voided_ids:
+                return JSONResponse(status_code=404, content={"detail": "Nutrition output not found"})
+            _record_undo_audit(db, request, current_user, item_type, log_id, {
+                "primary_id": voided_ids[0],
+                "voided_ids": voided_ids,
+                "item_name": first.output_type if first else None,
+                "patient_id": first.patient_id if first else None,
+                "occurred_at": first.occurred_at.isoformat() if first and first.occurred_at else None,
+            })
+            db.commit()
+            return {"success": True}
+
+        return JSONResponse(status_code=400, content={"detail": f"Unknown item_type: {item_type}"})
+    except ValueError:
+        return JSONResponse(status_code=400, content={"detail": "Invalid log id"})
+    except Exception as e:
+        logger.error(f"Error undoing completion ({item_type}/{log_id}): {e}")
+        db.rollback()
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
+
+@router.get("/undo-log")
+async def get_undo_log(
+    limit: int = Query(100, le=500),
+    patient_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_permission("audit.read")),
+):
+    """
+    Audit feed of undo actions (who undid what, and when) for the dedicated
+    Undo Log admin view. Sourced from audit_logs (action='schedule.undo'), not
+    the voided rows themselves, so it is unaffected by the soft-delete filter.
+    """
+    rows = (
+        db.query(AuditLog, User)
+        .outerjoin(User, AuditLog.user_id == User.id)
+        .filter(AuditLog.action == "schedule.undo")
+        .order_by(AuditLog.timestamp.desc())
+        .limit(limit)
+        .all()
+    )
+
+    entries = []
+    for audit, user in rows:
+        try:
+            details = json.loads(audit.details) if audit.details else {}
+        except (ValueError, TypeError):
+            details = {}
+        if patient_id is not None and details.get("patient_id") != patient_id:
+            continue
+        entries.append({
+            "id": audit.id,
+            "item_type": audit.resource_type,
+            "undone_at": audit.timestamp.isoformat() if audit.timestamp else None,
+            "undone_by": (user.full_name or user.username) if user else None,
+            "undone_by_id": audit.user_id,
+            "item_name": details.get("item_name"),
+            "patient_id": details.get("patient_id"),
+            "scheduled_time": details.get("scheduled_time"),
+            "dose_amount": details.get("dose_amount"),
+            "quantity_restored": details.get("quantity_restored"),
+            "details": details,
+        })
+
+    return {"entries": entries, "count": len(entries)}

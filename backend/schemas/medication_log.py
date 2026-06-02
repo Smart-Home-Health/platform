@@ -26,7 +26,12 @@ class MedicationLog(Base):
     
     # Timestamps
     created_at = Column(TIMESTAMP(timezone=True), nullable=False)
-    
+
+    # Soft delete (undo). When voided_at is set the administration was undone and
+    # is excluded from schedule/history/adherence by the global soft-delete filter.
+    voided_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    voided_by = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+
     # Relationships
     medication = relationship('Medication', back_populates='administration_logs')
     patient = relationship('Patient', back_populates='medication_logs')
