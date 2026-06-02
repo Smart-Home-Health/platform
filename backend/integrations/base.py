@@ -111,7 +111,7 @@ class DeviceInfo:
     extra_data: Optional[Dict[str, Any]] = None
 
 
-@dataclass 
+@dataclass
 class SyncResult:
     """Result of a sync operation"""
     success: bool
@@ -120,6 +120,17 @@ class SyncResult:
     devices_found: List[DeviceInfo] = field(default_factory=list)
     error_message: Optional[str] = None
     sync_timestamp: datetime = field(default_factory=datetime.utcnow)
+    # Richer clinical resources from EHR/FHIR integrations (e.g. Epic). These are
+    # plain dicts persisted by the sync route into their respective tables; device
+    # integrations leave them empty. See integrations/persistence.py for the
+    # expected dict shapes and how cross-references are resolved.
+    reports: List[Dict[str, Any]] = field(default_factory=list)
+    lab_results: List[Dict[str, Any]] = field(default_factory=list)
+    documents: List[Dict[str, Any]] = field(default_factory=list)
+    imaging_studies: List[Dict[str, Any]] = field(default_factory=list)
+    conditions: List[Dict[str, Any]] = field(default_factory=list)
+    medications: List[Dict[str, Any]] = field(default_factory=list)
+    allergies: List[Dict[str, Any]] = field(default_factory=list)
 
 
 class BaseIntegration(ABC):
@@ -182,14 +193,18 @@ class BaseIntegration(ABC):
         pass
     
     @classmethod
-    def get_oauth_url(cls, state: str, redirect_uri: str) -> Optional[str]:
+    def get_oauth_url(cls, state: str, redirect_uri: str,
+                      settings: Optional[Dict[str, Any]] = None) -> Optional[str]:
         """
         Generate OAuth authorization URL for OAuth2 integrations.
-        
+
         Args:
             state: CSRF protection state parameter
             redirect_uri: Callback URL after authorization
-            
+            settings: The PatientIntegration.settings dict, for integrations whose
+                authorization endpoint is per-instance (e.g. Epic's per-org FHIR
+                base/authorize URLs). Device integrations may ignore it.
+
         Returns:
             Authorization URL or None if not OAuth2
         """

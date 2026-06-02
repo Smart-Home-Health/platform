@@ -137,14 +137,16 @@ class WithingsIntegration(BaseIntegration):
         }
     
     @classmethod
-    def get_oauth_url(cls, state: str, redirect_uri: str) -> Optional[str]:
+    def get_oauth_url(cls, state: str, redirect_uri: str,
+                      settings: Optional[Dict[str, Any]] = None) -> Optional[str]:
         """
         Generate Withings OAuth authorization URL.
-        
+
         Args:
             state: CSRF protection state
             redirect_uri: Callback URL
-            
+            settings: Unused — Withings has a single global authorization endpoint.
+
         Returns:
             Authorization URL
         """

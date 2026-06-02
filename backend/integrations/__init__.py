@@ -29,6 +29,7 @@ __all__ = [
 # Auto-register integrations by importing them
 from . import manual
 from . import withings
+from . import epic
 from . import mqtt
 from . import ventilator
 from . import frigate

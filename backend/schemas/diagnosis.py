@@ -18,6 +18,7 @@ class Diagnosis(Base):
     name = Column(String(255), nullable=False)  # Primary diagnosis name
     icd10_code = Column(String(20), nullable=True)  # ICD-10 code (optional)
     icd10_description = Column(String(500), nullable=True)  # Official ICD-10 description
+    snomed_code = Column(String(20), nullable=True)  # SNOMED CT code (FHIR Condition.code often uses SNOMED)
     
     # Classification
     diagnosis_type = Column(String(50), nullable=False, default='primary')  # primary, secondary, comorbidity, differential
@@ -41,7 +42,11 @@ class Diagnosis(Base):
     
     # Status
     active = Column(Boolean, default=True, nullable=False)
-    
+
+    # Provenance / ingest (e.g. imported from Epic FHIR Condition)
+    source = Column(String(50), nullable=True, default='manual')  # manual, epic, etc.
+    external_id = Column(String(100), nullable=True, index=True)  # FHIR resource id for dedup
+
     # Metadata
     created_at = Column(TIMESTAMP(timezone=True), nullable=False)
     updated_at = Column(TIMESTAMP(timezone=True), nullable=False)

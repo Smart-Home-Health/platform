@@ -42,6 +42,7 @@ class Patient(Base):
     providers = relationship('Provider', back_populates='patient')
     symptoms = relationship('Symptom', back_populates='patient')
     diagnoses = relationship('Diagnosis', back_populates='patient', cascade='all, delete-orphan')
+    allergies = relationship('AllergyIntolerance', back_populates='patient', cascade='all, delete-orphan')
     implants = relationship('Implant', back_populates='patient', cascade='all, delete-orphan')
     access_grants = relationship('PatientAccess', back_populates='patient', cascade='all, delete-orphan')
     owner = relationship('User', foreign_keys=[owner_user_id])

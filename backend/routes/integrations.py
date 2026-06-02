@@ -453,8 +453,11 @@ async def start_oauth_flow(
     base_url = os.getenv("API_BASE_URL", str(request.base_url).rstrip("/"))
     callback_url = f"{base_url}/api/integrations/oauth/callback"
     
-    # Get authorization URL
-    auth_url = integration_class.get_oauth_url(state, callback_url)
+    # Get authorization URL. Pass settings so integrations with a per-instance
+    # authorization endpoint (e.g. Epic's per-org FHIR URLs) can resolve it.
+    auth_url = integration_class.get_oauth_url(
+        state, callback_url, settings=patient_integration.settings or {}
+    )
     
     if not auth_url:
         raise HTTPException(
@@ -513,8 +516,10 @@ async def oauth_callback(
     callback_url = f"{base_url}/api/integrations/oauth/callback"
     
     try:
-        # Create integration instance and authenticate
-        integration = integration_class()
+        # Create integration instance and authenticate. Pass the patient
+        # integration so integrations whose token endpoint is per-instance (e.g.
+        # Epic's per-org token URL, read from settings) can complete the exchange.
+        integration = integration_class(patient_integration)
         credentials = await integration.authenticate({
             "code": code,
             "redirect_uri": callback_url,
@@ -591,7 +596,12 @@ async def sync_integration(
         
         # Perform sync
         result = await integration.sync_data(since=since)
-        
+
+        # Persist any credential refresh that happened mid-sync (e.g. rotated
+        # OAuth refresh tokens) so the next sync doesn't fail.
+        if integration.credentials and integration.credentials != patient_integration.credentials:
+            patient_integration.credentials = integration.credentials
+
         if result.success:
             # Store new readings
             readings_stored = 0
@@ -655,9 +665,20 @@ async def sync_integration(
                         updated_at=now,
                     )
                     db.add(device)
-            
+
+            # Persist richer clinical resources (reports, labs, documents,
+            # imaging, allergies) returned by EHR/FHIR integrations. No-op for
+            # device integrations, which leave these lists empty.
+            from integrations.persistence import persist_sync_extras
+            extra_counts = persist_sync_extras(db, account_id, patient_id, slug, result)
+
             db.commit()
-            
+
+            logger.info(
+                "Sync %s patient=%s stored vitals=%s extras=%s",
+                slug, patient_id, readings_stored, extra_counts,
+            )
+
             return SyncResultResponse(
                 success=True,
                 readings_count=readings_stored,

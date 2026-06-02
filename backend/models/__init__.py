@@ -27,6 +27,8 @@ from schemas.vital import Vital
 from schemas.symptom import Symptom
 from schemas.patient import Patient, PatientAccess, AccessLevel
 from schemas.diagnosis import Diagnosis, DiagnosisNote
+from schemas.allergy import AllergyIntolerance
+from schemas.clinical_results import DiagnosticReport, LabResult, ClinicalDocument, ImagingStudy
 from schemas.implant import Implant, ImplantNote
 from schemas.vent_import import VentImport
 from schemas.vent_parameter_dictionary import VentParameterDictionary
@@ -44,7 +46,8 @@ __all__ = [
     'MedicationLog', 'Equipment', 'EquipmentChangeLog', 'MonitoringAlert',
     'VentilatorAlert', 'ExternalAlarm', 'PulseOxData', 'Setting',
     'Vital', 'Symptom', 'Patient', 'User', 'Role',
-    'Permission', 'AuditLog', 'Diagnosis', 'DiagnosisNote', 'Implant', 'ImplantNote',
+    'Permission', 'AuditLog', 'Diagnosis', 'DiagnosisNote', 'AllergyIntolerance',
+    'DiagnosticReport', 'LabResult', 'ClinicalDocument', 'ImagingStudy', 'Implant', 'ImplantNote',
     'VentImport', 'VentParameterDictionary', 'VentSample', 'VentDeviceInfo',
     'CompleteItemRequest', 'BulkCompleteRequest', 'Organization', 'OrganizationMembership',
     'OrganizationType', 'PatientAccess', 'AccessLevel', 'Reader', 'CustomVitalDefinition'

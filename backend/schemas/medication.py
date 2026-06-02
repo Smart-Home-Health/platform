@@ -11,6 +11,8 @@ class Medication(Base):
     prescriber_id = Column(Integer, ForeignKey('providers.id'), nullable=True)  # Provider who prescribed this medication
     pharmacy_id = Column(Integer, ForeignKey('businesses.id'), nullable=True)  # Pharmacy business where medication is filled
     name = Column(String, nullable=False)
+    rxnorm_code = Column(String(20), nullable=True)  # RxNorm RxCUI (standard drug code, FHIR Medication.code)
+    ndc_code = Column(String(20), nullable=True)  # National Drug Code (commonly returned alongside RxNorm)
     concentration = Column(String)
     quantity = Column(Float, nullable=False)
     quantity_unit = Column(String, nullable=False, default='tablets')
@@ -20,6 +22,8 @@ class Medication(Base):
     as_needed = Column(Boolean, default=False)
     notes = Column(Text)
     active = Column(Boolean, default=True)
+    source = Column(String(50), nullable=True, default='manual')  # manual, epic, etc.
+    external_id = Column(String(100), nullable=True, index=True)  # FHIR resource id for dedup
     created_at = Column(TIMESTAMP(timezone=True), nullable=False)
     updated_at = Column(TIMESTAMP(timezone=True), nullable=False)
     
