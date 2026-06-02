@@ -114,6 +114,7 @@ class IntegrationRegistry:
             'description': integration_class.description,
             'auth_type': integration_class.auth_type,
             'supported_vitals': integration_class.supported_vitals,
+            'auth_fields': list(getattr(integration_class, 'auth_fields', []) or []),
             'config_schema': integration_class.get_config_schema(),
         }
     

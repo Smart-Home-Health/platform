@@ -274,6 +274,32 @@ const AdminV2MedicationsSchedule = () => {
     }
   };
 
+  // Undo a completed/skipped dose — deletes the administration log and (for
+  // real doses) restores the deducted on-hand quantity. For mistakes like
+  // marking a dose on the wrong day.
+  const handleUndo = async (medication) => {
+    const wasSkip = medication.actual_dose === 0;
+    const confirmMsg = wasSkip
+      ? `Undo the skip for ${medication.medication_name}? It will show as not yet taken again.`
+      : `Undo this dose of ${medication.medication_name}? This removes the administration record and restores the on-hand quantity.`;
+    if (!window.confirm(confirmMsg)) return;
+    try {
+      const response = await fetch(
+        `${config.apiUrl}/api/schedule/log/medication/${medication.log_id}`,
+        { method: 'DELETE', credentials: 'include' }
+      );
+      if (response.ok) {
+        await fetchSchedule();
+      } else {
+        const data = await response.json().catch(() => ({}));
+        alert(data.detail || 'Failed to undo');
+      }
+    } catch (err) {
+      console.error('Error undoing administration:', err);
+      alert('Error connecting to server');
+    }
+  };
+
   // Get stats
   const stats = {
     total: scheduledMedications.length,
@@ -473,6 +499,16 @@ const AdminV2MedicationsSchedule = () => {
                                         Skip
                                       </button>
                                     )}
+                                  </div>
+                                )}
+                                {isCompleted && item.log_id && hasPermission('medications.update') && (
+                                  <div className="admin-v2-schedule-item-actions">
+                                    <button
+                                      className="admin-v2-btn admin-v2-btn-sm"
+                                      onClick={() => handleUndo(item)}
+                                    >
+                                      Undo
+                                    </button>
                                   </div>
                                 )}
                               </div>

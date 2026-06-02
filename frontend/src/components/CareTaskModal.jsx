@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import ModalBase from './ModalBase';
 import config from '../config';
 import { useAdminPatient } from '../contexts/AdminPatientContext';
-import CareTaskScheduledView from './care-task/CareTaskScheduledView';
+import ScheduleList from './schedule/ScheduleList';
 import NutritionTrackingModal from './nutrition/NutritionTrackingModal';
 import {
   checkAdministrationWindow,
@@ -113,37 +113,24 @@ const CareTaskModal = ({ onClose }) => {
     }
   };
 
-  // ===== Status visuals (used by Scheduled view) =====
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'ready_to_take':
-      case 'on_time':
-        return { bg: '#d4edda', border: '#28a745', text: '#155724' };
-      case 'upcoming':
-        return { bg: '#d1ecf1', border: '#17a2b8', text: '#0c5460' };
-      case 'warning':
-      case 'late_early':
-        return { bg: '#fff3cd', border: '#ffc107', text: '#856404' };
-      case 'missed':
-        return { bg: '#f8d7da', border: '#dc3545', text: '#721c24' };
-      case 'skipped':
-        return { bg: '#f8f9fa', border: '#6c757d', text: '#495057' };
-      default:
-        return { bg: '#f8f9fa', border: '#6c757d', text: '#495057' };
-    }
-  };
-
-  const getStatusText = (item) => {
-    const now = new Date();
-    const scheduledTime = new Date(item.scheduled_time);
-    const timeDiff = (scheduledTime - now) / (1000 * 60);
-    if (timeDiff > 60) return 'upcoming';
-    if (timeDiff > 0 && timeDiff <= 15) return 'ready_to_take';
-    if (timeDiff <= 0 && timeDiff >= -15) return 'on_time';
-    if (timeDiff < -15 && timeDiff >= -60) return 'warning';
-    if (timeDiff < -60) return 'missed';
-    return 'upcoming';
-  };
+  // Normalize the API rows into the shape ScheduleList expects.
+  const scheduledItems = useMemo(() => {
+    const raw = scheduledTasks.scheduled_care_tasks || [];
+    return raw.map(item => ({
+      id: `${item.schedule_id}-${item.scheduled_time}`,
+      scheduled_time: item.scheduled_time,
+      name: item.care_task_name,
+      description: item.care_task_description,
+      category: item.care_task_category_name
+        ? { name: item.care_task_category_name, color: item.care_task_category_color || '#6f42c1' }
+        : null,
+      status: item.status,
+      is_completed: !!item.is_completed,
+      is_yesterday: !!item.is_yesterday,
+      // pass the original row back so handlers can use it
+      _raw: item,
+    }));
+  }, [scheduledTasks]);
 
   // ===== Scheduled task complete/skip handlers =====
   const submitMarkCompleted = async (task, earlyOverride = false) => {
@@ -436,12 +423,12 @@ const CareTaskModal = ({ onClose }) => {
             )}
 
             {!loading && tab === 'scheduled' && (
-              <CareTaskScheduledView
-                scheduledTasks={scheduledTasks}
-                getStatusColor={getStatusColor}
-                getStatusText={getStatusText}
-                handleMarkCompleted={handleMarkCompleted}
-                handleSkipTask={handleSkipTask}
+              <ScheduleList
+                items={scheduledItems}
+                title="Scheduled Care Tasks"
+                emptyText="No scheduled care tasks"
+                onMarkComplete={(item) => handleMarkCompleted(item._raw)}
+                onSkip={(item) => handleSkipTask(item._raw)}
                 statusFilters={statusFilters}
                 setStatusFilters={setStatusFilters}
                 showFilters={showFilters}

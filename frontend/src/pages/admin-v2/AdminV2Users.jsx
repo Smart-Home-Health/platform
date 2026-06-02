@@ -268,6 +268,27 @@ const AdminV2Users = () => {
     }
   };
 
+  // System-admin-only: flag a user to reset their password on next sign-in.
+  const handleForcePasswordReset = async (user) => {
+    if (!window.confirm(
+      `Require ${user.full_name || user.username} to set a new password on their next sign-in?`
+    )) return;
+    try {
+      const response = await fetch(
+        `${config.apiUrl}/api/users/${user.id}/force-password-reset`,
+        { method: 'POST', credentials: 'include' }
+      );
+      if (response.ok) {
+        fetchUsers();
+      } else {
+        const data = await response.json();
+        alert(data.detail || 'Failed to require first login');
+      }
+    } catch {
+      alert('Error connecting to server');
+    }
+  };
+
   const openEditModal = (user) => {
     setSelectedUser(user);
     setFormData({
@@ -560,6 +581,15 @@ const AdminV2Users = () => {
                     <span className={`admin-v2-status-badge ${u.is_active ? 'active' : 'inactive'}`}>
                       {u.is_active ? 'Active' : 'Inactive'}
                     </span>
+                    {u.force_password_reset && (
+                      <span
+                        className="admin-v2-status-badge"
+                        title="This user must set a new password on next sign-in"
+                        style={{ marginLeft: 6 }}
+                      >
+                        First login pending
+                      </span>
+                    )}
                   </td>
                   <td>
                     <span className={isStaleLogin(u.last_login) ? 'admin-v2-text-warning' : ''}>
@@ -570,7 +600,7 @@ const AdminV2Users = () => {
                   </td>
                   <td>
                     <div className="admin-v2-table-actions">
-                      <button 
+                      <button
                         className="admin-v2-action-btn admin-v2-action-btn-edit"
                         onClick={() => openEditModal(u)}
                         title="Edit user"
@@ -578,6 +608,16 @@ const AdminV2Users = () => {
                         <EditIcon size={14} />
                         <span>Edit</span>
                       </button>
+                      {user.is_system_admin && u.id !== user.id && !u.force_password_reset && (
+                        <button
+                          className="admin-v2-action-btn"
+                          onClick={() => handleForcePasswordReset(u)}
+                          title="Require this user to set a new password on next sign-in"
+                        >
+                          <KeyIcon size={14} />
+                          <span>Require first login</span>
+                        </button>
+                      )}
                       {!u.is_system_admin && (
                         <button 
                           className="admin-v2-action-btn admin-v2-action-btn-delete"

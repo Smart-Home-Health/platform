@@ -8,9 +8,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, cast, Date, text
 from datetime import datetime, timedelta
 from db import get_db
-from dependencies import require_read_access
+from dependencies import require_read_access, require_permission
 from crud.vitals import (get_vitals_by_type, get_distinct_vital_types, get_vitals_by_type_paginated,
                   save_blood_pressure, save_temperature, save_vital)
+from models.custom_vital_definition import CustomVitalDefinition
 from crud.nutrition import create_nutrition_intake
 from crud.patients import get_current_patient
 
@@ -532,6 +533,68 @@ def get_nutrition_history(limit: int = 100, db: Session = Depends(get_db)):
 def get_vital_history_paginated(vital_type: str, page: int = 1, page_size: int = 20, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get paginated history for a specific vital type"""
     return get_vitals_by_type_paginated(db, vital_type, page, page_size)
+
+
+@router.get("/custom-definitions")
+def get_custom_vital_definitions(
+    patient_id: int = Query(..., description="Patient ID"),
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access)
+):
+    defs = db.query(CustomVitalDefinition).filter(
+        CustomVitalDefinition.patient_id == patient_id
+    ).order_by(CustomVitalDefinition.created_at).all()
+    return [d.to_dict() for d in defs]
+
+
+@router.post("/custom-definitions")
+def create_custom_vital_definition(
+    body: dict,
+    db: Session = Depends(get_db),
+):
+    patient_id = body.get("patient_id")
+    name = body.get("name", "").strip()
+    unit = body.get("unit", "").strip() or None
+    display_label = body.get("display_label", "").strip() or None
+
+    if not patient_id or not name:
+        return JSONResponse(status_code=400, content={"detail": "patient_id and name are required"})
+
+    key = name.lower().replace(" ", "_")
+    existing = db.query(CustomVitalDefinition).filter(
+        CustomVitalDefinition.patient_id == patient_id,
+        CustomVitalDefinition.name == key
+    ).first()
+    if existing:
+        return JSONResponse(status_code=409, content={"detail": f"Custom vital '{name}' already exists for this patient"})
+
+    from datetime import datetime
+    definition = CustomVitalDefinition(
+        patient_id=patient_id,
+        name=key,
+        unit=unit,
+        display_label=display_label or name,
+        created_at=datetime.utcnow()
+    )
+    db.add(definition)
+    db.commit()
+    db.refresh(definition)
+    return definition.to_dict()
+
+
+@router.delete("/custom-definitions/{definition_id}")
+def delete_custom_vital_definition(
+    definition_id: int,
+    db: Session = Depends(get_db),
+):
+    definition = db.query(CustomVitalDefinition).filter(
+        CustomVitalDefinition.id == definition_id
+    ).first()
+    if not definition:
+        return JSONResponse(status_code=404, content={"detail": "Definition not found"})
+    db.delete(definition)
+    db.commit()
+    return {"status": "deleted", "id": definition_id}
 
 
 @router.get("/{vital_type}")

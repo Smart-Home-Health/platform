@@ -111,6 +111,7 @@ class UserResponse(UserBase):
     id: int
     is_system_admin: bool
     has_pin: bool
+    force_password_reset: bool = False
     last_login: Optional[datetime] = None
     last_activity: Optional[datetime] = None
     last_full_password_login: Optional[datetime] = None
@@ -143,6 +144,7 @@ class UserListItem(BaseModel):
     is_active: bool
     is_system_admin: bool = False
     has_pin: bool
+    force_password_reset: bool = False
     roles: List[RoleListItem] = []
     created_at: Optional[datetime] = None
     last_login: Optional[datetime] = None

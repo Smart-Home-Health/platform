@@ -6,6 +6,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
 import UserSelectionPage from './pages/UserSelectionPage';
+import PasswordResetPage from './pages/PasswordResetPage';
 import Dashboard from './pages/Dashboard';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminSchedule from './pages/admin/AdminSchedule';
@@ -37,6 +38,7 @@ import AdminV2Patients from './pages/admin-v2/AdminV2Patients';
 import AdminV2Providers from './pages/admin-v2/AdminV2Providers';
 import AdminV2Businesses from './pages/admin-v2/AdminV2Businesses';
 import AdminV2Schedule from './pages/admin-v2/AdminV2Schedule';
+import AdminV2ScheduleUndoLog from './pages/admin-v2/AdminV2ScheduleUndoLog';
 import AdminV2Vitals from './pages/admin-v2/AdminV2Vitals';
 import AdminV2Symptoms from './pages/admin-v2/AdminV2Symptoms';
 import AdminV2Diagnoses from './pages/admin-v2/AdminV2Diagnoses';
@@ -44,6 +46,9 @@ import AdminV2Implants from './pages/admin-v2/AdminV2Implants';
 import AdminV2Nutrition from './pages/admin-v2/AdminV2Nutrition';
 import AdminV2ProfileSummary from './pages/admin-v2/AdminV2ProfileSummary';
 import AdminV2Monitoring from './pages/admin-v2/AdminV2Monitoring';
+import AdminV2Reports from './pages/admin-v2/AdminV2Reports';
+import AdminV2ReportsOvernight from './pages/admin-v2/AdminV2ReportsOvernight';
+import AdminV2ReportsWeekly from './pages/admin-v2/AdminV2ReportsWeekly';
 import AdminV2AccountSettings from './pages/admin-v2/AdminV2AccountSettings';
 import AdminV2Backup from './pages/admin-v2/AdminV2Backup';
 import AdminV2Integrations from './pages/admin-v2/AdminV2Integrations';
@@ -52,6 +57,7 @@ import AdminV2ProfileMqtt from './pages/admin-v2/AdminV2ProfileMqtt';
 import { AdminV2SettingsGeneral } from './pages/admin-v2/settings';
 import FirstRunSetup from './components/FirstRunSetup';
 import { ActiveInputProvider } from './contexts/ActiveInputContext';
+import { PinChallengeProvider } from './contexts/PinChallengeContext';
 import VirtualKeyboard from './components/VirtualKeyboard/VirtualKeyboard';
 import { useVirtualKeyboard } from './hooks/useVirtualKeyboard';
 import "./App.css";
@@ -78,12 +84,14 @@ function AppContent() {
 
   return (
     <ActiveInputProvider>
+      <PinChallengeProvider>
       <Router>
         {isFirstRun ? <FirstRunSetup /> : <Routes>
           {/* Public Routes */}
           <Route path="/" element={<Navigate to="/care" replace />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/select-user" element={<UserSelectionPage />} />
+          <Route path="/first-login" element={<PasswordResetPage />} />
           
           {/* Protected Routes - wrapped in Layout */}
           <Route path="/live" element={
@@ -128,6 +136,7 @@ function AppContent() {
           <Route path="/care/providers" element={<ProtectedRoute><Layout><AdminV2Providers /></Layout></ProtectedRoute>} />
           <Route path="/care/businesses" element={<ProtectedRoute><Layout><AdminV2Businesses /></Layout></ProtectedRoute>} />
           <Route path="/care/schedule" element={<ProtectedRoute><Layout><AdminV2Schedule /></Layout></ProtectedRoute>} />
+          <Route path="/care/schedule/undo-log" element={<ProtectedRoute><Layout><AdminV2ScheduleUndoLog /></Layout></ProtectedRoute>} />
             
           {/* Care Vitals Routes */}
           <Route path="/care/vitals" element={<ProtectedRoute><Layout><AdminV2Vitals /></Layout></ProtectedRoute>} />
@@ -160,7 +169,13 @@ function AppContent() {
           <Route path="/care/monitoring/ventilator" element={<ProtectedRoute><Layout><AdminV2Monitoring /></Layout></ProtectedRoute>} />
           <Route path="/care/monitoring/interactions" element={<ProtectedRoute><Layout><AdminV2Monitoring /></Layout></ProtectedRoute>} />
           <Route path="/care/monitoring/settings" element={<ProtectedRoute><Layout><AdminV2Monitoring /></Layout></ProtectedRoute>} />
-            
+
+          {/* Care Reports Routes */}
+          <Route path="/care/reports" element={<ProtectedRoute><Layout><AdminV2Reports /></Layout></ProtectedRoute>} />
+          <Route path="/care/reports/day-over-day" element={<ProtectedRoute><Layout><AdminV2Reports /></Layout></ProtectedRoute>} />
+          <Route path="/care/reports/overnight" element={<ProtectedRoute><Layout><AdminV2ReportsOvernight /></Layout></ProtectedRoute>} />
+          <Route path="/care/reports/weekly" element={<ProtectedRoute><Layout><AdminV2ReportsWeekly /></Layout></ProtectedRoute>} />
+
           {/* Care Configuration Routes (System-wide) */}
           <Route path="/care/configuration" element={<ProtectedRoute><Layout><AdminV2SettingsGeneral /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/account" element={<ProtectedRoute><Layout><AdminV2AccountSettings /></Layout></ProtectedRoute>} />
@@ -176,6 +191,7 @@ function AppContent() {
         </Routes>}
       </Router>
       <VirtualKeyboard show={showVKB} />
+      </PinChallengeProvider>
     </ActiveInputProvider>
   );
 }

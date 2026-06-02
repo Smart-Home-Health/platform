@@ -55,6 +55,7 @@ class User(Base):
     pin_hash = Column(String(255), nullable=True)  # Optional 4-8 digit PIN for quick re-auth
     is_active = Column(Boolean, default=True, nullable=False)
     is_system_admin = Column(Boolean, default=False, nullable=False)  # Superuser flag
+    force_password_reset = Column(Boolean, default=False, nullable=False)  # Force first-login password reset
     last_login = Column(DateTime, nullable=True)
     last_activity = Column(DateTime, nullable=True)
     last_full_password_login = Column(DateTime, nullable=True)  # Track daily password requirement
@@ -91,6 +92,19 @@ class User(Base):
         """Check if user has a PIN set"""
         return self.pin_hash is not None
     
+    @property
+    def is_superuser(self) -> bool:
+        """Effective superuser status.
+
+        True if the explicit ``is_system_admin`` flag is set OR the user holds
+        the ``system_admin`` role. Use this for "full system access" gates so a
+        user granted the System Administrator role in the admin UI gets the same
+        access as one with the boolean flag set directly.
+        """
+        if self.is_system_admin:
+            return True
+        return any(role.name == "system_admin" and role.is_active for role in self.roles)
+
     def has_role(self, role_name: str) -> bool:
         """Check if user has a specific role"""
         if self.is_system_admin:

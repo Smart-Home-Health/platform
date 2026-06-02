@@ -62,6 +62,19 @@ function applyKey(el, key) {
   });
 }
 
+// Pick a layout based on the focused element. Anything numeric-flavored
+// (input[type=number], or any input/textarea with inputMode=numeric|decimal)
+// gets the numpad; everything else gets the alpha layout.
+function isNumericTarget(el) {
+  if (!el) return false;
+  if (el.tagName === 'TEXTAREA') return false;
+  const type = (el.type || '').toLowerCase();
+  if (type === 'number') return true;
+  const mode = (el.inputMode || el.getAttribute?.('inputmode') || '').toLowerCase();
+  if (mode === 'numeric' || mode === 'decimal') return true;
+  return false;
+}
+
 export default function VirtualKeyboard({ show }) {
   const { activeInput } = useActiveInput();
   const [layoutName, setLayoutName] = useState('default');
@@ -69,6 +82,14 @@ export default function VirtualKeyboard({ show }) {
   const lastInputRef = useRef(activeInput);
   if (activeInput) lastInputRef.current = activeInput;
   const rootRef = useRef(null);
+
+  const numericMode = isNumericTarget(activeInput);
+
+  // When the focused input's mode changes, swap the layout. Use 'numpad'
+  // for numeric targets; otherwise reset to the alpha default.
+  useEffect(() => {
+    setLayoutName(numericMode ? 'numpad' : 'default');
+  }, [numericMode]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -95,8 +116,22 @@ export default function VirtualKeyboard({ show }) {
     if (!target) return;
 
     if (button === '{shift}' || button === '{lock}') {
-      setLayoutName((l) => (l === 'default' ? 'shift' : 'default'));
+      // Shift only toggles within the alpha layout.
+      setLayoutName((l) => (l === 'default' ? 'shift' : l === 'shift' ? 'default' : l));
       return;
+    }
+
+    // <input type="number"> silently rejects partial values like "12." and
+    // clears the field. When the user types '.' (or '-') on a number input,
+    // promote it to text+inputMode so the partial value sticks. The form's
+    // submit handler reads .value as a string and parses it anyway, so the
+    // controlled component keeps working.
+    if (target.tagName === 'INPUT' && (target.type || '').toLowerCase() === 'number'
+        && (button === '.' || button === '-')) {
+      try {
+        target.type = 'text';
+        target.setAttribute('inputmode', 'decimal');
+      } catch { /* some browsers/elements may refuse */ }
     }
 
     applyKey(target, button);
@@ -121,6 +156,12 @@ export default function VirtualKeyboard({ show }) {
       '{shift} Z X C V B N M ; : {shift}',
       '@ {space} - _ {enter}',
     ],
+    numpad: [
+      '1 2 3 {bksp}',
+      '4 5 6 {enter}',
+      '7 8 9 -',
+      '. 0',
+    ],
   }), []);
 
   const display = useMemo(() => ({
@@ -131,10 +172,16 @@ export default function VirtualKeyboard({ show }) {
     '{tab}': '⇥',
   }), []);
 
-  if (!show) return null;
+  // Globally disabled, or no input is focused → render nothing. This makes
+  // the keyboard auto-show on focus and disappear on blur.
+  if (!show || !activeInput) return null;
 
   return (
-    <div ref={rootRef} className={`vkb-root${collapsed ? ' vkb-collapsed' : ''}`} onMouseDown={(e) => e.preventDefault()}>
+    <div
+      ref={rootRef}
+      className={`vkb-root${collapsed ? ' vkb-collapsed' : ''}${numericMode ? ' vkb-numpad' : ''}`}
+      onMouseDown={(e) => e.preventDefault()}
+    >
       <div className="vkb-toolbar">
         <button
           type="button"

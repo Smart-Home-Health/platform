@@ -43,6 +43,7 @@ def get_monitoring_alerts(db: Session, limit=50, include_acknowledged=False, det
         for row in results:
             alert = {
                 'id': row.id,
+                'patient_id': row.patient_id,
                 'start_time': row.start_time,
                 'end_time': row.end_time,
                 'start_data_id': row.start_data_id,

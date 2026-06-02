@@ -266,6 +266,10 @@ export const AuthProvider = ({ children }) => {
 
       const data = await res.json();
 
+      if (data.requires_password_reset) {
+        return { success: false, requiresPasswordReset: true, userId };
+      }
+
       if (data.requires_full_password) {
         return { success: false, requiresPassword: true };
       }
@@ -274,6 +278,52 @@ export const AuthProvider = ({ children }) => {
       await new Promise(resolve => setTimeout(resolve, 100));
 
       // Set full auth (include read_restricted from backend)
+      setAccount(data.account);
+      setUser({
+        id: data.user.id,
+        username: data.user.username,
+        full_name: data.user.full_name,
+        is_system_admin: data.user.is_system_admin || false,
+        roles: data.user.roles || [],
+        permissions: data.user.permissions || []
+      });
+      setAuthLevel('full');
+      setReadRestricted(!!data.read_restricted);
+      setShowAuthModal(false);
+
+      return { success: true, data };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  };
+
+  // Complete a forced first-login password reset. On success, grants full auth
+  // (same as selectUser) by storing the returned token and setting user state.
+  const resetPassword = async (userId, currentPassword, newPassword, pin = null) => {
+    try {
+      const body = {
+        user_id: userId,
+        current_password: currentPassword,
+        new_password: newPassword,
+      };
+      if (pin) body.pin = pin;
+
+      const res = await authFetch(`${API_BASE_URL}/api/auth/user/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.detail || 'Password reset failed');
+      }
+
+      const data = await res.json();
+
+      storeToken(data);
+      await new Promise(resolve => setTimeout(resolve, 100));
+
       setAccount(data.account);
       setUser({
         id: data.user.id,
@@ -445,6 +495,7 @@ export const AuthProvider = ({ children }) => {
     unlockWithAccountPassword,
     getAccountUsers,
     selectUser,
+    resetPassword,
     switchUser,
 
     // Legacy methods (still work, give full auth)

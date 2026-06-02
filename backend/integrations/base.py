@@ -147,6 +147,11 @@ class BaseIntegration(ABC):
     description: str = ""
     auth_type: str = "oauth2"  # oauth2, api_key, local, none
     supported_vitals: List[str] = []  # List of VitalType values this integration provides
+    # Subset of config_schema property keys that are credentials (sent to
+    # authenticate()) rather than user-editable settings. The UI uses this to
+    # split the add-integration form, and the /connect endpoint reads it to
+    # know which payload keys to hand to authenticate().
+    auth_fields: List[str] = []
     # Set True if the integration accepts file/archive uploads (e.g. vent log exports).
     # When True the integration must implement import_file().
     supports_import: bool = False

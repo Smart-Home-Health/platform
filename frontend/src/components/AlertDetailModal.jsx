@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo } from 'react';
 import SimpleEventChart from './SimpleEventChart';
 import config from '../config';
 import ModalBase from './ModalBase';
-import { AlertIcon, CheckIcon, ClockIcon, HeartIcon } from './Icons';
+import ZoomableVideo from './ZoomableVideo';
+import { AlertIcon, CheckIcon, ClockIcon, HeartIcon, CameraIcon } from './Icons';
 
 const AlertDetailModal = ({ alert, onClose, onAcknowledge, initiateAcknowledge = false }) => {
   const [eventData, setEventData] = useState(null);
@@ -14,8 +15,77 @@ const AlertDetailModal = ({ alert, onClose, onAcknowledge, initiateAcknowledge =
   const [oxygenUnit, setOxygenUnit] = useState('L/min');
   const [acknowledgingAlert, setAcknowledgingAlert] = useState(false);
   const [submitError, setSubmitError] = useState(null);
+  const [clipStatus, setClipStatus] = useState(null);   // null = unknown, {saved, ...}
+  const [clipError, setClipError] = useState(null);
+  const [savingClip, setSavingClip] = useState(false);
 
   useEffect(() => { fetchEventData(); }, [alert.id]);
+
+  // Compute Unix-second window for the alert (memoized).
+  const clipWindow = useMemo(() => {
+    if (!alert.patient_id || !alert.start_time) return null;
+    const start = Math.floor(new Date(alert.start_time).getTime() / 1000);
+    const endIso = alert.end_time || new Date().toISOString();
+    const end = Math.floor(new Date(endIso).getTime() / 1000);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+    return { patientId: alert.patient_id, start, end };
+  }, [alert.patient_id, alert.start_time, alert.end_time]);
+
+  const fetchClipStatus = async () => {
+    if (!clipWindow) return;
+    try {
+      const { patientId, start, end } = clipWindow;
+      const res = await fetch(
+        `${config.apiUrl}/api/integrations/frigate/patient/${patientId}/clips/status?start=${start}&end=${end}`,
+        { credentials: 'include' }
+      );
+      if (res.status === 404) { setClipStatus({ noIntegration: true }); return; }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || `Failed to load clip status (${res.status})`);
+      }
+      setClipStatus(await res.json());
+      setClipError(null);
+    } catch (err) {
+      setClipError(err.message);
+    }
+  };
+
+  useEffect(() => {
+    setClipStatus(null);
+    setClipError(null);
+    fetchClipStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clipWindow]);
+
+  const handleSaveClip = async () => {
+    if (!clipWindow || savingClip) return;
+    setSavingClip(true);
+    setClipError(null);
+    try {
+      const { patientId, start, end } = clipWindow;
+      const res = await fetch(
+        `${config.apiUrl}/api/integrations/frigate/patient/${patientId}/clips?start=${start}&end=${end}`,
+        { method: 'POST', credentials: 'include' }
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || `Save failed (${res.status})`);
+      }
+      setClipStatus(await res.json());
+    } catch (err) {
+      setClipError(err.message);
+    } finally {
+      setSavingClip(false);
+    }
+  };
+
+  const clipFileUrl = (dl) => {
+    if (!clipWindow) return '';
+    const { patientId, start, end } = clipWindow;
+    return `${config.apiUrl}/api/integrations/frigate/patient/${patientId}/clips/file?start=${start}&end=${end}${dl ? '&dl=1' : ''}`;
+  };
+
 
   useEffect(() => {
     if (initiateAcknowledge) setShowOxygenForm(true);
@@ -270,6 +340,91 @@ const AlertDetailModal = ({ alert, onClose, onAcknowledge, initiateAcknowledge =
             <div style={{ background: '#1a202c', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: 12 }}>
               <SimpleEventChart title="Pulse Rate" color="#F56565" unit="BPM" data={bpmChartData} />
             </div>
+          </div>
+        )}
+
+        {/* Frigate event footage — hidden when patient has no integration */}
+        {clipStatus && !clipStatus.noIntegration && (
+          <div style={{
+            background: '#0d1117',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: 10,
+            padding: 12,
+            display: 'flex', flexDirection: 'column', gap: 8,
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              gap: 12, flexWrap: 'wrap',
+            }}>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 8,
+                color: '#e6edf3', fontSize: 13, fontWeight: 600,
+              }}>
+                <CameraIcon size={16} />
+                Event Footage{clipStatus.camera ? ` — ${clipStatus.camera}` : ''}
+                {clipStatus.saved && clipStatus.file_size && (
+                  <span style={{ color: '#8b949e', fontWeight: 400 }}>
+                    &middot; {(clipStatus.file_size / (1024 * 1024)).toFixed(1)} MB
+                  </span>
+                )}
+              </span>
+              {clipStatus.saved && (
+                <a
+                  href={clipFileUrl(true)}
+                  download
+                  style={{
+                    padding: '6px 12px', borderRadius: 6,
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    background: 'transparent', color: '#58a6ff',
+                    fontSize: 12, fontWeight: 600,
+                    textDecoration: 'none',
+                  }}
+                >
+                  Download to device
+                </a>
+              )}
+            </div>
+            {clipError && (
+              <div role="alert" style={{
+                padding: '8px 10px', borderRadius: 6,
+                background: 'rgba(220,53,69,0.15)',
+                border: '1px solid rgba(220,53,69,0.5)',
+                color: '#f8d7da', fontSize: 12,
+              }}>{clipError}</div>
+            )}
+            {clipStatus.saved ? (
+              <ZoomableVideo
+                key={clipFileUrl(false)}
+                src={clipFileUrl(false)}
+                crossOrigin="use-credentials"
+                controls
+                playsInline
+                preload="metadata"
+                containerStyle={{ maxHeight: '50vh' }}
+              />
+            ) : (
+              <div style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+                padding: 24, background: 'rgba(255,255,255,0.03)',
+                border: '1px dashed rgba(255,255,255,0.12)', borderRadius: 8,
+              }}>
+                <span style={{ color: '#a0aec0', fontSize: 13 }}>
+                  No clip saved for this event yet
+                </span>
+                <button
+                  onClick={handleSaveClip}
+                  disabled={savingClip}
+                  style={{
+                    padding: '8px 16px', borderRadius: 6, border: 'none',
+                    background: '#238636', color: '#fff',
+                    cursor: savingClip ? 'default' : 'pointer',
+                    fontSize: 13, fontWeight: 600,
+                  }}
+                >
+                  {savingClip ? 'Saving from Frigate...' : 'Save clip to server'}
+                </button>
+              </div>
+            )}
           </div>
         )}
 

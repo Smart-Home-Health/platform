@@ -37,7 +37,8 @@ const AdminV2CareTasksSchedule = () => {
     upcoming: true,
     missed: true,
     completed: false,
-    skipped: false
+    skipped: false,
+    prn: true
   });
 
   // Off-window (early or late) administration confirmation modal state
@@ -139,6 +140,9 @@ const AdminV2CareTasksSchedule = () => {
 
   const getFilteredTasks = () => {
     return scheduledTasks.filter(task => {
+      // PRN / ad-hoc completions have no scheduled slot; they're toggled by
+      // their own PRN filter (default on) rather than the status filters.
+      if (task.is_prn) return statusFilters.prn !== false;
       return statusFilters[task.status] !== false;
     });
   };
@@ -260,8 +264,10 @@ const AdminV2CareTasksSchedule = () => {
     ready: scheduledTasks.filter(t => ['due_on_time', 'due_warning', 'due_late'].includes(t.status)).length,
     upcoming: scheduledTasks.filter(t => ['pending', 'upcoming'].includes(t.status)).length,
     missed: scheduledTasks.filter(t => t.status === 'missed').length,
-    completed: scheduledTasks.filter(t => t.status === 'completed').length,
-    skipped: scheduledTasks.filter(t => t.status === 'skipped').length
+    // Scheduled completions/skips only — PRN is counted separately below.
+    completed: scheduledTasks.filter(t => t.status === 'completed' && !t.is_prn).length,
+    skipped: scheduledTasks.filter(t => t.status === 'skipped' && !t.is_prn).length,
+    prn: scheduledTasks.filter(t => t.is_prn).length
   };
 
   // Loading state
@@ -286,7 +292,7 @@ const AdminV2CareTasksSchedule = () => {
             <h1 className="schedule-section-title">Daily Care Tasks Schedule</h1>
 
             {/* Stats Row */}
-            <div className="admin-v2-stats-row admin-v2-stats-row-compact">
+            <div className="admin-v2-stats-row admin-v2-stats-row-compact admin-v2-stats-row-3col">
               <div 
                 className={`admin-v2-stat-card ${statusFilters.due_on_time && statusFilters.due_warning && statusFilters.due_late ? 'selected' : ''}`}
                 onClick={() => setStatusFilters(f => ({ 
@@ -359,6 +365,19 @@ const AdminV2CareTasksSchedule = () => {
                 <div className="admin-v2-stat-info">
                   <h4>{stats.skipped}</h4>
                   <p>Skipped</p>
+                </div>
+              </div>
+              <div
+                className={`admin-v2-stat-card ${statusFilters.prn ? 'selected' : ''}`}
+                onClick={() => setStatusFilters(f => ({ ...f, prn: !f.prn }))}
+                style={{ cursor: 'pointer' }}
+              >
+                <div className="admin-v2-stat-icon" style={{ background: 'rgba(111, 66, 193, 0.15)' }}>
+                  <TasksIcon size={20} />
+                </div>
+                <div className="admin-v2-stat-info">
+                  <h4>{stats.prn}</h4>
+                  <p>PRN</p>
                 </div>
               </div>
             </div>
@@ -436,9 +455,18 @@ const AdminV2CareTasksSchedule = () => {
                                     )}
                                   </div>
                                   <div className="admin-v2-schedule-item-status">
-                                    <span 
+                                    {item.is_prn && (
+                                      <span
+                                        className="admin-v2-schedule-status-badge"
+                                        style={{ backgroundColor: '#6f42c1', color: '#fff' }}
+                                        title="Completed as-needed (PRN), not a scheduled occurrence"
+                                      >
+                                        PRN
+                                      </span>
+                                    )}
+                                    <span
                                       className="admin-v2-schedule-status-badge"
-                                      style={{ 
+                                      style={{
                                         backgroundColor: statusInfo.border,
                                         color: '#fff'
                                       }}

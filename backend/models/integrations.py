@@ -14,6 +14,7 @@ class IntegrationInfoResponse(BaseModel):
     description: str
     auth_type: str
     supported_vitals: List[str]
+    auth_fields: List[str] = []
     config_schema: dict
 
 

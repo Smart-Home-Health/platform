@@ -28,6 +28,7 @@ from crud.medications import (add_medication, get_active_medications, get_inacti
 from crud.settings import get_setting
 from models import Medication
 from utils.early_administration import guard_early_administration
+from utils.medication_quantity import insufficient_quantity_response, InsufficientMedicationQuantityError
 
 logger = logging.getLogger("app")
 
@@ -303,10 +304,14 @@ async def administer_medication_endpoint(med_id: int, data: MedicationAdminister
         if early is not None:
             return early
 
-    result = administer_medication(
-        db, med_id, data.dose_amount, data.schedule_id, data.scheduled_time, data.notes,
-        patient_id=data.patient_id, administered_at=data.administered_at,
-    )
+    try:
+        result = administer_medication(
+            db, med_id, data.dose_amount, data.schedule_id, data.scheduled_time, data.notes,
+            patient_id=data.patient_id, administered_at=data.administered_at,
+        )
+    except InsufficientMedicationQuantityError as e:
+        # Refuse — the caller must update on-hand quantity first.
+        return insufficient_quantity_response(e.medication, e.dose)
     if not result:
         return JSONResponse(status_code=400, content={"detail": "Failed to administer medication"})
     return {"success": True}

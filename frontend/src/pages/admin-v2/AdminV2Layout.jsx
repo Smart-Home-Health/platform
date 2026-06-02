@@ -21,7 +21,8 @@ import {
   XIcon,
   ClipboardListIcon,
   VirusIcon,
-  MenuIcon
+  MenuIcon,
+  BarChartIcon
 } from '../../components/Icons';
 import './AdminV2.css';
 
@@ -32,6 +33,7 @@ const sideNavItems = [
   { path: '/care/vitals', label: 'Vitals', Icon: ClipboardListIcon, requiredPermissions: ['vitals.read', 'vitals.create'] },
   { path: '/care/symptoms', label: 'Symptoms', Icon: VirusIcon, requiredPermissions: ['vitals.read', 'vitals.create'] },
   { path: '/care/monitoring', label: 'Monitoring', Icon: MonitoringIcon, requiredPermissions: ['monitoring.read', 'monitoring.create', 'monitoring.update', 'monitoring.delete'] },
+  { path: '/care/reports', label: 'Reports', Icon: BarChartIcon, requiredPermissions: ['vitals.read'] },
   { path: '/care/medications', label: 'Medications', Icon: MedicationsIcon, requiredPermissions: ['medications.read', 'medications.create', 'medications.update', 'medications.delete'] },
   { path: '/care/care-tasks', label: 'Care Tasks', Icon: TasksIcon, requiredPermissions: ['care_tasks.read', 'care_tasks.create', 'care_tasks.update', 'care_tasks.delete'] },
   { path: '/care/equipment', label: 'Equipment & Supplies', Icon: EquipmentIcon, requiredPermissions: ['equipment.read', 'equipment.create', 'equipment.update', 'equipment.delete'] },
@@ -43,6 +45,12 @@ const sideNavItems = [
 // Get top nav items based on current section, permissions, and read access (restricted mode hides History/Active)
 const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin) => {
   const navItems = {
+    schedule: [
+      { path: '/care/schedule', label: 'Schedule' },
+      // Undo Log is an audit view — only surface it to users with audit access.
+      ...(hasAnyPermission(['audit.read'])
+        ? [{ path: '/care/schedule/undo-log', label: 'Undo Log' }] : []),
+    ],
     vitals: hasReadAccess
       ? [
           { path: '/care/vitals', label: 'Record' },
@@ -61,12 +69,16 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
       { path: '/care/medications/schedule', label: 'Schedule' },
       { path: '/care/medications/history', label: 'History' },
       { path: '/care/medications/manage', label: 'Manage' },
+      ...(hasAnyPermission(['audit.read'])
+        ? [{ path: '/care/schedule/undo-log', label: 'Undo Log' }] : []),
     ],
     'care-tasks': [
       { path: '/care/care-tasks', label: 'Overview' },
       { path: '/care/care-tasks/manage', label: 'Manage' },
       { path: '/care/care-tasks/schedule', label: 'Schedule' },
       { path: '/care/care-tasks/history', label: 'History' },
+      ...(hasAnyPermission(['audit.read'])
+        ? [{ path: '/care/schedule/undo-log', label: 'Undo Log' }] : []),
     ],
     equipment: [
       { path: '/care/equipment', label: 'Overview' },
@@ -80,6 +92,8 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
       { path: '/care/nutrition/output', label: 'Output Log' },
       { path: '/care/nutrition/schedules', label: 'Schedules' },
       { path: '/care/nutrition/goals', label: 'Daily Goals' },
+      ...(hasAnyPermission(['audit.read'])
+        ? [{ path: '/care/schedule/undo-log', label: 'Undo Log' }] : []),
     ],
     monitoring: [
       { path: '/care/monitoring', label: 'Alerts' },
@@ -88,6 +102,11 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
       { path: '/care/monitoring/ventilator', label: 'Ventilator' },
       { path: '/care/monitoring/interactions', label: 'Interactions' },
       { path: '/care/monitoring/settings', label: 'Alert Settings' },
+    ],
+    reports: [
+      { path: '/care/reports', label: 'Day over Day' },
+      { path: '/care/reports/overnight', label: 'Overnight' },
+      { path: '/care/reports/weekly', label: 'Weekly Summary' },
     ],
     profile: [
       // Patient profile sections

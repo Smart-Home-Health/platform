@@ -10,6 +10,7 @@ from schemas.medication_schedule import MedicationSchedule
 from schemas.medication_log import MedicationLog
 from crud.settings import get_setting
 from utils.datetime_utils import utc_now, utc_today
+from utils.medication_quantity import InsufficientMedicationQuantityError
 
 logger = logging.getLogger('crud')
 
@@ -230,11 +231,13 @@ def administer_medication(db: Session, med_id, dose_amount, schedule_id=None, sc
             logger.error("Patient context does not match medication's patient")
             return False
 
-        # Only deduct from quantity if dose_amount > 0 (don't deduct for skipped doses)
+        # Only deduct from quantity if dose_amount > 0 (don't deduct for skipped doses).
+        # Refuse when there isn't enough on hand — the caller must update the
+        # quantity first rather than administer a dose we don't have.
         if float(dose_amount) > 0:
             if med.quantity < float(dose_amount):
                 logger.warning(f"Insufficient medication quantity. Available: {med.quantity}, Requested: {dose_amount}")
-                # Still allow administration but warn about low stock
+                raise InsufficientMedicationQuantityError(med, dose_amount)
             med.quantity = max(0, med.quantity - float(dose_amount))
         
         # Use timezone-aware UTC datetime
@@ -301,6 +304,9 @@ def administer_medication(db: Session, med_id, dose_amount, schedule_id=None, sc
         db.add(log)
         db.commit()
         return True
+    except InsufficientMedicationQuantityError:
+        db.rollback()
+        raise  # let the route turn this into a 409 with update-quantity details
     except Exception as e:
         logger.error(f"Error administering medication: {e}")
         db.rollback()
@@ -757,7 +763,8 @@ def get_daily_medication_schedule(db: Session, patient_id=None):
                     'status': status,
                     'administered_at': log_entry.administered_at,
                     'actual_dose': log_entry.dose_amount,
-                    'is_completed': True
+                    'is_completed': True,
+                    'log_id': log_entry.id
                 })
             else:
                 # Show as missed if it's from yesterday (before local today start)
@@ -819,7 +826,8 @@ def get_daily_medication_schedule(db: Session, patient_id=None):
                     'status': status,
                     'administered_at': log_entry.administered_at,
                     'actual_dose': log_entry.dose_amount,
-                    'is_completed': True
+                    'is_completed': True,
+                    'log_id': log_entry.id
                 })
             else:
                 # Check timing status for pending dose

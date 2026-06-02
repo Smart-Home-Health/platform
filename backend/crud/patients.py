@@ -24,6 +24,26 @@ def get_patients(db: Session, active_only: bool = True, skip: int = 0, limit: in
     return query.offset(skip).limit(limit).all()
 
 
+def get_visible_patient_ids(db: Session, user) -> Optional[set]:
+    """Patient IDs the given user is allowed to see.
+
+    Returns ``None`` for unrestricted access (system admins / superusers see
+    every patient). Otherwise returns the set of patient IDs explicitly granted
+    to the user via active PatientAccess rows (may be empty). This is the single
+    source of truth for patient-list scoping — both /api/patients and the
+    dashboard summary use it so they can't drift apart.
+    """
+    from schemas.patient import PatientAccess
+
+    if user.is_superuser:
+        return None
+    rows = db.query(PatientAccess.patient_id).filter(
+        PatientAccess.user_id == user.id,
+        PatientAccess.is_active == True,
+    ).all()
+    return {row.patient_id for row in rows}
+
+
 def get_active_patient(db: Session) -> Optional[Patient]:
     """Get the currently active patient for single-patient workflows"""
     return db.query(Patient).filter(Patient.is_active == True).first()

@@ -3,7 +3,7 @@ import Chart from 'chart.js/auto';
 import 'chartjs-adapter-date-fns';
 
 // Use React.memo to prevent re-renders when props don't change
-const SimpleEventChart = memo(({ title, color, data, unit }) => {
+const SimpleEventChart = memo(({ title, color, data, unit, xType = 'category' }) => {
   const chartRef = useRef(null);
   const chartInstance = useRef(null);
   const canvasId = useRef(`chart-${Math.random().toString(36).substr(2, 9)}`);
@@ -72,14 +72,23 @@ const SimpleEventChart = memo(({ title, color, data, unit }) => {
           },
           scales: {
             x: {
-              type: 'category', 
+              // 'time' uses chartjs-adapter-date-fns to map real Date x values.
+              // 'category' (the legacy default) treats each x as a string label,
+              // which collapses Date instances to one bucket — keep that for
+              // pre-stringified-time consumers like AlertDetailModal.
+              type: xType,
+              ...(xType === 'time' ? {
+                time: { tooltipFormat: 'PPpp' },
+              } : {}),
               title: {
                 display: true,
                 text: 'Time'
               },
               ticks: {
                 color: '#a0aec0',
-                maxRotation: 0
+                maxRotation: 0,
+                autoSkip: true,
+                maxTicksLimit: 8,
               },
               grid: {
                 color: 'rgba(160, 174, 192, 0.1)'
@@ -114,7 +123,7 @@ const SimpleEventChart = memo(({ title, color, data, unit }) => {
         chartInstance.current = null;
       }
     };
-  }, [title, color, data, unit]);
+  }, [title, color, data, unit, xType]);
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>

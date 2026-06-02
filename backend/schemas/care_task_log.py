@@ -28,7 +28,12 @@ class CareTaskLog(Base):
     
     # Timestamps
     created_at = Column(TIMESTAMP(timezone=True), nullable=False)
-    
+
+    # Soft delete (undo). When voided_at is set the completion was undone and
+    # is excluded from schedule/history by the global soft-delete filter.
+    voided_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    voided_by = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+
     # Relationships
     care_task = relationship('CareTask', back_populates='completion_logs')
     patient = relationship('Patient', back_populates='care_task_logs')

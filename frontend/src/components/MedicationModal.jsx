@@ -1,13 +1,35 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import ModalBase from './ModalBase';
 import config from '../config';
 import { useAdminPatient } from '../contexts/AdminPatientContext';
+import ScheduleList from './schedule/ScheduleList';
 import {
   checkAdministrationWindow,
   formatDurationMinutes,
   getCurrentLocalDateTime,
   localDateTimeToUTC,
 } from '../utils/timezone';
+
+// Map the medication backend's status taxonomy onto the unified ScheduleList one.
+function mapMedStatus(s) {
+  switch (s) {
+    case 'completed_on_time':
+    case 'completed_warning':
+    case 'completed_late':
+      return 'completed';
+    case 'skipped': return 'skipped';
+    case 'ready':
+    case 'due_on_time': return 'due_on_time';
+    case 'warning':
+    case 'due_warning': return 'due_warning';
+    case 'late_early':
+    case 'due_late': return 'due_late';
+    case 'missed': return 'missed';
+    case 'upcoming':
+    case 'pending':
+    default: return 'upcoming';
+  }
+}
 
 const MedicationModal = ({ onClose }) => {
   const { selectedPatient } = useAdminPatient();
@@ -39,19 +61,47 @@ const MedicationModal = ({ onClose }) => {
   const [prnSaving, setPrnSaving] = useState(false);
   const [prnError, setPrnError] = useState(null);
 
-  // Status filter state for scheduled medications
-  const [statusFilters, setStatusFilters] = useState({
-    on_time: false,
-    warning: false,
-    late_early: false,
-    upcoming: true,
-    missed: true,
-    skipped: false,
-    ready_to_take: true
-  });
+  // Hard gate when an administration is refused for insufficient on-hand quantity
+  // (backend 409 insufficient_quantity). `retry` re-runs the original action after
+  // the quantity is updated; null for bulk Mark-All (user re-runs it manually).
+  const [qtyGate, setQtyGate] = useState({ open: false, info: null, retry: null });
+  const [qtyInput, setQtyInput] = useState('');
+  const [qtySaving, setQtySaving] = useState(false);
+  const [qtyError, setQtyError] = useState(null);
 
-  // Status filters visibility toggle
-  const [showFilters, setShowFilters] = useState(false);
+  const openQtyGate = (info, retry) => {
+    setQtyInput('');
+    setQtyError(null);
+    setQtyGate({ open: true, info, retry });
+  };
+  const closeQtyGate = () => setQtyGate({ open: false, info: null, retry: null });
+
+  const handleQtySave = async () => {
+    const newQty = parseFloat(qtyInput);
+    if (!(newQty > 0)) { setQtyError('Enter a quantity greater than 0'); return; }
+    setQtySaving(true);
+    setQtyError(null);
+    try {
+      const res = await fetch(`${config.apiUrl}/api/medications/${qtyGate.info.medication_id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ quantity: newQty }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.detail || 'Failed to update quantity');
+      }
+      const retry = qtyGate.retry;
+      closeQtyGate();
+      await fetchMedications();
+      if (retry) await retry();
+    } catch (err) {
+      setQtyError(err.message);
+    } finally {
+      setQtySaving(false);
+    }
+  };
 
   // Mobile detection
   useEffect(() => {
@@ -107,82 +157,32 @@ const MedicationModal = ({ onClose }) => {
     }
   };
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'completed_on_time':
-        return { bg: '#e8f5e8', border: '#28a745', text: '#155724' };
-      case 'completed_warning':
-        return { bg: '#fff3cd', border: '#ffc107', text: '#856404' };
-      case 'completed_late':
-        return { bg: '#f8d7da', border: '#dc3545', text: '#721c24' };
-      case 'skipped':
-        return { bg: '#e2e3e5', border: '#6c757d', text: '#495057' };
-      case 'ready':
-      case 'due_on_time':
-        return { bg: '#d4edda', border: '#28a745', text: '#155724' };
-      case 'due_warning':
-        return { bg: '#fff3cd', border: '#ffc107', text: '#856404' };
-      case 'due_late':
-        return { bg: '#f8d7da', border: '#dc3545', text: '#721c24' };
-      case 'missed':
-        return { bg: '#f8d7da', border: '#dc3545', text: '#721c24' };
-      case 'upcoming':
-      case 'pending':
-        return { bg: '#d1ecf1', border: '#17a2b8', text: '#0c5460' };
-      default:
-        return { bg: '#f8f9fa', border: '#6c757d', text: '#495057' };
-    }
-  };
-
-  const getStatusText = (item) => {
-    const status = item.status;
-    const isToday = new Date(item.scheduled_time).toDateString() === new Date().toDateString();
-
-    switch (status) {
-      case 'completed_on_time':
-        return isToday ? 'Completed' : 'Completed on time';
-      case 'completed_warning':
-        return isToday ? 'Completed (timing off)' : 'Completed with timing variance';
-      case 'completed_late':
-        return isToday ? 'Completed (very late/early)' : 'Completed with significant timing variance';
-      case 'skipped':
-        return 'Skipped';
-      case 'ready':
-      case 'due_on_time':
-        return 'Ready to take';
-      case 'due_warning':
-        return 'Late (1-2 hours)';
-      case 'due_late':
-        return 'Very late (>2 hours)';
-      case 'missed':
-        return 'Missed';
-      case 'upcoming':
-      case 'pending':
-        return 'Upcoming';
-      default:
-        return 'Unknown';
-    }
-  };
-
-  // Map backend item.status → filter category key. The daily endpoint emits
-  // statuses the legacy client-side recomputer didn't know about (e.g. `ready`,
-  // `upcoming`), which previously fell through to 'unknown' and broke filtering.
-  const statusCategory = (item) => {
-    switch (item?.status) {
-      case 'completed_on_time': return 'on_time';
-      case 'completed_warning': return 'warning';
-      case 'completed_late':    return 'late_early';
-      case 'skipped':           return 'skipped';
-      case 'upcoming':
-      case 'pending':           return 'upcoming';
-      case 'ready':
-      case 'due_on_time':       return 'ready_to_take';
-      case 'due_warning':
-      case 'due_late':
-      case 'missed':            return 'missed';
-      default:                  return 'unknown';
-    }
-  };
+  // Normalize the API rows into the shape ScheduleList expects.
+  const scheduledItems = useMemo(() => {
+    const raw = scheduledMedications.scheduled_medications || [];
+    return raw.map(item => {
+      const mapped = mapMedStatus(item.status);
+      const completed = mapped === 'completed' || mapped === 'skipped';
+      const dose = item.dose_amount != null
+        ? `${item.dose_amount}${item.dose_unit ? ' ' + item.dose_unit : ''}`
+        : null;
+      return {
+        id: `${item.schedule_id}-${item.scheduled_time}`,
+        scheduled_time: item.scheduled_time,
+        name: item.medication_name,
+        description: item.description,
+        extra: dose,
+        category: null,
+        status: mapped,
+        is_completed: completed,
+        is_yesterday: !!item.is_yesterday,
+        completeLabel: item.status === 'missed' ? 'Take Now' : 'Mark Taken',
+        skipLabel: 'Skip',
+        showSkip: true,
+        _raw: item,
+      };
+    });
+  }, [scheduledMedications]);
 
   const formatTimestamp = (iso) => {
     if (!iso) return null;
@@ -310,7 +310,13 @@ const MedicationModal = ({ onClose }) => {
         fetchScheduledMedications();
       } else {
         const data = await res.json().catch(() => ({}));
-        alert(data.detail || 'Failed to record medication administration.');
+        if (data.error === 'insufficient_quantity') {
+          // Keep the confirm modal open behind the gate; retry re-administers
+          // after the on-hand quantity is updated.
+          openQtyGate(data, handleConfirmMarkTaken);
+        } else {
+          alert(data.detail || 'Failed to record medication administration.');
+        }
       }
     } catch (e) {
       alert('Error recording medication administration.');
@@ -381,11 +387,15 @@ const MedicationModal = ({ onClose }) => {
   };
 
   const handleMarkAllConfirm = async () => {
-    const { selectedMeds, medications } = markAllModal;
-    const selectedMedications = medications.filter(med => selectedMeds.has(med.schedule_id));
-    
+    const { selectedMeds, medications, completedMeds } = markAllModal;
+    // Skip any already-administered in a prior pass so re-running after an
+    // out-of-stock gate doesn't double-administer.
+    const selectedMedications = medications.filter(
+      med => selectedMeds.has(med.schedule_id) && !completedMeds.has(med.schedule_id)
+    );
+
     setMarkAllModal(prev => ({ ...prev, loading: true }));
-    
+
     for (const med of selectedMedications) {
       try {
         const { status } = checkAdministrationWindow(med.scheduled_time);
@@ -403,23 +413,35 @@ const MedicationModal = ({ onClose }) => {
             ...(selectedPatient && { patient_id: selectedPatient.id })
           })
         });
-        
+
         if (res.ok) {
           // Mark this medication as completed
           setMarkAllModal(prev => ({
             ...prev,
             completedMeds: new Set([...prev.completedMeds, med.schedule_id])
           }));
+        } else {
+          const data = await res.json().catch(() => ({}));
+          if (data.error === 'insufficient_quantity') {
+            // Stop the run, keep the modal open with progress so far, and let the
+            // caregiver update the quantity. They re-click "Mark Selected" to
+            // finish the rest (completed ones are skipped above).
+            setMarkAllModal(prev => ({ ...prev, loading: false }));
+            openQtyGate(data, null);
+            await fetchMedications();
+            await fetchScheduledMedications();
+            return;
+          }
         }
       } catch (e) {
         console.error('Error marking medication:', e);
       }
     }
-    
+
     // Refresh data and close modal
     await fetchMedications();
     await fetchScheduledMedications();
-    setMarkAllModal({ 
+    setMarkAllModal({
       open: false, 
       timeGroup: null, 
       medications: [], 
@@ -485,6 +507,10 @@ const MedicationModal = ({ onClose }) => {
       );
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
+        if (data.error === 'insufficient_quantity') {
+          openQtyGate(data, handlePrnSave);
+          return;
+        }
         throw new Error(data.detail || 'Failed to record administration');
       }
       await fetchMedications();
@@ -620,366 +646,23 @@ const MedicationModal = ({ onClose }) => {
           {!loading ? (
             <div>
               {tab === 'scheduled' ? (
-                <div>
-                  {/* Status Filters for Scheduled Medications */}
-                  {scheduledMedications.scheduled_medications && scheduledMedications.scheduled_medications.length > 0 && (
-                    <div style={{ marginBottom: 24, backgroundColor: '#f8f9fa', borderRadius: 8, border: '1px solid #dee2e6' }}>
-                      {/* Filter Header with Toggle */}
-                      <div 
-                        style={{ 
-                          padding: '12px 16px', 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          justifyContent: 'space-between',
-                          cursor: 'pointer',
-                          borderBottom: showFilters ? '1px solid #dee2e6' : 'none',
-                          backgroundColor: showFilters ? '#e9ecef' : 'transparent',
-                          borderRadius: showFilters ? '8px 8px 0 0' : '8px'
-                        }}
-                        onClick={() => setShowFilters(!showFilters)}
-                      >
-                        <h4 style={{ margin: 0, color: '#333', fontSize: 16, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ 
-                            transform: showFilters ? 'rotate(90deg)' : 'rotate(0deg)', 
-                            transition: 'transform 0.2s ease',
-                            display: 'inline-block',
-                            fontSize: 14
-                          }}>
-                            ▶
-                          </span>
-                          Filter by Status
-                        </h4>
-                        <div style={{ fontSize: 12, color: '#666', fontWeight: 500 }}>
-                          {showFilters ? 'Click to hide' : 'Click to show filters'}
-                        </div>
-                      </div>
-                      
-                      {/* Collapsible Filter Content */}
-                      {showFilters && (
-                        <div style={{ padding: 16 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                            <div style={{ fontSize: 14, color: '#666', fontWeight: 500 }}>
-                              Select which medication statuses to display
-                            </div>
-                            <div style={{ display: 'flex', gap: 8 }}>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const allCategories = ['on_time', 'warning', 'late_early', 'upcoming', 'missed', 'skipped', 'ready_to_take'];
-                                  const allSelected = allCategories.every(cat => statusFilters[cat]);
-                                  const newFilters = {};
-                                  allCategories.forEach(cat => newFilters[cat] = !allSelected);
-                                  setStatusFilters(newFilters);
-                                }}
-                                style={{
-                                  padding: '4px 8px',
-                                  fontSize: 12,
-                                  backgroundColor: '#007bff',
-                                  color: 'white',
-                                  border: 'none',
-                                  borderRadius: 4,
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                Toggle All
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setStatusFilters({
-                                    on_time: false,
-                                    warning: false,
-                                    late_early: false,
-                                    upcoming: true,
-                                    missed: true,
-                                    skipped: false,
-                                    ready_to_take: true
-                                  });
-                                }}
-                                style={{
-                                  padding: '4px 8px',
-                                  fontSize: 12,
-                                  backgroundColor: '#6c757d',
-                                  color: 'white',
-                                  border: 'none',
-                                  borderRadius: 4,
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                Reset to Default
-                              </button>
-                            </div>
-                          </div>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-                            {(() => {
-                              const statusConfig = {
-                                on_time: { label: 'On Time', color: '#28a745', bgColor: 'rgba(40, 167, 69, 0.1)' },
-                                warning: { label: 'Warning', color: '#ffc107', bgColor: 'rgba(255, 193, 7, 0.1)' },
-                                late_early: { label: 'Late/Early', color: '#fd7e14', bgColor: 'rgba(253, 126, 20, 0.1)' },
-                                upcoming: { label: 'Upcoming', color: '#17a2b8', bgColor: 'rgba(23, 162, 184, 0.1)' },
-                                missed: { label: 'Missed', color: '#dc3545', bgColor: 'rgba(220, 53, 69, 0.1)' },
-                                skipped: { label: 'Skipped', color: '#6c757d', bgColor: 'rgba(108, 117, 125, 0.1)' },
-                                ready_to_take: { label: 'Ready to Take', color: '#007bff', bgColor: 'rgba(0, 123, 255, 0.1)' }
-                              };
-
-                              const statusCounts = {};
-                              if (scheduledMedications.scheduled_medications) {
-                                scheduledMedications.scheduled_medications.forEach(item => {
-                                  const cat = statusCategory(item);
-                                  statusCounts[cat] = (statusCounts[cat] || 0) + 1;
-                                });
-                              }
-
-                              return Object.entries(statusConfig).map(([status, config]) => (
-                                <label key={status} style={{ 
-                                  display: 'flex', 
-                                  alignItems: 'center', 
-                                  gap: 6, 
-                                  cursor: 'pointer',
-                                  padding: '6px 10px',
-                                  borderRadius: 6,
-                                  backgroundColor: statusFilters[status] ? config.bgColor : 'transparent',
-                                  border: statusFilters[status] ? `1px solid ${config.color}` : '1px solid #dee2e6'
-                                }}>
-                                  <input
-                                    type="checkbox"
-                                    checked={statusFilters[status] || false}
-                                    onChange={(e) => {
-                                      e.stopPropagation();
-                                      setStatusFilters(prev => ({ ...prev, [status]: e.target.checked }));
-                                    }}
-                                    style={{ margin: 0 }}
-                                  />
-                                  <span style={{ fontSize: 14, fontWeight: statusFilters[status] ? 600 : 400, color: statusFilters[status] ? config.color : '#333' }}>
-                                    {config.label} ({statusCounts[status] || 0})
-                                  </span>
-                                </label>
-                              ));
-                            })()}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  
-                  {/* All Scheduled Medications in Chronological Order, grouped by day and time */}
-                  {scheduledMedications.scheduled_medications && scheduledMedications.scheduled_medications.length > 0 ? (
-                    <div>
-                      {/* Removed 'Medication Schedule' heading */}
-                      {(() => {
-                        // Filter medications by selected status filters
-                        const filteredMedications = scheduledMedications.scheduled_medications.filter(item => {
-                          return statusFilters[statusCategory(item)];
-                        });
-
-                        // Group filtered meds by day (YYYY-MM-DD), then by formatted time string
-                        const groupByDay = {};
-                        filteredMedications.forEach(item => {
-                          const dateObj = new Date(item.scheduled_time);
-                          const dayKey = dateObj.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-                          const timeStr = dateObj.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true });
-                          if (!groupByDay[dayKey]) groupByDay[dayKey] = {};
-                          if (!groupByDay[dayKey][timeStr]) groupByDay[dayKey][timeStr] = [];
-                          groupByDay[dayKey][timeStr].push(item);
-                        });
-                        // Sort days chronologically
-                        const sortedDays = Object.keys(groupByDay).sort((a, b) => {
-                          // Parse to Date for sorting
-                          const parse = d => new Date(d);
-                          return parse(a) - parse(b);
-                        });
-                        return (
-                          <div>
-                            {sortedDays.map(dayKey => (
-                              <div key={dayKey} style={{ marginBottom: 36 }}>
-                                <div style={{ fontWeight: 800, fontSize: 22, color: '#fff', marginBottom: 8, letterSpacing: 0.5, textShadow: '0 1px 2px #222' }}>{dayKey}</div>
-                                <div style={{ borderBottom: '2px solid #e2e8f0', marginBottom: 16 }} />
-                                {Object.keys(groupByDay[dayKey]).sort((a, b) => {
-                                  // Convert to 24h for sorting
-                                  const parse = t => {
-                                    const [h, m, ampm] = t.match(/(\d+):(\d+)\s*(AM|PM)/i).slice(1);
-                                    let hour = parseInt(h, 10);
-                                    if (/pm/i.test(ampm) && hour !== 12) hour += 12;
-                                    if (/am/i.test(ampm) && hour === 12) hour = 0;
-                                    return hour * 60 + parseInt(m, 10);
-                                  };
-                                  return parse(a) - parse(b);
-                                }).map(timeStr => (
-                                  <div key={timeStr} style={{
-                                    marginBottom: 32,
-                                    background: '#181f2a',
-                                    borderRadius: 18,
-                                    boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
-                                    padding: '18px 24px',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    position: 'relative',
-                                    border: '1.5px solid #2d3748',
-                                  }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                                      <div style={{ fontWeight: 700, fontSize: 20, color: '#00bfff', letterSpacing: 0.2, textShadow: '0 1px 2px #222' }}>{timeStr}</div>
-                                      <button style={{
-                                        background: '#007bff',
-                                        color: '#fff',
-                                        border: 'none',
-                                        borderRadius: 12,
-                                        padding: '8px 18px',
-                                        fontWeight: 600,
-                                        fontSize: 14,
-                                        boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
-                                        cursor: 'pointer',
-                                        transition: 'background 0.2s',
-                                      }}
-                                      onClick={() => handleMarkAllClick(timeStr, groupByDay[dayKey][timeStr])}
-                                      >Mark All</button>
-                                    </div>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                                      {groupByDay[dayKey][timeStr].map((item, idx) => {
-                                        const colors = getStatusColor(item.status);
-                                        const isCompleted = item.is_completed;
-                                        const isToday = new Date(item.scheduled_time).toDateString() === new Date().toDateString();
-                                        return (
-                                          <div
-                                            key={`scheduled-${dayKey}-${timeStr}-${idx}`}
-                                            style={{
-                                              backgroundColor: colors.bg,
-                                              borderRadius: isMobile ? 10 : 12,
-                                              padding: isMobile ? '12px 14px' : '14px 18px',
-                                              boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-                                              border: `1.5px solid ${colors.border}`,
-                                              borderLeft: `6px solid ${colors.border}`,
-                                              display: 'flex',
-                                              flexDirection: isMobile ? 'column' : 'row',
-                                              alignItems: isMobile ? 'stretch' : 'center',
-                                              gap: isMobile ? '10px' : '12px',
-                                              marginBottom: 0,
-                                              opacity: isCompleted && isToday ? 0.7 : 1,
-                                              order: isCompleted && isToday ? 1 : 0,
-                                            }}
-                                          >
-                                            <div style={{
-                                              flex: 1,
-                                              display: 'flex',
-                                              flexDirection: isMobile ? 'column' : 'row',
-                                              alignItems: isMobile ? 'flex-start' : 'center',
-                                              gap: isMobile ? 6 : 10,
-                                            }}>
-                                              <span style={{ color: colors.text, fontSize: isMobile ? '15px' : '16px', fontWeight: '600', lineHeight: 1.3 }}>
-                                                {item.medication_name}{item.concentration ? ` (${item.concentration})` : ''}
-                                              </span>
-                                              <span style={{ color: colors.text, fontSize: isMobile ? '13px' : '14px', fontWeight: 500, opacity: 0.85 }}>
-                                                {isMobile ? '' : '- '}{item.dose_amount} {item.dose_unit}
-                                                {item.type ? ` (${item.type})` : ''}
-                                              </span>
-                                              <span
-                                                style={{
-                                                  backgroundColor: colors.border,
-                                                  color: '#fff',
-                                                  padding: '2px 8px',
-                                                  borderRadius: '12px',
-                                                  fontSize: isMobile ? '11px' : '12px',
-                                                  fontWeight: '500',
-                                                  marginLeft: isMobile ? 0 : 8,
-                                                  alignSelf: isMobile ? 'flex-start' : 'center',
-                                                }}
-                                              >
-                                                {getStatusText(item)}
-                                              </span>
-                                            </div>
-                                            <div style={{
-                                              display: 'flex',
-                                              gap: isMobile ? '6px' : '8px',
-                                              width: isMobile ? '100%' : 'auto',
-                                            }}>
-                                              {!isCompleted && (
-                                                <>
-                                                  <button
-                                                    style={{
-                                                      padding: isMobile ? '10px 14px' : '6px 14px',
-                                                      border: 'none',
-                                                      borderRadius: '8px',
-                                                      backgroundColor: '#28a745',
-                                                      color: '#fff',
-                                                      cursor: 'pointer',
-                                                      fontSize: isMobile ? '14px' : '13px',
-                                                      fontWeight: '500',
-                                                      boxShadow: '0 1px 2px rgba(0,0,0,0.07)',
-                                                      flex: isMobile ? '1' : '0 0 auto',
-                                                    }}
-                                                    onClick={() => handleMarkTaken(item)}
-                                                  >
-                                                    {item.status === 'missed' ? (isMobile ? 'Take Now' : 'Take Now') : (isMobile ? 'Mark Taken' : 'Mark Taken')}
-                                                  </button>
-                                                  {item.status === 'missed' && (
-                                                    <button
-                                                      style={{
-                                                        padding: isMobile ? '10px 14px' : '6px 14px',
-                                                        border: '2px solid #6c757d',
-                                                        borderRadius: '8px',
-                                                        backgroundColor: '#fff',
-                                                        color: '#6c757d',
-                                                        cursor: 'pointer',
-                                                        fontSize: isMobile ? '14px' : '13px',
-                                                        fontWeight: '500',
-                                                        boxShadow: '0 1px 2px rgba(0,0,0,0.07)',
-                                                        flex: isMobile ? '1' : '0 0 auto',
-                                                      }}
-                                                      onClick={() => handleSkipDose(item)}
-                                                    >
-                                                      Skip
-                                                    </button>
-                                                  )}
-                                                </>
-                                              )}
-                                            </div>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            ))}
-                          </div>
-                        );
-                      })()}
-                      {/* Legend */}
-                      <div style={{ marginTop: '24px', padding: '16px', backgroundColor: '#2d3748', borderRadius: '8px', border: '1px solid #4a5568' }}>
-                        <h4 style={{ margin: '0 0 12px 0', color: '#ffffff', fontSize: '14px', fontWeight: '600' }}>Status Legend:</h4>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', fontSize: '12px', color: '#e2e8f0' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <div style={{ width: 12, height: 12, backgroundColor: '#28a745', borderRadius: '50%' }}></div>
-                            <span>On time (±1 hour)</span>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <div style={{ width: 12, height: 12, backgroundColor: '#ffc107', borderRadius: '50%' }}></div>
-                            <span>Warning (1-2 hours off)</span>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <div style={{ width: 12, height: 12, backgroundColor: '#dc3545', borderRadius: '50%' }}></div>
-                            <span>Late/Early ({'>'}2 hours off)</span>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <div style={{ width: 12, height: 12, backgroundColor: '#17a2b8', borderRadius: '50%' }}></div>
-                            <span>Upcoming</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{
-                      textAlign: 'center',
-                      padding: '40px',
-                      color: '#a0aec0',
-                      backgroundColor: '#2d3748',
-                      borderRadius: '8px',
-                      border: '1px solid #4a5568'
-                    }}>
-                      <p style={{ margin: '0 0 10px 0', fontSize: '18px', fontWeight: '500', color: '#ffffff' }}>No scheduled medications</p>
-                      <p style={{ margin: 0, color: '#a0aec0' }}>No medications scheduled for today and yesterday.</p>
-                    </div>
-                  )}
-                </div>
+                <ScheduleList
+                  items={scheduledItems}
+                  title="Scheduled Medications"
+                  emptyText="No scheduled medications"
+                  onMarkComplete={(item) => handleMarkTaken(item._raw)}
+                  onSkip={(item) => handleSkipDose(item._raw)}
+                  onMarkAll={(items) => {
+                    // Re-use the existing Mark-All pre-select confirmation flow.
+                    const raws = items.map(i => i._raw);
+                    const timeStr = raws[0]?.scheduled_time
+                      ? new Date(raws[0].scheduled_time).toLocaleTimeString(undefined, {
+                          hour: 'numeric', minute: '2-digit', hour12: true,
+                        })
+                      : '';
+                    handleMarkAllClick(timeStr, raws);
+                  }}
+                />
               ) : tab === 'active' ? (
                 activeMedications.length === 0 ? (
                   <div style={{
@@ -1616,6 +1299,74 @@ const MedicationModal = ({ onClose }) => {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Out-of-stock gate — must update on-hand quantity before the dose records */}
+      {qtyGate.open && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 2100
+        }}>
+          <div style={{
+            backgroundColor: '#fff', borderRadius: '10px', padding: '32px',
+            maxWidth: '420px', width: '90%', boxShadow: '0 4px 16px rgba(0,0,0,0.2)'
+          }}>
+            <h3 style={{ margin: '0 0 12px 0', color: '#333' }}>
+              Out of Stock — {qtyGate.info?.medication_name}
+            </h3>
+            <div role="alert" style={{
+              background: '#fdecea', border: '1px solid #f5c2c0', borderRadius: 6,
+              padding: '10px 12px', marginBottom: 16, color: '#611a15', fontSize: 14
+            }}>
+              Only <strong>{qtyGate.info?.current_quantity ?? 0} {qtyGate.info?.quantity_unit || ''}</strong> on
+              hand, but this dose needs <strong>{qtyGate.info?.requested_dose} {qtyGate.info?.quantity_unit || ''}</strong>.
+              Update the on-hand quantity to continue — the dose can’t be recorded until you do.
+            </div>
+            {qtyError && (
+              <div style={{ color: '#c0392b', fontSize: 13, marginBottom: 12 }}>{qtyError}</div>
+            )}
+            <label style={{ display: 'block', marginBottom: 6, fontWeight: 600, color: '#333', fontSize: 13 }}>
+              New on-hand quantity{qtyGate.info?.quantity_unit ? ` (${qtyGate.info.quantity_unit})` : ''} *
+            </label>
+            <input
+              type="number" step="0.1" min="0" value={qtyInput} autoFocus
+              onChange={(e) => setQtyInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !qtySaving && parseFloat(qtyInput) > 0) handleQtySave(); }}
+              style={{
+                width: '100%', padding: 10, fontSize: 14, border: '2px solid #ddd',
+                borderRadius: 6, boxSizing: 'border-box', background: '#f8f9fa', color: '#333', marginBottom: 20
+              }}
+              placeholder="Enter current count on hand"
+            />
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+              <button
+                onClick={closeQtyGate}
+                disabled={qtySaving}
+                style={{
+                  padding: '8px 16px', border: '1px solid #ddd', borderRadius: 4,
+                  background: '#fff', color: '#333', cursor: qtySaving ? 'not-allowed' : 'pointer', fontSize: 14
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleQtySave}
+                disabled={qtySaving || !(parseFloat(qtyInput) > 0)}
+                style={{
+                  padding: '8px 16px', border: 'none', borderRadius: 4,
+                  background: '#28a745', color: '#fff',
+                  cursor: (qtySaving || !(parseFloat(qtyInput) > 0)) ? 'not-allowed' : 'pointer',
+                  fontSize: 14, fontWeight: 500,
+                  opacity: (qtySaving || !(parseFloat(qtyInput) > 0)) ? 0.6 : 1
+                }}
+              >
+                {qtySaving ? 'Saving...' : 'Update & Continue'}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import ModalBase from './ModalBase';
 import config from '../config';
 import { useAdminPatient } from '../contexts/AdminPatientContext';
@@ -7,21 +7,14 @@ import {
   checkAdministrationWindow,
   formatDurationMinutes,
   getCurrentLocalDateTime,
-  localDateTimeToUTC,
 } from '../utils/timezone';
-
-const INTAKE_TYPES = [
-  { value: 'liquid', label: 'Liquid' },
-  { value: 'food', label: 'Food' },
-  { value: 'supplement', label: 'Supplement' },
-];
-
-const OUTPUT_TYPES = [
-  { value: 'urine', label: 'Urine' },
-  { value: 'bowel', label: 'Bowel' },
-  { value: 'vomit', label: 'Vomit' },
-  { value: 'other', label: 'Other' },
-];
+import IntakeModal from '../pages/admin-v2/components/IntakeModal';
+import OutputModal from '../pages/admin-v2/components/OutputModal';
+import ScheduleList from './schedule/ScheduleList';
+// Pull in AdminV2 styles so the shared Intake/Output modals render correctly
+// when this component is mounted from the live dashboard (which doesn't
+// otherwise load admin-v2 CSS). Vite dedupes with admin pages that also import it.
+import '../pages/admin-v2/AdminV2.css';
 
 const NutritionModal = ({ onClose }) => {
   const { selectedPatient } = useAdminPatient();
@@ -34,27 +27,11 @@ const NutritionModal = ({ onClose }) => {
   // Off-window confirm (mirrors care-task modal)
   const [windowConfirm, setWindowConfirm] = useState({ open: false, item: null, check: null });
 
-  // PRN: pick → intake | output form
-  const [prnModal, setPrnModal] = useState({ open: false, mode: null }); // 'pick' | 'intake' | 'output'
-  const [intakeForm, setIntakeForm] = useState({
-    item_type: 'liquid',
-    item_name: '',
-    amount: '',
-    amount_unit: 'ml',
-    consumed_at: '',
-    notes: '',
-  });
-  const [outputForm, setOutputForm] = useState({
-    output_type: 'urine',
-    amount: '',
-    amount_unit: 'ml',
-    occurred_at: '',
-    notes: '',
-  });
-  const [prnSaving, setPrnSaving] = useState(false);
-  const [prnError, setPrnError] = useState(null);
+  // PRN flow: 'pick' opens the choice screen; 'intake'/'output' delegate to
+  // the shared AdminV2 modal of the same name.
+  const [prnMode, setPrnMode] = useState(null); // null | 'pick' | 'intake' | 'output'
+  const [prnDefaultDateTime, setPrnDefaultDateTime] = useState('');
 
-  // ===== Boilerplate =====
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth <= 768);
     window.addEventListener('resize', onResize);
@@ -85,7 +62,7 @@ const NutritionModal = ({ onClose }) => {
       const dateParam = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
       const tz = -today.getTimezoneOffset();
       const res = await fetch(
-        `${config.apiUrl}/api/schedule/daily?patient_id=${selectedPatient.id}&target_date=${dateParam}&tz_offset_minutes=${tz}`,
+        `${config.apiUrl}/api/schedule/daily?patient_id=${selectedPatient.id}&target_date=${dateParam}&tz_offset_minutes=${tz}&include_prior_day=true`,
         { credentials: 'include' }
       );
       if (res.ok) {
@@ -99,35 +76,43 @@ const NutritionModal = ({ onClose }) => {
     }
   };
 
-  // ===== Status helpers =====
-  const getStatus = (item) => {
-    if (item.completed) return { color: '#3fb950', bg: 'rgba(63,185,80,0.12)', label: 'Completed' };
+  // Compute time-based status for ScheduleList (matches care-task backend logic).
+  const computeStatus = (item) => {
+    if (item.completed) return 'completed';
+    if (item.is_yesterday) return 'missed';
     const now = new Date();
     const sched = new Date(item.scheduled_time);
     const diffMin = (sched - now) / 60000;
-    if (diffMin > 60) return { color: '#3b82f6', bg: 'rgba(59,130,246,0.12)', label: 'Upcoming' };
-    if (diffMin > -15) return { color: '#3fb950', bg: 'rgba(63,185,80,0.12)', label: 'Ready' };
-    if (diffMin > -60) return { color: '#f0b400', bg: 'rgba(240,180,0,0.12)', label: 'Late' };
-    return { color: '#dc3545', bg: 'rgba(220,53,69,0.12)', label: 'Missed' };
+    if (diffMin > 30) return 'pending';
+    if (diffMin > 15) return 'pending';
+    if (diffMin > -15) return 'due_on_time';
+    if (diffMin > -60) return 'due_warning';
+    return 'missed';
   };
 
-  const formatTime = (iso) => {
-    if (!iso) return '';
-    return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true });
-  };
-
-  // Group scheduled items by hour
-  const groupByHour = (items) => {
-    const sorted = [...items].sort((a, b) => new Date(a.scheduled_time) - new Date(b.scheduled_time));
-    const groups = new Map();
-    for (const item of sorted) {
-      const d = new Date(item.scheduled_time);
-      const key = `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
-      if (!groups.has(key)) groups.set(key, { time: formatTime(item.scheduled_time), items: [] });
-      groups.get(key).items.push(item);
-    }
-    return Array.from(groups.values());
-  };
+  // Normalize the API rows into the shape ScheduleList expects.
+  const scheduledItems = useMemo(() => {
+    return scheduled.map(item => {
+      const detail = [];
+      if (item.default_item) detail.push(item.default_item);
+      if (item.default_amount != null) {
+        detail.push(`${item.default_amount}${item.default_amount_unit ? ' ' + item.default_amount_unit : ''}`);
+      }
+      if (item.default_calories != null) detail.push(`${item.default_calories} kcal`);
+      return {
+        id: `${item.schedule_id}-${item.scheduled_time}`,
+        scheduled_time: item.scheduled_time,
+        name: item.name,
+        description: item.description,
+        extra: detail.length ? detail.join(' · ') : null,
+        category: null,
+        status: computeStatus(item),
+        is_completed: !!item.completed,
+        is_yesterday: !!item.is_yesterday,
+        _raw: item,
+      };
+    });
+  }, [scheduled]);
 
   // ===== Complete scheduled item =====
   const submitComplete = async (item, earlyOverride = false) => {
@@ -173,114 +158,18 @@ const NutritionModal = ({ onClose }) => {
 
   const handleMarkCompleted = (item) => submitComplete(item, false);
 
-  // ===== PRN =====
+  // ===== PRN entry =====
   const openPrnPicker = () => {
-    setPrnError(null);
-    const now = getCurrentLocalDateTime();
-    setIntakeForm(f => ({ ...f, consumed_at: now }));
-    setOutputForm(f => ({ ...f, occurred_at: now }));
-    setPrnModal({ open: true, mode: 'pick' });
+    setPrnDefaultDateTime(getCurrentLocalDateTime());
+    setPrnMode('pick');
   };
 
-  const closePrn = () => {
-    setPrnModal({ open: false, mode: null });
-    setPrnError(null);
-    setPrnSaving(false);
-  };
+  const closePrn = () => setPrnMode(null);
 
-  const submitIntake = async () => {
-    if (!selectedPatient) return;
-    setPrnSaving(true);
-    setPrnError(null);
-    try {
-      const res = await fetch(
-        `${config.apiUrl}/api/nutrition-intake?patient_id=${selectedPatient.id}`,
-        {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            item_name: intakeForm.item_name,
-            item_type: intakeForm.item_type,
-            amount: parseFloat(intakeForm.amount) || 0,
-            amount_unit: intakeForm.amount_unit,
-            consumed_at: intakeForm.consumed_at ? localDateTimeToUTC(intakeForm.consumed_at) : null,
-            notes: intakeForm.notes || null,
-          }),
-        }
-      );
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.detail || 'Failed to record intake');
-      }
-      closePrn();
-      fetchSchedule();
-    } catch (err) {
-      setPrnError(err.message);
-    } finally {
-      setPrnSaving(false);
-    }
+  const onPrnSaved = () => {
+    closePrn();
+    fetchSchedule();
   };
-
-  const submitOutput = async () => {
-    if (!selectedPatient) return;
-    setPrnSaving(true);
-    setPrnError(null);
-    try {
-      const body = {
-        patient_id: selectedPatient.id,
-        output_type: outputForm.output_type,
-        occurred_at: outputForm.occurred_at
-          ? localDateTimeToUTC(outputForm.occurred_at)
-          : new Date().toISOString(),
-        notes: outputForm.notes || null,
-      };
-      if (outputForm.amount !== '') {
-        body.amount = parseFloat(outputForm.amount) || 0;
-        body.amount_unit = outputForm.amount_unit;
-      }
-      const res = await fetch(`${config.apiUrl}/api/nutrition/outputs`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.detail || 'Failed to record output');
-      }
-      closePrn();
-      fetchSchedule();
-    } catch (err) {
-      setPrnError(err.message);
-    } finally {
-      setPrnSaving(false);
-    }
-  };
-
-  // ===== Reusable form styles =====
-  const inputStyle = {
-    width: '100%', padding: 10, fontSize: 14,
-    background: '#2d3748', color: '#fff',
-    border: '1px solid rgba(255,255,255,0.15)',
-    borderRadius: 6, boxSizing: 'border-box', outline: 'none',
-  };
-  const labelStyle = { display: 'block', marginBottom: 6, fontWeight: 600, fontSize: 13, color: '#e6edf3' };
-
-  const typeButton = (value, label, current, onPick) => (
-    <button
-      key={value}
-      type="button"
-      onClick={() => onPick(value)}
-      style={{
-        flex: 1, minWidth: 80, padding: '10px 12px',
-        borderRadius: 6, border: '1px solid rgba(255,255,255,0.15)',
-        background: current === value ? '#3fb950' : 'transparent',
-        color: current === value ? '#0d1117' : '#e6edf3',
-        cursor: 'pointer', fontSize: 13, fontWeight: 600,
-      }}
-    >{label}</button>
-  );
 
   // ===== Render =====
   return (
@@ -360,108 +249,14 @@ const NutritionModal = ({ onClose }) => {
           </div>
 
           <div style={{ flex: 1, overflow: 'auto' }}>
-            {loading && <div style={{ textAlign: 'center', padding: 40, color: '#a0aec0' }}>Loading…</div>}
-
-            {!loading && tab === 'scheduled' && (
-              scheduled.length === 0 ? (
-                <div style={{
-                  textAlign: 'center', padding: 40,
-                  background: '#2d3748', borderRadius: 8,
-                  border: '1px solid #4a5568', color: '#a0aec0',
-                }}>
-                  <p style={{ margin: '0 0 6px 0', fontSize: 18, fontWeight: 500, color: '#fff' }}>
-                    No scheduled nutrition for today
-                  </p>
-                  <p style={{ margin: 0 }}>Use PRN to log ad-hoc intake or output.</p>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  {groupByHour(scheduled).map(group => (
-                    <div key={group.time}>
-                      <div style={{
-                        fontWeight: 700, fontSize: 18, color: '#00bfff',
-                        marginBottom: 8, letterSpacing: 0.2,
-                      }}>{group.time}</div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        {group.items.map(item => {
-                          const st = getStatus(item);
-                          return (
-                            <div
-                              key={`${item.schedule_id}-${item.scheduled_time}`}
-                              style={{
-                                background: '#fff',
-                                border: '1px solid #e9ecef',
-                                borderLeft: `6px solid ${st.color}`,
-                                borderRadius: 10,
-                                padding: isMobile ? '12px 14px' : '14px 18px',
-                                display: 'flex',
-                                flexDirection: isMobile ? 'column' : 'row',
-                                alignItems: isMobile ? 'stretch' : 'center',
-                                gap: isMobile ? 10 : 12,
-                                opacity: item.completed ? 0.7 : 1,
-                              }}
-                            >
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-                                  <h4 style={{ margin: 0, color: '#222', fontSize: isMobile ? 15 : 16, fontWeight: 700 }}>
-                                    {item.name}
-                                  </h4>
-                                  <span style={{
-                                    padding: '2px 8px', borderRadius: 10,
-                                    background: st.bg, color: st.color,
-                                    fontSize: 11, fontWeight: 700,
-                                    border: `1px solid ${st.color}40`,
-                                  }}>{st.label}</span>
-                                </div>
-                                {(item.default_item || item.default_amount) && (
-                                  <div style={{ color: '#555', fontSize: 13 }}>
-                                    {item.default_item && <strong>{item.default_item}</strong>}
-                                    {item.default_amount != null && (
-                                      <> — {item.default_amount} {item.default_amount_unit || ''}</>
-                                    )}
-                                    {item.default_calories != null && (
-                                      <> · {item.default_calories} kcal</>
-                                    )}
-                                  </div>
-                                )}
-                                {item.description && (
-                                  <div style={{ color: '#777', fontSize: 12, marginTop: 4, fontStyle: 'italic' }}>
-                                    {item.description}
-                                  </div>
-                                )}
-                              </div>
-                              <div style={{ display: 'flex', gap: 8, width: isMobile ? '100%' : 'auto' }}>
-                                {item.completed ? (
-                                  <span style={{
-                                    padding: isMobile ? '10px 14px' : '6px 14px',
-                                    background: '#e8f5e8', color: '#28a745',
-                                    borderRadius: 8, fontSize: 13, fontWeight: 600,
-                                    flex: isMobile ? 1 : '0 0 auto',
-                                    textAlign: 'center',
-                                  }}>✓ Completed</span>
-                                ) : (
-                                  <button
-                                    onClick={() => handleMarkCompleted(item)}
-                                    style={{
-                                      padding: isMobile ? '10px 14px' : '6px 14px',
-                                      border: 'none', borderRadius: 8,
-                                      background: '#28a745', color: '#fff',
-                                      cursor: 'pointer', fontSize: isMobile ? 14 : 13, fontWeight: 600,
-                                      flex: isMobile ? 1 : '0 0 auto',
-                                    }}
-                                  >
-                                    {st.label === 'Missed' ? 'Complete Now' : 'Mark Complete'}
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )
+            {tab === 'scheduled' && (
+              <ScheduleList
+                items={scheduledItems}
+                loading={loading}
+                title="Scheduled Nutrition"
+                emptyText="No scheduled nutrition for today"
+                onMarkComplete={(item) => handleMarkCompleted(item._raw)}
+              />
             )}
           </div>
         </div>
@@ -541,8 +336,8 @@ const NutritionModal = ({ onClose }) => {
         );
       })()}
 
-      {/* PRN modal — pick → intake | output form */}
-      {prnModal.open && (
+      {/* PRN pick: intake vs output */}
+      {prnMode === 'pick' && (
         <div
           onClick={closePrn}
           style={{
@@ -556,7 +351,7 @@ const NutritionModal = ({ onClose }) => {
             onClick={e => e.stopPropagation()}
             style={{
               backgroundColor: '#1a2332', borderRadius: 12, padding: 24,
-              maxWidth: 480, width: '90%', maxHeight: '85vh', overflow: 'auto',
+              maxWidth: 480, width: '90%',
               boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
               border: '1px solid rgba(255,255,255,0.08)',
               animation: 'nutModalSlide 0.25s ease-out', color: '#e6edf3',
@@ -567,252 +362,63 @@ const NutritionModal = ({ onClose }) => {
               marginBottom: 16, paddingBottom: 12,
               borderBottom: '1px solid rgba(255,255,255,0.08)',
             }}>
-              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>
-                {prnModal.mode === 'intake' && 'Log Intake'}
-                {prnModal.mode === 'output' && 'Log Output'}
-                {prnModal.mode === 'pick' && 'Log Ad-Hoc Nutrition'}
-              </h3>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Log Ad-Hoc Nutrition</h3>
               <button
                 onClick={closePrn}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: '#a0aec0', padding: 0 }}
                 aria-label="Close"
               >×</button>
             </div>
-
-            {prnError && (
-              <div role="alert" style={{
-                background: 'rgba(220,53,69,0.15)',
-                border: '1px solid rgba(220,53,69,0.5)',
-                borderRadius: 6, padding: '10px 12px', marginBottom: 16,
-                color: '#f8d7da', fontSize: 13,
-              }}>{prnError}</div>
-            )}
-
-            {/* Step 1: pick intake or output */}
-            {prnModal.mode === 'pick' && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <button
-                  type="button"
-                  onClick={() => setPrnModal({ open: true, mode: 'intake' })}
-                  style={{
-                    padding: '24px 16px', borderRadius: 10, border: 'none',
-                    background: '#3fb950', color: '#0d1117',
-                    cursor: 'pointer', fontSize: 16, fontWeight: 700,
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-                  }}
-                >
-                  <span style={{ fontSize: 24 }}>↓</span>
-                  Log Intake
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPrnModal({ open: true, mode: 'output' })}
-                  style={{
-                    padding: '24px 16px', borderRadius: 10,
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    background: 'transparent', color: '#e6edf3',
-                    cursor: 'pointer', fontSize: 16, fontWeight: 700,
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-                  }}
-                >
-                  <span style={{ fontSize: 24 }}>↑</span>
-                  Log Output
-                </button>
-              </div>
-            )}
-
-            {/* Step 2a: intake form */}
-            {prnModal.mode === 'intake' && (
-              <>
-                <div style={{ marginBottom: 14 }}>
-                  <label style={labelStyle}>Type *</label>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    {INTAKE_TYPES.map(t => typeButton(t.value, t.label, intakeForm.item_type, (v) => setIntakeForm(f => ({ ...f, item_type: v }))))}
-                  </div>
-                </div>
-                <div style={{ marginBottom: 14 }}>
-                  <label style={labelStyle}>Item Name *</label>
-                  <input
-                    type="text"
-                    value={intakeForm.item_name}
-                    onChange={e => setIntakeForm(f => ({ ...f, item_name: e.target.value }))}
-                    placeholder="e.g. Water, Peptamen, Apple"
-                    style={inputStyle}
-                  />
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10, marginBottom: 14 }}>
-                  <div>
-                    <label style={labelStyle}>Amount *</label>
-                    <input
-                      type="number" step="0.1" min="0"
-                      value={intakeForm.amount}
-                      onChange={e => setIntakeForm(f => ({ ...f, amount: e.target.value }))}
-                      style={inputStyle}
-                    />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Unit</label>
-                    <select
-                      value={intakeForm.amount_unit}
-                      onChange={e => setIntakeForm(f => ({ ...f, amount_unit: e.target.value }))}
-                      style={{ ...inputStyle, cursor: 'pointer' }}
-                    >
-                      <option value="ml">ml</option>
-                      <option value="oz">oz</option>
-                      <option value="cups">cups</option>
-                      <option value="grams">grams</option>
-                      <option value="servings">servings</option>
-                    </select>
-                  </div>
-                </div>
-                <div style={{ marginBottom: 14 }}>
-                  <label style={labelStyle}>Consumed At *</label>
-                  <input
-                    type="datetime-local"
-                    value={intakeForm.consumed_at}
-                    onChange={e => setIntakeForm(f => ({ ...f, consumed_at: e.target.value }))}
-                    style={inputStyle}
-                  />
-                </div>
-                <div style={{ marginBottom: 18 }}>
-                  <label style={labelStyle}>Notes (optional)</label>
-                  <textarea
-                    rows={2}
-                    value={intakeForm.notes}
-                    onChange={e => setIntakeForm(f => ({ ...f, notes: e.target.value }))}
-                    style={{ ...inputStyle, resize: 'vertical' }}
-                  />
-                </div>
-                <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between' }}>
-                  <button
-                    type="button"
-                    onClick={() => setPrnModal({ open: true, mode: 'pick' })}
-                    disabled={prnSaving}
-                    style={{
-                      padding: '8px 16px', borderRadius: 6,
-                      border: '1px solid rgba(255,255,255,0.15)',
-                      background: 'transparent', color: '#e6edf3',
-                      cursor: prnSaving ? 'not-allowed' : 'pointer', fontSize: 14,
-                    }}
-                  >← Back</button>
-                  <div style={{ display: 'flex', gap: 10 }}>
-                    <button
-                      type="button" onClick={closePrn} disabled={prnSaving}
-                      style={{
-                        padding: '8px 16px', borderRadius: 6,
-                        border: '1px solid rgba(255,255,255,0.15)',
-                        background: 'transparent', color: '#e6edf3',
-                        cursor: prnSaving ? 'not-allowed' : 'pointer', fontSize: 14,
-                      }}
-                    >Cancel</button>
-                    <button
-                      type="button" onClick={submitIntake}
-                      disabled={prnSaving || !intakeForm.item_name || !intakeForm.amount || !intakeForm.consumed_at}
-                      style={{
-                        padding: '8px 16px', borderRadius: 6, border: 'none',
-                        background: '#3fb950', color: '#0d1117',
-                        cursor: (prnSaving || !intakeForm.item_name || !intakeForm.amount || !intakeForm.consumed_at) ? 'not-allowed' : 'pointer',
-                        fontSize: 14, fontWeight: 600,
-                        opacity: (prnSaving || !intakeForm.item_name || !intakeForm.amount || !intakeForm.consumed_at) ? 0.6 : 1,
-                      }}
-                    >{prnSaving ? 'Saving…' : 'Save Intake'}</button>
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* Step 2b: output form */}
-            {prnModal.mode === 'output' && (
-              <>
-                <div style={{ marginBottom: 14 }}>
-                  <label style={labelStyle}>Type *</label>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {OUTPUT_TYPES.map(t => typeButton(t.value, t.label, outputForm.output_type, (v) => setOutputForm(f => ({ ...f, output_type: v }))))}
-                  </div>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10, marginBottom: 14 }}>
-                  <div>
-                    <label style={labelStyle}>Amount (optional)</label>
-                    <input
-                      type="number" step="0.1" min="0"
-                      value={outputForm.amount}
-                      onChange={e => setOutputForm(f => ({ ...f, amount: e.target.value }))}
-                      style={inputStyle}
-                    />
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Unit</label>
-                    <select
-                      value={outputForm.amount_unit}
-                      onChange={e => setOutputForm(f => ({ ...f, amount_unit: e.target.value }))}
-                      style={{ ...inputStyle, cursor: 'pointer' }}
-                    >
-                      <option value="ml">ml</option>
-                      <option value="oz">oz</option>
-                      <option value="small">small</option>
-                      <option value="medium">medium</option>
-                      <option value="large">large</option>
-                    </select>
-                  </div>
-                </div>
-                <div style={{ marginBottom: 14 }}>
-                  <label style={labelStyle}>Occurred At *</label>
-                  <input
-                    type="datetime-local"
-                    value={outputForm.occurred_at}
-                    onChange={e => setOutputForm(f => ({ ...f, occurred_at: e.target.value }))}
-                    style={inputStyle}
-                  />
-                </div>
-                <div style={{ marginBottom: 18 }}>
-                  <label style={labelStyle}>Notes (optional)</label>
-                  <textarea
-                    rows={2}
-                    value={outputForm.notes}
-                    onChange={e => setOutputForm(f => ({ ...f, notes: e.target.value }))}
-                    style={{ ...inputStyle, resize: 'vertical' }}
-                  />
-                </div>
-                <div style={{ display: 'flex', gap: 10, justifyContent: 'space-between' }}>
-                  <button
-                    type="button"
-                    onClick={() => setPrnModal({ open: true, mode: 'pick' })}
-                    disabled={prnSaving}
-                    style={{
-                      padding: '8px 16px', borderRadius: 6,
-                      border: '1px solid rgba(255,255,255,0.15)',
-                      background: 'transparent', color: '#e6edf3',
-                      cursor: prnSaving ? 'not-allowed' : 'pointer', fontSize: 14,
-                    }}
-                  >← Back</button>
-                  <div style={{ display: 'flex', gap: 10 }}>
-                    <button
-                      type="button" onClick={closePrn} disabled={prnSaving}
-                      style={{
-                        padding: '8px 16px', borderRadius: 6,
-                        border: '1px solid rgba(255,255,255,0.15)',
-                        background: 'transparent', color: '#e6edf3',
-                        cursor: prnSaving ? 'not-allowed' : 'pointer', fontSize: 14,
-                      }}
-                    >Cancel</button>
-                    <button
-                      type="button" onClick={submitOutput}
-                      disabled={prnSaving || !outputForm.occurred_at}
-                      style={{
-                        padding: '8px 16px', borderRadius: 6, border: 'none',
-                        background: '#3fb950', color: '#0d1117',
-                        cursor: (prnSaving || !outputForm.occurred_at) ? 'not-allowed' : 'pointer',
-                        fontSize: 14, fontWeight: 600,
-                        opacity: (prnSaving || !outputForm.occurred_at) ? 0.6 : 1,
-                      }}
-                    >{prnSaving ? 'Saving…' : 'Save Output'}</button>
-                  </div>
-                </div>
-              </>
-            )}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <button
+                type="button"
+                onClick={() => setPrnMode('intake')}
+                style={{
+                  padding: '24px 16px', borderRadius: 10, border: 'none',
+                  background: '#3fb950', color: '#0d1117',
+                  cursor: 'pointer', fontSize: 16, fontWeight: 700,
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                }}
+              >
+                <span style={{ fontSize: 24 }}>↓</span>
+                Log Intake
+              </button>
+              <button
+                type="button"
+                onClick={() => setPrnMode('output')}
+                style={{
+                  padding: '24px 16px', borderRadius: 10,
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  background: 'transparent', color: '#e6edf3',
+                  cursor: 'pointer', fontSize: 16, fontWeight: 700,
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                }}
+              >
+                <span style={{ fontSize: 24 }}>↑</span>
+                Log Output
+              </button>
+            </div>
           </div>
         </div>
       )}
+
+      {/* Shared AdminV2 intake form */}
+      <IntakeModal
+        open={prnMode === 'intake'}
+        onClose={closePrn}
+        onSaved={onPrnSaved}
+        patient={selectedPatient}
+        defaultDateTime={prnDefaultDateTime}
+      />
+
+      {/* Shared AdminV2 output form */}
+      <OutputModal
+        open={prnMode === 'output'}
+        onClose={closePrn}
+        onSaved={onPrnSaved}
+        patient={selectedPatient}
+        defaultDateTime={prnDefaultDateTime}
+      />
     </>
   );
 };

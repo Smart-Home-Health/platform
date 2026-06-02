@@ -74,13 +74,29 @@ export default function UserSelectionPage() {
     } else {
       // PIN verification
       result = await selectUser(selectedUser.id, pin, null);
-      
+
       if (result.requiresPassword) {
         setUsePassword(true);
         setError('Full password required (daily requirement)');
         setLoading(false);
         return;
       }
+    }
+
+    // Forced first-login: route to the password reset screen, carrying the
+    // just-entered password (if any) so the user doesn't have to retype it.
+    if (result.requiresPasswordReset) {
+      navigate('/first-login', {
+        state: {
+          userId: selectedUser.id,
+          fullName: selectedUser.full_name || selectedUser.username,
+          currentPassword: usePassword ? password : null,
+          from: fromLocation,
+          openLiveModal,
+        },
+      });
+      setLoading(false);
+      return;
     }
 
     if (result.success) {
@@ -177,6 +193,7 @@ export default function UserSelectionPage() {
                   <input
                     type="password"
                     id="pin"
+                    inputMode="numeric"
                     value={pin}
                     onChange={(e) => setPin(e.target.value)}
                     placeholder="Enter your PIN"

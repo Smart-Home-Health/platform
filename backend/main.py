@@ -19,7 +19,7 @@ from modules.mqtt_module import MQTTModule
 from modules.state_module import StateModule
 
 # Import route modules
-from routes import core, settings, vitals, medications, care_tasks, equipment, monitoring, mqtt, status, patients, nutrition, businesses, providers, auth, users, schedule, dashboard, symptoms, diagnoses, implants, dme_shipments, account, integrations, integration_imports, readers, backup, analysis
+from routes import core, settings, vitals, medications, care_tasks, equipment, monitoring, mqtt, status, patients, nutrition, businesses, providers, auth, users, schedule, dashboard, symptoms, diagnoses, implants, dme_shipments, account, integrations, integration_imports, frigate as frigate_routes, readers, backup, analysis, reports
 
 # Import legacy components
 from mqtt import initialize_mqtt_service, shutdown_mqtt_service
@@ -29,6 +29,12 @@ from crud.settings import get_setting, save_setting
 # Import auth components
 from middleware import AuthenticationMiddleware
 from seed_auth import seed_default_data
+
+# Install the global soft-delete filter so undone (voided) completion logs are
+# excluded from every read path. Imported after the route modules above so all
+# ORM models are registered first.
+from soft_delete import register_soft_delete_filter
+register_soft_delete_filter()
 
 load_dotenv()
 
@@ -79,9 +85,11 @@ app.include_router(implants.router)
 app.include_router(dme_shipments.router)
 app.include_router(integrations.router)
 app.include_router(integration_imports.router)
+app.include_router(frigate_routes.router)
 app.include_router(readers.router)
 app.include_router(backup.router)
 app.include_router(analysis.router)
+app.include_router(reports.router)
 
 # Global event bus and modules
 event_bus = EventBus(maxsize=1000)

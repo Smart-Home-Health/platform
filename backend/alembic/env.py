@@ -53,6 +53,7 @@ from schemas.nutrition_output import NutritionOutput
 from schemas.nutrition_schedule import NutritionSchedule
 from schemas.setting import Setting
 from models.users import User, Role, Permission
+from models.custom_vital_definition import CustomVitalDefinition
 from schemas.symptom import Symptom
 
 target_metadata = Base.metadata

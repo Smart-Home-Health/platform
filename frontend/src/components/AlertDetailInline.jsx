@@ -1,0 +1,526 @@
+import { useState, useEffect, useMemo } from 'react';
+import SimpleEventChart from './SimpleEventChart';
+import config from '../config';
+import ZoomableVideo from './ZoomableVideo';
+import { AlertIcon, CheckIcon, ClockIcon, HeartIcon, CameraIcon } from './Icons';
+
+const AlertDetailInline = ({ alert, onClose, onAcknowledge, initiateAcknowledge = false }) => {
+  const [eventData, setEventData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [showOxygenForm, setShowOxygenForm] = useState(initiateAcknowledge);
+  const [oxygenUsed, setOxygenUsed] = useState(false);
+  const [oxygenValue, setOxygenValue] = useState('');
+  const [oxygenUnit, setOxygenUnit] = useState('L/min');
+  const [acknowledgingAlert, setAcknowledgingAlert] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
+  const [clipStatus, setClipStatus] = useState(null);
+  const [clipError, setClipError] = useState(null);
+  const [savingClip, setSavingClip] = useState(false);
+
+  useEffect(() => { fetchEventData(); }, [alert.id]);
+
+  const clipWindow = useMemo(() => {
+    if (!alert.patient_id || !alert.start_time) return null;
+    const start = Math.floor(new Date(alert.start_time).getTime() / 1000);
+    const endIso = alert.end_time || new Date().toISOString();
+    const end = Math.floor(new Date(endIso).getTime() / 1000);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+    return { patientId: alert.patient_id, start, end };
+  }, [alert.patient_id, alert.start_time, alert.end_time]);
+
+  const fetchClipStatus = async () => {
+    if (!clipWindow) return;
+    try {
+      const { patientId, start, end } = clipWindow;
+      const res = await fetch(
+        `${config.apiUrl}/api/integrations/frigate/patient/${patientId}/clips/status?start=${start}&end=${end}`,
+        { credentials: 'include' }
+      );
+      if (res.status === 404) { setClipStatus({ noIntegration: true }); return; }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || `Failed to load clip status (${res.status})`);
+      }
+      setClipStatus(await res.json());
+      setClipError(null);
+    } catch (err) {
+      setClipError(err.message);
+    }
+  };
+
+  useEffect(() => {
+    setClipStatus(null);
+    setClipError(null);
+    fetchClipStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clipWindow]);
+
+  const handleSaveClip = async () => {
+    if (!clipWindow || savingClip) return;
+    setSavingClip(true);
+    setClipError(null);
+    try {
+      const { patientId, start, end } = clipWindow;
+      const res = await fetch(
+        `${config.apiUrl}/api/integrations/frigate/patient/${patientId}/clips?start=${start}&end=${end}`,
+        { method: 'POST', credentials: 'include' }
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || `Save failed (${res.status})`);
+      }
+      setClipStatus(await res.json());
+    } catch (err) {
+      setClipError(err.message);
+    } finally {
+      setSavingClip(false);
+    }
+  };
+
+  const clipFileUrl = (dl) => {
+    if (!clipWindow) return '';
+    const { patientId, start, end } = clipWindow;
+    return `${config.apiUrl}/api/integrations/frigate/patient/${patientId}/clips/file?start=${start}&end=${end}${dl ? '&dl=1' : ''}`;
+  };
+
+
+  useEffect(() => {
+    if (initiateAcknowledge) setShowOxygenForm(true);
+  }, [initiateAcknowledge]);
+
+  const fetchEventData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await fetch(`${config.apiUrl}/api/monitoring/alerts/${alert.id}/data`, { credentials: 'include' });
+      if (!response.ok) throw new Error(`Error fetching alert data: ${response.statusText}`);
+      setEventData(await response.json());
+    } catch (err) {
+      setError('Failed to load event data.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmitAcknowledge = async () => {
+    try {
+      setAcknowledgingAlert(true);
+      setSubmitError(null);
+      const payload = {
+        oxygen_used: oxygenUsed ? 1 : 0,
+        oxygen_highest: oxygenUsed && oxygenValue ? parseFloat(oxygenValue) : null,
+        oxygen_unit: oxygenUsed && oxygenValue ? oxygenUnit : null,
+      };
+      const response = await fetch(`${config.apiUrl}/api/monitoring/alerts/${alert.id}/acknowledge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error(await response.text() || `Failed (${response.status})`);
+      onAcknowledge(alert.id);
+      onClose();
+    } catch (err) {
+      setSubmitError(err.message);
+    } finally {
+      setAcknowledgingAlert(false);
+    }
+  };
+
+  const formatDateTime = (isoString) => {
+    if (!isoString) return 'N/A';
+    return new Date(isoString).toLocaleString(undefined, {
+      month: 'short', day: 'numeric', year: 'numeric',
+      hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true,
+    });
+  };
+
+  const adjustedEnd = (end) => {
+    if (!end) return null;
+    return new Date(new Date(end).getTime() - 30000);
+  };
+
+  const formatDuration = (start, end) => {
+    if (!start) return '—';
+    const endTime = end ? adjustedEnd(end) : new Date();
+    const ms = endTime - new Date(start);
+    if (ms < 0) return 'Ongoing';
+    const total = Math.floor(ms / 1000);
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    if (h > 0) return `${h}h ${m}m`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
+  };
+
+  const spo2ChartData = useMemo(() => {
+    if (!eventData || eventData.length === 0) return [];
+    return eventData.map(p => ({ x: new Date(p.timestamp).toLocaleTimeString(), y: p.spo2 }));
+  }, [eventData]);
+
+  const bpmChartData = useMemo(() => {
+    if (!eventData || eventData.length === 0) return [];
+    return eventData.map(p => ({ x: new Date(p.timestamp).toLocaleTimeString(), y: p.bpm }));
+  }, [eventData]);
+
+  const severity = !alert.end_time ? 'active' : alert.acknowledged ? 'acknowledged' : 'unacknowledged';
+  const SEV = {
+    active:         { color: '#dc3545', bg: 'rgba(220,53,69,0.12)', label: 'Active', icon: <AlertIcon size={14} /> },
+    unacknowledged: { color: '#f0883e', bg: 'rgba(240,136,62,0.12)', label: 'Unacknowledged', icon: <ClockIcon size={14} /> },
+    acknowledged:   { color: '#3fb950', bg: 'rgba(63,185,80,0.12)', label: 'Acknowledged', icon: <CheckIcon size={14} /> },
+  }[severity];
+
+  const triggeredAlarms = [];
+  if (alert.alarm1_triggered) triggeredAlarms.push('Alarm 1');
+  if (alert.alarm2_triggered) triggeredAlarms.push('Alarm 2');
+  if (alert.spo2_alarm_triggered) triggeredAlarms.push('SpO₂');
+  if (alert.hr_alarm_triggered) triggeredAlarms.push('BPM');
+
+  const infoItem = (label, value) => (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 4,
+      padding: '10px 12px',
+      background: 'rgba(255,255,255,0.04)',
+      border: '1px solid rgba(255,255,255,0.08)',
+      borderRadius: 8, minWidth: 0,
+    }}>
+      <span style={{ color: '#a0aec0', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        {label}
+      </span>
+      <span style={{ color: '#e6edf3', fontSize: 14, fontWeight: 500, wordBreak: 'break-word' }}>
+        {value}
+      </span>
+    </div>
+  );
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, color: '#e6edf3' }}>
+      {/* Back button + title */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 12,
+        paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.08)',
+      }}>
+        <button
+          onClick={onClose}
+          style={{
+            padding: '8px 14px', borderRadius: 6,
+            border: '1px solid rgba(255,255,255,0.15)',
+            background: 'transparent', color: '#e6edf3',
+            cursor: 'pointer', fontSize: 13, fontWeight: 500,
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}
+        >
+          ← Back
+        </button>
+        <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600 }}>Alert Event Details</h3>
+      </div>
+
+      {/* Status banner */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
+        background: SEV.bg, border: `1px solid ${SEV.color}40`, borderRadius: 8,
+      }}>
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          padding: '4px 10px', borderRadius: 12,
+          background: SEV.color, color: '#0d1117',
+          fontSize: 12, fontWeight: 700,
+        }}>
+          {SEV.icon} {SEV.label}
+        </span>
+        {triggeredAlarms.length > 0 && (
+          <span style={{ color: '#cbd5e0', fontSize: 13 }}>
+            Alarms: <strong>{triggeredAlarms.join(', ')}</strong>
+          </span>
+        )}
+      </div>
+
+      {/* Info grid */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+        gap: 10,
+      }}>
+        {infoItem('Start Time', formatDateTime(alert.start_time))}
+        {infoItem('End Time', alert.end_time ? formatDateTime(adjustedEnd(alert.end_time)) : 'Ongoing')}
+      </div>
+
+      {/* Metric cards */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+        gap: 12,
+      }}>
+        <div style={{
+          background: 'rgba(72,187,120,0.1)',
+          border: '1px solid rgba(72,187,120,0.3)',
+          borderRadius: 10, padding: '14px 16px',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <span style={{ color: '#9ae6b4', fontSize: 13, fontWeight: 600 }}>SpO₂ Range</span>
+            {alert.spo2_alarm_triggered && (
+              <span style={{
+                background: '#f56565', color: '#fff',
+                padding: '2px 8px', borderRadius: 10,
+                fontSize: 10, fontWeight: 700,
+              }}>ALARM</span>
+            )}
+          </div>
+          <div style={{ color: '#e6edf3', fontSize: 22, fontWeight: 700 }}>
+            {alert.spo2_min !== null && alert.spo2_max !== null
+              ? (alert.spo2_min === alert.spo2_max ? `${alert.spo2_min}%` : `${alert.spo2_min}–${alert.spo2_max}%`)
+              : 'N/A'}
+          </div>
+        </div>
+
+        <div style={{
+          background: 'rgba(245,101,101,0.1)',
+          border: '1px solid rgba(245,101,101,0.3)',
+          borderRadius: 10, padding: '14px 16px',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#feb2b2', fontSize: 13, fontWeight: 600 }}>
+              <HeartIcon size={14} /> Heart Rate Range
+            </span>
+            {alert.hr_alarm_triggered && (
+              <span style={{
+                background: '#f56565', color: '#fff',
+                padding: '2px 8px', borderRadius: 10,
+                fontSize: 10, fontWeight: 700,
+              }}>ALARM</span>
+            )}
+          </div>
+          <div style={{ color: '#e6edf3', fontSize: 22, fontWeight: 700 }}>
+            {alert.bpm_min !== null && alert.bpm_max !== null
+              ? (alert.bpm_min === alert.bpm_max ? `${alert.bpm_min} BPM` : `${alert.bpm_min}–${alert.bpm_max} BPM`)
+              : 'N/A'}
+          </div>
+        </div>
+      </div>
+
+      {/* Charts */}
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: 30, color: '#a0aec0' }}>Loading data…</div>
+      ) : error ? (
+        <div style={{
+          padding: '12px 14px', borderRadius: 8,
+          background: 'rgba(220,53,69,0.15)',
+          border: '1px solid rgba(220,53,69,0.5)',
+          color: '#f8d7da', fontSize: 13,
+        }}>{error}</div>
+      ) : !eventData || eventData.length === 0 ? (
+        <div style={{
+          textAlign: 'center', padding: 24,
+          background: 'rgba(255,255,255,0.04)',
+          border: '1px dashed rgba(255,255,255,0.15)',
+          borderRadius: 8, color: '#a0aec0',
+        }}>No data available for this event</div>
+      ) : (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+          gap: 12,
+        }}>
+          <div style={{ background: '#1a202c', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: 12 }}>
+            <SimpleEventChart title="Blood Oxygen" color="#48BB78" unit="SpO₂ (%)" data={spo2ChartData} />
+          </div>
+          <div style={{ background: '#1a202c', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: 12 }}>
+            <SimpleEventChart title="Pulse Rate" color="#F56565" unit="BPM" data={bpmChartData} />
+          </div>
+        </div>
+      )}
+
+      {/* Frigate event footage — hidden when patient has no integration */}
+      {clipStatus && !clipStatus.noIntegration && (
+        <div style={{
+          background: '#0d1117',
+          border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: 10,
+          padding: 12,
+          display: 'flex', flexDirection: 'column', gap: 8,
+        }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: 12, flexWrap: 'wrap',
+          }}>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              color: '#e6edf3', fontSize: 13, fontWeight: 600,
+            }}>
+              <CameraIcon size={16} />
+              Event Footage{clipStatus.camera ? ` — ${clipStatus.camera}` : ''}
+              {clipStatus.saved && clipStatus.file_size && (
+                <span style={{ color: '#8b949e', fontWeight: 400 }}>
+                  &middot; {(clipStatus.file_size / (1024 * 1024)).toFixed(1)} MB
+                </span>
+              )}
+            </span>
+            {clipStatus.saved && (
+              <a
+                href={clipFileUrl(true)}
+                download
+                style={{
+                  padding: '6px 12px', borderRadius: 6,
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  background: 'transparent', color: '#58a6ff',
+                  fontSize: 12, fontWeight: 600,
+                  textDecoration: 'none',
+                }}
+              >
+                Download to device
+              </a>
+            )}
+          </div>
+          {clipError && (
+            <div role="alert" style={{
+              padding: '8px 10px', borderRadius: 6,
+              background: 'rgba(220,53,69,0.15)',
+              border: '1px solid rgba(220,53,69,0.5)',
+              color: '#f8d7da', fontSize: 12,
+            }}>{clipError}</div>
+          )}
+          {clipStatus.saved ? (
+            <ZoomableVideo
+              key={clipFileUrl(false)}
+              src={clipFileUrl(false)}
+              crossOrigin="use-credentials"
+              controls
+              playsInline
+              preload="metadata"
+              containerStyle={{ maxHeight: '50vh' }}
+            />
+          ) : (
+            <div style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+              padding: 24, background: 'rgba(255,255,255,0.03)',
+              border: '1px dashed rgba(255,255,255,0.12)', borderRadius: 8,
+            }}>
+              <span style={{ color: '#a0aec0', fontSize: 13 }}>
+                No clip saved for this event yet
+              </span>
+              <button
+                onClick={handleSaveClip}
+                disabled={savingClip}
+                style={{
+                  padding: '8px 16px', borderRadius: 6, border: 'none',
+                  background: '#238636', color: '#fff',
+                  cursor: savingClip ? 'default' : 'pointer',
+                  fontSize: 13, fontWeight: 600,
+                }}
+              >
+                {savingClip ? 'Saving from Frigate...' : 'Save clip to server'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Actions */}
+      {!showOxygenForm ? (
+        <div style={{
+          display: 'flex', justifyContent: 'flex-end', gap: 10,
+          paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.08)',
+        }}>
+          <button onClick={onClose} style={{
+            padding: '9px 18px', borderRadius: 6,
+            border: '1px solid rgba(255,255,255,0.15)',
+            background: 'transparent', color: '#e6edf3',
+            cursor: 'pointer', fontSize: 14, fontWeight: 500,
+          }}>Back to List</button>
+          {!alert.acknowledged && (
+            <button onClick={() => setShowOxygenForm(true)} style={{
+              padding: '9px 18px', borderRadius: 6, border: 'none',
+              background: '#3fb950', color: '#0d1117',
+              cursor: 'pointer', fontSize: 14, fontWeight: 600,
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+              <CheckIcon size={14} /> Acknowledge
+            </button>
+          )}
+        </div>
+      ) : (
+        <div style={{
+          padding: '16px', borderRadius: 10,
+          background: 'rgba(255,255,255,0.04)',
+          border: '1px solid rgba(255,255,255,0.1)',
+        }}>
+          <h4 style={{ margin: '0 0 12px 0', fontSize: 16, fontWeight: 600 }}>Acknowledge Alert</h4>
+          <p style={{ margin: '0 0 12px 0', color: '#cbd5e0', fontSize: 14 }}>
+            Confirm if oxygen was administered during this alert.
+          </p>
+          <label style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            cursor: 'pointer', padding: '10px 12px',
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: 8, marginBottom: 12, userSelect: 'none',
+          }}>
+            <input type="checkbox" checked={oxygenUsed} onChange={e => setOxygenUsed(e.target.checked)}
+                   style={{ width: 18, height: 18, cursor: 'pointer', accentColor: '#3fb950' }} />
+            <span style={{ fontSize: 14 }}>Oxygen was administered</span>
+          </label>
+          {oxygenUsed && (
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', marginBottom: 6, fontSize: 13, fontWeight: 600 }}>
+                Highest flow / concentration
+              </label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input type="number" value={oxygenValue}
+                       onChange={e => { const v = e.target.value; if (v === '' || parseFloat(v) >= 0) setOxygenValue(v); }}
+                       step="0.1" min="0" placeholder="Enter value"
+                       style={{
+                         flex: 1, padding: 10, fontSize: 14,
+                         background: '#2d3748', color: '#fff',
+                         border: '1px solid rgba(255,255,255,0.15)',
+                         borderRadius: 6, boxSizing: 'border-box',
+                       }} />
+                <select value={oxygenUnit} onChange={e => setOxygenUnit(e.target.value)}
+                        style={{
+                          padding: 10, fontSize: 14,
+                          background: '#2d3748', color: '#fff',
+                          border: '1px solid rgba(255,255,255,0.15)',
+                          borderRadius: 6,
+                        }}>
+                  <option value="L/min">L/min</option>
+                  <option value="%">%</option>
+                </select>
+              </div>
+            </div>
+          )}
+          {submitError && (
+            <div style={{
+              padding: '10px 12px', borderRadius: 6,
+              background: 'rgba(220,53,69,0.15)',
+              border: '1px solid rgba(220,53,69,0.5)',
+              color: '#f8d7da', fontSize: 13, marginBottom: 12,
+            }}>{submitError}</div>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <button onClick={() => { setShowOxygenForm(false); setSubmitError(null); }}
+                    disabled={acknowledgingAlert}
+                    style={{
+                      padding: '9px 18px', borderRadius: 6,
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      background: 'transparent', color: '#e6edf3',
+                      cursor: acknowledgingAlert ? 'not-allowed' : 'pointer',
+                      fontSize: 14, fontWeight: 500,
+                    }}>Cancel</button>
+            <button onClick={handleSubmitAcknowledge}
+                    disabled={acknowledgingAlert || (oxygenUsed && !oxygenValue)}
+                    style={{
+                      padding: '9px 18px', borderRadius: 6, border: 'none',
+                      background: '#3fb950', color: '#0d1117',
+                      cursor: (acknowledgingAlert || (oxygenUsed && !oxygenValue)) ? 'not-allowed' : 'pointer',
+                      fontSize: 14, fontWeight: 600,
+                      opacity: (acknowledgingAlert || (oxygenUsed && !oxygenValue)) ? 0.6 : 1,
+                    }}>{acknowledgingAlert ? 'Submitting…' : 'Submit'}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default AlertDetailInline;

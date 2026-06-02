@@ -10,6 +10,7 @@ from crud.patients import (
     create_default_patient, get_current_patient, set_current_patient,
     get_or_create_default_patient,
     get_background_patient_id, set_background_patient_id,
+    get_visible_patient_ids,
 )
 from models.patients import (
     PatientBase,
@@ -18,7 +19,7 @@ from models.patients import (
     PatientResponse,
 )
 from models.users import User
-from schemas.patient import Patient, PatientAccess
+from schemas.patient import Patient
 
 router = APIRouter(prefix="/api/patients", tags=["patients"])
 
@@ -32,20 +33,14 @@ def list_patients(
 ):
     """Get list of patients visible to the current user.
 
-    System admins see every patient. Other users see only the patients
-    explicitly granted to them via PatientAccess (set on the user-edit page).
+    System admins (is_system_admin flag or the system_admin role) see every
+    patient. Other users see only the patients explicitly granted to them via
+    PatientAccess (set on the user-edit page).
     Allowed in restricted mode so the user can still pick a patient to perform care.
     """
-    if current_user.is_system_admin:
+    allowed_ids = get_visible_patient_ids(db, current_user)
+    if allowed_ids is None:
         return get_patients(db, active_only=active_only, skip=skip, limit=limit)
-
-    allowed_ids = [
-        row.patient_id
-        for row in db.query(PatientAccess.patient_id).filter(
-            PatientAccess.user_id == current_user.id,
-            PatientAccess.is_active == True,
-        ).all()
-    ]
     if not allowed_ids:
         return []
 
@@ -166,7 +161,7 @@ def get_background_patient_endpoint(
 ):
     """Return the patient_id used by background/event-driven work (MQTT
     publishers, sensor handlers, scheduled jobs). System-admin-only."""
-    if not current_user.is_system_admin:
+    if not current_user.is_superuser:
         raise HTTPException(status_code=403, detail="System admin required")
     pid = get_background_patient_id(db)
     return {"patient_id": pid}
@@ -179,7 +174,7 @@ def set_background_patient_endpoint(
     current_user: User = Depends(get_current_user),
 ):
     """Set the patient_id used by background/event-driven work. System-admin-only."""
-    if not current_user.is_system_admin:
+    if not current_user.is_superuser:
         raise HTTPException(status_code=403, detail="System admin required")
     if not set_background_patient_id(db, patient_id):
         raise HTTPException(status_code=404, detail="Patient not found or not active")

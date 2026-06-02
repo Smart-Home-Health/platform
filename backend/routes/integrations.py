@@ -332,6 +332,76 @@ async def permanently_delete_patient_integration(
 
 
 # ============================================================================
+# Local / API-key connect (non-OAuth)
+# ============================================================================
+
+@router.post("/patient/{patient_id}/{integration_id}/connect", response_model=PatientIntegrationResponse)
+async def connect_integration(
+    patient_id: int,
+    integration_id: int,
+    auth_data: dict,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_full_auth),
+    account_id: int = Depends(get_current_account_id),
+):
+    """
+    Authenticate a non-OAuth integration and activate it.
+
+    Runs `authenticate(auth_data)` on the integration class, stores the result
+    as `credentials`, and flips `is_enabled` to True. Used by integrations that
+    declare `auth_type` of "local" or "api_key".
+    """
+    patient_integration = db.query(PatientIntegration).options(
+        joinedload(PatientIntegration.integration)
+    ).filter(
+        PatientIntegration.id == integration_id,
+        PatientIntegration.patient_id == patient_id,
+        PatientIntegration.account_id == account_id,
+    ).first()
+
+    if not patient_integration:
+        raise HTTPException(status_code=404, detail="Patient integration not found")
+
+    slug = patient_integration.integration.slug
+    integration_class = get_integration(slug)
+    if not integration_class:
+        raise HTTPException(status_code=404, detail="Integration class not found")
+
+    if integration_class.auth_type == "oauth2":
+        raise HTTPException(status_code=400, detail="Use the OAuth flow for this integration")
+
+    try:
+        instance = integration_class()
+        credentials = await instance.authenticate(auth_data or {})
+    except AuthenticationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    patient_integration.credentials = credentials
+    patient_integration.is_enabled = True
+    patient_integration.last_sync_status = None
+    patient_integration.last_sync_error = None
+    patient_integration.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(patient_integration)
+
+    return PatientIntegrationResponse(
+        id=patient_integration.id,
+        patient_id=patient_integration.patient_id,
+        integration_id=patient_integration.integration_id,
+        integration_slug=patient_integration.integration.slug,
+        integration_name=patient_integration.integration.name,
+        auth_type=patient_integration.integration.auth_type,
+        is_enabled=patient_integration.is_enabled,
+        settings=patient_integration.settings,
+        last_sync_at=patient_integration.last_sync_at,
+        last_sync_status=patient_integration.last_sync_status,
+        last_sync_error=patient_integration.last_sync_error,
+        sync_count=patient_integration.sync_count,
+        created_at=patient_integration.created_at,
+    )
+
+
+# ============================================================================
 # OAuth Flow
 # ============================================================================
 

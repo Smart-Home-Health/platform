@@ -37,7 +37,13 @@ export default function AdminV2Integrations() {
   
   // Settings for new integration
   const [newSettings, setNewSettings] = useState({});
-  
+
+  // Post-create state for local-auth integrations (Frigate camera picker).
+  // 'form' = filling out config; 'select-camera' = picking from discovered list.
+  const [addStep, setAddStep] = useState('form');
+  const [discoveredCameras, setDiscoveredCameras] = useState([]);
+  const [pickedCamera, setPickedCamera] = useState('');
+
   // Syncing state
   const [syncingId, setSyncingId] = useState(null);
 
@@ -124,18 +130,28 @@ export default function AdminV2Integrations() {
 
   const handleAddIntegration = async () => {
     if (!selectedIntegration) return;
-    
+
     setAddingIntegration(true);
     setError('');
-    
+
     try {
+      // Split the form values: anything in auth_fields goes to the /connect
+      // payload (becomes credentials), everything else stays in settings.
+      const authFields = selectedIntegration.auth_fields || [];
+      const authData = {};
+      const settingsOnly = {};
+      for (const [k, v] of Object.entries(newSettings)) {
+        if (authFields.includes(k)) authData[k] = v;
+        else settingsOnly[k] = v;
+      }
+
       const res = await fetch(`${API_BASE_URL}/api/integrations/patient/${patientId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
           integration_slug: selectedIntegration.slug,
-          settings: newSettings
+          settings: settingsOnly,
         })
       });
 
@@ -145,25 +161,94 @@ export default function AdminV2Integrations() {
       }
 
       const newIntegration = await res.json();
-      
-      // If OAuth integration, start OAuth flow (will redirect away on success)
+
       if (selectedIntegration.auth_type === 'oauth2') {
         await startOAuthFlow(newIntegration.id);
-        // If we reach here, redirect didn't happen — keep modal open
         return;
-      } else {
-        setSuccess(`${selectedIntegration.name} integration added successfully`);
-        await fetchIntegrations();
       }
 
-      setShowAddModal(false);
-      setSelectedIntegration(null);
-      setNewSettings({});
+      if (selectedIntegration.auth_type === 'local' || selectedIntegration.auth_type === 'api_key') {
+        const connectRes = await fetch(
+          `${API_BASE_URL}/api/integrations/patient/${patientId}/${newIntegration.id}/connect`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify(authData),
+          }
+        );
+        if (!connectRes.ok) {
+          const data = await connectRes.json().catch(() => ({}));
+          throw new Error(data.detail || 'Failed to connect');
+        }
+
+        // Frigate-specific: discover cameras then prompt to pick one.
+        if (selectedIntegration.slug === 'frigate') {
+          const discoverRes = await fetch(
+            `${API_BASE_URL}/api/integrations/patient/${patientId}/${newIntegration.id}/discover`,
+            { method: 'POST', credentials: 'include' }
+          );
+          if (!discoverRes.ok) {
+            const data = await discoverRes.json().catch(() => ({}));
+            throw new Error(data.detail || 'Failed to discover cameras');
+          }
+          const camsRes = await fetch(
+            `${API_BASE_URL}/api/integrations/frigate/patient/${patientId}/cameras`,
+            { credentials: 'include' }
+          );
+          const cams = camsRes.ok ? await camsRes.json() : [];
+          setDiscoveredCameras(cams);
+          setPickedCamera(cams[0]?.device_id || '');
+          setAddStep('select-camera');
+          return;
+        }
+      }
+
+      setSuccess(`${selectedIntegration.name} integration added successfully`);
+      await fetchIntegrations();
+      closeAddModal();
     } catch (err) {
       setError(err.message);
     } finally {
       setAddingIntegration(false);
     }
+  };
+
+  const handlePickCamera = async () => {
+    if (!pickedCamera) return;
+    setAddingIntegration(true);
+    setError('');
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/api/integrations/frigate/patient/${patientId}/select`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ camera: pickedCamera }),
+        }
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || 'Failed to select camera');
+      }
+      setSuccess(`Frigate camera "${pickedCamera}" selected`);
+      await fetchIntegrations();
+      closeAddModal();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setAddingIntegration(false);
+    }
+  };
+
+  const closeAddModal = () => {
+    setShowAddModal(false);
+    setSelectedIntegration(null);
+    setNewSettings({});
+    setAddStep('form');
+    setDiscoveredCameras([]);
+    setPickedCamera('');
   };
 
   const startOAuthFlow = async (integrationId) => {
@@ -930,27 +1015,45 @@ export default function AdminV2Integrations() {
 
         {/* Add Integration Modal */}
         {showAddModal && (
-          <div className="admin-v2-modal-overlay" onClick={() => {
-            setShowAddModal(false);
-            setSelectedIntegration(null);
-            setNewSettings({});
-          }}>
+          <div className="admin-v2-modal-overlay" onClick={closeAddModal}>
             <div className="admin-v2-modal" onClick={e => e.stopPropagation()}>
               <div className="admin-v2-modal-header">
-                <h2>Add Integration</h2>
-                <button 
+                <h2>{addStep === 'select-camera' ? 'Select Camera' : 'Add Integration'}</h2>
+                <button
                   className="admin-v2-modal-close"
-                  onClick={() => {
-                    setShowAddModal(false);
-                    setSelectedIntegration(null);
-                    setNewSettings({});
-                  }}
+                  onClick={closeAddModal}
                 >
                   <XIcon size={20} />
                 </button>
               </div>
               <div className="admin-v2-modal-body">
-                {!selectedIntegration ? (
+                {addStep === 'select-camera' ? (
+                  <div>
+                    <p className="admin-v2-text-muted" style={{ marginBottom: '1rem' }}>
+                      Choose which camera covers this patient. You can change this later from the integration settings.
+                    </p>
+                    {discoveredCameras.length === 0 ? (
+                      <div className="admin-v2-alert admin-v2-alert-warning">
+                        No cameras were discovered on this Frigate instance.
+                      </div>
+                    ) : (
+                      <div className="admin-v2-form-group">
+                        <label className="admin-v2-label">Camera</label>
+                        <select
+                          className="admin-v2-input"
+                          value={pickedCamera}
+                          onChange={(e) => setPickedCamera(e.target.value)}
+                        >
+                          {discoveredCameras.map(cam => (
+                            <option key={cam.device_id} value={cam.device_id}>
+                              {cam.device_name || cam.device_id}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                ) : !selectedIntegration ? (
                   <div className="admin-v2-integration-list">
                     {/* SHH Pulse Oximeter option */}
                     <button
@@ -1000,11 +1103,15 @@ export default function AdminV2Integrations() {
                       </div>
                     )}
 
-                    {selectedIntegration.config_schema?.properties && 
+                    {selectedIntegration.config_schema?.properties &&
                      Object.keys(selectedIntegration.config_schema.properties).length > 0 && (
                       <div style={{ marginTop: '1.5rem' }}>
                         <h4 style={{ color: '#e6edf3', marginBottom: '1rem' }}>Settings</h4>
-                        {Object.entries(selectedIntegration.config_schema.properties).map(([key, schema]) => (
+                        {Object.entries(selectedIntegration.config_schema.properties)
+                          // Hide fields whose value is chosen in a later step
+                          // (Frigate camera is picked from the discovered list)
+                          .filter(([key]) => !(selectedIntegration.slug === 'frigate' && key === 'camera'))
+                          .map(([key, schema]) => (
                           <div key={key} className="admin-v2-form-group">
                             <label className="admin-v2-label">{schema.title || key}</label>
                             {schema.type === 'boolean' ? (
@@ -1054,8 +1161,8 @@ export default function AdminV2Integrations() {
                 )}
               </div>
               <div className="admin-v2-modal-footer">
-                {selectedIntegration && (
-                  <button 
+                {selectedIntegration && addStep === 'form' && (
+                  <button
                     className="admin-v2-btn admin-v2-btn-ghost"
                     onClick={() => {
                       setSelectedIntegration(null);
@@ -1065,24 +1172,28 @@ export default function AdminV2Integrations() {
                     Back
                   </button>
                 )}
-                <button 
+                <button
                   className="admin-v2-btn admin-v2-btn-secondary"
-                  onClick={() => {
-                    setShowAddModal(false);
-                    setSelectedIntegration(null);
-                    setNewSettings({});
-                  }}
+                  onClick={closeAddModal}
                 >
                   Cancel
                 </button>
-                {selectedIntegration && (
-                  <button 
+                {addStep === 'select-camera' ? (
+                  <button
+                    className="admin-v2-btn admin-v2-btn-primary"
+                    onClick={handlePickCamera}
+                    disabled={addingIntegration || !pickedCamera}
+                  >
+                    {addingIntegration ? 'Saving...' : 'Use this camera'}
+                  </button>
+                ) : selectedIntegration && (
+                  <button
                     className="admin-v2-btn admin-v2-btn-primary"
                     onClick={handleAddIntegration}
                     disabled={addingIntegration}
                   >
                     {addingIntegration ? 'Adding...' : (
-                      selectedIntegration.auth_type === 'oauth2' 
+                      selectedIntegration.auth_type === 'oauth2'
                         ? `Connect to ${selectedIntegration.name}`
                         : 'Add Integration'
                     )}

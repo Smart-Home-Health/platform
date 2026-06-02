@@ -7,8 +7,10 @@ import {
   MedicationsIcon,
   TasksIcon,
   EquipmentIcon,
-  PlusIcon
+  PlusIcon,
+  CameraIcon
 } from '../../components/Icons';
+import CameraLiveModal from '../../components/CameraLiveModal';
 import config, { API_BASE_URL, getApiBaseUrl } from '../../config';
 import './AdminV2.css';
 
@@ -53,6 +55,7 @@ const AdminV2Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [patientReadings, setPatientReadings] = useState({});
+  const [cameraModalPatient, setCameraModalPatient] = useState(null);
   const wsRef = useRef(null);
 
   useEffect(() => {
@@ -238,6 +241,14 @@ const AdminV2Dashboard = () => {
           </div>
         )}
 
+        {cameraModalPatient && (
+          <CameraLiveModal
+            patientId={cameraModalPatient.id}
+            patientName={cameraModalPatient.name}
+            onClose={() => setCameraModalPatient(null)}
+          />
+        )}
+
         {/* Patients Grid */}
         {!loading && patients.length > 0 && (
           <div className="admin-v2-patients-grid">
@@ -263,6 +274,25 @@ const AdminV2Dashboard = () => {
                       ? `${patientReadings[patient.id].spo2 ?? '—'}% · ${patientReadings[patient.id].bpm ?? '—'} bpm`
                       : '— · —'}
                   </Link>
+                  {patient.has_camera && (
+                    <button
+                      type="button"
+                      onClick={() => setCameraModalPatient(patient)}
+                      title={`Live camera: ${patient.camera_name || ''}`}
+                      style={{
+                        background: 'transparent',
+                        border: '1px solid rgba(255,255,255,0.15)',
+                        color: '#58a6ff',
+                        padding: '4px 6px',
+                        borderRadius: 6,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <CameraIcon size={18} />
+                    </button>
+                  )}
                   <span className={`admin-v2-patient-status ${patient.status}`}>
                     {patient.status}
                   </span>
