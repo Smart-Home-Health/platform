@@ -1,3 +1,20 @@
+/*
+ * Smart Home Health Hub
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 import React, { useState, useEffect } from 'react';
 import AdminV2Layout from '../AdminV2Layout';
 import { useAdminPatient } from '../../../contexts/AdminPatientContext';
@@ -492,6 +509,39 @@ const AdminV2SettingsGeneral = () => {
               >
                 {isSavingPatient ? 'Saving...' : 'Save Patient Settings'}
               </button>
+            </div>
+          </div>
+        </div>
+
+        {/* About / Source Section */}
+        <div className="admin-v2-settings-section">
+          <div className="admin-v2-settings-section-header">
+            <div className="admin-v2-settings-section-title">
+              <span className="admin-v2-settings-section-icon app-wide">ℹ️</span>
+              <div>
+                <h2>About</h2>
+                <p>Smart Home Health Hub</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="admin-v2-settings-card">
+            <div className="admin-v2-settings-group">
+              <p className="admin-v2-settings-group-desc">
+                This software is free and open source, licensed under the{' '}
+                <strong>GNU Affero General Public License v3.0</strong>. Under
+                AGPL section 13, the complete source code for this application is
+                available to you:
+              </p>
+              <p>
+                <a
+                  href="https://github.com/Smart-Home-Health/smart-home-health-hub"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  github.com/Smart-Home-Health/smart-home-health-hub
+                </a>
+              </p>
             </div>
           </div>
         </div>

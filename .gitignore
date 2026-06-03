@@ -11,6 +11,10 @@
 # Docker
 *.sql
 
+# Saved auth/session cookies from API testing — never commit
+cookies.txt
+*.cookies
+
 .env.docker
 docs/*
 
