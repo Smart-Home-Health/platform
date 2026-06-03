@@ -14,7 +14,12 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
-Pydantic models for API request/response validation
+Aggregated ORM model namespace.
+
+Despite the package name, this re-exports the project's SQLAlchemy ORM classes
+(defined across both ``models/`` and ``schemas/``) so they can be imported from a
+single place and so Alembic's autogenerate sees every table on ``db.Base.metadata``.
+A new ORM model MUST be re-exported here or autogenerate will not detect it.
 """
 
 # Import User model first since other schemas reference it
