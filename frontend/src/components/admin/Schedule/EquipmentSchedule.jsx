@@ -17,11 +17,14 @@
  */
 import React, { useState, useEffect } from 'react';
 import config from '../../../config';
+import EquipmentRestockGate from '../../EquipmentRestockGate';
+import { formatDateOnly } from '../../../utils/timezone';
 
 const EquipmentSchedule = () => {
   const [equipment, setEquipment] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showDueOnly, setShowDueOnly] = useState(true);
+  const [restockInfo, setRestockInfo] = useState(null);
 
   useEffect(() => {
     fetchEquipment();
@@ -46,19 +49,35 @@ const EquipmentSchedule = () => {
     }
   };
 
-  const handleChange = async (equipmentId) => {
-    if (!confirm('Mark this equipment as changed?')) return;
-    
+  // Core change request. On a 409 out-of-stock the restock gate is opened; the
+  // gate retries this directly (no re-confirm).
+  const doChange = async (equipmentId) => {
     try {
       const response = await fetch(`${config.apiUrl}/api/equipment/${equipmentId}/change`, {
-        method: 'POST'
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ changed_at: new Date().toISOString() }),
       });
       if (response.ok) {
+        setRestockInfo(null);
         fetchEquipment();
+      } else {
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 409 && data.error === 'insufficient_quantity') {
+          setRestockInfo(data);
+        } else {
+          console.error('Failed to change equipment:', response.status, response.statusText);
+        }
       }
     } catch (error) {
       console.error('Error changing equipment:', error);
     }
+  };
+
+  const handleChange = (equipmentId) => {
+    if (!confirm('Mark this equipment as changed?')) return;
+    doChange(equipmentId);
   };
 
   const isDue = (item) => {
@@ -80,8 +99,7 @@ const EquipmentSchedule = () => {
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    return date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+    return formatDateOnly(dateString, { year: 'numeric', month: 'long', day: 'numeric' }) || 'N/A';
   };
 
   const getStatusColor = (item) => {
@@ -211,6 +229,12 @@ const EquipmentSchedule = () => {
           })}
         </div>
       )}
+
+      <EquipmentRestockGate
+        info={restockInfo}
+        onClose={() => setRestockInfo(null)}
+        onUpdated={() => doChange(restockInfo.equipment_id)}
+      />
     </div>
   );
 };

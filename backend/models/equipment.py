@@ -54,7 +54,7 @@ class EquipmentResponse(BaseModel):
 
 
 class EquipmentChangeLog(BaseModel):
-    changed_at: date = Field(...)
+    changed_at: datetime = Field(...)
 
 
 class EquipmentQuantityChange(BaseModel):

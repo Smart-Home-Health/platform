@@ -81,7 +81,25 @@ async def api_log_equipment_change(equipment_id: int, data: EquipmentChangeLog, 
     
     if not equipment.scheduled_replacement:
         return JSONResponse(status_code=400, content={"detail": "Equipment does not have scheduled replacement"})
-    
+
+    # Inventory gate: a scheduled change consumes one unit. If tracked stock is
+    # already exhausted, refuse and force a restock rather than going negative
+    # (mirrors the medication out-of-stock 409 -> "update quantity" flow).
+    tracked = (equipment.tracking_level or 'item') != 'none'
+    if tracked and (equipment.quantity or 0) < 1:
+        return JSONResponse(status_code=409, content={
+            "detail": (
+                f"{equipment.name} has 0 on hand. "
+                "Update the on-hand quantity to continue — the change can't be "
+                "recorded until you do."
+            ),
+            "error": "insufficient_quantity",
+            "equipment_id": equipment.id,
+            "equipment_name": equipment.name,
+            "current_quantity": equipment.quantity,
+            "unit_of_measure": equipment.unit_of_measure,
+        })
+
     success = log_equipment_change(db, equipment_id, data.changed_at)
     return {"success": success}
 
@@ -187,8 +205,14 @@ async def api_delete_equipment(equipment_id: int, db: Session = Depends(get_db))
 
 @router.get("/due/count")
 async def api_get_equipment_due_count(
+    patient_id: Optional[int] = None,
     db: Session = Depends(get_db),
     account_id: Optional[int] = Depends(get_optional_account_id),
 ):
-    """Get count of equipment items that are due for replacement. Scoped by account when authenticated."""
-    return {"count": get_equipment_due_count(db, account_id=account_id)}
+    """Get count of equipment items that are due for replacement.
+
+    Scoped by account when authenticated, and further scoped to a patient
+    (their own items + shared items) when patient_id is provided — so a
+    per-patient dashboard badge reflects only that patient.
+    """
+    return {"count": get_equipment_due_count(db, account_id=account_id, patient_id=patient_id)}

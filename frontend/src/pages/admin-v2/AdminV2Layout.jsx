@@ -99,7 +99,7 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
     ],
     equipment: [
       { path: '/care/equipment', label: 'Overview' },
-      { path: '/care/equipment/history', label: 'Change History' },
+      { path: '/care/equipment/history', label: 'History' },
       { path: '/care/equipment/shipments', label: 'Shipments' },
       { path: '/care/equipment/alerts', label: 'Alerts' },
     ],

@@ -141,6 +141,45 @@ def off_window_response(
 early_administration_response = off_window_response
 
 
+# Small tolerance so client/server clock skew on a "logging right now" entry
+# doesn't trip the future-time guard.
+FUTURE_ADMINISTRATION_GRACE_MINUTES = 5
+
+
+def guard_future_administration(
+    administered_at: Union[datetime, str, None],
+    item_label: str = "item",
+) -> Optional[JSONResponse]:
+    """
+    Return a 400 JSONResponse when the caller-supplied administration/completion
+    time is in the future (beyond a small clock-skew grace). An item cannot be
+    given/completed later than now, so — unlike the early/late window — this is
+    never overridable. Returns None when there is nothing to reject (no time
+    supplied, unparseable, or at/before now).
+
+    This catches the common data-entry slip where the time-of-day is edited but
+    the date is left on "today", landing the timestamp a day ahead.
+    """
+    parsed = _coerce_time(administered_at)
+    if parsed is None:
+        return None
+    minutes_ahead = (parsed - utc_now()).total_seconds() / 60
+    if minutes_ahead <= FUTURE_ADMINISTRATION_GRACE_MINUTES:
+        return None
+    return JSONResponse(
+        status_code=400,
+        content={
+            "detail": (
+                f"This {item_label} cannot be recorded in the future "
+                f"({parsed.isoformat()}). Check the date — the time of day is "
+                "often right but the date is left on today."
+            ),
+            "error": "future_administration",
+            "administered_at": parsed.isoformat(),
+        },
+    )
+
+
 def guard_early_administration(
     scheduled_time: Union[datetime, str, None],
     early_override: bool,

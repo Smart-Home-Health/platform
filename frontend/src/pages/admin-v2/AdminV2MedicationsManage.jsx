@@ -848,9 +848,9 @@ const AdminV2MedicationsManage = () => {
                       <input
                         type="number"
                         value={formData.quantity}
-                        onChange={e => setFormData({...formData, quantity: parseFloat(e.target.value) || 1})}
+                        onChange={e => setFormData({...formData, quantity: parseFloat(e.target.value) || 0})}
                         required
-                        min="0.25"
+                        min="0"
                         step="0.25"
                       />
                     </div>
@@ -1024,9 +1024,9 @@ const AdminV2MedicationsManage = () => {
                       <input
                         type="number"
                         value={formData.quantity}
-                        onChange={e => setFormData({...formData, quantity: parseFloat(e.target.value) || 1})}
+                        onChange={e => setFormData({...formData, quantity: parseFloat(e.target.value) || 0})}
                         required
-                        min="0.25"
+                        min="0"
                         step="0.25"
                       />
                     </div>

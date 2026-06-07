@@ -241,12 +241,16 @@ async def startup_event():
 
 
 async def nutrition_scheduled_updater():
-    """Background task to publish nutrition scheduled values every hour"""
+    """Background task to publish nutrition scheduled values over MQTT every hour.
+
+    This drives the nutrition "scheduled/expected" sensor value on the live
+    dashboard; it is unrelated to the due-count badges, which the dashboard now
+    keeps current with a client-side 60s poll (see Dashboard.jsx)."""
     logger.info("[nutrition_updater] Started hourly nutrition scheduled updater")
     while True:
         try:
             await asyncio.sleep(3600)  # Wait 1 hour
-            
+
             # Publish scheduled nutrition values
             db = next(get_db())
             try:

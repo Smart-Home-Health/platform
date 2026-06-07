@@ -31,7 +31,21 @@ import {
   CheckIcon,
   RefreshIcon
 } from '../../components/Icons';
+import EquipmentRestockGate from '../../components/EquipmentRestockGate';
+import { formatDateOnly } from '../../utils/timezone';
 import './AdminV2.css';
+
+// FastAPI returns `detail` as a string for most errors, but as a list of
+// { loc, msg, type } objects for 422 validation errors. Normalize both to a
+// readable string so we never render "[object Object]".
+const formatErrorDetail = (detail, fallback) => {
+  if (!detail) return fallback;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail.map(e => e?.msg || JSON.stringify(e)).join('; ') || fallback;
+  }
+  return fallback;
+};
 
 const AdminV2Equipment = () => {
   const { user } = useAuth();
@@ -59,6 +73,9 @@ const AdminV2Equipment = () => {
   const [showReceiveModal, setShowReceiveModal] = useState(false);
   const [showOpenModal, setShowOpenModal] = useState(false);
   const [selectedEquipment, setSelectedEquipment] = useState(null);
+  // Out-of-stock gate: holds the backend 409 payload while the caregiver
+  // updates the on-hand quantity, after which the change is retried.
+  const [restockInfo, setRestockInfo] = useState(null);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -209,7 +226,7 @@ const AdminV2Equipment = () => {
         fetchEquipment();
       } else {
         const errorData = await response.json();
-        setFormError(errorData.detail || 'Failed to create equipment');
+        setFormError(formatErrorDetail(errorData.detail, 'Failed to create equipment'));
       }
     } catch (err) {
       setFormError('Error connecting to server');
@@ -259,7 +276,7 @@ const AdminV2Equipment = () => {
         fetchEquipment();
       } else {
         const errorData = await response.json();
-        setFormError(errorData.detail || 'Failed to update equipment');
+        setFormError(formatErrorDetail(errorData.detail, 'Failed to update equipment'));
       }
     } catch (err) {
       setFormError('Error connecting to server');
@@ -306,10 +323,17 @@ const AdminV2Equipment = () => {
       if (response.ok) {
         setShowChangeModal(false);
         setSelectedEquipment(null);
+        setRestockInfo(null);
         fetchEquipment();
       } else {
         const errorData = await response.json();
-        alert(errorData.detail || 'Failed to mark as changed');
+        // 409 = out of stock. Open the restock gate instead of erroring; the
+        // change retries automatically once the on-hand quantity is updated.
+        if (response.status === 409 && errorData.error === 'insufficient_quantity') {
+          setRestockInfo(errorData);
+        } else {
+          alert(formatErrorDetail(errorData.detail, 'Failed to mark as changed'));
+        }
       }
     } catch (err) {
       alert('Error connecting to server');
@@ -317,6 +341,7 @@ const AdminV2Equipment = () => {
       setSaving(false);
     }
   };
+
 
   const handleReceiveEquipment = async () => {
     setSaving(true);
@@ -399,7 +424,7 @@ const AdminV2Equipment = () => {
 
   const formatDate = (dateString) => {
     if (!dateString) return '-';
-    return new Date(dateString).toLocaleDateString();
+    return formatDateOnly(dateString) || '-';
   };
 
   const isDue = (item) => {
@@ -456,9 +481,6 @@ const AdminV2Equipment = () => {
       <div className="admin-v2-page">
         {selectedPatient ? (
           <>
-            {/* Section Title */}
-            <h1 className="schedule-section-title">Equipment Management</h1>
-
             {/* Stats Row */}
             <div className="admin-v2-summary-stats admin-v2-equipment-summary">
               <div className="admin-v2-stat-card">
@@ -568,8 +590,8 @@ const AdminV2Equipment = () => {
                 <p className="admin-v2-text-muted">No items match this category.</p>
               </div>
             ) : (
-              <div className="admin-v2-table-container">
-                <table className="admin-v2-table">
+              <div className="admin-v2-table-container admin-v2-table-cards-wrap">
+                <table className="admin-v2-table admin-v2-table-cards">
                   <thead>
                     <tr>
                       <th>Name</th>
@@ -592,14 +614,14 @@ const AdminV2Equipment = () => {
                           key={equip.id} 
                           className={isOverdue ? 'admin-v2-row-warning' : ''}
                         >
-                          <td>
+                          <td className="admin-v2-cell-name">
                             <span className="admin-v2-equipment-name">{equip.name}</span>
                             {equip.default_manufacturer && (
                               <div className="admin-v2-text-muted">{equip.default_manufacturer}</div>
                             )}
                           </td>
-                          <td>{equip.item_number || '-'}</td>
-                          <td>
+                          <td data-label="Item #">{equip.item_number || '-'}</td>
+                          <td data-label="Qty">
                             <span className={`admin-v2-quantity ${isLowStock ? 'low' : ''}`}>
                               {equip.quantity}
                             </span>
@@ -607,7 +629,7 @@ const AdminV2Equipment = () => {
                               <span className="admin-v2-text-small"> {equip.unit_of_measure}</span>
                             )}
                           </td>
-                          <td>
+                          <td data-label="Type">
                             {equip.category === 'supply' ? (
                               <span className="admin-v2-badge admin-v2-badge-secondary">Supply</span>
                             ) : equip.scheduled_replacement ? (
@@ -616,8 +638,8 @@ const AdminV2Equipment = () => {
                               <span className="admin-v2-badge admin-v2-badge-secondary">Consumable</span>
                             )}
                           </td>
-                          <td>{equip.scheduled_replacement ? formatDate(equip.last_changed) : '-'}</td>
-                          <td>
+                          <td data-label="Last Changed">{equip.scheduled_replacement ? formatDate(equip.last_changed) : '-'}</td>
+                          <td data-label="Status">
                             {equip.scheduled_replacement ? (
                               isOverdue ? (
                                 <span className="admin-v2-badge admin-v2-badge-danger">Due Now</span>
@@ -634,7 +656,7 @@ const AdminV2Equipment = () => {
                               )
                             )}
                           </td>
-                          <td>
+                          <td className="admin-v2-cell-actions">
                             <div className="admin-v2-action-buttons">
                               {equip.scheduled_replacement ? (
                                 <button
@@ -1175,6 +1197,13 @@ const AdminV2Equipment = () => {
             </div>
           </div>
         )}
+
+        {/* Out-of-Stock Gate: restock then retry the change */}
+        <EquipmentRestockGate
+          info={restockInfo}
+          onClose={() => setRestockInfo(null)}
+          onUpdated={() => handleChangeEquipment()}
+        />
 
         {/* Receive Stock Modal */}
         {showReceiveModal && (

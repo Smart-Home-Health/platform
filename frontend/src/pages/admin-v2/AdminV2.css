@@ -645,11 +645,32 @@
 
 .admin-v2-patient-header {
   display: flex;
-  align-items: center;
-  gap: 1rem;
+  flex-direction: column;
+  gap: 0.85rem;
   margin-bottom: 1rem;
   padding-bottom: 1rem;
   border-bottom: 1px solid #30363d;
+}
+
+/* Top row: avatar + name/age on the left, status stack on the right */
+.admin-v2-patient-header-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+/* Right-side vertical stack across from name/age: ACTIVE then camera */
+.admin-v2-patient-status-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+/* Vitals chip on its own row under the name */
+.admin-v2-vitals-row {
+  display: flex;
 }
 
 .admin-v2-patient-avatar {
@@ -682,51 +703,105 @@
   margin: 0;
 }
 
-.admin-v2-patient-readings {
-  font-size: 0.85rem;
-  color: #58a6ff;
+/* Live vitals chip (SpO2 / HR) */
+.admin-v2-vitals {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.3rem 0.65rem;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  background: #0d1117;
   text-decoration: none;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.admin-v2-vitals:hover {
+  border-color: #58a6ff;
+  background: rgba(88, 166, 255, 0.08);
+}
+
+.admin-v2-vital {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.9rem;
   white-space: nowrap;
-  padding: 0.2rem 0.4rem;
-  border-radius: 4px;
-  transition: background 0.2s ease, color 0.2s ease;
 }
 
-.admin-v2-patient-readings:hover {
-  color: #79b8ff;
-  background: rgba(88, 166, 255, 0.1);
+.admin-v2-vital svg {
+  color: #58a6ff;
+  flex-shrink: 0;
 }
 
-.admin-v2-patient-status {
-  padding: 0.25rem 0.75rem;
-  border-radius: 12px;
-  font-size: 0.75rem;
-  font-weight: 500;
+.admin-v2-vital-label {
+  font-size: 0.62rem;
   text-transform: uppercase;
-}
-
-.admin-v2-patient-status.active {
-  background: rgba(46, 160, 67, 0.2);
-  color: #3fb950;
-}
-
-.admin-v2-patient-status.inactive {
-  background: rgba(139, 148, 158, 0.2);
+  letter-spacing: 0.4px;
   color: #8b949e;
 }
 
-/* Due Counters */
+.admin-v2-vital-value {
+  font-weight: 700;
+  color: #e6edf3;
+}
+
+.admin-v2-vital-unit {
+  font-size: 0.68rem;
+  color: #8b949e;
+}
+
+.admin-v2-vitals-camera {
+  background: transparent;
+  border: 1px solid #30363d;
+  color: #58a6ff;
+  padding: 5px 7px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.admin-v2-vitals-camera:hover {
+  border-color: #58a6ff;
+  background: rgba(88, 166, 255, 0.08);
+}
+
+.admin-v2-patient-status {
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border: 1px solid transparent;
+}
+
+.admin-v2-patient-status.active {
+  background: transparent;
+  color: #3fb950;
+  border-color: rgba(63, 185, 80, 0.5);
+}
+
+.admin-v2-patient-status.inactive {
+  background: transparent;
+  color: #8b949e;
+  border-color: rgba(139, 148, 158, 0.4);
+}
+
+/* Due Counters — four category badges (no icons) */
 .admin-v2-due-counters {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 0.75rem;
 }
 
 .admin-v2-due-item {
   background: #0d1117;
   border: 1px solid #30363d;
-  border-radius: 6px;
-  padding: 0.875rem;
+  border-radius: 8px;
+  padding: 0.75rem 0.5rem;
   text-align: center;
   transition: all 0.2s ease;
   text-decoration: none;
@@ -735,42 +810,41 @@
 }
 
 .admin-v2-due-item:hover {
-  background: #21262d;
+  background: #161b22;
   transform: translateY(-1px);
 }
 
-.admin-v2-due-item.has-due {
-  border-color: #d29922;
-  background: rgba(210, 153, 34, 0.1);
-}
-
-.admin-v2-due-item.overdue {
-  border-color: #f85149;
-  background: rgba(248, 81, 73, 0.1);
-}
-
 .admin-v2-due-count {
-  font-size: 1.5rem;
+  font-size: 1.3rem;
   font-weight: 700;
   margin: 0;
+  line-height: 1.1;
   color: #e6edf3;
 }
 
-.admin-v2-due-item.has-due .admin-v2-due-count {
-  color: #d29922;
-}
-
-.admin-v2-due-item.overdue .admin-v2-due-count {
-  color: #f85149;
-}
-
 .admin-v2-due-label {
-  font-size: 0.75rem;
+  font-size: 0.62rem;
   color: #8b949e;
   margin: 0.25rem 0 0 0;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.4px;
 }
+
+/* Per-category color identity (border + count color). Red is reserved for the
+   overdue state below, so tasks use blue by default. */
+.admin-v2-due-item.meds { border-color: rgba(247, 129, 102, 0.4); }
+.admin-v2-due-item.meds .admin-v2-due-count { color: #f78166; }
+.admin-v2-due-item.equip { border-color: rgba(210, 153, 34, 0.4); }
+.admin-v2-due-item.equip .admin-v2-due-count { color: #d29922; }
+.admin-v2-due-item.tasks { border-color: rgba(163, 113, 247, 0.4); }
+.admin-v2-due-item.tasks .admin-v2-due-count { color: #a371f7; }
+.admin-v2-due-item.nutrition { border-color: rgba(63, 185, 80, 0.4); }
+.admin-v2-due-item.nutrition .admin-v2-due-count { color: #3fb950; }
+
+/* Overdue / missed: red urgency, overrides the category color. Placed last so
+   it wins on equal specificity. */
+.admin-v2-due-item.overdue { border-color: rgba(248, 81, 73, 0.6); }
+.admin-v2-due-item.overdue .admin-v2-due-count { color: #f85149; }
 
 /* Patient Actions */
 .admin-v2-patient-actions {
@@ -1135,7 +1209,22 @@
   }
 
   .admin-v2-due-counters {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.4rem;
+  }
+
+  /* Keep all four badges on one row on mobile: tighten padding/labels */
+  .admin-v2-due-item {
+    padding: 0.6rem 0.2rem;
+  }
+
+  .admin-v2-due-count {
+    font-size: 1.15rem;
+  }
+
+  .admin-v2-due-label {
+    font-size: 0.52rem;
+    letter-spacing: 0.2px;
   }
 
   .admin-v2-topnav-links {
@@ -1155,18 +1244,8 @@
     justify-content: center;
   }
 
-  /* Patient card: stack header elements on very small screens */
-  .admin-v2-patient-header {
-    flex-wrap: wrap;
-    gap: 0.5rem;
-  }
-
   .admin-v2-patient-info {
     min-width: 0;
-  }
-
-  .admin-v2-patient-readings {
-    white-space: normal;
   }
 
   .admin-v2-patient-actions {
@@ -3740,13 +3819,20 @@
   .history-filter-row {
     flex-direction: column;
   }
-  
+
   .history-filter-group {
     width: 100%;
+    min-width: 0;
   }
-  
-  .history-filter-input {
+
+  /* Full-width controls that stay inside the card. Without box-sizing the
+     padding on a width:100% input overruns the filter card and the row
+     overflows the viewport. */
+  .history-filter-input,
+  .history-filter-select {
     width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
   }
   
   .history-stats {
@@ -4051,7 +4137,8 @@
 
 .admin-v2-history-item-main {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 0.5rem;
   margin-bottom: 0.25rem;
 }
@@ -4059,11 +4146,14 @@
 .admin-v2-history-item-name {
   font-weight: 500;
   color: #e6edf3;
+  min-width: 0;
 }
 
 .admin-v2-history-item-action {
   font-size: 0.85rem;
   color: #8b949e;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .admin-v2-history-item-meta {
@@ -4779,15 +4869,17 @@ body.printing-schedule .admin-v2-schedule-prn-add {
   /* Dashboard summary stats on mobile: same style as schedule - small cards, icon + value only */
   .admin-v2-dashboard .admin-v2-summary-stats {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 0.5rem;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.4rem;
     margin-bottom: 1rem;
   }
   .admin-v2-dashboard .admin-v2-summary-stats .admin-v2-stat-card {
-    padding: 0.5rem;
+    padding: 0.5rem 0.25rem;
     flex-direction: column;
     align-items: center;
     gap: 0.25rem;
+    min-width: 0;
+    box-sizing: border-box;
   }
   .admin-v2-dashboard .admin-v2-summary-stats .admin-v2-stat-info p {
     display: none;
@@ -4880,40 +4972,61 @@ body.printing-schedule .admin-v2-schedule-prn-add {
   }
 
   /* Equipment summary stats on mobile: same compact style (icon + value only), no overlap */
-  .admin-v2-summary-stats.admin-v2-equipment-summary {
+  .admin-v2-summary-stats.admin-v2-equipment-summary,
+  .admin-v2-summary-stats.admin-v2-shipments-summary {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 0.35rem;
     margin-bottom: 1rem;
     max-width: 100%;
     min-width: 0;
   }
-  .admin-v2-summary-stats.admin-v2-equipment-summary .admin-v2-stat-card {
+  .admin-v2-summary-stats.admin-v2-equipment-summary .admin-v2-stat-card,
+  .admin-v2-summary-stats.admin-v2-shipments-summary .admin-v2-stat-card {
     min-width: 0;
-    padding: 0.35rem;
+    padding: 0.35rem 0.2rem;
     flex-direction: column;
     align-items: center;
     gap: 0.15rem;
   }
-  .admin-v2-summary-stats.admin-v2-equipment-summary .admin-v2-stat-info {
+  .admin-v2-summary-stats.admin-v2-equipment-summary .admin-v2-stat-info,
+  .admin-v2-summary-stats.admin-v2-shipments-summary .admin-v2-stat-info {
     min-width: 0;
     overflow: hidden;
   }
-  .admin-v2-summary-stats.admin-v2-equipment-summary .admin-v2-stat-info p {
+  .admin-v2-summary-stats.admin-v2-equipment-summary .admin-v2-stat-info p,
+  .admin-v2-summary-stats.admin-v2-shipments-summary .admin-v2-stat-info p {
     display: none;
   }
-  .admin-v2-summary-stats.admin-v2-equipment-summary .admin-v2-stat-info h4 {
+  .admin-v2-summary-stats.admin-v2-equipment-summary .admin-v2-stat-info h4,
+  .admin-v2-summary-stats.admin-v2-shipments-summary .admin-v2-stat-info h4 {
     margin: 0;
     font-size: 0.8rem;
   }
-  .admin-v2-summary-stats.admin-v2-equipment-summary .admin-v2-stat-icon {
+  .admin-v2-summary-stats.admin-v2-equipment-summary .admin-v2-stat-icon,
+  .admin-v2-summary-stats.admin-v2-shipments-summary .admin-v2-stat-icon {
     width: 28px;
     height: 28px;
     flex-shrink: 0;
   }
-  .admin-v2-summary-stats.admin-v2-equipment-summary .admin-v2-stat-icon svg {
+  .admin-v2-summary-stats.admin-v2-equipment-summary .admin-v2-stat-icon svg,
+  .admin-v2-summary-stats.admin-v2-shipments-summary .admin-v2-stat-icon svg {
     width: 16px;
     height: 16px;
+  }
+
+  /* Alerts has only two stats — keep them side by side (with labels) rather
+     than the 4-up compact treatment. */
+  .admin-v2-summary-stats.admin-v2-alerts-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+  .admin-v2-summary-stats.admin-v2-alerts-summary .admin-v2-stat-card {
+    min-width: 0;
+    padding: 0.6rem 0.6rem;
+    gap: 0.5rem;
   }
 
   /* Table scroll on mobile */
@@ -4923,6 +5036,127 @@ body.printing-schedule .admin-v2-schedule-prn-add {
   }
   .admin-v2-table {
     min-width: 560px;
+  }
+
+  /* Section tabs: natural-width pills that scroll horizontally instead of
+     clipping the last option ("Consumables"). Standard mobile tab pattern. */
+  .admin-v2-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    justify-content: space-between;
+    gap: 0.4rem;
+    padding: 4px 8px;
+  }
+  .admin-v2-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .admin-v2-tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 0.4rem 0.9rem;
+    font-size: 0.8rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+  }
+  .admin-v2-tab-count {
+    min-width: 16px;
+    height: 16px;
+    padding: 0 5px;
+    margin-left: 0;
+    font-size: 0.7rem;
+  }
+
+  /* Equipment table → stacked cards on mobile (the row-as-card pattern). Only
+     applies to tables opted in with .admin-v2-table-cards, so other tables keep
+     their horizontal-scroll behaviour. */
+  .admin-v2-table-container.admin-v2-table-cards-wrap {
+    background: transparent;
+    border: none;
+    overflow: visible;
+  }
+  .admin-v2-table.admin-v2-table-cards {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+  .admin-v2-table.admin-v2-table-cards thead {
+    display: none;
+  }
+  .admin-v2-table.admin-v2-table-cards tbody,
+  .admin-v2-table.admin-v2-table-cards tr,
+  .admin-v2-table.admin-v2-table-cards td {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .admin-v2-table.admin-v2-table-cards tr {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 0.5rem 0.875rem;
+    margin-bottom: 0.75rem;
+  }
+  .admin-v2-table.admin-v2-table-cards td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid #21262d;
+    text-align: right;
+  }
+  .admin-v2-table.admin-v2-table-cards td:last-child {
+    border-bottom: none;
+  }
+  .admin-v2-table.admin-v2-table-cards td::before {
+    content: attr(data-label);
+    color: #8b949e;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+    text-align: left;
+    flex-shrink: 0;
+  }
+  /* Name cell becomes the card header */
+  .admin-v2-table.admin-v2-table-cards td.admin-v2-cell-name {
+    justify-content: flex-start;
+    text-align: left;
+    border-bottom: 1px solid #30363d;
+    padding-bottom: 0.5rem;
+    margin-bottom: 0.25rem;
+  }
+  .admin-v2-table.admin-v2-table-cards td.admin-v2-cell-name::before {
+    display: none;
+  }
+  .admin-v2-table.admin-v2-table-cards td.admin-v2-cell-name .admin-v2-equipment-name {
+    font-size: 1rem;
+    font-weight: 600;
+  }
+  /* Actions row: full-width wrap of buttons, no label */
+  .admin-v2-table.admin-v2-table-cards td.admin-v2-cell-actions {
+    padding-top: 0.85rem;
+  }
+  .admin-v2-table.admin-v2-table-cards td.admin-v2-cell-actions::before {
+    display: none;
+  }
+  .admin-v2-table.admin-v2-table-cards td.admin-v2-cell-actions .admin-v2-action-buttons {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  /* Selection / action cells that render nothing (e.g. a resolved alert with no
+     checkbox or resolve button) shouldn't leave an empty labeled row. */
+  .admin-v2-table.admin-v2-table-cards td.admin-v2-cell-select:empty,
+  .admin-v2-table.admin-v2-table-cards td.admin-v2-cell-actions:empty {
+    display: none;
   }
 
   /* Summary stats on mobile: side-by-side compact cards (icon + X/Y only).

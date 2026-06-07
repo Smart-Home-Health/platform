@@ -39,10 +39,11 @@ from crud.medications import (add_medication, get_active_medications, get_inacti
                   delete_medication, add_medication_schedule, get_medication_schedules, 
                   get_all_medication_schedules, update_medication_schedule, delete_medication_schedule, 
                   toggle_medication_schedule_active, get_daily_medication_schedule, administer_medication,
-                  get_medication_history, get_medication_names_for_dropdown)
+                  get_medication_history, get_medication_names_for_dropdown,
+                  get_due_and_upcoming_medications_count)
 from crud.settings import get_setting
 from models import Medication
-from utils.early_administration import guard_early_administration
+from utils.early_administration import guard_early_administration, guard_future_administration
 from utils.medication_quantity import insufficient_quantity_response, InsufficientMedicationQuantityError
 
 logger = logging.getLogger("app")
@@ -127,6 +128,14 @@ async def api_add_medication(data: MedicationCreate, db: Session = Depends(get_d
         return {"id": med_id, "status": "success"}
     except Exception as e:
         return JSONResponse(status_code=500, content={"detail": str(e)})
+
+
+@router.get("/medications/due/count")
+async def get_medications_due_count_endpoint(patient_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """Count of due/upcoming medications, scoped to a patient for the per-patient
+    dashboard badge. Ungated like the equipment due-count so the badge stays
+    visible in restricted (locked) mode."""
+    return {"count": get_due_and_upcoming_medications_count(db, patient_id=patient_id)}
 
 
 @router.get("/medications/active", response_model=List[dict])
@@ -307,6 +316,12 @@ async def toggle_medication_active_endpoint(med_id: int, db: Session = Depends(g
 @router.post("/medications/{med_id}/administer")
 async def administer_medication_endpoint(med_id: int, data: MedicationAdminister, db: Session = Depends(get_db)):
     """Record a medication administration and deduct from quantity. Pass patient_id when administering a patient-specific medication without a global current patient."""
+    # A dose can't be given in the future — reject an administered_at past now
+    # (catches the date-left-on-today slip). Not overridable.
+    future = guard_future_administration(data.administered_at, item_label="medication")
+    if future is not None:
+        return future
+
     # Block administrations >1h before the scheduled time unless the caller confirmed.
     # Skip doses (dose_amount == 0) are exempt — they are explicitly *not* an administration.
     if data.dose_amount > 0:

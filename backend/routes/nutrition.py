@@ -31,6 +31,7 @@ from crud.nutrition import (
     get_nutrition_intake_for_care_task
 )
 from crud.patients import get_active_patient
+from crud.scheduling import get_due_and_upcoming_nutrition_count
 from models.nutrition import (
     NutritionIntakeCreate,
     NutritionIntakeUpdate,
@@ -39,6 +40,14 @@ from models.nutrition import (
 
 logger = logging.getLogger("app")
 router = APIRouter(prefix="/api", tags=["nutrition"])
+
+
+@router.get("/nutrition/due/count")
+async def get_nutrition_due_count_endpoint(patient_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """Count of due/upcoming nutrition items, scoped to a patient for the
+    per-patient dashboard badge. Ungated like the equipment due-count so the
+    badge stays visible in restricted (locked) mode."""
+    return {"count": get_due_and_upcoming_nutrition_count(db, patient_id=patient_id)}
 
 # Simple endpoint for frontend compatibility
 @router.post("/nutrition", response_model=NutritionIntakeResponse)

@@ -420,6 +420,9 @@ const AdminV2Schedule = () => {
             })
           }));
           setShowCompleteModal(false);
+        } else {
+          const data = await response.json().catch(() => ({}));
+          alert(data.detail || 'Failed to record completion.');
         }
       } else {
         // Single item completion
@@ -454,18 +457,23 @@ const AdminV2Schedule = () => {
         if (response.ok) {
           const result = await response.json();
           if (result.success) {
-            const key = type === 'medication' ? 'medications' : 
+            const key = type === 'medication' ? 'medications' :
                        type === 'nutrition' ? 'nutrition' : 'care_tasks';
             setScheduleData(prev => ({
               ...prev,
-              [key]: prev[key].map(i => 
+              [key]: prev[key].map(i =>
                 i.schedule_id === item.schedule_id && i.scheduled_time === item.scheduled_time
                   ? { ...i, completed: true }
                   : i
               )
             }));
             setShowCompleteModal(false);
+          } else {
+            alert(result.error || 'Failed to record completion.');
           }
+        } else {
+          const data = await response.json().catch(() => ({}));
+          alert(data.detail || 'Failed to record completion.');
         }
       }
     } catch (err) {

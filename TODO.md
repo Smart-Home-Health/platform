@@ -151,3 +151,26 @@ Add a `[data-theme="high-contrast"]` block. Requirements: WCAG AAA (7:1 ratio fo
 ## Integrations — Epic / FHIR
 
 - **Multi-org endpoint directory via fasten-sources** — _IDEA, not started_. The Epic FHIR connector (`backend/integrations/epic.py`) currently ships a tiny hardcoded `EPIC_ENDPOINTS` list (sandbox + manual URL entry). To support real hospitals without paying for Fasten Connect (their managed SaaS aggregator, which would also route PHI through Fasten), consume the **open-source [fasten-sources](https://github.com/fastenhealth/fasten-sources)** provider definitions — a library of ~70k provider endpoint metadata + SMART-on-FHIR/OpenID config docs. It's **Go** (can't import from Python), but the **endpoint definitions are language-agnostic data** (JSON/OpenID metadata) we can vendor or fetch to populate our own org picker. Keeps connections **direct** (Epic→our server, PHI never leaves the network) and **free**. Figure out: format/licensing of the definitions, how to keep them fresh, and how to feed them into `EpicIntegration._resolve_endpoint` + a frontend search/typeahead in place of the static enum. Decision context: chose to stay on the direct/free path over Fasten Connect because the current pipeline is fairly portable (pure FHIR parsers in `epic.py` + `persist_sync_extras` are aggregator-agnostic). See Claude memory `project-fhir-standards`.
+
+---
+
+## Security — Pre-Release Hardening
+
+From a pre-first-release security pass (2026-06-02). Ordered by severity.
+
+### 🔴 Critical — must fix before any release
+- [ ] **JWT secret is the public hardcoded default.** `JWT_SECRET_KEY` is **not set in `backend/.env`**, so `middleware.py:30` and `routes/auth.py:59` fall back to `"change-this-secret-key-in-production"` — a value present in the (AGPL, soon-public) source. Anyone can forge a `session_token` for any user incl. system admin → **full auth bypass.** Fix: generate a strong secret (`python -c "import secrets; print(secrets.token_urlsafe(64))"`), set `JWT_SECRET_KEY` in `.env`, and make the app **fail to start** if it's unset (no silent insecure default).
+
+### 🟠 High — before internet-facing / production
+- [ ] **Cookies hardcoded `secure=False`** (5× in `routes/auth.py`: ~111, 273, 350, 426, 524). Over HTTPS the session cookie can leak over plain HTTP. Make `secure` env-driven (True in prod).
+- [ ] **Postgres published on host `:5432` with weak hardcoded creds** (`shh_user`/`shh_dev_pass` in `docker-compose.yml`, also `DATABASE_URL` inline). Fine for local dev; a direct DB door if the host is reachable. Prod: don't publish 5432, pull password from env.
+- [ ] **No login throttling / account lockout** found, and a low-entropy **PIN** is an accepted credential. bcrypt won't stop online brute force of a 4–6 digit PIN. Add rate-limiting/lockout on the login + PIN endpoints before exposing the app.
+
+### 🟡 Medium — hardening
+- [ ] **CORS** (`main.py:71`) allows all `localhost` + entire RFC1918 with `allow_credentials=True`. Intentional for LAN, but any page on the network can make credentialed requests (`samesite=lax` only partly mitigates), and it won't match a real domain if you go internet-facing. Make allowed origins configurable.
+- [ ] **Tar extraction** in `routes/integration_imports.py:127` has a `..`/absolute-path guard but doesn't handle **symlink/hardlink members**. On Py 3.12+ add `filter="data"` to `extractall()`. (`crud/backup.py` restore is safe — reads `.json` into memory only.)
+- [ ] **Reader Fernet keys stored plaintext** in DB (`readers.encryption_key`). DB compromise leaks them. Encrypt at rest or document the risk.
+- [ ] **`metric_col` f-string SQL** (`analysis/med_vital_correlation.py:87`) is safe today (whitelisted from `PULSE_OX_METRICS`) but fragile. Add an assert against the whitelist so a future edit can't turn it into injection.
+
+### ✅ Verified OK (no action)
+bcrypt + per-password salts · no `eval`/`exec`/`pickle`/`shell=True` · `.env` never committed (checked history) · deps pinned · authz enforced (`backup` system-admin gated, `analysis` full-auth + read-access, `require_permission` throughout) · no default/backdoor admin · reader WS channel encrypted (Fernet) · no debug exception leakage.

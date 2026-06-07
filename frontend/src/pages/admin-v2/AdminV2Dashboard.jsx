@@ -24,8 +24,12 @@ import {
   MedicationsIcon,
   TasksIcon,
   EquipmentIcon,
+  NutritionIcon,
   PlusIcon,
-  CameraIcon
+  CameraIcon,
+  VitalsIcon,
+  HeartIcon,
+  CalendarIcon
 } from '../../components/Icons';
 import CameraLiveModal from '../../components/CameraLiveModal';
 import config, { API_BASE_URL, getApiBaseUrl } from '../../config';
@@ -52,13 +56,6 @@ const getInitials = (name) => {
     .toUpperCase();
 };
 
-// Get status class for due counter
-const getDueStatus = (count) => {
-  if (count >= 3) return 'overdue';
-  if (count > 0) return 'has-due';
-  return '';
-};
-
 const AdminV2Dashboard = () => {
   const { hasReadAccess } = useAuth();
   const [patients, setPatients] = useState([]);
@@ -67,7 +64,8 @@ const AdminV2Dashboard = () => {
     active_patients: 0,
     medications_due: 0,
     tasks_due: 0,
-    equipment_due: 0
+    equipment_due: 0,
+    nutrition_due: 0
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -135,7 +133,8 @@ const AdminV2Dashboard = () => {
           active_patients: 0,
           medications_due: 0,
           tasks_due: 0,
-          equipment_due: 0
+          equipment_due: 0,
+          nutrition_due: 0
         });
       } else {
         // Restricted mode: only fetch patient list so user can select who to perform care for
@@ -151,7 +150,7 @@ const AdminV2Dashboard = () => {
           ...p,
           name: p.name || [p.first_name, p.last_name].filter(Boolean).join(' ').trim() || 'Unknown',
           status: p.status || (p.is_active ? 'active' : 'inactive'),
-          due_counts: p.due_counts || { medications: 0, tasks: 0, equipment: 0 }
+          due_counts: p.due_counts || { medications: 0, tasks: 0, equipment: 0, nutrition: 0 }
         }));
         setPatients(normalized);
         const active = normalized.filter(p => p.is_active);
@@ -160,7 +159,8 @@ const AdminV2Dashboard = () => {
           active_patients: active.length,
           medications_due: 0,
           tasks_due: 0,
-          equipment_due: 0
+          equipment_due: 0,
+          nutrition_due: 0
         });
       }
     } catch (err) {
@@ -174,13 +174,6 @@ const AdminV2Dashboard = () => {
   return (
     <AdminV2Layout>
       <div className="admin-v2-dashboard">
-        <div className="admin-v2-dashboard-header">
-          <h1 className="admin-v2-dashboard-title">Dashboard</h1>
-          <p className="admin-v2-dashboard-subtitle">
-            Overview of all patients and their care status
-          </p>
-        </div>
-
         {/* Error State */}
         {error && (
           <div className="admin-v2-error-message">
@@ -194,21 +187,21 @@ const AdminV2Dashboard = () => {
         {/* Summary Statistics */}
         <div className="admin-v2-summary-stats">
           <div className="admin-v2-stat-card">
-            <div className="admin-v2-stat-icon patients">
-              <PatientsIcon size={24} />
-            </div>
-            <div className="admin-v2-stat-info">
-              <h4>{loading ? '...' : `${summary.active_patients}/${summary.total_patients}`}</h4>
-              <p>Active Patients</p>
-            </div>
-          </div>
-          <div className="admin-v2-stat-card">
             <div className="admin-v2-stat-icon medications">
               <MedicationsIcon size={24} />
             </div>
             <div className="admin-v2-stat-info">
               <h4>{loading ? '...' : summary.medications_due}</h4>
               <p>Medications Due</p>
+            </div>
+          </div>
+          <div className="admin-v2-stat-card">
+            <div className="admin-v2-stat-icon nutrition">
+              <NutritionIcon size={24} />
+            </div>
+            <div className="admin-v2-stat-info">
+              <h4>{loading ? '...' : summary.nutrition_due}</h4>
+              <p>Nutrition Due</p>
             </div>
           </div>
           <div className="admin-v2-stat-card">
@@ -233,10 +226,7 @@ const AdminV2Dashboard = () => {
 
         {/* Section Header */}
         <div className="admin-v2-section-header">
-          <h2 className="admin-v2-section-title">All Patients</h2>
-          <Link to="/care/patients/create" className="admin-v2-btn admin-v2-btn-primary">
-            <PlusIcon size={16} /> Add Patient
-          </Link>
+          <h2 className="admin-v2-section-title">All Patients ({patients.length})</h2>
         </div>
 
         {/* Loading State */}
@@ -269,74 +259,107 @@ const AdminV2Dashboard = () => {
         {/* Patients Grid */}
         {!loading && patients.length > 0 && (
           <div className="admin-v2-patients-grid">
-            {patients.map((patient) => (
+            {patients.map((patient) => {
+              const reading = patientReadings[patient.id];
+              const spo2 = reading?.spo2;
+              const bpm = reading?.bpm;
+              // SpO2 and HR both come from the pulse-ox reader. Show each only
+              // when the patient has a pulse-ox source (an active Reader) or is
+              // currently streaming that value, and hide the whole chip when
+              // neither applies — so a patient without a pulse ox shows no
+              // orphaned "-- bpm".
+              const showSpo2 = patient.has_pulse_ox || (spo2 !== null && spo2 !== undefined);
+              const showHr = patient.has_pulse_ox || (bpm !== null && bpm !== undefined);
+              const showVitals = showSpo2 || showHr;
+
+              return (
               <div key={patient.id} className="admin-v2-patient-card">
                 <div className="admin-v2-patient-header">
-                  <div className="admin-v2-patient-avatar">
-                    {getInitials(patient.name)}
+                  <div className="admin-v2-patient-header-top">
+                    <div className="admin-v2-patient-avatar">
+                      {getInitials(patient.name)}
+                    </div>
+                    <div className="admin-v2-patient-info">
+                      <h3 className="admin-v2-patient-name">{patient.name}</h3>
+                      <p className="admin-v2-patient-meta">
+                        {patient.date_of_birth ? `Age ${calculateAge(patient.date_of_birth)}` : 'Age unknown'}
+                        {patient.room ? ` • ${patient.room}` : ''}
+                      </p>
+                    </div>
+
+                    {/* Across from name/age: ACTIVE on top, camera under it */}
+                    <div className="admin-v2-patient-status-stack">
+                      <span className={`admin-v2-patient-status ${patient.status}`}>
+                        {patient.status}
+                      </span>
+                      {patient.has_camera && (
+                        <button
+                          type="button"
+                          className="admin-v2-vitals-camera"
+                          onClick={() => setCameraModalPatient(patient)}
+                          title={`Live camera: ${patient.camera_name || ''}`}
+                        >
+                          <CameraIcon size={18} />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <div className="admin-v2-patient-info">
-                    <h3 className="admin-v2-patient-name">{patient.name}</h3>
-                    <p className="admin-v2-patient-meta">
-                      {patient.date_of_birth ? `Age ${calculateAge(patient.date_of_birth)}` : 'Age unknown'}
-                      {patient.room ? ` • ${patient.room}` : ''}
-                    </p>
-                  </div>
-                  <Link
-                    to="/live"
-                    className="admin-v2-patient-readings"
-                    title="Touch Dashboard"
-                  >
-                    {patientReadings[patient.id]
-                      ? `${patientReadings[patient.id].spo2 ?? '—'}% · ${patientReadings[patient.id].bpm ?? '—'} bpm`
-                      : '— · —'}
-                  </Link>
-                  {patient.has_camera && (
-                    <button
-                      type="button"
-                      onClick={() => setCameraModalPatient(patient)}
-                      title={`Live camera: ${patient.camera_name || ''}`}
-                      style={{
-                        background: 'transparent',
-                        border: '1px solid rgba(255,255,255,0.15)',
-                        color: '#58a6ff',
-                        padding: '4px 6px',
-                        borderRadius: 6,
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <CameraIcon size={18} />
-                    </button>
+
+                  {showVitals && (
+                    <div className="admin-v2-vitals-row">
+                      <Link to="/live" className="admin-v2-vitals" title="Touch Dashboard">
+                        {showSpo2 && (
+                          <span className="admin-v2-vital spo2">
+                            <VitalsIcon size={15} />
+                            <span className="admin-v2-vital-label">SpO₂</span>
+                            <span className="admin-v2-vital-value">
+                              {spo2 !== null && spo2 !== undefined ? `${spo2}%` : '--'}
+                            </span>
+                          </span>
+                        )}
+                        {showHr && (
+                          <span className="admin-v2-vital bpm">
+                            <HeartIcon size={15} />
+                            <span className="admin-v2-vital-value">
+                              {bpm !== null && bpm !== undefined ? bpm : '--'}
+                            </span>
+                            <span className="admin-v2-vital-unit">bpm</span>
+                          </span>
+                        )}
+                      </Link>
+                    </div>
                   )}
-                  <span className={`admin-v2-patient-status ${patient.status}`}>
-                    {patient.status}
-                  </span>
                 </div>
 
-                {/* Due Counters */}
+                {/* Due Counters — red when that category has an overdue item */}
                 <div className="admin-v2-due-counters">
                   <Link
                     to={`/care/medications/schedule?patient=${patient.id}`}
-                    className={`admin-v2-due-item ${getDueStatus(patient.due_counts?.medications || 0)}`}
+                    className={`admin-v2-due-item meds${patient.overdue_counts?.medications ? ' overdue' : ''}`}
                   >
                     <p className="admin-v2-due-count">{patient.due_counts?.medications || 0}</p>
-                    <p className="admin-v2-due-label">Meds Due</p>
+                    <p className="admin-v2-due-label">Meds</p>
                   </Link>
                   <Link
-                    to={`/care/equipment?patient=${patient.id}`}
-                    className={`admin-v2-due-item ${getDueStatus(patient.due_counts?.equipment || 0)}`}
+                    to={`/care/nutrition?patient=${patient.id}`}
+                    className={`admin-v2-due-item nutrition${patient.overdue_counts?.nutrition ? ' overdue' : ''}`}
                   >
-                    <p className="admin-v2-due-count">{patient.due_counts?.equipment || 0}</p>
-                    <p className="admin-v2-due-label">Equip Due</p>
+                    <p className="admin-v2-due-count">{patient.due_counts?.nutrition || 0}</p>
+                    <p className="admin-v2-due-label">Nutrition</p>
                   </Link>
                   <Link
                     to={`/care/care-tasks/schedule?patient=${patient.id}`}
-                    className={`admin-v2-due-item ${getDueStatus(patient.due_counts?.tasks || 0)}`}
+                    className={`admin-v2-due-item tasks${patient.overdue_counts?.tasks ? ' overdue' : ''}`}
                   >
                     <p className="admin-v2-due-count">{patient.due_counts?.tasks || 0}</p>
-                    <p className="admin-v2-due-label">Tasks Due</p>
+                    <p className="admin-v2-due-label">Tasks</p>
+                  </Link>
+                  <Link
+                    to={`/care/equipment?patient=${patient.id}`}
+                    className="admin-v2-due-item equip"
+                  >
+                    <p className="admin-v2-due-count">{patient.due_counts?.equipment || 0}</p>
+                    <p className="admin-v2-due-label">Equip</p>
                   </Link>
                 </div>
 
@@ -346,11 +369,12 @@ const AdminV2Dashboard = () => {
                     View Details
                   </Link>
                   <Link to={`/care/schedule?patient=${patient.id}`} className="admin-v2-btn admin-v2-btn-primary">
-                    Schedule
+                    <CalendarIcon size={16} /> Schedule
                   </Link>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

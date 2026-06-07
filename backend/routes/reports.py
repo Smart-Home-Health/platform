@@ -17,14 +17,27 @@ import logging
 from datetime import datetime, date, time, timedelta, timezone
 from typing import Optional
 
-import pytz
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from zoneinfo import ZoneInfo
+
 from db import get_db
 from dependencies import require_read_access
 from crud.scheduling import get_scheduled_medications, get_scheduled_care_tasks
+from utils.datetime_utils import resolve_tz_for_patient
+
+
+def _pg_tz(db: Session, patient_id: int) -> str:
+    """The patient's account IANA timezone name, safe to embed in SQL.
+
+    `resolve_tz_for_patient` only ever returns a ZoneInfo built from the tz
+    database (falling back to the default on anything invalid), so `.key` is
+    always a real IANA name (e.g. "America/Los_Angeles") with no quoting risk.
+    Used for `AT TIME ZONE '<tz>'` day-bucketing instead of a hardcoded zone.
+    """
+    return resolve_tz_for_patient(db, patient_id).key
 
 logger = logging.getLogger("app")
 
@@ -43,13 +56,16 @@ ALLOWED_VITAL_TYPES = set(VITAL_UNITS.keys())
 ALLOWED_AGGREGATIONS = {"hour", "15min", "5min", "none"}
 
 
-def _eastern_day_bounds(d: date):
-    eastern = pytz.timezone("US/Eastern")
-    local_start = eastern.localize(datetime.combine(d, time.min))
-    local_end = eastern.localize(datetime.combine(d + timedelta(days=1), time.min))
+def _local_day_bounds(d: date, tz_name: str):
+    """Naive-UTC [start, end) bounds for the local calendar day ``d`` in the
+    given account timezone (DST-safe via zoneinfo). Naive because the compared
+    columns are stored as naive UTC."""
+    tz = ZoneInfo(tz_name)
+    local_start = datetime.combine(d, time.min, tzinfo=tz)
+    local_end = datetime.combine(d + timedelta(days=1), time.min, tzinfo=tz)
     return (
-        local_start.astimezone(pytz.utc).replace(tzinfo=None),
-        local_end.astimezone(pytz.utc).replace(tzinfo=None),
+        local_start.astimezone(timezone.utc).replace(tzinfo=None),
+        local_end.astimezone(timezone.utc).replace(tzinfo=None),
     )
 
 
@@ -72,10 +88,11 @@ def _parse_dates(dates_str: str) -> list[date]:
 # Time-bucket SQL expressions by aggregation level
 # ---------------------------------------------------------------------------
 
-def _bucket_sql(ts_col: str, agg: str):
+def _bucket_sql(ts_col: str, agg: str, tz_name: str):
     """Return (select_expr, group_expr) for the given aggregation level.
-    For 'none', group_expr is None (no GROUP BY)."""
-    tz = f"{ts_col} AT TIME ZONE 'US/Eastern'"
+    For 'none', group_expr is None (no GROUP BY). ``tz_name`` is a validated
+    IANA zone (see _pg_tz)."""
+    tz = f"{ts_col} AT TIME ZONE '{tz_name}'"
     if agg == "none":
         return (
             f"EXTRACT(HOUR FROM {tz}) "
@@ -133,14 +150,14 @@ _PULSE_OX_CTE = """
 """
 
 
-def _build_pulse_ox_sql(col: str, agg: str) -> str:
-    sel_expr, grp_expr = _bucket_sql("timestamp", agg)
+def _build_pulse_ox_sql(col: str, agg: str, tz_name: str) -> str:
+    sel_expr, grp_expr = _bucket_sql("timestamp", agg, tz_name)
     col_safe = "spo2" if col == "spo2" else "bpm"
 
     if grp_expr is None:  # raw
         return _PULSE_OX_CTE + f"""
     SELECT
-        date(timestamp AT TIME ZONE 'US/Eastern') AS day,
+        date(timestamp AT TIME ZONE '{tz_name}') AS day,
         ({sel_expr}) AS bucket,
         {col_safe}::float AS val
     FROM with_dur
@@ -149,7 +166,7 @@ def _build_pulse_ox_sql(col: str, agg: str) -> str:
 """
     return _PULSE_OX_CTE + f"""
     SELECT
-        date(timestamp AT TIME ZONE 'US/Eastern') AS day,
+        date(timestamp AT TIME ZONE '{tz_name}') AS day,
         ({sel_expr}) AS bucket,
         MIN({col_safe}) AS lo,
         AVG({col_safe})::float AS mean,
@@ -166,8 +183,8 @@ def _build_pulse_ox_sql(col: str, agg: str) -> str:
 # Vent samples
 # ---------------------------------------------------------------------------
 
-def _build_vent_sql(agg: str) -> str:
-    sel_expr, grp_expr = _bucket_sql("recorded_at", agg)
+def _build_vent_sql(agg: str, tz_name: str) -> str:
+    sel_expr, grp_expr = _bucket_sql("recorded_at", agg, tz_name)
 
     base_where = """
     FROM vent_samples
@@ -182,7 +199,7 @@ def _build_vent_sql(agg: str) -> str:
     if grp_expr is None:
         return f"""
     SELECT
-        date(recorded_at AT TIME ZONE 'US/Eastern') AS day,
+        date(recorded_at AT TIME ZONE '{tz_name}') AS day,
         ({sel_expr}) AS bucket,
         value_numeric::float AS val
     {base_where}
@@ -190,7 +207,7 @@ def _build_vent_sql(agg: str) -> str:
 """
     return f"""
     SELECT
-        date(recorded_at AT TIME ZONE 'US/Eastern') AS day,
+        date(recorded_at AT TIME ZONE '{tz_name}') AS day,
         ({sel_expr}) AS bucket,
         MIN(value_numeric) AS lo,
         AVG(value_numeric)::float AS mean,
@@ -206,8 +223,8 @@ def _build_vent_sql(agg: str) -> str:
 # Manual vitals
 # ---------------------------------------------------------------------------
 
-def _build_vitals_sql(agg: str, vital_group: Optional[str] = None) -> str:
-    sel_expr, grp_expr = _bucket_sql("timestamp", agg)
+def _build_vitals_sql(agg: str, tz_name: str, vital_group: Optional[str] = None) -> str:
+    sel_expr, grp_expr = _bucket_sql("timestamp", agg, tz_name)
 
     group_filter = "AND vital_group = :vital_group" if vital_group else ""
 
@@ -223,7 +240,7 @@ def _build_vitals_sql(agg: str, vital_group: Optional[str] = None) -> str:
     if grp_expr is None:
         return f"""
     SELECT
-        date(timestamp AT TIME ZONE 'US/Eastern') AS day,
+        date(timestamp AT TIME ZONE '{tz_name}') AS day,
         ({sel_expr}) AS bucket,
         value::float AS val
     {base_where}
@@ -231,7 +248,7 @@ def _build_vitals_sql(agg: str, vital_group: Optional[str] = None) -> str:
 """
     return f"""
     SELECT
-        date(timestamp AT TIME ZONE 'US/Eastern') AS day,
+        date(timestamp AT TIME ZONE '{tz_name}') AS day,
         ({sel_expr}) AS bucket,
         MIN(value) AS lo,
         AVG(value)::float AS mean,
@@ -287,10 +304,11 @@ def _rows_to_points(rows, agg: str):
 def _query_pulse_ox(db: Session, patient_id: int, dates: list[date], col: str, agg: str):
     if not dates:
         return {}
-    earliest_start, _ = _eastern_day_bounds(dates[0])
-    _, latest_end = _eastern_day_bounds(dates[-1])
+    tz_name = _pg_tz(db, patient_id)
+    earliest_start, _ = _local_day_bounds(dates[0], tz_name)
+    _, latest_end = _local_day_bounds(dates[-1], tz_name)
 
-    sql_str = _build_pulse_ox_sql(col, agg)
+    sql_str = _build_pulse_ox_sql(col, agg, tz_name)
     rows = db.execute(
         text(sql_str),
         {"patient_id": patient_id, "start_ts": earliest_start, "end_ts": latest_end},
@@ -301,10 +319,11 @@ def _query_pulse_ox(db: Session, patient_id: int, dates: list[date], col: str, a
 def _query_vent(db: Session, patient_id: int, dates: list[date], agg: str):
     if not dates:
         return {}
-    earliest_start, _ = _eastern_day_bounds(dates[0])
-    _, latest_end = _eastern_day_bounds(dates[-1])
+    tz_name = _pg_tz(db, patient_id)
+    earliest_start, _ = _local_day_bounds(dates[0], tz_name)
+    _, latest_end = _local_day_bounds(dates[-1], tz_name)
 
-    sql_str = _build_vent_sql(agg)
+    sql_str = _build_vent_sql(agg, tz_name)
     rows = db.execute(
         text(sql_str),
         {"patient_id": patient_id, "start_ts": earliest_start, "end_ts": latest_end},
@@ -316,8 +335,9 @@ def _query_vitals(db: Session, patient_id: int, dates: list[date], vital_type: s
                   agg: str, vital_group: Optional[str] = None):
     if not dates:
         return {}
-    earliest_start, _ = _eastern_day_bounds(dates[0])
-    _, latest_end = _eastern_day_bounds(dates[-1])
+    tz_name = _pg_tz(db, patient_id)
+    earliest_start, _ = _local_day_bounds(dates[0], tz_name)
+    _, latest_end = _local_day_bounds(dates[-1], tz_name)
 
     params: dict = {
         "patient_id": patient_id,
@@ -328,7 +348,7 @@ def _query_vitals(db: Session, patient_id: int, dates: list[date], vital_type: s
     if vital_group:
         params["vital_group"] = vital_group
 
-    sql_str = _build_vitals_sql(agg, vital_group)
+    sql_str = _build_vitals_sql(agg, tz_name, vital_group)
     rows = db.execute(text(sql_str), params).all()
     return _rows_to_points(rows, agg)
 
@@ -336,10 +356,11 @@ def _query_vitals(db: Session, patient_id: int, dates: list[date], vital_type: s
 def _dates_with_pulse_ox(db: Session, patient_id: int, dates: list[date]) -> set[str]:
     if not dates:
         return set()
-    earliest_start, _ = _eastern_day_bounds(dates[0])
-    _, latest_end = _eastern_day_bounds(dates[-1])
-    rows = db.execute(text("""
-        SELECT DISTINCT date(timestamp AT TIME ZONE 'US/Eastern')::text AS d
+    tz_name = _pg_tz(db, patient_id)
+    earliest_start, _ = _local_day_bounds(dates[0], tz_name)
+    _, latest_end = _local_day_bounds(dates[-1], tz_name)
+    rows = db.execute(text(f"""
+        SELECT DISTINCT date(timestamp AT TIME ZONE '{tz_name}')::text AS d
         FROM pulse_ox_data
         WHERE patient_id = :pid
           AND timestamp >= :start_ts AND timestamp < :end_ts
@@ -351,10 +372,11 @@ def _dates_with_pulse_ox(db: Session, patient_id: int, dates: list[date]) -> set
 def _dates_with_vent(db: Session, patient_id: int, dates: list[date]) -> set[str]:
     if not dates:
         return set()
-    earliest_start, _ = _eastern_day_bounds(dates[0])
-    _, latest_end = _eastern_day_bounds(dates[-1])
-    rows = db.execute(text("""
-        SELECT DISTINCT date(recorded_at AT TIME ZONE 'US/Eastern')::text AS d
+    tz_name = _pg_tz(db, patient_id)
+    earliest_start, _ = _local_day_bounds(dates[0], tz_name)
+    _, latest_end = _local_day_bounds(dates[-1], tz_name)
+    rows = db.execute(text(f"""
+        SELECT DISTINCT date(recorded_at AT TIME ZONE '{tz_name}')::text AS d
         FROM vent_samples
         WHERE patient_id = :pid
           AND parameter_key = '9408' AND parameter_suffix = '50'
@@ -448,13 +470,13 @@ async def day_over_day(
 # Overnight monitoring summary
 # ---------------------------------------------------------------------------
 
-def _overnight_bounds(d: date, start_hour: int, end_hour: int):
-    eastern = pytz.timezone("US/Eastern")
-    local_start = eastern.localize(datetime.combine(d, time(start_hour)))
-    local_end = eastern.localize(datetime.combine(d + timedelta(days=1), time(end_hour)))
+def _overnight_bounds(d: date, start_hour: int, end_hour: int, tz_name: str):
+    tz = ZoneInfo(tz_name)
+    local_start = datetime.combine(d, time(start_hour), tzinfo=tz)
+    local_end = datetime.combine(d + timedelta(days=1), time(end_hour), tzinfo=tz)
     return (
-        local_start.astimezone(pytz.utc).replace(tzinfo=None),
-        local_end.astimezone(pytz.utc).replace(tzinfo=None),
+        local_start.astimezone(timezone.utc).replace(tzinfo=None),
+        local_end.astimezone(timezone.utc).replace(tzinfo=None),
         local_start,
         local_end,
     )
@@ -477,7 +499,7 @@ async def overnight_summary(
     if start_hour < 0 or start_hour > 23 or end_hour < 0 or end_hour > 23:
         raise HTTPException(status_code=400, detail="Hours must be 0-23")
 
-    utc_start, utc_end, local_start, local_end = _overnight_bounds(d, start_hour, end_hour)
+    utc_start, utc_end, local_start, local_end = _overnight_bounds(d, start_hour, end_hour, _pg_tz(db, patient_id))
 
     # --- Vitals summary (pulse ox) ---
     vitals_rows = db.execute(text("""
@@ -595,21 +617,20 @@ async def overnight_summary(
         })
 
     # --- Care checklist (meds + tasks in overnight window) ---
-    # Use Eastern timezone offset for schedule helpers
-    eastern = pytz.timezone("US/Eastern")
-    tz_offset = int(eastern.localize(datetime.combine(d, time(12))).utcoffset().total_seconds() / 60)
+    # Schedule helpers bucket by the patient's account timezone.
+    tz = resolve_tz_for_patient(db, patient_id)
 
     # Get schedules for both days that the overnight window spans
-    meds_day1 = get_scheduled_medications(db, d, patient_id, tz_offset_minutes=tz_offset)
-    meds_day2 = get_scheduled_medications(db, d + timedelta(days=1), patient_id, tz_offset_minutes=tz_offset)
+    meds_day1 = get_scheduled_medications(db, d, patient_id, tz=tz)
+    meds_day2 = get_scheduled_medications(db, d + timedelta(days=1), patient_id, tz=tz)
     all_meds = meds_day1 + meds_day2
 
-    tasks_day1 = get_scheduled_care_tasks(db, d, patient_id, tz_offset_minutes=tz_offset)
-    tasks_day2 = get_scheduled_care_tasks(db, d + timedelta(days=1), patient_id, tz_offset_minutes=tz_offset)
+    tasks_day1 = get_scheduled_care_tasks(db, d, patient_id, tz=tz)
+    tasks_day2 = get_scheduled_care_tasks(db, d + timedelta(days=1), patient_id, tz=tz)
     all_tasks = tasks_day1 + tasks_day2
 
-    local_start_aware = local_start.astimezone(pytz.utc)
-    local_end_aware = local_end.astimezone(pytz.utc)
+    local_start_aware = local_start.astimezone(timezone.utc)
+    local_end_aware = local_end.astimezone(timezone.utc)
 
     # Look up skipped med logs (dose_amount = 0) in the window so we can
     # distinguish "skipped" from "given on time". get_scheduled_medications
@@ -715,7 +736,7 @@ async def overnight_summary(
             dt = datetime.fromisoformat(dt)
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
-        local = dt.astimezone(eastern)
+        local = dt.astimezone(tz)
         return local.strftime("%-I:%M %p")
 
     def _to_utc_aware(dt):
@@ -904,7 +925,8 @@ async def weekly_summary(
     db: Session = Depends(get_db),
     _: bool = Depends(require_read_access),
 ):
-    eastern = pytz.timezone("US/Eastern")
+    tz = resolve_tz_for_patient(db, patient_id)
+    tz_name = tz.key
 
     if end_date:
         try:
@@ -912,13 +934,13 @@ async def weekly_summary(
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid date format")
     else:
-        end_d = datetime.now(eastern).date()
+        end_d = datetime.now(tz).date()
 
     start_d = end_d - timedelta(days=6)
     dates_range = [start_d + timedelta(days=i) for i in range(7)]
 
-    utc_start, _ = _eastern_day_bounds(start_d)
-    _, utc_end = _eastern_day_bounds(end_d)
+    utc_start, _ = _local_day_bounds(start_d, tz_name)
+    _, utc_end = _local_day_bounds(end_d, tz_name)
 
     # --- Vitals sparklines ---
     vitals_result = {}
@@ -926,7 +948,7 @@ async def weekly_summary(
     for col, key in [("spo2", "spo2"), ("bpm", "heart_rate")]:
         rows = db.execute(text(f"""
             SELECT
-                date(timestamp AT TIME ZONE 'US/Eastern') AS day,
+                date(timestamp AT TIME ZONE '{tz_name}') AS day,
                 MIN({col}) AS lo, AVG({col})::float AS avg, MAX({col}) AS hi
             FROM pulse_ox_data
             WHERE patient_id = :pid
@@ -945,9 +967,9 @@ async def weekly_summary(
         }
 
     # Respiratory rate from vent_samples
-    rr_rows = db.execute(text("""
+    rr_rows = db.execute(text(f"""
         SELECT
-            date(recorded_at AT TIME ZONE 'US/Eastern') AS day,
+            date(recorded_at AT TIME ZONE '{tz_name}') AS day,
             MIN(value_numeric) AS lo, AVG(value_numeric)::float AS avg, MAX(value_numeric) AS hi
         FROM vent_samples
         WHERE patient_id = :pid
@@ -974,7 +996,7 @@ async def weekly_summary(
             params["vgroup"] = vgroup
         rows = db.execute(text(f"""
             SELECT
-                date(timestamp AT TIME ZONE 'US/Eastern') AS day,
+                date(timestamp AT TIME ZONE '{tz_name}') AS day,
                 MIN(value) AS lo, AVG(value)::float AS avg, MAX(value) AS hi
             FROM vitals
             WHERE patient_id = :pid
@@ -995,7 +1017,6 @@ async def weekly_summary(
         }
 
     # --- Compliance ---
-    tz_offset = int(eastern.localize(datetime.combine(start_d, time(12))).utcoffset().total_seconds() / 60)
 
     # Pre-fetch all scheduled logs in the period so we can:
     # 1) detect skipped doses (dose_amount = 0) on active-schedule entries
@@ -1048,7 +1069,7 @@ async def weekly_summary(
         return (sid, st.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M'))
 
     for day in dates_range:
-        meds = get_scheduled_medications(db, day, patient_id, tz_offset_minutes=tz_offset)
+        meds = get_scheduled_medications(db, day, patient_id, tz=tz)
         for m in meds:
             if m.get("is_prn"):
                 continue
@@ -1081,7 +1102,7 @@ async def weekly_summary(
             else:
                 med_missed += 1
 
-        tasks = get_scheduled_care_tasks(db, day, patient_id, tz_offset_minutes=tz_offset)
+        tasks = get_scheduled_care_tasks(db, day, patient_id, tz=tz)
         for t in tasks:
             tkey = _utc_minute_key(t.get("schedule_id"), t.get("scheduled_time"))
             if tkey in covered_task_keys:
@@ -1158,9 +1179,9 @@ async def weekly_summary(
     }
 
     # --- Nutrition ---
-    nutrition_rows = db.execute(text("""
+    nutrition_rows = db.execute(text(f"""
         SELECT
-            date(consumed_at AT TIME ZONE 'US/Eastern') AS day,
+            date(consumed_at AT TIME ZONE '{tz_name}') AS day,
             COALESCE(SUM(calories), 0)::float AS calories,
             COALESCE(SUM(CASE WHEN item_type = 'liquid' THEN
                 CASE amount_unit
@@ -1201,9 +1222,9 @@ async def weekly_summary(
     fluid_vals = [r.fluid_ml for r in nutrition_rows if r.fluid_ml]
 
     # --- Alerts ---
-    alert_summary_rows = db.execute(text("""
+    alert_summary_rows = db.execute(text(f"""
         SELECT
-            date(start_time AT TIME ZONE 'US/Eastern') AS day,
+            date(start_time AT TIME ZONE '{tz_name}') AS day,
             COUNT(*) AS cnt,
             SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, NOW()) - start_time)) / 60)::float AS total_min,
             SUM(CASE WHEN spo2_alarm_triggered THEN 1 ELSE 0 END) AS spo2_alarms,

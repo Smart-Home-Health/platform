@@ -22,7 +22,9 @@ from pydantic import BaseModel, Field
 class MedicationBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     concentration: str = Field(..., min_length=1, max_length=100)
-    quantity: float = Field(..., gt=0)
+    # ge=0: 0 on hand is legitimate (e.g. recording a finished/depleted med, or
+    # one whose stock is tracked elsewhere). Quantity is on-hand inventory, not a dose.
+    quantity: float = Field(..., ge=0)
     quantity_unit: str = Field(..., min_length=1, max_length=50)
     instructions: str
     start_date: date
@@ -37,7 +39,9 @@ class MedicationBase(BaseModel):
 class MedicationCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     concentration: str = Field(..., min_length=1, max_length=100)
-    quantity: float = Field(..., gt=0)
+    # ge=0: 0 on hand is legitimate (e.g. recording a finished/depleted med, or
+    # one whose stock is tracked elsewhere). Quantity is on-hand inventory, not a dose.
+    quantity: float = Field(..., ge=0)
     quantity_unit: str = Field(..., min_length=1, max_length=50)
     instructions: str
     start_date: date
@@ -53,7 +57,10 @@ class MedicationCreate(BaseModel):
 class MedicationUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=200)
     concentration: Optional[str] = Field(None, min_length=1, max_length=100)
-    quantity: Optional[float] = Field(None, gt=0)
+    # ge=0 (not gt=0): an existing medication legitimately reaches 0 on hand when
+    # a course is finished. Editing it (e.g. marking inactive) must not be blocked
+    # by the create-time "must have stock" rule — the edit form resends quantity.
+    quantity: Optional[float] = Field(None, ge=0)
     quantity_unit: Optional[str] = Field(None, min_length=1, max_length=50)
     instructions: Optional[str] = None
     start_date: Optional[date] = None

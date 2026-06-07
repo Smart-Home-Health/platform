@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc, and_, func
 from datetime import datetime, date, timedelta, timezone
 from typing import List, Optional
+from utils.datetime_utils import utc_now
 from schemas.nutrition_intake import NutritionIntake
 from schemas.patient import Patient
 import logging
@@ -61,7 +62,7 @@ def _publish_nutrition_mqtt(db: Session, patient_id: int):
         water_intake_event = NutritionSensorUpdate(
             sensor_type="nutrition_water_intake",
             value=dashboard_data["total_water_ml"],
-            timestamp=datetime.now(),
+            timestamp=utc_now(),
             source=EventSource.API,
             metadata={
                 "day_start": dashboard_data["day_start"],
@@ -74,7 +75,7 @@ def _publish_nutrition_mqtt(db: Session, patient_id: int):
         water_scheduled_event = NutritionSensorUpdate(
             sensor_type="nutrition_water_scheduled",
             value=dashboard_data["scheduled_water_ml"],
-            timestamp=datetime.now(),
+            timestamp=utc_now(),
             source=EventSource.API,
             metadata={
                 "scheduled_feedings_past": dashboard_data["scheduled_feedings_past"],
@@ -89,7 +90,7 @@ def _publish_nutrition_mqtt(db: Session, patient_id: int):
         water_target_event = NutritionSensorUpdate(
             sensor_type="nutrition_water_target",
             value=dashboard_data["target_water_ml"],
-            timestamp=datetime.now(),
+            timestamp=utc_now(),
             source=EventSource.API,
             metadata={
                 "day_start": dashboard_data["day_start"],
@@ -102,7 +103,7 @@ def _publish_nutrition_mqtt(db: Session, patient_id: int):
         calories_intake_event = NutritionSensorUpdate(
             sensor_type="nutrition_calories_intake",
             value=dashboard_data["total_calories"],
-            timestamp=datetime.now(),
+            timestamp=utc_now(),
             source=EventSource.API,
             metadata={
                 "day_start": dashboard_data["day_start"],
@@ -115,7 +116,7 @@ def _publish_nutrition_mqtt(db: Session, patient_id: int):
         calories_scheduled_event = NutritionSensorUpdate(
             sensor_type="nutrition_calories_scheduled",
             value=dashboard_data["scheduled_calories"],
-            timestamp=datetime.now(),
+            timestamp=utc_now(),
             source=EventSource.API,
             metadata={
                 "scheduled_feedings_past": dashboard_data["scheduled_feedings_past"],
@@ -130,7 +131,7 @@ def _publish_nutrition_mqtt(db: Session, patient_id: int):
         calories_target_event = NutritionSensorUpdate(
             sensor_type="nutrition_calories_target",
             value=dashboard_data["target_calories"],
-            timestamp=datetime.now(),
+            timestamp=utc_now(),
             source=EventSource.API,
             metadata={
                 "day_start": dashboard_data["day_start"],
@@ -155,7 +156,7 @@ def _publish_nutrition_scheduled_mqtt(db: Session, patient_id: int):
         water_scheduled_event = NutritionSensorUpdate(
             sensor_type="nutrition_water_scheduled",
             value=dashboard_data["scheduled_water_ml"],
-            timestamp=datetime.now(),
+            timestamp=utc_now(),
             source=EventSource.SYSTEM,
             metadata={
                 "scheduled_feedings_past": dashboard_data["scheduled_feedings_past"],
@@ -170,7 +171,7 @@ def _publish_nutrition_scheduled_mqtt(db: Session, patient_id: int):
         calories_scheduled_event = NutritionSensorUpdate(
             sensor_type="nutrition_calories_scheduled",
             value=dashboard_data["scheduled_calories"],
-            timestamp=datetime.now(),
+            timestamp=utc_now(),
             source=EventSource.SYSTEM,
             metadata={
                 "scheduled_feedings_past": dashboard_data["scheduled_feedings_past"],
@@ -200,7 +201,7 @@ def _publish_nutrition_targets_mqtt(db: Session, patient_id: int):
         # Calculate day boundaries
         day_start_hour_setting = get_setting(db, 'day_start_hour')
         day_start_hour = int(day_start_hour_setting) if day_start_hour_setting else 7
-        now = datetime.now()
+        now = utc_now()
         if now.hour < day_start_hour:
             day_start = datetime(now.year, now.month, now.day, day_start_hour, 0, 0) - timedelta(days=1)
         else:
@@ -211,7 +212,7 @@ def _publish_nutrition_targets_mqtt(db: Session, patient_id: int):
         water_target_event = NutritionSensorUpdate(
             sensor_type="nutrition_water_target",
             value=target_water,
-            timestamp=datetime.now(),
+            timestamp=utc_now(),
             source=EventSource.API,
             metadata={
                 "day_start": day_start.isoformat(),
@@ -224,7 +225,7 @@ def _publish_nutrition_targets_mqtt(db: Session, patient_id: int):
         calories_target_event = NutritionSensorUpdate(
             sensor_type="nutrition_calories_target",
             value=target_calories,
-            timestamp=datetime.now(),
+            timestamp=utc_now(),
             source=EventSource.API,
             metadata={
                 "day_start": day_start.isoformat(),
@@ -255,7 +256,7 @@ def _get_nutrition_dashboard_data(db: Session, patient_id: int) -> dict:
     target_water = float(target_water_setting) if target_water_setting else 2000  # ml
     
     # Calculate the current "day" based on day_start_hour
-    now = datetime.now()
+    now = utc_now()
     
     # If current hour is before day_start_hour, we're still in "yesterday"
     if now.hour < day_start_hour:
@@ -381,12 +382,12 @@ def create_nutrition_intake(db: Session, intake_data: dict, patient_id: int = No
             fat_grams=intake_data.get('fat_grams'),
             fiber_grams=intake_data.get('fiber_grams'),
             sodium_mg=intake_data.get('sodium_mg'),
-            consumed_at=intake_data.get('consumed_at') or datetime.utcnow(),
+            consumed_at=intake_data.get('consumed_at') or utc_now(),
             meal_type=intake_data.get('meal_type'),
             notes=intake_data.get('notes'),
             recorded_by=intake_data.get('recorded_by'),
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=utc_now(),
+            updated_at=utc_now()
         )
         
         db.add(nutrition_intake)
@@ -397,7 +398,14 @@ def create_nutrition_intake(db: Session, intake_data: dict, patient_id: int = No
         
         # Publish to MQTT
         _publish_nutrition_mqtt(db, patient_id)
-        
+
+        # Tell live dashboards to refetch the (patient-scoped) nutrition badge.
+        try:
+            from event_publisher import publish_due_counts_changed
+            publish_due_counts_changed("nutrition", patient_id)
+        except Exception as e:
+            logger.error(f"Failed to publish nutrition due-count change: {e}")
+
         return nutrition_intake
         
     except Exception as e:
@@ -543,16 +551,23 @@ def update_nutrition_intake(db: Session, intake_id: int, update_data: dict) -> O
             if hasattr(intake, field) and field not in ['id', 'created_at']:
                 setattr(intake, field, value)
         
-        intake.updated_at = datetime.utcnow()
+        intake.updated_at = utc_now()
         
         db.commit()
         db.refresh(intake)
         
         logger.info(f"Updated nutrition intake record: {intake_id}")
-        
+
         # Publish to MQTT
         _publish_nutrition_mqtt(db, intake.patient_id)
-        
+
+        # Real-time badge: editing a logged intake can change the nutrition due-count.
+        try:
+            from event_publisher import publish_due_counts_changed
+            publish_due_counts_changed("nutrition", intake.patient_id)
+        except Exception as e:
+            logger.error(f"Failed to publish nutrition due-count change: {e}")
+
         return intake
         
     except Exception as e:
@@ -573,10 +588,17 @@ def delete_nutrition_intake(db: Session, intake_id: int) -> bool:
         db.commit()
         
         logger.info(f"Deleted nutrition intake record: {intake_id}")
-        
+
         # Publish to MQTT
         _publish_nutrition_mqtt(db, patient_id)
-        
+
+        # Real-time badge: deleting a logged intake can restore the nutrition due-count.
+        try:
+            from event_publisher import publish_due_counts_changed
+            publish_due_counts_changed("nutrition", patient_id)
+        except Exception as e:
+            logger.error(f"Failed to publish nutrition due-count change: {e}")
+
         return True
         
     except Exception as e:
@@ -603,8 +625,8 @@ def create_nutrition_goal(db: Session, goal_data: dict) -> NutritionGoal:
     try:
         goal = NutritionGoal(
             **goal_data,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=utc_now(),
+            updated_at=utc_now()
         )
         db.add(goal)
         db.commit()
@@ -632,7 +654,7 @@ def get_patient_nutrition_goals(db: Session, patient_id: int, active_only: bool 
 
 def get_current_nutrition_goal(db: Session, patient_id: int) -> Optional[NutritionGoal]:
     """Get the current active nutrition goal for a patient (most recent effective)"""
-    now = datetime.utcnow()
+    now = utc_now()
     return db.query(NutritionGoal)\
         .filter(
             NutritionGoal.patient_id == patient_id,
@@ -655,7 +677,7 @@ def update_nutrition_goal(db: Session, goal_id: int, update_data: dict) -> Optio
             if hasattr(goal, field) and field not in ['id', 'created_at'] and value is not None:
                 setattr(goal, field, value)
         
-        goal.updated_at = datetime.utcnow()
+        goal.updated_at = utc_now()
         db.commit()
         db.refresh(goal)
         logger.info(f"Updated nutrition goal {goal_id}")
@@ -693,8 +715,8 @@ def create_nutrition_output(db: Session, output_data: dict) -> NutritionOutput:
     try:
         output = NutritionOutput(
             **output_data,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=utc_now(),
+            updated_at=utc_now()
         )
         db.add(output)
         db.commit()
@@ -815,7 +837,7 @@ def update_nutrition_output(db: Session, output_id: int, update_data: dict) -> O
             if hasattr(output, field) and field not in ['id', 'created_at'] and value is not None:
                 setattr(output, field, value)
         
-        output.updated_at = datetime.utcnow()
+        output.updated_at = utc_now()
         db.commit()
         db.refresh(output)
         logger.info(f"Updated nutrition output {output_id}")
@@ -853,8 +875,8 @@ def create_nutrition_schedule(db: Session, schedule_data: dict) -> NutritionSche
     try:
         schedule = NutritionSchedule(
             **schedule_data,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=utc_now(),
+            updated_at=utc_now()
         )
         db.add(schedule)
         db.commit()
@@ -900,7 +922,7 @@ def update_nutrition_schedule(db: Session, schedule_id: int, update_data: dict) 
             if hasattr(schedule, field) and field not in ['id', 'created_at'] and value is not None:
                 setattr(schedule, field, value)
         
-        schedule.updated_at = datetime.utcnow()
+        schedule.updated_at = utc_now()
         db.commit()
         db.refresh(schedule)
         logger.info(f"Updated nutrition schedule {schedule_id}")
@@ -919,7 +941,7 @@ def toggle_nutrition_schedule(db: Session, schedule_id: int) -> Optional[Nutriti
             return None
         
         schedule.is_active = not schedule.is_active
-        schedule.updated_at = datetime.utcnow()
+        schedule.updated_at = utc_now()
         db.commit()
         db.refresh(schedule)
         logger.info(f"Toggled nutrition schedule {schedule_id} to {schedule.is_active}")

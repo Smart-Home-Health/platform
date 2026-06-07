@@ -277,10 +277,8 @@ const AdminV2Shipments = () => {
       <div className="admin-v2-page">
         {selectedPatient ? (
           <>
-            <h1 className="schedule-section-title">DME Shipments</h1>
-
             {/* Stats Row */}
-            <div className="admin-v2-stats-row">
+            <div className="admin-v2-summary-stats admin-v2-shipments-summary">
               <div className="admin-v2-stat-card">
                 <div className="admin-v2-stat-icon" style={{ background: 'rgba(88, 166, 255, 0.15)' }}>
                   <EquipmentIcon size={20} />
@@ -380,8 +378,8 @@ const AdminV2Shipments = () => {
                 )}
               </div>
             ) : (
-              <div className="admin-v2-table-container">
-                <table className="admin-v2-table">
+              <div className="admin-v2-table-container admin-v2-table-cards-wrap">
+                <table className="admin-v2-table admin-v2-table-cards">
                   <thead>
                     <tr>
                       <th>Order #</th>
@@ -400,25 +398,25 @@ const AdminV2Shipments = () => {
                         className="admin-v2-clickable-row"
                         onClick={() => navigate(`/care/equipment/shipments/${shipment.id}?patient=${selectedPatient.id}`)}
                       >
-                        <td>
+                        <td className="admin-v2-cell-name">
                           <strong>{shipment.order_number || shipment.po_number || `#${shipment.id}`}</strong>
                         </td>
-                        <td>{shipment.supplier_name || '-'}</td>
-                        <td>{formatDate(shipment.order_date || shipment.ship_date)}</td>
-                        <td>
+                        <td data-label="Supplier">{shipment.supplier_name || '-'}</td>
+                        <td data-label="Order Date">{formatDate(shipment.order_date || shipment.ship_date)}</td>
+                        <td data-label="Status">
                           <span className={`admin-v2-badge ${getStatusBadgeClass(shipment.status)}`}>
                             {shipment.status}
                           </span>
                         </td>
-                        <td>{shipment.item_count || 0}</td>
-                        <td>
+                        <td data-label="Items">{shipment.item_count || 0}</td>
+                        <td data-label="Type">
                           {shipment.is_backorder ? (
                             <span className="admin-v2-badge admin-v2-badge-warning">Backorder</span>
                           ) : (
                             <span className="admin-v2-badge admin-v2-badge-secondary">Regular</span>
                           )}
                         </td>
-                        <td style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <td className="admin-v2-cell-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                           <button
                             className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-secondary"
                             onClick={(e) => { e.stopPropagation(); handleCopyShipment(shipment.id); }}

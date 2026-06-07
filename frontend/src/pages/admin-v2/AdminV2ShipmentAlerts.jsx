@@ -257,10 +257,8 @@ const AdminV2ShipmentAlerts = () => {
       <div className="admin-v2-page">
         {selectedPatient ? (
           <>
-            <h1 className="schedule-section-title">Shipment Alerts</h1>
-
             {/* Stats Row */}
-            <div className="admin-v2-stats-row">
+            <div className="admin-v2-summary-stats admin-v2-alerts-summary">
               <div className="admin-v2-stat-card">
                 <div className="admin-v2-stat-icon" style={{ background: 'rgba(248, 81, 73, 0.15)' }}>
                   <AlertIcon size={20} />
@@ -334,8 +332,8 @@ const AdminV2ShipmentAlerts = () => {
                 <p className="admin-v2-text-muted">All shipments are looking good!</p>
               </div>
             ) : (
-              <div className="admin-v2-table-container">
-                <table className="admin-v2-table">
+              <div className="admin-v2-table-container admin-v2-table-cards-wrap">
+                <table className="admin-v2-table admin-v2-table-cards">
                   <thead>
                     <tr>
                       <th style={{ width: '40px' }}>
@@ -358,7 +356,7 @@ const AdminV2ShipmentAlerts = () => {
                   <tbody>
                     {alerts.map(alert => (
                       <tr key={alert.id} className={alert.resolved ? 'admin-v2-row-muted' : ''}>
-                        <td>
+                        <td data-label="Select" className="admin-v2-cell-select">
                           {!alert.resolved && (
                             <input
                               type="checkbox"
@@ -367,20 +365,20 @@ const AdminV2ShipmentAlerts = () => {
                             />
                           )}
                         </td>
-                        <td>
+                        <td data-label="Type">
                           <span className={`admin-v2-badge ${getAlertTypeBadgeClass(alert.alert_type)}`}>
                             {alert.alert_type?.replace('_', ' ')}
                           </span>
                         </td>
-                        <td>
+                        <td className="admin-v2-cell-name">
                           <strong>{alert.item_number || '-'}</strong>
                           {alert.equipment_name && (
                             <div className="admin-v2-text-muted">{alert.equipment_name}</div>
                           )}
                         </td>
-                        <td>
-                          <a 
-                            href="#" 
+                        <td data-label="Shipment">
+                          <a
+                            href="#"
                             onClick={(e) => {
                               e.preventDefault();
                               navigate(`/care/equipment/shipments/${alert.shipment_id}?patient=${selectedPatient.id}`);
@@ -390,17 +388,17 @@ const AdminV2ShipmentAlerts = () => {
                           </a>
                           {alert.po_number && <div className="admin-v2-text-muted">PO: {alert.po_number}</div>}
                         </td>
-                        <td style={{ textAlign: 'center' }}>{alert.expected_qty}</td>
-                        <td style={{ textAlign: 'center' }}>{alert.actual_qty}</td>
-                        <td>{formatDate(alert.created_at)}</td>
-                        <td>
+                        <td data-label="Expected" style={{ textAlign: 'center' }}>{alert.expected_qty}</td>
+                        <td data-label="Actual" style={{ textAlign: 'center' }}>{alert.actual_qty}</td>
+                        <td data-label="Created">{formatDate(alert.created_at)}</td>
+                        <td data-label="Status">
                           {alert.resolved ? (
                             <span className="admin-v2-badge admin-v2-badge-success">Resolved</span>
                           ) : (
                             <span className="admin-v2-badge admin-v2-badge-warning">Open</span>
                           )}
                         </td>
-                        <td>
+                        <td className="admin-v2-cell-actions">
                           {!alert.resolved && hasPermission('equipment.update') && (
                             <button
                               className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-ghost"

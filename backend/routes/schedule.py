@@ -26,13 +26,14 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
 from db import get_db
-from utils.datetime_utils import utc_now
+from utils.datetime_utils import utc_now, resolve_tz_for_patient, local_day_bounds
 from models.schedule import CompleteItemRequest, BulkCompleteRequest
-from crud.scheduling import get_scheduled_medications, get_scheduled_care_tasks, get_scheduled_nutrition
+from crud.scheduling import get_scheduled_medications, get_scheduled_care_tasks, get_scheduled_nutrition, get_due_and_upcoming_care_tasks_count
 from crud.users import create_audit_log
+from event_publisher import publish_due_counts_changed
 from dependencies import get_current_user, require_permission
 from models.users import AuditLog, User
-from utils.early_administration import guard_early_administration
+from utils.early_administration import guard_early_administration, guard_future_administration
 from utils.medication_quantity import insufficient_quantity_response
 from schemas.medication import Medication
 from schemas.medication_schedule import MedicationSchedule
@@ -103,13 +104,21 @@ def parse_scheduled_time(scheduled_time_str: str) -> datetime:
     return naive_dt.replace(tzinfo=tz.utc)
 
 
+@router.get("/care-tasks/due/count")
+async def get_care_tasks_due_count_endpoint(patient_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """Count of due/upcoming care tasks, scoped to a patient for the per-patient
+    dashboard badge. Ungated like the equipment due-count so the badge stays
+    visible in restricted (locked) mode."""
+    return {"count": get_due_and_upcoming_care_tasks_count(db, patient_id=patient_id)}
+
+
 @router.get("/daily")
 async def get_daily_schedule(
     target_date: str = Query(None, description="Date in YYYY-MM-DD format, defaults to today"),
     patient_id: int = Query(..., description="Patient ID"),
     tz_offset_minutes: Optional[int] = Query(
         None,
-        description="Minutes the caller's local time is ahead of UTC. When provided, the day boundary is the caller's local midnight rather than UTC midnight.",
+        description="Deprecated. Day boundaries now derive from the patient's account timezone (Account.timezone), which takes precedence. Still accepted as a legacy fallback.",
     ),
     include_prior_day: bool = Query(
         False,
@@ -123,15 +132,22 @@ async def get_daily_schedule(
     Allowed in restricted mode so user can see what to complete and perform care.
     """
     try:
-        # Parse target date
+        # The patient's account timezone is the source of truth for day
+        # boundaries, so the view buckets items into the same local day the
+        # dashboard badges count. tz_offset_minutes is forwarded only as a
+        # legacy lower-precedence fallback.
+        tz = resolve_tz_for_patient(db, patient_id)
+
+        # Parse target date (defaults to the patient's account-local today,
+        # not the server's UTC today).
         if target_date:
             schedule_date = datetime.strptime(target_date, "%Y-%m-%d").date()
         else:
-            schedule_date = date.today()
+            schedule_date = local_day_bounds(tz)['local_today']
 
         # Get all scheduled items (now includes completion status from joined logs).
-        medications = get_scheduled_medications(db, schedule_date, patient_id, tz_offset_minutes=tz_offset_minutes)
-        today_nutrition = get_scheduled_nutrition(db, schedule_date, patient_id, tz_offset_minutes=tz_offset_minutes)
+        medications = get_scheduled_medications(db, schedule_date, patient_id, tz_offset_minutes=tz_offset_minutes, tz=tz)
+        today_nutrition = get_scheduled_nutrition(db, schedule_date, patient_id, tz_offset_minutes=tz_offset_minutes, tz=tz)
         for item in today_nutrition:
             item["is_yesterday"] = False
         nutrition_items = today_nutrition
@@ -140,11 +156,11 @@ async def get_daily_schedule(
             # visible. Admin views skip this to avoid duplicating yesterday's
             # completions onto the current-day view.
             prior_date = schedule_date - timedelta(days=1)
-            prior_nutrition = get_scheduled_nutrition(db, prior_date, patient_id, tz_offset_minutes=tz_offset_minutes)
+            prior_nutrition = get_scheduled_nutrition(db, prior_date, patient_id, tz_offset_minutes=tz_offset_minutes, tz=tz)
             for item in prior_nutrition:
                 item["is_yesterday"] = True
             nutrition_items = prior_nutrition + nutrition_items
-        care_tasks = get_scheduled_care_tasks(db, schedule_date, patient_id, tz_offset_minutes=tz_offset_minutes)
+        care_tasks = get_scheduled_care_tasks(db, schedule_date, patient_id, tz_offset_minutes=tz_offset_minutes, tz=tz)
         
         # Build response - completion status already included from get_scheduled_* functions
         result = {
@@ -239,6 +255,12 @@ async def complete_medication(
         # Parse scheduled time
         scheduled_dt = parse_scheduled_time(data.scheduled_time)
 
+        # A dose can't be given in the future — reject a completed_at past now
+        # (catches the date-left-on-today slip). Not overridable.
+        future = guard_future_administration(data.completed_at, item_label="medication")
+        if future is not None:
+            return future
+
         # Block out-of-window administrations (>1h early or >1h late) unless
         # the caller explicitly confirmed. dose_amount == 0 means skipped —
         # not an administration, so not gated.
@@ -308,6 +330,9 @@ async def complete_medication(
         db.add(log)
         db.commit()
         
+        # Real-time badge: notify dashboards the medications due-count changed.
+        publish_due_counts_changed("medications", data.patient_id)
+
         return {"success": True, "log_id": log.id}
     except Exception as e:
         logger.error(f"Error completing medication: {e}")
@@ -324,6 +349,10 @@ async def complete_nutrition(
     try:
         # Parse scheduled time
         scheduled_dt = parse_scheduled_time(data.scheduled_time)
+
+        future = guard_future_administration(data.completed_at, item_label="nutrition item")
+        if future is not None:
+            return future
 
         early = guard_early_administration(
             scheduled_dt,
@@ -369,6 +398,9 @@ async def complete_nutrition(
         db.add(intake)
         db.commit()
 
+        # Real-time badge: notify dashboards the nutrition due-count changed.
+        publish_due_counts_changed("nutrition", data.patient_id)
+
         return {"success": True, "intake_id": intake.id}
     except Exception as e:
         logger.error(f"Error completing nutrition: {e}")
@@ -385,6 +417,10 @@ async def complete_care_task(
     try:
         # Parse scheduled time
         scheduled_dt = parse_scheduled_time(data.scheduled_time)
+
+        future = guard_future_administration(data.completed_at, item_label="care task")
+        if future is not None:
+            return future
 
         early = guard_early_administration(
             scheduled_dt,
@@ -423,6 +459,9 @@ async def complete_care_task(
         db.add(log)
         db.commit()
         
+        # Real-time badge: notify dashboards the care-task due-count changed.
+        publish_due_counts_changed("care_tasks", data.patient_id)
+
         return {"success": True, "log_id": log.id}
     except Exception as e:
         logger.error(f"Error completing care task: {e}")
@@ -453,6 +492,12 @@ async def complete_bulk(
         ("nutrition item", nutrition),
         ("care task", care_tasks),
     ]
+    # Pre-flight: a future completed_at is always invalid (not overridable).
+    for label, items in sections:
+        for item in items:
+            future = guard_future_administration(item.completed_at, item_label=label)
+            if future is not None:
+                return future
     for label, items in sections:
         for item in items:
             # Skip doses are not gated (dose_amount == 0 == explicit skip)
@@ -618,6 +663,17 @@ async def complete_bulk(
                 results["care_tasks"].append({"schedule_id": item.schedule_id, "success": False, "error": str(e)})
         
         db.commit()
+
+        # Real-time badges: emit once per category that had items (never per
+        # item) so the bulk "complete this hour" action triggers at most one
+        # refetch per category instead of a storm.
+        if medications:
+            publish_due_counts_changed("medications", medications[0].patient_id)
+        if nutrition:
+            publish_due_counts_changed("nutrition", nutrition[0].patient_id)
+        if care_tasks:
+            publish_due_counts_changed("care_tasks", care_tasks[0].patient_id)
+
         return results
 
     except Exception as e:
@@ -698,6 +754,8 @@ async def undo_completion(
                 "administered_at": log.administered_at.isoformat() if log.administered_at else None,
             })
             db.commit()
+            # Real-time badge: undo restores the dose to "due".
+            publish_due_counts_changed("medications", log.patient_id)
             return {"success": True}
 
         if item_type == "care_task":
@@ -715,6 +773,8 @@ async def undo_completion(
                 "completed_at": log.completed_at.isoformat() if log.completed_at else None,
             })
             db.commit()
+            # Real-time badge: undo restores the task to "due".
+            publish_due_counts_changed("care_tasks", log.patient_id)
             return {"success": True}
 
         if item_type == "nutrition_intake":
@@ -733,6 +793,8 @@ async def undo_completion(
                 "consumed_at": intake.consumed_at.isoformat() if intake.consumed_at else None,
             })
             db.commit()
+            # Real-time badge: undo restores the feed to "due".
+            publish_due_counts_changed("nutrition", intake.patient_id)
             return {"success": True}
 
         if item_type == "nutrition_output":
@@ -759,6 +821,8 @@ async def undo_completion(
                 "occurred_at": first.occurred_at.isoformat() if first and first.occurred_at else None,
             })
             db.commit()
+            # Real-time badge: undo restores the output to "due".
+            publish_due_counts_changed("nutrition", first.patient_id)
             return {"success": True}
 
         return JSONResponse(status_code=400, content={"detail": f"Unknown item_type: {item_type}"})

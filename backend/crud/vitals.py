@@ -17,12 +17,12 @@
 Core vital signs and sensor data CRUD operations
 """
 import logging
-import pytz
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from schemas.vital import Vital
 from schemas.pulse_ox_data import PulseOxData
 from crud.patients import get_or_create_default_patient, get_current_patient, get_background_patient_id
+from utils.datetime_utils import resolve_tz_for_patient, utc_now
 
 logger = logging.getLogger('crud')
 
@@ -52,9 +52,10 @@ def save_vital(db: Session, vital_type, value, timestamp=None, notes=None, vital
 
     # Ensure timestamp is timezone-aware (convert to UTC if naive)
     if ts and hasattr(ts, 'tzinfo') and ts.tzinfo is None:
-        # Assume naive datetime is in local timezone and convert to UTC
-        eastern = pytz.timezone('US/Eastern')
-        ts = eastern.localize(ts).astimezone(timezone.utc)
+        # Interpret a naive client timestamp in the patient's account timezone,
+        # then store as UTC.
+        tz = resolve_tz_for_patient(db, patient_id)
+        ts = ts.replace(tzinfo=tz).astimezone(timezone.utc)
     
     vital = Vital(
         patient_id=patient_id,
@@ -272,7 +273,7 @@ def save_pulse_ox_data(db: Session, spo2, bpm, pa, status=None, motion=None, spo
         int: ID of the inserted record or None on error
     """
     try:
-        now = datetime.now().isoformat()
+        now = utc_now().isoformat()
         ts = timestamp or now  # Use provided timestamp or current time
         
         # Get patient_id if not provided. Pulse-ox data arrives from sensor
@@ -323,7 +324,7 @@ def save_pulse_ox_batch(db: Session, data_points):
         bool: True if successful, False otherwise
     """
     try:
-        now = datetime.now().isoformat()
+        now = utc_now().isoformat()
 
         # Resolve patient_id once for the batch (background sensor batch — no user)
         batch_patient_id = get_background_patient_id(db)

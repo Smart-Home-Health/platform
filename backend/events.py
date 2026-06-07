@@ -173,3 +173,16 @@ class StateSync:
     ts: datetime
     client_id: Optional[str] = None
     source: EventSource = EventSource.SYSTEM
+
+@dataclass(frozen=True)
+class DueCountsChanged:
+    """A "due" badge category changed (item marked done / logged / restocked).
+
+    Carries only the category so the WebSocket layer can tell connected
+    dashboards to refetch their (patient-scoped) due-count badge. The actual
+    count is intentionally not included — it's computed per-viewer-patient.
+    """
+    ts: datetime
+    category: str                    # "medications" | "care_tasks" | "equipment" | "nutrition"
+    patient_id: Optional[int] = None
+    source: EventSource = EventSource.API

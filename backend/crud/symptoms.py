@@ -17,13 +17,13 @@
 Symptom CRUD operations
 """
 import logging
-import pytz
 from datetime import datetime, timezone
 from typing import Optional, List
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from schemas.symptom import Symptom
 from crud.patients import get_or_create_default_patient
+from utils.datetime_utils import resolve_tz_for_patient
 
 logger = logging.getLogger('crud')
 
@@ -66,10 +66,11 @@ def create_symptom(
             raise ValueError("No patient exists. Complete first-run setup first.")
         patient_id = patient.id
     
-    # Ensure timestamp is timezone-aware
+    # Ensure timestamp is timezone-aware. Interpret a naive client timestamp in
+    # the patient's account timezone, then store as UTC.
     if ts and hasattr(ts, 'tzinfo') and ts.tzinfo is None:
-        eastern = pytz.timezone('US/Eastern')
-        ts = eastern.localize(ts).astimezone(timezone.utc)
+        tz = resolve_tz_for_patient(db, patient_id)
+        ts = ts.replace(tzinfo=tz).astimezone(timezone.utc)
     elif isinstance(ts, str):
         try:
             ts = datetime.fromisoformat(ts.replace('Z', '+00:00'))

@@ -24,7 +24,7 @@ from schemas.care_task import CareTask
 from schemas.care_task_schedule import CareTaskSchedule
 from schemas.care_task_log import CareTaskLog
 from crud.patients import get_active_patient
-from utils.datetime_utils import utc_now, utc_today
+from utils.datetime_utils import utc_now, utc_today, resolve_tz_for_patient, local_day_bounds
 
 logger = logging.getLogger('crud')
 
@@ -353,25 +353,54 @@ def get_missed_care_tasks(db: Session, target_date=None):
         return []
 
 
-def get_daily_care_task_schedule(db: Session, patient_id=None):
+def get_daily_care_task_schedule(db: Session, patient_id=None, tz=None):
     """
-    Get scheduled care tasks for today and yesterday in chronological order with status
-    
+    Get scheduled care tasks for today and yesterday in chronological order with status.
+
+    The today/yesterday window is the patient's account-local day (``tz``,
+    resolved from the account when not passed), so evening tasks aren't cut off
+    by UTC date rollover and the badge count derived from this shares one window
+    with medications and nutrition.
+
     Args:
         patient_id: Patient ID to filter by, if None uses current active patient
-    
+        tz: Optional ZoneInfo override; resolved from the patient's account otherwise
+
     Returns:
         Dict with 'scheduled_care_tasks' list sorted chronologically
     """
     try:
-        today = utc_today()
-        yesterday = today - timedelta(days=1)
-        current_time = utc_now()
-        
-        # Get scheduled tasks for yesterday and today for the specified patient
-        yesterday_scheduled = get_scheduled_care_tasks_for_date(db, yesterday, patient_id)
-        today_scheduled = get_scheduled_care_tasks_for_date(db, today, patient_id)
-        
+        if tz is None:
+            tz = resolve_tz_for_patient(db, patient_id)
+        bounds = local_day_bounds(tz)
+        current_time = bounds['now_utc']
+
+        # A single UTC calendar date no longer equals the local day, so fetch
+        # every UTC date spanning the local yesterday+today, dedup, then bucket
+        # by the local-day boundaries.
+        raw = []
+        for utc_date in bounds['utc_dates']:
+            raw.extend(get_scheduled_care_tasks_for_date(db, utc_date, patient_id))
+
+        seen = set()
+        yesterday_scheduled = []
+        today_scheduled = []
+        for item in raw:
+            st = item.get('scheduled_time')
+            if st is None:
+                continue
+            if st.tzinfo is None:
+                st = st.replace(tzinfo=timezone.utc)
+                item['scheduled_time'] = st
+            key = (item['schedule_id'], st)
+            if key in seen:
+                continue
+            seen.add(key)
+            if bounds['yesterday_start_utc'] <= st < bounds['today_start_utc']:
+                yesterday_scheduled.append(item)
+            elif bounds['today_start_utc'] <= st < bounds['today_end_utc']:
+                today_scheduled.append(item)
+
         all_scheduled = []
         
         def _apply_completion(item, completion_log):
@@ -434,8 +463,8 @@ def get_daily_care_task_schedule(db: Session, patient_id=None):
         # Include ad-hoc / PRN completions (logs with no schedule_id) for
         # yesterday & today. These have no scheduled occurrence to attach to, so
         # without this they only show in History, never on the schedule.
-        start_window = datetime.combine(yesterday, datetime.min.time(), tzinfo=timezone.utc)
-        end_window = datetime.combine(today + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+        start_window = bounds['yesterday_start_utc']
+        end_window = bounds['today_end_utc']
         adhoc_query = db.query(CareTaskLog).filter(
             CareTaskLog.schedule_id.is_(None),
             CareTaskLog.completed_at >= start_window,
@@ -472,7 +501,7 @@ def get_daily_care_task_schedule(db: Session, patient_id=None):
                 'completed_at': completed_at_iso,
                 'completed_time': completed_at_iso,
                 'performed_by': log.performed_by,
-                'is_yesterday': log.completed_at.date() == yesterday,
+                'is_yesterday': log.completed_at < bounds['today_start_utc'],
             })
 
         # Sort by scheduled time chronologically
@@ -569,8 +598,14 @@ def complete_care_task(db: Session, task_id, schedule_id=None, scheduled_time=No
         db.add(log)
         db.commit()
         db.refresh(log)
-        
+
         logger.info(f"Care task {task_id} completed with status '{status}' (scheduled: {is_scheduled})")
+        # Tell live dashboards to refetch the (patient-scoped) care-tasks badge.
+        try:
+            from event_publisher import publish_due_counts_changed
+            publish_due_counts_changed("care_tasks", resolved_patient_id)
+        except Exception as e:
+            logger.error(f"Failed to publish care-task due-count change: {e}")
         return log.id
         
     except Exception as e:
@@ -579,34 +614,37 @@ def complete_care_task(db: Session, task_id, schedule_id=None, scheduled_time=No
         return None
 
 
-def get_due_and_upcoming_care_tasks_count(db: Session):
+def get_due_and_upcoming_care_tasks_count(db: Session, patient_id=None, tz=None):
     """
-    Returns the count of scheduled care tasks that are:
-    - missed (for today or yesterday)
-    - due_late or due_warning (for today or yesterday)
-    - due_on_time or pending (for today or yesterday) and scheduled within the next hour
+    Count scheduled care-task occurrences that are "due" for the badge/summary.
+
+    An occurrence counts when it is NOT yet completed/skipped AND its scheduled
+    time falls within the window [start of the local prior day, now + 1 hour].
+    The daily schedule (account-local today+yesterday) spans the window and
+    matches completions to occurrences by ``scheduled_time``, so we only need the
+    open occurrences up to the one-hour lookahead. This mirrors the medication
+    and nutrition counters, keeping all badges on one shared window.
     """
     try:
-        schedule_data = get_daily_care_task_schedule(db)
+        from crud.medications import _count_due_and_upcoming
+        schedule_data = get_daily_care_task_schedule(db, patient_id=patient_id, tz=tz)
         tasks = schedule_data.get('scheduled_care_tasks', [])
-        now = utc_now()
-        count = 0
-        
-        for task in tasks:
-            status = task.get('status', '')
-            scheduled_time = task.get('scheduled_time')
-            if isinstance(scheduled_time, str):
-                scheduled_time = datetime.fromisoformat(scheduled_time)
-            
-            if status in ['missed', 'due_late', 'due_warning']:
-                count += 1
-            elif status in ['due_on_time', 'pending'] and scheduled_time and (scheduled_time - now).total_seconds() <= 3600:
-                count += 1
-                
-        return count
+        return _count_due_and_upcoming(tasks)
     except Exception as e:
         logger.error(f"Error getting due/upcoming care tasks count: {e}")
         return 0
+
+
+def get_care_task_schedule_counts(db: Session, patient_id=None, tz=None):
+    """Return {'due', 'overdue'} care-task counts from one schedule fetch."""
+    try:
+        from crud.medications import _count_due_and_upcoming, _count_overdue
+        schedule_data = get_daily_care_task_schedule(db, patient_id=patient_id, tz=tz)
+        tasks = schedule_data.get('scheduled_care_tasks', [])
+        return {'due': _count_due_and_upcoming(tasks), 'overdue': _count_overdue(tasks)}
+    except Exception as e:
+        logger.error(f"Error getting care task schedule counts: {e}")
+        return {'due': 0, 'overdue': 0}
 
 
 def get_care_task_schedule(db: Session, schedule_id):
@@ -696,28 +734,40 @@ from schemas.nutrition_intake import NutritionIntake
 from schemas.nutrition_output import NutritionOutput
 
 
-def get_scheduled_medications(db: Session, target_date, patient_id: int, tz_offset_minutes=None):
+def _local_day_range_utc(target_date, tz_offset_minutes=None, tz=None):
+    """Return (local_start_utc, local_end_utc) for ``target_date`` as aware UTC
+    datetimes, picking the day boundary by precedence: tz (IANA ZoneInfo, the
+    preferred DST-correct source) > tz_offset_minutes (legacy fixed offset) > UTC.
+
+    When tz is given, end is the *next local midnight* (not start+24h) so DST
+    transition days are 23h/25h, not a fixed 24h.
+    """
+    if tz is not None:
+        start = datetime.combine(target_date, datetime.min.time(), tzinfo=tz).astimezone(timezone.utc)
+        end = datetime.combine(target_date + timedelta(days=1), datetime.min.time(), tzinfo=tz).astimezone(timezone.utc)
+        return start, end
+    if tz_offset_minutes is None:
+        start = datetime.combine(target_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+        return start, start + timedelta(days=1)
+    offset = timedelta(minutes=tz_offset_minutes)
+    local_midnight_naive = datetime.combine(target_date, datetime.min.time())
+    start = (local_midnight_naive - offset).replace(tzinfo=timezone.utc)
+    return start, start + timedelta(days=1)
+
+
+def get_scheduled_medications(db: Session, target_date, patient_id: int, tz_offset_minutes=None, tz=None):
     """
     Get all medications scheduled for a specific date for a patient.
     Only includes medications where start_date <= target_date (or no start_date).
     Returns completion status by joining to medication_log.
 
-    `tz_offset_minutes` is the minutes the caller's local time is ahead of UTC
-    (so US Eastern in DST = -240). When provided, the day boundary is the
-    caller's local midnight rather than the server's UTC midnight. Without it
-    the function falls back to UTC-day semantics for backward compatibility.
+    Day-boundary precedence: `tz` (an account IANA ZoneInfo — DST-correct and the
+    preferred source) > `tz_offset_minutes` (legacy browser offset, the minutes
+    the caller's local time is ahead of UTC, e.g. US Eastern DST = -240) > UTC.
     """
     try:
         # Compute the UTC range that corresponds to the caller's local day.
-        # local_start_utc = midnight local converted to UTC.
-        if tz_offset_minutes is None:
-            local_start_utc = datetime.combine(target_date, datetime.min.time()).replace(tzinfo=timezone.utc)
-            local_end_utc = local_start_utc + timedelta(days=1)
-        else:
-            offset = timedelta(minutes=tz_offset_minutes)
-            local_midnight_naive = datetime.combine(target_date, datetime.min.time())
-            local_start_utc = (local_midnight_naive - offset).replace(tzinfo=timezone.utc)
-            local_end_utc = local_start_utc + timedelta(days=1)
+        local_start_utc, local_end_utc = _local_day_range_utc(target_date, tz_offset_minutes, tz)
 
         # MedicationLog.scheduled_time is stored as naive UTC (cron firings'
         # wall-clock values). Compare against the same UTC range stripped of tzinfo.
@@ -840,27 +890,19 @@ def get_scheduled_medications(db: Session, target_date, patient_id: int, tz_offs
         return []
 
 
-def get_scheduled_care_tasks(db: Session, target_date, patient_id: int, tz_offset_minutes=None):
+def get_scheduled_care_tasks(db: Session, target_date, patient_id: int, tz_offset_minutes=None, tz=None):
     """
     Get all care tasks scheduled for a specific date for a patient.
     Includes category information for nutrition detection.
     Returns completion status by joining to care_task_log.
 
-    `tz_offset_minutes` matches the meds/nutrition path. When provided, cron
-    firings are filtered to the caller's local-midnight-to-midnight window
-    (expressed in UTC) so a 9pm-local feed doesn't slide onto the next UTC day.
+    Day-boundary precedence: `tz` (account IANA ZoneInfo, DST-correct, preferred)
+    > `tz_offset_minutes` (legacy browser offset) > UTC. Filtering cron firings to
+    the local-midnight-to-midnight window (in UTC) keeps a 9pm-local feed from
+    sliding onto the next UTC day.
     """
     try:
-        # Caller's local-day window expressed in UTC. Without tz_offset, fall
-        # back to UTC-day semantics for backward compatibility.
-        if tz_offset_minutes is None:
-            local_start_utc = datetime.combine(target_date, datetime.min.time()).replace(tzinfo=timezone.utc)
-            local_end_utc = local_start_utc + timedelta(days=1)
-        else:
-            offset = timedelta(minutes=tz_offset_minutes)
-            local_midnight_naive = datetime.combine(target_date, datetime.min.time())
-            local_start_utc = (local_midnight_naive - offset).replace(tzinfo=timezone.utc)
-            local_end_utc = local_start_utc + timedelta(days=1)
+        local_start_utc, local_end_utc = _local_day_range_utc(target_date, tz_offset_minutes, tz)
 
         # Get all active care task schedules for this patient
         schedules = db.query(CareTaskSchedule).filter(
@@ -981,7 +1023,7 @@ def get_scheduled_care_tasks(db: Session, target_date, patient_id: int, tz_offse
         return []
 
 
-def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset_minutes=None):
+def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset_minutes=None, tz=None):
     """
     Get all nutrition items scheduled for a specific date for a patient.
     Uses the nutrition_schedules table for meals, hydration, bathroom checks, etc.
@@ -994,24 +1036,13 @@ def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset
     Both are marked with is_prn=True and intake_type='intake'|'output' so the
     frontend can render them as info-only rows (no mark-complete affordance).
 
-    `tz_offset_minutes` is the minutes the caller's local time is ahead of UTC
-    (matches the meds path). When provided, PRN logs are bucketed by the
-    caller's local day rather than UTC midnight — otherwise an evening log in
-    a negative-offset timezone (e.g. 9pm EDT) would land on the next UTC day.
+    Day-boundary precedence: `tz` (account IANA ZoneInfo, DST-correct, preferred)
+    > `tz_offset_minutes` (legacy browser offset) > UTC. Bucketing PRN logs by the
+    local day keeps a 9pm-local feed (cron `0 1 * * *` UTC) on the right local day
+    so its completion records the matching scheduled_time.
     """
     try:
-        # Compute the caller's local-day window in UTC (matches the medications
-        # path). Without this, a 9pm EDT feed (cron `0 1 * * *` UTC) would
-        # appear on the wrong local day and its completion would record the
-        # wrong scheduled_time, making Overview unable to find it later.
-        if tz_offset_minutes is None:
-            local_start_utc = datetime.combine(target_date, datetime.min.time()).replace(tzinfo=timezone.utc)
-            local_end_utc = local_start_utc + timedelta(days=1)
-        else:
-            offset = timedelta(minutes=tz_offset_minutes)
-            local_midnight_naive = datetime.combine(target_date, datetime.min.time())
-            local_start_utc = (local_midnight_naive - offset).replace(tzinfo=timezone.utc)
-            local_end_utc = local_start_utc + timedelta(days=1)
+        local_start_utc, local_end_utc = _local_day_range_utc(target_date, tz_offset_minutes, tz)
 
         # Get all active nutrition schedules for this patient
         schedules = db.query(NutritionSchedule).filter(
@@ -1240,7 +1271,7 @@ def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset
         return []
 
 
-def get_due_and_upcoming_nutrition_count(db: Session):
+def get_due_and_upcoming_nutrition_count(db: Session, patient_id=None, tz=None):
     """
     Returns the count of scheduled nutrition items that need attention:
     - missed (yesterday or today, scheduled >1h ago and not completed)
@@ -1249,27 +1280,48 @@ def get_due_and_upcoming_nutrition_count(db: Session):
     - upcoming (today, scheduled within the next hour and not completed)
 
     PRN (ad-hoc) intakes and outputs are excluded — they're already done.
+
+    Scoped to ``patient_id`` when provided (for per-patient dashboard badges);
+    falls back to the global active patient otherwise. The today/yesterday window
+    is the patient's account-local day (``tz``, resolved from the account when
+    not passed) so it shares one window with the medication/care-task badges and
+    doesn't count items from two local days ago.
+    """
+    return get_nutrition_schedule_counts(db, patient_id=patient_id, tz=tz)['due']
+
+
+def get_nutrition_schedule_counts(db: Session, patient_id=None, tz=None):
+    """Return {'due', 'overdue'} nutrition counts from one schedule fetch.
+
+    'due' matches the missed/late/ready/upcoming window described on
+    ``get_due_and_upcoming_nutrition_count``. 'overdue' is the subset whose
+    scheduled hour has fully passed (still normal during its own hour).
     """
     try:
-        active_patient = get_active_patient(db)
-        if not active_patient:
-            return 0
+        if patient_id is None:
+            active_patient = get_active_patient(db)
+            if not active_patient:
+                return {'due': 0, 'overdue': 0}
+            patient_id = active_patient.id
 
-        today = utc_today()
-        yesterday = today - timedelta(days=1)
-        now = utc_now()
+        if tz is None:
+            tz = resolve_tz_for_patient(db, patient_id)
+        bounds = local_day_bounds(tz)
+        now = bounds['now_utc']
+        hour_start = now.replace(minute=0, second=0, microsecond=0)
 
-        items = (
-            get_scheduled_nutrition(db, yesterday, active_patient.id) +
-            get_scheduled_nutrition(db, today, active_patient.id)
-        )
+        # Fetch the UTC calendar dates that span the local yesterday+today, then
+        # dedup and trim to the exact local-day window. A single UTC date no
+        # longer equals the local day, so this is what excludes items that fall
+        # in "UTC yesterday" but are really two local days ago.
+        raw = []
+        for utc_date in bounds['utc_dates']:
+            raw.extend(get_scheduled_nutrition(db, utc_date, patient_id))
 
-        count = 0
-        for item in items:
-            if item.get('is_prn'):
-                continue
-            if item.get('completed'):
-                continue
+        seen = set()
+        due = 0
+        overdue = 0
+        for item in raw:
             scheduled_time = item.get('scheduled_time')
             if isinstance(scheduled_time, str):
                 scheduled_time = datetime.fromisoformat(scheduled_time)
@@ -1278,13 +1330,29 @@ def get_due_and_upcoming_nutrition_count(db: Session):
             if scheduled_time.tzinfo is None:
                 scheduled_time = scheduled_time.replace(tzinfo=timezone.utc)
 
+            # Trim to the local today+yesterday window and dedup across the
+            # overlapping per-UTC-date fetches.
+            if not (bounds['yesterday_start_utc'] <= scheduled_time < bounds['today_end_utc']):
+                continue
+            key = (item.get('schedule_id'), scheduled_time)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            if item.get('is_prn'):
+                continue
+            if item.get('completed'):
+                continue
+
             diff_seconds = (scheduled_time - now).total_seconds()
             # missed/late/ready, OR upcoming within the next hour
             if diff_seconds < -900 or abs(diff_seconds) <= 900 or (0 < diff_seconds <= 3600):
-                count += 1
+                due += 1
+            if scheduled_time < hour_start:
+                overdue += 1
 
-        return count
+        return {'due': due, 'overdue': overdue}
     except Exception as e:
-        logger.error(f"Error getting due/upcoming nutrition count: {e}")
-        return 0
+        logger.error(f"Error getting nutrition schedule counts: {e}")
+        return {'due': 0, 'overdue': 0}
 

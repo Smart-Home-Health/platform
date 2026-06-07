@@ -432,16 +432,46 @@ export default function Dashboard() {
   };
 
   // Account-scoped equipment due count (matches Equipment List API)
-  const fetchEquipmentDueCount = () => {
-    fetch(`${config.apiUrl}/api/equipment/due/count`, { credentials: 'include' })
+  // All dashboard "due" badges are scoped to the patient on screen via REST so
+  // one patient's due items don't leak into another's view. (The WebSocket
+  // state carries global counts that ignore the viewer's patient, so we don't
+  // use those for the badges.) A ref keeps the current patient id reachable
+  // from the mount-time WebSocket closure for live refreshes.
+  const dueCountPatientRef = useRef(null);
+
+  const fetchDueCount = (path, setter, pid) => {
+    const patientId = pid ?? selectedPatient?.id;
+    if (!patientId) { setter(0); return; }
+    fetch(`${config.apiUrl}${path}?patient_id=${patientId}`, { credentials: 'include' })
       .then((res) => res.ok ? res.json() : null)
-      .then((data) => { if (data != null && typeof data.count === 'number') setEquipmentDueCount(data.count); })
+      .then((data) => { if (data != null && typeof data.count === 'number') setter(data.count); })
       .catch(() => {});
   };
 
+  const fetchEquipmentDueCount = (pid) => fetchDueCount('/api/equipment/due/count', setEquipmentDueCount, pid);
+  const fetchMedicationDueCount = (pid) => fetchDueCount('/api/medications/due/count', setMedicationDueCount, pid);
+  const fetchCareTaskDueCount = (pid) => fetchDueCount('/api/schedule/care-tasks/due/count', setCareTaskDueCount, pid);
+  const fetchNutritionDueCount = (pid) => fetchDueCount('/api/nutrition/due/count', setNutritionDueCount, pid);
+
+  // Refetch every badge for a patient (defaults to the current selection).
+  const refreshDueCounts = (pid) => {
+    fetchEquipmentDueCount(pid);
+    fetchMedicationDueCount(pid);
+    fetchCareTaskDueCount(pid);
+    fetchNutritionDueCount(pid);
+  };
+
   useEffect(() => {
-    fetchEquipmentDueCount();
-  }, []);
+    dueCountPatientRef.current = selectedPatient?.id || null;
+    refreshDueCounts();
+    // The schedule-driven badges (meds, tasks, nutrition) tick over purely from
+    // the passage of time as occurrences "age in" — their scheduled hour arrives
+    // with no user action to fire a `due_counts_changed` event. Poll once a
+    // minute so an open dashboard stays current. Event-driven refetches (a dose
+    // logged / item marked done) still apply on top for instant updates.
+    const interval = setInterval(() => refreshDueCounts(), 60000);
+    return () => clearInterval(interval);
+  }, [selectedPatient?.id]);
 
   // Detect Frigate integration for the current patient so we can swap the
   // Messages icon for a live camera icon when one is configured.
@@ -531,20 +561,6 @@ export default function Dashboard() {
           setVentNotifications(msg.state.vent_notifications);
         }
         
-        // Equipment due count: use account-scoped API (fetched on mount); WebSocket count is global so we don't use it for badge
-        // equipment_due_count: badge uses account-scoped API (see fetchEquipmentDueCount); skip WebSocket global count
-        if (msg.state.medications !== undefined) {
-          setMedicationDueCount(msg.state.medications);
-        }
-        
-        if (msg.state.care_tasks !== undefined) {
-          setCareTaskDueCount(msg.state.care_tasks);
-        }
-
-        if (msg.state.nutrition !== undefined) {
-          setNutritionDueCount(msg.state.nutrition);
-        }
-        
         if (msg.state.dashboard_chart_1) {
           setDashboardChart1(msg.state.dashboard_chart_1);
         }
@@ -562,6 +578,23 @@ export default function Dashboard() {
       else if (msg.type === "alert_acknowledged") {
         if (msg.alerts_count !== undefined) {
           setPulseOxAlerts(msg.alerts_count);
+        }
+      }
+      // A due item was marked done / logged / restocked anywhere. Refetch the
+      // matching badge for the patient on screen. The badges are patient-scoped
+      // via REST (see refreshDueCounts), so we use the ref — this closure is
+      // created once at mount — and ignore the event's own patient_id, which may
+      // differ from the viewer's selected patient.
+      else if (msg.type === "due_counts_changed") {
+        const pid = dueCountPatientRef.current;
+        if (pid) {
+          switch (msg.category) {
+            case "medications": fetchMedicationDueCount(pid); break;
+            case "care_tasks": fetchCareTaskDueCount(pid); break;
+            case "nutrition": fetchNutritionDueCount(pid); break;
+            case "equipment": fetchEquipmentDueCount(pid); break;
+            default: break;
+          }
         }
       }
     };

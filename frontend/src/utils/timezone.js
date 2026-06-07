@@ -187,6 +187,29 @@ export const formatCronExpression = (cronExpr) => {
 };
 
 /**
+ * Format a date-only value without timezone drift.
+ *
+ * Calendar-date fields (equipment `last_changed`, `due_date`, a date of birth)
+ * are stored as midnight-UTC timestamps and arrive as ISO strings like
+ * "2026-05-30T00:00:00+00:00". Passing that straight to `new Date(...)` parses
+ * it as a UTC instant, so `toLocaleDateString()` in any timezone behind UTC
+ * renders the *previous* day (5/30 → 5/29). We only care about the calendar
+ * date, so take the date portion and rebuild it in local time — the displayed
+ * Y/M/D then always matches the stored date.
+ *
+ * @param {string} value - ISO date or datetime string (date portion is used)
+ * @param {Intl.DateTimeFormatOptions} [options] - passed to toLocaleDateString
+ * @param {string} [locale] - passed to toLocaleDateString
+ * @returns {string} Localized date, or '' for empty/invalid input
+ */
+export const formatDateOnly = (value, options, locale) => {
+  if (!value) return '';
+  const [y, m, d] = String(value).split('T')[0].split('-').map(Number);
+  if (!y || !m || !d) return '';
+  return new Date(y, m - 1, d).toLocaleDateString(locale, options);
+};
+
+/**
  * Get current datetime formatted for datetime-local input
  * @returns {string} Current time in YYYY-MM-DDTHH:MM format
  */

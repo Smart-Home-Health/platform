@@ -18,6 +18,8 @@
 import { useState, useEffect } from 'react';
 import config from '../config';
 import ModalBase from './ModalBase';
+import EquipmentRestockGate from './EquipmentRestockGate';
+import { formatDateOnly } from '../utils/timezone';
 import { useAdminPatient } from '../contexts/AdminPatientContext';
 
 export default function EquipmentModal({ isOpen, onClose, noModal, equipmentDueCount }) {
@@ -27,6 +29,7 @@ export default function EquipmentModal({ isOpen, onClose, noModal, equipmentDueC
   const [loading, setLoading] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [selectedEquip, setSelectedEquip] = useState(null);
+  const [restockInfo, setRestockInfo] = useState(null);
   const [addForm, setAddForm] = useState({
     name: '',
     quantity: 1,
@@ -106,17 +109,33 @@ export default function EquipmentModal({ isOpen, onClose, noModal, equipmentDueC
     setShowConfirm(true);
   };
 
-  const handleConfirmChange = async () => {
-    setShowConfirm(false);
-    if (!selectedEquip) return;
-    await fetch(`${config.apiUrl}/api/equipment/${selectedEquip.id}/change`, {
+  // Core change request. A 409 out-of-stock opens the restock gate, which
+  // retries this once the on-hand quantity has been updated.
+  const doChange = async (equipId) => {
+    const response = await fetch(`${config.apiUrl}/api/equipment/${equipId}/change`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({ changed_at: new Date().toISOString() }),
     });
-    setSelectedEquip(null);
-    fetchEquipment();
+    if (response.ok) {
+      setRestockInfo(null);
+      setSelectedEquip(null);
+      fetchEquipment();
+    } else {
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 409 && data.error === 'insufficient_quantity') {
+        setRestockInfo(data);
+      } else {
+        alert('Failed to mark equipment as changed.');
+      }
+    }
+  };
+
+  const handleConfirmChange = () => {
+    setShowConfirm(false);
+    if (!selectedEquip) return;
+    doChange(selectedEquip.id);
   };
 
   const handleReceive = async (equip) => {
@@ -227,7 +246,7 @@ export default function EquipmentModal({ isOpen, onClose, noModal, equipmentDueC
 
   const formatDate = (dateString) => {
     if (!dateString) return '—';
-    return new Date(dateString).toLocaleDateString();
+    return formatDateOnly(dateString) || '—';
   };
 
   const formatDateTime = (iso) => {
@@ -726,6 +745,12 @@ export default function EquipmentModal({ isOpen, onClose, noModal, equipmentDueC
           </div>
         </div>
       )}
+
+      <EquipmentRestockGate
+        info={restockInfo}
+        onClose={() => setRestockInfo(null)}
+        onUpdated={() => doChange(restockInfo.equipment_id)}
+      />
     </div>
   );
 

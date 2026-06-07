@@ -28,7 +28,7 @@ import logging
 from fastapi import WebSocket, WebSocketDisconnect
 
 from bus import EventBus
-from events import WebSocketEvent, StateSync, EventSource, SensorUpdate, AlarmPanelState
+from events import WebSocketEvent, StateSync, EventSource, SensorUpdate, AlarmPanelState, DueCountsChanged
 
 logger = logging.getLogger("websocket_module")
 
@@ -55,7 +55,10 @@ class WebSocketModule:
         
         # Subscribe to state sync requests
         asyncio.create_task(self._subscribe_to_state_sync())
-        
+
+        # Subscribe to due-count changes (item marked done / logged / restocked)
+        asyncio.create_task(self._subscribe_to_due_counts())
+
         logger.info("WebSocket module event subscribers started")
 
     def _normalize_sensor_values(self, values: dict) -> dict:
@@ -120,6 +123,24 @@ class WebSocketModule:
                     
             except Exception as e:
                 logger.error(f"Error handling state sync: {e}")
+
+    async def _subscribe_to_due_counts(self):
+        """Subscribe to due-count change events and notify clients to refetch.
+
+        We only forward the category (and patient_id) — the badge counts are
+        computed per-viewer-patient via REST on the client, so we don't compute
+        or push a count here.
+        """
+        async for event in self.event_bus.subscribe_to_type(DueCountsChanged):
+            try:
+                message = {
+                    "type": "due_counts_changed",
+                    "category": event.category,
+                    "patient_id": event.patient_id,
+                }
+                await self._broadcast_message(message)
+            except Exception as e:
+                logger.error(f"Error handling due-counts change: {e}")
 
     async def connect_client(self, websocket: WebSocket) -> str:
         """Accept a new WebSocket connection."""
@@ -272,9 +293,6 @@ class WebSocketModule:
         
         try:
             from state_manager import get_db_session
-            from crud.equipment import get_equipment_due_count
-            from crud.medications import get_due_and_upcoming_medications_count
-            from crud.scheduling import get_due_and_upcoming_care_tasks_count, get_due_and_upcoming_nutrition_count
             from crud.monitoring import get_unacknowledged_alerts_count, get_active_ventilator_alerts_count
             from crud.settings import get_all_settings
             from crud.vitals import get_vitals_by_type
@@ -291,31 +309,6 @@ class WebSocketModule:
                     logger.warning(f"Error getting alert counts: {e}")
                     db.rollback()
                     alerts_count = 0
-
-                try:
-                    equipment_due_count = get_equipment_due_count(db)
-                except Exception as e:
-                    logger.warning(f"Error getting equipment due count: {e}")
-                    db.rollback()
-                    equipment_due_count = 0
-                try:
-                    medications_due_count = get_due_and_upcoming_medications_count(db)
-                except Exception as e:
-                    logger.warning(f"Error getting medications due count: {e}")
-                    db.rollback()
-                    medications_due_count = 0
-                try:
-                    care_tasks_due_count = get_due_and_upcoming_care_tasks_count(db)
-                except Exception as e:
-                    logger.warning(f"Error getting care tasks due count: {e}")
-                    db.rollback()
-                    care_tasks_due_count = 0
-                try:
-                    nutrition_due_count = get_due_and_upcoming_nutrition_count(db)
-                except Exception as e:
-                    logger.warning(f"Error getting nutrition due count: {e}")
-                    db.rollback()
-                    nutrition_due_count = 0
 
                 try:
                     settings_result = get_all_settings(db)
@@ -372,10 +365,6 @@ class WebSocketModule:
                 'temp': temp_history if temp_history else [],
                 'settings': settings_dict,
                 'alerts_count': alerts_count,
-                'equipment_due_count': equipment_due_count,
-                'medications': medications_due_count,
-                'nutrition': nutrition_due_count,
-                'care_tasks': care_tasks_due_count,
                 'dashboard_chart_1': {
                     'vital_type': chart_1_vital,
                     'data': chart_1_data
@@ -435,10 +424,6 @@ class WebSocketModule:
                 'temp': [],
                 'settings': {},
                 'alerts_count': 0,
-                'equipment_due_count': 0,
-                'medications': 0,
-                'nutrition': 0,
-                'care_tasks': 0,
                 'spo2_alarm': False,
                 'bpm_alarm': False,
                 'alarm': False,

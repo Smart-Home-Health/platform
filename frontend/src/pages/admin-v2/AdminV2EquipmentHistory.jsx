@@ -209,9 +209,6 @@ const AdminV2EquipmentHistory = () => {
       <div className="admin-v2-page">
         {selectedPatient ? (
           <>
-            {/* Page Header */}
-            <h1 className="schedule-section-title">Equipment Change History</h1>
-
             {/* Filter Bar */}
             <div className="history-filter-bar">
               <div className="history-filter-row">
