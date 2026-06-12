@@ -1,5 +1,7 @@
 .venv
 .env
+# Editor/backup copies of env files (.env.save, .env.bak, ...) — never commit
+.env.*
 /node_modules/
 /.idea/*
 .idea
