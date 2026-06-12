@@ -1,7 +1,24 @@
+/*
+ * Smart Home Health Hub
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 import React, { useState, useEffect, useRef } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
-import { PatientSelectorModal, IntakeModal, OutputModal, MedicationDoseModal, CareTaskCompleteModal } from './components';
+import { PatientSelectorModal, IntakeModal, OutputModal, MedicationDoseModal, UpdateQuantityModal, CareTaskCompleteModal } from './components';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
@@ -14,12 +31,30 @@ import {
   TasksIcon,
   CheckIcon,
   ClockIcon,
-  PatientsIcon,
-  XIcon,
-  EditIcon,
-  PrintIcon
+  PrintIcon,
+  UndoIcon
 } from '../../components/Icons';
 import { getCurrentLocalDateTime, localDateTimeToUTC, checkAdministrationWindow, formatDurationMinutes } from '../../utils/timezone';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
+import { Field, FormRow } from '@/components/ui/field';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import './AdminV2.css';
 
 const AdminV2Schedule = () => {
@@ -55,6 +90,8 @@ const AdminV2Schedule = () => {
   
   // Completion modal state
   const [showCompleteModal, setShowCompleteModal] = useState(false);
+  // Hard gate when an administration is refused for insufficient on-hand quantity.
+  const [qtyGate, setQtyGate] = useState({ open: false, info: null });
   const [completeModalData, setCompleteModalData] = useState({
     type: null, // 'medication', 'nutrition', 'care-task'
     items: [], // single item or multiple for bulk
@@ -74,7 +111,6 @@ const AdminV2Schedule = () => {
   });
 
   // PRN / Quick-log modal state
-  const navigate = useNavigate();
   const [prnModal, setPrnModal] = useState({
     open: false,
     type: null,          // 'medication' | 'nutrition' | 'care-task'
@@ -84,7 +120,6 @@ const AdminV2Schedule = () => {
   });
   const [prnMeds, setPrnMeds] = useState([]);
   const [prnMedsLoading, setPrnMedsLoading] = useState(false);
-  const [prnSaving, setPrnSaving] = useState(false);
   const [prnError, setPrnError] = useState(null);
   // PRN sub-modals — these own their form state internally.
   const [showPrnIntakeModal, setShowPrnIntakeModal] = useState(false);
@@ -313,6 +348,19 @@ const AdminV2Schedule = () => {
     setShowCompleteModal(true);
   };
 
+  // When the backend refuses an administration for insufficient on-hand quantity
+  // (409 insufficient_quantity), open the hard update-quantity gate. Returns true
+  // when it handled the response so the caller can stop.
+  const maybeGateOnQuantity = async (response) => {
+    if (response.status !== 409) return false;
+    const err = await response.json().catch(() => ({}));
+    if (err.error === 'insufficient_quantity') {
+      setQtyGate({ open: true, info: err });
+      return true;
+    }
+    return false;
+  };
+
   // Submit completion from modal
   const handleSubmitCompletion = async () => {
     const { type, items, isBulk } = completeModalData;
@@ -373,7 +421,9 @@ const AdminV2Schedule = () => {
           credentials: 'include',
           body: JSON.stringify(payload)
         });
-        
+
+        if (await maybeGateOnQuantity(response)) return;
+
         if (response.ok) {
           setScheduleData(prev => ({
             ...prev,
@@ -385,6 +435,9 @@ const AdminV2Schedule = () => {
             })
           }));
           setShowCompleteModal(false);
+        } else {
+          const data = await response.json().catch(() => ({}));
+          alert(data.detail || 'Failed to record completion.');
         }
       } else {
         // Single item completion
@@ -413,22 +466,29 @@ const AdminV2Schedule = () => {
             })
           })
         });
-        
+
+        if (await maybeGateOnQuantity(response)) return;
+
         if (response.ok) {
           const result = await response.json();
           if (result.success) {
-            const key = type === 'medication' ? 'medications' : 
+            const key = type === 'medication' ? 'medications' :
                        type === 'nutrition' ? 'nutrition' : 'care_tasks';
             setScheduleData(prev => ({
               ...prev,
-              [key]: prev[key].map(i => 
+              [key]: prev[key].map(i =>
                 i.schedule_id === item.schedule_id && i.scheduled_time === item.scheduled_time
                   ? { ...i, completed: true }
                   : i
               )
             }));
             setShowCompleteModal(false);
+          } else {
+            alert(result.error || 'Failed to record completion.');
           }
+        } else {
+          const data = await response.json().catch(() => ({}));
+          alert(data.detail || 'Failed to record completion.');
         }
       }
     } catch (err) {
@@ -445,6 +505,39 @@ const AdminV2Schedule = () => {
 
   const handleCompleteHour = (hour, type) => {
     openCompleteHourModal(hour, type);
+  };
+
+  // Undo a completed item — deletes its log row (and, for medications, restores
+  // the deducted on-hand quantity). `type` is the frontend item type
+  // ('medication' | 'nutrition' | 'care_task'); nutrition splits into
+  // intake/output based on the row's intake_type.
+  const handleUndoItem = async (type, item) => {
+    if (!item.log_id) return;
+    let endpointType;
+    if (type === 'medication') endpointType = 'medication';
+    else if (type === 'care_task') endpointType = 'care_task';
+    else if (type === 'nutrition') endpointType = item.intake_type === 'output' ? 'nutrition_output' : 'nutrition_intake';
+    else return;
+
+    const label = item.name || 'this item';
+    const extra = type === 'medication' ? ' and restores the on-hand quantity' : '';
+    if (!window.confirm(`Undo "${label}"? This removes the completion record${extra}.`)) return;
+
+    try {
+      const response = await fetch(
+        `${config.apiUrl}/api/schedule/log/${endpointType}/${item.log_id}`,
+        { method: 'DELETE', credentials: 'include' }
+      );
+      if (response.ok) {
+        await fetchSchedule();
+      } else {
+        const data = await response.json().catch(() => ({}));
+        alert(data.detail || 'Failed to undo');
+      }
+    } catch (err) {
+      console.error('Error undoing item:', err);
+      alert('Error connecting to server');
+    }
   };
 
   // PRN / Quick-log modal handlers
@@ -631,13 +724,15 @@ const AdminV2Schedule = () => {
     };
   };
 
-  // Count totals for summary
-  const totalMeds = scheduleData.medications.length;
-  const completedMeds = scheduleData.medications.filter(m => m.completed).length;
-  const totalNutrition = scheduleData.nutrition.length;
-  const completedNutrition = scheduleData.nutrition.filter(n => n.completed).length;
-  const totalTasks = scheduleData.care_tasks.length;
-  const completedTasks = scheduleData.care_tasks.filter(t => t.completed).length;
+  // Count totals for summary. These are scheduled-adherence ratios, so PRN /
+  // ad-hoc entries (is_prn) are excluded — they still render on the timeline,
+  // but they're extra care, not part of "X of Y scheduled items done".
+  const totalMeds = scheduleData.medications.filter(m => !m.is_prn).length;
+  const completedMeds = scheduleData.medications.filter(m => !m.is_prn && m.completed).length;
+  const totalNutrition = scheduleData.nutrition.filter(n => !n.is_prn).length;
+  const completedNutrition = scheduleData.nutrition.filter(n => !n.is_prn && n.completed).length;
+  const totalTasks = scheduleData.care_tasks.filter(t => !t.is_prn).length;
+  const completedTasks = scheduleData.care_tasks.filter(t => !t.is_prn && t.completed).length;
 
   return (
     <AdminV2Layout>
@@ -645,7 +740,9 @@ const AdminV2Schedule = () => {
         {selectedPatient ? (
           <>
             {error && (
-              <div className="admin-v2-error-banner">{error}</div>
+              <div className="tw" style={{ marginBottom: '1rem' }}>
+                <Alert variant="destructive">{error}</Alert>
+              </div>
             )}
 
             {/* Date Navigation */}
@@ -844,9 +941,21 @@ const AdminV2Schedule = () => {
                                             {med.dose_amount} {med.dose_unit}
                                           </span>
                                         )}
-                                        <span className={`admin-v2-schedule-item-check ${med.completed ? 'checked' : ''}`}>
-                                          {completing[itemKey] ? '...' : <CheckIcon size={14} />}
-                                        </span>
+                                        {med.completed && med.log_id ? (
+                                          <button
+                                            type="button"
+                                            className="admin-v2-schedule-item-undo"
+                                            onClick={(e) => { e.stopPropagation(); handleUndoItem('medication', med); }}
+                                            title="Undo — mark as not done"
+                                            aria-label="Undo"
+                                          >
+                                            <UndoIcon size={14} />
+                                          </button>
+                                        ) : (
+                                          <span className={`admin-v2-schedule-item-check ${med.completed ? 'checked' : ''}`}>
+                                            {completing[itemKey] ? '...' : <CheckIcon size={14} />}
+                                          </span>
+                                        )}
                                       </div>
                                     </div>
                                   </React.Fragment>
@@ -931,9 +1040,21 @@ const AdminV2Schedule = () => {
                                             )}
                                           </span>
                                         )}
-                                        <span className={`admin-v2-schedule-item-check ${item.completed ? 'checked' : ''}`}>
-                                          {completing[itemKey] ? '...' : <CheckIcon size={14} />}
-                                        </span>
+                                        {item.completed && item.log_id ? (
+                                          <button
+                                            type="button"
+                                            className="admin-v2-schedule-item-undo"
+                                            onClick={(e) => { e.stopPropagation(); handleUndoItem('nutrition', item); }}
+                                            title="Undo — mark as not done"
+                                            aria-label="Undo"
+                                          >
+                                            <UndoIcon size={14} />
+                                          </button>
+                                        ) : (
+                                          <span className={`admin-v2-schedule-item-check ${item.completed ? 'checked' : ''}`}>
+                                            {completing[itemKey] ? '...' : <CheckIcon size={14} />}
+                                          </span>
+                                        )}
                                       </div>
                                     </div>
                                   </React.Fragment>
@@ -974,9 +1095,12 @@ const AdminV2Schedule = () => {
                                 </button>
                               )}
                               {careTasksByHour[hour].map((task, idx) => {
-                                const itemKey = `care-task-${task.schedule_id}-${task.scheduled_time}`;
+                                // PRN completions have no schedule_id; key off log_id instead.
+                                const rowId = task.schedule_id ?? `prn-${task.log_id}`;
+                                const itemKey = `care-task-${rowId}-${task.scheduled_time}`;
+                                const isPrn = !!task.is_prn;
                                 return (
-                                  <React.Fragment key={`task-${task.schedule_id}-${idx}`}>
+                                  <React.Fragment key={`task-${rowId}-${idx}`}>
                                     {idx > 0 && (
                                       <div
                                         className="admin-v2-schedule-divider"
@@ -990,7 +1114,8 @@ const AdminV2Schedule = () => {
                                       className={`admin-v2-schedule-item ${task.completed ? 'completed' : 'clickable'} ${completing[itemKey] ? 'completing' : ''}`}
                                       onClick={(e) => { e.stopPropagation(); if (!task.completed) handleCompleteItem('care-task', task); }}
                                       role="button"
-                                      tabIndex={task.completed ? -1 : 0}
+                                      tabIndex={task.completed || isPrn ? -1 : 0}
+                                      title={isPrn ? 'PRN care task — completed ad-hoc' : undefined}
                                       style={task.category_color ? { borderLeft: `3px solid ${task.category_color}` } : {}}
                                     >
                                       <div className="admin-v2-schedule-item-header">
@@ -1004,6 +1129,11 @@ const AdminV2Schedule = () => {
                                           );
                                         })()}
                                         <span className="admin-v2-schedule-item-name">{task.name}</span>
+                                        {isPrn && (
+                                          <span className="admin-v2-badge admin-v2-badge-prn" title="As-needed care task">
+                                            PRN
+                                          </span>
+                                        )}
                                         {task.category_name && (
                                           <span 
                                             className="admin-v2-schedule-item-category"
@@ -1012,9 +1142,21 @@ const AdminV2Schedule = () => {
                                             {task.category_name}
                                           </span>
                                         )}
-                                        <span className={`admin-v2-schedule-item-check ${task.completed ? 'checked' : ''}`}>
-                                          {completing[itemKey] ? '...' : <CheckIcon size={14} />}
-                                        </span>
+                                        {task.completed && task.log_id ? (
+                                          <button
+                                            type="button"
+                                            className="admin-v2-schedule-item-undo"
+                                            onClick={(e) => { e.stopPropagation(); handleUndoItem('care_task', task); }}
+                                            title="Undo — mark as not done"
+                                            aria-label="Undo"
+                                          >
+                                            <UndoIcon size={14} />
+                                          </button>
+                                        ) : (
+                                          <span className={`admin-v2-schedule-item-check ${task.completed ? 'checked' : ''}`}>
+                                            {completing[itemKey] ? '...' : <CheckIcon size={14} />}
+                                          </span>
+                                        )}
                                       </div>
                                     </div>
                                   </React.Fragment>
@@ -1044,12 +1186,11 @@ const AdminV2Schedule = () => {
           <div className="schedule-select-patient">
             <h2>Select a Patient</h2>
             <p>Choose a patient to view their daily schedule</p>
-            <button 
-              className="admin-v2-btn admin-v2-btn-primary"
-              onClick={() => setShowPatientModal(true)}
-            >
-              Select Patient
-            </button>
+            <div className="tw">
+              <Button onClick={() => setShowPatientModal(true)}>
+                Select Patient
+              </Button>
+            </div>
           </div>
         )}
 
@@ -1064,419 +1205,344 @@ const AdminV2Schedule = () => {
           />
         )}
 
-        {/* Completion Confirmation Modal */}
-        {showCompleteModal && (
-          <div className="admin-v2-modal-overlay" onClick={() => setShowCompleteModal(false)}>
-            <div className="admin-v2-modal admin-v2-modal-sm" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>
-                  {completeModalData.isBulk 
-                    ? `Complete ${completeModalData.items.length} ${completeModalData.type === 'medication' ? 'Medication' : completeModalData.type === 'nutrition' ? 'Nutrition' : 'Care Task'}${completeModalData.items.length > 1 ? 's' : ''}`
-                    : `Complete ${completeModalData.type === 'medication' ? 'Medication' : completeModalData.type === 'nutrition' ? 'Nutrition' : 'Care Task'}`
-                  }
-                </h2>
-                <button className="admin-v2-modal-close" onClick={() => setShowCompleteModal(false)}>
-                  <XIcon size={20} />
-                </button>
-              </div>
-              
-              <div className="admin-v2-modal-body">
-                {/* Item Summary */}
-                <div style={{ 
-                  background: '#21262d', 
-                  borderRadius: '6px', 
-                  padding: '1rem', 
-                  marginBottom: '1.5rem' 
-                }}>
-                  {completeModalData.items.map((item, idx) => (
-                    <div key={idx} style={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between', 
-                      alignItems: 'center',
-                      padding: idx > 0 ? '0.5rem 0 0' : 0,
-                      borderTop: idx > 0 ? '1px solid #30363d' : 'none',
-                      marginTop: idx > 0 ? '0.5rem' : 0
-                    }}>
-                      <span style={{ fontWeight: 500, color: '#e6edf3' }}>{item.name}</span>
-                      <span style={{ color: '#8b949e', fontSize: '0.85rem' }}>
-                        Scheduled: {String(item.hour).padStart(2, '0')}:{String(item.minute).padStart(2, '0')}
+        {/* Completion Confirmation Dialog */}
+        <Dialog open={showCompleteModal} onOpenChange={(o) => { if (!o) setShowCompleteModal(false); }}>
+          <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-[480px]" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>
+                {completeModalData.isBulk
+                  ? `Complete ${completeModalData.items.length} ${completeModalData.type === 'medication' ? 'Medication' : completeModalData.type === 'nutrition' ? 'Nutrition' : 'Care Task'}${completeModalData.items.length > 1 ? 's' : ''}`
+                  : `Complete ${completeModalData.type === 'medication' ? 'Medication' : completeModalData.type === 'nutrition' ? 'Nutrition' : 'Care Task'}`
+                }
+              </DialogTitle>
+            </DialogHeader>
+
+            {/* Item Summary */}
+            <div className="rounded-md bg-secondary p-4">
+              {completeModalData.items.map((item, idx) => (
+                <div
+                  key={idx}
+                  className={`flex items-center justify-between ${idx > 0 ? 'mt-2 border-t border-border pt-2' : ''}`}
+                >
+                  <span className="font-medium">{item.name}</span>
+                  <span className="text-sm text-muted-foreground">
+                    Scheduled: {String(item.hour).padStart(2, '0')}:{String(item.minute).padStart(2, '0')}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Completion Time */}
+            <Field label="Completed At" required hint="Adjust if completed at a different time">
+              <Input
+                type="datetime-local"
+                value={completeFormData.completed_at}
+                onChange={e => setCompleteFormData({...completeFormData, completed_at: e.target.value})}
+              />
+            </Field>
+
+            {/* Medication-specific fields */}
+            {completeModalData.type === 'medication' && !completeModalData.isBulk && (
+              <Field label="Dose Amount">
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    step="0.1"
+                    value={completeFormData.dose_amount}
+                    onChange={e => setCompleteFormData({...completeFormData, dose_amount: e.target.value})}
+                    placeholder="Amount given"
+                    className="flex-1"
+                  />
+                  <span className="shrink-0 text-sm text-muted-foreground">
+                    {completeFormData.dose_unit || 'units'}
+                  </span>
+                </div>
+              </Field>
+            )}
+
+            {/* Nutrition-specific fields */}
+            {completeModalData.type === 'nutrition' && !completeModalData.isBulk && (
+              <>
+                <Field label="Item Name">
+                  <Input
+                    type="text"
+                    value={completeFormData.item_name}
+                    onChange={e => setCompleteFormData({...completeFormData, item_name: e.target.value})}
+                    placeholder="What was consumed?"
+                  />
+                </Field>
+                <FormRow>
+                  <Field label="Amount">
+                    <Input
+                      type="number"
+                      step="0.1"
+                      value={completeFormData.amount}
+                      onChange={e => setCompleteFormData({...completeFormData, amount: e.target.value})}
+                      placeholder="Amount"
+                    />
+                  </Field>
+                  <Field label="Unit">
+                    <Select
+                      value={completeFormData.amount_unit || undefined}
+                      onValueChange={v => setCompleteFormData({...completeFormData, amount_unit: v})}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Select..." /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ml">ml</SelectItem>
+                        <SelectItem value="oz">oz</SelectItem>
+                        <SelectItem value="cups">cups</SelectItem>
+                        <SelectItem value="grams">grams</SelectItem>
+                        <SelectItem value="servings">servings</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                </FormRow>
+              </>
+            )}
+
+            {/* Notes */}
+            <Field label="Notes (optional)">
+              <Textarea
+                value={completeFormData.notes}
+                onChange={e => setCompleteFormData({...completeFormData, notes: e.target.value})}
+                placeholder="Any additional notes..."
+                rows={2}
+              />
+            </Field>
+
+            {/* Off-window (early or late) administration warning */}
+            {(() => {
+              const completedAtUtc = completeFormData.completed_at
+                ? localDateTimeToUTC(completeFormData.completed_at)
+                : null;
+              const checks = completeModalData.items.map(item => ({
+                item,
+                check: checkAdministrationWindow(item.scheduled_time, completedAtUtc),
+              }));
+              const earlyItems = checks.filter(({ check }) => check.status === 'early');
+              const lateItems = checks.filter(({ check }) => check.status === 'late');
+              if (earlyItems.length === 0 && lateItems.length === 0) return null;
+              const typeLabel = completeModalData.type === 'medication'
+                ? 'medication'
+                : completeModalData.type === 'nutrition'
+                  ? 'nutrition item'
+                  : 'care task';
+              const renderGroup = (group, kind) => {
+                if (group.length === 0) return null;
+                const direction = kind === 'early' ? 'before' : 'after';
+                return (
+                  <>
+                    <div className="mb-1.5">
+                      {group.length === 1
+                        ? `You are about to log this ${typeLabel} more than 1 hour ${direction} its scheduled time.`
+                        : `${group.length} items are being logged more than 1 hour ${direction} their scheduled time.`}
+                      {' '}Giving a {typeLabel} {kind} can be unsafe. Confirm this is intentional before continuing.
+                    </div>
+                    <ul className="mb-2 list-disc pl-5 text-xs">
+                      {group.map(({ item, check }, idx) => (
+                        <li key={`${kind}-${idx}`}>
+                          <strong>{item.name}</strong> — scheduled {check.scheduledLocal}
+                          {' '}({formatDurationMinutes(Math.abs(check.minutesOffset))} {kind})
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                );
+              };
+              const headerText = earlyItems.length > 0 && lateItems.length > 0
+                ? 'Warning: off-window administration'
+                : earlyItems.length > 0
+                  ? 'Warning: early administration'
+                  : 'Warning: late administration';
+              return (
+                <Alert variant="warning">
+                  <AlertTitle className="text-[#f0883e]">{headerText}</AlertTitle>
+                  <AlertDescription>
+                    {renderGroup(earlyItems, 'early')}
+                    {renderGroup(lateItems, 'late')}
+                  </AlertDescription>
+                </Alert>
+              );
+            })()}
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setShowCompleteModal(false)}
+              >
+                Cancel
+              </Button>
+              {(() => {
+                const completedAtUtc = completeFormData.completed_at
+                  ? localDateTimeToUTC(completeFormData.completed_at)
+                  : null;
+                const statuses = completeModalData.items.map(
+                  item => checkAdministrationWindow(item.scheduled_time, completedAtUtc).status
+                );
+                const hasEarly = statuses.some(s => s === 'early');
+                const hasLate = statuses.some(s => s === 'late');
+                const isOffWindow = hasEarly || hasLate;
+                const saving = Object.values(completing).some(v => v);
+                const label = saving
+                  ? 'Saving...'
+                  : hasEarly && hasLate
+                    ? 'Confirm Off-Window Administration'
+                    : hasEarly
+                      ? 'Confirm Early Administration'
+                      : hasLate
+                        ? 'Confirm Late Administration'
+                        : 'Mark Complete';
+                return (
+                  <Button
+                    type="button"
+                    onClick={handleSubmitCompletion}
+                    disabled={saving}
+                    className={isOffWindow ? 'bg-[#bb8009] text-[#0d1117] hover:bg-[#bb8009]/90' : undefined}
+                  >
+                    {label}
+                  </Button>
+                );
+              })()}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* PRN / Quick-log Dialog */}
+        <Dialog open={prnModal.open} onOpenChange={(o) => { if (!o) closePrnModal(); }}>
+          <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-[480px]" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>
+                {prnModal.type === 'medication' && 'Log PRN Medication'}
+                {prnModal.type === 'nutrition' && 'Log Nutrition'}
+                {prnModal.type === 'care-task' && 'Log Care Task'}
+                {prnModal.hour != null && (
+                  <span className="ml-2 text-sm font-normal text-muted-foreground">
+                    — {formatHour(prnModal.hour)}
+                  </span>
+                )}
+              </DialogTitle>
+            </DialogHeader>
+
+            {prnError && <Alert variant="destructive">{prnError}</Alert>}
+
+            {/* ───────────── Medication ───────────── */}
+            {prnModal.type === 'medication' && prnModal.mode === 'pick' && (
+              prnMedsLoading ? (
+                <p className="text-sm text-muted-foreground">Loading PRN medications...</p>
+              ) : prnMeds.length === 0 ? (
+                <p className="py-2 text-center text-muted-foreground">
+                  No PRN (as-needed) medications for this patient.
+                </p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {prnMeds.map(med => (
+                    <Button
+                      key={med.id}
+                      type="button"
+                      variant="secondary"
+                      className="h-auto w-full justify-between whitespace-normal px-4 py-3 text-left"
+                      onClick={() => pickPrnMed(med)}
+                    >
+                      <span className="flex min-w-0 flex-col">
+                        <strong>{med.name}</strong>
+                        <span className="text-xs font-normal text-muted-foreground">
+                          {med.concentration ? `${med.concentration} • ` : ''}
+                          Last given: {med.last_administered
+                            ? new Date(med.last_administered).toLocaleString(undefined, {
+                                month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true
+                              })
+                            : 'never'}
+                        </span>
                       </span>
+                      <Badge className="ml-2 shrink-0">Give</Badge>
+                    </Button>
+                  ))}
+                </div>
+              )
+            )}
+
+            {/* ───────────── Nutrition ───────────── */}
+            {prnModal.type === 'nutrition' && prnModal.mode === 'pick' && (
+              <div className="grid grid-cols-2 gap-4">
+                <Button
+                  type="button"
+                  className="h-auto flex-col gap-2 py-6"
+                  onClick={() => { closePrnModal(); setShowPrnIntakeModal(true); }}
+                >
+                  <NutritionIcon size={24} />
+                  <span>Log Intake</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="h-auto flex-col gap-2 py-6"
+                  onClick={() => { closePrnModal(); setShowPrnOutputModal(true); }}
+                >
+                  <NutritionIcon size={24} />
+                  <span>Log Output</span>
+                </Button>
+              </div>
+            )}
+
+            {/* ───────────── Care tasks ───────────── */}
+            {prnModal.type === 'care-task' && prnModal.mode === 'pick' && (
+              prnCareTasksLoading ? (
+                <p className="text-sm text-muted-foreground">Loading care tasks...</p>
+              ) : prnCareTasks.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 py-4 text-muted-foreground">
+                  <TasksIcon size={48} />
+                  <p>No active care tasks for this patient.</p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-4">
+                  {groupCareTasksByCategory(prnCareTasks).map(group => (
+                    <div key={group.id ?? 'uncat'}>
+                      <div
+                        className="mb-1.5 flex items-center gap-2 text-xs font-bold uppercase tracking-wide"
+                        style={{ color: group.color }}
+                      >
+                        <span
+                          className="h-2.5 w-2.5 rounded-full"
+                          style={{ backgroundColor: group.color }}
+                        />
+                        {group.name}
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        {group.tasks.map(task => (
+                          <Button
+                            key={task.id}
+                            type="button"
+                            variant="secondary"
+                            className="h-auto w-full justify-between whitespace-normal px-4 py-3 text-left"
+                            style={{ borderLeft: `4px solid ${group.color}` }}
+                            onClick={() => pickPrnCareTask(task)}
+                          >
+                            <span className="flex min-w-0 flex-col">
+                              <strong>{task.name}</strong>
+                              {task.description && (
+                                <span className="text-xs font-normal leading-snug text-muted-foreground">
+                                  {task.description}
+                                </span>
+                              )}
+                            </span>
+                            <Badge className="ml-2 shrink-0">Log</Badge>
+                          </Button>
+                        ))}
+                      </div>
                     </div>
                   ))}
                 </div>
+              )
+            )}
 
-                {/* Completion Time */}
-                <div className="admin-v2-form-group">
-                  <label>Completed At *</label>
-                  <input
-                    type="datetime-local"
-                    value={completeFormData.completed_at}
-                    onChange={e => setCompleteFormData({...completeFormData, completed_at: e.target.value})}
-                    style={{ width: '100%' }}
-                  />
-                  <small style={{ color: '#8b949e' }}>Adjust if completed at a different time</small>
-                </div>
-
-                {/* Medication-specific fields */}
-                {completeModalData.type === 'medication' && !completeModalData.isBulk && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                    <div className="admin-v2-form-group">
-                      <label>Dose Amount</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={completeFormData.dose_amount}
-                        onChange={e => setCompleteFormData({...completeFormData, dose_amount: e.target.value})}
-                        placeholder="Amount given"
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Unit</label>
-                      <input
-                        type="text"
-                        value={completeFormData.dose_unit}
-                        onChange={e => setCompleteFormData({...completeFormData, dose_unit: e.target.value})}
-                        placeholder="mg, ml, tablets..."
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Nutrition-specific fields */}
-                {completeModalData.type === 'nutrition' && !completeModalData.isBulk && (
-                  <>
-                    <div className="admin-v2-form-group">
-                      <label>Item Name</label>
-                      <input
-                        type="text"
-                        value={completeFormData.item_name}
-                        onChange={e => setCompleteFormData({...completeFormData, item_name: e.target.value})}
-                        placeholder="What was consumed?"
-                      />
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                      <div className="admin-v2-form-group">
-                        <label>Amount</label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          value={completeFormData.amount}
-                          onChange={e => setCompleteFormData({...completeFormData, amount: e.target.value})}
-                          placeholder="Amount"
-                        />
-                      </div>
-                      <div className="admin-v2-form-group">
-                        <label>Unit</label>
-                        <select
-                          value={completeFormData.amount_unit}
-                          onChange={e => setCompleteFormData({...completeFormData, amount_unit: e.target.value})}
-                        >
-                          <option value="">Select...</option>
-                          <option value="ml">ml</option>
-                          <option value="oz">oz</option>
-                          <option value="cups">cups</option>
-                          <option value="grams">grams</option>
-                          <option value="servings">servings</option>
-                        </select>
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                {/* Notes */}
-                <div className="admin-v2-form-group">
-                  <label>Notes (optional)</label>
-                  <textarea
-                    value={completeFormData.notes}
-                    onChange={e => setCompleteFormData({...completeFormData, notes: e.target.value})}
-                    placeholder="Any additional notes..."
-                    rows={2}
-                  />
-                </div>
-
-                {/* Off-window (early or late) administration warning */}
-                {(() => {
-                  const completedAtUtc = completeFormData.completed_at
-                    ? localDateTimeToUTC(completeFormData.completed_at)
-                    : null;
-                  const checks = completeModalData.items.map(item => ({
-                    item,
-                    check: checkAdministrationWindow(item.scheduled_time, completedAtUtc),
-                  }));
-                  const earlyItems = checks.filter(({ check }) => check.status === 'early');
-                  const lateItems = checks.filter(({ check }) => check.status === 'late');
-                  if (earlyItems.length === 0 && lateItems.length === 0) return null;
-                  const typeLabel = completeModalData.type === 'medication'
-                    ? 'medication'
-                    : completeModalData.type === 'nutrition'
-                      ? 'nutrition item'
-                      : 'care task';
-                  const renderGroup = (group, kind) => {
-                    if (group.length === 0) return null;
-                    const direction = kind === 'early' ? 'before' : 'after';
-                    return (
-                      <>
-                        <div style={{ fontSize: '0.9rem', marginBottom: '0.35rem' }}>
-                          {group.length === 1
-                            ? `You are about to log this ${typeLabel} more than 1 hour ${direction} its scheduled time.`
-                            : `${group.length} items are being logged more than 1 hour ${direction} their scheduled time.`}
-                          {' '}Giving a {typeLabel} {kind} can be unsafe. Confirm this is intentional before continuing.
-                        </div>
-                        <ul style={{ margin: '0 0 0.5rem', paddingLeft: '1.25rem', fontSize: '0.85rem', color: '#c9d1d9' }}>
-                          {group.map(({ item, check }, idx) => (
-                            <li key={`${kind}-${idx}`}>
-                              <strong>{item.name}</strong> — scheduled {check.scheduledLocal}
-                              {' '}({formatDurationMinutes(Math.abs(check.minutesOffset))} {kind})
-                            </li>
-                          ))}
-                        </ul>
-                      </>
-                    );
-                  };
-                  const headerText = earlyItems.length > 0 && lateItems.length > 0
-                    ? 'Warning: off-window administration'
-                    : earlyItems.length > 0
-                      ? 'Warning: early administration'
-                      : 'Warning: late administration';
-                  return (
-                    <div
-                      role="alert"
-                      style={{
-                        background: 'rgba(187, 128, 9, 0.15)',
-                        border: '1px solid rgba(187, 128, 9, 0.6)',
-                        borderRadius: 6,
-                        padding: '0.75rem 1rem',
-                        marginTop: '0.5rem',
-                        color: '#e6edf3'
-                      }}
-                    >
-                      <div style={{ fontWeight: 600, color: '#f0883e', marginBottom: '0.35rem' }}>
-                        {headerText}
-                      </div>
-                      {renderGroup(earlyItems, 'early')}
-                      {renderGroup(lateItems, 'late')}
-                    </div>
-                  );
-                })()}
-              </div>
-
-              <div className="admin-v2-modal-footer">
-                <button
-                  type="button"
-                  className="admin-v2-btn"
-                  onClick={() => setShowCompleteModal(false)}
-                >
-                  Cancel
-                </button>
-                {(() => {
-                  const completedAtUtc = completeFormData.completed_at
-                    ? localDateTimeToUTC(completeFormData.completed_at)
-                    : null;
-                  const statuses = completeModalData.items.map(
-                    item => checkAdministrationWindow(item.scheduled_time, completedAtUtc).status
-                  );
-                  const hasEarly = statuses.some(s => s === 'early');
-                  const hasLate = statuses.some(s => s === 'late');
-                  const isOffWindow = hasEarly || hasLate;
-                  const saving = Object.values(completing).some(v => v);
-                  const label = saving
-                    ? 'Saving...'
-                    : hasEarly && hasLate
-                      ? 'Confirm Off-Window Administration'
-                      : hasEarly
-                        ? 'Confirm Early Administration'
-                        : hasLate
-                          ? 'Confirm Late Administration'
-                          : 'Mark Complete';
-                  return (
-                    <button
-                      type="button"
-                      className={`admin-v2-btn ${isOffWindow ? 'admin-v2-btn-warning' : 'admin-v2-btn-primary'}`}
-                      onClick={handleSubmitCompletion}
-                      disabled={saving}
-                      style={isOffWindow ? { background: '#bb8009', borderColor: '#bb8009', color: '#0d1117' } : undefined}
-                    >
-                      {label}
-                    </button>
-                  );
-                })()}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* PRN / Quick-log modal */}
-        {prnModal.open && (
-          <div className="admin-v2-modal-overlay" onClick={closePrnModal}>
-            <div className="admin-v2-modal admin-v2-modal-sm" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>
-                  {prnModal.type === 'medication' && 'Log PRN Medication'}
-                  {prnModal.type === 'nutrition' && 'Log Nutrition'}
-                  {prnModal.type === 'care-task' && 'Log Care Task'}
-                  {prnModal.hour != null && (
-                    <span style={{ color: '#8b949e', fontWeight: 400, marginLeft: '0.5rem', fontSize: '0.9rem' }}>
-                      — {formatHour(prnModal.hour)}
-                    </span>
-                  )}
-                </h2>
-                <button className="admin-v2-modal-close" onClick={closePrnModal}>
-                  <XIcon size={20} />
-                </button>
-              </div>
-
-              <div className="admin-v2-modal-body">
-                {prnError && <div className="admin-v2-error-banner" style={{ marginBottom: '1rem' }}>{prnError}</div>}
-
-                {/* ───────────── Medication ───────────── */}
-                {prnModal.type === 'medication' && prnModal.mode === 'pick' && (
-                  <>
-                    {prnMedsLoading ? (
-                      <div className="admin-v2-loading">Loading PRN medications...</div>
-                    ) : prnMeds.length === 0 ? (
-                      <div className="admin-v2-empty-state">
-                        <p>No PRN (as-needed) medications for this patient.</p>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        {prnMeds.map(med => (
-                          <button
-                            key={med.id}
-                            type="button"
-                            className="admin-v2-btn"
-                            onClick={() => pickPrnMed(med)}
-                            style={{
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              padding: '0.75rem 1rem',
-                              textAlign: 'left',
-                              background: '#21262d',
-                              border: '1px solid #30363d',
-                            }}
-                          >
-                            <span style={{ display: 'flex', flexDirection: 'column' }}>
-                              <strong style={{ color: '#e6edf3' }}>{med.name}</strong>
-                              <span style={{ color: '#8b949e', fontSize: '0.8rem' }}>
-                                {med.concentration ? `${med.concentration} • ` : ''}
-                                Last given: {med.last_administered
-                                  ? new Date(med.last_administered).toLocaleString(undefined, {
-                                      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true
-                                    })
-                                  : 'never'}
-                              </span>
-                            </span>
-                            <span className="admin-v2-badge admin-v2-badge-primary">Give</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                )}
-
-                
-                {/* ───────────── Nutrition ───────────── */}
-                {prnModal.type === 'nutrition' && prnModal.mode === 'pick' && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                    <button
-                      type="button"
-                      className="admin-v2-btn admin-v2-btn-primary"
-                      onClick={() => { closePrnModal(); setShowPrnIntakeModal(true); }}
-                      style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}
-                    >
-                      <NutritionIcon size={24} />
-                      <span>Log Intake</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="admin-v2-btn"
-                      onClick={() => { closePrnModal(); setShowPrnOutputModal(true); }}
-                      style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}
-                    >
-                      <NutritionIcon size={24} />
-                      <span>Log Output</span>
-                    </button>
-                  </div>
-                )}
-
-                
-                
-                {/* ───────────── Care tasks ───────────── */}
-                {prnModal.type === 'care-task' && prnModal.mode === 'pick' && (
-                  <>
-                    {prnCareTasksLoading ? (
-                      <div className="admin-v2-loading">Loading care tasks...</div>
-                    ) : prnCareTasks.length === 0 ? (
-                      <div className="admin-v2-empty-state">
-                        <TasksIcon size={48} />
-                        <p className="admin-v2-text-muted">No active care tasks for this patient.</p>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                        {groupCareTasksByCategory(prnCareTasks).map(group => (
-                          <div key={group.id ?? 'uncat'}>
-                            <div style={{
-                              display: 'flex', alignItems: 'center', gap: 8,
-                              marginBottom: 6,
-                              fontSize: '0.8rem', fontWeight: 700,
-                              color: group.color, textTransform: 'uppercase', letterSpacing: 0.5,
-                            }}>
-                              <span style={{
-                                width: 10, height: 10, borderRadius: '50%',
-                                backgroundColor: group.color,
-                              }} />
-                              {group.name}
-                            </div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                              {group.tasks.map(task => (
-                                <button
-                                  key={task.id}
-                                  type="button"
-                                  className="admin-v2-btn"
-                                  onClick={() => pickPrnCareTask(task)}
-                                  style={{
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'center',
-                                    padding: '0.75rem 1rem',
-                                    textAlign: 'left',
-                                    background: '#21262d',
-                                    border: '1px solid #30363d',
-                                    borderLeft: `4px solid ${group.color}`,
-                                  }}
-                                >
-                                  <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                                    <strong style={{ color: '#e6edf3' }}>{task.name}</strong>
-                                    {task.description && (
-                                      <span style={{ color: '#8b949e', fontSize: '0.8rem', lineHeight: 1.3 }}>
-                                        {task.description}
-                                      </span>
-                                    )}
-                                  </span>
-                                  <span className="admin-v2-badge admin-v2-badge-primary" style={{ flexShrink: 0, marginLeft: 8 }}>
-                                    Log
-                                  </span>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-
-              <div className="admin-v2-modal-footer">
-                {prnModal.mode === 'pick' && (
-                  <button type="button" className="admin-v2-btn" onClick={closePrnModal}>
-                    Close
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+            <DialogFooter>
+              <Button type="button" variant="secondary" onClick={closePrnModal}>
+                Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         {/* Shared sub-modals launched from the PRN flow */}
         <IntakeModal
           open={showPrnIntakeModal}
@@ -1500,6 +1566,13 @@ const AdminV2Schedule = () => {
           medication={doseModalMed}
           defaultDateTime={doseModalDefaultDt}
         />
+        {qtyGate.open && (
+          <UpdateQuantityModal
+            info={qtyGate.info}
+            onClose={() => setQtyGate({ open: false, info: null })}
+            onUpdated={() => { setQtyGate({ open: false, info: null }); handleSubmitCompletion(); }}
+          />
+        )}
         <CareTaskCompleteModal
           open={showCareTaskCompleteModal}
           onClose={() => { setShowCareTaskCompleteModal(false); setCareTaskModalTask(null); }}

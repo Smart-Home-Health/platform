@@ -1,3 +1,18 @@
+# Smart Home Health Hub
+# Copyright (C) 2026 John Carty
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # events.py
 from dataclasses import dataclass
 from datetime import datetime
@@ -158,3 +173,16 @@ class StateSync:
     ts: datetime
     client_id: Optional[str] = None
     source: EventSource = EventSource.SYSTEM
+
+@dataclass(frozen=True)
+class DueCountsChanged:
+    """A "due" badge category changed (item marked done / logged / restocked).
+
+    Carries only the category so the WebSocket layer can tell connected
+    dashboards to refetch their (patient-scoped) due-count badge. The actual
+    count is intentionally not included — it's computed per-viewer-patient.
+    """
+    ts: datetime
+    category: str                    # "medications" | "care_tasks" | "equipment" | "nutrition"
+    patient_id: Optional[int] = None
+    source: EventSource = EventSource.API

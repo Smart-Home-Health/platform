@@ -1,3 +1,20 @@
+/*
+ * Smart Home Health Hub
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 import React, { useState, useEffect } from 'react';
 import AdminV2Layout from './AdminV2Layout';
 import config from '../../config';
@@ -6,10 +23,68 @@ import {
   PlusIcon,
   EditIcon,
   TrashIcon,
-  XIcon,
   ShieldIcon
 } from '../../components/Icons';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Alert } from '@/components/ui/alert';
+import { Field, FormRow } from '@/components/ui/field';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
+import { cn } from '@/lib/utils';
 import './AdminV2.css';
+
+// Category-grouped permission toggle pills, shared by the create/edit dialogs.
+function PermissionSelector({ permissionsByCategory, selectedIds, onToggle }) {
+  const categories = Object.entries(permissionsByCategory);
+  if (categories.length === 0) {
+    return <p className="text-sm text-muted-foreground">No permissions available</p>;
+  }
+  return (
+    <div className="flex max-h-64 flex-col gap-4 overflow-y-auto rounded-md border border-border bg-background/40 p-3">
+      {categories.map(([category, perms]) => (
+        <div key={category} className="flex flex-col gap-2">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{category}</h4>
+          <div className="flex flex-wrap gap-2">
+            {perms.map(perm => {
+              const isSelected = selectedIds.includes(perm.id);
+              const action = perm.name.includes('.') ? perm.name.split('.').pop() : perm.name;
+              const displayAction = action.charAt(0).toUpperCase() + action.slice(1);
+              return (
+                <button
+                  key={perm.id}
+                  type="button"
+                  onClick={() => onToggle(perm.id)}
+                  title={perm.display_name}
+                  className={cn(
+                    "rounded-full border px-3 py-1 text-xs transition-colors",
+                    isSelected
+                      ? "border-ring bg-ring/20 text-foreground"
+                      : "border-border bg-secondary text-muted-foreground hover:bg-accent hover:text-foreground"
+                  )}
+                >
+                  {displayAction}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 const AdminV2Roles = () => {
   const { user } = useAuth();
@@ -17,13 +92,13 @@ const AdminV2Roles = () => {
   const [permissions, setPermissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  
+
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedRole, setSelectedRole] = useState(null);
-  
+
   // Form state
   const [formData, setFormData] = useState({
     name: '',
@@ -98,7 +173,7 @@ const AdminV2Roles = () => {
         const data = await response.json();
         setFormError(data.detail || 'Failed to create role');
       }
-    } catch (err) {
+    } catch {
       setFormError('Error connecting to server');
     } finally {
       setSaving(false);
@@ -131,7 +206,7 @@ const AdminV2Roles = () => {
         const data = await response.json();
         setFormError(data.detail || 'Failed to update role');
       }
-    } catch (err) {
+    } catch {
       setFormError('Error connecting to server');
     } finally {
       setSaving(false);
@@ -154,7 +229,7 @@ const AdminV2Roles = () => {
         const data = await response.json();
         setFormError(data.detail || 'Failed to delete role');
       }
-    } catch (err) {
+    } catch {
       setFormError('Error connecting to server');
     } finally {
       setSaving(false);
@@ -233,19 +308,17 @@ const AdminV2Roles = () => {
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
-        <div className="admin-v2-page-header">
-          <div>
-            <h1 className="admin-v2-page-title">Role Management</h1>
-            <p className="admin-v2-page-subtitle">Manage roles and their permissions</p>
-          </div>
-          <button className="admin-v2-btn admin-v2-btn-primary" onClick={openCreateModal}>
+        <div className="tw mb-4 flex justify-end">
+          <Button onClick={openCreateModal}>
             <PlusIcon size={16} />
             Add Role
-          </button>
+          </Button>
         </div>
 
         {error && (
-          <div className="admin-v2-alert admin-v2-alert-error">{error}</div>
+          <div className="tw mb-4">
+            <Alert variant="destructive">{error}</Alert>
+          </div>
         )}
 
         {/* Summary Stats */}
@@ -323,7 +396,7 @@ const AdminV2Roles = () => {
                   </td>
                   <td>
                     <div className="admin-v2-actions">
-                      <button 
+                      <button
                         className="admin-v2-action-btn admin-v2-action-btn-edit"
                         onClick={() => openEditModal(role)}
                         title="Edit role"
@@ -332,7 +405,7 @@ const AdminV2Roles = () => {
                         <span>Edit</span>
                       </button>
                       {!role.is_system_role && (
-                        <button 
+                        <button
                           className="admin-v2-action-btn admin-v2-action-btn-delete"
                           onClick={() => openDeleteModal(role)}
                           title="Delete role"
@@ -349,265 +422,148 @@ const AdminV2Roles = () => {
           </table>
         </div>
 
-        {/* Create Role Modal */}
-        {showCreateModal && (
-          <div className="admin-v2-modal-overlay" onClick={() => setShowCreateModal(false)}>
-            <div className="admin-v2-modal" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>Create New Role</h2>
-                <button className="admin-v2-modal-close" onClick={() => setShowCreateModal(false)}>
-                  <XIcon size={20} />
-                </button>
-              </div>
-              <form onSubmit={handleCreateRole}>
-                <div className="admin-v2-modal-body">
-                  {formError && (
-                    <div className="admin-v2-form-error">{formError}</div>
-                  )}
-                  
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Role Name (code) *</label>
-                      <input
-                        type="text"
-                        value={formData.name}
-                        onChange={e => setFormData({...formData, name: e.target.value.toLowerCase().replace(/\s+/g, '_')})}
-                        required
-                        placeholder="e.g., nurse_aide"
-                      />
-                      <small>Lowercase with underscores, used internally</small>
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Display Name *</label>
-                      <input
-                        type="text"
-                        value={formData.display_name}
-                        onChange={e => setFormData({...formData, display_name: e.target.value})}
-                        required
-                        placeholder="e.g., Nurse Aide"
-                      />
-                    </div>
-                  </div>
+        {/* Create Role Dialog */}
+        <Dialog open={showCreateModal} onOpenChange={(o) => { if (!o) setShowCreateModal(false); }}>
+          <DialogContent className="sm:max-w-[640px]" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>Create New Role</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleCreateRole} className="flex flex-col gap-4">
+              {formError && <Alert variant="destructive">{formError}</Alert>}
 
-                  <div className="admin-v2-form-group">
-                    <label>Description</label>
-                    <input
-                      type="text"
-                      value={formData.description}
-                      onChange={e => setFormData({...formData, description: e.target.value})}
-                      placeholder="Brief description of this role"
-                    />
-                  </div>
+              <FormRow>
+                <Field label="Role Name (code)" required htmlFor="role-name" hint="Lowercase with underscores, used internally">
+                  <Input
+                    id="role-name"
+                    value={formData.name}
+                    onChange={e => setFormData({ ...formData, name: e.target.value.toLowerCase().replace(/\s+/g, '_') })}
+                    required
+                    placeholder="e.g., nurse_aide"
+                  />
+                </Field>
+                <Field label="Display Name" required htmlFor="role-display">
+                  <Input
+                    id="role-display"
+                    value={formData.display_name}
+                    onChange={e => setFormData({ ...formData, display_name: e.target.value })}
+                    required
+                    placeholder="e.g., Nurse Aide"
+                  />
+                </Field>
+              </FormRow>
 
-                  <div className="admin-v2-form-group">
-                    <label>Permissions</label>
-                    <div className="admin-v2-permission-selector">
-                      {Object.entries(permissionsByCategory).map(([category, perms]) => (
-                        <div key={category} className="admin-v2-permission-category">
-                          <h4>{category}</h4>
-                          <div className="admin-v2-permission-pills">
-                            {perms.map(perm => {
-                              const isSelected = formData.permission_ids.includes(perm.id);
-                              // Extract just the action from permission name (e.g., "read" from "medications.read")
-                              const action = perm.name.includes('.') ? perm.name.split('.').pop() : perm.name;
-                              const displayAction = action.charAt(0).toUpperCase() + action.slice(1);
-                              return (
-                                <button
-                                  key={perm.id}
-                                  type="button"
-                                  className={`admin-v2-permission-pill ${isSelected ? 'selected' : ''}`}
-                                  onClick={() => handlePermissionToggle(perm.id)}
-                                  title={perm.display_name}
-                                >
-                                  {displayAction}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))}
-                      {permissions.length === 0 && (
-                        <div className="admin-v2-empty-state-small">
-                          No permissions available
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <div className="admin-v2-modal-footer">
-                  <button 
-                    type="button" 
-                    className="admin-v2-btn"
-                    onClick={() => setShowCreateModal(false)}
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    type="submit" 
-                    className="admin-v2-btn admin-v2-btn-primary"
-                    disabled={saving}
-                  >
-                    {saving ? 'Creating...' : 'Create Role'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+              <Field label="Description" htmlFor="role-desc">
+                <Input
+                  id="role-desc"
+                  value={formData.description}
+                  onChange={e => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Brief description of this role"
+                />
+              </Field>
 
-        {/* Edit Role Modal */}
-        {showEditModal && selectedRole && (
-          <div className="admin-v2-modal-overlay" onClick={() => setShowEditModal(false)}>
-            <div className="admin-v2-modal" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>Edit Role: {selectedRole.display_name}</h2>
-                <button className="admin-v2-modal-close" onClick={() => setShowEditModal(false)}>
-                  <XIcon size={20} />
-                </button>
-              </div>
-              <form onSubmit={handleUpdateRole}>
-                <div className="admin-v2-modal-body">
-                  {formError && (
-                    <div className="admin-v2-form-error">{formError}</div>
-                  )}
-                  
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Role Name (code)</label>
-                      <input
-                        type="text"
-                        value={formData.name}
-                        disabled
-                        className="disabled"
-                      />
-                      <small>Role code cannot be changed</small>
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Display Name *</label>
-                      <input
-                        type="text"
-                        value={formData.display_name}
-                        onChange={e => setFormData({...formData, display_name: e.target.value})}
-                        required
-                      />
-                    </div>
-                  </div>
+              <Field label="Permissions">
+                <PermissionSelector
+                  permissionsByCategory={permissionsByCategory}
+                  selectedIds={formData.permission_ids}
+                  onToggle={handlePermissionToggle}
+                />
+              </Field>
 
-                  <div className="admin-v2-form-group">
-                    <label>Description</label>
-                    <input
-                      type="text"
-                      value={formData.description}
-                      onChange={e => setFormData({...formData, description: e.target.value})}
-                      placeholder="Brief description of this role"
-                    />
-                  </div>
+              <DialogFooter>
+                <Button type="button" variant="secondary" onClick={() => setShowCreateModal(false)}>Cancel</Button>
+                <Button type="submit" disabled={saving}>{saving ? 'Creating...' : 'Create Role'}</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
 
-                  <div className="admin-v2-form-group">
-                    <label>Status</label>
-                    <select
-                      value={formData.is_active ? 'active' : 'inactive'}
-                      onChange={e => setFormData({...formData, is_active: e.target.value === 'active'})}
-                      disabled={selectedRole.is_system_role}
-                    >
-                      <option value="active">Active</option>
-                      <option value="inactive">Inactive</option>
-                    </select>
-                    {selectedRole.is_system_role && (
-                      <small>System roles cannot be deactivated</small>
-                    )}
-                  </div>
+        {/* Edit Role Dialog */}
+        <Dialog open={showEditModal && !!selectedRole} onOpenChange={(o) => { if (!o) setShowEditModal(false); }}>
+          <DialogContent className="sm:max-w-[640px]" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>Edit Role: {selectedRole?.display_name}</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleUpdateRole} className="flex flex-col gap-4">
+              {formError && <Alert variant="destructive">{formError}</Alert>}
 
-                  <div className="admin-v2-form-group">
-                    <label>Permissions</label>
-                    <div className="admin-v2-permission-selector">
-                      {Object.entries(permissionsByCategory).map(([category, perms]) => (
-                        <div key={category} className="admin-v2-permission-category">
-                          <h4>{category}</h4>
-                          <div className="admin-v2-permission-pills">
-                            {perms.map(perm => {
-                              const isSelected = formData.permission_ids.includes(perm.id);
-                              // Extract just the action from permission name (e.g., "read" from "medications.read")
-                              const action = perm.name.includes('.') ? perm.name.split('.').pop() : perm.name;
-                              const displayAction = action.charAt(0).toUpperCase() + action.slice(1);
-                              return (
-                                <button
-                                  key={perm.id}
-                                  type="button"
-                                  className={`admin-v2-permission-pill ${isSelected ? 'selected' : ''}`}
-                                  onClick={() => handlePermissionToggle(perm.id)}
-                                  title={perm.display_name}
-                                >
-                                  {displayAction}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))}
-                      {permissions.length === 0 && (
-                        <div className="admin-v2-empty-state-small">
-                          No permissions available
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <div className="admin-v2-modal-footer">
-                  <button 
-                    type="button" 
-                    className="admin-v2-btn"
-                    onClick={() => setShowEditModal(false)}
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    type="submit" 
-                    className="admin-v2-btn admin-v2-btn-primary"
-                    disabled={saving}
-                  >
-                    {saving ? 'Saving...' : 'Save Changes'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+              <FormRow>
+                <Field label="Role Name (code)" htmlFor="role-name-edit" hint="Role code cannot be changed">
+                  <Input id="role-name-edit" value={formData.name} disabled />
+                </Field>
+                <Field label="Display Name" required htmlFor="role-display-edit">
+                  <Input
+                    id="role-display-edit"
+                    value={formData.display_name}
+                    onChange={e => setFormData({ ...formData, display_name: e.target.value })}
+                    required
+                  />
+                </Field>
+              </FormRow>
 
-        {/* Delete Confirmation Modal */}
-        {showDeleteModal && selectedRole && (
-          <div className="admin-v2-modal-overlay" onClick={() => setShowDeleteModal(false)}>
-            <div className="admin-v2-modal admin-v2-modal-sm" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>Delete Role</h2>
-                <button className="admin-v2-modal-close" onClick={() => setShowDeleteModal(false)}>
-                  <XIcon size={20} />
-                </button>
-              </div>
-              <div className="admin-v2-modal-body">
-                <p>Are you sure you want to delete the role <strong>{selectedRole.display_name}</strong>?</p>
-                <p className="admin-v2-text-muted">
-                  This will remove the role from all users who have it assigned. This action cannot be undone.
-                </p>
-              </div>
-              <div className="admin-v2-modal-footer">
-                <button 
-                  className="admin-v2-btn"
-                  onClick={() => setShowDeleteModal(false)}
+              <Field label="Description" htmlFor="role-desc-edit">
+                <Input
+                  id="role-desc-edit"
+                  value={formData.description}
+                  onChange={e => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Brief description of this role"
+                />
+              </Field>
+
+              <Field
+                label="Status"
+                hint={selectedRole?.is_system_role ? 'System roles cannot be deactivated' : undefined}
+              >
+                <Select
+                  value={formData.is_active ? 'active' : 'inactive'}
+                  onValueChange={(v) => setFormData({ ...formData, is_active: v === 'active' })}
+                  disabled={selectedRole?.is_system_role}
                 >
-                  Cancel
-                </button>
-                <button 
-                  className="admin-v2-btn admin-v2-btn-danger"
-                  onClick={handleDeleteRole}
-                  disabled={saving}
-                >
-                  {saving ? 'Deleting...' : 'Delete Role'}
-                </button>
-              </div>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+
+              <Field label="Permissions">
+                <PermissionSelector
+                  permissionsByCategory={permissionsByCategory}
+                  selectedIds={formData.permission_ids}
+                  onToggle={handlePermissionToggle}
+                />
+              </Field>
+
+              <DialogFooter>
+                <Button type="button" variant="secondary" onClick={() => setShowEditModal(false)}>Cancel</Button>
+                <Button type="submit" disabled={saving}>{saving ? 'Saving...' : 'Save Changes'}</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog open={showDeleteModal && !!selectedRole} onOpenChange={(o) => { if (!o) setShowDeleteModal(false); }}>
+          <DialogContent className="sm:max-w-[420px]">
+            <DialogHeader>
+              <DialogTitle>Delete Role</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-2 text-sm">
+              <p className="text-foreground">
+                Are you sure you want to delete the role <strong>{selectedRole?.display_name}</strong>?
+              </p>
+              <p className="text-muted-foreground">
+                This will remove the role from all users who have it assigned. This action cannot be undone.
+              </p>
             </div>
-          </div>
-        )}
+            <DialogFooter>
+              <Button variant="secondary" onClick={() => setShowDeleteModal(false)}>Cancel</Button>
+              <Button variant="destructive" onClick={handleDeleteRole} disabled={saving}>
+                {saving ? 'Deleting...' : 'Delete Role'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </AdminV2Layout>
   );

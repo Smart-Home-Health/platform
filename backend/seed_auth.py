@@ -1,3 +1,18 @@
+# Smart Home Health Hub
+# Copyright (C) 2026 John Carty
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 Seed default roles and permissions for the application
 """
@@ -62,6 +77,7 @@ def seed_permissions(db: Session):
         ("monitoring.acknowledge", "Acknowledge Alerts", "Acknowledge monitoring alerts", "monitoring"),
         ("shipments.receive", "Receive Shipments", "Record shipment item receipts", "shipments"),
         ("shipments.finalize", "Finalize Shipments", "Finalize shipments and generate alerts", "shipments"),
+        ("integrations.upload", "Upload Integration Data", "Upload data exports (vent logs, etc.) to an integration", "integrations"),
     ]
     default_permissions.extend(legacy_permissions)
     
@@ -101,6 +117,7 @@ def seed_roles(db: Session):
                 "roles.create", "roles.read", "roles.update", "roles.delete",
                 "settings.create", "settings.read", "settings.update", "settings.delete",
                 "audit.create", "audit.read", "audit.update", "audit.delete",
+                "integrations.upload",
             ]
         },
         "nurse": {
@@ -119,6 +136,7 @@ def seed_roles(db: Session):
                 "shipments.create", "shipments.read", "shipments.update", "shipments.receive", "shipments.finalize",
                 "users.read",
                 "settings.read",
+                "integrations.upload",
             ]
         },
         "caregiver": {

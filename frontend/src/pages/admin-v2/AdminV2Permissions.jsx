@@ -1,3 +1,20 @@
+/*
+ * Smart Home Health Hub
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 import React, { useState, useEffect } from 'react';
 import AdminV2Layout from './AdminV2Layout';
 import config from '../../config';
@@ -6,23 +23,126 @@ import {
   PlusIcon,
   EditIcon,
   TrashIcon,
-  XIcon,
   KeyIcon
 } from '../../components/Icons';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Alert } from '@/components/ui/alert';
+import { Field } from '@/components/ui/field';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
 import './AdminV2.css';
+
+// Category options based on nav sections.
+const CATEGORIES = [
+  'patients',
+  'medications',
+  'care_tasks',
+  'equipment',
+  'nutrition',
+  'providers',
+  'businesses',
+  'monitoring',
+  'vitals',
+  'users',
+  'roles',
+  'settings',
+  'audit'
+];
+
+// Shared create/edit form body (edit adds the Active toggle). Defined at module
+// scope so it isn't recreated each render — a nested component would drop input
+// focus on every keystroke.
+function PermissionForm({ formData, setFormData, onSubmit, onCancel, showActive, submitLabel }) {
+  return (
+    <form onSubmit={onSubmit} className="flex flex-col gap-4">
+      <Field label="Category">
+        <Select
+          value={formData.category}
+          onValueChange={(v) => setFormData({ ...formData, category: v })}
+        >
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {CATEGORIES.map(cat => (
+              <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
+
+      <Field label="Permission Code" required htmlFor="perm-code" hint="Use format: category.action (e.g., patients.create)">
+        <Input
+          id="perm-code"
+          value={formData.name}
+          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+          placeholder="e.g., patients.create"
+          required
+        />
+      </Field>
+
+      <Field label="Display Name" required htmlFor="perm-display">
+        <Input
+          id="perm-display"
+          value={formData.display_name}
+          onChange={(e) => setFormData({ ...formData, display_name: e.target.value })}
+          placeholder="e.g., Create Patients"
+          required
+        />
+      </Field>
+
+      <Field label="Description" htmlFor="perm-desc">
+        <Input
+          id="perm-desc"
+          value={formData.description}
+          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+          placeholder="Brief description of the permission"
+        />
+      </Field>
+
+      {showActive && (
+        <label className="flex w-fit cursor-pointer items-center gap-2">
+          <Checkbox
+            checked={formData.is_active}
+            onCheckedChange={(v) => setFormData({ ...formData, is_active: v === true })}
+          />
+          <span className="text-sm text-foreground">Active</span>
+        </label>
+      )}
+
+      <DialogFooter>
+        <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
+        <Button type="submit">{submitLabel}</Button>
+      </DialogFooter>
+    </form>
+  );
+}
 
 const AdminV2Permissions = () => {
   const { user } = useAuth();
   const [permissions, setPermissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  
+
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedPermission, setSelectedPermission] = useState(null);
-  
+
   // Form states
   const [formData, setFormData] = useState({
     name: '',
@@ -31,23 +151,6 @@ const AdminV2Permissions = () => {
     category: '',
     is_active: true
   });
-
-  // Category options based on nav sections
-  const categories = [
-    'patients',
-    'medications',
-    'care_tasks',
-    'equipment',
-    'nutrition',
-    'providers',
-    'businesses',
-    'monitoring',
-    'vitals',
-    'users',
-    'roles',
-    'settings',
-    'audit'
-  ];
 
   useEffect(() => {
     if (user) {
@@ -81,7 +184,7 @@ const AdminV2Permissions = () => {
       name: '',
       display_name: '',
       description: '',
-      category: categories[0],
+      category: CATEGORIES[0],
       is_active: true
     });
     setShowCreateModal(true);
@@ -113,7 +216,7 @@ const AdminV2Permissions = () => {
         credentials: 'include',
         body: JSON.stringify(formData)
       });
-      
+
       if (response.ok) {
         setShowCreateModal(false);
         fetchPermissions();
@@ -136,7 +239,7 @@ const AdminV2Permissions = () => {
         credentials: 'include',
         body: JSON.stringify(formData)
       });
-      
+
       if (response.ok) {
         setShowEditModal(false);
         fetchPermissions();
@@ -156,7 +259,7 @@ const AdminV2Permissions = () => {
         method: 'DELETE',
         credentials: 'include'
       });
-      
+
       if (response.ok) {
         setShowDeleteModal(false);
         fetchPermissions();
@@ -198,19 +301,17 @@ const AdminV2Permissions = () => {
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
-        <div className="admin-v2-page-header">
-          <div>
-            <h1 className="admin-v2-page-title">Permission Management</h1>
-            <p className="admin-v2-page-subtitle">Manage system permissions for role-based access control</p>
-          </div>
-          <button className="admin-v2-btn admin-v2-btn-primary" onClick={openCreateModal}>
+        <div className="tw mb-4 flex justify-end">
+          <Button onClick={openCreateModal}>
             <PlusIcon size={16} />
             Add Permission
-          </button>
+          </Button>
         </div>
 
         {error && (
-          <div className="admin-v2-alert admin-v2-alert-error">{error}</div>
+          <div className="tw mb-4">
+            <Alert variant="destructive">{error}</Alert>
+          </div>
         )}
 
         {/* Summary Stats */}
@@ -282,7 +383,7 @@ const AdminV2Permissions = () => {
                   </td>
                   <td>
                     <div className="admin-v2-actions">
-                      <button 
+                      <button
                         className="admin-v2-action-btn admin-v2-action-btn-edit"
                         onClick={() => openEditModal(permission)}
                         title="Edit permission"
@@ -290,7 +391,7 @@ const AdminV2Permissions = () => {
                         <EditIcon size={14} />
                         <span>Edit</span>
                       </button>
-                      <button 
+                      <button
                         className="admin-v2-action-btn admin-v2-action-btn-delete"
                         onClick={() => openDeleteModal(permission)}
                         title="Delete permission"
@@ -314,225 +415,87 @@ const AdminV2Permissions = () => {
         </div>
 
         {/* Permissions by Category */}
-        <div className="admin-v2-section">
-          <h2>Permissions by Category</h2>
-          <div className="admin-v2-permission-categories">
+        <div className="tw mt-6">
+          <h2 className="mb-3 text-base font-semibold text-foreground">Permissions by Category</h2>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {Object.entries(permissionsByCategory).map(([category, perms]) => (
-              <div key={category} className="admin-v2-category-card">
-                <div className="admin-v2-category-header">
-                  <h3>{category}</h3>
-                  <span className="admin-v2-badge">{perms.length}</span>
-                </div>
-                <div className="admin-v2-category-permissions">
+              <Card key={category}>
+                <CardHeader className="flex-row items-center justify-between py-3">
+                  <CardTitle className="text-sm">{category}</CardTitle>
+                  <span className="rounded-full border border-border bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
+                    {perms.length}
+                  </span>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-1.5 py-3">
                   {perms.map(perm => (
-                    <div key={perm.id} className="admin-v2-category-permission">
-                      <span className={`admin-v2-status-dot ${perm.is_active ? 'active' : 'inactive'}`}></span>
+                    <div key={perm.id} className="flex items-center gap-2 text-sm text-foreground">
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full"
+                        style={{ background: perm.is_active ? '#3fb950' : '#6e7681' }}
+                      />
                       <span>{perm.display_name}</span>
                     </div>
                   ))}
-                </div>
-              </div>
+                </CardContent>
+              </Card>
             ))}
           </div>
         </div>
 
-        {/* Create Permission Modal */}
-        {showCreateModal && (
-          <div className="admin-v2-modal-overlay" onClick={() => setShowCreateModal(false)}>
-            <div className="admin-v2-modal" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>Create Permission</h2>
-                <button className="admin-v2-modal-close" onClick={() => setShowCreateModal(false)}>
-                  <XIcon size={20} />
-                </button>
-              </div>
-              <form onSubmit={handleCreatePermission}>
-                <div className="admin-v2-modal-body">
-                  <div className="admin-v2-form-group">
-                    <label htmlFor="category">Category</label>
-                    <select
-                      id="category"
-                      value={formData.category}
-                      onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                      required
-                    >
-                      {categories.map(cat => (
-                        <option key={cat} value={cat}>{cat}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="admin-v2-form-group">
-                    <label htmlFor="name">Permission Code</label>
-                    <input
-                      type="text"
-                      id="name"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      placeholder="e.g., patients.create"
-                      required
-                    />
-                    <small className="admin-v2-form-hint">Use format: category.action (e.g., patients.create)</small>
-                  </div>
-                  <div className="admin-v2-form-group">
-                    <label htmlFor="display_name">Display Name</label>
-                    <input
-                      type="text"
-                      id="display_name"
-                      value={formData.display_name}
-                      onChange={(e) => setFormData({ ...formData, display_name: e.target.value })}
-                      placeholder="e.g., Create Patients"
-                      required
-                    />
-                  </div>
-                  <div className="admin-v2-form-group">
-                    <label htmlFor="description">Description</label>
-                    <input
-                      type="text"
-                      id="description"
-                      value={formData.description}
-                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                      placeholder="Brief description of the permission"
-                    />
-                  </div>
-                </div>
-                <div className="admin-v2-modal-footer">
-                  <button 
-                    type="button" 
-                    className="admin-v2-btn admin-v2-btn-secondary"
-                    onClick={() => setShowCreateModal(false)}
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    type="submit" 
-                    className="admin-v2-btn admin-v2-btn-primary"
-                  >
-                    Create Permission
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+        {/* Create Permission Dialog */}
+        <Dialog open={showCreateModal} onOpenChange={(o) => { if (!o) setShowCreateModal(false); }}>
+          <DialogContent className="sm:max-w-[560px]" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>Create Permission</DialogTitle>
+            </DialogHeader>
+            <PermissionForm
+              formData={formData}
+              setFormData={setFormData}
+              onSubmit={handleCreatePermission}
+              onCancel={() => setShowCreateModal(false)}
+              showActive={false}
+              submitLabel="Create Permission"
+            />
+          </DialogContent>
+        </Dialog>
 
-        {/* Edit Permission Modal */}
-        {showEditModal && selectedPermission && (
-          <div className="admin-v2-modal-overlay" onClick={() => setShowEditModal(false)}>
-            <div className="admin-v2-modal" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>Edit Permission</h2>
-                <button className="admin-v2-modal-close" onClick={() => setShowEditModal(false)}>
-                  <XIcon size={20} />
-                </button>
-              </div>
-              <form onSubmit={handleUpdatePermission}>
-                <div className="admin-v2-modal-body">
-                  <div className="admin-v2-form-group">
-                    <label htmlFor="edit-category">Category</label>
-                    <select
-                      id="edit-category"
-                      value={formData.category}
-                      onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                      required
-                    >
-                      {categories.map(cat => (
-                        <option key={cat} value={cat}>{cat}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="admin-v2-form-group">
-                    <label htmlFor="edit-name">Permission Code</label>
-                    <input
-                      type="text"
-                      id="edit-name"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="admin-v2-form-group">
-                    <label htmlFor="edit-display_name">Display Name</label>
-                    <input
-                      type="text"
-                      id="edit-display_name"
-                      value={formData.display_name}
-                      onChange={(e) => setFormData({ ...formData, display_name: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="admin-v2-form-group">
-                    <label htmlFor="edit-description">Description</label>
-                    <input
-                      type="text"
-                      id="edit-description"
-                      value={formData.description}
-                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    />
-                  </div>
-                  <div className="admin-v2-form-group">
-                    <label className="admin-v2-checkbox-label">
-                      <input
-                        type="checkbox"
-                        checked={formData.is_active}
-                        onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                      />
-                      Active
-                    </label>
-                  </div>
-                </div>
-                <div className="admin-v2-modal-footer">
-                  <button 
-                    type="button" 
-                    className="admin-v2-btn admin-v2-btn-secondary"
-                    onClick={() => setShowEditModal(false)}
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    type="submit" 
-                    className="admin-v2-btn admin-v2-btn-primary"
-                  >
-                    Save Changes
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+        {/* Edit Permission Dialog */}
+        <Dialog open={showEditModal && !!selectedPermission} onOpenChange={(o) => { if (!o) setShowEditModal(false); }}>
+          <DialogContent className="sm:max-w-[560px]" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>Edit Permission</DialogTitle>
+            </DialogHeader>
+            <PermissionForm
+              formData={formData}
+              setFormData={setFormData}
+              onSubmit={handleUpdatePermission}
+              onCancel={() => setShowEditModal(false)}
+              showActive
+              submitLabel="Save Changes"
+            />
+          </DialogContent>
+        </Dialog>
 
-        {/* Delete Permission Modal */}
-        {showDeleteModal && selectedPermission && (
-          <div className="admin-v2-modal-overlay" onClick={() => setShowDeleteModal(false)}>
-            <div className="admin-v2-modal admin-v2-modal-sm" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>Delete Permission</h2>
-                <button className="admin-v2-modal-close" onClick={() => setShowDeleteModal(false)}>
-                  <XIcon size={20} />
-                </button>
-              </div>
-              <div className="admin-v2-modal-body">
-                <p>Are you sure you want to delete the permission <strong>{selectedPermission.display_name}</strong>?</p>
-                <p className="admin-v2-text-muted">This will remove the permission from all roles that have it assigned.</p>
-              </div>
-              <div className="admin-v2-modal-footer">
-                <button 
-                  type="button" 
-                  className="admin-v2-btn admin-v2-btn-secondary"
-                  onClick={() => setShowDeleteModal(false)}
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="button" 
-                  className="admin-v2-btn admin-v2-btn-danger"
-                  onClick={handleDeletePermission}
-                >
-                  Delete Permission
-                </button>
-              </div>
+        {/* Delete Permission Dialog */}
+        <Dialog open={showDeleteModal && !!selectedPermission} onOpenChange={(o) => { if (!o) setShowDeleteModal(false); }}>
+          <DialogContent className="sm:max-w-[420px]">
+            <DialogHeader>
+              <DialogTitle>Delete Permission</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-2 text-sm">
+              <p className="text-foreground">
+                Are you sure you want to delete the permission <strong>{selectedPermission?.display_name}</strong>?
+              </p>
+              <p className="text-muted-foreground">
+                This will remove the permission from all roles that have it assigned.
+              </p>
             </div>
-          </div>
-        )}
+            <DialogFooter>
+              <Button variant="secondary" onClick={() => setShowDeleteModal(false)}>Cancel</Button>
+              <Button variant="destructive" onClick={handleDeletePermission}>Delete Permission</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </AdminV2Layout>
   );

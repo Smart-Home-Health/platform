@@ -1,3 +1,18 @@
+# Smart Home Health Hub
+# Copyright (C) 2026 John Carty
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 User authentication and authorization models
 """
@@ -55,6 +70,7 @@ class User(Base):
     pin_hash = Column(String(255), nullable=True)  # Optional 4-8 digit PIN for quick re-auth
     is_active = Column(Boolean, default=True, nullable=False)
     is_system_admin = Column(Boolean, default=False, nullable=False)  # Superuser flag
+    force_password_reset = Column(Boolean, default=False, nullable=False)  # Force first-login password reset
     last_login = Column(DateTime, nullable=True)
     last_activity = Column(DateTime, nullable=True)
     last_full_password_login = Column(DateTime, nullable=True)  # Track daily password requirement
@@ -91,6 +107,19 @@ class User(Base):
         """Check if user has a PIN set"""
         return self.pin_hash is not None
     
+    @property
+    def is_superuser(self) -> bool:
+        """Effective superuser status.
+
+        True if the explicit ``is_system_admin`` flag is set OR the user holds
+        the ``system_admin`` role. Use this for "full system access" gates so a
+        user granted the System Administrator role in the admin UI gets the same
+        access as one with the boolean flag set directly.
+        """
+        if self.is_system_admin:
+            return True
+        return any(role.name == "system_admin" and role.is_active for role in self.roles)
+
     def has_role(self, role_name: str) -> bool:
         """Check if user has a specific role"""
         if self.is_system_admin:

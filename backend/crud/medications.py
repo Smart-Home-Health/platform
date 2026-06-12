@@ -1,3 +1,18 @@
+# Smart Home Health Hub
+# Copyright (C) 2026 John Carty
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 Medication management CRUD operations
 """
@@ -9,7 +24,8 @@ from schemas.medication import Medication
 from schemas.medication_schedule import MedicationSchedule
 from schemas.medication_log import MedicationLog
 from crud.settings import get_setting
-from utils.datetime_utils import utc_now, utc_today
+from utils.datetime_utils import utc_now, utc_today, resolve_tz_for_patient, local_day_bounds
+from utils.medication_quantity import InsufficientMedicationQuantityError
 
 logger = logging.getLogger('crud')
 
@@ -29,7 +45,7 @@ def _utc_iso(dt):
 
 
 # --- Medication CRUD ---
-def add_medication(db: Session, name, concentration=None, quantity=None, quantity_unit=None, instructions=None, start_date=None, end_date=None, as_needed=False, notes=None, active=True, patient_id=None, prescriber_id=None, pharmacy_id=None):
+def add_medication(db: Session, name, concentration=None, quantity=None, quantity_unit=None, instructions=None, start_date=None, end_date=None, as_needed=False, notes=None, active=True, patient_id=None, prescriber_id=None, pharmacy_id=None, low_stock_threshold=None, low_stock_threshold_type='quantity'):
     """
     Add a new medication to the database.
     
@@ -45,6 +61,8 @@ def add_medication(db: Session, name, concentration=None, quantity=None, quantit
         concentration=concentration,
         quantity=quantity,
         quantity_unit=quantity_unit,
+        low_stock_threshold=low_stock_threshold,
+        low_stock_threshold_type=low_stock_threshold_type,
         instructions=instructions,
         start_date=start_date,
         end_date=end_date,
@@ -93,6 +111,8 @@ def get_active_medications(db: Session):
                 'concentration': med.concentration,
                 'quantity': med.quantity,
                 'quantity_unit': med.quantity_unit,
+                'low_stock_threshold': med.low_stock_threshold,
+                'low_stock_threshold_type': med.low_stock_threshold_type,
                 'instructions': med.instructions,
                 'start_date': med.start_date.isoformat() if med.start_date else None,
                 'end_date': med.end_date.isoformat() if med.end_date else None,
@@ -142,6 +162,8 @@ def get_inactive_medications(db: Session):
                 'concentration': med.concentration,
                 'quantity': med.quantity,
                 'quantity_unit': med.quantity_unit,
+                'low_stock_threshold': med.low_stock_threshold,
+                'low_stock_threshold_type': med.low_stock_threshold_type,
                 'instructions': med.instructions,
                 'start_date': med.start_date.isoformat() if med.start_date else None,
                 'end_date': med.end_date.isoformat() if med.end_date else None,
@@ -160,6 +182,29 @@ def get_inactive_medications(db: Session):
     except Exception as e:
         logger.error(f"Error fetching inactive medications: {e}")
         return []
+
+
+def set_low_stock_days_for_scheduled_meds(db: Session, days: float):
+    """Apply a days-of-supply low-stock threshold to every active medication
+    that has at least one active schedule (PRN-only meds have no schedule to
+    project consumption from, so they are left untouched). Returns the names
+    of the medications updated."""
+    meds = db.query(Medication).filter(
+        Medication.active == True,  # noqa: E712
+        Medication.id.in_(
+            db.query(MedicationSchedule.medication_id).filter(
+                MedicationSchedule.active == True  # noqa: E712
+            )
+        )
+    ).all()
+    now = utc_now()
+    for med in meds:
+        med.low_stock_threshold = days
+        med.low_stock_threshold_type = 'days'
+        med.updated_at = now
+    db.commit()
+    logger.info(f"Applied {days}-day low-stock threshold to {len(meds)} scheduled medications")
+    return [med.name for med in meds]
 
 
 def update_medication(db: Session, med_id, **kwargs):
@@ -230,11 +275,13 @@ def administer_medication(db: Session, med_id, dose_amount, schedule_id=None, sc
             logger.error("Patient context does not match medication's patient")
             return False
 
-        # Only deduct from quantity if dose_amount > 0 (don't deduct for skipped doses)
+        # Only deduct from quantity if dose_amount > 0 (don't deduct for skipped doses).
+        # Refuse when there isn't enough on hand — the caller must update the
+        # quantity first rather than administer a dose we don't have.
         if float(dose_amount) > 0:
             if med.quantity < float(dose_amount):
                 logger.warning(f"Insufficient medication quantity. Available: {med.quantity}, Requested: {dose_amount}")
-                # Still allow administration but warn about low stock
+                raise InsufficientMedicationQuantityError(med, dose_amount)
             med.quantity = max(0, med.quantity - float(dose_amount))
         
         # Use timezone-aware UTC datetime
@@ -300,7 +347,16 @@ def administer_medication(db: Session, med_id, dose_amount, schedule_id=None, sc
         )
         db.add(log)
         db.commit()
+        # Tell live dashboards to refetch the (patient-scoped) medications badge.
+        try:
+            from event_publisher import publish_due_counts_changed
+            publish_due_counts_changed("medications", current_patient_id)
+        except Exception as e:
+            logger.error(f"Failed to publish medications due-count change: {e}")
         return True
+    except InsufficientMedicationQuantityError:
+        db.rollback()
+        raise  # let the route turn this into a 409 with update-quantity details
     except Exception as e:
         logger.error(f"Error administering medication: {e}")
         db.rollback()
@@ -647,41 +703,34 @@ def get_missed_medications(db: Session, target_date=None):
         return []
 
 
-def get_daily_medication_schedule(db: Session, patient_id=None):
+def get_daily_medication_schedule(db: Session, patient_id=None, tz=None):
     """
     Get scheduled medications for today and yesterday in chronological order with status.
-    Uses Eastern timezone to determine local day boundaries so evening doses
-    aren't cut off by UTC date rollover.
+    Uses the patient's account-local timezone (``tz``, resolved from the account
+    when not passed) to determine local day boundaries so evening doses aren't
+    cut off by UTC date rollover. Shares one window with the care-task and
+    nutrition badges.
 
     Args:
         patient_id: Optional patient ID to filter schedules. If None, uses current patient from settings
+        tz: Optional ZoneInfo override; resolved from the patient's account otherwise
 
     Returns:
         Dict with 'scheduled_medications' list sorted chronologically
     """
     try:
-        import pytz
-        eastern = pytz.timezone('US/Eastern')
-        now_utc = utc_now()
-        now_eastern = now_utc.astimezone(eastern)
-        local_today = now_eastern.date()
-        local_yesterday = local_today - timedelta(days=1)
-        current_time = now_utc
+        if tz is None:
+            tz = resolve_tz_for_patient(db, patient_id)
+        bounds = local_day_bounds(tz)
+        current_time = bounds['now_utc']
+        local_yesterday_start_utc = bounds['yesterday_start_utc']
+        local_today_start_utc = bounds['today_start_utc']
+        local_today_end_utc = bounds['today_end_utc']
 
-        # Local day boundaries in UTC for filtering cron-generated UTC times
-        local_today_start_utc = eastern.localize(datetime.combine(local_today, datetime.min.time())).astimezone(timezone.utc)
-        local_today_end_utc = eastern.localize(datetime.combine(local_today + timedelta(days=1), datetime.min.time())).astimezone(timezone.utc)
-        local_yesterday_start_utc = eastern.localize(datetime.combine(local_yesterday, datetime.min.time())).astimezone(timezone.utc)
-
-        # Query the UTC dates that span the local yesterday and today
-        # e.g. for EDT (UTC-4), local Apr 2 = UTC Apr 2 04:00 to Apr 3 04:00
-        utc_dates_needed = set()
-        for dt in [local_yesterday_start_utc, local_today_start_utc, local_today_end_utc - timedelta(seconds=1)]:
-            utc_dates_needed.add(dt.date())
-
-        # Get cron-generated schedule entries for all relevant UTC dates
+        # Get cron-generated schedule entries for all UTC dates spanning the
+        # local yesterday+today window.
         all_raw = []
-        for utc_date in sorted(utc_dates_needed):
+        for utc_date in bounds['utc_dates']:
             all_raw.extend(get_scheduled_medications_for_date(db, utc_date, patient_id=patient_id))
 
         # Deduplicate by (schedule_id, scheduled_time)
@@ -757,7 +806,8 @@ def get_daily_medication_schedule(db: Session, patient_id=None):
                     'status': status,
                     'administered_at': log_entry.administered_at,
                     'actual_dose': log_entry.dose_amount,
-                    'is_completed': True
+                    'is_completed': True,
+                    'log_id': log_entry.id
                 })
             else:
                 # Show as missed if it's from yesterday (before local today start)
@@ -819,7 +869,8 @@ def get_daily_medication_schedule(db: Session, patient_id=None):
                     'status': status,
                     'administered_at': log_entry.administered_at,
                     'actual_dose': log_entry.dose_amount,
-                    'is_completed': True
+                    'is_completed': True,
+                    'log_id': log_entry.id
                 })
             else:
                 # Check timing status for pending dose
@@ -866,32 +917,86 @@ def get_daily_medication_schedule(db: Session, patient_id=None):
         }
 
 
-def get_due_and_upcoming_medications_count(db: Session):
+def get_due_and_upcoming_medications_count(db: Session, patient_id=None, tz=None):
     """
-    Returns the count of scheduled medications that are:
-    - missed (for today or yesterday)
-    - due_late or due_warning (for today or yesterday)
-    - due_on_time or pending (for today or yesterday) and scheduled within the next hour
+    Count scheduled medication occurrences that are "due" for the badge/summary.
+
+    An occurrence counts when it is NOT yet completed/skipped AND its scheduled
+    time falls within the window [start of the local prior day, now + 1 hour].
+    The daily schedule (account-local today+yesterday) spans the window and
+    matches administrations to occurrences by ``scheduled_time`` (so a dose
+    logged late on the next calendar day is still recognised as completed), so we
+    only need the open occurrences up to the one-hour lookahead. This is the same
+    rule used by the admin dashboard summary, keeping both views consistent.
     """
     try:
-        schedule_data = get_daily_medication_schedule(db)
+        schedule_data = get_daily_medication_schedule(db, patient_id=patient_id, tz=tz)
         meds = schedule_data.get('scheduled_medications', [])
-        now = utc_now()
-        count = 0
-        for med in meds:
-            status = med.get('status', '')
-            scheduled_time = med.get('scheduled_time')
-            if isinstance(scheduled_time, str):
-                scheduled_time = datetime.fromisoformat(scheduled_time)
-            
-            if status in ['missed', 'due_late', 'due_warning']:
-                count += 1
-            elif status in ['due_on_time', 'pending'] and scheduled_time and (scheduled_time - now).total_seconds() <= 3600:
-                count += 1
-        return count
+        return _count_due_and_upcoming(meds)
     except Exception as e:
         logger.error(f"Error getting due/upcoming medications count: {e}")
         return 0
+
+
+def _count_due_and_upcoming(items):
+    """
+    Shared "due now or within the next hour" counter for schedule items.
+
+    Counts items whose ``is_completed`` flag is falsy and whose ``scheduled_time``
+    is at or before now + 1 hour. The lower bound (start of the prior day) is
+    inherent to the daily-schedule range passed in.
+    """
+    cutoff = utc_now() + timedelta(hours=1)
+    count = 0
+    for item in items:
+        if item.get('is_completed'):
+            continue
+        scheduled_time = item.get('scheduled_time')
+        if isinstance(scheduled_time, str):
+            scheduled_time = datetime.fromisoformat(scheduled_time)
+        if scheduled_time is None:
+            continue
+        if scheduled_time.tzinfo is None:
+            scheduled_time = scheduled_time.replace(tzinfo=timezone.utc)
+        if scheduled_time <= cutoff:
+            count += 1
+    return count
+
+
+def _count_overdue(items):
+    """
+    Count open (not completed) occurrences whose scheduled hour has fully passed.
+
+    An occurrence stays "normal" during its own hour and only becomes overdue
+    once the clock ticks past that hour — so we compare against the start of the
+    current hour, not against ``now``. This is a subset of _count_due_and_upcoming.
+    """
+    hour_start = utc_now().replace(minute=0, second=0, microsecond=0)
+    count = 0
+    for item in items:
+        if item.get('is_completed'):
+            continue
+        scheduled_time = item.get('scheduled_time')
+        if isinstance(scheduled_time, str):
+            scheduled_time = datetime.fromisoformat(scheduled_time)
+        if scheduled_time is None:
+            continue
+        if scheduled_time.tzinfo is None:
+            scheduled_time = scheduled_time.replace(tzinfo=timezone.utc)
+        if scheduled_time < hour_start:
+            count += 1
+    return count
+
+
+def get_medication_schedule_counts(db: Session, patient_id=None, tz=None):
+    """Return {'due', 'overdue'} medication counts from one schedule fetch."""
+    try:
+        schedule_data = get_daily_medication_schedule(db, patient_id=patient_id, tz=tz)
+        meds = schedule_data.get('scheduled_medications', [])
+        return {'due': _count_due_and_upcoming(meds), 'overdue': _count_overdue(meds)}
+    except Exception as e:
+        logger.error(f"Error getting medication schedule counts: {e}")
+        return {'due': 0, 'overdue': 0}
 
 
 def get_medication_history(db: Session, limit=25, medication_name=None, start_date=None, end_date=None, status_filter=None, patient_id=None):

@@ -1,0 +1,174 @@
+/*
+ * Smart Home Health Hub
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+import React, { useState, useEffect, useCallback } from 'react';
+import AdminV2Layout from './AdminV2Layout';
+import config from '../../config';
+import { useAuth } from '../../contexts/AuthContext';
+import { useAdminPatient } from '../../contexts/AdminPatientContext';
+import { HistoryIcon, RefreshIcon, UndoIcon } from '../../components/Icons';
+import { Button } from '@/components/ui/button';
+import './AdminV2.css';
+
+// Maps the backend item_type to a friendly label.
+const TYPE_LABELS = {
+  medication: 'Medication',
+  nutrition_intake: 'Nutrition (intake)',
+  nutrition_output: 'Nutrition (output)',
+  care_task: 'Care task',
+};
+
+const AdminV2ScheduleUndoLog = () => {
+  const { user } = useAuth();
+  const { patients } = useAdminPatient();
+
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const hasPermission = (permission) => {
+    if (!user) return false;
+    if (user.is_system_admin) return true;
+    return user.permissions?.includes(permission) || false;
+  };
+  const canView = hasPermission('audit.read');
+
+  const patientName = (id) => {
+    const p = patients.find((x) => x.id === id);
+    return p ? `${p.first_name} ${p.last_name}` : (id != null ? `Patient #${id}` : '—');
+  };
+
+  const formatDateTime = (iso) => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    if (isNaN(d)) return iso;
+    return d.toLocaleString(undefined, {
+      month: 'short', day: 'numeric', year: 'numeric',
+      hour: 'numeric', minute: '2-digit',
+    });
+  };
+
+  const fetchEntries = useCallback(async () => {
+    if (!canView) return;
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await fetch(`${config.apiUrl}/api/schedule/undo-log?limit=200`, {
+        credentials: 'include',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setEntries(data.entries || []);
+      } else if (response.status === 403) {
+        setError('You do not have permission to view the undo log.');
+      } else {
+        setError('Failed to load undo log');
+      }
+    } catch (err) {
+      console.error('Error fetching undo log:', err);
+      setError('Error connecting to server');
+    } finally {
+      setLoading(false);
+    }
+  }, [canView]);
+
+  useEffect(() => {
+    fetchEntries();
+  }, [fetchEntries]);
+
+  return (
+    <AdminV2Layout>
+      <div className="admin-v2-page">
+        <div className="admin-v2-page-header">
+          <p className="admin-v2-text-muted" style={{ margin: 0 }}>
+            Every undone dose, feed, or care task — who reversed it and when. Undone items
+            are kept (soft-deleted), not erased.
+          </p>
+          <div className="tw">
+            <Button
+              onClick={fetchEntries}
+              disabled={loading || !canView}
+              title="Refresh"
+            >
+              <RefreshIcon size={16} /> Refresh
+            </Button>
+          </div>
+        </div>
+
+        {!canView ? (
+          <div className="admin-v2-empty-container">
+            <HistoryIcon size={48} className="admin-v2-empty-icon" />
+            <p>You do not have permission to view the undo log (requires audit access).</p>
+          </div>
+        ) : error ? (
+          <div className="admin-v2-empty-container">
+            <p>{error}</p>
+            <div className="tw">
+              <Button variant="secondary" onClick={fetchEntries}>Retry</Button>
+            </div>
+          </div>
+        ) : loading ? (
+          <div className="admin-v2-loading">Loading undo log...</div>
+        ) : entries.length === 0 ? (
+          <div className="admin-v2-empty-container">
+            <UndoIcon size={48} className="admin-v2-empty-icon" />
+            <p>No undos recorded yet.</p>
+          </div>
+        ) : (
+          <div className="admin-v2-table-container admin-v2-table-cards-wrap">
+            <table className="admin-v2-table admin-v2-table-cards">
+              <thead>
+                <tr>
+                  <th>Undone At</th>
+                  <th>Type</th>
+                  <th>Item</th>
+                  <th>Patient</th>
+                  <th>Originally Scheduled</th>
+                  <th>Undone By</th>
+                </tr>
+              </thead>
+              <tbody>
+                {entries.map((e) => (
+                  <tr key={e.id}>
+                    <td data-label="Undone At" className="history-datetime">{formatDateTime(e.undone_at)}</td>
+                    <td data-label="Type">{TYPE_LABELS[e.item_type] || e.item_type}</td>
+                    <td className="admin-v2-cell-name">
+                      <span className="history-med-name">{e.item_name || '—'}</span>
+                      {e.dose_amount != null && (
+                        <span className="history-dose"> · {e.dose_amount}</span>
+                      )}
+                      {e.quantity_restored != null && (
+                        <span className="admin-v2-text-muted"> (restored {e.quantity_restored})</span>
+                      )}
+                    </td>
+                    <td data-label="Patient">{patientName(e.patient_id)}</td>
+                    <td data-label="Scheduled" className="history-datetime">
+                      {e.scheduled_time ? formatDateTime(e.scheduled_time) : <span className="history-unscheduled">As Needed</span>}
+                    </td>
+                    <td data-label="Undone By">{e.undone_by || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </AdminV2Layout>
+  );
+};
+
+export default AdminV2ScheduleUndoLog;

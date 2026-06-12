@@ -1,5 +1,30 @@
+/*
+ * Smart Home Health Hub
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 import { useState, useEffect } from 'react';
 import config from '../../config';
+import { Alert } from '@/components/ui/alert';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
 
 const AlertsHistory = ({ patientId }) => {
   const [availableDates, setAvailableDates] = useState([]);
@@ -124,28 +149,29 @@ const AlertsHistory = ({ patientId }) => {
     <div className="alerts-history">
       <div className="history-header">
         <h2>Pulse Oximetry Analysis</h2>
-        <div className="date-selector">
+        <div className="date-selector tw">
           <label htmlFor="date-select">Select Date:</label>
-          <select
-            id="date-select"
-            value={selectedDate}
-            onChange={(e) => handleDateChange(e.target.value)}
+          <Select
+            value={selectedDate || undefined}
+            onValueChange={handleDateChange}
             disabled={loading}
           >
-            <option value="">Choose a date...</option>
-            {availableDates.map(date => (
-              <option key={date} value={date}>
-                {formatDate(date)}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger id="date-select" className="w-auto min-w-[240px]">
+              <SelectValue placeholder="Choose a date..." />
+            </SelectTrigger>
+            <SelectContent>
+              {availableDates.map(date => (
+                <SelectItem key={date} value={date}>
+                  {formatDate(date)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
       {error && (
-        <div className="error-message">
-          {error}
-        </div>
+        <div className="tw"><Alert variant="destructive">{error}</Alert></div>
       )}
 
       {loading && (

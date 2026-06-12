@@ -1,3 +1,18 @@
+# Smart Home Health Hub
+# Copyright (C) 2026 John Carty
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 Guard against logging a scheduled item (medication, nutrition, care task)
 substantially outside its scheduled window — either before (early) or after
@@ -124,6 +139,45 @@ def off_window_response(
 
 # Alias retained for callers that imported the old name.
 early_administration_response = off_window_response
+
+
+# Small tolerance so client/server clock skew on a "logging right now" entry
+# doesn't trip the future-time guard.
+FUTURE_ADMINISTRATION_GRACE_MINUTES = 5
+
+
+def guard_future_administration(
+    administered_at: Union[datetime, str, None],
+    item_label: str = "item",
+) -> Optional[JSONResponse]:
+    """
+    Return a 400 JSONResponse when the caller-supplied administration/completion
+    time is in the future (beyond a small clock-skew grace). An item cannot be
+    given/completed later than now, so — unlike the early/late window — this is
+    never overridable. Returns None when there is nothing to reject (no time
+    supplied, unparseable, or at/before now).
+
+    This catches the common data-entry slip where the time-of-day is edited but
+    the date is left on "today", landing the timestamp a day ahead.
+    """
+    parsed = _coerce_time(administered_at)
+    if parsed is None:
+        return None
+    minutes_ahead = (parsed - utc_now()).total_seconds() / 60
+    if minutes_ahead <= FUTURE_ADMINISTRATION_GRACE_MINUTES:
+        return None
+    return JSONResponse(
+        status_code=400,
+        content={
+            "detail": (
+                f"This {item_label} cannot be recorded in the future "
+                f"({parsed.isoformat()}). Check the date — the time of day is "
+                "often right but the date is left on today."
+            ),
+            "error": "future_administration",
+            "administered_at": parsed.isoformat(),
+        },
+    )
 
 
 def guard_early_administration(

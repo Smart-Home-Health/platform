@@ -1,3 +1,18 @@
+# Smart Home Health Hub
+# Copyright (C) 2026 John Carty
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 Diagnosis SQLAlchemy ORM model
 """
@@ -18,6 +33,7 @@ class Diagnosis(Base):
     name = Column(String(255), nullable=False)  # Primary diagnosis name
     icd10_code = Column(String(20), nullable=True)  # ICD-10 code (optional)
     icd10_description = Column(String(500), nullable=True)  # Official ICD-10 description
+    snomed_code = Column(String(20), nullable=True)  # SNOMED CT code (FHIR Condition.code often uses SNOMED)
     
     # Classification
     diagnosis_type = Column(String(50), nullable=False, default='primary')  # primary, secondary, comorbidity, differential
@@ -41,7 +57,11 @@ class Diagnosis(Base):
     
     # Status
     active = Column(Boolean, default=True, nullable=False)
-    
+
+    # Provenance / ingest (e.g. imported from Epic FHIR Condition)
+    source = Column(String(50), nullable=True, default='manual')  # manual, epic, etc.
+    external_id = Column(String(100), nullable=True, index=True)  # FHIR resource id for dedup
+
     # Metadata
     created_at = Column(TIMESTAMP(timezone=True), nullable=False)
     updated_at = Column(TIMESTAMP(timezone=True), nullable=False)

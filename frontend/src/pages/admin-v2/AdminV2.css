@@ -645,11 +645,32 @@
 
 .admin-v2-patient-header {
   display: flex;
-  align-items: center;
-  gap: 1rem;
+  flex-direction: column;
+  gap: 0.85rem;
   margin-bottom: 1rem;
   padding-bottom: 1rem;
   border-bottom: 1px solid #30363d;
+}
+
+/* Top row: avatar + name/age on the left, status stack on the right */
+.admin-v2-patient-header-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+/* Right-side vertical stack across from name/age: ACTIVE then camera */
+.admin-v2-patient-status-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+/* Vitals chip on its own row under the name */
+.admin-v2-vitals-row {
+  display: flex;
 }
 
 .admin-v2-patient-avatar {
@@ -682,51 +703,105 @@
   margin: 0;
 }
 
-.admin-v2-patient-readings {
-  font-size: 0.85rem;
-  color: #58a6ff;
+/* Live vitals chip (SpO2 / HR) */
+.admin-v2-vitals {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.3rem 0.65rem;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  background: #0d1117;
   text-decoration: none;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.admin-v2-vitals:hover {
+  border-color: #58a6ff;
+  background: rgba(88, 166, 255, 0.08);
+}
+
+.admin-v2-vital {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.9rem;
   white-space: nowrap;
-  padding: 0.2rem 0.4rem;
-  border-radius: 4px;
-  transition: background 0.2s ease, color 0.2s ease;
 }
 
-.admin-v2-patient-readings:hover {
-  color: #79b8ff;
-  background: rgba(88, 166, 255, 0.1);
+.admin-v2-vital svg {
+  color: #58a6ff;
+  flex-shrink: 0;
 }
 
-.admin-v2-patient-status {
-  padding: 0.25rem 0.75rem;
-  border-radius: 12px;
-  font-size: 0.75rem;
-  font-weight: 500;
+.admin-v2-vital-label {
+  font-size: 0.62rem;
   text-transform: uppercase;
-}
-
-.admin-v2-patient-status.active {
-  background: rgba(46, 160, 67, 0.2);
-  color: #3fb950;
-}
-
-.admin-v2-patient-status.inactive {
-  background: rgba(139, 148, 158, 0.2);
+  letter-spacing: 0.4px;
   color: #8b949e;
 }
 
-/* Due Counters */
+.admin-v2-vital-value {
+  font-weight: 700;
+  color: #e6edf3;
+}
+
+.admin-v2-vital-unit {
+  font-size: 0.68rem;
+  color: #8b949e;
+}
+
+.admin-v2-vitals-camera {
+  background: transparent;
+  border: 1px solid #30363d;
+  color: #58a6ff;
+  padding: 5px 7px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.admin-v2-vitals-camera:hover {
+  border-color: #58a6ff;
+  background: rgba(88, 166, 255, 0.08);
+}
+
+.admin-v2-patient-status {
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border: 1px solid transparent;
+}
+
+.admin-v2-patient-status.active {
+  background: transparent;
+  color: #3fb950;
+  border-color: rgba(63, 185, 80, 0.5);
+}
+
+.admin-v2-patient-status.inactive {
+  background: transparent;
+  color: #8b949e;
+  border-color: rgba(139, 148, 158, 0.4);
+}
+
+/* Due Counters — four category badges (no icons) */
 .admin-v2-due-counters {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 0.75rem;
 }
 
 .admin-v2-due-item {
   background: #0d1117;
   border: 1px solid #30363d;
-  border-radius: 6px;
-  padding: 0.875rem;
+  border-radius: 8px;
+  padding: 0.75rem 0.5rem;
   text-align: center;
   transition: all 0.2s ease;
   text-decoration: none;
@@ -735,42 +810,41 @@
 }
 
 .admin-v2-due-item:hover {
-  background: #21262d;
+  background: #161b22;
   transform: translateY(-1px);
 }
 
-.admin-v2-due-item.has-due {
-  border-color: #d29922;
-  background: rgba(210, 153, 34, 0.1);
-}
-
-.admin-v2-due-item.overdue {
-  border-color: #f85149;
-  background: rgba(248, 81, 73, 0.1);
-}
-
 .admin-v2-due-count {
-  font-size: 1.5rem;
+  font-size: 1.3rem;
   font-weight: 700;
   margin: 0;
+  line-height: 1.1;
   color: #e6edf3;
 }
 
-.admin-v2-due-item.has-due .admin-v2-due-count {
-  color: #d29922;
-}
-
-.admin-v2-due-item.overdue .admin-v2-due-count {
-  color: #f85149;
-}
-
 .admin-v2-due-label {
-  font-size: 0.75rem;
+  font-size: 0.62rem;
   color: #8b949e;
   margin: 0.25rem 0 0 0;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.4px;
 }
+
+/* Per-category color identity (border + count color). Red is reserved for the
+   overdue state below, so tasks use blue by default. */
+.admin-v2-due-item.meds { border-color: rgba(247, 129, 102, 0.4); }
+.admin-v2-due-item.meds .admin-v2-due-count { color: #f78166; }
+.admin-v2-due-item.equip { border-color: rgba(210, 153, 34, 0.4); }
+.admin-v2-due-item.equip .admin-v2-due-count { color: #d29922; }
+.admin-v2-due-item.tasks { border-color: rgba(163, 113, 247, 0.4); }
+.admin-v2-due-item.tasks .admin-v2-due-count { color: #a371f7; }
+.admin-v2-due-item.nutrition { border-color: rgba(63, 185, 80, 0.4); }
+.admin-v2-due-item.nutrition .admin-v2-due-count { color: #3fb950; }
+
+/* Overdue / missed: red urgency, overrides the category color. Placed last so
+   it wins on equal specificity. */
+.admin-v2-due-item.overdue { border-color: rgba(248, 81, 73, 0.6); }
+.admin-v2-due-item.overdue .admin-v2-due-count { color: #f85149; }
 
 /* Patient Actions */
 .admin-v2-patient-actions {
@@ -842,6 +916,14 @@
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0.5rem;
+}
+
+/* 3-column variant: lays an even card set (e.g. 6 cards) out as full rows of
+   three that fill the width, instead of leaving a short trailing row. The
+   compound selector outranks the single-class breakpoint rules below, so it
+   holds at every width. */
+.admin-v2-stats-row-compact.admin-v2-stats-row-3col {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .admin-v2-stats-row-compact .admin-v2-stat-card {
@@ -1127,7 +1209,22 @@
   }
 
   .admin-v2-due-counters {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.4rem;
+  }
+
+  /* Keep all four badges on one row on mobile: tighten padding/labels */
+  .admin-v2-due-item {
+    padding: 0.6rem 0.2rem;
+  }
+
+  .admin-v2-due-count {
+    font-size: 1.15rem;
+  }
+
+  .admin-v2-due-label {
+    font-size: 0.52rem;
+    letter-spacing: 0.2px;
   }
 
   .admin-v2-topnav-links {
@@ -1147,18 +1244,8 @@
     justify-content: center;
   }
 
-  /* Patient card: stack header elements on very small screens */
-  .admin-v2-patient-header {
-    flex-wrap: wrap;
-    gap: 0.5rem;
-  }
-
   .admin-v2-patient-info {
     min-width: 0;
-  }
-
-  .admin-v2-patient-readings {
-    white-space: normal;
   }
 
   .admin-v2-patient-actions {
@@ -1260,6 +1347,19 @@
 
 .admin-v2-table tr:hover {
   background: rgba(88, 166, 255, 0.05);
+}
+
+/* One line per member in a merged output row (mixed diaper details). */
+.admin-v2-output-detail-line {
+  display: block;
+}
+.admin-v2-output-detail-type {
+  display: inline-block;
+  min-width: 3.25rem;
+  text-transform: capitalize;
+  color: #8b949e;
+  font-size: 0.8rem;
+  margin-right: 0.35rem;
 }
 
 /* User Cell */
@@ -3062,6 +3162,70 @@
   color: #e6edf3;
 }
 
+/* Collapsible filter card (medication history): a tappable header that expands
+   a 2x2 grid of filters, so the controls don't dominate the page. */
+.admin-v2-filter-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  margin-bottom: 1.25rem;
+  overflow: hidden;
+}
+.admin-v2-filter-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: transparent;
+  border: none;
+  color: #e6edf3;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.admin-v2-filter-toggle:hover {
+  background: #1c2128;
+}
+.admin-v2-filter-chevron {
+  display: inline-flex;
+  color: #8b949e;
+  transform: rotate(90deg); /* ChevronRight → points down when collapsed */
+  transition: transform 0.2s ease;
+}
+.admin-v2-filter-card.open .admin-v2-filter-chevron {
+  transform: rotate(-90deg); /* points up when expanded */
+}
+.admin-v2-filter-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  padding: 0 1rem 1rem;
+}
+/* Search spans the full width above the 2x2 of date/status/limit. */
+.admin-v2-filter-body .history-filter-search {
+  grid-column: 1 / -1;
+}
+.admin-v2-filter-body .history-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  min-width: 0;
+}
+.admin-v2-filter-body .history-filter-input,
+.admin-v2-filter-body .history-search-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.admin-v2-filter-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
 /* History Stats */
 .history-stats {
   display: flex;
@@ -3732,13 +3896,20 @@
   .history-filter-row {
     flex-direction: column;
   }
-  
+
   .history-filter-group {
     width: 100%;
+    min-width: 0;
   }
-  
-  .history-filter-input {
+
+  /* Full-width controls that stay inside the card. Without box-sizing the
+     padding on a width:100% input overruns the filter card and the row
+     overflows the viewport. */
+  .history-filter-input,
+  .history-filter-select {
     width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
   }
   
   .history-stats {
@@ -4043,7 +4214,8 @@
 
 .admin-v2-history-item-main {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 0.5rem;
   margin-bottom: 0.25rem;
 }
@@ -4051,11 +4223,14 @@
 .admin-v2-history-item-name {
   font-weight: 500;
   color: #e6edf3;
+  min-width: 0;
 }
 
 .admin-v2-history-item-action {
   font-size: 0.85rem;
   color: #8b949e;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .admin-v2-history-item-meta {
@@ -4580,6 +4755,30 @@ body.printing-schedule .admin-v2-schedule-prn-add {
   color: white;
 }
 
+/* Undo control shown in place of the check on completed items. Lets a
+   caregiver reverse a dose/feed/task marked by mistake or on the wrong day. */
+.admin-v2-schedule-item-undo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid #484f58;
+  background: transparent;
+  color: #8b949e;
+  margin-left: auto;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.admin-v2-schedule-item-undo:hover {
+  border-color: #f0883e;
+  color: #f0883e;
+  background: rgba(240, 136, 62, 0.12);
+}
+
 .admin-v2-schedule-item-desc {
   font-size: 0.8rem;
   color: #8b949e;
@@ -4747,15 +4946,17 @@ body.printing-schedule .admin-v2-schedule-prn-add {
   /* Dashboard summary stats on mobile: same style as schedule - small cards, icon + value only */
   .admin-v2-dashboard .admin-v2-summary-stats {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 0.5rem;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.4rem;
     margin-bottom: 1rem;
   }
   .admin-v2-dashboard .admin-v2-summary-stats .admin-v2-stat-card {
-    padding: 0.5rem;
+    padding: 0.5rem 0.25rem;
     flex-direction: column;
     align-items: center;
     gap: 0.25rem;
+    min-width: 0;
+    box-sizing: border-box;
   }
   .admin-v2-dashboard .admin-v2-summary-stats .admin-v2-stat-info p {
     display: none;
@@ -4792,13 +4993,20 @@ body.printing-schedule .admin-v2-schedule-prn-add {
   .admin-v2-summary-stats.admin-v2-medications-summary .admin-v2-stat-info {
     min-width: 0;
     overflow: hidden;
+    text-align: center;
   }
+  /* Icon was removed in favour of the text label, so show it (small) instead of
+     hiding it — otherwise the cards read as a bare number with no context. */
   .admin-v2-summary-stats.admin-v2-medications-summary .admin-v2-stat-info p {
-    display: none;
+    margin: 0;
+    font-size: 0.62rem;
+    line-height: 1.1;
+    color: #8b949e;
   }
   .admin-v2-summary-stats.admin-v2-medications-summary .admin-v2-stat-info h4 {
     margin: 0;
-    font-size: 0.8rem;
+    font-size: 1rem;
+    line-height: 1.2;
   }
   .admin-v2-summary-stats.admin-v2-medications-summary .admin-v2-stat-icon {
     width: 28px;
@@ -4848,40 +5056,142 @@ body.printing-schedule .admin-v2-schedule-prn-add {
   }
 
   /* Equipment summary stats on mobile: same compact style (icon + value only), no overlap */
-  .admin-v2-summary-stats.admin-v2-equipment-summary {
+  .admin-v2-summary-stats.admin-v2-equipment-summary,
+  .admin-v2-summary-stats.admin-v2-shipments-summary {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 0.35rem;
     margin-bottom: 1rem;
     max-width: 100%;
     min-width: 0;
   }
-  .admin-v2-summary-stats.admin-v2-equipment-summary .admin-v2-stat-card {
+  .admin-v2-summary-stats.admin-v2-equipment-summary .admin-v2-stat-card,
+  .admin-v2-summary-stats.admin-v2-shipments-summary .admin-v2-stat-card {
     min-width: 0;
-    padding: 0.35rem;
+    padding: 0.35rem 0.2rem;
     flex-direction: column;
     align-items: center;
     gap: 0.15rem;
   }
-  .admin-v2-summary-stats.admin-v2-equipment-summary .admin-v2-stat-info {
+  .admin-v2-summary-stats.admin-v2-equipment-summary .admin-v2-stat-info,
+  .admin-v2-summary-stats.admin-v2-shipments-summary .admin-v2-stat-info {
     min-width: 0;
     overflow: hidden;
   }
-  .admin-v2-summary-stats.admin-v2-equipment-summary .admin-v2-stat-info p {
+  .admin-v2-summary-stats.admin-v2-equipment-summary .admin-v2-stat-info p,
+  .admin-v2-summary-stats.admin-v2-shipments-summary .admin-v2-stat-info p {
     display: none;
   }
-  .admin-v2-summary-stats.admin-v2-equipment-summary .admin-v2-stat-info h4 {
+  .admin-v2-summary-stats.admin-v2-equipment-summary .admin-v2-stat-info h4,
+  .admin-v2-summary-stats.admin-v2-shipments-summary .admin-v2-stat-info h4 {
     margin: 0;
     font-size: 0.8rem;
   }
-  .admin-v2-summary-stats.admin-v2-equipment-summary .admin-v2-stat-icon {
+  .admin-v2-summary-stats.admin-v2-equipment-summary .admin-v2-stat-icon,
+  .admin-v2-summary-stats.admin-v2-shipments-summary .admin-v2-stat-icon {
     width: 28px;
     height: 28px;
     flex-shrink: 0;
   }
-  .admin-v2-summary-stats.admin-v2-equipment-summary .admin-v2-stat-icon svg {
+  .admin-v2-summary-stats.admin-v2-equipment-summary .admin-v2-stat-icon svg,
+  .admin-v2-summary-stats.admin-v2-shipments-summary .admin-v2-stat-icon svg {
     width: 16px;
     height: 16px;
+  }
+
+  /* Alerts has only two stats — keep them side by side (with labels) rather
+     than the 4-up compact treatment. */
+  .admin-v2-summary-stats.admin-v2-alerts-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+  .admin-v2-summary-stats.admin-v2-alerts-summary .admin-v2-stat-card {
+    min-width: 0;
+    padding: 0.6rem 0.6rem;
+    gap: 0.5rem;
+  }
+
+  /* Medication schedule filter stats: tight 4-up tappable cards on mobile.
+     Labels are kept (they tell you which filter you're toggling), just small. */
+  .admin-v2-summary-stats.admin-v2-meds-schedule-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.4rem;
+    margin-bottom: 1rem;
+  }
+  .admin-v2-summary-stats.admin-v2-meds-schedule-summary .admin-v2-stat-card {
+    min-width: 0;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 0.2rem;
+    padding: 0.5rem 0.2rem;
+  }
+  .admin-v2-summary-stats.admin-v2-meds-schedule-summary .admin-v2-stat-icon {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+  }
+  .admin-v2-summary-stats.admin-v2-meds-schedule-summary .admin-v2-stat-icon svg {
+    width: 16px;
+    height: 16px;
+  }
+  .admin-v2-summary-stats.admin-v2-meds-schedule-summary .admin-v2-stat-info {
+    min-width: 0;
+  }
+  .admin-v2-summary-stats.admin-v2-meds-schedule-summary .admin-v2-stat-info h4 {
+    margin: 0;
+    font-size: 1rem;
+    line-height: 1.1;
+  }
+  .admin-v2-summary-stats.admin-v2-meds-schedule-summary .admin-v2-stat-info p {
+    margin: 0;
+    font-size: 0.62rem;
+    line-height: 1.1;
+    white-space: nowrap;
+  }
+
+  /* Care Tasks Overview + Schedule filter stat cards: compact tappable cards in
+     a 3-up grid on mobile (5 cards → 3+2, 6 → 3x2). Mirrors the medications
+     schedule summary card styling above. */
+  .admin-v2-summary-stats.admin-v2-care-tasks-stat-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.4rem;
+    margin-bottom: 1rem;
+  }
+  .admin-v2-summary-stats.admin-v2-care-tasks-stat-summary .admin-v2-stat-card {
+    min-width: 0;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 0.2rem;
+    padding: 0.5rem 0.2rem;
+  }
+  .admin-v2-summary-stats.admin-v2-care-tasks-stat-summary .admin-v2-stat-icon {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+  }
+  .admin-v2-summary-stats.admin-v2-care-tasks-stat-summary .admin-v2-stat-icon svg {
+    width: 16px;
+    height: 16px;
+  }
+  .admin-v2-summary-stats.admin-v2-care-tasks-stat-summary .admin-v2-stat-info {
+    min-width: 0;
+  }
+  .admin-v2-summary-stats.admin-v2-care-tasks-stat-summary .admin-v2-stat-info h4 {
+    margin: 0;
+    font-size: 1rem;
+    line-height: 1.1;
+  }
+  .admin-v2-summary-stats.admin-v2-care-tasks-stat-summary .admin-v2-stat-info p {
+    margin: 0;
+    font-size: 0.62rem;
+    line-height: 1.1;
+    white-space: nowrap;
   }
 
   /* Table scroll on mobile */
@@ -4891,6 +5201,141 @@ body.printing-schedule .admin-v2-schedule-prn-add {
   }
   .admin-v2-table {
     min-width: 560px;
+  }
+
+  /* Section tabs: natural-width pills that scroll horizontally instead of
+     clipping the last option ("Consumables"). Standard mobile tab pattern. */
+  .admin-v2-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    justify-content: space-between;
+    gap: 0.4rem;
+    padding: 4px 8px;
+  }
+  .admin-v2-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .admin-v2-tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 0.4rem 0.9rem;
+    font-size: 0.8rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+  }
+  .admin-v2-tab-count {
+    min-width: 16px;
+    height: 16px;
+    padding: 0 5px;
+    margin-left: 0;
+    font-size: 0.7rem;
+  }
+
+  /* Equipment table → stacked cards on mobile (the row-as-card pattern). Only
+     applies to tables opted in with .admin-v2-table-cards, so other tables keep
+     their horizontal-scroll behaviour. */
+  .admin-v2-table-container.admin-v2-table-cards-wrap {
+    background: transparent;
+    border: none;
+    overflow: visible;
+  }
+  .admin-v2-table.admin-v2-table-cards {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+  .admin-v2-table.admin-v2-table-cards thead {
+    display: none;
+  }
+  .admin-v2-table.admin-v2-table-cards tbody,
+  .admin-v2-table.admin-v2-table-cards tr,
+  .admin-v2-table.admin-v2-table-cards td {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .admin-v2-table.admin-v2-table-cards tr {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 0.5rem 0.875rem;
+    margin-bottom: 0.75rem;
+  }
+  .admin-v2-table.admin-v2-table-cards td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid #21262d;
+    text-align: right;
+  }
+  .admin-v2-table.admin-v2-table-cards td:last-child {
+    border-bottom: none;
+  }
+  .admin-v2-table.admin-v2-table-cards td::before {
+    content: attr(data-label);
+    color: #8b949e;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+    text-align: left;
+    flex-shrink: 0;
+  }
+  /* Name cell becomes the card header */
+  .admin-v2-table.admin-v2-table-cards td.admin-v2-cell-name {
+    justify-content: flex-start;
+    text-align: left;
+    border-bottom: 1px solid #30363d;
+    padding-bottom: 0.5rem;
+    margin-bottom: 0.25rem;
+  }
+  .admin-v2-table.admin-v2-table-cards td.admin-v2-cell-name::before {
+    display: none;
+  }
+  .admin-v2-table.admin-v2-table-cards td.admin-v2-cell-name .admin-v2-equipment-name {
+    font-size: 1rem;
+    font-weight: 600;
+  }
+  /* Stacked cell: label on its own line, content below full-width and wrapping.
+     Used for multi-line content (e.g. a mixed diaper's per-type details) that
+     would otherwise overflow the right-aligned value slot. */
+  .admin-v2-table.admin-v2-table-cards td.admin-v2-cell-stack {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: left;
+    gap: 0.2rem;
+  }
+  .admin-v2-table.admin-v2-table-cards td.admin-v2-cell-stack::before {
+    text-align: left;
+  }
+  /* Actions row: full-width wrap of buttons, no label */
+  .admin-v2-table.admin-v2-table-cards td.admin-v2-cell-actions {
+    padding-top: 0.85rem;
+  }
+  .admin-v2-table.admin-v2-table-cards td.admin-v2-cell-actions::before {
+    display: none;
+  }
+  .admin-v2-table.admin-v2-table-cards td.admin-v2-cell-actions .admin-v2-action-buttons {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  /* Cells that render nothing (a resolved alert's checkbox/resolve column, or a
+     labeled data cell like "Details" with no content) shouldn't leave an empty
+     labeled row on the card. */
+  .admin-v2-table.admin-v2-table-cards td.admin-v2-cell-select:empty,
+  .admin-v2-table.admin-v2-table-cards td.admin-v2-cell-actions:empty,
+  .admin-v2-table.admin-v2-table-cards td[data-label]:empty {
+    display: none;
   }
 
   /* Summary stats on mobile: side-by-side compact cards (icon + X/Y only).
@@ -6828,6 +7273,108 @@ body.printing-schedule .admin-v2-schedule-prn-add {
   color: #58a6ff;
 }
 
+.vitals-toggle-btn.custom {
+  border-style: dashed;
+}
+
+.vitals-toggle-btn.custom.active {
+  background: linear-gradient(135deg, rgba(163, 113, 247, 0.2), rgba(163, 113, 247, 0.1));
+  border-color: rgba(163, 113, 247, 0.5);
+  border-style: solid;
+  color: #a371f7;
+}
+
+.vitals-toggle-btn.manage-custom {
+  padding: 0.6rem 0.9rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #8b949e;
+  border-style: dashed;
+}
+
+.vitals-toggle-btn.manage-custom:hover {
+  color: #a371f7;
+  border-color: rgba(163, 113, 247, 0.4);
+}
+
+/* Custom Vitals Manager */
+.custom-vitals-manager {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: rgba(22, 27, 34, 0.6);
+  border: 1px solid rgba(163, 113, 247, 0.25);
+  border-radius: 12px;
+}
+
+.custom-vitals-manager-header {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #a371f7;
+  margin-bottom: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.custom-vitals-add-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.custom-vitals-add-row .admin-v2-input {
+  flex: 1;
+}
+
+.custom-vitals-error {
+  margin-top: 0.5rem;
+  color: #f85149;
+  font-size: 0.8rem;
+}
+
+.custom-vitals-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(139, 148, 158, 0.1);
+}
+
+.custom-vital-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.6rem;
+  background: rgba(163, 113, 247, 0.1);
+  border: 1px solid rgba(163, 113, 247, 0.25);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  color: #e6edf3;
+}
+
+.custom-vital-unit {
+  color: #8b949e;
+  font-size: 0.75rem;
+}
+
+.custom-vital-delete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: #8b949e;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+
+.custom-vital-delete:hover {
+  color: #f85149;
+  background: rgba(248, 81, 73, 0.15);
+}
+
 .vitals-toggle-icon {
   font-size: 1.1rem;
 }
@@ -7027,9 +7574,34 @@ body.printing-schedule .admin-v2-schedule-prn-add {
     min-width: 80px;
     justify-content: center;
   }
-  
+
+  .vitals-toggle-btn.manage-custom {
+    flex: 1 1 100%;
+  }
+
   .vital-input.large {
     font-size: 1.25rem;
+  }
+
+  .custom-vitals-add-row {
+    flex-wrap: wrap;
+  }
+
+  .custom-vitals-add-row .admin-v2-input {
+    min-width: 0;
+  }
+
+  .custom-vitals-add-row .admin-v2-input:first-child {
+    flex: 1 1 100%;
+  }
+
+  .custom-vitals-add-row .admin-v2-input:nth-child(2) {
+    flex: 1;
+    max-width: none;
+  }
+
+  .custom-vitals-add-row .admin-v2-btn {
+    flex-shrink: 0;
   }
 }
 
@@ -9453,9 +10025,15 @@ body.printing-schedule .admin-v2-schedule-prn-add {
 .admin-v2-meds-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  /* Title was removed; keep the toggle to the right and carry the divider that
+     the title's border-bottom used to provide so there's still a clean break
+     between the controls and the list below. */
+  justify-content: flex-end;
   gap: 1rem;
   flex-wrap: wrap;
+  margin: 1.5rem 0 1rem 0;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #30363d;
 }
 .admin-v2-meds-header .schedule-section-title {
   margin: 1.5rem 0 1rem 0;
@@ -9594,4 +10172,946 @@ body.printing-schedule .admin-v2-schedule-prn-add {
 }
 .admin-v2-med-card-inactive {
   opacity: 0.6;
+}
+
+/* ───────────── Day over Day Report ───────────── */
+
+.dod-report {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  overflow: hidden;
+  max-width: 100%;
+}
+
+.dod-controls {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.dod-vital-select {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 200px;
+}
+
+.dod-label {
+  font-size: 0.8rem;
+  color: #8b949e;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.dod-select {
+  padding: 0.5rem 0.75rem;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #e6edf3;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.dod-select:focus {
+  outline: none;
+  border-color: #58a6ff;
+}
+
+/* Hour range */
+.dod-hour-range {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.dod-hour-selects {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.dod-select-hour {
+  min-width: 70px;
+  width: auto;
+}
+
+.dod-hour-sep {
+  color: #8b949e;
+  font-size: 0.8rem;
+}
+
+.dod-hour-reset {
+  background: none;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #8b949e;
+  font-size: 0.75rem;
+  padding: 0.35rem 0.6rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dod-hour-reset:hover {
+  background: rgba(255,255,255,0.06);
+  color: #e6edf3;
+}
+
+/* Calendar */
+.dod-calendar {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 1rem;
+  min-width: 300px;
+  max-width: 340px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.dod-calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.dod-cal-month {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #e6edf3;
+}
+
+.dod-cal-nav {
+  background: none;
+  border: none;
+  color: #8b949e;
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+}
+.dod-cal-nav:hover {
+  background: rgba(255,255,255,0.06);
+  color: #e6edf3;
+}
+
+.dod-calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  margin-bottom: 0.25rem;
+}
+
+.dod-weekday {
+  font-size: 0.75rem;
+  color: #8b949e;
+  font-weight: 600;
+  padding: 0.25rem 0;
+}
+
+.dod-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+
+.dod-cal-cell {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background: none;
+  color: #c9d1d9;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  padding: 0;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.dod-cal-cell:not(.dod-cal-empty):not(.disabled):hover {
+  background: rgba(255,255,255,0.08);
+}
+.dod-cal-cell.today:not(.selected) {
+  border-color: #30363d;
+  font-weight: 700;
+}
+.dod-cal-cell.selected {
+  font-weight: 700;
+}
+.dod-cal-cell.disabled {
+  color: #484f58;
+  cursor: default;
+}
+.dod-cal-empty {
+  cursor: default;
+}
+
+.dod-cal-limit {
+  font-size: 0.75rem;
+  color: #f0883e;
+  text-align: center;
+  margin: 0.4rem 0 0;
+}
+
+/* Date chips */
+.dod-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.dod-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.6rem;
+  background: #161b22;
+  border: 1px solid;
+  border-radius: 16px;
+  font-size: 0.8rem;
+  color: #e6edf3;
+}
+
+.dod-chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dod-chip-label {
+  font-weight: 500;
+}
+
+.dod-chip-source {
+  font-size: 0.7rem;
+  color: #8b949e;
+  background: rgba(255,255,255,0.06);
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+}
+
+.dod-chip-remove {
+  background: none;
+  border: none;
+  color: #8b949e;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  line-height: 1;
+}
+.dod-chip-remove:hover {
+  color: #f85149;
+}
+
+/* Chart area */
+.dod-chart-area {
+  position: relative;
+  min-height: 200px;
+}
+
+.dod-chart-container {
+  position: relative;
+  height: 440px;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.dod-loading,
+.dod-error,
+.dod-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  font-size: 0.9rem;
+}
+
+.dod-loading { color: #8b949e; }
+.dod-error { color: #f85149; }
+.dod-empty { color: #8b949e; }
+
+/* Responsive */
+@media (max-width: 640px) {
+  .dod-controls {
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .dod-calendar {
+    max-width: 100%;
+    min-width: auto;
+    padding: 1rem;
+  }
+  .dod-vital-select {
+    min-width: auto;
+    width: 100%;
+  }
+  .dod-select {
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+  }
+  .dod-label {
+    font-size: 0.85rem;
+  }
+  .dod-select-hour {
+    min-width: 80px;
+    padding: 0.75rem 0.5rem;
+    font-size: 1rem;
+  }
+  .dod-hour-sep {
+    font-size: 1rem;
+  }
+  .dod-cal-month {
+    font-size: 1.15rem;
+  }
+  .dod-cal-nav {
+    padding: 0.5rem;
+  }
+  .dod-weekday {
+    font-size: 0.85rem;
+    padding: 0.35rem 0;
+  }
+  .dod-calendar-grid {
+    gap: 4px;
+  }
+  .dod-cal-cell {
+    font-size: 1rem;
+    border-radius: 8px;
+    min-height: 40px;
+  }
+  .dod-chart-container {
+    height: 320px;
+  }
+  .dod-chip {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.9rem;
+  }
+}
+
+/* ───────────── Overnight Report ───────────── */
+
+.overnight-controls {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.overnight-date-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.overnight-date-input {
+  padding: 0.5rem 0.75rem;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #e6edf3;
+  font-size: 0.9rem;
+  color-scheme: dark;
+}
+
+.overnight-hour-range {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.overnight-loading,
+.overnight-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  font-size: 0.9rem;
+}
+.overnight-loading { color: #8b949e; }
+.overnight-error { color: #f85149; }
+
+.overnight-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.overnight-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 1rem;
+  text-align: center;
+}
+
+.overnight-card.danger {
+  border-color: #f85149;
+  background: rgba(248, 81, 73, 0.08);
+}
+
+.overnight-card.warning {
+  border-color: #d29922;
+  background: rgba(210, 153, 34, 0.08);
+}
+
+.overnight-card-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #e6edf3;
+  line-height: 1.1;
+}
+
+.overnight-card-unit {
+  font-size: 0.9rem;
+  font-weight: 400;
+  color: #8b949e;
+  margin-left: 2px;
+}
+
+.overnight-card-label {
+  font-size: 0.8rem;
+  color: #8b949e;
+  margin-top: 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.overnight-card-detail {
+  font-size: 0.75rem;
+  color: #6e7681;
+  margin-top: 0.25rem;
+}
+
+.overnight-section {
+  margin-bottom: 1.25rem;
+}
+
+.overnight-section-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #e6edf3;
+  margin: 0 0 0.75rem 0;
+}
+
+.overnight-chart-container {
+  position: relative;
+  height: 300px;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.overnight-vitals-stats {
+  display: flex;
+  gap: 1.5rem;
+  margin-top: 0.5rem;
+}
+
+.overnight-stat {
+  font-size: 0.8rem;
+  color: #8b949e;
+}
+
+/* Alerts table */
+.overnight-alerts-table {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.overnight-alert-header,
+.overnight-alert-row {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr 1fr 1fr 0.6fr;
+  padding: 0.6rem 1rem;
+  font-size: 0.85rem;
+  gap: 0.5rem;
+}
+
+.overnight-alert-header {
+  background: #0d1117;
+  color: #8b949e;
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.overnight-alert-row {
+  color: #c9d1d9;
+  border-top: 1px solid #21262d;
+}
+
+/* Care checklist */
+.overnight-checklist-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.overnight-checklist-heading {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #8b949e;
+  margin: 0 0 0.5rem 0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.overnight-checklist-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: #c9d1d9;
+  background: #161b22;
+  border: 1px solid #21262d;
+  margin-bottom: 0.35rem;
+}
+
+.overnight-checklist-item.missed {
+  border-color: rgba(248, 81, 73, 0.3);
+  background: rgba(248, 81, 73, 0.06);
+}
+
+.overnight-checklist-item.skipped {
+  border-color: rgba(139, 148, 158, 0.3);
+  background: rgba(139, 148, 158, 0.06);
+  opacity: 0.75;
+}
+
+.overnight-checklist-item.skipped .overnight-checklist-name {
+  text-decoration: line-through;
+  color: #8b949e;
+}
+
+.overnight-checklist-name {
+  flex: 1;
+  font-weight: 500;
+}
+
+.overnight-checklist-time {
+  color: #8b949e;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.overnight-checklist-actual {
+  color: #6e7681;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.overnight-status-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.overnight-status-icon.on-time { color: #3fb950; }
+.overnight-status-icon.late { color: #d29922; }
+.overnight-status-icon.missed { color: #f85149; }
+.overnight-status-icon.skipped {
+  color: #8b949e;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+/* Symptoms */
+.overnight-symptom {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: #161b22;
+  border: 1px solid #21262d;
+  border-radius: 6px;
+  margin-bottom: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.overnight-symptom-type {
+  font-weight: 500;
+  color: #e6edf3;
+  text-transform: capitalize;
+}
+
+.overnight-symptom-severity {
+  color: #d29922;
+  font-size: 0.8rem;
+}
+
+.overnight-symptom-desc {
+  color: #8b949e;
+  font-size: 0.8rem;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .overnight-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .overnight-checklist-grid {
+    grid-template-columns: 1fr;
+  }
+  .overnight-alert-header,
+  .overnight-alert-row {
+    grid-template-columns: 1fr 0.7fr 1fr;
+    font-size: 0.8rem;
+  }
+  .overnight-alert-header span:nth-child(4),
+  .overnight-alert-header span:nth-child(5),
+  .overnight-alert-row span:nth-child(4),
+  .overnight-alert-row span:nth-child(5) {
+    display: none;
+  }
+  .overnight-chart-container {
+    height: 220px;
+  }
+  .overnight-date-input {
+    font-size: 1rem;
+    padding: 0.75rem;
+  }
+}
+
+/* ───────────── Weekly Summary Report ───────────── */
+
+.weekly-report {
+  max-width: 1200px;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.weekly-period-label {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #e6edf3;
+  white-space: nowrap;
+}
+
+.weekly-section {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.weekly-section-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #e6edf3;
+  margin: 0 0 0.75rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.weekly-section-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 0.4rem;
+  border-radius: 11px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(248, 81, 73, 0.2);
+  color: #f85149;
+}
+
+.weekly-section-badge.warning {
+  background: rgba(210, 153, 34, 0.2);
+  color: #d29922;
+}
+
+/* Sparklines */
+.weekly-sparklines {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+}
+
+.weekly-sparkline-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.weekly-sparkline-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.weekly-sparkline-card {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.weekly-sparkline-chart {
+  height: 50px;
+  width: 100%;
+  min-width: 0;
+}
+
+.weekly-sparkline-chart canvas {
+  max-width: 100% !important;
+}
+
+.weekly-sparkline-stats {
+  display: flex;
+  justify-content: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: #8b949e;
+}
+
+.weekly-sparkline-val {
+  font-weight: 500;
+}
+
+.weekly-sparkline-sep {
+  color: #484f58;
+}
+
+.weekly-sparkline-unit {
+  font-size: 0.7rem;
+  color: #6e7681;
+}
+
+/* Row layout */
+.weekly-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  min-width: 0;
+}
+
+.weekly-half {
+  margin-bottom: 0;
+  min-width: 0;
+}
+
+/* Compliance */
+.weekly-compliance {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.weekly-donut-container {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  flex-shrink: 0;
+}
+
+.weekly-donut-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.weekly-donut-pct {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #e6edf3;
+}
+
+.weekly-compliance-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.weekly-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: #c9d1d9;
+}
+
+.weekly-legend-item strong {
+  margin-left: auto;
+  color: #e6edf3;
+}
+
+.weekly-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Small chart */
+.weekly-chart-sm {
+  height: 140px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.weekly-chart-sm canvas {
+  max-width: 100% !important;
+}
+
+.weekly-avg-text {
+  font-size: 0.8rem;
+  color: #8b949e;
+  margin-top: 0.4rem;
+}
+
+.weekly-empty-note {
+  color: #6e7681;
+  font-size: 0.85rem;
+  padding: 1rem 0;
+  text-align: center;
+}
+
+/* Equipment */
+.weekly-equip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.weekly-equip-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  background: #0d1117;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: #c9d1d9;
+}
+
+.weekly-equip-item.overdue {
+  border: 1px solid rgba(248, 81, 73, 0.3);
+}
+
+.weekly-equip-name {
+  font-weight: 500;
+}
+
+.weekly-equip-due {
+  font-size: 0.8rem;
+  color: #8b949e;
+}
+
+.weekly-overdue-badge {
+  color: #f85149;
+  font-weight: 600;
+}
+
+/* Symptom status */
+.weekly-symptom-status {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 10px;
+  font-weight: 500;
+}
+
+.weekly-symptom-status.active {
+  background: rgba(210, 153, 34, 0.2);
+  color: #d29922;
+}
+
+.weekly-symptom-status.resolved {
+  background: rgba(63, 185, 80, 0.2);
+  color: #3fb950;
+}
+
+.weekly-symptoms-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.weekly-print-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.5rem;
+}
+
+@media (max-width: 640px) {
+  .weekly-row {
+    grid-template-columns: 1fr;
+  }
+  .weekly-sparklines {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .weekly-compliance {
+    flex-direction: column;
+  }
+  .weekly-donut-container {
+    width: 100px;
+    height: 100px;
+  }
+}
+
+@media print {
+  .admin-v2-sidebar,
+  .admin-v2-mobile-header,
+  .admin-v2-topnav,
+  .admin-v2-restricted-banner,
+  .overnight-controls,
+  .weekly-print-row {
+    display: none !important;
+  }
+  .admin-v2-main {
+    margin-left: 0 !important;
+  }
+  .admin-v2-layout {
+    position: static;
+  }
+  .weekly-section,
+  .overnight-card {
+    break-inside: avoid;
+  }
+  body {
+    background: #fff;
+    color: #000;
+  }
+  .weekly-report,
+  .admin-v2-monitoring {
+    color: #000;
+  }
 }

@@ -1,3 +1,18 @@
+# Smart Home Health Hub
+# Copyright (C) 2026 John Carty
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from typing import Optional
 from datetime import datetime, date
 from pydantic import BaseModel, Field
@@ -7,8 +22,11 @@ from pydantic import BaseModel, Field
 class MedicationBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     concentration: str = Field(..., min_length=1, max_length=100)
-    quantity: float = Field(..., gt=0)
+    # ge=0: 0 on hand is legitimate (e.g. recording a finished/depleted med, or
+    # one whose stock is tracked elsewhere). Quantity is on-hand inventory, not a dose.
+    quantity: float = Field(..., ge=0)
     quantity_unit: str = Field(..., min_length=1, max_length=50)
+    low_stock_threshold: Optional[float] = Field(None, ge=0)  # None = no low-stock alerting
     instructions: str
     start_date: date
     end_date: Optional[date] = None
@@ -22,8 +40,14 @@ class MedicationBase(BaseModel):
 class MedicationCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     concentration: str = Field(..., min_length=1, max_length=100)
-    quantity: float = Field(..., gt=0)
+    # ge=0: 0 on hand is legitimate (e.g. recording a finished/depleted med, or
+    # one whose stock is tracked elsewhere). Quantity is on-hand inventory, not a dose.
+    quantity: float = Field(..., ge=0)
     quantity_unit: str = Field(..., min_length=1, max_length=50)
+    low_stock_threshold: Optional[float] = Field(None, ge=0)  # None = no low-stock alerting
+    # 'quantity' = threshold is a raw on-hand amount; 'days' = days of supply
+    # left, projected from the med's active schedules
+    low_stock_threshold_type: str = Field('quantity', pattern='^(quantity|days)$')
     instructions: str
     start_date: date
     end_date: Optional[date] = None
@@ -38,8 +62,13 @@ class MedicationCreate(BaseModel):
 class MedicationUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=200)
     concentration: Optional[str] = Field(None, min_length=1, max_length=100)
-    quantity: Optional[float] = Field(None, gt=0)
+    # ge=0 (not gt=0): an existing medication legitimately reaches 0 on hand when
+    # a course is finished. Editing it (e.g. marking inactive) must not be blocked
+    # by the create-time "must have stock" rule — the edit form resends quantity.
+    quantity: Optional[float] = Field(None, ge=0)
     quantity_unit: Optional[str] = Field(None, min_length=1, max_length=50)
+    low_stock_threshold: Optional[float] = Field(None, ge=0)
+    low_stock_threshold_type: Optional[str] = Field(None, pattern='^(quantity|days)$')
     instructions: Optional[str] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
@@ -58,6 +87,7 @@ class MedicationResponse(BaseModel):
     concentration: str
     quantity: float
     quantity_unit: str
+    low_stock_threshold: Optional[float] = None
     instructions: str
     start_date: date
     end_date: Optional[date]

@@ -1,3 +1,20 @@
+/*
+ * Smart Home Health Hub
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
@@ -6,11 +23,11 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import {
   EquipmentIcon,
-  SearchIcon,
-  RefreshIcon,
   XIcon,
   ClockIcon
 } from '../../components/Icons';
+import { Button } from '@/components/ui/button';
+import { Alert } from '@/components/ui/alert';
 import './AdminV2.css';
 
 const AdminV2EquipmentHistory = () => {
@@ -192,9 +209,6 @@ const AdminV2EquipmentHistory = () => {
       <div className="admin-v2-page">
         {selectedPatient ? (
           <>
-            {/* Page Header */}
-            <h1 className="schedule-section-title">Equipment Change History</h1>
-
             {/* Filter Bar */}
             <div className="history-filter-bar">
               <div className="history-filter-row">
@@ -252,13 +266,11 @@ const AdminV2EquipmentHistory = () => {
 
                 {/* Clear Filters */}
                 {hasActiveFilters && (
-                  <button
-                    className="admin-v2-btn admin-v2-btn-sm"
-                    onClick={handleClearFilters}
-                    title="Clear all filters"
-                  >
-                    <XIcon size={14} /> Clear
-                  </button>
+                  <div className="tw">
+                    <Button variant="secondary" size="sm" onClick={handleClearFilters} title="Clear all filters">
+                      <XIcon size={14} /> Clear
+                    </Button>
+                  </div>
                 )}
               </div>
             </div>
@@ -272,20 +284,20 @@ const AdminV2EquipmentHistory = () => {
             {loading ? (
               <div className="admin-v2-loading">Loading history...</div>
             ) : error ? (
-              <div className="admin-v2-error">{error}</div>
+              <div className="tw"><Alert variant="destructive">{error}</Alert></div>
             ) : history.length === 0 ? (
               <div className="admin-v2-empty-state">
                 <ClockIcon size={48} />
                 <h3>No History Found</h3>
                 <p className="admin-v2-text-muted">
-                  {hasActiveFilters 
+                  {hasActiveFilters
                     ? 'No records match the selected filters'
                     : 'No equipment changes have been recorded yet'}
                 </p>
                 {hasActiveFilters && (
-                  <button className="admin-v2-btn admin-v2-btn-primary" onClick={handleClearFilters}>
-                    Clear Filters
-                  </button>
+                  <div className="tw">
+                    <Button onClick={handleClearFilters}>Clear Filters</Button>
+                  </div>
                 )}
               </div>
             ) : (

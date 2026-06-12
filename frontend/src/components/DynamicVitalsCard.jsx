@@ -1,9 +1,28 @@
+/*
+ * Smart Home Health Hub
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 import React, { useState } from 'react';
-import { LineChart, Line, ResponsiveContainer, YAxis, Tooltip } from "recharts";
+import { LineChart, Line, ResponsiveContainer, YAxis, XAxis, Tooltip } from "recharts";
 import NutritionGaugeCard from './dashboard/NutritionGaugeCard';
+import QuickAddVitalModal from './vitals/QuickAddVitalModal';
 
-const DynamicVitalsCard = ({ vitalType, data = [], title }) => {
+const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved }) => {
   const [isFlipped, setIsFlipped] = useState(false);
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
 
   // Special case for nutrition - render dedicated gauge component
   if (vitalType === 'nutrition') {
@@ -291,11 +310,29 @@ const DynamicVitalsCard = ({ vitalType, data = [], title }) => {
         }}
         onClick={() => setIsFlipped(true)}
         >
-          <h3 style={{ 
-            color: vitalType === 'bathroom' && primaryGroup ? 
-              getChartColor(vitalType, primaryGroup) : 
-              getChartColor(vitalType), 
-            margin: '0 0 10px 0', 
+          {/* Quick-add button (skip if no patient context) */}
+          {patientId && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setQuickAddOpen(true); }}
+              title={`Add ${displayTitle}`}
+              aria-label={`Add ${displayTitle}`}
+              style={{
+                position: 'absolute', top: 6, right: 6, zIndex: 5,
+                width: 28, height: 28, borderRadius: '50%',
+                border: '1px solid rgba(255,255,255,0.18)',
+                background: 'rgba(0,0,0,0.45)',
+                color: '#fff', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 18, lineHeight: 1, fontWeight: 600,
+              }}
+            >+</button>
+          )}
+          <h3 style={{
+            color: vitalType === 'bathroom' && primaryGroup ?
+              getChartColor(vitalType, primaryGroup) :
+              getChartColor(vitalType),
+            margin: '0 0 10px 0',
             fontSize: '18px',
             fontWeight: '600',
             textAlign: 'center'
@@ -307,24 +344,45 @@ const DynamicVitalsCard = ({ vitalType, data = [], title }) => {
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {chartData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData} margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
-                  <YAxis 
+                <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
+                  <XAxis
+                    dataKey="index"
+                    type="number"
+                    domain={[0, Math.max(0, chartData.length - 1)]}
+                    height={16}
+                    tick={{ fontSize: 9, fill: '#6b7280' }}
+                    axisLine={false}
+                    tickLine={false}
+                    interval="preserveStartEnd"
+                    tickFormatter={(i) => {
+                      const point = chartData[Math.round(i)]?.originalItem;
+                      if (!point?.datetime) return '';
+                      const d = new Date(point.datetime);
+                      if (isNaN(d.getTime())) return '';
+                      return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+                    }}
+                  />
+                  <YAxis
                     domain={calculateYDomain()}
-                    hide={true}
+                    width={30}
+                    tick={{ fontSize: 9, fill: '#6b7280' }}
+                    axisLine={false}
+                    tickLine={false}
+                    tickCount={3}
                   />
                   <Tooltip content={<CustomTooltip />} />
-                  <Line 
-                    type="monotone" 
-                    dataKey="value" 
-                    stroke={vitalType === 'bathroom' && chartData[0]?.group ? 
-                      getChartColor(vitalType, chartData[0].group) : 
+                  <Line
+                    type="monotone"
+                    dataKey="value"
+                    stroke={vitalType === 'bathroom' && chartData[0]?.group ?
+                      getChartColor(vitalType, chartData[0].group) :
                       getChartColor(vitalType)}
                     strokeWidth={2}
                     dot={false}
-                    activeDot={{ 
-                      r: 4, 
-                      fill: vitalType === 'bathroom' && chartData[0]?.group ? 
-                        getChartColor(vitalType, chartData[0].group) : 
+                    activeDot={{
+                      r: 4,
+                      fill: vitalType === 'bathroom' && chartData[0]?.group ?
+                        getChartColor(vitalType, chartData[0].group) :
                         getChartColor(vitalType),
                       stroke: '#fff',
                       strokeWidth: 2
@@ -491,6 +549,15 @@ const DynamicVitalsCard = ({ vitalType, data = [], title }) => {
           </div>
         </div>
       </div>
+
+      {quickAddOpen && (
+        <QuickAddVitalModal
+          vitalType={vitalType}
+          patientId={patientId}
+          onClose={() => setQuickAddOpen(false)}
+          onSaved={() => { if (onSaved) onSaved(); }}
+        />
+      )}
     </div>
   );
 };

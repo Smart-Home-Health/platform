@@ -1,30 +1,55 @@
+/*
+ * Smart Home Health Hub
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 import { useState, useEffect, useRef } from "react";
 import ChartBlock from "../components/ChartBlock";
 import ClockCard from "../components/ClockCard";
 import DynamicVitalsCard from "../components/DynamicVitalsCard";
 import ModalBase from "../components/ModalBase";
 import SettingsForm from "../components/SettingsForm";
-import { 
-  SettingsIcon, 
-  MinimalistVentIcon, 
-  MinimalistPulseOxIcon, 
+import {
+  SettingsIcon,
+  MinimalistVentIcon,
+  MinimalistPulseOxIcon,
   HistoryIcon,
   MedicationIcon,
   NutritionIcon,
   CareTasksIcon,
-  MessagesIcon
+  MessagesIcon,
+  CameraIcon
 } from "../components/Icons";
 import logoImage from '../assets/logo2.png';
 import config from '../config';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Alert } from '@/components/ui/alert';
 import AlertsModal from "../components/AlertsModal";
 import EquipmentModal from "../components/EquipmentModal";
 import HistoryModal from "../components/HistoryModal";
 import MedicationModal from "../components/MedicationModal";
 import NutritionModal from "../components/NutritionModal";
 import CareTaskModal from "../components/CareTaskModal";
+import CameraLiveModal from "../components/CameraLiveModal";
+import MessagesModal from "../components/MessagesModal";
+import { formatVitalDisplayName } from "../utils/vitals";
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useAdminPatient } from '../contexts/AdminPatientContext';
+import { usePinChallenge } from '../contexts/PinChallengeContext';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -32,6 +57,7 @@ export default function Dashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { isAuthenticated, readRestricted, unlockWithAccountPassword } = useAuth();
   const { patients, selectedPatient, selectPatient, loadingPatients } = useAdminPatient();
+  const { requirePinAuth, pinChallengeOpen } = usePinChallenge();
 
   // Add mobile detection state
   const [isMobile, setIsMobile] = useState(false);
@@ -45,7 +71,15 @@ export default function Dashboard() {
   const [unlockError, setUnlockError] = useState('');
   const [unlockLoading, setUnlockLoading] = useState(false);
   const [forceRelock, setForceRelock] = useState(false);
-  const needsUnlock = !!readRestricted || !!forceRelock;
+  // Account-password prompt requested by an action (24h re-confirm lapsed).
+  const [actionUnlockOpen, setActionUnlockOpen] = useState(false);
+  // Only genuine no-read-access blocks VIEWING (the server returns no data in
+  // that mode anyway). The 24h re-confirm (forceRelock) does NOT blank the
+  // screen — it gates actions instead, so the live dashboard stays a visible
+  // monitoring view and only prompts for the account password when the user
+  // actually does something.
+  const needsUnlock = !!readRestricted;
+  const unlockModalOpen = needsUnlock || actionUnlockOpen;
 
   // Patient selection
   const [showPatientModal, setShowPatientModal] = useState(false);
@@ -109,6 +143,8 @@ export default function Dashboard() {
   const [isNutritionModalOpen, setIsNutritionModalOpen] = useState(false);
   const [isCareTaskModalOpen, setIsCareTaskModalOpen] = useState(false);
   const [isMessagesModalOpen, setIsMessagesModalOpen] = useState(false);
+  const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
+  const [hasCamera, setHasCamera] = useState(false);
   const [isAlarmActive, setIsAlarmActive] = useState(false);
   const [isAlarmBlinking, setIsAlarmBlinking] = useState(false);
   const alarmBlinkInterval = useRef(null);
@@ -116,6 +152,21 @@ export default function Dashboard() {
   // ------------------------------------------------------------
   // Unlock (account password) & Patient selection gating
   // ------------------------------------------------------------
+
+  // On mobile, both the unlock modal and the PIN challenge modal fill the
+  // viewport. Set a CSS variable that the modal CSS reads, so the modal
+  // docks under a small banner showing the 3 large vital readings — vitals
+  // must remain visible during any auth prompt.
+  const authModalActive = unlockModalOpen || pinChallengeOpen;
+  useEffect(() => {
+    const root = document.documentElement;
+    if (isMobile && authModalActive) {
+      root.style.setProperty('--auth-banner-height', '96px');
+    } else {
+      root.style.setProperty('--auth-banner-height', '0px');
+    }
+    return () => root.style.setProperty('--auth-banner-height', '0px');
+  }, [isMobile, authModalActive]);
 
   // Enforce 24h unlock window (client-side)
   useEffect(() => {
@@ -262,21 +313,6 @@ export default function Dashboard() {
     }
   };
 
-  // Helper function to format vital display names
-  const formatVitalDisplayName = (vital) => {
-    const displayNames = {
-      'blood_pressure': 'Blood Pressure',
-      'temperature': 'Temperature',
-      'bathroom': 'Bathroom',
-      'weight': 'Weight',
-      'calories': 'Calories',
-      'water': 'Water Intake',
-      'nutrition': 'Nutrition'
-    };
-    
-    return displayNames[vital] || vital.charAt(0).toUpperCase() + vital.slice(1);
-  };
-
   // Load chart time range and perfusion display settings
   useEffect(() => {
     if (needsUnlock) return;
@@ -408,16 +444,72 @@ export default function Dashboard() {
   };
 
   // Account-scoped equipment due count (matches Equipment List API)
-  const fetchEquipmentDueCount = () => {
-    fetch(`${config.apiUrl}/api/equipment/due/count`, { credentials: 'include' })
+  // All dashboard "due" badges are scoped to the patient on screen via REST so
+  // one patient's due items don't leak into another's view. (The WebSocket
+  // state carries global counts that ignore the viewer's patient, so we don't
+  // use those for the badges.) A ref keeps the current patient id reachable
+  // from the mount-time WebSocket closure for live refreshes.
+  const dueCountPatientRef = useRef(null);
+
+  const fetchDueCount = (path, setter, pid) => {
+    const patientId = pid ?? selectedPatient?.id;
+    if (!patientId) { setter(0); return; }
+    fetch(`${config.apiUrl}${path}?patient_id=${patientId}`, { credentials: 'include' })
       .then((res) => res.ok ? res.json() : null)
-      .then((data) => { if (data != null && typeof data.count === 'number') setEquipmentDueCount(data.count); })
+      .then((data) => { if (data != null && typeof data.count === 'number') setter(data.count); })
       .catch(() => {});
   };
 
+  const fetchEquipmentDueCount = (pid) => fetchDueCount('/api/equipment/due/count', setEquipmentDueCount, pid);
+  const fetchMedicationDueCount = (pid) => fetchDueCount('/api/medications/due/count', setMedicationDueCount, pid);
+  const fetchCareTaskDueCount = (pid) => fetchDueCount('/api/schedule/care-tasks/due/count', setCareTaskDueCount, pid);
+  const fetchNutritionDueCount = (pid) => fetchDueCount('/api/nutrition/due/count', setNutritionDueCount, pid);
+
+  // Refetch every badge for a patient (defaults to the current selection).
+  const refreshDueCounts = (pid) => {
+    fetchEquipmentDueCount(pid);
+    fetchMedicationDueCount(pid);
+    fetchCareTaskDueCount(pid);
+    fetchNutritionDueCount(pid);
+  };
+
   useEffect(() => {
-    fetchEquipmentDueCount();
-  }, []);
+    dueCountPatientRef.current = selectedPatient?.id || null;
+    refreshDueCounts();
+    // The schedule-driven badges (meds, tasks, nutrition) tick over purely from
+    // the passage of time as occurrences "age in" — their scheduled hour arrives
+    // with no user action to fire a `due_counts_changed` event. Poll once a
+    // minute so an open dashboard stays current. Event-driven refetches (a dose
+    // logged / item marked done) still apply on top for instant updates.
+    const interval = setInterval(() => refreshDueCounts(), 60000);
+    return () => clearInterval(interval);
+  }, [selectedPatient?.id]);
+
+  // Detect Frigate integration for the current patient so we can swap the
+  // Messages icon for a live camera icon when one is configured.
+  useEffect(() => {
+    let cancelled = false;
+    setHasCamera(false);
+    if (!selectedPatient?.id || needsUnlock) return;
+    (async () => {
+      try {
+        const res = await fetch(
+          `${config.apiUrl}/api/integrations/patient/${selectedPatient.id}?include_disabled=false`,
+          { credentials: 'include' }
+        );
+        if (!res.ok) return;
+        const list = await res.json();
+        if (cancelled) return;
+        const frigate = (list || []).find(
+          i => i.integration_slug === 'frigate' && i.is_enabled && i.settings?.camera
+        );
+        setHasCamera(!!frigate);
+      } catch (_) {
+        // ignore - camera detection is non-critical
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedPatient?.id, needsUnlock]);
 
   const wsRef = useRef(null);
   useEffect(() => {
@@ -481,20 +573,6 @@ export default function Dashboard() {
           setVentNotifications(msg.state.vent_notifications);
         }
         
-        // Equipment due count: use account-scoped API (fetched on mount); WebSocket count is global so we don't use it for badge
-        // equipment_due_count: badge uses account-scoped API (see fetchEquipmentDueCount); skip WebSocket global count
-        if (msg.state.medications !== undefined) {
-          setMedicationDueCount(msg.state.medications);
-        }
-        
-        if (msg.state.care_tasks !== undefined) {
-          setCareTaskDueCount(msg.state.care_tasks);
-        }
-
-        if (msg.state.nutrition !== undefined) {
-          setNutritionDueCount(msg.state.nutrition);
-        }
-        
         if (msg.state.dashboard_chart_1) {
           setDashboardChart1(msg.state.dashboard_chart_1);
         }
@@ -512,6 +590,23 @@ export default function Dashboard() {
       else if (msg.type === "alert_acknowledged") {
         if (msg.alerts_count !== undefined) {
           setPulseOxAlerts(msg.alerts_count);
+        }
+      }
+      // A due item was marked done / logged / restocked anywhere. Refetch the
+      // matching badge for the patient on screen. The badges are patient-scoped
+      // via REST (see refreshDueCounts), so we use the ref — this closure is
+      // created once at mount — and ignore the event's own patient_id, which may
+      // differ from the viewer's selected patient.
+      else if (msg.type === "due_counts_changed") {
+        const pid = dueCountPatientRef.current;
+        if (pid) {
+          switch (msg.category) {
+            case "medications": fetchMedicationDueCount(pid); break;
+            case "care_tasks": fetchCareTaskDueCount(pid); break;
+            case "nutrition": fetchNutritionDueCount(pid); break;
+            case "equipment": fetchEquipmentDueCount(pid); break;
+            default: break;
+          }
         }
       }
     };
@@ -579,6 +674,7 @@ export default function Dashboard() {
     setIsNutritionModalOpen(false);
     setIsCareTaskModalOpen(false);
     setIsMessagesModalOpen(false);
+    setIsCameraModalOpen(false);
     setIsMobileMenuOpen(false);
   };
 
@@ -621,97 +717,93 @@ export default function Dashboard() {
     setPendingOpenModal(null);
   }, [pendingOpenModal, isAuthenticated, needsUnlock]);
 
-  const ensureUnlockAndUser = (modalKey) => {
-    if (needsUnlock) {
-      setUnlockError('Enter account password to unlock.');
+  // Async modal-open guard.
+  //   - 24h account unlock must be valid (else show unlock modal).
+  //   - User identity must be fresh within the 5-min idle window managed by
+  //     PinChallengeContext. If stale, the global PIN challenge modal opens
+  //     and this awaits its outcome. Cancel → caller bails.
+  // Returns true when the caller may proceed to open its modal.
+  const requireUnlockAndFreshUser = async () => {
+    // Account password is required before acting when read access was never
+    // granted (readRestricted) or the 24h re-confirm window has lapsed.
+    if (readRestricted || forceRelock) {
+      setActionUnlockOpen(true);
+      setUnlockError('Enter account password to continue.');
       return false;
     }
+    const ok = await requirePinAuth();
+    if (!ok) return false;
+    // Defensive fallback: if for some reason auth state still says no user
+    // after the challenge resolved true, send to the legacy picker.
     if (!isAuthenticated) {
-      navigate('/select-user', { state: { from: location, openLiveModal: modalKey }, replace: false });
+      navigate('/select-user', { state: { from: location }, replace: false });
       return false;
     }
     return true;
   };
 
   // Add handler functions
-  const handleVentClick = () => {
-    if (isVentModalOpen) {
-      setIsVentModalOpen(false);
-    } else {
-      if (!ensureUnlockAndUser('equipment')) return;
-      closeAllModals();
-      setIsVentModalOpen(true);
-    }
+  const handleVentClick = async () => {
+    if (isVentModalOpen) { setIsVentModalOpen(false); return; }
+    if (!(await requireUnlockAndFreshUser())) return;
+    closeAllModals();
+    setIsVentModalOpen(true);
   };
 
-  const handlePulseOxClick = () => {
-    if (isPulseOxModalOpen) {
-      setIsPulseOxModalOpen(false);
-    } else {
-      if (!ensureUnlockAndUser('alerts')) return;
-      closeAllModals();
-      setIsPulseOxModalOpen(true);
-    }
+  const handlePulseOxClick = async () => {
+    if (isPulseOxModalOpen) { setIsPulseOxModalOpen(false); return; }
+    if (!(await requireUnlockAndFreshUser())) return;
+    closeAllModals();
+    setIsPulseOxModalOpen(true);
   };
 
-  const handleSettingsClick = () => {
-    if (isSettingsModalOpen) {
-      setIsSettingsModalOpen(false);
-    } else {
-      if (!ensureUnlockAndUser('settings')) return;
-      closeAllModals();
-      setIsSettingsModalOpen(true);
-    }
+  const handleSettingsClick = async () => {
+    if (isSettingsModalOpen) { setIsSettingsModalOpen(false); return; }
+    if (!(await requireUnlockAndFreshUser())) return;
+    closeAllModals();
+    setIsSettingsModalOpen(true);
   };
 
-  const handleHistoryClick = () => {
-    if (isHistoryModalOpen) {
-      setIsHistoryModalOpen(false);
-    } else {
-      if (!ensureUnlockAndUser('history')) return;
-      closeAllModals();
-      setIsHistoryModalOpen(true);
-    }
+  const handleHistoryClick = async () => {
+    if (isHistoryModalOpen) { setIsHistoryModalOpen(false); return; }
+    if (!(await requireUnlockAndFreshUser())) return;
+    closeAllModals();
+    setIsHistoryModalOpen(true);
   };
 
-  const handleMessagesClick = () => {
-    if (isMessagesModalOpen) {
-      setIsMessagesModalOpen(false);
-    } else {
-      if (!ensureUnlockAndUser('messages')) return;
-      closeAllModals();
-      setIsMessagesModalOpen(true);
-    }
+  const handleMessagesClick = async () => {
+    if (isMessagesModalOpen) { setIsMessagesModalOpen(false); return; }
+    if (!(await requireUnlockAndFreshUser())) return;
+    closeAllModals();
+    setIsMessagesModalOpen(true);
   };
 
-  const handleMedicationClick = () => {
-    if (isMedicationModalOpen) {
-      setIsMedicationModalOpen(false);
-    } else {
-      if (!ensureUnlockAndUser('medications')) return;
-      closeAllModals();
-      setIsMedicationModalOpen(true);
-    }
+  const handleCameraClick = async () => {
+    if (isCameraModalOpen) { setIsCameraModalOpen(false); return; }
+    if (!(await requireUnlockAndFreshUser())) return;
+    closeAllModals();
+    setIsCameraModalOpen(true);
   };
 
-  const handleCareTaskClick = () => {
-    if (isCareTaskModalOpen) {
-      setIsCareTaskModalOpen(false);
-    } else {
-      if (!ensureUnlockAndUser('careTasks')) return;
-      closeAllModals();
-      setIsCareTaskModalOpen(true);
-    }
+  const handleMedicationClick = async () => {
+    if (isMedicationModalOpen) { setIsMedicationModalOpen(false); return; }
+    if (!(await requireUnlockAndFreshUser())) return;
+    closeAllModals();
+    setIsMedicationModalOpen(true);
   };
 
-  const handleNutritionClick = () => {
-    if (isNutritionModalOpen) {
-      setIsNutritionModalOpen(false);
-    } else {
-      if (!ensureUnlockAndUser('nutrition')) return;
-      closeAllModals();
-      setIsNutritionModalOpen(true);
-    }
+  const handleCareTaskClick = async () => {
+    if (isCareTaskModalOpen) { setIsCareTaskModalOpen(false); return; }
+    if (!(await requireUnlockAndFreshUser())) return;
+    closeAllModals();
+    setIsCareTaskModalOpen(true);
+  };
+
+  const handleNutritionClick = async () => {
+    if (isNutritionModalOpen) { setIsNutritionModalOpen(false); return; }
+    if (!(await requireUnlockAndFreshUser())) return;
+    closeAllModals();
+    setIsNutritionModalOpen(true);
   };
 
   // Add this function to handle alert acknowledgment
@@ -747,6 +839,7 @@ export default function Dashboard() {
     if (result.success) {
       localStorage.setItem('dashboardUnlockedAt', String(Date.now()));
       setForceRelock(false);
+      setActionUnlockOpen(false);
       setUnlockPassword('');
       setUnlockError('');
     } else {
@@ -757,56 +850,37 @@ export default function Dashboard() {
   return (
     <div className="dashboard-wrapper">
       <ModalBase
-        isOpen={needsUnlock}
-        onClose={() => {}}
+        isOpen={unlockModalOpen}
+        onClose={() => { if (!needsUnlock) setActionUnlockOpen(false); }}
         title="Unlock"
       >
-        <form onSubmit={handleUnlockSubmit}>
-          <p style={{ marginTop: 0 }}>
-            Enter the account unlock password to view dashboard data.
-          </p>
-          {unlockError && (
-            <div style={{ color: '#f85149', marginBottom: '0.75rem' }}>
-              {unlockError}
-            </div>
-          )}
-          <input
-            type="password"
-            value={unlockPassword}
-            onChange={(e) => setUnlockPassword(e.target.value)}
-            placeholder="Account password"
-            autoFocus
-            disabled={unlockLoading}
-            style={{
-              width: '100%',
-              padding: '0.75rem',
-              borderRadius: '8px',
-              border: '1px solid #30363d',
-              background: '#0d1117',
-              color: '#f0f6fc',
-              marginBottom: '0.75rem'
-            }}
-          />
-          <button
-            type="submit"
-            disabled={unlockLoading || !unlockPassword}
-            style={{
-              width: '100%',
-              padding: '0.75rem',
-              borderRadius: '8px',
-              border: '1px solid #2ea043',
-              background: '#238636',
-              color: '#fff',
-              cursor: unlockLoading ? 'default' : 'pointer'
-            }}
-          >
-            {unlockLoading ? 'Unlocking…' : 'Unlock'}
-          </button>
+        <form onSubmit={handleUnlockSubmit} className="tw">
+          <div className="flex flex-col gap-3">
+            <p className="m-0 text-sm text-muted-foreground">
+              {needsUnlock
+                ? 'Enter the account unlock password to view dashboard data.'
+                : 'Enter the account password to continue.'}
+            </p>
+            {unlockError && (
+              <Alert variant="destructive">{unlockError}</Alert>
+            )}
+            <Input
+              type="password"
+              value={unlockPassword}
+              onChange={(e) => setUnlockPassword(e.target.value)}
+              placeholder="Account password"
+              autoFocus
+              disabled={unlockLoading}
+            />
+            <Button type="submit" className="w-full" disabled={unlockLoading || !unlockPassword}>
+              {unlockLoading ? 'Unlocking…' : 'Unlock'}
+            </Button>
+          </div>
         </form>
       </ModalBase>
 
       <ModalBase
-        isOpen={!needsUnlock && showPatientModal}
+        isOpen={!unlockModalOpen && showPatientModal}
         onClose={() => { if (selectedPatient) setShowPatientModal(false); }}
         title="Select Patient"
       >
@@ -947,13 +1021,23 @@ export default function Dashboard() {
               </div>
 
               <div className="icon-wrapper">
-                <button 
-                  className={`menu-button ${isMessagesModalOpen ? 'active' : ''}`}
-                  onClick={handleMessagesClick}
-                  aria-label="Messages"
-                >
-                  <MessagesIcon />
-                </button>
+                {hasCamera ? (
+                  <button
+                    className={`menu-button ${isCameraModalOpen ? 'active' : ''}`}
+                    onClick={handleCameraClick}
+                    aria-label="Live Camera"
+                  >
+                    <CameraIcon />
+                  </button>
+                ) : (
+                  <button
+                    className={`menu-button ${isMessagesModalOpen ? 'active' : ''}`}
+                    onClick={handleMessagesClick}
+                    aria-label="Messages"
+                  >
+                    <MessagesIcon />
+                  </button>
+                )}
               </div>
 
               <div className="icon-wrapper">
@@ -1013,10 +1097,17 @@ export default function Dashboard() {
               <span>History</span>
             </div>
             
-            <div className="mobile-menu-item" onClick={() => { handleMessagesClick(); setIsMobileMenuOpen(false); }}>
-              <MessagesIcon />
-              <span>Messages</span>
-            </div>
+            {hasCamera ? (
+              <div className="mobile-menu-item" onClick={() => { handleCameraClick(); setIsMobileMenuOpen(false); }}>
+                <CameraIcon />
+                <span>Live Camera</span>
+              </div>
+            ) : (
+              <div className="mobile-menu-item" onClick={() => { handleMessagesClick(); setIsMobileMenuOpen(false); }}>
+                <MessagesIcon />
+                <span>Messages</span>
+              </div>
+            )}
             
             <div className="mobile-menu-item" onClick={() => { handleSettingsClick(); setIsMobileMenuOpen(false); }}>
               <SettingsIcon />
@@ -1036,6 +1127,28 @@ export default function Dashboard() {
         </div>
       )}
       
+      {/* Compact vitals banner shown only while an auth modal is up on
+          mobile, so the 3 large readings stay visible above the modal. */}
+      {isMobile && authModalActive && (
+        <div className="mobile-auth-vitals-banner">
+          <div className="bar-vital spo2">
+            <span className="bar-label">SpO₂</span>
+            <span className="bar-value">{sensorValues.spo2 ?? '--'}</span>
+            <span className="bar-unit">%</span>
+          </div>
+          <div className="bar-vital bpm">
+            <span className="bar-label">HR</span>
+            <span className="bar-value">{sensorValues.bpm ?? '--'}</span>
+            <span className="bar-unit">bpm</span>
+          </div>
+          <div className="bar-vital perfusion">
+            <span className="bar-label">PI</span>
+            <span className="bar-value">{sensorValues.perfusion ?? '--'}</span>
+            <span className="bar-unit">{perfusionAsPercent ? '%' : 'PI'}</span>
+          </div>
+        </div>
+      )}
+
       <div className={`dashboard-container ${isMobile ? 'mobile' : ''}`}>
         {isMobile ? (
           // Mobile Layout - Only show the three value cards
@@ -1207,7 +1320,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="charts-column">
+            {!needsUnlock && <div className="charts-column">
               <div className="chart-block">
                 <div className="chart-inner">
                   <ChartBlock
@@ -1252,25 +1365,29 @@ export default function Dashboard() {
                   />
                 </div>
               </div>
-            </div>
+            </div>}
 
-            <div className="right-column">
+            {!needsUnlock && <div className="right-column">
               <div className="dynamic-chart-container">
-                <DynamicVitalsCard 
+                <DynamicVitalsCard
                   vitalType={dashboardChart1.vital_type}
                   data={dashboardChart1.data}
                   title={`Chart 1: ${formatVitalDisplayName(dashboardChart1.vital_type)} History`}
+                  patientId={selectedPatient?.id}
+                  onSaved={() => fetchChartData(dashboardChart1.vital_type, 1)}
                 />
               </div>
 
               <div className="dynamic-chart-container">
-                <DynamicVitalsCard 
+                <DynamicVitalsCard
                   vitalType={dashboardChart2.vital_type}
                   data={dashboardChart2.data}
                   title={`Chart 2: ${formatVitalDisplayName(dashboardChart2.vital_type)} History`}
+                  patientId={selectedPatient?.id}
+                  onSaved={() => fetchChartData(dashboardChart2.vital_type, 2)}
                 />
               </div>
-            </div>
+            </div>}
           </>
         )}
       </div>
@@ -1304,29 +1421,18 @@ export default function Dashboard() {
         <HistoryModal onClose={() => setIsHistoryModalOpen(false)} />
       )}
 
+      {/* Camera Modal (replaces Messages when patient has Frigate) */}
+      {isCameraModalOpen && selectedPatient?.id && (
+        <CameraLiveModal
+          patientId={selectedPatient.id}
+          patientName={[selectedPatient.first_name, selectedPatient.last_name].filter(Boolean).join(' ')}
+          onClose={() => setIsCameraModalOpen(false)}
+        />
+      )}
+
       {/* Messages Modal */}
       {isMessagesModalOpen && (
-        <ModalBase
-          isOpen={isMessagesModalOpen}
-          onClose={() => setIsMessagesModalOpen(false)}
-          title="Messages"
-        >
-          <div style={{
-            backgroundColor: 'rgba(30,32,40,0.95)',
-            borderRadius: '12px',
-            padding: '40px',
-            border: '1px solid #4a5568',
-            height: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            <div style={{ textAlign: 'center', color: '#ccc' }}>
-              <h3 style={{ color: '#fff', marginBottom: '16px' }}>Messages</h3>
-              <p>Messaging functionality coming soon...</p>
-            </div>
-          </div>
-        </ModalBase>
+        <MessagesModal onClose={() => setIsMessagesModalOpen(false)} />
       )}
 
       {/* Medication Modal */}

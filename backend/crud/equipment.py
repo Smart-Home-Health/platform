@@ -1,8 +1,24 @@
+# Smart Home Health Hub
+# Copyright (C) 2026 John Carty
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 Equipment management CRUD operations
 """
 import logging
 from datetime import datetime, timedelta
+from utils.datetime_utils import utc_now, utc_today
 from sqlalchemy.orm import Session
 from schemas.equipment import Equipment
 from schemas.equipment_change_log import EquipmentChangeLog
@@ -40,8 +56,8 @@ def add_equipment_simple(db: Session, name, quantity=1, scheduled_replacement=Tr
             unit_description=unit_description,
             reorder_point=reorder_point,
             par_level=par_level,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=utc_now(),
+            updated_at=utc_now()
         )
         db.add(equipment)
         db.commit()
@@ -136,7 +152,7 @@ def update_equipment(db: Session, equipment_id, name=None, quantity=None, schedu
         if par_level is not None:
             equipment.par_level = par_level
             
-        equipment.updated_at = datetime.utcnow()
+        equipment.updated_at = utc_now()
         db.commit()
         logger.info(f"Equipment updated: {equipment.name}")
         return True
@@ -317,7 +333,7 @@ def log_equipment_change(db: Session, equipment_id, changed_at, patient_id=None,
             changed_at=changed_at,
             notes=notes,
             changed_by=changed_by,
-            created_at=datetime.utcnow()
+            created_at=utc_now()
         )
         db.add(change_log)
 
@@ -325,10 +341,23 @@ def log_equipment_change(db: Session, equipment_id, changed_at, patient_id=None,
         equipment = db.query(Equipment).filter(Equipment.id == equipment_id).first()
         if equipment:
             equipment.last_changed = changed_at
-            equipment.updated_at = datetime.utcnow()
+            equipment.updated_at = utc_now()
+            # A scheduled change physically consumes one unit. Skip untracked
+            # items (tracking_level == 'none'). Floor at 0 — the route-level
+            # guard is responsible for refusing a change when stock is already
+            # exhausted, mirroring the medication out-of-stock flow.
+            if (equipment.tracking_level or 'item') != 'none':
+                equipment.quantity = max(0, (equipment.quantity or 0) - 1)
 
         db.commit()
         logger.info(f"Equipment change logged for ID {equipment_id}")
+        # Tell live dashboards to refetch the (patient-scoped) equipment badge.
+        try:
+            from event_publisher import publish_due_counts_changed
+            change_patient_id = patient_id if patient_id is not None else (equipment.patient_id if equipment else None)
+            publish_due_counts_changed("equipment", change_patient_id)
+        except Exception as e:
+            logger.error(f"Failed to publish equipment due-count change: {e}")
         return True
     except Exception as e:
         logger.error(f"Error logging equipment change: {e}")
@@ -371,6 +400,14 @@ def receive_equipment(db: Session, equipment_id: int, amount: int = 1):
         db.commit()
         
         logger.info(f"Equipment {equipment.name} received {amount} units. New quantity: {equipment.quantity}")
+
+        # Real-time badge: keep the equipment due-count fresh on restock.
+        try:
+            from event_publisher import publish_due_counts_changed
+            publish_due_counts_changed("equipment", equipment.patient_id)
+        except Exception as e:
+            logger.error(f"Failed to publish equipment due-count change: {e}")
+
         return True
     except Exception as e:
         logger.error(f"Error receiving equipment: {e}")
@@ -397,18 +434,27 @@ def open_equipment(db: Session, equipment_id: int, amount: int = 1):
         
         # Update last_changed date if the equipment supports scheduled replacement
         if equipment.scheduled_replacement:
-            equipment.last_changed = datetime.now()
+            equipment.last_changed = utc_now()
         
         # Log the action in equipment change history
         if equipment.scheduled_replacement:
             change_log = EquipmentChangeLog(
                 equipment_id=equipment_id,
-                changed_at=datetime.now()
+                changed_at=utc_now()
             )
             db.add(change_log)
         
         db.commit()
         logger.info(f"Equipment {equipment.name} used {amount} units. New quantity: {equipment.quantity}")
+
+        # Real-time badge: open() bumps last_changed for scheduled-replacement
+        # items, which moves the equipment due-count — notify dashboards.
+        try:
+            from event_publisher import publish_due_counts_changed
+            publish_due_counts_changed("equipment", equipment.patient_id)
+        except Exception as e:
+            logger.error(f"Failed to publish equipment due-count change: {e}")
+
         return True
     except Exception as e:
         logger.error(f"Error opening equipment: {e}")
@@ -416,16 +462,24 @@ def open_equipment(db: Session, equipment_id: int, amount: int = 1):
         return False
 
 
-def get_equipment_due_count(db: Session, account_id: int = None):
-    """Return the count of equipment items where due_date is today or past. Optionally scope by account_id."""
+def get_equipment_due_count(db: Session, account_id: int = None, patient_id: int = None):
+    """Return the count of equipment items where due_date is today or past.
+
+    Optionally scope by account_id and/or patient_id. When patient_id is given,
+    the count covers that patient's own items plus shared items (patient_id NULL)
+    and excludes other patients' equipment — so a per-patient dashboard badge
+    doesn't pick up another patient's due items.
+    """
     try:
+        from sqlalchemy import or_
         query = db.query(Equipment).filter(Equipment.scheduled_replacement == True)
         if account_id is not None:
-            from sqlalchemy import or_
             query = query.filter(or_(Equipment.account_id == account_id, Equipment.account_id.is_(None)))
+        if patient_id is not None:
+            query = query.filter(or_(Equipment.patient_id == patient_id, Equipment.patient_id.is_(None)))
         equipment = query.all()
         due_count = 0
-        today = datetime.now().date()
+        today = utc_today()
         
         for item in equipment:
             if item.last_changed and item.useful_days:
@@ -449,7 +503,7 @@ def get_equipment_due_soon(db: Session, days_ahead=7):
     try:
         equipment = db.query(Equipment).filter(Equipment.scheduled_replacement == True).all()
         due_soon = []
-        target_date = datetime.now().date() + timedelta(days=days_ahead)
+        target_date = utc_today() + timedelta(days=days_ahead)
         
         for item in equipment:
             if item.last_changed and item.useful_days:
@@ -464,7 +518,7 @@ def get_equipment_due_soon(db: Session, days_ahead=7):
                         'name': item.name,
                         'quantity': item.quantity,
                         'due_date': due_date.isoformat(),
-                        'days_until_due': (due_date - datetime.now().date()).days
+                        'days_until_due': (due_date - utc_today()).days
                     })
         
         return sorted(due_soon, key=lambda x: x['days_until_due'])

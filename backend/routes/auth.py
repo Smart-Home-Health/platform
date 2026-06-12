@@ -1,3 +1,18 @@
+# Smart Home Health Hub
+# Copyright (C) 2026 John Carty
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 Authentication routes for login, session management, and first-run setup
 """
@@ -18,7 +33,8 @@ from schemas.auth import (
     FirstRunSetup, FirstRunStatus,
     AccountLoginRequest, AccountLoginResponse, AccountAccessRequest,
     AccountUnlockRequest, AccountUnlockResponse,
-    UserSelectRequest, UserSelectResponse, AccountUserItem
+    UserSelectRequest, UserSelectResponse, AccountUserItem,
+    UserResetPasswordRequest
 )
 from schemas.user import UserResponse, UserCreate, UserUpdate, UserListItem
 from crud.users import (
@@ -28,7 +44,8 @@ from crud.users import (
     update_activity_timestamp, create_audit_log, get_role_by_name,
     assign_role_to_user, get_all_users, update_user, delete_user,
     get_all_roles, assign_role_to_user as add_role_to_user,
-    remove_role_from_user
+    remove_role_from_user, update_user_password, update_user_pin,
+    set_force_password_reset
 )
 from schemas.patient import Patient
 from dependencies import get_current_user, require_permission, get_current_account_id, get_current_account, require_full_auth, require_read_access
@@ -196,7 +213,8 @@ def first_run_setup(
         pin_hash=pin_hash,
         is_system_admin=True,
         is_active=True,
-        account_id=account.id
+        account_id=account.id,
+        force_password_reset=False  # Bootstrap admin sets their own password during setup
     )
     db.add(user)
     db.flush()  # Get user ID
@@ -270,7 +288,7 @@ def first_run_setup(
             "username": user.username,
             "full_name": user.full_name,
             "account_id": account.id,
-            "is_system_admin": user.is_system_admin,
+            "is_system_admin": user.is_superuser,
             "roles": [{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles]
         },
         requires_full_password=False,
@@ -566,7 +584,38 @@ def select_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User account temporarily locked. Try again later."
         )
-    
+
+    # Forced first-login reset: PIN is not accepted; the user must provide their
+    # current/temporary password and will be routed to the reset screen. We verify
+    # the password (so only the rightful user proceeds) but do NOT issue a full
+    # session token until the password has actually been changed.
+    if user.force_password_reset:
+        if selection.password and not verify_password(user, selection.password):
+            increment_failed_login(db, user.id)
+            create_audit_log(
+                db,
+                user_id=user.id,
+                action="user.select.failed",
+                details=json.dumps({"reason": "invalid_password"}),
+                ip_address=get_client_ip(request),
+                user_agent=request.headers.get("User-Agent")
+            )
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid credentials"
+            )
+        return UserSelectResponse(
+            access_token="",
+            auth_level="account",  # Stay at account level until reset completes
+            account={"id": account_id, "name": "", "slug": ""},
+            user={
+                "id": user.id,
+                "username": user.username,
+                "full_name": user.full_name
+            },
+            requires_password_reset=True
+        )
+
     is_full_password = False
     
     # Determine auth method
@@ -672,7 +721,127 @@ def select_user(
             "id": user.id,
             "username": user.username,
             "full_name": user.full_name,
-            "is_system_admin": user.is_system_admin,
+            "is_system_admin": user.is_superuser,
+            "has_pin": bool(user.pin_hash),
+            "roles": [{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles],
+            "permissions": [p.name for r in user.roles for p in r.permissions]
+        },
+        requires_full_password=False,
+        read_restricted=read_restricted
+    )
+
+
+@router.post("/user/reset-password", response_model=UserSelectResponse)
+def reset_user_password(
+    payload: UserResetPasswordRequest,
+    response: Response,
+    request: Request,
+    db: Session = Depends(get_db),
+    account_id: int = Depends(get_current_account_id)
+):
+    """
+    Complete a forced first-login password reset (account-auth level).
+
+    The user verifies their current/temporary password, sets a new password and an
+    optional PIN, the force_password_reset flag is cleared, and a full session token
+    is issued — same as a successful /user/select.
+    """
+    user = get_user_by_id(db, payload.user_id)
+
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if user.account_id != account_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User does not belong to this account"
+        )
+
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is inactive")
+
+    if is_user_locked(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account temporarily locked. Try again later."
+        )
+
+    # Verify the current/temporary password
+    if not verify_password(user, payload.current_password):
+        increment_failed_login(db, user.id)
+        create_audit_log(
+            db,
+            user_id=user.id,
+            action="user.password_reset.failed",
+            details=json.dumps({"reason": "invalid_current_password"}),
+            ip_address=get_client_ip(request),
+            user_agent=request.headers.get("User-Agent")
+        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+
+    # New password must actually differ from the current one
+    if verify_password(user, payload.new_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be different from the current password"
+        )
+
+    # Optional PIN must be digits-only (length already bounded by the schema)
+    if payload.pin is not None and not payload.pin.isdigit():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="PIN must contain only digits"
+        )
+
+    # Apply the new password, optional PIN, and clear the flag
+    update_user_password(db, user.id, payload.new_password)
+    if payload.pin:
+        update_user_pin(db, user.id, payload.pin)
+    set_force_password_reset(db, user.id, False)
+    db.refresh(user)
+
+    update_login_timestamp(db, user.id, is_full_password=True)
+
+    account = db.query(Account).filter(Account.id == account_id).first()
+    read_restricted = getattr(request.state, "read_restricted", False)
+
+    token = create_access_token(
+        user=user, account=account, is_full_password=True,
+        auth_level="full", read_restricted=read_restricted
+    )
+
+    response.set_cookie(
+        key="session_token",
+        value=token,
+        httponly=True,
+        max_age=SESSION_TIMEOUT_MINUTES * 60,
+        samesite="lax",
+        secure=False
+    )
+
+    create_audit_log(
+        db,
+        user_id=user.id,
+        action="user.password_reset.completed",
+        details=json.dumps({"pin_set": bool(payload.pin)}),
+        ip_address=get_client_ip(request),
+        user_agent=request.headers.get("User-Agent")
+    )
+
+    logger.info(f"First-login password reset completed for user: {user.username}")
+
+    return UserSelectResponse(
+        access_token=token,
+        account={
+            "id": account.id,
+            "name": account.name,
+            "slug": account.slug
+        },
+        user={
+            "id": user.id,
+            "username": user.username,
+            "full_name": user.full_name,
+            "is_system_admin": user.is_superuser,
             "has_pin": bool(user.pin_hash),
             "roles": [{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles],
             "permissions": [p.name for r in user.roles for p in r.permissions]
@@ -779,7 +948,7 @@ def login(
             "id": user.id,
             "username": user.username,
             "full_name": user.full_name,
-            "is_system_admin": user.is_system_admin,
+            "is_system_admin": user.is_superuser,
             "has_pin": bool(user.pin_hash),
             "account_id": user.account_id,
             "roles": [{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles],
@@ -889,7 +1058,7 @@ def verify_user_pin(
             "id": user.id,
             "username": user.username,
             "full_name": user.full_name,
-            "is_system_admin": user.is_system_admin,
+            "is_system_admin": user.is_superuser,
             "has_pin": bool(user.pin_hash),
             "account_id": user.account_id,
             "roles": [{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles],
@@ -918,6 +1087,19 @@ def logout(response: Response, current_user: User = Depends(get_current_user), d
     logger.info(f"User logged out: {current_user.username}")
     
     return {"message": "Logged out successfully"}
+
+
+@router.post("/lock")
+def lock(response: Response):
+    """
+    Idle lock: drop full auth to account level by clearing ONLY the
+    session_token cookie. The 24h account_token is preserved so the user
+    lands on user-select (not the account-password page) and no account
+    password re-prompt is needed. Has no auth dependency so it still works
+    if the session_token is already gone.
+    """
+    response.delete_cookie(key="session_token")
+    return {"message": "Locked to account level"}
 
 
 @router.get("/session", response_model=SessionInfo)
@@ -987,7 +1169,7 @@ def get_session(
     
     # Get user permissions
     permissions = []
-    if current_user.is_system_admin:
+    if current_user.is_superuser:
         permissions = ["*"]  # Indicate all permissions
     else:
         permissions = list(set([
@@ -1047,6 +1229,7 @@ def list_users(
             is_active=user.is_active,
             is_system_admin=user.is_system_admin,
             has_pin=bool(user.pin_hash),
+            force_password_reset=user.force_password_reset,
             roles=[{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles],
             created_at=user.created_at,
             last_login=user.last_login
@@ -1078,6 +1261,7 @@ def get_user(
         is_active=user.is_active,
         is_system_admin=user.is_system_admin,
         has_pin=bool(user.pin_hash),
+        force_password_reset=user.force_password_reset,
         roles=[{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles],
         created_at=user.created_at,
         updated_at=user.updated_at,
@@ -1134,6 +1318,7 @@ def create_new_user(
         is_active=user.is_active,
         is_system_admin=user.is_system_admin,
         has_pin=bool(user.pin_hash),
+        force_password_reset=user.force_password_reset,
         roles=[{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles],
         created_at=user.created_at,
         updated_at=user.updated_at,
@@ -1184,6 +1369,7 @@ def update_existing_user(
         is_active=user.is_active,
         is_system_admin=user.is_system_admin,
         has_pin=bool(user.pin_hash),
+        force_password_reset=user.force_password_reset,
         roles=[{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles],
         created_at=user.created_at,
         updated_at=user.updated_at,

@@ -1,9 +1,12 @@
 .login-page {
   min-height: 100vh;
   min-height: 100dvh;
+  /* #root is height:100% + overflow:hidden (fixed dashboard layout), so the
+     auth page must own its own vertical scroll, otherwise a tall error state
+     gets clipped with no way to reach the form/submit button. */
+  height: 100%;
+  overflow-y: auto;
   display: flex;
-  align-items: center;
-  justify-content: center;
   background: linear-gradient(135deg, #1a1f2e 0%, #2d3748 100%);
   padding: 2rem;
 }
@@ -14,6 +17,10 @@
   align-items: center;
   width: 100%;
   max-width: 400px;
+  /* Auto margins center the card on both axes when it fits, and collapse to 0
+     when it's taller than the viewport so the top stays scrollable (unlike
+     align-items/justify-content: center, which clips the overflow). */
+  margin: auto;
 }
 
 .login-logo {
@@ -278,12 +285,14 @@
 @media (max-width: 480px) {
   .login-page {
     padding: 1rem 0.75rem;
-    align-items: flex-start;
     padding-top: env(safe-area-inset-top, 1rem);
   }
 
   .login-container {
     max-width: 100%;
+    /* Top-align on small screens (keeps the safe-area padding meaningful)
+       while still allowing the page to scroll when content overflows. */
+    margin: 0 auto;
   }
 
   .login-logo {

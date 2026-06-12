@@ -1,3 +1,20 @@
+/*
+ * Smart Home Health Hub
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
@@ -7,11 +24,21 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import {
   TasksIcon,
-  ClockIcon,
   SearchIcon,
   RefreshIcon,
   XIcon
 } from '../../components/Icons';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Alert } from '@/components/ui/alert';
+import { Field } from '@/components/ui/field';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
 import './AdminV2.css';
 
 const AdminV2CareTasksHistory = () => {
@@ -213,119 +240,88 @@ const AdminV2CareTasksHistory = () => {
       <div className="admin-v2-page">
         {selectedPatient ? (
           <>
-            {/* Section Title */}
-            <h1 className="schedule-section-title">Care Task History</h1>
-
             {/* Filter Bar */}
             <div className="history-filter-bar">
-              <div className="history-filter-row">
+              <div className="tw flex flex-col gap-4">
                 {/* Search Input */}
-                <div className="history-filter-group history-filter-search">
-                  <div className="history-search-input-wrapper">
-                    <SearchIcon size={16} className="history-search-icon" />
-                    <input
-                      type="text"
-                      placeholder="Search task name..."
-                      value={searchText}
-                      onChange={(e) => setSearchText(e.target.value)}
-                      className="history-search-input"
-                    />
-                    {searchText && (
-                      <button 
-                        className="history-search-clear"
-                        onClick={() => setSearchText('')}
-                      >
-                        <XIcon size={14} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Category Filter */}
-                <div className="history-filter-group">
-                  <label>Category</label>
-                  <select
-                    value={categoryFilter}
-                    onChange={(e) => setCategoryFilter(e.target.value)}
-                    className="history-filter-input"
-                  >
-                    <option value="">All Categories</option>
-                    {categories.filter(c => c.active).map(cat => (
-                      <option key={cat.id} value={cat.id}>{cat.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Date Range */}
-                <div className="history-filter-group">
-                  <label>From</label>
-                  <input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="history-filter-input"
+                <div className="relative">
+                  <SearchIcon size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    placeholder="Search task name..."
+                    value={searchText}
+                    onChange={(e) => setSearchText(e.target.value)}
+                    className="pl-9 pr-9"
                   />
+                  {searchText && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchText('')}
+                      className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+                    >
+                      <XIcon size={14} />
+                    </button>
+                  )}
                 </div>
 
-                <div className="history-filter-group">
-                  <label>To</label>
-                  <input
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="history-filter-input"
-                  />
+                {/* Filters grid */}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <Field label="Category">
+                    <Select value={categoryFilter || '__none__'} onValueChange={(v) => setCategoryFilter(v === '__none__' ? '' : v)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">All Categories</SelectItem>
+                        {categories.filter(c => c.active).map(cat => (
+                          <SelectItem key={cat.id} value={String(cat.id)}>{cat.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+
+                  <Field label="From" htmlFor="hist-from">
+                    <Input id="hist-from" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                  </Field>
+
+                  <Field label="To" htmlFor="hist-to">
+                    <Input id="hist-to" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+                  </Field>
+
+                  <Field label="Status">
+                    <Select value={statusFilter || '__none__'} onValueChange={(v) => setStatusFilter(v === '__none__' ? '' : v)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">All Statuses</SelectItem>
+                        <SelectItem value="completed">Completed</SelectItem>
+                        <SelectItem value="skipped">Skipped</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+
+                  <Field label="Show">
+                    <Select value={String(limit)} onValueChange={(v) => setLimit(parseInt(v))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="25">25</SelectItem>
+                        <SelectItem value="50">50</SelectItem>
+                        <SelectItem value="100">100</SelectItem>
+                        <SelectItem value="250">250</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
                 </div>
 
-                {/* Status Filter */}
-                <div className="history-filter-group">
-                  <label>Status</label>
-                  <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    className="history-filter-input"
-                  >
-                    <option value="">All Statuses</option>
-                    <option value="completed">Completed</option>
-                    <option value="skipped">Skipped</option>
-                  </select>
+                {/* Actions */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {(searchText || startDate || endDate || statusFilter || categoryFilter || limit !== 50) && (
+                    <Button variant="secondary" onClick={handleClearFilters}>
+                      Clear Filters
+                    </Button>
+                  )}
+                  <Button className="ml-auto" onClick={fetchHistory} disabled={loading}>
+                    <RefreshIcon size={16} />
+                    Refresh
+                  </Button>
                 </div>
-
-                {/* Limit */}
-                <div className="history-filter-group">
-                  <label>Show</label>
-                  <select
-                    value={limit}
-                    onChange={(e) => setLimit(parseInt(e.target.value))}
-                    className="history-filter-input"
-                  >
-                    <option value={25}>25</option>
-                    <option value={50}>50</option>
-                    <option value={100}>100</option>
-                    <option value={250}>250</option>
-                  </select>
-                </div>
-
-                {/* Clear Filters */}
-                {(searchText || startDate || endDate || statusFilter || categoryFilter || limit !== 50) && (
-                  <button 
-                    className="history-filter-clear"
-                    onClick={handleClearFilters}
-                  >
-                    Clear Filters
-                  </button>
-                )}
-
-                {/* Refresh Button */}
-                <button 
-                  className="admin-v2-btn admin-v2-btn-secondary"
-                  onClick={fetchHistory}
-                  disabled={loading}
-                  style={{ marginLeft: 'auto' }}
-                >
-                  <RefreshIcon size={16} />
-                  Refresh
-                </button>
               </div>
             </div>
 
@@ -354,23 +350,22 @@ const AdminV2CareTasksHistory = () => {
                   <div className="admin-v2-loading">Loading history...</div>
                 </div>
               ) : error ? (
-                <div className="admin-v2-error-container">
-                  <div className="admin-v2-error">{error}</div>
-                  <button className="admin-v2-btn admin-v2-btn-secondary" onClick={fetchHistory}>
+                <div className="admin-v2-error-container tw">
+                  <Alert variant="destructive">{error}</Alert>
+                  <Button variant="secondary" onClick={fetchHistory}>
                     Try Again
-                  </button>
+                  </Button>
                 </div>
               ) : history.length === 0 ? (
                 <div className="admin-v2-empty-container">
                   <TasksIcon size={48} className="admin-v2-empty-icon" />
                   <p>No care task history found</p>
                   {(searchText || startDate || endDate || statusFilter || categoryFilter) && (
-                    <button 
-                      className="admin-v2-btn admin-v2-btn-secondary"
-                      onClick={handleClearFilters}
-                    >
-                      Clear Filters
-                    </button>
+                    <div className="tw">
+                      <Button variant="secondary" onClick={handleClearFilters}>
+                        Clear Filters
+                      </Button>
+                    </div>
                   )}
                 </div>
               ) : (

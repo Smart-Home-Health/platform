@@ -1,8 +1,24 @@
+# Smart Home Health Hub
+# Copyright (C) 2026 John Carty
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 Monitoring and alerts CRUD operations
 """
 import logging
 from datetime import datetime, timedelta
+from utils.datetime_utils import utc_now
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, asc, and_, or_
 from schemas.vital import Vital
@@ -43,6 +59,7 @@ def get_monitoring_alerts(db: Session, limit=50, include_acknowledged=False, det
         for row in results:
             alert = {
                 'id': row.id,
+                'patient_id': row.patient_id,
                 'start_time': row.start_time,
                 'end_time': row.end_time,
                 'start_data_id': row.start_data_id,
@@ -303,7 +320,7 @@ def get_pulse_ox_data_for_alert(db: Session, alert_id):
             return []
 
         start_time = alert.start_time
-        end_time = alert.end_time or datetime.now().isoformat()
+        end_time = alert.end_time or utc_now().isoformat()
 
         # Get pulse ox data between the start and end times of the alert
         data = db.query(PulseOxData).filter(
@@ -505,7 +522,7 @@ def start_monitoring_alert(db: Session, spo2=None, bpm=None, data_id=None, spo2_
         int: ID of the inserted alert or None on error
     """
     try:
-        now = datetime.now().isoformat()
+        now = utc_now().isoformat()
         
         # Get patient_id if not provided. This path runs from sensor-event handlers
         # (no user context), so resolve via the background-patient setting rather
@@ -560,7 +577,7 @@ def save_pulse_ox_data(db: Session, spo2, bpm, pa, status=None, motion=None, spo
         int: ID of the inserted record or None on error
     """
     try:
-        now = datetime.now().isoformat()
+        now = utc_now().isoformat()
         ts = timestamp or now  # Use provided timestamp or current time
 
         pulse_ox = PulseOxData(
@@ -846,7 +863,7 @@ def get_alert_summary(db: Session, hours=24):
         Dict with alert counts by severity and type
     """
     try:
-        cutoff_time = datetime.now() - timedelta(hours=hours)
+        cutoff_time = utc_now() - timedelta(hours=hours)
         
         # Get alerts for the time period
         alerts_data = get_alerts_list(
@@ -886,7 +903,7 @@ def get_alert_summary(db: Session, hours=24):
             'time_period_hours': hours,
             'by_severity': severity_counts,
             'by_type': type_counts,
-            'generated_at': datetime.now().isoformat()
+            'generated_at': utc_now().isoformat()
         }
         
     except Exception as e:
@@ -896,7 +913,7 @@ def get_alert_summary(db: Session, hours=24):
             'time_period_hours': hours,
             'by_severity': {'critical': 0, 'high': 0, 'low': 0},
             'by_type': {'spo2': 0, 'bpm': 0, 'blood_pressure': 0, 'temperature': 0},
-            'generated_at': datetime.now().isoformat()
+            'generated_at': utc_now().isoformat()
         }
 
 
@@ -905,7 +922,7 @@ def get_active_alerts_count(db: Session):
     Get count of active/recent alerts (last 2 hours)
     """
     try:
-        cutoff_time = datetime.now() - timedelta(hours=2)
+        cutoff_time = utc_now() - timedelta(hours=2)
         
         alerts_data = get_alerts_list(
             db,
@@ -935,7 +952,7 @@ def get_monitoring_dashboard_data(db: Session):
         Dict with current vital status, recent trends, and alert summaries
     """
     try:
-        now = datetime.now()
+        now = utc_now()
         
         # Get latest readings for each vital type
         latest_pulse_ox = db.query(PulseOxData).order_by(desc(PulseOxData.created_at)).first()
@@ -1084,7 +1101,7 @@ def get_monitoring_dashboard_data(db: Session):
             'alert_summary': {'total_alerts': 0},
             'active_alerts_count': 0,
             'data_freshness': {},
-            'generated_at': datetime.now().isoformat()
+            'generated_at': utc_now().isoformat()
         }
 
 
@@ -1101,7 +1118,7 @@ def get_vital_history_for_monitoring(db: Session, vital_type, hours=24, limit=10
         List of data points with timestamps and values
     """
     try:
-        cutoff_time = datetime.now() - timedelta(hours=hours)
+        cutoff_time = utc_now() - timedelta(hours=hours)
         
         if vital_type == 'spo2':
             readings = db.query(PulseOxData).filter(
@@ -1185,7 +1202,7 @@ def check_system_health(db: Session):
         Dict with system health indicators
     """
     try:
-        now = datetime.now()
+        now = utc_now()
         
         # Check data freshness
         latest_pulse_ox = db.query(PulseOxData).order_by(desc(PulseOxData.created_at)).first()
@@ -1242,5 +1259,5 @@ def check_system_health(db: Session):
             'active_alerts': 0,
             'data_freshness': {},
             'data_warnings': [],
-            'checked_at': datetime.now().isoformat()
+            'checked_at': utc_now().isoformat()
         }

@@ -1,3 +1,20 @@
+/*
+ * Smart Home Health Hub
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
@@ -5,6 +22,8 @@ import { PatientSelectorModal } from './components';
 import { TasksIcon, CheckIcon, ClockIcon, XIcon } from '../../components/Icons';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import config from '../../config';
+import { Button } from '@/components/ui/button';
+import { Alert } from '@/components/ui/alert';
 import './AdminV2.css';
 
 const WINDOWS = [
@@ -98,12 +117,11 @@ const AdminV2CareTasksOverview = () => {
             <TasksIcon size={48} />
             <h2>Select a Patient</h2>
             <p>Choose a patient to view their care task overview</p>
-            <button
-              className="admin-v2-btn admin-v2-btn-primary"
-              onClick={() => setShowPatientModal(true)}
-            >
-              Select Patient
-            </button>
+            <div className="tw">
+              <Button onClick={() => setShowPatientModal(true)}>
+                Select Patient
+              </Button>
+            </div>
           </div>
           {showPatientModal && (
             <PatientSelectorModal
@@ -122,35 +140,29 @@ const AdminV2CareTasksOverview = () => {
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
-        <h1 className="schedule-section-title">Care Tasks Overview</h1>
-
         {/* Window selector */}
-        <div className="admin-v2-page-header" style={{ marginTop: '0.5rem' }}>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div className="admin-v2-page-header tw" style={{ marginTop: '0.5rem' }}>
+          <div className="flex flex-wrap gap-2">
             {WINDOWS.map(w => (
-              <button
+              <Button
                 key={w.days}
-                className={`admin-v2-btn admin-v2-btn-sm ${windowDays === w.days ? 'admin-v2-btn-primary' : ''}`}
+                variant={windowDays === w.days ? 'default' : 'secondary'}
                 onClick={() => setWindowDays(w.days)}
               >
                 Last {w.label}
-              </button>
+              </Button>
             ))}
           </div>
-          <button
-            className="admin-v2-btn admin-v2-btn-sm"
-            onClick={fetchAll}
-            disabled={loading}
-          >
+          <Button onClick={fetchAll} disabled={loading}>
             {loading ? 'Refreshing...' : 'Refresh'}
-          </button>
+          </Button>
         </div>
 
-        {error && <div className="admin-v2-error">{error}</div>}
+        {error && <div className="tw"><Alert variant="destructive">{error}</Alert></div>}
 
         {/* Adherence summary */}
         {adherence && (
-          <div className="admin-v2-stats-row admin-v2-stats-row-compact" style={{ marginTop: '1rem' }}>
+          <div className="admin-v2-summary-stats admin-v2-care-tasks-stat-summary" style={{ marginTop: '1rem' }}>
             <div className="admin-v2-stat-card">
               <div className="admin-v2-stat-icon" style={{ background: 'rgba(35, 134, 54, 0.15)' }}>
                 <CheckIcon size={20} />

@@ -1,3 +1,20 @@
+/*
+ * Smart Home Health Hub
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Chart from 'chart.js/auto';
 import 'chartjs-adapter-date-fns';
@@ -10,6 +27,9 @@ import {
   ChevronRightIcon,
   CalendarIcon,
 } from '../../components/Icons';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Alert } from '@/components/ui/alert';
 
 Chart.register(annotationPlugin, zoomPlugin);
 
@@ -410,10 +430,10 @@ const AdminV2MonitoringTimeline = () => {
   return (
     <div style={{ padding: '0' }}>
       {/* Date Navigation - matches /care/schedule */}
-      <div className="admin-v2-schedule-nav">
-        <button className="admin-v2-btn admin-v2-btn-icon" onClick={goToPreviousDay} title="Previous Day">
+      <div className="admin-v2-schedule-nav tw">
+        <Button variant="secondary" size="icon" onClick={goToPreviousDay} title="Previous Day">
           <ChevronLeftIcon size={20} />
-        </button>
+        </Button>
 
         <div className="admin-v2-schedule-date">
           <CalendarIcon size={18} />
@@ -423,21 +443,21 @@ const AdminV2MonitoringTimeline = () => {
           )}
         </div>
 
-        <button className="admin-v2-btn admin-v2-btn-icon" onClick={goToNextDay} title="Next Day">
+        <Button variant="secondary" size="icon" onClick={goToNextDay} title="Next Day">
           <ChevronRightIcon size={20} />
-        </button>
+        </Button>
 
         {!isToday(selectedDate) && (
-          <button className="admin-v2-btn admin-v2-btn-sm" onClick={goToToday} style={{ marginLeft: '1rem' }}>
+          <Button variant="secondary" size="sm" className="ml-4" onClick={goToToday}>
             Go to Today
-          </button>
+          </Button>
         )}
 
-        <input
+        <Input
           type="date"
           value={formatDateForApi(selectedDate)}
           onChange={(e) => setSelectedDate(new Date(e.target.value + 'T12:00:00'))}
-          className="admin-v2-date-picker"
+          className="w-auto"
         />
       </div>
 
@@ -509,33 +529,26 @@ const AdminV2MonitoringTimeline = () => {
         </div>
 
         {/* Zoom presets */}
-        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+        <div className="tw" style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
           <span style={{ fontSize: 11, color: '#8b949e', marginRight: 4 }}>Zoom:</span>
           {ZOOM_PRESETS.map(p => (
-            <button
+            <Button
               key={p.label}
+              size="sm"
+              variant={activePreset === p.label ? 'default' : 'secondary'}
               onClick={() => applyZoomPreset(p.minutes)}
-              style={{
-                padding: '4px 10px', borderRadius: 4, fontSize: 11, fontWeight: 600,
-                border: '1px solid #30363d', cursor: 'pointer', transition: 'all 0.15s',
-                background: activePreset === p.label ? '#58a6ff' : '#21262d',
-                color: activePreset === p.label ? '#fff' : '#8b949e',
-              }}
             >
               {p.label}
-            </button>
+            </Button>
           ))}
-          <button
+          <Button
+            size="sm"
+            variant="secondary"
             onClick={handleResetZoom}
-            style={{
-              padding: '4px 10px', borderRadius: 4, fontSize: 11, fontWeight: 600,
-              border: '1px solid #30363d', cursor: 'pointer',
-              background: '#21262d', color: '#8b949e', marginLeft: 4,
-            }}
             title="Reset zoom to full day"
           >
             Reset
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -548,7 +561,7 @@ const AdminV2MonitoringTimeline = () => {
       {loading ? (
         <div style={{ textAlign: 'center', padding: 60, color: '#8b949e' }}>Loading timeline data...</div>
       ) : error ? (
-        <div style={{ textAlign: 'center', padding: 40, color: '#f85149' }}>Error: {error}</div>
+        <div className="tw" style={{ padding: '0 0 1rem' }}><Alert variant="destructive">{error}</Alert></div>
       ) : !timelineData ? (
         <div style={{ textAlign: 'center', padding: 60, color: '#8b949e' }}>No data available.</div>
       ) : (

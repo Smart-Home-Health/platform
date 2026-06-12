@@ -1,3 +1,20 @@
+/*
+ * Smart Home Health Hub
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
@@ -8,13 +25,224 @@ import {
   PlusIcon,
   EditIcon,
   TrashIcon,
-  XIcon,
   EquipmentIcon,
-  ClockIcon,
-  CheckIcon,
-  RefreshIcon
+  ClockIcon
 } from '../../components/Icons';
+import EquipmentRestockGate from '../../components/EquipmentRestockGate';
+import { formatDateOnly } from '../../utils/timezone';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Alert } from '@/components/ui/alert';
+import { Field, FormRow } from '@/components/ui/field';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
 import './AdminV2.css';
+
+// FastAPI returns `detail` as a string for most errors, but as a list of
+// { loc, msg, type } objects for 422 validation errors. Normalize both to a
+// readable string so we never render "[object Object]".
+const formatErrorDetail = (detail, fallback) => {
+  if (!detail) return fallback;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    return detail.map(e => e?.msg || JSON.stringify(e)).join('; ') || fallback;
+  }
+  return fallback;
+};
+
+// Shared create/edit form body. Defined at module scope so it isn't recreated
+// each render — a nested component would drop input focus on every keystroke.
+function EquipmentFormFields({ formData, setFormData, showAdvanced, setShowAdvanced }) {
+  return (
+    <>
+      <Field label="Equipment Name" required htmlFor="equip-name">
+        <Input
+          id="equip-name"
+          value={formData.name}
+          onChange={e => setFormData({ ...formData, name: e.target.value })}
+          required
+          placeholder="e.g., Trach Tube"
+        />
+      </Field>
+
+      <FormRow>
+        <Field label="Quantity" required htmlFor="equip-qty">
+          <Input
+            id="equip-qty"
+            type="number"
+            value={formData.quantity}
+            onChange={e => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })}
+            required
+            min="0"
+          />
+        </Field>
+        <Field label="Type">
+          <label className="flex w-fit cursor-pointer items-center gap-2 pt-1.5">
+            <Checkbox
+              checked={formData.scheduled_replacement}
+              onCheckedChange={(v) => setFormData({ ...formData, scheduled_replacement: v === true })}
+            />
+            <span className="text-sm text-foreground">Has Scheduled Replacement</span>
+          </label>
+        </Field>
+      </FormRow>
+
+      {formData.scheduled_replacement && (
+        <FormRow>
+          <Field label="Last Changed" required htmlFor="equip-last-changed">
+            <Input
+              id="equip-last-changed"
+              type="date"
+              value={formData.last_changed}
+              onChange={e => setFormData({ ...formData, last_changed: e.target.value })}
+              required
+            />
+          </Field>
+          <Field label="Useful Days" required htmlFor="equip-useful-days">
+            <Input
+              id="equip-useful-days"
+              type="number"
+              value={formData.useful_days}
+              onChange={e => setFormData({ ...formData, useful_days: parseInt(e.target.value) || 30 })}
+              required
+              min="1"
+              placeholder="30"
+            />
+          </Field>
+        </FormRow>
+      )}
+
+      <div className="border-t border-border pt-4">
+        <label className="flex w-fit cursor-pointer items-center gap-2">
+          <Checkbox
+            checked={showAdvanced}
+            onCheckedChange={(v) => setShowAdvanced(v === true)}
+          />
+          <span className="text-sm text-foreground">Show Supply Tracking Options</span>
+        </label>
+      </div>
+
+      {showAdvanced && (
+        <>
+          <FormRow>
+            <Field label="Item Number" htmlFor="equip-item-number">
+              <Input
+                id="equip-item-number"
+                value={formData.item_number}
+                onChange={e => setFormData({ ...formData, item_number: e.target.value })}
+                placeholder="e.g., 6025"
+              />
+            </Field>
+            <Field label="Manufacturer" htmlFor="equip-mfr">
+              <Input
+                id="equip-mfr"
+                value={formData.default_manufacturer}
+                onChange={e => setFormData({ ...formData, default_manufacturer: e.target.value })}
+                placeholder="e.g., Hollister"
+              />
+            </Field>
+          </FormRow>
+
+          <Field label="Description" htmlFor="equip-desc">
+            <Input
+              id="equip-desc"
+              value={formData.description}
+              onChange={e => setFormData({ ...formData, description: e.target.value })}
+              placeholder="Item description for shipments"
+            />
+          </Field>
+
+          <FormRow>
+            <Field label="Category">
+              <Select value={formData.category} onValueChange={(v) => setFormData({ ...formData, category: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="equipment">Equipment</SelectItem>
+                  <SelectItem value="supply">Supply</SelectItem>
+                  <SelectItem value="medication">Medication</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Tracking Level">
+              <Select value={formData.tracking_level} onValueChange={(v) => setFormData({ ...formData, tracking_level: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="quantity">Quantity Only</SelectItem>
+                  <SelectItem value="lot">Lot Number</SelectItem>
+                  <SelectItem value="serial">Serial Number</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+          </FormRow>
+
+          <FormRow>
+            <Field label="Unit of Measure" htmlFor="equip-uom">
+              <Input
+                id="equip-uom"
+                value={formData.unit_of_measure}
+                onChange={e => setFormData({ ...formData, unit_of_measure: e.target.value })}
+                placeholder="e.g., Box, Pack"
+              />
+            </Field>
+            <Field label="Unit Size" htmlFor="equip-unit-size">
+              <Input
+                id="equip-unit-size"
+                value={formData.unit_size}
+                onChange={e => setFormData({ ...formData, unit_size: e.target.value })}
+                placeholder="e.g., 10"
+              />
+            </Field>
+          </FormRow>
+
+          <Field label="Unit Description" htmlFor="equip-unit-desc">
+            <Input
+              id="equip-unit-desc"
+              value={formData.unit_description}
+              onChange={e => setFormData({ ...formData, unit_description: e.target.value })}
+              placeholder="e.g., Box of 10"
+            />
+          </Field>
+
+          <FormRow>
+            <Field label="Reorder Point" htmlFor="equip-reorder">
+              <Input
+                id="equip-reorder"
+                type="number"
+                min="0"
+                value={formData.reorder_point}
+                onChange={e => setFormData({ ...formData, reorder_point: e.target.value })}
+                placeholder="Low stock alert"
+              />
+            </Field>
+            <Field label="Par Level" htmlFor="equip-par">
+              <Input
+                id="equip-par"
+                type="number"
+                min="0"
+                value={formData.par_level}
+                onChange={e => setFormData({ ...formData, par_level: e.target.value })}
+                placeholder="Target quantity"
+              />
+            </Field>
+          </FormRow>
+        </>
+      )}
+    </>
+  );
+}
 
 const AdminV2Equipment = () => {
   const { user } = useAuth();
@@ -42,6 +270,9 @@ const AdminV2Equipment = () => {
   const [showReceiveModal, setShowReceiveModal] = useState(false);
   const [showOpenModal, setShowOpenModal] = useState(false);
   const [selectedEquipment, setSelectedEquipment] = useState(null);
+  // Out-of-stock gate: holds the backend 409 payload while the caregiver
+  // updates the on-hand quantity, after which the change is retried.
+  const [restockInfo, setRestockInfo] = useState(null);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -192,7 +423,7 @@ const AdminV2Equipment = () => {
         fetchEquipment();
       } else {
         const errorData = await response.json();
-        setFormError(errorData.detail || 'Failed to create equipment');
+        setFormError(formatErrorDetail(errorData.detail, 'Failed to create equipment'));
       }
     } catch (err) {
       setFormError('Error connecting to server');
@@ -242,7 +473,7 @@ const AdminV2Equipment = () => {
         fetchEquipment();
       } else {
         const errorData = await response.json();
-        setFormError(errorData.detail || 'Failed to update equipment');
+        setFormError(formatErrorDetail(errorData.detail, 'Failed to update equipment'));
       }
     } catch (err) {
       setFormError('Error connecting to server');
@@ -289,10 +520,17 @@ const AdminV2Equipment = () => {
       if (response.ok) {
         setShowChangeModal(false);
         setSelectedEquipment(null);
+        setRestockInfo(null);
         fetchEquipment();
       } else {
         const errorData = await response.json();
-        alert(errorData.detail || 'Failed to mark as changed');
+        // 409 = out of stock. Open the restock gate instead of erroring; the
+        // change retries automatically once the on-hand quantity is updated.
+        if (response.status === 409 && errorData.error === 'insufficient_quantity') {
+          setRestockInfo(errorData);
+        } else {
+          alert(formatErrorDetail(errorData.detail, 'Failed to mark as changed'));
+        }
       }
     } catch (err) {
       alert('Error connecting to server');
@@ -300,6 +538,7 @@ const AdminV2Equipment = () => {
       setSaving(false);
     }
   };
+
 
   const handleReceiveEquipment = async () => {
     setSaving(true);
@@ -382,7 +621,7 @@ const AdminV2Equipment = () => {
 
   const formatDate = (dateString) => {
     if (!dateString) return '-';
-    return new Date(dateString).toLocaleDateString();
+    return formatDateOnly(dateString) || '-';
   };
 
   const isDue = (item) => {
@@ -439,9 +678,6 @@ const AdminV2Equipment = () => {
       <div className="admin-v2-page">
         {selectedPatient ? (
           <>
-            {/* Section Title */}
-            <h1 className="schedule-section-title">Equipment Management</h1>
-
             {/* Stats Row */}
             <div className="admin-v2-summary-stats admin-v2-equipment-summary">
               <div className="admin-v2-stat-card">
@@ -516,12 +752,11 @@ const AdminV2Equipment = () => {
                 {activeTab === 'all' ? 'All Items' : activeTab === 'equipment' ? 'Equipment' : activeTab === 'supply' ? 'Supplies' : 'Consumables'} ({filteredEquipment.length})
               </h3>
               {hasPermission('equipment.create') && (
-                <button
-                  className="admin-v2-btn admin-v2-btn-primary"
-                  onClick={() => { resetForm(); setShowCreateModal(true); }}
-                >
-                  <PlusIcon size={16} /> Add Equipment
-                </button>
+                <div className="tw">
+                  <Button onClick={() => { resetForm(); setShowCreateModal(true); }}>
+                    <PlusIcon size={16} /> Add Equipment
+                  </Button>
+                </div>
               )}
             </div>
 
@@ -529,19 +764,18 @@ const AdminV2Equipment = () => {
             {loading ? (
               <div className="admin-v2-loading">Loading equipment...</div>
             ) : error ? (
-              <div className="admin-v2-error">{error}</div>
+              <div className="tw"><Alert variant="destructive">{error}</Alert></div>
             ) : equipment.length === 0 ? (
               <div className="admin-v2-empty-state">
                 <EquipmentIcon size={48} />
                 <h3>No Equipment Found</h3>
                 <p className="admin-v2-text-muted">Add equipment for this patient to get started.</p>
                 {hasPermission('equipment.create') && (
-                  <button
-                    className="admin-v2-btn admin-v2-btn-primary"
-                    onClick={() => { resetForm(); setShowCreateModal(true); }}
-                  >
-                    <PlusIcon size={16} /> Add Equipment
-                  </button>
+                  <div className="tw">
+                    <Button onClick={() => { resetForm(); setShowCreateModal(true); }}>
+                      <PlusIcon size={16} /> Add Equipment
+                    </Button>
+                  </div>
                 )}
               </div>
             ) : filteredEquipment.length === 0 ? (
@@ -551,8 +785,8 @@ const AdminV2Equipment = () => {
                 <p className="admin-v2-text-muted">No items match this category.</p>
               </div>
             ) : (
-              <div className="admin-v2-table-container">
-                <table className="admin-v2-table">
+              <div className="admin-v2-table-container admin-v2-table-cards-wrap">
+                <table className="admin-v2-table admin-v2-table-cards">
                   <thead>
                     <tr>
                       <th>Name</th>
@@ -575,14 +809,14 @@ const AdminV2Equipment = () => {
                           key={equip.id} 
                           className={isOverdue ? 'admin-v2-row-warning' : ''}
                         >
-                          <td>
+                          <td className="admin-v2-cell-name">
                             <span className="admin-v2-equipment-name">{equip.name}</span>
                             {equip.default_manufacturer && (
                               <div className="admin-v2-text-muted">{equip.default_manufacturer}</div>
                             )}
                           </td>
-                          <td>{equip.item_number || '-'}</td>
-                          <td>
+                          <td data-label="Item #">{equip.item_number || '-'}</td>
+                          <td data-label="Qty">
                             <span className={`admin-v2-quantity ${isLowStock ? 'low' : ''}`}>
                               {equip.quantity}
                             </span>
@@ -590,7 +824,7 @@ const AdminV2Equipment = () => {
                               <span className="admin-v2-text-small"> {equip.unit_of_measure}</span>
                             )}
                           </td>
-                          <td>
+                          <td data-label="Type">
                             {equip.category === 'supply' ? (
                               <span className="admin-v2-badge admin-v2-badge-secondary">Supply</span>
                             ) : equip.scheduled_replacement ? (
@@ -599,8 +833,8 @@ const AdminV2Equipment = () => {
                               <span className="admin-v2-badge admin-v2-badge-secondary">Consumable</span>
                             )}
                           </td>
-                          <td>{equip.scheduled_replacement ? formatDate(equip.last_changed) : '-'}</td>
-                          <td>
+                          <td data-label="Last Changed">{equip.scheduled_replacement ? formatDate(equip.last_changed) : '-'}</td>
+                          <td data-label="Status">
                             {equip.scheduled_replacement ? (
                               isOverdue ? (
                                 <span className="admin-v2-badge admin-v2-badge-danger">Due Now</span>
@@ -617,7 +851,7 @@ const AdminV2Equipment = () => {
                               )
                             )}
                           </td>
-                          <td>
+                          <td className="admin-v2-cell-actions">
                             <div className="admin-v2-action-buttons">
                               {equip.scheduled_replacement ? (
                                 <button
@@ -675,562 +909,153 @@ const AdminV2Equipment = () => {
           <div className="admin-v2-loading">Select a patient from the sidebar</div>
         )}
 
-        {/* Create Equipment Modal */}
-        {showCreateModal && (
-          <div className="admin-v2-modal-overlay" onClick={() => setShowCreateModal(false)}>
-            <div className="admin-v2-modal" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>Add Equipment</h2>
-                <button className="admin-v2-modal-close" onClick={() => setShowCreateModal(false)}>
-                  <XIcon size={20} />
-                </button>
-              </div>
-              <form onSubmit={handleCreateEquipment}>
-                <div className="admin-v2-modal-body">
-                  {formError && (
-                    <div className="admin-v2-form-error">{formError}</div>
-                  )}
-                  
-                  <div className="admin-v2-form-group">
-                    <label>Equipment Name *</label>
-                    <input
-                      type="text"
-                      value={formData.name}
-                      onChange={e => setFormData({...formData, name: e.target.value})}
-                      required
-                      placeholder="e.g., Trach Tube"
-                    />
-                  </div>
+        {/* Create Equipment Dialog */}
+        <Dialog open={showCreateModal} onOpenChange={(o) => { if (!o) setShowCreateModal(false); }}>
+          <DialogContent className="sm:max-w-[640px]" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>Add Equipment</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleCreateEquipment} className="flex flex-col gap-4">
+              {formError && <Alert variant="destructive">{formError}</Alert>}
+              <EquipmentFormFields
+                formData={formData}
+                setFormData={setFormData}
+                showAdvanced={showAdvanced}
+                setShowAdvanced={setShowAdvanced}
+              />
+              <DialogFooter>
+                <Button type="button" variant="secondary" onClick={() => setShowCreateModal(false)}>Cancel</Button>
+                <Button type="submit" disabled={saving}>{saving ? 'Creating...' : 'Create Equipment'}</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
 
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Quantity *</label>
-                      <input
-                        type="number"
-                        value={formData.quantity}
-                        onChange={e => setFormData({...formData, quantity: parseInt(e.target.value) || 1})}
-                        required
-                        min="0"
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Type</label>
-                      <div className="admin-v2-checkbox-group" style={{ marginTop: '0.5rem' }}>
-                        <label className="admin-v2-checkbox">
-                          <input
-                            type="checkbox"
-                            checked={formData.scheduled_replacement}
-                            onChange={e => setFormData({...formData, scheduled_replacement: e.target.checked})}
-                          />
-                          <span>Has Scheduled Replacement</span>
-                        </label>
-                      </div>
-                    </div>
-                  </div>
+        {/* Edit Equipment Dialog */}
+        <Dialog open={showEditModal} onOpenChange={(o) => { if (!o) setShowEditModal(false); }}>
+          <DialogContent className="sm:max-w-[640px]" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>Edit Equipment</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleEditEquipment} className="flex flex-col gap-4">
+              {formError && <Alert variant="destructive">{formError}</Alert>}
+              <EquipmentFormFields
+                formData={formData}
+                setFormData={setFormData}
+                showAdvanced={showAdvanced}
+                setShowAdvanced={setShowAdvanced}
+              />
+              <DialogFooter>
+                <Button type="button" variant="secondary" onClick={() => setShowEditModal(false)}>Cancel</Button>
+                <Button type="submit" disabled={saving}>{saving ? 'Saving...' : 'Save Changes'}</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
 
-                  {formData.scheduled_replacement && (
-                    <div className="admin-v2-form-row">
-                      <div className="admin-v2-form-group">
-                        <label>Last Changed *</label>
-                        <input
-                          type="date"
-                          value={formData.last_changed}
-                          onChange={e => setFormData({...formData, last_changed: e.target.value})}
-                          required={formData.scheduled_replacement}
-                        />
-                      </div>
-                      <div className="admin-v2-form-group">
-                        <label>Useful Days *</label>
-                        <input
-                          type="number"
-                          value={formData.useful_days}
-                          onChange={e => setFormData({...formData, useful_days: parseInt(e.target.value) || 30})}
-                          required={formData.scheduled_replacement}
-                          min="1"
-                          placeholder="30"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Supply Tracking Toggle */}
-                  <div className="admin-v2-form-group" style={{ marginTop: '1rem', borderTop: '1px solid #30363d', paddingTop: '1rem' }}>
-                    <label className="admin-v2-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={showAdvanced}
-                        onChange={e => setShowAdvanced(e.target.checked)}
-                      />
-                      <span>Show Supply Tracking Options</span>
-                    </label>
-                  </div>
-
-                  {showAdvanced && (
-                    <>
-                      <div className="admin-v2-form-row">
-                        <div className="admin-v2-form-group">
-                          <label>Item Number</label>
-                          <input
-                            type="text"
-                            value={formData.item_number}
-                            onChange={e => setFormData({...formData, item_number: e.target.value})}
-                            placeholder="e.g., 6025"
-                          />
-                        </div>
-                        <div className="admin-v2-form-group">
-                          <label>Manufacturer</label>
-                          <input
-                            type="text"
-                            value={formData.default_manufacturer}
-                            onChange={e => setFormData({...formData, default_manufacturer: e.target.value})}
-                            placeholder="e.g., Hollister"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="admin-v2-form-group">
-                        <label>Description</label>
-                        <input
-                          type="text"
-                          value={formData.description}
-                          onChange={e => setFormData({...formData, description: e.target.value})}
-                          placeholder="Item description for shipments"
-                        />
-                      </div>
-
-                      <div className="admin-v2-form-row">
-                        <div className="admin-v2-form-group">
-                          <label>Category</label>
-                          <select
-                            value={formData.category}
-                            onChange={e => setFormData({...formData, category: e.target.value})}
-                          >
-                            <option value="equipment">Equipment</option>
-                            <option value="supply">Supply</option>
-                            <option value="medication">Medication</option>
-                          </select>
-                        </div>
-                        <div className="admin-v2-form-group">
-                          <label>Tracking Level</label>
-                          <select
-                            value={formData.tracking_level}
-                            onChange={e => setFormData({...formData, tracking_level: e.target.value})}
-                          >
-                            <option value="quantity">Quantity Only</option>
-                            <option value="lot">Lot Number</option>
-                            <option value="serial">Serial Number</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="admin-v2-form-row">
-                        <div className="admin-v2-form-group">
-                          <label>Unit of Measure</label>
-                          <input
-                            type="text"
-                            value={formData.unit_of_measure}
-                            onChange={e => setFormData({...formData, unit_of_measure: e.target.value})}
-                            placeholder="e.g., Box, Pack"
-                          />
-                        </div>
-                        <div className="admin-v2-form-group">
-                          <label>Unit Size</label>
-                          <input
-                            type="text"
-                            value={formData.unit_size}
-                            onChange={e => setFormData({...formData, unit_size: e.target.value})}
-                            placeholder="e.g., 10"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="admin-v2-form-group">
-                        <label>Unit Description</label>
-                        <input
-                          type="text"
-                          value={formData.unit_description}
-                          onChange={e => setFormData({...formData, unit_description: e.target.value})}
-                          placeholder="e.g., Box of 10"
-                        />
-                      </div>
-
-                      <div className="admin-v2-form-row">
-                        <div className="admin-v2-form-group">
-                          <label>Reorder Point</label>
-                          <input
-                            type="number"
-                            min="0"
-                            value={formData.reorder_point}
-                            onChange={e => setFormData({...formData, reorder_point: e.target.value})}
-                            placeholder="Low stock alert"
-                          />
-                        </div>
-                        <div className="admin-v2-form-group">
-                          <label>Par Level</label>
-                          <input
-                            type="number"
-                            min="0"
-                            value={formData.par_level}
-                            onChange={e => setFormData({...formData, par_level: e.target.value})}
-                            placeholder="Target quantity"
-                          />
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-                <div className="admin-v2-modal-footer">
-                  <button type="button" className="admin-v2-btn" onClick={() => setShowCreateModal(false)}>
-                    Cancel
-                  </button>
-                  <button type="submit" className="admin-v2-btn admin-v2-btn-primary" disabled={saving}>
-                    {saving ? 'Creating...' : 'Create Equipment'}
-                  </button>
-                </div>
-              </form>
+        {/* Delete Confirmation Dialog */}
+        <Dialog open={showDeleteModal} onOpenChange={(o) => { if (!o) setShowDeleteModal(false); }}>
+          <DialogContent className="sm:max-w-[440px]" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>Delete Equipment</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-2 text-sm">
+              <p className="text-foreground">Are you sure you want to delete <strong>{selectedEquipment?.name}</strong>?</p>
+              <p className="text-muted-foreground">This action cannot be undone.</p>
             </div>
-          </div>
-        )}
+            <DialogFooter>
+              <Button variant="secondary" onClick={() => setShowDeleteModal(false)}>Cancel</Button>
+              <Button variant="destructive" onClick={handleDeleteEquipment} disabled={saving}>
+                {saving ? 'Deleting...' : 'Delete'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-        {/* Edit Equipment Modal */}
-        {showEditModal && (
-          <div className="admin-v2-modal-overlay" onClick={() => setShowEditModal(false)}>
-            <div className="admin-v2-modal" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>Edit Equipment</h2>
-                <button className="admin-v2-modal-close" onClick={() => setShowEditModal(false)}>
-                  <XIcon size={20} />
-                </button>
-              </div>
-              <form onSubmit={handleEditEquipment}>
-                <div className="admin-v2-modal-body">
-                  {formError && (
-                    <div className="admin-v2-form-error">{formError}</div>
-                  )}
-                  
-                  <div className="admin-v2-form-group">
-                    <label>Equipment Name *</label>
-                    <input
-                      type="text"
-                      value={formData.name}
-                      onChange={e => setFormData({...formData, name: e.target.value})}
-                      required
-                    />
-                  </div>
-
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Quantity *</label>
-                      <input
-                        type="number"
-                        value={formData.quantity}
-                        onChange={e => setFormData({...formData, quantity: parseInt(e.target.value) || 1})}
-                        required
-                        min="0"
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Type</label>
-                      <div className="admin-v2-checkbox-group" style={{ marginTop: '0.5rem' }}>
-                        <label className="admin-v2-checkbox">
-                          <input
-                            type="checkbox"
-                            checked={formData.scheduled_replacement}
-                            onChange={e => setFormData({...formData, scheduled_replacement: e.target.checked})}
-                          />
-                          <span>Has Scheduled Replacement</span>
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-
-                  {formData.scheduled_replacement && (
-                    <div className="admin-v2-form-row">
-                      <div className="admin-v2-form-group">
-                        <label>Last Changed *</label>
-                        <input
-                          type="date"
-                          value={formData.last_changed}
-                          onChange={e => setFormData({...formData, last_changed: e.target.value})}
-                          required={formData.scheduled_replacement}
-                        />
-                      </div>
-                      <div className="admin-v2-form-group">
-                        <label>Useful Days *</label>
-                        <input
-                          type="number"
-                          value={formData.useful_days}
-                          onChange={e => setFormData({...formData, useful_days: parseInt(e.target.value) || 30})}
-                          required={formData.scheduled_replacement}
-                          min="1"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Supply Tracking Toggle */}
-                  <div className="admin-v2-form-group" style={{ marginTop: '1rem', borderTop: '1px solid #30363d', paddingTop: '1rem' }}>
-                    <label className="admin-v2-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={showAdvanced}
-                        onChange={e => setShowAdvanced(e.target.checked)}
-                      />
-                      <span>Show Supply Tracking Options</span>
-                    </label>
-                  </div>
-
-                  {showAdvanced && (
-                    <>
-                      <div className="admin-v2-form-row">
-                        <div className="admin-v2-form-group">
-                          <label>Item Number</label>
-                          <input
-                            type="text"
-                            value={formData.item_number}
-                            onChange={e => setFormData({...formData, item_number: e.target.value})}
-                            placeholder="e.g., 6025"
-                          />
-                        </div>
-                        <div className="admin-v2-form-group">
-                          <label>Manufacturer</label>
-                          <input
-                            type="text"
-                            value={formData.default_manufacturer}
-                            onChange={e => setFormData({...formData, default_manufacturer: e.target.value})}
-                            placeholder="e.g., Hollister"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="admin-v2-form-group">
-                        <label>Description</label>
-                        <input
-                          type="text"
-                          value={formData.description}
-                          onChange={e => setFormData({...formData, description: e.target.value})}
-                          placeholder="Item description for shipments"
-                        />
-                      </div>
-
-                      <div className="admin-v2-form-row">
-                        <div className="admin-v2-form-group">
-                          <label>Category</label>
-                          <select
-                            value={formData.category}
-                            onChange={e => setFormData({...formData, category: e.target.value})}
-                          >
-                            <option value="equipment">Equipment</option>
-                            <option value="supply">Supply</option>
-                            <option value="medication">Medication</option>
-                          </select>
-                        </div>
-                        <div className="admin-v2-form-group">
-                          <label>Tracking Level</label>
-                          <select
-                            value={formData.tracking_level}
-                            onChange={e => setFormData({...formData, tracking_level: e.target.value})}
-                          >
-                            <option value="quantity">Quantity Only</option>
-                            <option value="lot">Lot Number</option>
-                            <option value="serial">Serial Number</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="admin-v2-form-row">
-                        <div className="admin-v2-form-group">
-                          <label>Unit of Measure</label>
-                          <input
-                            type="text"
-                            value={formData.unit_of_measure}
-                            onChange={e => setFormData({...formData, unit_of_measure: e.target.value})}
-                            placeholder="e.g., Box, Pack"
-                          />
-                        </div>
-                        <div className="admin-v2-form-group">
-                          <label>Unit Size</label>
-                          <input
-                            type="text"
-                            value={formData.unit_size}
-                            onChange={e => setFormData({...formData, unit_size: e.target.value})}
-                            placeholder="e.g., 10"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="admin-v2-form-group">
-                        <label>Unit Description</label>
-                        <input
-                          type="text"
-                          value={formData.unit_description}
-                          onChange={e => setFormData({...formData, unit_description: e.target.value})}
-                          placeholder="e.g., Box of 10"
-                        />
-                      </div>
-
-                      <div className="admin-v2-form-row">
-                        <div className="admin-v2-form-group">
-                          <label>Reorder Point</label>
-                          <input
-                            type="number"
-                            min="0"
-                            value={formData.reorder_point}
-                            onChange={e => setFormData({...formData, reorder_point: e.target.value})}
-                            placeholder="Low stock alert"
-                          />
-                        </div>
-                        <div className="admin-v2-form-group">
-                          <label>Par Level</label>
-                          <input
-                            type="number"
-                            min="0"
-                            value={formData.par_level}
-                            onChange={e => setFormData({...formData, par_level: e.target.value})}
-                            placeholder="Target quantity"
-                          />
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-                <div className="admin-v2-modal-footer">
-                  <button type="button" className="admin-v2-btn" onClick={() => setShowEditModal(false)}>
-                    Cancel
-                  </button>
-                  <button type="submit" className="admin-v2-btn admin-v2-btn-primary" disabled={saving}>
-                    {saving ? 'Saving...' : 'Save Changes'}
-                  </button>
-                </div>
-              </form>
+        {/* Change Confirmation Dialog */}
+        <Dialog open={showChangeModal} onOpenChange={(o) => { if (!o) setShowChangeModal(false); }}>
+          <DialogContent className="sm:max-w-[440px]" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>Confirm Change</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-2 text-sm">
+              <p className="text-foreground">Mark <strong>{selectedEquipment?.name}</strong> as changed?</p>
+              <p className="text-muted-foreground">This will reset the due date based on the useful days.</p>
             </div>
-          </div>
-        )}
+            <DialogFooter>
+              <Button variant="secondary" onClick={() => setShowChangeModal(false)}>Cancel</Button>
+              <Button onClick={handleChangeEquipment} disabled={saving}>
+                {saving ? 'Updating...' : 'Confirm Change'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-        {/* Delete Confirmation Modal */}
-        {showDeleteModal && (
-          <div className="admin-v2-modal-overlay" onClick={() => setShowDeleteModal(false)}>
-            <div className="admin-v2-modal admin-v2-modal-sm" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>Delete Equipment</h2>
-                <button className="admin-v2-modal-close" onClick={() => setShowDeleteModal(false)}>
-                  <XIcon size={20} />
-                </button>
-              </div>
-              <div className="admin-v2-modal-body">
-                <p>Are you sure you want to delete <strong>{selectedEquipment?.name}</strong>?</p>
-                <p className="admin-v2-text-muted">This action cannot be undone.</p>
-              </div>
-              <div className="admin-v2-modal-footer">
-                <button className="admin-v2-btn" onClick={() => setShowDeleteModal(false)}>
-                  Cancel
-                </button>
-                <button className="admin-v2-btn admin-v2-btn-danger" onClick={handleDeleteEquipment} disabled={saving}>
-                  {saving ? 'Deleting...' : 'Delete'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Out-of-Stock Gate: restock then retry the change */}
+        <EquipmentRestockGate
+          info={restockInfo}
+          onClose={() => setRestockInfo(null)}
+          onUpdated={() => handleChangeEquipment()}
+        />
 
-        {/* Change Confirmation Modal */}
-        {showChangeModal && (
-          <div className="admin-v2-modal-overlay" onClick={() => setShowChangeModal(false)}>
-            <div className="admin-v2-modal admin-v2-modal-sm" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>Confirm Change</h2>
-                <button className="admin-v2-modal-close" onClick={() => setShowChangeModal(false)}>
-                  <XIcon size={20} />
-                </button>
-              </div>
-              <div className="admin-v2-modal-body">
-                <p>Mark <strong>{selectedEquipment?.name}</strong> as changed?</p>
-                <p className="admin-v2-text-muted">This will reset the due date based on the useful days.</p>
-              </div>
-              <div className="admin-v2-modal-footer">
-                <button className="admin-v2-btn" onClick={() => setShowChangeModal(false)}>
-                  Cancel
-                </button>
-                <button className="admin-v2-btn admin-v2-btn-primary" onClick={handleChangeEquipment} disabled={saving}>
-                  {saving ? 'Updating...' : 'Confirm Change'}
-                </button>
-              </div>
+        {/* Receive Stock Dialog */}
+        <Dialog open={showReceiveModal} onOpenChange={(o) => { if (!o) setShowReceiveModal(false); }}>
+          <DialogContent className="sm:max-w-[440px]" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>Receive Stock</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-4">
+              <p className="text-sm text-foreground">How many <strong>{selectedEquipment?.name}</strong> to receive?</p>
+              <Field label="Quantity" htmlFor="equip-receive-qty">
+                <Input
+                  id="equip-receive-qty"
+                  type="number"
+                  value={quantityAmount}
+                  onChange={e => setQuantityAmount(parseInt(e.target.value) || 1)}
+                  min="1"
+                  autoFocus
+                />
+              </Field>
+              <p className="text-sm text-muted-foreground">Current stock: {selectedEquipment?.quantity}</p>
             </div>
-          </div>
-        )}
+            <DialogFooter>
+              <Button variant="secondary" onClick={() => setShowReceiveModal(false)}>Cancel</Button>
+              <Button onClick={handleReceiveEquipment} disabled={saving}>
+                {saving ? 'Updating...' : 'Receive'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-        {/* Receive Stock Modal */}
-        {showReceiveModal && (
-          <div className="admin-v2-modal-overlay" onClick={() => setShowReceiveModal(false)}>
-            <div className="admin-v2-modal admin-v2-modal-sm" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>Receive Stock</h2>
-                <button className="admin-v2-modal-close" onClick={() => setShowReceiveModal(false)}>
-                  <XIcon size={20} />
-                </button>
-              </div>
-              <div className="admin-v2-modal-body">
-                <p>How many <strong>{selectedEquipment?.name}</strong> to receive?</p>
-                <div className="admin-v2-form-group" style={{ marginTop: '1rem' }}>
-                  <label>Quantity</label>
-                  <input
-                    type="number"
-                    value={quantityAmount}
-                    onChange={e => setQuantityAmount(parseInt(e.target.value) || 1)}
-                    min="1"
-                    autoFocus
-                  />
-                </div>
-                <p className="admin-v2-text-muted">Current stock: {selectedEquipment?.quantity}</p>
-              </div>
-              <div className="admin-v2-modal-footer">
-                <button className="admin-v2-btn" onClick={() => setShowReceiveModal(false)}>
-                  Cancel
-                </button>
-                <button className="admin-v2-btn admin-v2-btn-success" onClick={handleReceiveEquipment} disabled={saving}>
-                  {saving ? 'Updating...' : 'Receive'}
-                </button>
-              </div>
+        {/* Open/Use Stock Dialog */}
+        <Dialog open={showOpenModal} onOpenChange={(o) => { if (!o) setShowOpenModal(false); }}>
+          <DialogContent className="sm:max-w-[440px]" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>Open/Use Equipment</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-4">
+              <p className="text-sm text-foreground">How many <strong>{selectedEquipment?.name}</strong> to open/use?</p>
+              <Field label="Quantity" htmlFor="equip-open-qty">
+                <Input
+                  id="equip-open-qty"
+                  type="number"
+                  value={quantityAmount}
+                  onChange={e => setQuantityAmount(parseInt(e.target.value) || 1)}
+                  min="1"
+                  max={selectedEquipment?.quantity}
+                  autoFocus
+                />
+              </Field>
+              <p className="text-sm text-muted-foreground">Available: {selectedEquipment?.quantity}</p>
             </div>
-          </div>
-        )}
-
-        {/* Open/Use Stock Modal */}
-        {showOpenModal && (
-          <div className="admin-v2-modal-overlay" onClick={() => setShowOpenModal(false)}>
-            <div className="admin-v2-modal admin-v2-modal-sm" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>Open/Use Equipment</h2>
-                <button className="admin-v2-modal-close" onClick={() => setShowOpenModal(false)}>
-                  <XIcon size={20} />
-                </button>
-              </div>
-              <div className="admin-v2-modal-body">
-                <p>How many <strong>{selectedEquipment?.name}</strong> to open/use?</p>
-                <div className="admin-v2-form-group" style={{ marginTop: '1rem' }}>
-                  <label>Quantity</label>
-                  <input
-                    type="number"
-                    value={quantityAmount}
-                    onChange={e => setQuantityAmount(parseInt(e.target.value) || 1)}
-                    min="1"
-                    max={selectedEquipment?.quantity}
-                    autoFocus
-                  />
-                </div>
-                <p className="admin-v2-text-muted">Available: {selectedEquipment?.quantity}</p>
-              </div>
-              <div className="admin-v2-modal-footer">
-                <button className="admin-v2-btn" onClick={() => setShowOpenModal(false)}>
-                  Cancel
-                </button>
-                <button className="admin-v2-btn admin-v2-btn-info" onClick={handleOpenEquipment} disabled={saving}>
-                  {saving ? 'Updating...' : 'Open'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+            <DialogFooter>
+              <Button variant="secondary" onClick={() => setShowOpenModal(false)}>Cancel</Button>
+              <Button onClick={handleOpenEquipment} disabled={saving}>
+                {saving ? 'Updating...' : 'Open'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </AdminV2Layout>
   );

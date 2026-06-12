@@ -1,3 +1,18 @@
+# Smart Home Health Hub
+# Copyright (C) 2026 John Carty
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 CRUD operations for user authentication and authorization
 """
@@ -65,13 +80,19 @@ def create_user(
     is_active: bool = True,
     role_ids: List[int] = None,
     organization_id: Optional[int] = None,
-    auto_assign_default_org: bool = True
+    auto_assign_default_org: bool = True,
+    force_password_reset: bool = True
 ) -> User:
-    """Create a new user with hashed password"""
+    """Create a new user with hashed password.
+
+    New users are flagged for a forced first-login password reset by default; the
+    first-run bootstrap admin creates its User directly (not via this helper) and is
+    therefore exempt.
+    """
     # Hash password
     password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
     pin_hash = bcrypt.hashpw(pin.encode('utf-8'), bcrypt.gensalt()).decode('utf-8') if pin else None
-    
+
     user = User(
         username=username,
         email=email,
@@ -79,7 +100,8 @@ def create_user(
         password_hash=password_hash,
         pin_hash=pin_hash,
         is_system_admin=is_system_admin,
-        is_active=is_active
+        is_active=is_active,
+        force_password_reset=force_password_reset
     )
     
     db.add(user)
@@ -183,6 +205,21 @@ def update_user_pin(db: Session, user_id: int, pin: str) -> bool:
     db.commit()
     logger.info(f"PIN updated for user: {user.username}")
     return True
+
+
+def set_force_password_reset(db: Session, user_id: int, value: bool) -> Optional[User]:
+    """Set/clear the forced first-login password reset flag for a user."""
+    user = get_user_by_id(db, user_id)
+    if not user:
+        return None
+
+    user.force_password_reset = value
+    user.updated_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(user)
+    logger.info(f"force_password_reset set to {value} for user: {user.username}")
+    return user
 
 
 def delete_user(db: Session, user_id: int) -> bool:

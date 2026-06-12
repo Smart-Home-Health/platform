@@ -1,3 +1,18 @@
+# Smart Home Health Hub
+# Copyright (C) 2026 John Carty
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from datetime import datetime, date
@@ -16,6 +31,7 @@ from crud.nutrition import (
     get_nutrition_intake_for_care_task
 )
 from crud.patients import get_active_patient
+from crud.scheduling import get_due_and_upcoming_nutrition_count
 from models.nutrition import (
     NutritionIntakeCreate,
     NutritionIntakeUpdate,
@@ -24,6 +40,14 @@ from models.nutrition import (
 
 logger = logging.getLogger("app")
 router = APIRouter(prefix="/api", tags=["nutrition"])
+
+
+@router.get("/nutrition/due/count")
+async def get_nutrition_due_count_endpoint(patient_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """Count of due/upcoming nutrition items, scoped to a patient for the
+    per-patient dashboard badge. Ungated like the equipment due-count so the
+    badge stays visible in restricted (locked) mode."""
+    return {"count": get_due_and_upcoming_nutrition_count(db, patient_id=patient_id)}
 
 # Simple endpoint for frontend compatibility
 @router.post("/nutrition", response_model=NutritionIntakeResponse)
@@ -106,11 +130,14 @@ async def get_nutrition_intake_endpoint(
 async def get_patient_nutrition_intake_endpoint(
     patient_id: int,
     limit: int = 50,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
     db: Session = Depends(get_db),
     _: bool = Depends(require_read_access)
 ):
-    """Get nutrition intake records for a patient"""
-    intake_records = get_patient_nutrition_intake(db, patient_id, limit)
+    """Get nutrition intake records for a patient, optionally bounded by a
+    consumed_at date range."""
+    intake_records = get_patient_nutrition_intake(db, patient_id, limit, start_date, end_date)
     return intake_records
 
 @router.get("/patients/{patient_id}/nutrition-intake/daily")

@@ -1,3 +1,20 @@
+/*
+ * Smart Home Health Hub
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 /**
  * Timezone and Cron Expression Utilities
  * 
@@ -167,6 +184,29 @@ export const formatCronExpression = (cronExpr) => {
   } else {
     return `Daily at ${parsed.time}`;
   }
+};
+
+/**
+ * Format a date-only value without timezone drift.
+ *
+ * Calendar-date fields (equipment `last_changed`, `due_date`, a date of birth)
+ * are stored as midnight-UTC timestamps and arrive as ISO strings like
+ * "2026-05-30T00:00:00+00:00". Passing that straight to `new Date(...)` parses
+ * it as a UTC instant, so `toLocaleDateString()` in any timezone behind UTC
+ * renders the *previous* day (5/30 → 5/29). We only care about the calendar
+ * date, so take the date portion and rebuild it in local time — the displayed
+ * Y/M/D then always matches the stored date.
+ *
+ * @param {string} value - ISO date or datetime string (date portion is used)
+ * @param {Intl.DateTimeFormatOptions} [options] - passed to toLocaleDateString
+ * @param {string} [locale] - passed to toLocaleDateString
+ * @returns {string} Localized date, or '' for empty/invalid input
+ */
+export const formatDateOnly = (value, options, locale) => {
+  if (!value) return '';
+  const [y, m, d] = String(value).split('T')[0].split('-').map(Number);
+  if (!y || !m || !d) return '';
+  return new Date(y, m - 1, d).toLocaleDateString(locale, options);
 };
 
 /**

@@ -60,3 +60,19 @@
   background: #1f2937;
   color: #cbd5e0;
 }
+
+/* Numpad mode: fewer keys per row, taller buttons, centered + narrower. */
+.vkb-root.vkb-numpad {
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  width: min(440px, 92vw);
+  max-width: none;
+  border-radius: 12px 12px 0 0;
+}
+
+.vkb-root.vkb-numpad .simple-keyboard .hg-button {
+  height: 60px;
+  font-size: 22px;
+  font-weight: 600;
+}

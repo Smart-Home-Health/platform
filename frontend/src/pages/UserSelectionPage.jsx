@@ -1,3 +1,20 @@
+/*
+ * Smart Home Health Hub
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -74,13 +91,29 @@ export default function UserSelectionPage() {
     } else {
       // PIN verification
       result = await selectUser(selectedUser.id, pin, null);
-      
+
       if (result.requiresPassword) {
         setUsePassword(true);
         setError('Full password required (daily requirement)');
         setLoading(false);
         return;
       }
+    }
+
+    // Forced first-login: route to the password reset screen, carrying the
+    // just-entered password (if any) so the user doesn't have to retype it.
+    if (result.requiresPasswordReset) {
+      navigate('/first-login', {
+        state: {
+          userId: selectedUser.id,
+          fullName: selectedUser.full_name || selectedUser.username,
+          currentPassword: usePassword ? password : null,
+          from: fromLocation,
+          openLiveModal,
+        },
+      });
+      setLoading(false);
+      return;
     }
 
     if (result.success) {
@@ -177,6 +210,7 @@ export default function UserSelectionPage() {
                   <input
                     type="password"
                     id="pin"
+                    inputMode="numeric"
                     value={pin}
                     onChange={(e) => setPin(e.target.value)}
                     placeholder="Enter your PIN"

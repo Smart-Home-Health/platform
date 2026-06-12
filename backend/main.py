@@ -1,3 +1,18 @@
+# Smart Home Health Hub
+# Copyright (C) 2026 John Carty
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import threading
 import asyncio
 import json  # Add this import
@@ -19,7 +34,7 @@ from modules.mqtt_module import MQTTModule
 from modules.state_module import StateModule
 
 # Import route modules
-from routes import core, settings, vitals, medications, care_tasks, equipment, monitoring, mqtt, status, patients, nutrition, businesses, providers, auth, users, schedule, dashboard, symptoms, diagnoses, implants, dme_shipments, account, integrations, readers, backup
+from routes import core, settings, vitals, medications, care_tasks, equipment, monitoring, mqtt, status, patients, nutrition, businesses, providers, auth, users, schedule, dashboard, symptoms, diagnoses, implants, dme_shipments, account, integrations, integration_imports, frigate as frigate_routes, readers, backup, analysis, reports, messages
 
 # Import legacy components
 from mqtt import initialize_mqtt_service, shutdown_mqtt_service
@@ -29,6 +44,12 @@ from crud.settings import get_setting, save_setting
 # Import auth components
 from middleware import AuthenticationMiddleware
 from seed_auth import seed_default_data
+
+# Install the global soft-delete filter so undone (voided) completion logs are
+# excluded from every read path. Imported after the route modules above so all
+# ORM models are registered first.
+from soft_delete import register_soft_delete_filter
+register_soft_delete_filter()
 
 load_dotenv()
 
@@ -78,8 +99,13 @@ app.include_router(diagnoses.router)
 app.include_router(implants.router)
 app.include_router(dme_shipments.router)
 app.include_router(integrations.router)
+app.include_router(integration_imports.router)
+app.include_router(frigate_routes.router)
 app.include_router(readers.router)
 app.include_router(backup.router)
+app.include_router(analysis.router)
+app.include_router(reports.router)
+app.include_router(messages.router)
 
 # Global event bus and modules
 event_bus = EventBus(maxsize=1000)
@@ -216,12 +242,16 @@ async def startup_event():
 
 
 async def nutrition_scheduled_updater():
-    """Background task to publish nutrition scheduled values every hour"""
+    """Background task to publish nutrition scheduled values over MQTT every hour.
+
+    This drives the nutrition "scheduled/expected" sensor value on the live
+    dashboard; it is unrelated to the due-count badges, which the dashboard now
+    keeps current with a client-side 60s poll (see Dashboard.jsx)."""
     logger.info("[nutrition_updater] Started hourly nutrition scheduled updater")
     while True:
         try:
             await asyncio.sleep(3600)  # Wait 1 hour
-            
+
             # Publish scheduled nutrition values
             db = next(get_db())
             try:

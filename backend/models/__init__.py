@@ -1,5 +1,25 @@
+# Smart Home Health Hub
+# Copyright (C) 2026 John Carty
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
-Pydantic models for API request/response validation
+Aggregated ORM model namespace.
+
+Despite the package name, this re-exports the project's SQLAlchemy ORM classes
+(defined across both ``models/`` and ``schemas/``) so they can be imported from a
+single place and so Alembic's autogenerate sees every table on ``db.Base.metadata``.
+A new ORM model MUST be re-exported here or autogenerate will not detect it.
 """
 
 # Import User model first since other schemas reference it
@@ -27,8 +47,17 @@ from schemas.vital import Vital
 from schemas.symptom import Symptom
 from schemas.patient import Patient, PatientAccess, AccessLevel
 from schemas.diagnosis import Diagnosis, DiagnosisNote
+from schemas.allergy import AllergyIntolerance
+from schemas.clinical_results import DiagnosticReport, LabResult, ClinicalDocument, ImagingStudy
 from schemas.implant import Implant, ImplantNote
+from schemas.vent_import import VentImport
+from schemas.vent_parameter_dictionary import VentParameterDictionary
+from schemas.vent_sample import VentSample
+from schemas.vent_device_info import VentDeviceInfo
 from models.readers import Reader
+from models.custom_vital_definition import CustomVitalDefinition
+from models.user_messages import UserMessage, UserMessageAcknowledgement
+from models.vent_ingested_files import VentIngestedFile
 
 # Schedule-related Pydantic models
 from models.schedule import CompleteItemRequest, BulkCompleteRequest
@@ -39,7 +68,10 @@ __all__ = [
     'MedicationLog', 'Equipment', 'EquipmentChangeLog', 'MonitoringAlert',
     'VentilatorAlert', 'ExternalAlarm', 'PulseOxData', 'Setting',
     'Vital', 'Symptom', 'Patient', 'User', 'Role',
-    'Permission', 'AuditLog', 'Diagnosis', 'DiagnosisNote', 'Implant', 'ImplantNote',
+    'Permission', 'AuditLog', 'Diagnosis', 'DiagnosisNote', 'AllergyIntolerance',
+    'DiagnosticReport', 'LabResult', 'ClinicalDocument', 'ImagingStudy', 'Implant', 'ImplantNote',
+    'VentImport', 'VentParameterDictionary', 'VentSample', 'VentDeviceInfo',
     'CompleteItemRequest', 'BulkCompleteRequest', 'Organization', 'OrganizationMembership',
-    'OrganizationType', 'PatientAccess', 'AccessLevel', 'Reader'
+    'OrganizationType', 'PatientAccess', 'AccessLevel', 'Reader', 'CustomVitalDefinition',
+    'UserMessage', 'UserMessageAcknowledgement', 'VentIngestedFile'
 ]

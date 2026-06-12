@@ -1,3 +1,20 @@
+/*
+ * Smart Home Health Hub
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 import React, { useState, useEffect } from 'react';
 import AdminV2Layout from './AdminV2Layout';
 import config from '../../config';
@@ -6,31 +23,57 @@ import {
   PlusIcon,
   EditIcon,
   TrashIcon,
-  XIcon,
   BuildingIcon,
   CheckIcon,
   SearchIcon
 } from '../../components/Icons';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import { Alert } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Field, FormRow } from '@/components/ui/field';
+import { cn } from '@/lib/utils';
 import './AdminV2.css';
+
+// Label/value row used inside the business cards.
+function Row({ label, value }) {
+  return (
+    <div className="flex justify-between gap-3">
+      <span className="shrink-0 text-muted-foreground">{label}:</span>
+      <span className="text-right text-foreground">{value}</span>
+    </div>
+  );
+}
 
 const AdminV2Businesses = () => {
   const { user } = useAuth();
-  
+
   // State
   const [businesses, setBusinesses] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  
+
   // Filter state
   const [activeTab, setActiveTab] = useState('active');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('');
   const [businessTypes, setBusinessTypes] = useState([]);
-  
+
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedBusiness, setSelectedBusiness] = useState(null);
-  
+
   // Form state
   const [formData, setFormData] = useState({
     name: '',
@@ -50,7 +93,7 @@ const AdminV2Businesses = () => {
   const [saving, setSaving] = useState(false);
 
   const businessTypeOptions = [
-    'hospital', 'clinic', 'pharmacy', 'dme', 'school', 'therapy', 
+    'hospital', 'clinic', 'pharmacy', 'dme', 'school', 'therapy',
     'insurance', 'lab', 'imaging', 'home_health', 'hospice', 'rehab', 'other'
   ];
 
@@ -83,12 +126,12 @@ const AdminV2Businesses = () => {
     try {
       setLoading(true);
       setError(null);
-      
+
       let url = `${config.apiUrl}/api/businesses?active_only=${activeTab === 'active'}`;
       if (filterType) {
         url += `&business_type=${encodeURIComponent(filterType)}`;
       }
-      
+
       const response = await fetch(url, { credentials: 'include' });
       if (response.ok) {
         const data = await response.json();
@@ -131,10 +174,10 @@ const AdminV2Businesses = () => {
       setSaving(true);
       setFormError(null);
 
-      const endpoint = selectedBusiness 
+      const endpoint = selectedBusiness
         ? `${config.apiUrl}/api/businesses/${selectedBusiness.id}`
         : `${config.apiUrl}/api/businesses`;
-      
+
       const method = selectedBusiness ? 'PUT' : 'POST';
       const response = await fetch(endpoint, {
         method,
@@ -151,7 +194,7 @@ const AdminV2Businesses = () => {
         const data = await response.json();
         setFormError(data.detail || 'Failed to save business');
       }
-    } catch (err) {
+    } catch {
       setFormError('Error connecting to server');
     } finally {
       setSaving(false);
@@ -179,7 +222,7 @@ const AdminV2Businesses = () => {
 
   const handleDelete = async (businessId) => {
     if (!window.confirm('Are you sure you want to deactivate this business?')) return;
-    
+
     try {
       const response = await fetch(`${config.apiUrl}/api/businesses/${businessId}`, {
         method: 'DELETE',
@@ -244,201 +287,25 @@ const AdminV2Businesses = () => {
   const activeCount = businesses.filter(b => b.active).length;
   const inactiveCount = businesses.filter(b => !b.active).length;
 
-  // Create/Edit modal
-  const renderFormModal = () => (
-    <div className="admin-v2-modal-overlay" onClick={(e) => {
-      if (e.target === e.currentTarget) {
-        setShowCreateModal(false);
-        resetForm();
-      }
-    }}>
-      <div className="admin-v2-modal admin-v2-modal-lg">
-        <div className="admin-v2-modal-header">
-          <h3>{selectedBusiness ? 'Edit Business' : 'Add New Business'}</h3>
-          <button 
-            className="admin-v2-modal-close"
-            onClick={() => {
-              setShowCreateModal(false);
-              resetForm();
-            }}
-          >
-            <XIcon size={20} />
-          </button>
-        </div>
-        <form onSubmit={handleSubmit}>
-          <div className="admin-v2-modal-body">
-            {formError && (
-              <div className="admin-v2-form-error">{formError}</div>
-            )}
-            
-            <div className="admin-v2-form-group" style={{marginBottom: '1.25rem'}}>
-              <label>Business Types * <span style={{fontWeight: 'normal', fontSize: '0.85em'}}>(select all that apply)</span></label>
-              <div className="admin-v2-checkbox-grid">
-                {businessTypeOptions.map(type => (
-                  <label key={type} className="admin-v2-checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={(formData.business_types || []).includes(type)}
-                      onChange={() => toggleBusinessType(type)}
-                    />
-                    {type.replace('_', ' ').toUpperCase()}
-                  </label>
-                ))}
-              </div>
-              {formData.business_types?.length === 0 && (
-                <span style={{color: '#f44336', fontSize: '0.85em'}}>Please select at least one type</span>
-              )}
-            </div>
-
-            <div className="admin-v2-form-grid">
-              <div className="admin-v2-form-group">
-                <label>Business Name *</label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  required
-                />
-              </div>
-
-              <div className="admin-v2-form-group">
-                <label>Phone</label>
-                <input
-                  type="tel"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                />
-              </div>
-
-              <div className="admin-v2-form-group">
-                <label>Fax</label>
-                <input
-                  type="tel"
-                  value={formData.fax}
-                  onChange={(e) => setFormData({ ...formData, fax: e.target.value })}
-                />
-              </div>
-
-              <div className="admin-v2-form-group">
-                <label>Email</label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                />
-              </div>
-
-              <div className="admin-v2-form-group">
-                <label>Website</label>
-                <input
-                  type="url"
-                  value={formData.website}
-                  onChange={(e) => setFormData({ ...formData, website: e.target.value })}
-                  placeholder="https://"
-                />
-              </div>
-
-              <div className="admin-v2-form-group">
-                <label>Address Line 1</label>
-                <input
-                  type="text"
-                  value={formData.address_line1}
-                  onChange={(e) => setFormData({ ...formData, address_line1: e.target.value })}
-                />
-              </div>
-
-              <div className="admin-v2-form-group">
-                <label>Address Line 2</label>
-                <input
-                  type="text"
-                  value={formData.address_line2}
-                  onChange={(e) => setFormData({ ...formData, address_line2: e.target.value })}
-                />
-              </div>
-
-              <div className="admin-v2-form-group">
-                <label>City</label>
-                <input
-                  type="text"
-                  value={formData.city}
-                  onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                />
-              </div>
-
-              <div className="admin-v2-form-group">
-                <label>State</label>
-                <input
-                  type="text"
-                  value={formData.state}
-                  onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                  maxLength="2"
-                />
-              </div>
-
-              <div className="admin-v2-form-group">
-                <label>ZIP Code</label>
-                <input
-                  type="text"
-                  value={formData.zip_code}
-                  onChange={(e) => setFormData({ ...formData, zip_code: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div className="admin-v2-form-group" style={{marginTop: '1rem'}}>
-              <label>Notes</label>
-              <textarea
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                rows="4"
-                placeholder="Additional notes about this business..."
-                style={{width: '100%', resize: 'vertical'}}
-              />
-            </div>
-          </div>
-          <div className="admin-v2-modal-footer">
-            <button 
-              type="button" 
-              className="admin-v2-btn admin-v2-btn-secondary"
-              onClick={() => {
-                setShowCreateModal(false);
-                resetForm();
-              }}
-            >
-              Cancel
-            </button>
-            <button 
-              type="submit" 
-              className="admin-v2-btn admin-v2-btn-primary"
-              disabled={saving}
-            >
-              {saving ? 'Saving...' : (selectedBusiness ? 'Update Business' : 'Add Business')}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
-        <h1 className="schedule-section-title">Businesses & Organizations</h1>
-
         {error && (
-          <div className="admin-v2-error-banner">{error}</div>
+          <div className="tw mb-4">
+            <Alert variant="destructive">{error}</Alert>
+          </div>
         )}
 
         {/* Tabs and Filters */}
         <div className="admin-v2-controls-bar">
           <div className="admin-v2-tabs">
-            <button 
+            <button
               className={`admin-v2-tab ${activeTab === 'active' ? 'active' : ''}`}
               onClick={() => setActiveTab('active')}
             >
               Active ({activeCount})
             </button>
-            <button 
+            <button
               className={`admin-v2-tab ${activeTab === 'inactive' ? 'active' : ''}`}
               onClick={() => setActiveTab('inactive')}
             >
@@ -470,7 +337,7 @@ const AdminV2Businesses = () => {
           </div>
 
           {hasPermission('businesses.create') && (
-            <button 
+            <button
               className="admin-v2-btn admin-v2-btn-primary"
               onClick={openCreateModal}
             >
@@ -480,125 +347,186 @@ const AdminV2Businesses = () => {
         </div>
 
         {/* Business Cards Grid */}
-        {loading ? (
-          <div className="admin-v2-loading">Loading businesses...</div>
-        ) : filteredBusinesses.length === 0 ? (
-          <div className="admin-v2-empty-state">
-            <BuildingIcon size={48} />
-            <h3>{searchTerm ? 'No businesses found matching your search.' : 'No businesses found.'}</h3>
-            {hasPermission('businesses.create') && (
-              <button 
-                className="admin-v2-btn admin-v2-btn-primary"
-                onClick={openCreateModal}
-              >
-                <PlusIcon size={16} /> Add First Business
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="admin-v2-cards-grid">
-            {filteredBusinesses.map(business => (
-              <div key={business.id} className={`admin-v2-card ${!business.active ? 'inactive' : ''}`}>
-                <div className="admin-v2-card-header">
-                  <div className="admin-v2-card-title-row">
-                    <h3>{business.name}</h3>
-                  </div>
-                  <div className="admin-v2-badge-group">
-                    {(business.business_types || [business.business_type]).filter(Boolean).map(type => (
-                      <span key={type} className={`admin-v2-badge admin-v2-badge-type-${type}`}>
-                        {type.replace('_', ' ').toUpperCase()}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                
-                <div className="admin-v2-card-body">
-                  {(business.address_line1 || business.city) && (
-                    <div className="admin-v2-card-row">
-                      <span className="label">Address:</span>
-                      <span className="value">
-                        {business.address_line1 && <>{business.address_line1}<br /></>}
-                        {business.address_line2 && <>{business.address_line2}<br /></>}
-                        {business.city && `${business.city}, `}
-                        {business.state} {business.zip_code}
-                      </span>
+        <div className="tw mt-4">
+          {loading ? (
+            <p className="text-sm text-muted-foreground">Loading businesses...</p>
+          ) : filteredBusinesses.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border py-12 text-center text-muted-foreground">
+              <BuildingIcon size={48} />
+              <h3 className="text-base font-semibold text-foreground">
+                {searchTerm ? 'No businesses found matching your search.' : 'No businesses found.'}
+              </h3>
+              {hasPermission('businesses.create') && (
+                <Button onClick={openCreateModal}>
+                  <PlusIcon size={16} /> Add First Business
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {filteredBusinesses.map(business => (
+                <Card key={business.id} className={cn(!business.active && "opacity-60")}>
+                  <CardHeader className="gap-2 py-3">
+                    <CardTitle className="text-sm">{business.name}</CardTitle>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(business.business_types || [business.business_type]).filter(Boolean).map(type => (
+                        <Badge key={type} variant="secondary">{type.replace('_', ' ').toUpperCase()}</Badge>
+                      ))}
                     </div>
-                  )}
-                  {business.phone && (
-                    <div className="admin-v2-card-row">
-                      <span className="label">Phone:</span>
-                      <span className="value">{business.phone}</span>
-                    </div>
-                  )}
-                  {business.fax && (
-                    <div className="admin-v2-card-row">
-                      <span className="label">Fax:</span>
-                      <span className="value">{business.fax}</span>
-                    </div>
-                  )}
-                  {business.email && (
-                    <div className="admin-v2-card-row">
-                      <span className="label">Email:</span>
-                      <span className="value">{business.email}</span>
-                    </div>
-                  )}
-                  {business.website && (
-                    <div className="admin-v2-card-row">
-                      <span className="label">Website:</span>
-                      <span className="value">
-                        <a href={business.website} target="_blank" rel="noopener noreferrer">
-                          {business.website.replace('https://', '').replace('http://', '')}
-                        </a>
-                      </span>
-                    </div>
-                  )}
-                  {business.provider_count > 0 && (
-                    <div className="admin-v2-card-row">
-                      <span className="label">Providers:</span>
-                      <span className="value">{business.provider_count}</span>
-                    </div>
-                  )}
-                </div>
+                  </CardHeader>
 
-                <div className="admin-v2-card-actions">
-                  {hasPermission('businesses.update') && (
-                    <button 
-                      className="admin-v2-action-btn admin-v2-action-btn-edit"
-                      onClick={() => handleEdit(business)}
-                    >
-                      <EditIcon size={14} />
-                      <span>Edit</span>
-                    </button>
-                  )}
-                  {business.active ? (
-                    hasPermission('businesses.delete') && (
-                      <button 
-                        className="admin-v2-action-btn admin-v2-action-btn-delete"
-                        onClick={() => handleDelete(business.id)}
-                      >
-                        <TrashIcon size={14} />
-                        <span>Deactivate</span>
-                      </button>
-                    )
-                  ) : (
-                    hasPermission('businesses.update') && (
-                      <button 
-                        className="admin-v2-action-btn admin-v2-action-btn-success"
-                        onClick={() => handleActivate(business.id)}
-                      >
-                        <CheckIcon size={14} />
-                        <span>Activate</span>
-                      </button>
-                    )
-                  )}
+                  <CardContent className="flex flex-col gap-1.5 py-3 text-sm">
+                    {(business.address_line1 || business.city) && (
+                      <Row
+                        label="Address"
+                        value={
+                          <>
+                            {business.address_line1 && <>{business.address_line1}<br /></>}
+                            {business.address_line2 && <>{business.address_line2}<br /></>}
+                            {business.city && `${business.city}, `}
+                            {business.state} {business.zip_code}
+                          </>
+                        }
+                      />
+                    )}
+                    {business.phone && <Row label="Phone" value={business.phone} />}
+                    {business.fax && <Row label="Fax" value={business.fax} />}
+                    {business.email && <Row label="Email" value={business.email} />}
+                    {business.website && (
+                      <Row
+                        label="Website"
+                        value={
+                          <a className="text-ring underline-offset-4 hover:underline" href={business.website} target="_blank" rel="noopener noreferrer">
+                            {business.website.replace('https://', '').replace('http://', '')}
+                          </a>
+                        }
+                      />
+                    )}
+                    {business.provider_count > 0 && <Row label="Providers" value={business.provider_count} />}
+                  </CardContent>
+
+                  <CardFooter className="justify-start gap-2 py-3">
+                    {hasPermission('businesses.update') && (
+                      <Button size="sm" variant="ghost" onClick={() => handleEdit(business)}>
+                        <EditIcon size={14} /> Edit
+                      </Button>
+                    )}
+                    {business.active ? (
+                      hasPermission('businesses.delete') && (
+                        <Button size="sm" variant="ghost" className="text-[#ff7b72] hover:text-[#ff7b72]" onClick={() => handleDelete(business.id)}>
+                          <TrashIcon size={14} /> Deactivate
+                        </Button>
+                      )
+                    ) : (
+                      hasPermission('businesses.update') && (
+                        <Button size="sm" variant="ghost" className="text-[#3fb950] hover:text-[#3fb950]" onClick={() => handleActivate(business.id)}>
+                          <CheckIcon size={14} /> Activate
+                        </Button>
+                      )
+                    )}
+                  </CardFooter>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Create / Edit Dialog */}
+        <Dialog open={showCreateModal} onOpenChange={(o) => { if (!o) { setShowCreateModal(false); resetForm(); } }}>
+          <DialogContent className="sm:max-w-[680px]" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>{selectedBusiness ? 'Edit Business' : 'Add New Business'}</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+              {formError && <Alert variant="destructive">{formError}</Alert>}
+
+              <div className="flex flex-col gap-1.5">
+                <Label>
+                  Business Types <span className="text-xs font-normal text-muted-foreground">(select all that apply)</span>
+                  <span className="text-destructive"> *</span>
+                </Label>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {businessTypeOptions.map(type => (
+                    <label key={type} className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
+                      <Checkbox
+                        checked={(formData.business_types || []).includes(type)}
+                        onCheckedChange={() => toggleBusinessType(type)}
+                      />
+                      {type.replace('_', ' ').toUpperCase()}
+                    </label>
+                  ))}
                 </div>
+                {formData.business_types?.length === 0 && (
+                  <p className="text-xs text-destructive">Please select at least one type</p>
+                )}
               </div>
-            ))}
-          </div>
-        )}
 
-        {/* Modals */}
-        {showCreateModal && renderFormModal()}
+              <FormRow>
+                <Field label="Business Name" required htmlFor="biz-name">
+                  <Input id="biz-name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required />
+                </Field>
+                <Field label="Phone" htmlFor="biz-phone">
+                  <Input id="biz-phone" type="tel" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
+                </Field>
+              </FormRow>
+
+              <FormRow>
+                <Field label="Fax" htmlFor="biz-fax">
+                  <Input id="biz-fax" type="tel" value={formData.fax} onChange={(e) => setFormData({ ...formData, fax: e.target.value })} />
+                </Field>
+                <Field label="Email" htmlFor="biz-email">
+                  <Input id="biz-email" type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
+                </Field>
+              </FormRow>
+
+              <FormRow>
+                <Field label="Website" htmlFor="biz-website">
+                  <Input id="biz-website" type="url" value={formData.website} onChange={(e) => setFormData({ ...formData, website: e.target.value })} placeholder="https://" />
+                </Field>
+                <Field label="Address Line 1" htmlFor="biz-addr1">
+                  <Input id="biz-addr1" value={formData.address_line1} onChange={(e) => setFormData({ ...formData, address_line1: e.target.value })} />
+                </Field>
+              </FormRow>
+
+              <FormRow>
+                <Field label="Address Line 2" htmlFor="biz-addr2">
+                  <Input id="biz-addr2" value={formData.address_line2} onChange={(e) => setFormData({ ...formData, address_line2: e.target.value })} />
+                </Field>
+                <Field label="City" htmlFor="biz-city">
+                  <Input id="biz-city" value={formData.city} onChange={(e) => setFormData({ ...formData, city: e.target.value })} />
+                </Field>
+              </FormRow>
+
+              <FormRow>
+                <Field label="State" htmlFor="biz-state">
+                  <Input id="biz-state" value={formData.state} onChange={(e) => setFormData({ ...formData, state: e.target.value })} maxLength="2" />
+                </Field>
+                <Field label="ZIP Code" htmlFor="biz-zip">
+                  <Input id="biz-zip" value={formData.zip_code} onChange={(e) => setFormData({ ...formData, zip_code: e.target.value })} />
+                </Field>
+              </FormRow>
+
+              <Field label="Notes" htmlFor="biz-notes">
+                <Textarea
+                  id="biz-notes"
+                  rows={4}
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  placeholder="Additional notes about this business..."
+                />
+              </Field>
+
+              <DialogFooter>
+                <Button type="button" variant="secondary" onClick={() => { setShowCreateModal(false); resetForm(); }}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={saving}>
+                  {saving ? 'Saving...' : (selectedBusiness ? 'Update Business' : 'Add Business')}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
     </AdminV2Layout>
   );

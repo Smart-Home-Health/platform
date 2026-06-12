@@ -1,3 +1,18 @@
+# Smart Home Health Hub
+# Copyright (C) 2026 John Carty
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 Monitoring and alerts routes
 """
@@ -9,7 +24,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
 from typing import Optional, List
 from datetime import datetime, date, time, timedelta, timezone
-import pytz
+from utils.datetime_utils import resolve_tz_for_patient
 from db import get_db
 from dependencies import require_read_access
 from models.monitoring import (
@@ -223,12 +238,12 @@ async def get_timeline_data(
 
         date_str = date_obj.strftime('%Y-%m-%d')
 
-        # Compute local Eastern day boundaries in UTC
-        eastern = pytz.timezone('US/Eastern')
-        local_start = eastern.localize(datetime.combine(date_obj, time.min))
-        local_end = eastern.localize(datetime.combine(date_obj, time.max))
-        start_dt = local_start.astimezone(pytz.utc).replace(tzinfo=None)
-        end_dt = local_end.astimezone(pytz.utc).replace(tzinfo=None)
+        # Compute the patient's account-local day boundaries in UTC
+        tz = resolve_tz_for_patient(db, patient_id)
+        local_start = datetime.combine(date_obj, time.min, tzinfo=tz)
+        local_end = datetime.combine(date_obj, time.max, tzinfo=tz)
+        start_dt = local_start.astimezone(timezone.utc).replace(tzinfo=None)
+        end_dt = local_end.astimezone(timezone.utc).replace(tzinfo=None)
 
         # 1. Pulse ox - get raw data and downsample to 1-minute averages
         from schemas.pulse_ox_data import PulseOxData as PulseOxModel

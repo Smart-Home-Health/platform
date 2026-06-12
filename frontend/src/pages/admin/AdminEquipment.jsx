@@ -1,5 +1,24 @@
+/*
+ * Smart Home Health Hub
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 import React, { useState, useEffect } from 'react';
 import config from '../../config';
+import EquipmentRestockGate from '../../components/EquipmentRestockGate';
+import { formatDateOnly } from '../../utils/timezone';
 
 const AdminEquipment = () => {
   const [equipment, setEquipment] = useState([]);
@@ -8,6 +27,7 @@ const AdminEquipment = () => {
   const [selectedEquipment, setSelectedEquipment] = useState(null);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [equipmentHistory, setEquipmentHistory] = useState([]);
+  const [restockInfo, setRestockInfo] = useState(null);
   
   const [newEquipment, setNewEquipment] = useState({
     name: '',
@@ -109,26 +129,35 @@ const AdminEquipment = () => {
     }
   };
 
-  const handleChangeEquipment = async (equipmentId) => {
-    const changedAt = prompt('When was this equipment changed? (YYYY-MM-DD)', new Date().toISOString().split('T')[0]);
-    if (changedAt) {
-      try {
-        const response = await fetch(`${config.apiUrl}/api/equipment/${equipmentId}/change`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ changed_at: changedAt }),
-        });
+  const handleChangeEquipment = async (equipmentId, presetChangedAt) => {
+    // On the restock retry the date is already known, so don't re-prompt.
+    const changedAt = presetChangedAt
+      || prompt('When was this equipment changed? (YYYY-MM-DD)', new Date().toISOString().split('T')[0]);
+    if (!changedAt) return;
+    try {
+      const response = await fetch(`${config.apiUrl}/api/equipment/${equipmentId}/change`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ changed_at: changedAt }),
+      });
 
-        if (response.ok) {
-          fetchEquipment();
+      if (response.ok) {
+        setRestockInfo(null);
+        fetchEquipment();
+      } else {
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 409 && data.error === 'insufficient_quantity') {
+          // Stash the date so the gate can retry with the same value.
+          setRestockInfo({ ...data, _changed_at: changedAt });
         } else {
           console.error('Failed to log equipment change');
         }
-      } catch (error) {
-        console.error('Error logging equipment change:', error);
       }
+    } catch (error) {
+      console.error('Error logging equipment change:', error);
     }
   };
 
@@ -145,7 +174,7 @@ const AdminEquipment = () => {
   };
 
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString();
+    return formatDateOnly(dateString);
   };
 
   const calculateDaysUntilDue = (lastChanged, usefulDays) => {
@@ -810,6 +839,12 @@ const AdminEquipment = () => {
           </div>
         </div>
       )}
+
+      <EquipmentRestockGate
+        info={restockInfo}
+        onClose={() => setRestockInfo(null)}
+        onUpdated={() => handleChangeEquipment(restockInfo.equipment_id, restockInfo._changed_at)}
+      />
     </div>
   );
 };

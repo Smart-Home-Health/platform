@@ -1,3 +1,20 @@
+/*
+ * Smart Home Health Hub
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, Outlet, useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
@@ -21,8 +38,21 @@ import {
   XIcon,
   ClipboardListIcon,
   VirusIcon,
-  MenuIcon
+  MenuIcon,
+  BarChartIcon,
+  MessagesIcon
 } from '../../components/Icons';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Alert } from '@/components/ui/alert';
 import './AdminV2.css';
 
 // Side navigation items - main app sections
@@ -32,6 +62,8 @@ const sideNavItems = [
   { path: '/care/vitals', label: 'Vitals', Icon: ClipboardListIcon, requiredPermissions: ['vitals.read', 'vitals.create'] },
   { path: '/care/symptoms', label: 'Symptoms', Icon: VirusIcon, requiredPermissions: ['vitals.read', 'vitals.create'] },
   { path: '/care/monitoring', label: 'Monitoring', Icon: MonitoringIcon, requiredPermissions: ['monitoring.read', 'monitoring.create', 'monitoring.update', 'monitoring.delete'] },
+  { path: '/care/messages', label: 'Messages', Icon: MessagesIcon },
+  { path: '/care/reports', label: 'Reports', Icon: BarChartIcon, requiredPermissions: ['vitals.read'] },
   { path: '/care/medications', label: 'Medications', Icon: MedicationsIcon, requiredPermissions: ['medications.read', 'medications.create', 'medications.update', 'medications.delete'] },
   { path: '/care/care-tasks', label: 'Care Tasks', Icon: TasksIcon, requiredPermissions: ['care_tasks.read', 'care_tasks.create', 'care_tasks.update', 'care_tasks.delete'] },
   { path: '/care/equipment', label: 'Equipment & Supplies', Icon: EquipmentIcon, requiredPermissions: ['equipment.read', 'equipment.create', 'equipment.update', 'equipment.delete'] },
@@ -43,6 +75,12 @@ const sideNavItems = [
 // Get top nav items based on current section, permissions, and read access (restricted mode hides History/Active)
 const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin) => {
   const navItems = {
+    schedule: [
+      { path: '/care/schedule', label: 'Schedule' },
+      // Undo Log is an audit view — only surface it to users with audit access.
+      ...(hasAnyPermission(['audit.read'])
+        ? [{ path: '/care/schedule/undo-log', label: 'Undo' }] : []),
+    ],
     vitals: hasReadAccess
       ? [
           { path: '/care/vitals', label: 'Record' },
@@ -61,31 +99,44 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
       { path: '/care/medications/schedule', label: 'Schedule' },
       { path: '/care/medications/history', label: 'History' },
       { path: '/care/medications/manage', label: 'Manage' },
+      ...(hasAnyPermission(['audit.read'])
+        ? [{ path: '/care/schedule/undo-log', label: 'Undo' }] : []),
     ],
     'care-tasks': [
       { path: '/care/care-tasks', label: 'Overview' },
       { path: '/care/care-tasks/manage', label: 'Manage' },
       { path: '/care/care-tasks/schedule', label: 'Schedule' },
       { path: '/care/care-tasks/history', label: 'History' },
+      ...(hasAnyPermission(['audit.read'])
+        ? [{ path: '/care/schedule/undo-log', label: 'Undo' }] : []),
     ],
     equipment: [
       { path: '/care/equipment', label: 'Overview' },
-      { path: '/care/equipment/history', label: 'Change History' },
+      { path: '/care/equipment/history', label: 'History' },
       { path: '/care/equipment/shipments', label: 'Shipments' },
       { path: '/care/equipment/alerts', label: 'Alerts' },
     ],
     nutrition: [
       { path: '/care/nutrition', label: 'Overview' },
-      { path: '/care/nutrition/intake', label: 'Intake Log' },
-      { path: '/care/nutrition/output', label: 'Output Log' },
+      { path: '/care/nutrition/intake', label: 'Intake' },
+      { path: '/care/nutrition/output', label: 'Output' },
       { path: '/care/nutrition/schedules', label: 'Schedules' },
-      { path: '/care/nutrition/goals', label: 'Daily Goals' },
+      { path: '/care/nutrition/goals', label: 'Goals' },
+      ...(hasAnyPermission(['audit.read'])
+        ? [{ path: '/care/schedule/undo-log', label: 'Undo' }] : []),
     ],
     monitoring: [
       { path: '/care/monitoring', label: 'Alerts' },
       { path: '/care/monitoring/history', label: 'History' },
       { path: '/care/monitoring/timeline', label: 'Timeline' },
+      { path: '/care/monitoring/ventilator', label: 'Ventilator' },
+      { path: '/care/monitoring/interactions', label: 'Interactions' },
       { path: '/care/monitoring/settings', label: 'Alert Settings' },
+    ],
+    reports: [
+      { path: '/care/reports', label: 'Day over Day' },
+      { path: '/care/reports/overnight', label: 'Overnight' },
+      { path: '/care/reports/weekly', label: 'Weekly Summary' },
     ],
     profile: [
       // Patient profile sections
@@ -116,7 +167,7 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
         ? [{ path: '/care/configuration/users/permissions', label: 'Permissions' }] : []),
       { path: '/care/configuration/mqtt', label: 'MQTT' },
       ...(isSystemAdmin
-        ? [{ path: '/care/configuration/backup', label: 'Backup & Restore' }] : []),
+        ? [{ path: '/care/configuration/backup', label: 'Backup' }] : []),
     ],
   };
   return navItems[section] || [];
@@ -490,33 +541,37 @@ const AdminV2Layout = ({ children }) => {
         )}
 
         {/* Unlock modal */}
-        {showUnlockModal && (
-          <div className="admin-v2-modal-overlay" onClick={() => !unlockLoading && setShowUnlockModal(false)}>
-            <div className="admin-v2-modal" onClick={e => e.stopPropagation()}>
-              <h3>Unlock read access</h3>
-              <p>Enter account password to view data.</p>
-              <form onSubmit={handleUnlockSubmit}>
-                {unlockError && <div className="admin-v2-unlock-error">{unlockError}</div>}
-                <input
-                  type="password"
-                  value={unlockPassword}
-                  onChange={e => setUnlockPassword(e.target.value)}
-                  placeholder="Account password"
-                  autoFocus
-                  className="admin-v2-unlock-input"
-                />
-                <div className="admin-v2-modal-actions">
-                  <button type="button" className="admin-v2-btn-secondary" onClick={() => !unlockLoading && setShowUnlockModal(false)} disabled={unlockLoading}>
-                    Cancel
-                  </button>
-                  <button type="submit" className="admin-v2-btn-primary" disabled={unlockLoading}>
-                    {unlockLoading ? 'Unlocking...' : 'Unlock'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+        <Dialog open={showUnlockModal} onOpenChange={(o) => { if (!o && !unlockLoading) setShowUnlockModal(false); }}>
+          <DialogContent className="sm:max-w-[400px]">
+            <DialogHeader>
+              <DialogTitle>Unlock read access</DialogTitle>
+              <DialogDescription>Enter account password to view data.</DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleUnlockSubmit} className="flex flex-col gap-3">
+              {unlockError && <Alert variant="destructive">{unlockError}</Alert>}
+              <Input
+                type="password"
+                value={unlockPassword}
+                onChange={e => setUnlockPassword(e.target.value)}
+                placeholder="Account password"
+                autoFocus
+              />
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => !unlockLoading && setShowUnlockModal(false)}
+                  disabled={unlockLoading}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={unlockLoading}>
+                  {unlockLoading ? 'Unlocking...' : 'Unlock'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
 
         {/* Top Navigation - only show if section has sub-navigation */}
         {topNavItems.length > 0 && (

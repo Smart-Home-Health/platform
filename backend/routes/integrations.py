@@ -1,3 +1,18 @@
+# Smart Home Health Hub
+# Copyright (C) 2026 John Carty
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 API routes for integration management.
 
@@ -296,10 +311,109 @@ async def delete_patient_integration(
     
     patient_integration.is_enabled = False
     patient_integration.updated_at = datetime.utcnow()
-    
+
     db.commit()
-    
+
     return {"status": "success", "message": "Integration deactivated"}
+
+
+@router.delete("/patient/{patient_id}/{integration_id}/permanent")
+async def permanently_delete_patient_integration(
+    patient_id: int,
+    integration_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_full_auth),
+    account_id: int = Depends(get_current_account_id)
+):
+    """
+    Permanently delete a patient's integration and its associated devices.
+    """
+
+    from sqlalchemy import text
+
+    row = db.execute(
+        text("SELECT id FROM patient_integrations WHERE id = :id AND patient_id = :pid AND account_id = :aid"),
+        {"id": integration_id, "pid": patient_id, "aid": account_id}
+    ).first()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Patient integration not found")
+
+    db.execute(text("DELETE FROM integration_devices WHERE patient_integration_id = :id"), {"id": integration_id})
+    db.execute(text("DELETE FROM patient_integrations WHERE id = :id"), {"id": integration_id})
+    db.commit()
+
+    return {"status": "success", "message": "Integration permanently deleted"}
+
+
+# ============================================================================
+# Local / API-key connect (non-OAuth)
+# ============================================================================
+
+@router.post("/patient/{patient_id}/{integration_id}/connect", response_model=PatientIntegrationResponse)
+async def connect_integration(
+    patient_id: int,
+    integration_id: int,
+    auth_data: dict,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_full_auth),
+    account_id: int = Depends(get_current_account_id),
+):
+    """
+    Authenticate a non-OAuth integration and activate it.
+
+    Runs `authenticate(auth_data)` on the integration class, stores the result
+    as `credentials`, and flips `is_enabled` to True. Used by integrations that
+    declare `auth_type` of "local" or "api_key".
+    """
+    patient_integration = db.query(PatientIntegration).options(
+        joinedload(PatientIntegration.integration)
+    ).filter(
+        PatientIntegration.id == integration_id,
+        PatientIntegration.patient_id == patient_id,
+        PatientIntegration.account_id == account_id,
+    ).first()
+
+    if not patient_integration:
+        raise HTTPException(status_code=404, detail="Patient integration not found")
+
+    slug = patient_integration.integration.slug
+    integration_class = get_integration(slug)
+    if not integration_class:
+        raise HTTPException(status_code=404, detail="Integration class not found")
+
+    if integration_class.auth_type == "oauth2":
+        raise HTTPException(status_code=400, detail="Use the OAuth flow for this integration")
+
+    try:
+        instance = integration_class()
+        credentials = await instance.authenticate(auth_data or {})
+    except AuthenticationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    patient_integration.credentials = credentials
+    patient_integration.is_enabled = True
+    patient_integration.last_sync_status = None
+    patient_integration.last_sync_error = None
+    patient_integration.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(patient_integration)
+
+    return PatientIntegrationResponse(
+        id=patient_integration.id,
+        patient_id=patient_integration.patient_id,
+        integration_id=patient_integration.integration_id,
+        integration_slug=patient_integration.integration.slug,
+        integration_name=patient_integration.integration.name,
+        auth_type=patient_integration.integration.auth_type,
+        is_enabled=patient_integration.is_enabled,
+        settings=patient_integration.settings,
+        last_sync_at=patient_integration.last_sync_at,
+        last_sync_status=patient_integration.last_sync_status,
+        last_sync_error=patient_integration.last_sync_error,
+        sync_count=patient_integration.sync_count,
+        created_at=patient_integration.created_at,
+    )
 
 
 # ============================================================================
@@ -354,8 +468,11 @@ async def start_oauth_flow(
     base_url = os.getenv("API_BASE_URL", str(request.base_url).rstrip("/"))
     callback_url = f"{base_url}/api/integrations/oauth/callback"
     
-    # Get authorization URL
-    auth_url = integration_class.get_oauth_url(state, callback_url)
+    # Get authorization URL. Pass settings so integrations with a per-instance
+    # authorization endpoint (e.g. Epic's per-org FHIR URLs) can resolve it.
+    auth_url = integration_class.get_oauth_url(
+        state, callback_url, settings=patient_integration.settings or {}
+    )
     
     if not auth_url:
         raise HTTPException(
@@ -414,8 +531,10 @@ async def oauth_callback(
     callback_url = f"{base_url}/api/integrations/oauth/callback"
     
     try:
-        # Create integration instance and authenticate
-        integration = integration_class()
+        # Create integration instance and authenticate. Pass the patient
+        # integration so integrations whose token endpoint is per-instance (e.g.
+        # Epic's per-org token URL, read from settings) can complete the exchange.
+        integration = integration_class(patient_integration)
         credentials = await integration.authenticate({
             "code": code,
             "redirect_uri": callback_url,
@@ -492,7 +611,12 @@ async def sync_integration(
         
         # Perform sync
         result = await integration.sync_data(since=since)
-        
+
+        # Persist any credential refresh that happened mid-sync (e.g. rotated
+        # OAuth refresh tokens) so the next sync doesn't fail.
+        if integration.credentials and integration.credentials != patient_integration.credentials:
+            patient_integration.credentials = integration.credentials
+
         if result.success:
             # Store new readings
             readings_stored = 0
@@ -556,9 +680,20 @@ async def sync_integration(
                         updated_at=now,
                     )
                     db.add(device)
-            
+
+            # Persist richer clinical resources (reports, labs, documents,
+            # imaging, allergies) returned by EHR/FHIR integrations. No-op for
+            # device integrations, which leave these lists empty.
+            from integrations.persistence import persist_sync_extras
+            extra_counts = persist_sync_extras(db, account_id, patient_id, slug, result)
+
             db.commit()
-            
+
+            logger.info(
+                "Sync %s patient=%s stored vitals=%s extras=%s",
+                slug, patient_id, readings_stored, extra_counts,
+            )
+
             return SyncResultResponse(
                 success=True,
                 readings_count=readings_stored,

@@ -1,3 +1,18 @@
+# Smart Home Health Hub
+# Copyright (C) 2026 John Carty
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 Patient backup / restore HTTP routes.
 
@@ -20,7 +35,7 @@ router = APIRouter(prefix="/api/backup", tags=["backup"])
 
 
 def _require_system_admin(current_user: User = Depends(get_current_user)) -> User:
-    if not current_user.is_system_admin:
+    if not current_user.is_superuser:
         raise HTTPException(status_code=403, detail="System administrator access required")
     return current_user
 

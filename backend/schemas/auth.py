@@ -1,3 +1,18 @@
+# Smart Home Health Hub
+# Copyright (C) 2026 John Carty
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 Pydantic schemas for authentication
 """
@@ -42,7 +57,16 @@ class UserSelectResponse(BaseModel):
     account: dict
     user: dict
     requires_full_password: bool = False
+    requires_password_reset: bool = False  # Forced first-login: must reset password before full auth
     read_restricted: bool = False
+
+
+class UserResetPasswordRequest(BaseModel):
+    """First-login forced password reset (Layer 2, account-auth level)"""
+    user_id: int
+    current_password: str = Field(..., description="Current/temporary password")
+    new_password: str = Field(..., min_length=8)
+    pin: Optional[str] = Field(None, min_length=4, max_length=8, description="Optional PIN to set")
 
 
 class AccountUserItem(BaseModel):

@@ -1,5 +1,7 @@
 .venv
 .env
+# Editor/backup copies of env files (.env.save, .env.bak, ...) — never commit
+.env.*
 /node_modules/
 /.idea/*
 .idea
@@ -11,5 +13,20 @@
 # Docker
 *.sql
 
+# Saved auth/session cookies from API testing — never commit
+cookies.txt
+*.cookies
+
 .env.docker
 docs/*
+!docs/refactor-orm-split.md
+
+# Patient data — never commit. The /data bind mount holds uploaded vent log
+# tar balls and their extracted contents (CSV, JSON, binary device dumps).
+/data/
+# Also catch other common locations operators might use.
+**/uploads/
+**/imports/
+*.tar
+*.tar.gz
+*.tgz

@@ -1,3 +1,20 @@
+/*
+ * Smart Home Health Hub
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
@@ -9,12 +26,221 @@ import {
   PlusIcon,
   EditIcon,
   TrashIcon,
-  XIcon,
   MedicationsIcon,
   ClockIcon
 } from '../../components/Icons';
 import { localTimeToUTC, localTimeAndDaysToUTC, utcTimeToLocal, parseCronExpression } from '../../utils/timezone';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import { Alert } from '@/components/ui/alert';
+import { Field, FormRow } from '@/components/ui/field';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
 import './AdminV2.css';
+
+const QUANTITY_UNITS = ['tablets', 'capsules', 'ml', 'mg', 'units', 'puffs', 'drops', 'patches'];
+const UNIT_LABELS = { tablets: 'Tablets', capsules: 'Capsules', ml: 'mL', mg: 'mg', units: 'Units', puffs: 'Puffs', drops: 'Drops', patches: 'Patches' };
+
+// Shared Create/Edit medication form body (edit adds the Status select). Module
+// scope so it isn't recreated each render — a nested component drops input focus.
+function MedicationFormFields({ formData, setFormData, providers, pharmacies, showStatus }) {
+  return (
+    <>
+      <FormRow>
+        <Field label="Medication Name" required htmlFor="med-name">
+          <Input
+            id="med-name"
+            value={formData.name}
+            onChange={e => setFormData({ ...formData, name: e.target.value })}
+            required
+            placeholder="e.g., Lisinopril"
+          />
+        </Field>
+        <Field label="Concentration" required htmlFor="med-concentration">
+          <Input
+            id="med-concentration"
+            value={formData.concentration}
+            onChange={e => setFormData({ ...formData, concentration: e.target.value })}
+            required
+            placeholder="e.g., 10mg"
+          />
+        </Field>
+      </FormRow>
+
+      <FormRow>
+        <Field label="Quantity" required htmlFor="med-quantity">
+          <Input
+            id="med-quantity"
+            type="number"
+            value={formData.quantity}
+            onChange={e => setFormData({ ...formData, quantity: parseFloat(e.target.value) || 0 })}
+            required
+            min="0"
+            step="0.25"
+          />
+        </Field>
+        <Field label="Unit" required>
+          <Select
+            value={formData.quantity_unit}
+            onValueChange={(v) => setFormData({ ...formData, quantity_unit: v })}
+          >
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {QUANTITY_UNITS.map(u => (
+                <SelectItem key={u} value={u}>{UNIT_LABELS[u]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+      </FormRow>
+
+      <FormRow>
+        <Field label="Low Stock Alert At" htmlFor="med-low-stock-threshold">
+          <Input
+            id="med-low-stock-threshold"
+            type="number"
+            value={formData.low_stock_threshold ?? ''}
+            onChange={e => setFormData({
+              ...formData,
+              low_stock_threshold: e.target.value === '' ? null : parseFloat(e.target.value),
+            })}
+            min="0"
+            step="0.25"
+            placeholder="Leave blank to disable"
+          />
+        </Field>
+        <Field label="Alert Measured In">
+          <Select
+            value={formData.low_stock_threshold_type || 'quantity'}
+            onValueChange={(v) => setFormData({ ...formData, low_stock_threshold_type: v })}
+          >
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="quantity">Quantity on hand</SelectItem>
+              <SelectItem value="days">Days of supply left</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+      </FormRow>
+
+      <FormRow>
+        <Field label="Start Date" required htmlFor="med-start-date">
+          <Input
+            id="med-start-date"
+            type="date"
+            value={formData.start_date}
+            onChange={e => setFormData({ ...formData, start_date: e.target.value })}
+            required
+          />
+        </Field>
+        <Field label="Prescriber">
+          <Select
+            value={formData.prescriber_id ? String(formData.prescriber_id) : '__none__'}
+            onValueChange={(v) => setFormData({ ...formData, prescriber_id: v === '__none__' ? '' : v })}
+          >
+            <SelectTrigger><SelectValue placeholder="-- No Prescriber --" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">-- No Prescriber --</SelectItem>
+              {providers.map(provider => (
+                <SelectItem key={provider.id} value={String(provider.id)}>
+                  {provider.title ? `${provider.title} ` : ''}{provider.first_name} {provider.last_name}
+                  {provider.specialty ? ` (${provider.specialty})` : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+      </FormRow>
+
+      <Field label="Pharmacy">
+        <Select
+          value={formData.pharmacy_id ? String(formData.pharmacy_id) : '__none__'}
+          onValueChange={(v) => setFormData({ ...formData, pharmacy_id: v === '__none__' ? '' : v })}
+        >
+          <SelectTrigger><SelectValue placeholder="-- No Pharmacy --" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none__">-- No Pharmacy --</SelectItem>
+            {pharmacies.map(pharmacy => (
+              <SelectItem key={pharmacy.id} value={String(pharmacy.id)}>
+                {pharmacy.name}{pharmacy.phone ? ` - ${pharmacy.phone}` : ''}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
+
+      <Field label="Instructions" required htmlFor="med-instructions">
+        <Textarea
+          id="med-instructions"
+          value={formData.instructions}
+          onChange={e => setFormData({ ...formData, instructions: e.target.value })}
+          placeholder="e.g., Take with food"
+          rows={2}
+          required
+        />
+      </Field>
+
+      <Field label="Notes" htmlFor="med-notes">
+        <Textarea
+          id="med-notes"
+          value={formData.notes}
+          onChange={e => setFormData({ ...formData, notes: e.target.value })}
+          placeholder="Additional notes..."
+          rows={2}
+        />
+      </Field>
+
+      <FormRow>
+        <div className="flex items-center gap-2">
+          <Checkbox
+            id="med-prn"
+            checked={formData.as_needed}
+            onCheckedChange={(c) => setFormData({ ...formData, as_needed: !!c })}
+          />
+          <Label htmlFor="med-prn">PRN (As Needed)</Label>
+        </div>
+        <div className="flex items-center gap-2">
+          <Checkbox
+            id="med-global"
+            checked={formData.is_global}
+            onCheckedChange={(c) => setFormData({ ...formData, is_global: !!c })}
+          />
+          <Label htmlFor="med-global">Global (Available to all patients)</Label>
+        </div>
+      </FormRow>
+
+      {showStatus && (
+        <Field label="Status">
+          <Select
+            value={formData.active ? 'active' : 'inactive'}
+            onValueChange={(v) => setFormData({ ...formData, active: v === 'active' })}
+          >
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="inactive">Inactive</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+      )}
+    </>
+  );
+}
 
 const AdminV2MedicationsManage = () => {
   const { user } = useAuth();
@@ -46,6 +272,10 @@ const AdminV2MedicationsManage = () => {
   
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showBulkLowStockModal, setShowBulkLowStockModal] = useState(false);
+  const [bulkLowStockDays, setBulkLowStockDays] = useState(7);
+  const [bulkLowStockSaving, setBulkLowStockSaving] = useState(false);
+  const [bulkLowStockResult, setBulkLowStockResult] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -68,6 +298,8 @@ const AdminV2MedicationsManage = () => {
     concentration: '',
     quantity: 1,
     quantity_unit: 'tablets',
+    low_stock_threshold: null,
+    low_stock_threshold_type: 'quantity',
     instructions: '',
     start_date: new Date().toISOString().split('T')[0],
     as_needed: false,
@@ -296,6 +528,32 @@ const AdminV2MedicationsManage = () => {
     }
   };
 
+  const handleBulkLowStock = async (e) => {
+    e.preventDefault();
+    setFormError(null);
+    setBulkLowStockSaving(true);
+    try {
+      const response = await fetch(`${config.apiUrl}/api/medications/low-stock-threshold/apply-days`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ days: bulkLowStockDays })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setBulkLowStockResult(data);
+        fetchMedications();
+      } else {
+        const data = await response.json();
+        setFormError(data.detail || 'Failed to apply low-stock alerts');
+      }
+    } catch {
+      setFormError('Error connecting to server');
+    } finally {
+      setBulkLowStockSaving(false);
+    }
+  };
+
   const openEditModal = (medication) => {
     setSelectedMedication(medication);
     setFormData({
@@ -303,6 +561,8 @@ const AdminV2MedicationsManage = () => {
       concentration: medication.concentration || '',
       quantity: medication.quantity,
       quantity_unit: medication.quantity_unit,
+      low_stock_threshold: medication.low_stock_threshold ?? null,
+      low_stock_threshold_type: medication.low_stock_threshold_type || 'quantity',
       instructions: medication.instructions || '',
       start_date: medication.start_date ? medication.start_date.split('T')[0] : new Date().toISOString().split('T')[0],
       as_needed: medication.as_needed,
@@ -485,6 +745,8 @@ const AdminV2MedicationsManage = () => {
       concentration: '',
       quantity: 1,
       quantity_unit: 'tablets',
+      low_stock_threshold: null,
+      low_stock_threshold_type: 'quantity',
       instructions: '',
       start_date: new Date().toISOString().split('T')[0],
       as_needed: false,
@@ -512,37 +774,25 @@ const AdminV2MedicationsManage = () => {
       <div className="admin-v2-page">
         {selectedPatient ? (
           <>
-            {/* Section Title */}
-            <h1 className="schedule-section-title">Manage Medications</h1>
-
             {error && (
-              <div className="admin-v2-error-banner">{error}</div>
+              <div className="tw mb-4"><Alert variant="destructive">{error}</Alert></div>
             )}
 
             {/* Summary Stats */}
             <div className="admin-v2-summary-stats admin-v2-medications-summary" style={{ marginBottom: '1.5rem' }}>
               <div className="admin-v2-stat-card">
-                <div className="admin-v2-stat-icon medications">
-                  <MedicationsIcon size={24} />
-                </div>
                 <div className="admin-v2-stat-info">
                   <h4>{medications.filter(m => m.active).length}</h4>
-                  <p>Active Medications</p>
+                  <p>Active</p>
                 </div>
               </div>
               <div className="admin-v2-stat-card">
-                <div className="admin-v2-stat-icon equipment">
-                  <MedicationsIcon size={24} />
-                </div>
                 <div className="admin-v2-stat-info">
                   <h4>{medications.filter(m => m.as_needed).length}</h4>
                   <p>PRN (As Needed)</p>
                 </div>
               </div>
               <div className="admin-v2-stat-card">
-                <div className="admin-v2-stat-icon tasks">
-                  <MedicationsIcon size={24} />
-                </div>
                 <div className="admin-v2-stat-info">
                   <h4>{medications.filter(m => !m.active).length}</h4>
                   <p>Inactive</p>
@@ -551,20 +801,21 @@ const AdminV2MedicationsManage = () => {
             </div>
 
             {/* Add Medication Button + Filter */}
-            <div className="admin-v2-table-header" style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+            <div className="tw mb-4 flex flex-wrap items-center gap-3">
               {hasPermission('medications.create') && (
-                <button
-                  className="admin-v2-btn admin-v2-btn-primary"
-                  onClick={openCreateModal}
-                >
+                <Button onClick={openCreateModal}>
                   <PlusIcon size={16} /> Add Medication
-                </button>
+                </Button>
               )}
-              <label className="admin-v2-checkbox-label" style={{ marginLeft: 'auto' }}>
-                <input
-                  type="checkbox"
+              {hasPermission('medications.update') && (
+                <Button variant="secondary" onClick={() => { setBulkLowStockResult(null); setShowBulkLowStockModal(true); }}>
+                  Bulk Low-Stock Alert
+                </Button>
+              )}
+              <label className="ml-auto flex items-center gap-2 text-sm text-foreground">
+                <Checkbox
                   checked={showInactive}
-                  onChange={e => setShowInactive(e.target.checked)}
+                  onCheckedChange={(c) => setShowInactive(!!c)}
                 />
                 Show inactive
               </label>
@@ -766,12 +1017,9 @@ const AdminV2MedicationsManage = () => {
             <MedicationsIcon size={48} />
             <h2>Select a Patient</h2>
             <p>Choose a patient to view and manage their medications</p>
-            <button 
-              className="admin-v2-btn admin-v2-btn-primary"
-              onClick={() => setShowPatientModal(true)}
-            >
-              Select Patient
-            </button>
+            <div className="tw">
+              <Button onClick={() => setShowPatientModal(true)}>Select Patient</Button>
+            </div>
           </div>
         )}
 
@@ -787,621 +1035,318 @@ const AdminV2MedicationsManage = () => {
         )}
 
         {/* Create Medication Modal */}
-        {showCreateModal && (
-          <div className="admin-v2-modal-overlay" onClick={() => setShowCreateModal(false)}>
-            <div className="admin-v2-modal" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>Add Medication</h2>
-                <button className="admin-v2-modal-close" onClick={() => setShowCreateModal(false)}>
-                  <XIcon size={20} />
-                </button>
+        <Dialog open={showCreateModal} onOpenChange={(o) => { if (!o) setShowCreateModal(false); }}>
+          <DialogContent className="sm:max-w-[600px]" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>Add Medication</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleCreateMedication} className="flex flex-col gap-4">
+              {formError && <Alert variant="destructive">{formError}</Alert>}
+              <MedicationFormFields
+                formData={formData}
+                setFormData={setFormData}
+                providers={providers}
+                pharmacies={pharmacies}
+              />
+              <DialogFooter>
+                <Button type="button" variant="secondary" onClick={() => setShowCreateModal(false)}>Cancel</Button>
+                <Button type="submit" disabled={saving}>{saving ? 'Creating...' : 'Add Medication'}</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Bulk Low-Stock Alert Modal */}
+        <Dialog open={showBulkLowStockModal} onOpenChange={(o) => { if (!o) setShowBulkLowStockModal(false); }}>
+          <DialogContent className="sm:max-w-[480px]" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>Bulk Low-Stock Alert</DialogTitle>
+            </DialogHeader>
+            {bulkLowStockResult ? (
+              <div className="flex flex-col gap-3">
+                <p className="text-sm text-foreground">
+                  Applied a {bulkLowStockDays}-day low-stock alert to {bulkLowStockResult.updated_count} medication{bulkLowStockResult.updated_count === 1 ? '' : 's'}:
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {bulkLowStockResult.medications.join(', ') || 'None had an active schedule.'}
+                </p>
+                <DialogFooter>
+                  <Button onClick={() => setShowBulkLowStockModal(false)}>Done</Button>
+                </DialogFooter>
               </div>
-              <form onSubmit={handleCreateMedication}>
-                <div className="admin-v2-modal-body">
-                  {formError && (
-                    <div className="admin-v2-form-error">{formError}</div>
-                  )}
-                  
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Medication Name *</label>
-                      <input
-                        type="text"
-                        value={formData.name}
-                        onChange={e => setFormData({...formData, name: e.target.value})}
-                        required
-                        placeholder="e.g., Lisinopril"
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Concentration *</label>
-                      <input
-                        type="text"
-                        value={formData.concentration}
-                        onChange={e => setFormData({...formData, concentration: e.target.value})}
-                        required
-                        placeholder="e.g., 10mg"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Quantity *</label>
-                      <input
-                        type="number"
-                        value={formData.quantity}
-                        onChange={e => setFormData({...formData, quantity: parseFloat(e.target.value) || 1})}
-                        required
-                        min="0.25"
-                        step="0.25"
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Unit *</label>
-                      <select
-                        value={formData.quantity_unit}
-                        onChange={e => setFormData({...formData, quantity_unit: e.target.value})}
-                      >
-                        <option value="tablets">Tablets</option>
-                        <option value="capsules">Capsules</option>
-                        <option value="ml">mL</option>
-                        <option value="mg">mg</option>
-                        <option value="units">Units</option>
-                        <option value="puffs">Puffs</option>
-                        <option value="drops">Drops</option>
-                        <option value="patches">Patches</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Start Date *</label>
-                      <input
-                        type="date"
-                        value={formData.start_date}
-                        onChange={e => setFormData({...formData, start_date: e.target.value})}
-                        required
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Prescriber</label>
-                      <select
-                        value={formData.prescriber_id}
-                        onChange={e => setFormData({...formData, prescriber_id: e.target.value})}
-                      >
-                        <option value="">-- No Prescriber --</option>
-                        {providers.map(provider => (
-                          <option key={provider.id} value={String(provider.id)}>
-                            {provider.title ? `${provider.title} ` : ''}{provider.first_name} {provider.last_name}
-                            {provider.specialty ? ` (${provider.specialty})` : ''}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="admin-v2-form-group">
-                    <label>Pharmacy</label>
-                    <select
-                      value={formData.pharmacy_id}
-                      onChange={e => setFormData({...formData, pharmacy_id: e.target.value})}
-                    >
-                      <option value="">-- No Pharmacy --</option>
-                      {pharmacies.map(pharmacy => (
-                        <option key={pharmacy.id} value={String(pharmacy.id)}>
-                          {pharmacy.name}
-                          {pharmacy.phone ? ` - ${pharmacy.phone}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="admin-v2-form-group">
-                    <label>Instructions *</label>
-                    <textarea
-                      value={formData.instructions}
-                      onChange={e => setFormData({...formData, instructions: e.target.value})}
-                      placeholder="e.g., Take with food"
-                      rows={2}
-                      required
-                    />
-                  </div>
-
-                  <div className="admin-v2-form-group">
-                    <label>Notes</label>
-                    <textarea
-                      value={formData.notes}
-                      onChange={e => setFormData({...formData, notes: e.target.value})}
-                      placeholder="Additional notes..."
-                      rows={2}
-                    />
-                  </div>
-
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label className="admin-v2-checkbox-label">
-                        <input
-                          type="checkbox"
-                          checked={formData.as_needed}
-                          onChange={e => setFormData({...formData, as_needed: e.target.checked})}
-                        />
-                        PRN (As Needed)
-                      </label>
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label className="admin-v2-checkbox-label">
-                        <input
-                          type="checkbox"
-                          checked={formData.is_global}
-                          onChange={e => setFormData({...formData, is_global: e.target.checked})}
-                        />
-                        Global (Available to all patients)
-                      </label>
-                    </div>
-                  </div>
-                </div>
-                <div className="admin-v2-modal-footer">
-                  <button 
-                    type="button" 
-                    className="admin-v2-btn"
-                    onClick={() => setShowCreateModal(false)}
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    type="submit" 
-                    className="admin-v2-btn admin-v2-btn-primary"
-                    disabled={saving}
-                  >
-                    {saving ? 'Creating...' : 'Add Medication'}
-                  </button>
-                </div>
+            ) : (
+              <form onSubmit={handleBulkLowStock} className="flex flex-col gap-4">
+                {formError && <Alert variant="destructive">{formError}</Alert>}
+                <p className="text-sm text-muted-foreground">
+                  Sets a days-of-supply low-stock alert on every active medication that has
+                  an active schedule, replacing any existing threshold. As-needed meds without
+                  a schedule are skipped (their usage can't be projected).
+                </p>
+                <Field label="Alert when supply drops below (days)" required htmlFor="bulk-low-stock-days">
+                  <Input
+                    id="bulk-low-stock-days"
+                    type="number"
+                    value={bulkLowStockDays}
+                    onChange={e => setBulkLowStockDays(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                    required
+                    min="1"
+                    max="365"
+                    step="1"
+                  />
+                </Field>
+                <DialogFooter>
+                  <Button type="button" variant="secondary" onClick={() => setShowBulkLowStockModal(false)}>Cancel</Button>
+                  <Button type="submit" disabled={bulkLowStockSaving || !bulkLowStockDays}>
+                    {bulkLowStockSaving ? 'Applying...' : 'Apply to All Scheduled Meds'}
+                  </Button>
+                </DialogFooter>
               </form>
-            </div>
-          </div>
-        )}
+            )}
+          </DialogContent>
+        </Dialog>
 
         {/* Edit Medication Modal */}
-        {showEditModal && selectedMedication && (
-          <div className="admin-v2-modal-overlay" onClick={() => setShowEditModal(false)}>
-            <div className="admin-v2-modal" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>Edit Medication: {selectedMedication.name}</h2>
-                <button className="admin-v2-modal-close" onClick={() => setShowEditModal(false)}>
-                  <XIcon size={20} />
-                </button>
-              </div>
-              <form onSubmit={handleUpdateMedication}>
-                <div className="admin-v2-modal-body">
-                  {formError && (
-                    <div className="admin-v2-form-error">{formError}</div>
-                  )}
-                  
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Medication Name *</label>
-                      <input
-                        type="text"
-                        value={formData.name}
-                        onChange={e => setFormData({...formData, name: e.target.value})}
-                        required
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Concentration *</label>
-                      <input
-                        type="text"
-                        value={formData.concentration}
-                        onChange={e => setFormData({...formData, concentration: e.target.value})}
-                        placeholder="e.g., 10mg"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Quantity *</label>
-                      <input
-                        type="number"
-                        value={formData.quantity}
-                        onChange={e => setFormData({...formData, quantity: parseFloat(e.target.value) || 1})}
-                        required
-                        min="0.25"
-                        step="0.25"
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Unit *</label>
-                      <select
-                        value={formData.quantity_unit}
-                        onChange={e => setFormData({...formData, quantity_unit: e.target.value})}
-                      >
-                        <option value="tablets">Tablets</option>
-                        <option value="capsules">Capsules</option>
-                        <option value="ml">mL</option>
-                        <option value="mg">mg</option>
-                        <option value="units">Units</option>
-                        <option value="puffs">Puffs</option>
-                        <option value="drops">Drops</option>
-                        <option value="patches">Patches</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="admin-v2-form-group">
-                    <label>Instructions *</label>
-                    <textarea
-                      value={formData.instructions}
-                      onChange={e => setFormData({...formData, instructions: e.target.value})}
-                      placeholder="e.g., Take with food"
-                      rows={2}
-                      required
-                    />
-                  </div>
-
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Start Date *</label>
-                      <input
-                        type="date"
-                        value={formData.start_date}
-                        onChange={e => setFormData({...formData, start_date: e.target.value})}
-                        required
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Prescriber</label>
-                      <select
-                        value={formData.prescriber_id}
-                        onChange={e => setFormData({...formData, prescriber_id: e.target.value})}
-                      >
-                        <option value="">-- No Prescriber --</option>
-                        {providers.map(provider => (
-                          <option key={provider.id} value={String(provider.id)}>
-                            {provider.title ? `${provider.title} ` : ''}{provider.first_name} {provider.last_name}
-                            {provider.specialty ? ` (${provider.specialty})` : ''}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="admin-v2-form-group">
-                    <label>Pharmacy</label>
-                    <select
-                      value={formData.pharmacy_id}
-                      onChange={e => setFormData({...formData, pharmacy_id: e.target.value})}
-                    >
-                      <option value="">-- No Pharmacy --</option>
-                      {pharmacies.map(pharmacy => (
-                        <option key={pharmacy.id} value={String(pharmacy.id)}>
-                          {pharmacy.name}
-                          {pharmacy.phone ? ` - ${pharmacy.phone}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label className="admin-v2-checkbox-label">
-                        <input
-                          type="checkbox"
-                          checked={formData.as_needed}
-                          onChange={e => setFormData({...formData, as_needed: e.target.checked})}
-                        />
-                        PRN (As Needed)
-                      </label>
-                    </div>
-                  </div>
-
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label className="admin-v2-checkbox-label">
-                        <input
-                          type="checkbox"
-                          checked={formData.is_global}
-                          onChange={e => setFormData({...formData, is_global: e.target.checked})}
-                        />
-                        Global (Available to all patients)
-                      </label>
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Status</label>
-                      <select
-                        value={formData.active ? 'active' : 'inactive'}
-                        onChange={e => setFormData({...formData, active: e.target.value === 'active'})}
-                      >
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="admin-v2-form-group">
-                    <label>Notes</label>
-                    <textarea
-                      value={formData.notes}
-                      onChange={e => setFormData({...formData, notes: e.target.value})}
-                      placeholder="Additional notes..."
-                      rows={2}
-                    />
-                  </div>
-                </div>
-                <div className="admin-v2-modal-footer">
-                  <button 
-                    type="button" 
-                    className="admin-v2-btn"
-                    onClick={() => setShowEditModal(false)}
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    type="submit" 
-                    className="admin-v2-btn admin-v2-btn-primary"
-                    disabled={saving}
-                  >
-                    {saving ? 'Saving...' : 'Save Changes'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+        <Dialog open={showEditModal && !!selectedMedication} onOpenChange={(o) => { if (!o) setShowEditModal(false); }}>
+          <DialogContent className="sm:max-w-[600px]" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>Edit Medication{selectedMedication ? `: ${selectedMedication.name}` : ''}</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleUpdateMedication} className="flex flex-col gap-4">
+              {formError && <Alert variant="destructive">{formError}</Alert>}
+              <MedicationFormFields
+                formData={formData}
+                setFormData={setFormData}
+                providers={providers}
+                pharmacies={pharmacies}
+                showStatus
+              />
+              <DialogFooter>
+                <Button type="button" variant="secondary" onClick={() => setShowEditModal(false)}>Cancel</Button>
+                <Button type="submit" disabled={saving}>{saving ? 'Saving...' : 'Save Changes'}</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
 
         {/* Delete Confirmation Modal */}
-        {showDeleteModal && selectedMedication && (
-          <div className="admin-v2-modal-overlay" onClick={() => setShowDeleteModal(false)}>
-            <div className="admin-v2-modal admin-v2-modal-sm" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>Delete Medication</h2>
-                <button className="admin-v2-modal-close" onClick={() => setShowDeleteModal(false)}>
-                  <XIcon size={20} />
-                </button>
-              </div>
-              <div className="admin-v2-modal-body">
-                {formError && (
-                  <div className="admin-v2-form-error">{formError}</div>
-                )}
-                <p>Are you sure you want to delete <strong>{selectedMedication.name}</strong>?</p>
-                <p className="admin-v2-warning-text">This will also delete all associated schedules and history.</p>
-              </div>
-              <div className="admin-v2-modal-footer">
-                <button 
-                  type="button" 
-                  className="admin-v2-btn"
-                  onClick={() => setShowDeleteModal(false)}
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="button" 
-                  className="admin-v2-btn admin-v2-btn-danger"
-                  onClick={handleDeleteMedication}
-                  disabled={saving}
-                >
-                  {saving ? 'Deleting...' : 'Delete Medication'}
-                </button>
-              </div>
+        <Dialog open={showDeleteModal && !!selectedMedication} onOpenChange={(o) => { if (!o) setShowDeleteModal(false); }}>
+          <DialogContent className="sm:max-w-[440px]" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>Delete Medication</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-3">
+              {formError && <Alert variant="destructive">{formError}</Alert>}
+              <p className="text-sm text-foreground">
+                Are you sure you want to delete <strong>{selectedMedication?.name}</strong>?
+              </p>
+              <p className="text-sm text-muted-foreground">This will also delete all associated schedules and history.</p>
             </div>
-          </div>
-        )}
+            <DialogFooter>
+              <Button type="button" variant="secondary" onClick={() => setShowDeleteModal(false)}>Cancel</Button>
+              <Button type="button" variant="destructive" onClick={handleDeleteMedication} disabled={saving}>
+                {saving ? 'Deleting...' : 'Delete Medication'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Schedule Modal */}
-        {showScheduleModal && selectedMedication && (
-          <div className="admin-v2-modal-overlay" onClick={() => setShowScheduleModal(false)}>
-            <div className="admin-v2-modal admin-v2-modal-lg" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>Manage Schedules: {selectedMedication.name}</h2>
-                <button className="admin-v2-modal-close" onClick={() => setShowScheduleModal(false)}>
-                  <XIcon size={20} />
-                </button>
-              </div>
-              <div className="admin-v2-modal-body">
-                {formError && (
-                  <div className="admin-v2-form-error">{formError}</div>
+        <Dialog open={showScheduleModal && !!selectedMedication} onOpenChange={(o) => { if (!o) setShowScheduleModal(false); }}>
+          <DialogContent className="sm:max-w-[720px]" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>Manage Schedules{selectedMedication ? `: ${selectedMedication.name}` : ''}</DialogTitle>
+            </DialogHeader>
+
+            {selectedMedication && (
+              <div className="flex flex-col gap-4">
+                {formError && <Alert variant="destructive">{formError}</Alert>}
+
+                {/* Add New Schedule */}
+                <h4 className="text-sm font-semibold text-foreground">Add New Schedule</h4>
+
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant={scheduleMode === 'weekly' ? 'default' : 'secondary'}
+                    onClick={() => setScheduleMode('weekly')}
+                  >
+                    Weekly
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={scheduleMode === 'monthly' ? 'default' : 'secondary'}
+                    onClick={() => setScheduleMode('monthly')}
+                  >
+                    Monthly
+                  </Button>
+                </div>
+
+                {scheduleMode === 'weekly' ? (
+                  <Field label="Select Days">
+                    <div className="admin-v2-day-selector">
+                      {daysOfWeek.map((day, i) => (
+                        <button
+                          key={day}
+                          type="button"
+                          className={`admin-v2-day-btn ${selectedDays.includes(i.toString()) ? 'selected' : ''}`}
+                          onClick={() => {
+                            setSelectedDays(prev =>
+                              prev.includes(i.toString())
+                                ? prev.filter(x => x !== i.toString())
+                                : [...prev, i.toString()]
+                            );
+                          }}
+                        >
+                          {day}
+                        </button>
+                      ))}
+                    </div>
+                  </Field>
+                ) : (
+                  <Field label="Day of Month">
+                    <Select
+                      value={String(selectedDayOfMonth)}
+                      onValueChange={(v) => setSelectedDayOfMonth(Number(v))}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {[...Array(28)].map((_, i) => (
+                          <SelectItem key={i + 1} value={String(i + 1)}>{i + 1}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
                 )}
 
-                {/* Add New Schedule Section */}
-                <div className="admin-v2-schedule-section">
-                  <h3>Add New Schedule</h3>
-                  
-                  <div className="admin-v2-schedule-type-toggle">
-                    <button
-                      type="button"
-                      className={`admin-v2-toggle-btn ${scheduleMode === 'weekly' ? 'active' : ''}`}
-                      onClick={() => setScheduleMode('weekly')}
+                {/* Patient Selection for Global Meds */}
+                {selectedMedication.is_global && (
+                  <Field label="Patient" required>
+                    <Select
+                      value={schedulePatientId || '__none__'}
+                      onValueChange={(v) => setSchedulePatientId(v === '__none__' ? '' : v)}
                     >
-                      Weekly
-                    </button>
-                    <button
-                      type="button"
-                      className={`admin-v2-toggle-btn ${scheduleMode === 'monthly' ? 'active' : ''}`}
-                      onClick={() => setScheduleMode('monthly')}
-                    >
-                      Monthly
-                    </button>
-                  </div>
-
-                  {scheduleMode === 'weekly' ? (
-                    <div className="admin-v2-form-group">
-                      <label>Select Days</label>
-                      <div className="admin-v2-day-selector">
-                        {daysOfWeek.map((day, i) => (
-                          <button
-                            key={day}
-                            type="button"
-                            className={`admin-v2-day-btn ${selectedDays.includes(i.toString()) ? 'selected' : ''}`}
-                            onClick={() => {
-                              setSelectedDays(prev => 
-                                prev.includes(i.toString()) 
-                                  ? prev.filter(x => x !== i.toString()) 
-                                  : [...prev, i.toString()]
-                              );
-                            }}
-                          >
-                            {day}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="admin-v2-form-group">
-                      <label>Day of Month</label>
-                      <select
-                        value={selectedDayOfMonth}
-                        onChange={e => setSelectedDayOfMonth(Number(e.target.value))}
-                        className="admin-v2-select"
-                      >
-                        {[...Array(28)].map((_, i) => (
-                          <option key={i+1} value={i+1}>{i+1}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-
-                  {/* Patient Selection for Global Meds */}
-                  {selectedMedication.is_global && (
-                    <div className="admin-v2-form-group">
-                      <label>Patient *</label>
-                      <select
-                        value={schedulePatientId}
-                        onChange={e => setSchedulePatientId(e.target.value)}
-                        className="admin-v2-select"
-                      >
-                        <option value="">Select a patient...</option>
+                      <SelectTrigger><SelectValue placeholder="Select a patient..." /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Select a patient...</SelectItem>
                         {patients.map(patient => (
-                          <option key={patient.id} value={patient.id}>
+                          <SelectItem key={patient.id} value={String(patient.id)}>
                             {patient.first_name} {patient.last_name}
-                          </option>
+                          </SelectItem>
                         ))}
-                      </select>
-                    </div>
-                  )}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                )}
 
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Time</label>
-                      <input
-                        type="time"
-                        value={scheduleTime}
-                        onChange={e => setScheduleTime(e.target.value)}
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Dose Amount ({selectedMedication.quantity_unit || 'units'})</label>
-                      <input
-                        type="number"
-                        step="0.001"
-                        min="0"
-                        value={doseAmount}
-                        onChange={e => setDoseAmount(e.target.value)}
-                        placeholder="1.000"
-                      />
-                    </div>
-                    <div className="admin-v2-form-group" style={{ display: 'flex', alignItems: 'flex-end' }}>
-                      <button
-                        type="button"
-                        className="admin-v2-btn admin-v2-btn-success"
-                        onClick={handleAddSchedule}
-                        disabled={scheduleSaving || (scheduleMode === 'weekly' && selectedDays.length === 0)}
-                      >
-                        {scheduleSaving ? 'Adding...' : 'Add Schedule'}
-                      </button>
-                    </div>
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+                  <Field label="Time" htmlFor="med-sched-time" className="sm:flex-1">
+                    <Input
+                      id="med-sched-time"
+                      type="time"
+                      value={scheduleTime}
+                      onChange={e => setScheduleTime(e.target.value)}
+                    />
+                  </Field>
+                  <Field label={`Dose Amount (${selectedMedication.quantity_unit || 'units'})`} htmlFor="med-sched-dose" className="sm:flex-1">
+                    <Input
+                      id="med-sched-dose"
+                      type="number"
+                      step="0.001"
+                      min="0"
+                      value={doseAmount}
+                      onChange={e => setDoseAmount(e.target.value)}
+                      placeholder="1.000"
+                    />
+                  </Field>
+                  <Button
+                    type="button"
+                    onClick={handleAddSchedule}
+                    disabled={scheduleSaving || (scheduleMode === 'weekly' && selectedDays.length === 0)}
+                  >
+                    {scheduleSaving ? 'Adding...' : 'Add Schedule'}
+                  </Button>
+                </div>
+
+                {/* Current Schedules */}
+                <h4 className="text-sm font-semibold text-foreground">Current Schedules</h4>
+
+                {selectedMedication.schedules && selectedMedication.schedules.length > 0 ? (
+                  <div className="admin-v2-table-container">
+                    <table className="admin-v2-table">
+                      <thead>
+                        <tr>
+                          <th>Dose</th>
+                          <th>Time</th>
+                          <th>Schedule</th>
+                          {selectedMedication.is_global && <th>Patient</th>}
+                          <th>Status</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedMedication.schedules.map(schedule => {
+                          const parsed = parseCronExpression(schedule.cron_expression);
+                          const patientName = selectedMedication.is_global && schedule.patient_id
+                            ? patients.find(p => p.id === schedule.patient_id)
+                            : null;
+
+                          return (
+                            <tr key={schedule.id}>
+                              <td><strong>{schedule.dose_amount}</strong> {selectedMedication.quantity_unit || 'units'}</td>
+                              <td>{parsed?.time || '-'}</td>
+                              <td>
+                                {parsed?.type === 'weekly' && parsed.days}
+                                {parsed?.type === 'monthly' && `Day ${parsed.dayOfMonth} monthly`}
+                              </td>
+                              {selectedMedication.is_global && (
+                                <td>{patientName ? `${patientName.first_name} ${patientName.last_name}` : '-'}</td>
+                              )}
+                              <td>
+                                <span className={`admin-v2-status-badge ${schedule.active ? 'active' : 'inactive'}`}>
+                                  {schedule.active ? 'Active' : 'Paused'}
+                                </span>
+                              </td>
+                              <td>
+                                <div className="admin-v2-table-actions">
+                                  <button
+                                    type="button"
+                                    className={`admin-v2-action-btn ${schedule.active ? 'admin-v2-action-btn-warning' : 'admin-v2-action-btn-success'}`}
+                                    onClick={() => handleToggleSchedule(schedule.id)}
+                                    disabled={scheduleSaving}
+                                  >
+                                    {schedule.active ? 'Pause' : 'Resume'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="admin-v2-action-btn admin-v2-action-btn-delete"
+                                    onClick={() => handleDeleteSchedule(schedule.id)}
+                                    disabled={scheduleSaving}
+                                  >
+                                    <TrashIcon size={14} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
-                </div>
+                ) : (
+                  <div className="admin-v2-empty-state">
+                    <ClockIcon size={32} />
+                    <p>No schedules created yet</p>
+                    <p className="admin-v2-text-muted">Add a schedule using the form above</p>
+                  </div>
+                )}
+              </div>
+            )}
 
-                {/* Current Schedules Section */}
-                <div className="admin-v2-schedule-section">
-                  <h3>Current Schedules</h3>
-                  
-                  {selectedMedication.schedules && selectedMedication.schedules.length > 0 ? (
-                    <div className="admin-v2-table-container">
-                      <table className="admin-v2-table">
-                        <thead>
-                          <tr>
-                            <th>Dose</th>
-                            <th>Time</th>
-                            <th>Schedule</th>
-                            {selectedMedication.is_global && <th>Patient</th>}
-                            <th>Status</th>
-                            <th>Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {selectedMedication.schedules.map(schedule => {
-                            const parsed = parseCronExpression(schedule.cron_expression);
-                            const patientName = selectedMedication.is_global && schedule.patient_id 
-                              ? patients.find(p => p.id === schedule.patient_id)
-                              : null;
-                            
-                            return (
-                              <tr key={schedule.id}>
-                                <td><strong>{schedule.dose_amount}</strong> {selectedMedication.quantity_unit || 'units'}</td>
-                                <td>{parsed?.time || '-'}</td>
-                                <td>
-                                  {parsed?.type === 'weekly' && parsed.days}
-                                  {parsed?.type === 'monthly' && `Day ${parsed.dayOfMonth} monthly`}
-                                </td>
-                                {selectedMedication.is_global && (
-                                  <td>{patientName ? `${patientName.first_name} ${patientName.last_name}` : '-'}</td>
-                                )}
-                                <td>
-                                  <span className={`admin-v2-status-badge ${schedule.active ? 'active' : 'inactive'}`}>
-                                    {schedule.active ? 'Active' : 'Paused'}
-                                  </span>
-                                </td>
-                                <td>
-                                  <div className="admin-v2-table-actions">
-                                    <button
-                                      type="button"
-                                      className={`admin-v2-action-btn ${schedule.active ? 'admin-v2-action-btn-warning' : 'admin-v2-action-btn-success'}`}
-                                      onClick={() => handleToggleSchedule(schedule.id)}
-                                      disabled={scheduleSaving}
-                                    >
-                                      {schedule.active ? 'Pause' : 'Resume'}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="admin-v2-action-btn admin-v2-action-btn-delete"
-                                      onClick={() => handleDeleteSchedule(schedule.id)}
-                                      disabled={scheduleSaving}
-                                    >
-                                      <TrashIcon size={14} />
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <div className="admin-v2-empty-state">
-                      <ClockIcon size={32} />
-                      <p>No schedules created yet</p>
-                      <p className="admin-v2-text-muted">Add a schedule using the form above</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="admin-v2-modal-footer">
-                <button 
-                  type="button" 
-                  className="admin-v2-btn"
-                  onClick={() => setShowScheduleModal(false)}
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+            <DialogFooter>
+              <Button type="button" variant="secondary" onClick={() => setShowScheduleModal(false)}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </AdminV2Layout>
   );

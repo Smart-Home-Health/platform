@@ -1,3 +1,18 @@
+# Smart Home Health Hub
+# Copyright (C) 2026 John Carty
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 Base classes and interfaces for smart device integrations.
 """
@@ -111,7 +126,7 @@ class DeviceInfo:
     extra_data: Optional[Dict[str, Any]] = None
 
 
-@dataclass 
+@dataclass
 class SyncResult:
     """Result of a sync operation"""
     success: bool
@@ -120,6 +135,17 @@ class SyncResult:
     devices_found: List[DeviceInfo] = field(default_factory=list)
     error_message: Optional[str] = None
     sync_timestamp: datetime = field(default_factory=datetime.utcnow)
+    # Richer clinical resources from EHR/FHIR integrations (e.g. Epic). These are
+    # plain dicts persisted by the sync route into their respective tables; device
+    # integrations leave them empty. See integrations/persistence.py for the
+    # expected dict shapes and how cross-references are resolved.
+    reports: List[Dict[str, Any]] = field(default_factory=list)
+    lab_results: List[Dict[str, Any]] = field(default_factory=list)
+    documents: List[Dict[str, Any]] = field(default_factory=list)
+    imaging_studies: List[Dict[str, Any]] = field(default_factory=list)
+    conditions: List[Dict[str, Any]] = field(default_factory=list)
+    medications: List[Dict[str, Any]] = field(default_factory=list)
+    allergies: List[Dict[str, Any]] = field(default_factory=list)
 
 
 class BaseIntegration(ABC):
@@ -147,6 +173,14 @@ class BaseIntegration(ABC):
     description: str = ""
     auth_type: str = "oauth2"  # oauth2, api_key, local, none
     supported_vitals: List[str] = []  # List of VitalType values this integration provides
+    # Subset of config_schema property keys that are credentials (sent to
+    # authenticate()) rather than user-editable settings. The UI uses this to
+    # split the add-integration form, and the /connect endpoint reads it to
+    # know which payload keys to hand to authenticate().
+    auth_fields: List[str] = []
+    # Set True if the integration accepts file/archive uploads (e.g. vent log exports).
+    # When True the integration must implement import_file().
+    supports_import: bool = False
     
     def __init__(self, patient_integration=None):
         """
@@ -174,14 +208,18 @@ class BaseIntegration(ABC):
         pass
     
     @classmethod
-    def get_oauth_url(cls, state: str, redirect_uri: str) -> Optional[str]:
+    def get_oauth_url(cls, state: str, redirect_uri: str,
+                      settings: Optional[Dict[str, Any]] = None) -> Optional[str]:
         """
         Generate OAuth authorization URL for OAuth2 integrations.
-        
+
         Args:
             state: CSRF protection state parameter
             redirect_uri: Callback URL after authorization
-            
+            settings: The PatientIntegration.settings dict, for integrations whose
+                authorization endpoint is per-instance (e.g. Epic's per-org FHIR
+                base/authorize URLs). Device integrations may ignore it.
+
         Returns:
             Authorization URL or None if not OAuth2
         """
@@ -251,7 +289,7 @@ class BaseIntegration(ABC):
     async def test_connection(self) -> bool:
         """
         Test if the integration connection is working.
-        
+
         Returns:
             True if connection is healthy
         """
@@ -260,3 +298,29 @@ class BaseIntegration(ABC):
             return True
         except Exception:
             return False
+
+    def import_file(self, *, import_id: str, archive_path: str, extracted_dir: str,
+                    db=None, patient_integration=None, vent_import=None) -> Dict[str, Any]:
+        """
+        Parse an uploaded archive for this integration. Runs in a background
+        thread; concrete integrations override this when supports_import=True.
+
+        Args (keyword-only):
+            import_id: UUID assigned by the upload route.
+            archive_path: Absolute path to the persisted tar/tar.gz on disk.
+            extracted_dir: Absolute path of the already-extracted directory.
+            db: SQLAlchemy Session the worker owns (commit when needed).
+            patient_integration: The active PatientIntegration row. Read
+                `settings` for vendor config; writes are persisted by the
+                parser when applicable (e.g. clock calibration anchoring).
+            vent_import: The VentImport row being parsed. Mutate
+                `parser_summary` to surface progress; status transitions are
+                handled by the caller.
+
+        Returns:
+            Dict stored in `vent_imports.parser_summary` (counts, file
+            ranges, etc.).
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not support file imports"
+        )

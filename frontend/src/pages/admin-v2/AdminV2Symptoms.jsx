@@ -1,17 +1,52 @@
+/*
+ * Smart Home Health Hub
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 import React, { useState, useEffect } from 'react';
-import { useSearchParams, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
 import config from '../../config';
-import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import {
-  PlusIcon,
   EditIcon,
   TrashIcon,
   XIcon,
   CheckIcon,
   SearchIcon
 } from '../../components/Icons';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
+import { Field, FormRow } from '@/components/ui/field';
+import { Alert } from '@/components/ui/alert';
 import './AdminV2.css';
 
 // Severity color mapping
@@ -36,16 +71,9 @@ const formatLocation = (location) => {
 };
 
 const AdminV2Symptoms = () => {
-  const { user } = useAuth();
   const location = useLocation();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const { 
-    patients, 
-    selectedPatient: contextPatient, 
-    selectPatient: setContextPatient,
-    loadingPatients 
-  } = useAdminPatient();
-  
+  const { selectedPatient: contextPatient } = useAdminPatient();
+
   const selectedPatient = contextPatient;
 
   // Helper to get local datetime string for datetime-local input
@@ -55,18 +83,17 @@ const AdminV2Symptoms = () => {
     const local = new Date(now.getTime() - offset * 60 * 1000);
     return local.toISOString().slice(0, 16);
   };
-  
+
   // Determine active view based on URL
   const isHistoryView = location.pathname.includes('/history');
   const isActiveView = location.pathname.includes('/active');
-  const isLogView = !isHistoryView && !isActiveView;
-  
+
   // Symptoms state
   const [symptoms, setSymptoms] = useState([]);
   const [symptomTypes, setSymptomTypes] = useState([]);
   const [bodyLocations, setBodyLocations] = useState([]);
   const [loadingSymptoms, setLoadingSymptoms] = useState(false);
-  
+
   // History/filtering state
   const [historySymptoms, setHistorySymptoms] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -75,13 +102,13 @@ const AdminV2Symptoms = () => {
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  
+
   // Modal states
   const [showSymptomModal, setShowSymptomModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedSymptom, setSelectedSymptom] = useState(null);
   const [editingSymptom, setEditingSymptom] = useState(null);
-  
+
   // Symptom form state
   const [symptomFormData, setSymptomFormData] = useState({
     symptom_type: '',
@@ -92,7 +119,7 @@ const AdminV2Symptoms = () => {
     notes: '',
     timestamp: getLocalDateTimeString()
   });
-  
+
   // Form states
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -145,7 +172,7 @@ const AdminV2Symptoms = () => {
 
   const loadSymptoms = async () => {
     if (!selectedPatient) return;
-    
+
     setLoadingSymptoms(true);
     try {
       const response = await fetch(
@@ -165,25 +192,25 @@ const AdminV2Symptoms = () => {
 
   const loadHistorySymptoms = async () => {
     if (!selectedPatient) return;
-    
+
     setLoadingHistory(true);
     try {
       let url = `${config.apiUrl}/api/symptoms/patient/${selectedPatient.id}?limit=100`;
-      
+
       if (filterStatus === 'active') {
         url += '&resolved=false';
       } else if (filterStatus === 'resolved') {
         url += '&resolved=true';
       }
-      
+
       if (filterType) {
         url += `&symptom_type=${filterType}`;
       }
-      
+
       const response = await fetch(url, { credentials: 'include' });
       if (response.ok) {
         let data = await response.json();
-        
+
         // Client-side date filtering
         if (filterDateFrom) {
           const fromDate = new Date(filterDateFrom);
@@ -194,18 +221,18 @@ const AdminV2Symptoms = () => {
           toDate.setHours(23, 59, 59);
           data = data.filter(s => new Date(s.timestamp) <= toDate);
         }
-        
+
         // Client-side search
         if (searchTerm) {
           const term = searchTerm.toLowerCase();
-          data = data.filter(s => 
+          data = data.filter(s =>
             formatSymptomType(s.symptom_type).toLowerCase().includes(term) ||
             (s.description && s.description.toLowerCase().includes(term)) ||
             (s.notes && s.notes.toLowerCase().includes(term)) ||
             (s.location && formatLocation(s.location).toLowerCase().includes(term))
           );
         }
-        
+
         setHistorySymptoms(data);
       }
     } catch (err) {
@@ -228,10 +255,10 @@ const AdminV2Symptoms = () => {
       setError('Please select a patient first');
       return;
     }
-    
+
     setSaving(true);
     setError(null);
-    
+
     try {
       const payload = {
         symptom_type: symptomFormData.symptom_type,
@@ -243,18 +270,18 @@ const AdminV2Symptoms = () => {
         notes: symptomFormData.notes || null,
         timestamp: symptomFormData.timestamp
       };
-      
+
       const url = editingSymptom
         ? `${config.apiUrl}/api/symptoms/${editingSymptom.id}`
         : `${config.apiUrl}/api/symptoms`;
-      
+
       const response = await fetch(url, {
         method: editingSymptom ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(payload)
       });
-      
+
       if (response.ok) {
         setSuccess(editingSymptom ? 'Symptom updated!' : 'Symptom logged!');
         setShowSymptomModal(false);
@@ -283,7 +310,7 @@ const AdminV2Symptoms = () => {
         method: 'POST',
         credentials: 'include'
       });
-      
+
       if (response.ok) {
         if (isHistoryView) {
           loadHistorySymptoms();
@@ -293,20 +320,20 @@ const AdminV2Symptoms = () => {
         setSuccess('Symptom marked as resolved');
         setTimeout(() => setSuccess(null), 3000);
       }
-    } catch (err) {
+    } catch {
       setError('Failed to resolve symptom');
     }
   };
 
   const handleDeleteSymptom = async () => {
     if (!selectedSymptom) return;
-    
+
     try {
       const response = await fetch(`${config.apiUrl}/api/symptoms/${selectedSymptom.id}`, {
         method: 'DELETE',
         credentials: 'include'
       });
-      
+
       if (response.ok) {
         if (isHistoryView) {
           loadHistorySymptoms();
@@ -318,7 +345,7 @@ const AdminV2Symptoms = () => {
         setSuccess('Symptom deleted');
         setTimeout(() => setSuccess(null), 3000);
       }
-    } catch (err) {
+    } catch {
       setError('Failed to delete symptom');
     }
   };
@@ -357,142 +384,130 @@ const AdminV2Symptoms = () => {
     setSearchTerm('');
   };
 
+  const hasActiveFilters = !!(filterType || filterStatus !== 'all' || filterDateFrom || filterDateTo || searchTerm);
+
+  // The severity slider keeps its dedicated chrome classes
+  // (.symptom-severity-slider styles the range track/thumb itself, so it
+  // survives inside .tw where bare element rules are scoped out).
+  const renderSeveritySlider = () => (
+    <div className="symptom-severity-slider">
+      <input
+        type="range"
+        min="1"
+        max="10"
+        value={symptomFormData.severity}
+        onChange={(e) => setSymptomFormData(prev => ({ ...prev, severity: e.target.value }))}
+        style={{
+          '--severity-color': getSeverityColor(symptomFormData.severity),
+          '--severity-percent': `${(symptomFormData.severity - 1) / 9 * 100}%`
+        }}
+      />
+      <div className="severity-labels">
+        <span>Mild</span>
+        <span>Severe</span>
+      </div>
+    </div>
+  );
+
+  const severityLabel = (
+    <span className="flex w-full items-center justify-between">
+      <span>Severity</span>
+      <span className="font-semibold" style={{ color: getSeverityColor(symptomFormData.severity) }}>
+        {symptomFormData.severity}/10
+      </span>
+    </span>
+  );
+
   // Render log symptom view
   const renderLogView = () => (
     <div className="admin-v2-vitals-content">
       {/* Log Form */}
       <div className="admin-v2-settings-card">
-        <form onSubmit={handleSymptomSubmit}>
-          {/* Date/Time Header */}
-          <div className="vitals-form-header">
-            <div className="vitals-datetime-field">
-              <label>Date/Time</label>
-              <input
-                type="datetime-local"
-                value={symptomFormData.timestamp}
-                onChange={(e) => setSymptomFormData(prev => ({ ...prev, timestamp: e.target.value }))}
-                required
-              />
-            </div>
-          </div>
-          
-          {/* Symptom Input Cards */}
-          <div className="symptoms-input-grid">
-            {/* Symptom Type Card */}
-            <div className="vital-input-card">
-              <div className="vital-input-header">
-                <span className="vital-input-title">Symptom Type *</span>
-              </div>
-              <div className="symptom-select-wrapper">
-                <select
-                  value={symptomFormData.symptom_type}
-                  onChange={(e) => setSymptomFormData(prev => ({ ...prev, symptom_type: e.target.value }))}
+        <form onSubmit={handleSymptomSubmit} className="tw">
+          <div className="flex flex-col gap-4">
+            <FormRow>
+              <Field label="Symptom Type" required>
+                <Select
+                  value={symptomFormData.symptom_type || undefined}
+                  onValueChange={(v) => setSymptomFormData(prev => ({ ...prev, symptom_type: v }))}
+                >
+                  <SelectTrigger><SelectValue placeholder="Select symptom..." /></SelectTrigger>
+                  <SelectContent>
+                    {symptomTypes.map(type => (
+                      <SelectItem key={type} value={type}>{formatSymptomType(type)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+
+              <Field label="Date/Time" required>
+                <Input
+                  type="datetime-local"
+                  value={symptomFormData.timestamp}
+                  onChange={(e) => setSymptomFormData(prev => ({ ...prev, timestamp: e.target.value }))}
                   required
-                >
-                  <option value="">Select symptom...</option>
-                  {symptomTypes.map(type => (
-                    <option key={type} value={type}>{formatSymptomType(type)}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            
-            {/* Severity Card */}
-            <div className="vital-input-card">
-              <div className="vital-input-header">
-                <span className="vital-input-title">Severity</span>
-                <span 
-                  className="symptom-severity-display"
-                  style={{ color: getSeverityColor(symptomFormData.severity) }}
-                >
-                  {symptomFormData.severity}/10
-                </span>
-              </div>
-              <div className="symptom-severity-slider">
-                <input
-                  type="range"
-                  min="1"
-                  max="10"
-                  value={symptomFormData.severity}
-                  onChange={(e) => setSymptomFormData(prev => ({ ...prev, severity: e.target.value }))}
-                  style={{ 
-                    '--severity-color': getSeverityColor(symptomFormData.severity),
-                    '--severity-percent': `${(symptomFormData.severity - 1) / 9 * 100}%`
-                  }}
                 />
-                <div className="severity-labels">
-                  <span>Mild</span>
-                  <span>Severe</span>
-                </div>
-              </div>
-            </div>
-            
-            {/* Body Location Card */}
-            <div className="vital-input-card">
-              <div className="vital-input-header">
-                <span className="vital-input-title">Body Location</span>
-              </div>
-              <div className="symptom-select-wrapper">
-                <select
-                  value={symptomFormData.location}
-                  onChange={(e) => setSymptomFormData(prev => ({ ...prev, location: e.target.value }))}
+              </Field>
+            </FormRow>
+
+            <FormRow>
+              <Field label={severityLabel}>
+                {renderSeveritySlider()}
+              </Field>
+
+              <Field label="Body Location">
+                <Select
+                  value={symptomFormData.location || '__none__'}
+                  onValueChange={(v) => setSymptomFormData(prev => ({ ...prev, location: v === '__none__' ? '' : v }))}
                 >
-                  <option value="">Select location...</option>
-                  {bodyLocations.map(loc => (
-                    <option key={loc} value={loc}>{formatLocation(loc)}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            
-            {/* Duration Card */}
-            <div className="vital-input-card">
-              <div className="vital-input-header">
-                <span className="vital-input-title">Duration</span>
-              </div>
-              <div className="vital-input-fields single-field">
-                <input
+                  <SelectTrigger><SelectValue placeholder="Select location..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Not specified</SelectItem>
+                    {bodyLocations.map(loc => (
+                      <SelectItem key={loc} value={loc}>{formatLocation(loc)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            </FormRow>
+
+            <FormRow>
+              <Field label="Duration">
+                <Input
                   type="text"
                   value={symptomFormData.duration}
                   onChange={(e) => setSymptomFormData(prev => ({ ...prev, duration: e.target.value }))}
-                  className="vital-input"
                   placeholder="e.g., 30 minutes"
                 />
-              </div>
+              </Field>
+            </FormRow>
+
+            <Field label="Description">
+              <Textarea
+                value={symptomFormData.description}
+                onChange={(e) => setSymptomFormData(prev => ({ ...prev, description: e.target.value }))}
+                rows={2}
+                placeholder="Describe the symptom..."
+              />
+            </Field>
+
+            <Field label="Notes (optional)">
+              <Textarea
+                value={symptomFormData.notes}
+                onChange={(e) => setSymptomFormData(prev => ({ ...prev, notes: e.target.value }))}
+                rows={2}
+                placeholder="Any additional notes..."
+              />
+            </Field>
+
+            <div className="flex justify-end">
+              <Button
+                type="submit"
+                disabled={saving || !selectedPatient || !symptomFormData.symptom_type}
+              >
+                {saving ? 'Saving...' : 'Log Symptom'}
+              </Button>
             </div>
-          </div>
-          
-          {/* Description */}
-          <div className="vitals-notes-section">
-            <label>Description</label>
-            <textarea
-              value={symptomFormData.description}
-              onChange={(e) => setSymptomFormData(prev => ({ ...prev, description: e.target.value }))}
-              rows={2}
-              placeholder="Describe the symptom..."
-            />
-          </div>
-          
-          {/* Notes */}
-          <div className="vitals-notes-section">
-            <label>Notes (optional)</label>
-            <textarea
-              value={symptomFormData.notes}
-              onChange={(e) => setSymptomFormData(prev => ({ ...prev, notes: e.target.value }))}
-              rows={2}
-              placeholder="Any additional notes..."
-            />
-          </div>
-          
-          {/* Submit */}
-          <div className="vitals-form-actions">
-            <button 
-              type="submit"
-              disabled={saving || !selectedPatient}
-              className="admin-v2-btn admin-v2-btn-primary vitals-submit-btn"
-            >
-              {saving ? 'Saving...' : 'Log Symptom'}
-            </button>
           </div>
         </form>
       </div>
@@ -514,7 +529,7 @@ const AdminV2Symptoms = () => {
             <div key={symptom.id} className="admin-v2-symptom-card">
               <div className="admin-v2-symptom-header">
                 <div className="admin-v2-symptom-type">
-                  <span 
+                  <span
                     className="admin-v2-symptom-severity-badge"
                     style={{ backgroundColor: getSeverityColor(symptom.severity) }}
                   >
@@ -529,23 +544,28 @@ const AdminV2Symptoms = () => {
                     </span>
                   )}
                 </div>
-                <div className="admin-v2-symptom-actions">
-                  <button 
-                    className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-success"
+                <div className="admin-v2-symptom-actions tw">
+                  <Button
+                    size="icon"
+                    className="h-7 w-7"
                     onClick={() => handleResolveSymptom(symptom.id)}
                     title="Mark as resolved"
                   >
                     <CheckIcon size={14} />
-                  </button>
-                  <button 
-                    className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-secondary"
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="h-7 w-7"
                     onClick={() => openEditSymptom(symptom)}
                     title="Edit"
                   >
                     <EditIcon size={14} />
-                  </button>
-                  <button 
-                    className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-danger"
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="icon"
+                    className="h-7 w-7"
                     onClick={() => {
                       setSelectedSymptom(symptom);
                       setShowDeleteModal(true);
@@ -553,10 +573,10 @@ const AdminV2Symptoms = () => {
                     title="Delete"
                   >
                     <TrashIcon size={14} />
-                  </button>
+                  </Button>
                 </div>
               </div>
-              
+
               <div className="admin-v2-symptom-meta">
                 <span className="admin-v2-symptom-time">
                   {symptom.timestamp ? new Date(symptom.timestamp).toLocaleString() : 'Unknown time'}
@@ -565,7 +585,7 @@ const AdminV2Symptoms = () => {
                   <span className="admin-v2-symptom-duration">Duration: {symptom.duration}</span>
                 )}
               </div>
-              
+
               {symptom.description && (
                 <p className="admin-v2-symptom-description">{symptom.description}</p>
               )}
@@ -581,71 +601,80 @@ const AdminV2Symptoms = () => {
     <div className="admin-v2-vitals-content">
       {/* Filters */}
       <div className="vitals-history-filters">
-        <div className="vitals-filter-row">
-          <div className="vitals-filter-group search">
-            <label>Search</label>
-            <div className="vitals-search-wrapper">
-              <SearchIcon size={18} />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search symptoms..."
+        <div className="tw flex flex-col gap-4">
+          {/* Search Input */}
+          <div className="relative">
+            <SearchIcon size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Search symptoms..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-9 pr-9"
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+              >
+                <XIcon size={14} />
+              </button>
+            )}
+          </div>
+
+          {/* Filters grid */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Field label="Type">
+              <Select value={filterType || '__all__'} onValueChange={(v) => setFilterType(v === '__all__' ? '' : v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All Types</SelectItem>
+                  {symptomTypes.map(type => (
+                    <SelectItem key={type} value={type}>{formatSymptomType(type)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+
+            <Field label="Status">
+              <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="resolved">Resolved</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+
+            <Field label="From" htmlFor="symptoms-hist-from">
+              <Input
+                id="symptoms-hist-from"
+                type="date"
+                value={filterDateFrom}
+                onChange={(e) => setFilterDateFrom(e.target.value)}
               />
+            </Field>
+
+            <Field label="To" htmlFor="symptoms-hist-to">
+              <Input
+                id="symptoms-hist-to"
+                type="date"
+                value={filterDateTo}
+                onChange={(e) => setFilterDateTo(e.target.value)}
+              />
+            </Field>
+          </div>
+
+          {/* Actions */}
+          {hasActiveFilters && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="secondary" onClick={clearFilters}>
+                Clear Filters
+              </Button>
             </div>
-          </div>
-          
-          <div className="vitals-filter-group">
-            <label>Type</label>
-            <select
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-            >
-              <option value="">All Types</option>
-              {symptomTypes.map(type => (
-                <option key={type} value={type}>{formatSymptomType(type)}</option>
-              ))}
-            </select>
-          </div>
-          
-          <div className="vitals-filter-group">
-            <label>Status</label>
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-            >
-              <option value="all">All</option>
-              <option value="active">Active</option>
-              <option value="resolved">Resolved</option>
-            </select>
-          </div>
-          
-          <div className="vitals-filter-group">
-            <label>From</label>
-            <input
-              type="date"
-              value={filterDateFrom}
-              onChange={(e) => setFilterDateFrom(e.target.value)}
-            />
-          </div>
-          
-          <div className="vitals-filter-group">
-            <label>To</label>
-            <input
-              type="date"
-              value={filterDateTo}
-              onChange={(e) => setFilterDateTo(e.target.value)}
-            />
-          </div>
-          
-          <div className="vitals-filter-group actions">
-            <button 
-              className="vitals-clear-btn"
-              onClick={clearFilters}
-            >
-              Clear Filters
-            </button>
-          </div>
+          )}
         </div>
       </div>
 
@@ -677,7 +706,7 @@ const AdminV2Symptoms = () => {
                   <td>{symptom.timestamp ? new Date(symptom.timestamp).toLocaleString() : '-'}</td>
                   <td>{formatSymptomType(symptom.symptom_type)}</td>
                   <td>
-                    <span 
+                    <span
                       className="admin-v2-symptom-severity-badge"
                       style={{ backgroundColor: getSeverityColor(symptom.severity) }}
                     >
@@ -697,7 +726,7 @@ const AdminV2Symptoms = () => {
                   <td>
                     <div className="admin-v2-table-actions">
                       {!symptom.is_resolved && (
-                        <button 
+                        <button
                           className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-success"
                           onClick={() => handleResolveSymptom(symptom.id)}
                           title="Resolve"
@@ -705,14 +734,14 @@ const AdminV2Symptoms = () => {
                           <CheckIcon size={14} />
                         </button>
                       )}
-                      <button 
+                      <button
                         className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-secondary"
                         onClick={() => openEditSymptom(symptom)}
                         title="Edit"
                       >
                         <EditIcon size={14} />
                       </button>
-                      <button 
+                      <button
                         className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-danger"
                         onClick={() => {
                           setSelectedSymptom(symptom);
@@ -738,16 +767,24 @@ const AdminV2Symptoms = () => {
       <div className="admin-v2-page">
         {/* Alerts */}
         {error && (
-          <div className="admin-v2-alert admin-v2-alert-error">
-            {error}
-            <button onClick={() => setError(null)} className="admin-v2-alert-close">
-              <XIcon size={16} />
-            </button>
+          <div className="tw" style={{ marginBottom: '1rem' }}>
+            <Alert variant="destructive" className="flex items-center justify-between gap-2">
+              {error}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 shrink-0"
+                onClick={() => setError(null)}
+                aria-label="Dismiss"
+              >
+                <XIcon size={14} />
+              </Button>
+            </Alert>
           </div>
         )}
         {success && (
-          <div className="admin-v2-alert admin-v2-alert-success">
-            {success}
+          <div className="tw" style={{ marginBottom: '1rem' }}>
+            <Alert variant="success">{success}</Alert>
           </div>
         )}
 
@@ -759,180 +796,141 @@ const AdminV2Symptoms = () => {
           isHistoryView ? renderHistoryView() : isActiveView ? renderActiveView() : renderLogView()
         )}
 
-        {/* Edit Symptom Modal */}
-        {showSymptomModal && (
-          <div className="admin-v2-modal-overlay" onClick={() => setShowSymptomModal(false)}>
-            <div className="admin-v2-modal" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>Edit Symptom</h2>
-                <button 
-                  className="admin-v2-modal-close"
+        {/* Edit Symptom Dialog */}
+        <Dialog open={showSymptomModal} onOpenChange={(o) => { if (!o) setShowSymptomModal(false); }}>
+          <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-[560px]" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>Edit Symptom</DialogTitle>
+            </DialogHeader>
+
+            <form onSubmit={handleSymptomSubmit} className="flex flex-col gap-4">
+              <Field label="Symptom Type" required>
+                <Select
+                  value={symptomFormData.symptom_type || undefined}
+                  onValueChange={(v) => setSymptomFormData(prev => ({ ...prev, symptom_type: v }))}
+                >
+                  <SelectTrigger><SelectValue placeholder="Select symptom..." /></SelectTrigger>
+                  <SelectContent>
+                    {symptomTypes.map(type => (
+                      <SelectItem key={type} value={type}>{formatSymptomType(type)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+
+              <FormRow>
+                <Field label={severityLabel}>
+                  {renderSeveritySlider()}
+                </Field>
+
+                <Field label="Body Location">
+                  <Select
+                    value={symptomFormData.location || '__none__'}
+                    onValueChange={(v) => setSymptomFormData(prev => ({ ...prev, location: v === '__none__' ? '' : v }))}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Select location..." /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Not specified</SelectItem>
+                      {bodyLocations.map(loc => (
+                        <SelectItem key={loc} value={loc}>{formatLocation(loc)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              </FormRow>
+
+              <FormRow>
+                <Field label="Duration">
+                  <Input
+                    type="text"
+                    value={symptomFormData.duration}
+                    onChange={(e) => setSymptomFormData(prev => ({ ...prev, duration: e.target.value }))}
+                    placeholder="e.g., 30 minutes, 2 hours"
+                  />
+                </Field>
+
+                <Field label="Date/Time" required>
+                  <Input
+                    type="datetime-local"
+                    value={symptomFormData.timestamp}
+                    onChange={(e) => setSymptomFormData(prev => ({ ...prev, timestamp: e.target.value }))}
+                    required
+                  />
+                </Field>
+              </FormRow>
+
+              <Field label="Description">
+                <Textarea
+                  value={symptomFormData.description}
+                  onChange={(e) => setSymptomFormData(prev => ({ ...prev, description: e.target.value }))}
+                  rows={3}
+                  placeholder="Describe the symptom..."
+                />
+              </Field>
+
+              <Field label="Notes">
+                <Textarea
+                  value={symptomFormData.notes}
+                  onChange={(e) => setSymptomFormData(prev => ({ ...prev, notes: e.target.value }))}
+                  rows={2}
+                  placeholder="Any additional notes..."
+                />
+              </Field>
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="secondary"
                   onClick={() => setShowSymptomModal(false)}
                 >
-                  <XIcon size={20} />
-                </button>
-              </div>
-              
-              <form onSubmit={handleSymptomSubmit}>
-                <div className="admin-v2-modal-body">
-                  <div className="admin-v2-form-group">
-                    <label>Symptom Type *</label>
-                    <select
-                      value={symptomFormData.symptom_type}
-                      onChange={(e) => setSymptomFormData(prev => ({ ...prev, symptom_type: e.target.value }))}
-                      className="admin-v2-input"
-                      required
-                    >
-                      <option value="">Select symptom...</option>
-                      {symptomTypes.map(type => (
-                        <option key={type} value={type}>{formatSymptomType(type)}</option>
-                      ))}
-                    </select>
-                  </div>
-                  
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Severity (1-10)</label>
-                      <div className="admin-v2-severity-slider">
-                        <input
-                          type="range"
-                          min="1"
-                          max="10"
-                          value={symptomFormData.severity}
-                          onChange={(e) => setSymptomFormData(prev => ({ ...prev, severity: e.target.value }))}
-                          className="admin-v2-range"
-                        />
-                        <span 
-                          className="admin-v2-severity-value"
-                          style={{ color: getSeverityColor(symptomFormData.severity) }}
-                        >
-                          {symptomFormData.severity}
-                        </span>
-                      </div>
-                    </div>
-                    
-                    <div className="admin-v2-form-group">
-                      <label>Body Location</label>
-                      <select
-                        value={symptomFormData.location}
-                        onChange={(e) => setSymptomFormData(prev => ({ ...prev, location: e.target.value }))}
-                        className="admin-v2-input"
-                      >
-                        <option value="">Select location...</option>
-                        {bodyLocations.map(loc => (
-                          <option key={loc} value={loc}>{formatLocation(loc)}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Duration</label>
-                      <input
-                        type="text"
-                        value={symptomFormData.duration}
-                        onChange={(e) => setSymptomFormData(prev => ({ ...prev, duration: e.target.value }))}
-                        className="admin-v2-input"
-                        placeholder="e.g., 30 minutes, 2 hours"
-                      />
-                    </div>
-                    
-                    <div className="admin-v2-form-group">
-                      <label>Date/Time</label>
-                      <input
-                        type="datetime-local"
-                        value={symptomFormData.timestamp}
-                        onChange={(e) => setSymptomFormData(prev => ({ ...prev, timestamp: e.target.value }))}
-                        className="admin-v2-input"
-                        required
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="admin-v2-form-group">
-                    <label>Description</label>
-                    <textarea
-                      value={symptomFormData.description}
-                      onChange={(e) => setSymptomFormData(prev => ({ ...prev, description: e.target.value }))}
-                      className="admin-v2-input"
-                      rows={3}
-                      placeholder="Describe the symptom..."
-                    />
-                  </div>
-                  
-                  <div className="admin-v2-form-group">
-                    <label>Notes</label>
-                    <textarea
-                      value={symptomFormData.notes}
-                      onChange={(e) => setSymptomFormData(prev => ({ ...prev, notes: e.target.value }))}
-                      className="admin-v2-input"
-                      rows={2}
-                      placeholder="Any additional notes..."
-                    />
-                  </div>
-                </div>
-                
-                <div className="admin-v2-modal-footer">
-                  <button 
-                    type="button"
-                    className="admin-v2-btn admin-v2-btn-secondary"
-                    onClick={() => setShowSymptomModal(false)}
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    type="submit"
-                    className="admin-v2-btn admin-v2-btn-primary"
-                    disabled={saving}
-                  >
-                    {saving ? 'Saving...' : 'Update Symptom'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* Delete Confirmation Modal */}
-        {showDeleteModal && selectedSymptom && (
-          <div className="admin-v2-modal-overlay" onClick={() => setShowDeleteModal(false)}>
-            <div className="admin-v2-modal admin-v2-modal-sm" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>Delete Symptom</h2>
-                <button 
-                  className="admin-v2-modal-close"
-                  onClick={() => setShowDeleteModal(false)}
-                >
-                  <XIcon size={20} />
-                </button>
-              </div>
-              <div className="admin-v2-modal-body">
-                <p>Are you sure you want to delete this symptom record?</p>
-                <p className="admin-v2-modal-detail">
-                  <strong>{formatSymptomType(selectedSymptom.symptom_type)}</strong>
-                  {selectedSymptom.timestamp && (
-                    <span> — {new Date(selectedSymptom.timestamp).toLocaleString()}</span>
-                  )}
-                </p>
-              </div>
-              <div className="admin-v2-modal-footer">
-                <button 
-                  className="admin-v2-btn admin-v2-btn-secondary"
-                  onClick={() => setShowDeleteModal(false)}
-                >
                   Cancel
-                </button>
-                <button 
-                  className="admin-v2-btn admin-v2-btn-danger"
-                  onClick={handleDeleteSymptom}
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={saving || !symptomFormData.symptom_type}
                 >
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+                  {saving ? 'Saving...' : 'Update Symptom'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog open={showDeleteModal && !!selectedSymptom} onOpenChange={(o) => { if (!o) setShowDeleteModal(false); }}>
+          <DialogContent className="sm:max-w-[420px]">
+            <DialogHeader>
+              <DialogTitle>Delete Symptom</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete this symptom record?
+              </DialogDescription>
+            </DialogHeader>
+            {selectedSymptom && (
+              <p className="text-sm">
+                <strong>{formatSymptomType(selectedSymptom.symptom_type)}</strong>
+                {selectedSymptom.timestamp && (
+                  <span> — {new Date(selectedSymptom.timestamp).toLocaleString()}</span>
+                )}
+              </p>
+            )}
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setShowDeleteModal(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={handleDeleteSymptom}
+              >
+                Delete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </AdminV2Layout>
   );

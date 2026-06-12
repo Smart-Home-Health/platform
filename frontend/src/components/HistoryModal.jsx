@@ -1,11 +1,32 @@
+/*
+ * Smart Home Health Hub
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import config from '../config';
 import ModalBase from './ModalBase';
 import SimpleEventChart from './SimpleEventChart';
-import VitalsForm from './history/VitalsForm';
+import RecordVitalsForm from './vitals/RecordVitalsForm';
 import { useAdminPatient } from '../contexts/AdminPatientContext';
+import { formatVitalDisplayName } from '../utils/vitals';
+import { Button } from '@/components/ui/button';
 import Chart from 'chart.js/auto';
 import 'chartjs-adapter-date-fns';
+// Pull in admin styling so we can use .admin-v2-table on the history table.
+import '../pages/admin-v2/AdminV2.css';
 
 // Specialized chart component for bathroom history with multiple groups
 const BathroomHistoryChart = ({ data, title }) => {
@@ -125,14 +146,25 @@ const HistoryModal = ({ onClose }) => {
   const [activeTab, setActiveTab] = useState('graphs');
   const [showAddVitals, setShowAddVitals] = useState(false);
 
-  const handleVitalsSubmit = (vitalsData) => {
-    // Handle vitals submission here
-    console.log('Vitals data:', vitalsData);
-    setShowAddVitals(false);
-  };
+  const handleCloseVitals = () => setShowAddVitals(false);
 
-  const handleCloseVitals = () => {
-    setShowAddVitals(false);
+  // After a successful save, refresh the currently-selected vital's history
+  // so the new entry shows up in the table/chart without re-opening the modal.
+  const refreshAfterSave = () => {
+    if (!selectedType || !selectedPatient) return;
+    fetch(
+      `${config.apiUrl}/api/vitals/patient/${selectedPatient.id}?vital_type=${selectedType}&limit=${pageSize}`,
+      { credentials: 'include' }
+    )
+      .then(res => res.ok ? res.json() : [])
+      .then(data => {
+        const records = Array.isArray(data) ? data : (data.records || []);
+        setRecords(records.map(r => ({
+          datetime: r.datetime || r.timestamp,
+          value: r.value, notes: r.notes, vital_group: r.vital_group, ...r,
+        })));
+      })
+      .catch(() => {});
   };
 
   useEffect(() => {
@@ -211,6 +243,29 @@ const HistoryModal = ({ onClose }) => {
     return vitalGroup.charAt(0).toUpperCase() + vitalGroup.slice(1);
   };
 
+  // Type-aware value formatter for the table. Bathroom rows already had a
+  // dedicated mapping; BP and temperature need to surface their multi-value
+  // shape (systolic/diastolic/map; body/skin) instead of the empty `value`.
+  const formatValueCell = (rec) => {
+    if (selectedType === 'blood_pressure') {
+      const s = rec.systolic ?? rec.value?.systolic;
+      const d = rec.diastolic ?? rec.value?.diastolic;
+      const m = rec.map ?? rec.value?.map;
+      if (s != null && d != null) {
+        return m != null ? `${s}/${d} (MAP ${m})` : `${s}/${d}`;
+      }
+      return m != null ? `MAP ${m}` : '-';
+    }
+    if (selectedType === 'temperature') {
+      const body = rec.body ?? rec.value;
+      const skin = rec.skin;
+      if (body != null && skin != null) return `Body ${body}° · Skin ${skin}°`;
+      if (body != null) return `${body}°`;
+      return '-';
+    }
+    return getBathroomSizeDisplay(rec.value, rec.vital_group);
+  };
+
   // Prepare chart data based on vital type
   const chartData = useMemo(() => {
     if (!records || records.length === 0) return [];
@@ -261,15 +316,34 @@ const HistoryModal = ({ onClose }) => {
         fill: false
       }));
     } else {
-      // For non-bathroom types, simple single dataset
+      // For non-bathroom types, simple single dataset. Multi-value vitals
+      // (blood_pressure carries systolic/diastolic/map; temperature can
+      // carry body/skin) flatten down to one scalar y for the line chart.
+      const yFor = (r) => {
+        if (selectedType === 'blood_pressure') {
+          // Prefer stored MAP; otherwise compute from S/D.
+          if (r.map != null) return r.map;
+          if (r.systolic != null && r.diastolic != null) {
+            return Math.round(r.diastolic + (r.systolic - r.diastolic) / 3);
+          }
+          if (r.value && typeof r.value === 'object') {
+            return r.value.map ?? null;
+          }
+          return r.value ?? null;
+        }
+        if (selectedType === 'temperature') {
+          return r.body ?? r.value ?? null;
+        }
+        return r.value ?? null;
+      };
+
       return [{
         label: selectedType,
-        data: records.map(record => ({
-          x: new Date(record.datetime),
-          y: record.value
-        })),
-        borderColor: '#007bff',
-        backgroundColor: '#007bff',
+        data: records
+          .map(record => ({ x: new Date(record.datetime), y: yFor(record) }))
+          .filter(p => p.y != null && !Number.isNaN(p.y)),
+        borderColor: '#58a6ff',
+        backgroundColor: '#58a6ff',
         fill: false
       }];
     }
@@ -277,77 +351,34 @@ const HistoryModal = ({ onClose }) => {
 
   return (
     <ModalBase isOpen={true} onClose={onClose} title={
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button
-              onClick={() => {
-                setActiveTab('graphs');
-                setShowAddVitals(false);
-              }}
-              style={{
-                padding: '8px 16px',
-                border: 'none',
-                borderRadius: '6px',
-                backgroundColor: activeTab === 'graphs' ? '#007bff' : '#f8f9fa',
-                color: activeTab === 'graphs' ? '#fff' : '#333',
-                cursor: 'pointer',
-                fontWeight: '500',
-                fontSize: '14px'
-              }}
-            >
-              Graphs
-            </button>
-            {/* Placeholder for future tab */}
-            <button
-              onClick={() => {
-                setActiveTab('reports');
-                setShowAddVitals(false);
-              }}
-              style={{
-                padding: '8px 16px',
-                border: 'none',
-                borderRadius: '6px',
-                backgroundColor: activeTab === 'reports' ? '#007bff' : '#f8f9fa',
-                color: activeTab === 'reports' ? '#fff' : '#333',
-                cursor: 'pointer',
-                fontWeight: '500',
-                fontSize: '14px'
-              }}
-            >
-              Reports
-            </button>
-          </div>
+      <div className="tw flex w-full items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant={activeTab === 'graphs' ? 'default' : 'secondary'}
+            onClick={() => { setActiveTab('graphs'); setShowAddVitals(false); }}
+          >Graphs</Button>
+          <Button
+            size="sm"
+            variant={activeTab === 'reports' ? 'default' : 'secondary'}
+            onClick={() => { setActiveTab('reports'); setShowAddVitals(false); }}
+          >Reports</Button>
         </div>
-        <div style={{ display: 'flex', gap: '12px', marginLeft: '24px' }}>
-          <button
-            onClick={() => setShowAddVitals(true)}
-            style={{
-              padding: '8px 16px',
-              border: 'none',
-              borderRadius: '6px',
-              backgroundColor: '#28a745',
-              color: '#fff',
-              cursor: 'pointer',
-              fontWeight: '500',
-              fontSize: '14px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}
-          >
-            + Add Vitals
-          </button>
-        </div>
+        <Button size="sm" onClick={() => setShowAddVitals(true)}>+ Add Vitals</Button>
       </div>
     }>
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
         <div style={{ flex: 1, overflow: 'auto' }}>
           {showAddVitals ? (
-            <VitalsForm 
-              onSave={handleVitalsSubmit}
-              onClose={handleCloseVitals}
-            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div className="tw" style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <Button variant="secondary" size="sm" onClick={handleCloseVitals}>← Back to History</Button>
+              </div>
+              <RecordVitalsForm
+                patientId={selectedPatient?.id}
+                onSaved={() => { refreshAfterSave(); }}
+              />
+            </div>
           ) : (
             <>
               {activeTab === 'graphs' && (
@@ -358,30 +389,19 @@ const HistoryModal = ({ onClose }) => {
               border: '1px solid #4a5568',
               height: '100%'
             }}>
-              <div className="vital-type-buttons" style={{ 
-                display: 'flex', 
-                gap: '10px', 
-                marginBottom: '20px',
-                flexWrap: 'wrap'
-              }}>
-                {vitalTypes.map((type) => (
-                  <button
-                    key={type}
-                    className={type === selectedType ? "active" : ""}
-                    onClick={() => handleTypeSelect(type)}
-                    style={{
-                      padding: '8px 16px',
-                      border: '1px solid #ccc',
-                      borderRadius: '4px',
-                      backgroundColor: type === selectedType ? '#007bff' : '#f8f9fa',
-                      color: type === selectedType ? '#fff' : '#333',
-                      cursor: 'pointer',
-                      textTransform: 'capitalize'
-                    }}
-                  >
-                    {type}
-                  </button>
-                ))}
+              <div className="tw" style={{ marginBottom: '20px' }}>
+                <div className="flex flex-wrap gap-2">
+                  {vitalTypes.map((type) => (
+                    <Button
+                      key={type}
+                      size="sm"
+                      variant={type === selectedType ? 'default' : 'secondary'}
+                      onClick={() => handleTypeSelect(type)}
+                    >
+                      {formatVitalDisplayName(type)}
+                    </Button>
+                  ))}
+                </div>
               </div>
               {selectedType && (
                 <>
@@ -394,17 +414,18 @@ const HistoryModal = ({ onClose }) => {
                   }}>
               {records.length > 0 ? (
                 selectedType.toLowerCase().includes('bathroom') ? (
-                  <BathroomHistoryChart data={chartData} title={`${selectedType} History`} />
+                  <BathroomHistoryChart data={chartData} title={`${formatVitalDisplayName(selectedType)} History`} />
                 ) : (
                   <SimpleEventChart
-                    title={`${selectedType} History`}
-                    color="#007bff"
+                    title={`${formatVitalDisplayName(selectedType)} History`}
+                    color="#58a6ff"
                     unit=""
                     data={chartData[0]?.data || []}
+                    xType="time"
                   />
                 )
               ) : (
-                <div style={{ 
+                <div style={{
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -412,123 +433,42 @@ const HistoryModal = ({ onClose }) => {
                   color: "#ccc"
                 }}>
                   <p style={{ textAlign: "center", margin: 0 }}>
-                    No data available to chart for <b>{selectedType}</b>
+                    No data available to chart for <b>{formatVitalDisplayName(selectedType)}</b>
                   </p>
                 </div>
               )}
             </div>
             <div className="history-table">
               {loading ? (
-                <div style={{ 
-                  textAlign: 'center', 
-                  padding: '40px',
-                  color: '#007bff' 
-                }}>
+                <div style={{ textAlign: 'center', padding: '40px', color: '#8b949e' }}>
                   <div style={{ fontSize: '16px' }}>Loading...</div>
                 </div>
               ) : (
-                <div style={{
-                  backgroundColor: '#fff',
-                  borderRadius: '8px',
-                  overflow: 'hidden',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-                }}>
-                  <table style={{ 
-                    width: '100%', 
-                    borderCollapse: 'collapse',
-                    backgroundColor: '#fff'
-                  }}>
+                <div className="admin-v2-table-container">
+                  <table className="admin-v2-table">
                     <thead>
-                      <tr style={{ backgroundColor: '#007bff' }}>
-                        <th style={{ 
-                          padding: '16px', 
-                          color: '#fff', 
-                          textAlign: 'left',
-                          fontWeight: '600',
-                          fontSize: '14px'
-                        }}>
-                          Timestamp
-                        </th>
-                        <th style={{ 
-                          padding: '16px', 
-                          color: '#fff', 
-                          textAlign: 'left',
-                          fontWeight: '600',
-                          fontSize: '14px'
-                        }}>
-                          Group
-                        </th>
-                        <th style={{ 
-                          padding: '16px', 
-                          color: '#fff', 
-                          textAlign: 'left',
-                          fontWeight: '600',
-                          fontSize: '14px'
-                        }}>
-                          Value
-                        </th>
-                        <th style={{ 
-                          padding: '16px', 
-                          color: '#fff', 
-                          textAlign: 'left',
-                          fontWeight: '600',
-                          fontSize: '14px'
-                        }}>
-                          Notes
-                        </th>
+                      <tr>
+                        <th>Timestamp</th>
+                        <th>Group</th>
+                        <th>Value</th>
+                        <th>Notes</th>
                       </tr>
                     </thead>
                     <tbody>
                       {records.length === 0 ? (
                         <tr>
-                          <td colSpan={4} style={{ 
-                            textAlign: "center", 
-                            padding: '40px',
-                            color: '#666',
-                            backgroundColor: '#f8f9fa',
-                            fontStyle: 'italic'
-                          }}>
-                            No data available for {selectedType}
+                          <td colSpan={4} style={{ textAlign: 'center', fontStyle: 'italic', color: '#8b949e' }}>
+                            No data available for {formatVitalDisplayName(selectedType)}
                           </td>
                         </tr>
                       ) : (
                         records.map((rec, idx) => (
-                          <tr 
-                            key={idx} 
-                            style={{ 
-                              backgroundColor: idx % 2 === 0 ? '#fff' : '#f8f9fa',
-                              borderBottom: '1px solid #e9ecef'
-                            }}
-                          >
-                            <td style={{ 
-                              padding: '12px 16px', 
-                              color: '#333',
-                              fontSize: '14px'
-                            }}>
-                              {new Date(rec.datetime).toLocaleString()}
-                            </td>
-                            <td style={{ 
-                              padding: '12px 16px', 
-                              color: '#666',
-                              fontSize: '14px'
-                            }}>
-                              {getGroupDisplay(rec.vital_group)}
-                            </td>
-                            <td style={{ 
-                              padding: '12px 16px', 
-                              color: '#333',
-                              fontSize: '14px',
-                              fontWeight: '500'
-                            }}>
-                              {getBathroomSizeDisplay(rec.value, rec.vital_group)}
-                            </td>
-                            <td style={{ 
-                              padding: '12px 16px', 
-                              color: '#666',
-                              fontSize: '14px',
-                              fontStyle: rec.notes ? 'normal' : 'italic'
-                            }}>
-                              {rec.notes || "No notes"}
+                          <tr key={idx}>
+                            <td>{new Date(rec.datetime).toLocaleString()}</td>
+                            <td>{getGroupDisplay(rec.vital_group)}</td>
+                            <td style={{ fontWeight: 500 }}>{formatValueCell(rec)}</td>
+                            <td style={{ color: rec.notes ? '#c9d1d9' : '#6e7681', fontStyle: rec.notes ? 'normal' : 'italic' }}>
+                              {rec.notes || 'No notes'}
                             </td>
                           </tr>
                         ))
@@ -537,61 +477,18 @@ const HistoryModal = ({ onClose }) => {
                   </table>
                 </div>
               )}
-              <div className="pagination-controls" style={{ 
-                marginTop: 20,
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '16px',
-                backgroundColor: '#fff',
-                borderRadius: '8px',
-                boxShadow: '0 1px 4px rgba(0,0,0,0.1)'
+              <div className="tw pagination-controls" style={{
+                marginTop: 16,
+                display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12,
+                padding: 12,
               }}>
-                <button 
-                  onClick={handlePrev} 
-                  disabled={page === 1}
-                  style={{
-                    padding: '8px 16px',
-                    border: 'none',
-                    borderRadius: '6px',
-                    backgroundColor: page === 1 ? '#e9ecef' : '#007bff',
-                    color: page === 1 ? '#6c757d' : '#fff',
-                    cursor: page === 1 ? 'not-allowed' : 'pointer',
-                    fontWeight: '500',
-                    fontSize: '14px',
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  ← Previous
-                </button>
-                <span style={{ 
-                  margin: "0 16px", 
-                  fontWeight: '600',
-                  color: '#333',
-                  fontSize: '14px'
-                }}>
+                <Button variant="secondary" size="sm" onClick={handlePrev} disabled={page === 1}>← Previous</Button>
+                <span style={{ color: '#c9d1d9', fontSize: 13, fontWeight: 500 }}>
                   Page {page} of {totalPages}
                 </span>
-                <button 
-                  onClick={handleNext} 
-                  disabled={page === totalPages}
-                  style={{
-                    padding: '8px 16px',
-                    border: 'none',
-                    borderRadius: '6px',
-                    backgroundColor: page === totalPages ? '#e9ecef' : '#007bff',
-                    color: page === totalPages ? '#6c757d' : '#fff',
-                    cursor: page === totalPages ? 'not-allowed' : 'pointer',
-                    fontWeight: '500',
-                    fontSize: '14px',
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  Next →
-                  </button>
-                </div>
+                <Button variant="secondary" size="sm" onClick={handleNext} disabled={page === totalPages}>Next →</Button>
               </div>
+            </div>
               </>
               )}
             </div>

@@ -1,7 +1,23 @@
+/*
+ * Smart Home Health Hub
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 import React, { useEffect, useState } from 'react';
 import config from '../../../config';
 import {
-  XIcon,
   ClockIcon,
   FlameIcon,
   NotesIcon,
@@ -14,6 +30,25 @@ import {
   SnackIcon,
   TubeIcon,
 } from '../../../components/Icons';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Alert } from '@/components/ui/alert';
+import { Field, FormRow } from '@/components/ui/field';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
 import {
   getCurrentLocalDateTime,
   localDateTimeToUTC,
@@ -80,8 +115,6 @@ const IntakeModal = ({ open, onClose, onSaved, patient, editing, defaultDateTime
     }
   }, [open, editing, defaultDateTime]);
 
-  if (!open) return null;
-
   const handleSave = async (e) => {
     e.preventDefault();
     if (!patient) return;
@@ -121,187 +154,153 @@ const IntakeModal = ({ open, onClose, onSaved, patient, editing, defaultDateTime
   };
 
   return (
-    <div className="admin-v2-modal-overlay" onClick={onClose}>
-      <div className="admin-v2-modal admin-v2-modal-lg" onClick={e => e.stopPropagation()}>
-        <div className="admin-v2-modal-header">
-          <h3>{editing ? 'Edit Intake' : 'Log Intake'}</h3>
-          <button className="admin-v2-modal-close" onClick={onClose}>
-            <XIcon size={20} />
-          </button>
-        </div>
-        <form onSubmit={handleSave}>
-          <div className="admin-v2-modal-body">
-            {formError && <div className="admin-v2-form-error">{formError}</div>}
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose?.(); }}>
+      <DialogContent className="sm:max-w-[640px]" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>{editing ? 'Edit Intake' : 'Log Intake'}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSave} className="flex flex-col gap-4">
+          {formError && <Alert variant="destructive">{formError}</Alert>}
 
-            <div className="admin-v2-form-group" style={{ marginBottom: '1rem' }}>
-              <label><ClockIcon size={16} /> Date & Time *</label>
-              <input
-                type="datetime-local"
-                value={form.consumed_at}
-                onChange={e => setForm({ ...form, consumed_at: e.target.value })}
+          <Field label={<><ClockIcon size={16} /> Date &amp; Time</>} required htmlFor="intake-when">
+            <Input
+              id="intake-when"
+              type="datetime-local"
+              value={form.consumed_at}
+              onChange={e => setForm({ ...form, consumed_at: e.target.value })}
+              required
+            />
+          </Field>
+
+          {/* Intake Type Selection — specialised icon picker kept as chrome */}
+          <div className="admin-v2-output-type-section">
+            <label className="admin-v2-output-section-label">Intake Type *</label>
+            <div className="admin-v2-output-type-grid">
+              {['liquid', 'food', 'supplement', 'tube_feed'].map(type => (
+                <button
+                  key={type}
+                  type="button"
+                  className={`admin-v2-output-type-btn ${form.item_type === type ? 'active' : ''}`}
+                  onClick={() => setForm({ ...form, item_type: type })}
+                >
+                  {type === 'liquid' && <LiquidIcon size={20} />}
+                  {type === 'food' && <FoodIcon size={20} />}
+                  {type === 'supplement' && <SupplementIcon size={20} />}
+                  {type === 'tube_feed' && <TubeIcon size={20} />}
+                  <span>{type === 'tube_feed' ? 'Tube Feed' : type.charAt(0).toUpperCase() + type.slice(1)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Meal Type Selection — specialised icon picker kept as chrome */}
+          <div className="admin-v2-output-type-section">
+            <label className="admin-v2-output-section-label">Meal Type</label>
+            <div className="admin-v2-output-type-grid">
+              {['breakfast', 'lunch', 'dinner', 'snack', 'supplement'].map(type => (
+                <button
+                  key={type}
+                  type="button"
+                  className={`admin-v2-output-type-btn ${form.meal_type === type ? 'active' : ''}`}
+                  onClick={() => setForm({ ...form, meal_type: type })}
+                >
+                  {type === 'breakfast' && <BreakfastIcon size={20} />}
+                  {type === 'lunch' && <LunchIcon size={20} />}
+                  {type === 'dinner' && <DinnerIcon size={20} />}
+                  {type === 'snack' && <SnackIcon size={20} />}
+                  {type === 'supplement' && <SupplementIcon size={20} />}
+                  <span>{type.charAt(0).toUpperCase() + type.slice(1)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Item Details */}
+          <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
+            <h4 className="text-sm font-semibold text-foreground">Item Details</h4>
+            <Field label="Item Name" required htmlFor="intake-item">
+              <Input
+                id="intake-item"
+                value={form.item_name}
+                onChange={e => setForm({ ...form, item_name: e.target.value })}
+                placeholder="e.g., Water, Peptamen, Apple"
                 required
               />
-            </div>
-
-            {/* Intake Type Selection */}
-            <div className="admin-v2-output-type-section">
-              <label className="admin-v2-output-section-label">Intake Type *</label>
-              <div className="admin-v2-output-type-grid">
-                {['liquid', 'food', 'supplement', 'tube_feed'].map(type => (
-                  <button
-                    key={type}
-                    type="button"
-                    className={`admin-v2-output-type-btn ${form.item_type === type ? 'active' : ''}`}
-                    onClick={() => setForm({ ...form, item_type: type })}
-                  >
-                    {type === 'liquid' && <LiquidIcon size={20} />}
-                    {type === 'food' && <FoodIcon size={20} />}
-                    {type === 'supplement' && <SupplementIcon size={20} />}
-                    {type === 'tube_feed' && <TubeIcon size={20} />}
-                    <span>{type === 'tube_feed' ? 'Tube Feed' : type.charAt(0).toUpperCase() + type.slice(1)}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Meal Type Selection */}
-            <div className="admin-v2-output-type-section">
-              <label className="admin-v2-output-section-label">Meal Type</label>
-              <div className="admin-v2-output-type-grid">
-                {['breakfast', 'lunch', 'dinner', 'snack', 'supplement'].map(type => (
-                  <button
-                    key={type}
-                    type="button"
-                    className={`admin-v2-output-type-btn ${form.meal_type === type ? 'active' : ''}`}
-                    onClick={() => setForm({ ...form, meal_type: type })}
-                  >
-                    {type === 'breakfast' && <BreakfastIcon size={20} />}
-                    {type === 'lunch' && <LunchIcon size={20} />}
-                    {type === 'dinner' && <DinnerIcon size={20} />}
-                    {type === 'snack' && <SnackIcon size={20} />}
-                    {type === 'supplement' && <SupplementIcon size={20} />}
-                    <span>{type.charAt(0).toUpperCase() + type.slice(1)}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Item Details Card */}
-            <div className="admin-v2-output-details-card">
-              <h4 className="admin-v2-output-card-title">Item Details</h4>
-              <div className="admin-v2-form-group">
-                <label>Item Name *</label>
-                <input
-                  type="text"
-                  value={form.item_name}
-                  onChange={e => setForm({ ...form, item_name: e.target.value })}
-                  placeholder="e.g., Water, Peptamen, Apple"
+            </Field>
+            <FormRow>
+              <Field label="Amount" required htmlFor="intake-amount">
+                <Input
+                  id="intake-amount"
+                  type="number"
+                  step="0.1"
+                  value={form.amount}
+                  onChange={e => setForm({ ...form, amount: e.target.value })}
                   required
                 />
-              </div>
-              <div className="admin-v2-form-row">
-                <div className="admin-v2-form-group">
-                  <label>Amount *</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={form.amount}
-                    onChange={e => setForm({ ...form, amount: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="admin-v2-form-group">
-                  <label>Unit</label>
-                  <select
-                    value={form.amount_unit}
-                    onChange={e => setForm({ ...form, amount_unit: e.target.value })}
-                  >
-                    <option value="ml">ml</option>
-                    <option value="oz">oz</option>
-                    <option value="cups">cups</option>
-                    <option value="grams">grams</option>
-                    <option value="servings">servings</option>
-                  </select>
-                </div>
-              </div>
-            </div>
+              </Field>
+              <Field label="Unit">
+                <Select
+                  value={form.amount_unit}
+                  onValueChange={(v) => setForm({ ...form, amount_unit: v })}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ml">ml</SelectItem>
+                    <SelectItem value="oz">oz</SelectItem>
+                    <SelectItem value="cups">cups</SelectItem>
+                    <SelectItem value="grams">grams</SelectItem>
+                    <SelectItem value="servings">servings</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+            </FormRow>
+          </div>
 
-            {/* Nutrition Details Card */}
-            <div className="admin-v2-output-details-card">
-              <h4 className="admin-v2-output-card-title"><FlameIcon size={16} /> Nutrition (Optional)</h4>
-              <div className="admin-v2-form-row-3">
-                <div className="admin-v2-form-group">
-                  <label>Calories</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={form.calories}
-                    onChange={e => setForm({ ...form, calories: e.target.value })}
-                    placeholder="kcal"
-                  />
-                </div>
-                <div className="admin-v2-form-group">
-                  <label>Protein (g)</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={form.protein_grams}
-                    onChange={e => setForm({ ...form, protein_grams: e.target.value })}
-                  />
-                </div>
-                <div className="admin-v2-form-group">
-                  <label>Carbs (g)</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={form.carbs_grams}
-                    onChange={e => setForm({ ...form, carbs_grams: e.target.value })}
-                  />
-                </div>
-              </div>
-              <div className="admin-v2-form-row">
-                <div className="admin-v2-form-group">
-                  <label>Fat (g)</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={form.fat_grams}
-                    onChange={e => setForm({ ...form, fat_grams: e.target.value })}
-                  />
-                </div>
-                <div className="admin-v2-form-group">
-                  <label>Sodium (mg)</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={form.sodium_mg}
-                    onChange={e => setForm({ ...form, sodium_mg: e.target.value })}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="admin-v2-form-group">
-              <label><NotesIcon size={16} /> Notes</label>
-              <textarea
-                value={form.notes}
-                onChange={e => setForm({ ...form, notes: e.target.value })}
-                rows={2}
-                placeholder="Additional notes..."
-              />
+          {/* Nutrition Details */}
+          <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
+            <h4 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+              <FlameIcon size={16} /> Nutrition (Optional)
+            </h4>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+              <Field label="Calories" htmlFor="intake-cal">
+                <Input id="intake-cal" type="number" step="0.1" value={form.calories} onChange={e => setForm({ ...form, calories: e.target.value })} placeholder="kcal" />
+              </Field>
+              <Field label="Protein (g)" htmlFor="intake-protein">
+                <Input id="intake-protein" type="number" step="0.1" value={form.protein_grams} onChange={e => setForm({ ...form, protein_grams: e.target.value })} />
+              </Field>
+              <Field label="Carbs (g)" htmlFor="intake-carbs">
+                <Input id="intake-carbs" type="number" step="0.1" value={form.carbs_grams} onChange={e => setForm({ ...form, carbs_grams: e.target.value })} />
+              </Field>
+              <Field label="Fat (g)" htmlFor="intake-fat">
+                <Input id="intake-fat" type="number" step="0.1" value={form.fat_grams} onChange={e => setForm({ ...form, fat_grams: e.target.value })} />
+              </Field>
+              <Field label="Sodium (mg)" htmlFor="intake-sodium">
+                <Input id="intake-sodium" type="number" step="0.1" value={form.sodium_mg} onChange={e => setForm({ ...form, sodium_mg: e.target.value })} />
+              </Field>
             </div>
           </div>
-          <div className="admin-v2-modal-footer">
-            <button type="button" className="admin-v2-btn admin-v2-btn-secondary" onClick={onClose}>
+
+          <Field label={<><NotesIcon size={16} /> Notes</>} htmlFor="intake-notes">
+            <Textarea
+              id="intake-notes"
+              value={form.notes}
+              onChange={e => setForm({ ...form, notes: e.target.value })}
+              rows={2}
+              placeholder="Additional notes..."
+            />
+          </Field>
+
+          <DialogFooter>
+            <Button type="button" variant="secondary" onClick={onClose}>
               Cancel
-            </button>
-            <button type="submit" className="admin-v2-btn admin-v2-btn-primary" disabled={saving}>
+            </Button>
+            <Button type="submit" disabled={saving}>
               {saving ? 'Saving...' : (editing ? 'Update' : 'Save')}
-            </button>
-          </div>
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 

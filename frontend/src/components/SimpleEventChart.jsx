@@ -1,9 +1,26 @@
+/*
+ * Smart Home Health Hub
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 import { useEffect, useRef, memo } from 'react';
 import Chart from 'chart.js/auto';
 import 'chartjs-adapter-date-fns';
 
 // Use React.memo to prevent re-renders when props don't change
-const SimpleEventChart = memo(({ title, color, data, unit }) => {
+const SimpleEventChart = memo(({ title, color, data, unit, xType = 'category' }) => {
   const chartRef = useRef(null);
   const chartInstance = useRef(null);
   const canvasId = useRef(`chart-${Math.random().toString(36).substr(2, 9)}`);
@@ -72,14 +89,23 @@ const SimpleEventChart = memo(({ title, color, data, unit }) => {
           },
           scales: {
             x: {
-              type: 'category', 
+              // 'time' uses chartjs-adapter-date-fns to map real Date x values.
+              // 'category' (the legacy default) treats each x as a string label,
+              // which collapses Date instances to one bucket — keep that for
+              // pre-stringified-time consumers like AlertDetailModal.
+              type: xType,
+              ...(xType === 'time' ? {
+                time: { tooltipFormat: 'PPpp' },
+              } : {}),
               title: {
                 display: true,
                 text: 'Time'
               },
               ticks: {
                 color: '#a0aec0',
-                maxRotation: 0
+                maxRotation: 0,
+                autoSkip: true,
+                maxTicksLimit: 8,
               },
               grid: {
                 color: 'rgba(160, 174, 192, 0.1)'
@@ -114,7 +140,7 @@ const SimpleEventChart = memo(({ title, color, data, unit }) => {
         chartInstance.current = null;
       }
     };
-  }, [title, color, data, unit]);
+  }, [title, color, data, unit, xType]);
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>

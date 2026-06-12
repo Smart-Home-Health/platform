@@ -1,3 +1,18 @@
+# Smart Home Health Hub
+# Copyright (C) 2026 John Carty
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from sqlalchemy import Column, Integer, Float, Text, ForeignKey, Boolean, TIMESTAMP, String
 from sqlalchemy.orm import relationship
 from schemas import Base
@@ -26,7 +41,12 @@ class MedicationLog(Base):
     
     # Timestamps
     created_at = Column(TIMESTAMP(timezone=True), nullable=False)
-    
+
+    # Soft delete (undo). When voided_at is set the administration was undone and
+    # is excluded from schedule/history/adherence by the global soft-delete filter.
+    voided_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    voided_by = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+
     # Relationships
     medication = relationship('Medication', back_populates='administration_logs')
     patient = relationship('Patient', back_populates='medication_logs')

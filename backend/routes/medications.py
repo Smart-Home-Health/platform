@@ -1,3 +1,18 @@
+# Smart Home Health Hub
+# Copyright (C) 2026 John Carty
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 Medication management routes
 """
@@ -24,10 +39,13 @@ from crud.medications import (add_medication, get_active_medications, get_inacti
                   delete_medication, add_medication_schedule, get_medication_schedules, 
                   get_all_medication_schedules, update_medication_schedule, delete_medication_schedule, 
                   toggle_medication_schedule_active, get_daily_medication_schedule, administer_medication,
-                  get_medication_history, get_medication_names_for_dropdown)
+                  get_medication_history, get_medication_names_for_dropdown,
+                  get_due_and_upcoming_medications_count, set_low_stock_days_for_scheduled_meds)
+from pydantic import BaseModel, Field
 from crud.settings import get_setting
 from models import Medication
-from utils.early_administration import guard_early_administration
+from utils.early_administration import guard_early_administration, guard_future_administration
+from utils.medication_quantity import insufficient_quantity_response, InsufficientMedicationQuantityError
 
 logger = logging.getLogger("app")
 
@@ -99,6 +117,8 @@ async def api_add_medication(data: MedicationCreate, db: Session = Depends(get_d
             concentration=data.concentration,
             quantity=data.quantity,
             quantity_unit=data.quantity_unit,
+            low_stock_threshold=data.low_stock_threshold,
+            low_stock_threshold_type=data.low_stock_threshold_type,
             instructions=data.instructions,
             start_date=data.start_date,
             end_date=data.end_date,
@@ -111,6 +131,14 @@ async def api_add_medication(data: MedicationCreate, db: Session = Depends(get_d
         return {"id": med_id, "status": "success"}
     except Exception as e:
         return JSONResponse(status_code=500, content={"detail": str(e)})
+
+
+@router.get("/medications/due/count")
+async def get_medications_due_count_endpoint(patient_id: Optional[int] = None, db: Session = Depends(get_db)):
+    """Count of due/upcoming medications, scoped to a patient for the per-patient
+    dashboard badge. Ungated like the equipment due-count so the badge stays
+    visible in restricted (locked) mode."""
+    return {"count": get_due_and_upcoming_medications_count(db, patient_id=patient_id)}
 
 
 @router.get("/medications/active", response_model=List[dict])
@@ -178,6 +206,8 @@ async def get_admin_active_medications_endpoint(patient_id: Optional[int] = None
                 'concentration': med.concentration,
                 'quantity': med.quantity,
                 'quantity_unit': med.quantity_unit,
+                'low_stock_threshold': med.low_stock_threshold,
+                'low_stock_threshold_type': med.low_stock_threshold_type,
                 'instructions': med.instructions,
                 'start_date': med.start_date.isoformat() if med.start_date else None,
                 'end_date': med.end_date.isoformat() if med.end_date else None,
@@ -229,6 +259,8 @@ async def get_admin_inactive_medications_endpoint(patient_id: Optional[int] = No
                 'concentration': med.concentration,
                 'quantity': med.quantity,
                 'quantity_unit': med.quantity_unit,
+                'low_stock_threshold': med.low_stock_threshold,
+                'low_stock_threshold_type': med.low_stock_threshold_type,
                 'instructions': med.instructions,
                 'start_date': med.start_date.isoformat() if med.start_date else None,
                 'end_date': med.end_date.isoformat() if med.end_date else None,
@@ -247,6 +279,18 @@ async def get_admin_inactive_medications_endpoint(patient_id: Optional[int] = No
     except Exception as e:
         logger.error(f"Error fetching admin inactive medications: {e}")
         return JSONResponse(status_code=500, content={"detail": str(e)})
+
+
+class BulkLowStockDaysRequest(BaseModel):
+    days: float = Field(..., gt=0, le=365)
+
+
+@router.post("/medications/low-stock-threshold/apply-days")
+async def apply_low_stock_days_bulk(data: BulkLowStockDaysRequest, db: Session = Depends(get_db)):
+    """Set a days-of-supply low-stock threshold on every active medication
+    that has at least one active schedule."""
+    updated = set_low_stock_days_for_scheduled_meds(db, data.days)
+    return {"status": "success", "updated_count": len(updated), "medications": updated}
 
 
 @router.put("/medications/{med_id}")
@@ -291,6 +335,12 @@ async def toggle_medication_active_endpoint(med_id: int, db: Session = Depends(g
 @router.post("/medications/{med_id}/administer")
 async def administer_medication_endpoint(med_id: int, data: MedicationAdminister, db: Session = Depends(get_db)):
     """Record a medication administration and deduct from quantity. Pass patient_id when administering a patient-specific medication without a global current patient."""
+    # A dose can't be given in the future — reject an administered_at past now
+    # (catches the date-left-on-today slip). Not overridable.
+    future = guard_future_administration(data.administered_at, item_label="medication")
+    if future is not None:
+        return future
+
     # Block administrations >1h before the scheduled time unless the caller confirmed.
     # Skip doses (dose_amount == 0) are exempt — they are explicitly *not* an administration.
     if data.dose_amount > 0:
@@ -303,10 +353,14 @@ async def administer_medication_endpoint(med_id: int, data: MedicationAdminister
         if early is not None:
             return early
 
-    result = administer_medication(
-        db, med_id, data.dose_amount, data.schedule_id, data.scheduled_time, data.notes,
-        patient_id=data.patient_id, administered_at=data.administered_at,
-    )
+    try:
+        result = administer_medication(
+            db, med_id, data.dose_amount, data.schedule_id, data.scheduled_time, data.notes,
+            patient_id=data.patient_id, administered_at=data.administered_at,
+        )
+    except InsufficientMedicationQuantityError as e:
+        # Refuse — the caller must update on-hand quantity first.
+        return insufficient_quantity_response(e.medication, e.dose)
     if not result:
         return JSONResponse(status_code=400, content={"detail": "Failed to administer medication"})
     return {"success": True}

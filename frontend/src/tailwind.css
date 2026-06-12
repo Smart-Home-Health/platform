@@ -1,0 +1,171 @@
+/*
+ * Smart Home Health Hub
+ * Copyright (C) 2026 John Carty — GNU AGPL v3 (see LICENSE)
+ *
+ * Isolated Tailwind v4 + shadcn/ui layer. Preflight is intentionally NOT
+ * imported so the global reset never leaks to the un-migrated app. Tailwind
+ * utilities + theme tokens are available everywhere, but the structural reset
+ * (box-sizing, etc.) is scoped to `.tw` subtrees (and to Radix portal slots,
+ * which render outside `.tw` on <body>).
+ */
+
+@layer theme, base, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+/* tailwindcss/preflight.css is intentionally omitted — see header. */
+
+/* Map shadcn semantic vars -> Tailwind --color-* so bg-card, text-foreground… work. */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* Dark-only palette mapped to the existing GitHub-dark look. */
+:root {
+  --radius: 0.5rem;
+  --background: #0d1117;
+  --foreground: #e6edf3;
+  --card: #161b22;
+  --card-foreground: #e6edf3;
+  --popover: #161b22;
+  --popover-foreground: #e6edf3;
+  --primary: #238636;
+  --primary-foreground: #ffffff;
+  --secondary: #21262d;
+  --secondary-foreground: #e6edf3;
+  --muted: #161b22;
+  --muted-foreground: #8b949e;
+  --accent: #21262d;
+  --accent-foreground: #e6edf3;
+  --destructive: #da3633;
+  --destructive-foreground: #ffffff;
+  --success: #238636;
+  --success-foreground: #ffffff;
+  --border: #30363d;
+  --input: #30363d;
+  --ring: #58a6ff;
+}
+
+/* ---- Minimal scoped base (unlayered so it reliably wins) ---------------- */
+/* Only inside `.tw` subtrees + Radix portal slots; nothing leaks elsewhere. */
+.tw,
+.tw *,
+.tw *::before,
+.tw *::after,
+[data-slot="dialog-overlay"],
+[data-slot="dialog-content"],
+[data-slot="dialog-content"] *,
+[data-slot="dialog-content"] *::before,
+[data-slot="dialog-content"] *::after,
+[data-slot="select-content"],
+[data-slot="select-content"] * {
+  box-sizing: border-box;
+}
+
+.tw {
+  color: var(--foreground);
+}
+
+/* Form-control normalization for `.tw` subtrees (Preflight isn't loaded).
+   In @layer base so per-control utilities (text-sm, h-9, …) still win. */
+@layer base {
+  .tw input,
+  .tw textarea,
+  .tw select {
+    font: inherit;
+    color: inherit;
+    letter-spacing: inherit;
+  }
+  /* Without Preflight, headings/paragraphs keep default UA margins (which, as
+     flex items, don't even collapse) — zero them so component spacing wins. */
+  .tw h1, .tw h2, .tw h3, .tw h4, .tw h5, .tw h6,
+  .tw p, .tw figure, .tw blockquote, .tw dl, .tw dd, .tw pre {
+    margin: 0;
+  }
+  .tw h1, .tw h2, .tw h3, .tw h4, .tw h5, .tw h6 {
+    font-size: inherit;
+    font-weight: inherit;
+  }
+}
+
+/* iOS/WebKit date & time inputs render with extra internal height when
+   Preflight is absent — this is what made the Date of Birth field overflow.
+   Drop the native appearance so the input honors h-9/padding (tapping still
+   opens the native picker), then restore Preflight's normalized internals. */
+.tw input[type="date"],
+.tw input[type="time"],
+.tw input[type="datetime-local"],
+.tw input[type="month"],
+.tw input[type="week"] {
+  -webkit-appearance: none;
+  appearance: none;
+}
+.tw input::-webkit-date-and-time-value { min-height: 1lh; text-align: inherit; }
+.tw input::-webkit-datetime-edit { display: inline-flex; padding: 0; }
+.tw input::-webkit-datetime-edit-fields-wrapper { padding: 0; }
+.tw input::-webkit-datetime-edit-year-field,
+.tw input::-webkit-datetime-edit-month-field,
+.tw input::-webkit-datetime-edit-day-field,
+.tw input::-webkit-datetime-edit-hour-field,
+.tw input::-webkit-datetime-edit-minute-field,
+.tw input::-webkit-datetime-edit-meridiem-field { padding-block: 0; }
+
+/* ---- Animations (replaces tw-animate-css for the few we use) ------------ */
+@keyframes tw-fade-in { from { opacity: 0 } to { opacity: 1 } }
+@keyframes tw-fade-out { from { opacity: 1 } to { opacity: 0 } }
+/* Dialog content is centered via translate(-50%,-50%); keep it during scale. */
+@keyframes tw-dialog-in { from { opacity: 0; transform: translate(-50%, -50%) scale(.96) } to { opacity: 1; transform: translate(-50%, -50%) scale(1) } }
+@keyframes tw-dialog-out { from { opacity: 1; transform: translate(-50%, -50%) scale(1) } to { opacity: 0; transform: translate(-50%, -50%) scale(.96) } }
+/* Select popover is popper-positioned (no translate) — scale only. */
+@keyframes tw-pop-in { from { opacity: 0; transform: scale(.96) } to { opacity: 1; transform: scale(1) } }
+
+[data-slot="dialog-overlay"][data-state="open"] { animation: tw-fade-in 150ms ease-out; }
+[data-slot="dialog-overlay"][data-state="closed"] { animation: tw-fade-out 150ms ease-in; }
+[data-slot="dialog-content"][data-state="open"] { animation: tw-dialog-in 150ms ease-out; }
+[data-slot="dialog-content"][data-state="closed"] { animation: tw-dialog-out 150ms ease-in; }
+[data-slot="select-content"][data-state="open"] { animation: tw-pop-in 120ms ease-out; }
+
+/* ---- Dedicated print view -----------------------------------------------
+   A page can render a `.summary-print-root` document that is hidden on screen
+   and is the ONLY thing that prints. Scoped via :has() so it never affects
+   other pages' printing (e.g. the Schedule page's own print flow). */
+.summary-print-root { display: none; }
+.summary-print-root,
+.summary-print-root * { box-sizing: border-box; }
+@media print {
+  body:has(.summary-print-root) * { visibility: hidden !important; }
+  body:has(.summary-print-root) .summary-print-root { display: block !important; }
+  body:has(.summary-print-root) .summary-print-root,
+  body:has(.summary-print-root) .summary-print-root * { visibility: visible !important; }
+  body:has(.summary-print-root) .summary-print-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 0.5in;
+  }
+}

@@ -1,5 +1,24 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+/*
+ * Smart Home Health Hub
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { API_BASE_URL } from '../config';
+import { installAuthInterceptor } from '../utils/authInterceptor';
+import { clearMessagesPopThrottle } from '../utils/messagesPopThrottle';
 
 const AuthContext = createContext();
 
@@ -46,9 +65,24 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [showAuthModal, setShowAuthModal] = useState(false);
 
+  // Keep a ref in sync with authLevel so the fetch interceptor (installed once)
+  // always reads the current value rather than a stale closure.
+  const authLevelRef = useRef(authLevel);
+  useEffect(() => { authLevelRef.current = authLevel; }, [authLevel]);
+
   // Check first-run status and session on mount
   useEffect(() => {
     checkFirstRunAndSession();
+  }, []);
+
+  // Install the global stale-JWT handler once. On a 401 (both tokens expired)
+  // or a 403 while fully authed (session expired, account_token still valid),
+  // re-check the session; ProtectedRoute then routes to the correct flow.
+  useEffect(() => {
+    installAuthInterceptor({
+      getAuthLevel: () => authLevelRef.current,
+      onStale: () => checkFirstRunAndSession(),
+    });
   }, []);
 
   const checkFirstRunAndSession = async () => {
@@ -266,6 +300,10 @@ export const AuthProvider = ({ children }) => {
 
       const data = await res.json();
 
+      if (data.requires_password_reset) {
+        return { success: false, requiresPasswordReset: true, userId };
+      }
+
       if (data.requires_full_password) {
         return { success: false, requiresPassword: true };
       }
@@ -274,6 +312,52 @@ export const AuthProvider = ({ children }) => {
       await new Promise(resolve => setTimeout(resolve, 100));
 
       // Set full auth (include read_restricted from backend)
+      setAccount(data.account);
+      setUser({
+        id: data.user.id,
+        username: data.user.username,
+        full_name: data.user.full_name,
+        is_system_admin: data.user.is_system_admin || false,
+        roles: data.user.roles || [],
+        permissions: data.user.permissions || []
+      });
+      setAuthLevel('full');
+      setReadRestricted(!!data.read_restricted);
+      setShowAuthModal(false);
+
+      return { success: true, data };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  };
+
+  // Complete a forced first-login password reset. On success, grants full auth
+  // (same as selectUser) by storing the returned token and setting user state.
+  const resetPassword = async (userId, currentPassword, newPassword, pin = null) => {
+    try {
+      const body = {
+        user_id: userId,
+        current_password: currentPassword,
+        new_password: newPassword,
+      };
+      if (pin) body.pin = pin;
+
+      const res = await authFetch(`${API_BASE_URL}/api/auth/user/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.detail || 'Password reset failed');
+      }
+
+      const data = await res.json();
+
+      storeToken(data);
+      await new Promise(resolve => setTimeout(resolve, 100));
+
       setAccount(data.account);
       setUser({
         id: data.user.id,
@@ -381,6 +465,7 @@ export const AuthProvider = ({ children }) => {
       console.error('Logout error:', error);
     } finally {
       sessionStorage.removeItem('auth_token');
+      clearMessagesPopThrottle();
       setAccount(null);
       setUser(null);
       setAuthLevel(null);
@@ -391,6 +476,7 @@ export const AuthProvider = ({ children }) => {
 
   // Switch user within same account (keeps account logged in)
   const switchUser = async () => {
+    clearMessagesPopThrottle();
     setUser(null);
     setAuthLevel('account');
     // Account stays logged in, just need to select user again
@@ -445,6 +531,7 @@ export const AuthProvider = ({ children }) => {
     unlockWithAccountPassword,
     getAccountUsers,
     selectUser,
+    resetPassword,
     switchUser,
 
     // Legacy methods (still work, give full auth)
