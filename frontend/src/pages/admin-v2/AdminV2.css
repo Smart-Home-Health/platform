@@ -1349,6 +1349,19 @@
   background: rgba(88, 166, 255, 0.05);
 }
 
+/* One line per member in a merged output row (mixed diaper details). */
+.admin-v2-output-detail-line {
+  display: block;
+}
+.admin-v2-output-detail-type {
+  display: inline-block;
+  min-width: 3.25rem;
+  text-transform: capitalize;
+  color: #8b949e;
+  font-size: 0.8rem;
+  margin-right: 0.35rem;
+}
+
 /* User Cell */
 .admin-v2-user-cell {
   display: flex;
@@ -3149,6 +3162,70 @@
   color: #e6edf3;
 }
 
+/* Collapsible filter card (medication history): a tappable header that expands
+   a 2x2 grid of filters, so the controls don't dominate the page. */
+.admin-v2-filter-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  margin-bottom: 1.25rem;
+  overflow: hidden;
+}
+.admin-v2-filter-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: transparent;
+  border: none;
+  color: #e6edf3;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.admin-v2-filter-toggle:hover {
+  background: #1c2128;
+}
+.admin-v2-filter-chevron {
+  display: inline-flex;
+  color: #8b949e;
+  transform: rotate(90deg); /* ChevronRight → points down when collapsed */
+  transition: transform 0.2s ease;
+}
+.admin-v2-filter-card.open .admin-v2-filter-chevron {
+  transform: rotate(-90deg); /* points up when expanded */
+}
+.admin-v2-filter-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  padding: 0 1rem 1rem;
+}
+/* Search spans the full width above the 2x2 of date/status/limit. */
+.admin-v2-filter-body .history-filter-search {
+  grid-column: 1 / -1;
+}
+.admin-v2-filter-body .history-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  min-width: 0;
+}
+.admin-v2-filter-body .history-filter-input,
+.admin-v2-filter-body .history-search-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.admin-v2-filter-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
 /* History Stats */
 .history-stats {
   display: flex;
@@ -4916,13 +4993,20 @@ body.printing-schedule .admin-v2-schedule-prn-add {
   .admin-v2-summary-stats.admin-v2-medications-summary .admin-v2-stat-info {
     min-width: 0;
     overflow: hidden;
+    text-align: center;
   }
+  /* Icon was removed in favour of the text label, so show it (small) instead of
+     hiding it — otherwise the cards read as a bare number with no context. */
   .admin-v2-summary-stats.admin-v2-medications-summary .admin-v2-stat-info p {
-    display: none;
+    margin: 0;
+    font-size: 0.62rem;
+    line-height: 1.1;
+    color: #8b949e;
   }
   .admin-v2-summary-stats.admin-v2-medications-summary .admin-v2-stat-info h4 {
     margin: 0;
-    font-size: 0.8rem;
+    font-size: 1rem;
+    line-height: 1.2;
   }
   .admin-v2-summary-stats.admin-v2-medications-summary .admin-v2-stat-icon {
     width: 28px;
@@ -5027,6 +5111,87 @@ body.printing-schedule .admin-v2-schedule-prn-add {
     min-width: 0;
     padding: 0.6rem 0.6rem;
     gap: 0.5rem;
+  }
+
+  /* Medication schedule filter stats: tight 4-up tappable cards on mobile.
+     Labels are kept (they tell you which filter you're toggling), just small. */
+  .admin-v2-summary-stats.admin-v2-meds-schedule-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.4rem;
+    margin-bottom: 1rem;
+  }
+  .admin-v2-summary-stats.admin-v2-meds-schedule-summary .admin-v2-stat-card {
+    min-width: 0;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 0.2rem;
+    padding: 0.5rem 0.2rem;
+  }
+  .admin-v2-summary-stats.admin-v2-meds-schedule-summary .admin-v2-stat-icon {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+  }
+  .admin-v2-summary-stats.admin-v2-meds-schedule-summary .admin-v2-stat-icon svg {
+    width: 16px;
+    height: 16px;
+  }
+  .admin-v2-summary-stats.admin-v2-meds-schedule-summary .admin-v2-stat-info {
+    min-width: 0;
+  }
+  .admin-v2-summary-stats.admin-v2-meds-schedule-summary .admin-v2-stat-info h4 {
+    margin: 0;
+    font-size: 1rem;
+    line-height: 1.1;
+  }
+  .admin-v2-summary-stats.admin-v2-meds-schedule-summary .admin-v2-stat-info p {
+    margin: 0;
+    font-size: 0.62rem;
+    line-height: 1.1;
+    white-space: nowrap;
+  }
+
+  /* Care Tasks Overview + Schedule filter stat cards: compact tappable cards in
+     a 3-up grid on mobile (5 cards → 3+2, 6 → 3x2). Mirrors the medications
+     schedule summary card styling above. */
+  .admin-v2-summary-stats.admin-v2-care-tasks-stat-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.4rem;
+    margin-bottom: 1rem;
+  }
+  .admin-v2-summary-stats.admin-v2-care-tasks-stat-summary .admin-v2-stat-card {
+    min-width: 0;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 0.2rem;
+    padding: 0.5rem 0.2rem;
+  }
+  .admin-v2-summary-stats.admin-v2-care-tasks-stat-summary .admin-v2-stat-icon {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+  }
+  .admin-v2-summary-stats.admin-v2-care-tasks-stat-summary .admin-v2-stat-icon svg {
+    width: 16px;
+    height: 16px;
+  }
+  .admin-v2-summary-stats.admin-v2-care-tasks-stat-summary .admin-v2-stat-info {
+    min-width: 0;
+  }
+  .admin-v2-summary-stats.admin-v2-care-tasks-stat-summary .admin-v2-stat-info h4 {
+    margin: 0;
+    font-size: 1rem;
+    line-height: 1.1;
+  }
+  .admin-v2-summary-stats.admin-v2-care-tasks-stat-summary .admin-v2-stat-info p {
+    margin: 0;
+    font-size: 0.62rem;
+    line-height: 1.1;
+    white-space: nowrap;
   }
 
   /* Table scroll on mobile */
@@ -5137,6 +5302,18 @@ body.printing-schedule .admin-v2-schedule-prn-add {
     font-size: 1rem;
     font-weight: 600;
   }
+  /* Stacked cell: label on its own line, content below full-width and wrapping.
+     Used for multi-line content (e.g. a mixed diaper's per-type details) that
+     would otherwise overflow the right-aligned value slot. */
+  .admin-v2-table.admin-v2-table-cards td.admin-v2-cell-stack {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: left;
+    gap: 0.2rem;
+  }
+  .admin-v2-table.admin-v2-table-cards td.admin-v2-cell-stack::before {
+    text-align: left;
+  }
   /* Actions row: full-width wrap of buttons, no label */
   .admin-v2-table.admin-v2-table-cards td.admin-v2-cell-actions {
     padding-top: 0.85rem;
@@ -5152,10 +5329,12 @@ body.printing-schedule .admin-v2-schedule-prn-add {
     gap: 0.5rem;
     flex-wrap: wrap;
   }
-  /* Selection / action cells that render nothing (e.g. a resolved alert with no
-     checkbox or resolve button) shouldn't leave an empty labeled row. */
+  /* Cells that render nothing (a resolved alert's checkbox/resolve column, or a
+     labeled data cell like "Details" with no content) shouldn't leave an empty
+     labeled row on the card. */
   .admin-v2-table.admin-v2-table-cards td.admin-v2-cell-select:empty,
-  .admin-v2-table.admin-v2-table-cards td.admin-v2-cell-actions:empty {
+  .admin-v2-table.admin-v2-table-cards td.admin-v2-cell-actions:empty,
+  .admin-v2-table.admin-v2-table-cards td[data-label]:empty {
     display: none;
   }
 
@@ -9846,9 +10025,15 @@ body.printing-schedule .admin-v2-schedule-prn-add {
 .admin-v2-meds-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  /* Title was removed; keep the toggle to the right and carry the divider that
+     the title's border-bottom used to provide so there's still a clean break
+     between the controls and the list below. */
+  justify-content: flex-end;
   gap: 1rem;
   flex-wrap: wrap;
+  margin: 1.5rem 0 1rem 0;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #30363d;
 }
 .admin-v2-meds-header .schedule-section-title {
   margin: 1.5rem 0 1rem 0;

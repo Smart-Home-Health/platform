@@ -17,11 +17,22 @@
  */
 import React, { useEffect, useState } from 'react';
 import config from '../../../config';
-import { XIcon } from '../../../components/Icons';
 import {
   getCurrentLocalDateTime,
   localDateTimeToUTC,
 } from '../../../utils/timezone';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Field } from '@/components/ui/field';
+import { Alert } from '@/components/ui/alert';
 
 const emptyForm = () => ({
   completed_at: '',
@@ -55,7 +66,7 @@ const CareTaskCompleteModal = ({ open, onClose, onSaved, patient, task, defaultD
     });
   }, [open, task, defaultDateTime]);
 
-  if (!open || !task) return null;
+  if (!task) return null;
 
   const handleSave = async () => {
     if (!patient) return;
@@ -88,73 +99,62 @@ const CareTaskCompleteModal = ({ open, onClose, onSaved, patient, task, defaultD
   const categoryColor = task.category_color || '#a371f7';
 
   return (
-    <div className="admin-v2-modal-overlay" onClick={onClose}>
-      <div className="admin-v2-modal admin-v2-modal-sm" onClick={e => e.stopPropagation()}>
-        <div className="admin-v2-modal-header">
-          <h2>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose?.(); }}>
+      <DialogContent className="sm:max-w-[480px]" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>
             Log Care Task — {task.name}
             {task.category_name && (
               <span
+                className="ml-2 inline-block rounded-full px-2 py-0.5 align-middle text-xs font-semibold"
                 style={{
-                  marginLeft: '0.5rem',
-                  padding: '2px 8px',
-                  borderRadius: 10,
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
                   backgroundColor: categoryColor + '20',
                   color: categoryColor,
                   border: `1px solid ${categoryColor}40`,
-                  verticalAlign: 'middle',
                 }}
               >
                 {task.category_name}
               </span>
             )}
-          </h2>
-          <button className="admin-v2-modal-close" onClick={onClose}>
-            <XIcon size={20} />
-          </button>
-        </div>
-        <div className="admin-v2-modal-body">
-          {error && <div className="admin-v2-error-banner" style={{ marginBottom: '1rem' }}>{error}</div>}
-          {task.description && (
-            <div style={{
-              background: '#21262d', borderRadius: 6, padding: '0.75rem 1rem', marginBottom: '1rem',
-              color: '#8b949e', fontSize: '0.85rem',
-            }}>
-              {task.description}
-            </div>
-          )}
-          <div className="admin-v2-form-group">
-            <label>Completed At *</label>
-            <input
-              type="datetime-local"
-              value={form.completed_at}
-              onChange={e => setForm({ ...form, completed_at: e.target.value })}
-            />
+          </DialogTitle>
+        </DialogHeader>
+
+        {error && <Alert variant="destructive">{error}</Alert>}
+
+        {task.description && (
+          <div className="rounded-md bg-secondary px-4 py-3 text-sm text-muted-foreground">
+            {task.description}
           </div>
-          <div className="admin-v2-form-group">
-            <label>Notes (optional)</label>
-            <textarea
-              value={form.notes}
-              onChange={e => setForm({ ...form, notes: e.target.value })}
-              rows={2}
-            />
-          </div>
-        </div>
-        <div className="admin-v2-modal-footer">
-          <button type="button" className="admin-v2-btn" onClick={onClose}>Cancel</button>
-          <button
+        )}
+
+        <Field label="Completed At" required>
+          <Input
+            type="datetime-local"
+            value={form.completed_at}
+            onChange={e => setForm({ ...form, completed_at: e.target.value })}
+          />
+        </Field>
+
+        <Field label="Notes (optional)">
+          <Textarea
+            value={form.notes}
+            onChange={e => setForm({ ...form, notes: e.target.value })}
+            rows={2}
+          />
+        </Field>
+
+        <DialogFooter>
+          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button
             type="button"
-            className="admin-v2-btn admin-v2-btn-primary"
             onClick={handleSave}
             disabled={saving || !form.completed_at}
           >
             {saving ? 'Saving...' : 'Mark Done'}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 };
 

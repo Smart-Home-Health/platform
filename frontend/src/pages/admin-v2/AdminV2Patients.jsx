@@ -29,7 +29,86 @@ import {
   CheckIcon,
   RefreshIcon
 } from '../../components/Icons';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Alert } from '@/components/ui/alert';
+import { Field, FormRow } from '@/components/ui/field';
 import './AdminV2.css';
+
+// Shared create/edit form body. Only one patient dialog is open at a time,
+// so the field ids never collide in the DOM.
+function PatientFormFields({ formData, setFormData }) {
+  return (
+    <>
+      <FormRow>
+        <Field label="First Name" required htmlFor="pf-first">
+          <Input
+            id="pf-first"
+            value={formData.first_name}
+            onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
+            required
+            placeholder="John"
+          />
+        </Field>
+        <Field label="Last Name" required htmlFor="pf-last">
+          <Input
+            id="pf-last"
+            value={formData.last_name}
+            onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
+            required
+            placeholder="Doe"
+          />
+        </Field>
+      </FormRow>
+
+      <FormRow>
+        <Field label="Date of Birth" htmlFor="pf-dob">
+          <Input
+            id="pf-dob"
+            type="date"
+            value={formData.date_of_birth}
+            onChange={(e) => setFormData({ ...formData, date_of_birth: e.target.value })}
+          />
+        </Field>
+        <Field label="Medical Record Number" htmlFor="pf-mrn">
+          <Input
+            id="pf-mrn"
+            value={formData.medical_record_number}
+            onChange={(e) => setFormData({ ...formData, medical_record_number: e.target.value })}
+            placeholder="MRN-12345"
+          />
+        </Field>
+      </FormRow>
+
+      <Field label="Notes" htmlFor="pf-notes">
+        <Textarea
+          id="pf-notes"
+          rows={3}
+          value={formData.notes}
+          onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+          placeholder="Any additional notes about the patient..."
+        />
+      </Field>
+
+      <label className="flex cursor-pointer items-center gap-2">
+        <Checkbox
+          checked={formData.is_active}
+          onCheckedChange={(v) => setFormData({ ...formData, is_active: v === true })}
+        />
+        <span className="text-sm text-foreground">Active</span>
+      </label>
+    </>
+  );
+}
 
 const AdminV2Patients = () => {
   const { user } = useAuth();
@@ -144,7 +223,7 @@ const AdminV2Patients = () => {
         const errorData = await response.json();
         setFormError(errorData.detail || 'Failed to create patient');
       }
-    } catch (err) {
+    } catch {
       setFormError('Error connecting to server');
     } finally {
       setSaving(false);
@@ -187,7 +266,7 @@ const AdminV2Patients = () => {
         const errorData = await response.json();
         setFormError(errorData.detail || 'Failed to update patient');
       }
-    } catch (err) {
+    } catch {
       setFormError('Error connecting to server');
     } finally {
       setSaving(false);
@@ -209,7 +288,7 @@ const AdminV2Patients = () => {
       } else {
         alert('Failed to deactivate patient');
       }
-    } catch (err) {
+    } catch {
       alert('Error connecting to server');
     } finally {
       setSaving(false);
@@ -228,7 +307,7 @@ const AdminV2Patients = () => {
       } else {
         alert('Failed to activate patient');
       }
-    } catch (err) {
+    } catch {
       alert('Error connecting to server');
     }
   };
@@ -288,12 +367,6 @@ const AdminV2Patients = () => {
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
-        {/* Page Header */}
-        <div className="admin-v2-page-header">
-          <h1 className="admin-v2-page-title">Patients</h1>
-          <p className="admin-v2-page-subtitle">Manage patient records and health information</p>
-        </div>
-
         {/* Stats Row */}
         <div className="admin-v2-stats-row">
           <div className="admin-v2-stat-card">
@@ -477,214 +550,73 @@ const AdminV2Patients = () => {
           </div>
         )}
 
-        {/* Create Patient Modal */}
-        {showCreateModal && (
-          <div className="admin-v2-modal-overlay" onClick={() => setShowCreateModal(false)}>
-            <div className="admin-v2-modal admin-v2-modal-lg" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>Add Patient</h2>
-                <button className="admin-v2-modal-close" onClick={() => setShowCreateModal(false)}>
-                  <XIcon size={20} />
-                </button>
-              </div>
-              <form onSubmit={handleCreatePatient}>
-                <div className="admin-v2-modal-body">
-                  {formError && (
-                    <div className="admin-v2-form-error">{formError}</div>
-                  )}
-                  
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>First Name *</label>
-                      <input
-                        type="text"
-                        value={formData.first_name}
-                        onChange={e => setFormData({...formData, first_name: e.target.value})}
-                        required
-                        placeholder="John"
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Last Name *</label>
-                      <input
-                        type="text"
-                        value={formData.last_name}
-                        onChange={e => setFormData({...formData, last_name: e.target.value})}
-                        required
-                        placeholder="Doe"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Date of Birth</label>
-                      <input
-                        type="date"
-                        value={formData.date_of_birth}
-                        onChange={e => setFormData({...formData, date_of_birth: e.target.value})}
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Medical Record Number</label>
-                      <input
-                        type="text"
-                        value={formData.medical_record_number}
-                        onChange={e => setFormData({...formData, medical_record_number: e.target.value})}
-                        placeholder="MRN-12345"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="admin-v2-form-group">
-                    <label>Notes</label>
-                    <textarea
-                      value={formData.notes}
-                      onChange={e => setFormData({...formData, notes: e.target.value})}
-                      placeholder="Any additional notes about the patient..."
-                      rows={3}
-                    />
-                  </div>
-
-                  <div className="admin-v2-form-group">
-                    <label className="admin-v2-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={formData.is_active}
-                        onChange={e => setFormData({...formData, is_active: e.target.checked})}
-                      />
-                      <span>Active</span>
-                    </label>
-                  </div>
-                </div>
-                <div className="admin-v2-modal-footer">
-                  <button type="button" className="admin-v2-btn" onClick={() => setShowCreateModal(false)}>
-                    Cancel
-                  </button>
-                  <button type="submit" className="admin-v2-btn admin-v2-btn-primary" disabled={saving}>
-                    {saving ? 'Creating...' : 'Create Patient'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* Edit Patient Modal */}
-        {showEditModal && (
-          <div className="admin-v2-modal-overlay" onClick={() => setShowEditModal(false)}>
-            <div className="admin-v2-modal admin-v2-modal-lg" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>Edit Patient</h2>
-                <button className="admin-v2-modal-close" onClick={() => setShowEditModal(false)}>
-                  <XIcon size={20} />
-                </button>
-              </div>
-              <form onSubmit={handleEditPatient}>
-                <div className="admin-v2-modal-body">
-                  {formError && (
-                    <div className="admin-v2-form-error">{formError}</div>
-                  )}
-                  
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>First Name *</label>
-                      <input
-                        type="text"
-                        value={formData.first_name}
-                        onChange={e => setFormData({...formData, first_name: e.target.value})}
-                        required
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Last Name *</label>
-                      <input
-                        type="text"
-                        value={formData.last_name}
-                        onChange={e => setFormData({...formData, last_name: e.target.value})}
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Date of Birth</label>
-                      <input
-                        type="date"
-                        value={formData.date_of_birth}
-                        onChange={e => setFormData({...formData, date_of_birth: e.target.value})}
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Medical Record Number</label>
-                      <input
-                        type="text"
-                        value={formData.medical_record_number}
-                        onChange={e => setFormData({...formData, medical_record_number: e.target.value})}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="admin-v2-form-group">
-                    <label>Notes</label>
-                    <textarea
-                      value={formData.notes}
-                      onChange={e => setFormData({...formData, notes: e.target.value})}
-                      placeholder="Any additional notes about the patient..."
-                      rows={3}
-                    />
-                  </div>
-
-                  <div className="admin-v2-form-group">
-                    <label className="admin-v2-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={formData.is_active}
-                        onChange={e => setFormData({...formData, is_active: e.target.checked})}
-                      />
-                      <span>Active</span>
-                    </label>
-                  </div>
-                </div>
-                <div className="admin-v2-modal-footer">
-                  <button type="button" className="admin-v2-btn" onClick={() => setShowEditModal(false)}>
-                    Cancel
-                  </button>
-                  <button type="submit" className="admin-v2-btn admin-v2-btn-primary" disabled={saving}>
-                    {saving ? 'Saving...' : 'Save Changes'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* Deactivate Confirmation Modal */}
-        {showDeleteModal && (
-          <div className="admin-v2-modal-overlay" onClick={() => setShowDeleteModal(false)}>
-            <div className="admin-v2-modal admin-v2-modal-sm" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>Deactivate Patient</h2>
-                <button className="admin-v2-modal-close" onClick={() => setShowDeleteModal(false)}>
-                  <XIcon size={20} />
-                </button>
-              </div>
-              <div className="admin-v2-modal-body">
-                <p>Are you sure you want to deactivate <strong>{selectedPatient?.first_name} {selectedPatient?.last_name}</strong>?</p>
-                <p className="admin-v2-text-muted">The patient record will be preserved but marked as inactive. You can reactivate the patient later.</p>
-              </div>
-              <div className="admin-v2-modal-footer">
-                <button className="admin-v2-btn" onClick={() => setShowDeleteModal(false)}>
+        {/* Create Patient Dialog */}
+        <Dialog open={showCreateModal} onOpenChange={(o) => { if (!o) setShowCreateModal(false); }}>
+          <DialogContent className="sm:max-w-[600px]" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>Add Patient</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleCreatePatient} className="flex flex-col gap-4">
+              {formError && <Alert variant="destructive">{formError}</Alert>}
+              <PatientFormFields formData={formData} setFormData={setFormData} />
+              <DialogFooter>
+                <Button type="button" variant="secondary" onClick={() => setShowCreateModal(false)}>
                   Cancel
-                </button>
-                <button className="admin-v2-btn admin-v2-btn-danger" onClick={handleDeactivatePatient} disabled={saving}>
-                  {saving ? 'Deactivating...' : 'Deactivate'}
-                </button>
-              </div>
+                </Button>
+                <Button type="submit" disabled={saving}>
+                  {saving ? 'Creating...' : 'Create Patient'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Patient Dialog */}
+        <Dialog open={showEditModal} onOpenChange={(o) => { if (!o) setShowEditModal(false); }}>
+          <DialogContent className="sm:max-w-[600px]" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>Edit Patient</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleEditPatient} className="flex flex-col gap-4">
+              {formError && <Alert variant="destructive">{formError}</Alert>}
+              <PatientFormFields formData={formData} setFormData={setFormData} />
+              <DialogFooter>
+                <Button type="button" variant="secondary" onClick={() => setShowEditModal(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={saving}>
+                  {saving ? 'Saving...' : 'Save Changes'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Deactivate Confirmation Dialog */}
+        <Dialog open={showDeleteModal} onOpenChange={(o) => { if (!o) setShowDeleteModal(false); }}>
+          <DialogContent className="sm:max-w-[420px]">
+            <DialogHeader>
+              <DialogTitle>Deactivate Patient</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-2 text-sm">
+              <p className="text-foreground">
+                Are you sure you want to deactivate{' '}
+                <strong>{selectedPatient?.first_name} {selectedPatient?.last_name}</strong>?
+              </p>
+              <p className="text-muted-foreground">
+                The patient record will be preserved but marked as inactive. You can reactivate the patient later.
+              </p>
             </div>
-          </div>
-        )}
+            <DialogFooter>
+              <Button variant="secondary" onClick={() => setShowDeleteModal(false)}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={handleDeactivatePatient} disabled={saving}>
+                {saving ? 'Deactivating...' : 'Deactivate'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </AdminV2Layout>
   );

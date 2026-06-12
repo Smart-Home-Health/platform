@@ -45,7 +45,7 @@ def _utc_iso(dt):
 
 
 # --- Medication CRUD ---
-def add_medication(db: Session, name, concentration=None, quantity=None, quantity_unit=None, instructions=None, start_date=None, end_date=None, as_needed=False, notes=None, active=True, patient_id=None, prescriber_id=None, pharmacy_id=None):
+def add_medication(db: Session, name, concentration=None, quantity=None, quantity_unit=None, instructions=None, start_date=None, end_date=None, as_needed=False, notes=None, active=True, patient_id=None, prescriber_id=None, pharmacy_id=None, low_stock_threshold=None, low_stock_threshold_type='quantity'):
     """
     Add a new medication to the database.
     
@@ -61,6 +61,8 @@ def add_medication(db: Session, name, concentration=None, quantity=None, quantit
         concentration=concentration,
         quantity=quantity,
         quantity_unit=quantity_unit,
+        low_stock_threshold=low_stock_threshold,
+        low_stock_threshold_type=low_stock_threshold_type,
         instructions=instructions,
         start_date=start_date,
         end_date=end_date,
@@ -109,6 +111,8 @@ def get_active_medications(db: Session):
                 'concentration': med.concentration,
                 'quantity': med.quantity,
                 'quantity_unit': med.quantity_unit,
+                'low_stock_threshold': med.low_stock_threshold,
+                'low_stock_threshold_type': med.low_stock_threshold_type,
                 'instructions': med.instructions,
                 'start_date': med.start_date.isoformat() if med.start_date else None,
                 'end_date': med.end_date.isoformat() if med.end_date else None,
@@ -158,6 +162,8 @@ def get_inactive_medications(db: Session):
                 'concentration': med.concentration,
                 'quantity': med.quantity,
                 'quantity_unit': med.quantity_unit,
+                'low_stock_threshold': med.low_stock_threshold,
+                'low_stock_threshold_type': med.low_stock_threshold_type,
                 'instructions': med.instructions,
                 'start_date': med.start_date.isoformat() if med.start_date else None,
                 'end_date': med.end_date.isoformat() if med.end_date else None,
@@ -176,6 +182,29 @@ def get_inactive_medications(db: Session):
     except Exception as e:
         logger.error(f"Error fetching inactive medications: {e}")
         return []
+
+
+def set_low_stock_days_for_scheduled_meds(db: Session, days: float):
+    """Apply a days-of-supply low-stock threshold to every active medication
+    that has at least one active schedule (PRN-only meds have no schedule to
+    project consumption from, so they are left untouched). Returns the names
+    of the medications updated."""
+    meds = db.query(Medication).filter(
+        Medication.active == True,  # noqa: E712
+        Medication.id.in_(
+            db.query(MedicationSchedule.medication_id).filter(
+                MedicationSchedule.active == True  # noqa: E712
+            )
+        )
+    ).all()
+    now = utc_now()
+    for med in meds:
+        med.low_stock_threshold = days
+        med.low_stock_threshold_type = 'days'
+        med.updated_at = now
+    db.commit()
+    logger.info(f"Applied {days}-day low-stock threshold to {len(meds)} scheduled medications")
+    return [med.name for med in meds]
 
 
 def update_medication(db: Session, med_id, **kwargs):

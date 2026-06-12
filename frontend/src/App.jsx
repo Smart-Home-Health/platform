@@ -63,6 +63,7 @@ import AdminV2Implants from './pages/admin-v2/AdminV2Implants';
 import AdminV2Nutrition from './pages/admin-v2/AdminV2Nutrition';
 import AdminV2ProfileSummary from './pages/admin-v2/AdminV2ProfileSummary';
 import AdminV2Monitoring from './pages/admin-v2/AdminV2Monitoring';
+import AdminV2Messages from './pages/admin-v2/AdminV2Messages';
 import AdminV2Reports from './pages/admin-v2/AdminV2Reports';
 import AdminV2ReportsOvernight from './pages/admin-v2/AdminV2ReportsOvernight';
 import AdminV2ReportsWeekly from './pages/admin-v2/AdminV2ReportsWeekly';
@@ -75,6 +76,7 @@ import { AdminV2SettingsGeneral } from './pages/admin-v2/settings';
 import FirstRunSetup from './components/FirstRunSetup';
 import { ActiveInputProvider } from './contexts/ActiveInputContext';
 import { PinChallengeProvider } from './contexts/PinChallengeContext';
+import { IdleLockProvider } from './contexts/IdleLockContext';
 import VirtualKeyboard from './components/VirtualKeyboard/VirtualKeyboard';
 import { useVirtualKeyboard } from './hooks/useVirtualKeyboard';
 import "./App.css";
@@ -103,6 +105,7 @@ function AppContent() {
     <ActiveInputProvider>
       <PinChallengeProvider>
       <Router>
+        <IdleLockProvider>
         {isFirstRun ? <FirstRunSetup /> : <Routes>
           {/* Public Routes */}
           <Route path="/" element={<Navigate to="/care" replace />} />
@@ -187,6 +190,9 @@ function AppContent() {
           <Route path="/care/monitoring/interactions" element={<ProtectedRoute><Layout><AdminV2Monitoring /></Layout></ProtectedRoute>} />
           <Route path="/care/monitoring/settings" element={<ProtectedRoute><Layout><AdminV2Monitoring /></Layout></ProtectedRoute>} />
 
+          {/* Care Messages Routes */}
+          <Route path="/care/messages" element={<ProtectedRoute><Layout><AdminV2Messages /></Layout></ProtectedRoute>} />
+
           {/* Care Reports Routes */}
           <Route path="/care/reports" element={<ProtectedRoute><Layout><AdminV2Reports /></Layout></ProtectedRoute>} />
           <Route path="/care/reports/day-over-day" element={<ProtectedRoute><Layout><AdminV2Reports /></Layout></ProtectedRoute>} />
@@ -206,6 +212,7 @@ function AppContent() {
             
           <Route path="/care/*" element={<ProtectedRoute><Layout><AdminV2Dashboard /></Layout></ProtectedRoute>} />
         </Routes>}
+        </IdleLockProvider>
       </Router>
       <VirtualKeyboard show={showVKB} />
       </PinChallengeProvider>

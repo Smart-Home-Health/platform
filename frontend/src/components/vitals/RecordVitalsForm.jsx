@@ -18,6 +18,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import config from '../../config';
 import { XIcon } from '../Icons';
+import { Alert } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 // Pull in AdminV2 styles so the admin-v2-* classes resolve when this form is
 // mounted from outside the admin-v2 route (e.g. the live dashboard History
 // modal). Vite dedupes with admin pages that also import it.
@@ -337,14 +340,15 @@ export default function RecordVitalsForm({
       <div className="admin-v2-settings-card">
         <form onSubmit={handleSubmit}>
           {/* Status messages */}
-          {error && <div className="admin-v2-form-error" style={{ marginBottom: 12 }}>{error}</div>}
+          {error && (
+            <div className="tw" style={{ marginBottom: 12 }}>
+              <Alert variant="destructive">{error}</Alert>
+            </div>
+          )}
           {success && (
-            <div style={{
-              padding: '8px 12px', borderRadius: 6, marginBottom: 12,
-              background: 'rgba(63,185,80,0.15)',
-              border: '1px solid rgba(63,185,80,0.5)',
-              color: '#3fb950', fontSize: 13,
-            }}>{success}</div>
+            <div className="tw" style={{ marginBottom: 12 }}>
+              <Alert variant="success">{success}</Alert>
+            </div>
           )}
 
           {/* Date/Time Header */}
@@ -395,28 +399,30 @@ export default function RecordVitalsForm({
           {allowCreateDefinitions && showCustomManager && !singleVitalType && (
             <div className="custom-vitals-manager">
               <div className="custom-vitals-manager-header"><span>Custom Vitals</span></div>
-              <div className="custom-vitals-add-row">
-                <input
+              <div className="tw flex flex-wrap items-center gap-2">
+                <Input
                   type="text" value={newCustomName}
                   onChange={e => setNewCustomName(e.target.value)}
                   placeholder="Name (e.g. Blood Glucose)"
-                  className="admin-v2-input"
+                  className="min-w-[180px] flex-1 max-sm:basis-full"
                 />
-                <input
+                <Input
                   type="text" value={newCustomUnit}
                   onChange={e => setNewCustomUnit(e.target.value)}
                   placeholder="Unit (e.g. mg/dL)"
-                  className="admin-v2-input"
-                  style={{ maxWidth: 120 }}
+                  className="w-[120px] flex-1 sm:flex-none"
                 />
-                <button
+                <Button
                   type="button"
-                  className="admin-v2-btn admin-v2-btn-primary"
                   onClick={handleAddCustomDefinition}
                   disabled={!newCustomName.trim()}
-                >Add</button>
+                >Add</Button>
               </div>
-              {customDefError && <div className="custom-vitals-error">{customDefError}</div>}
+              {customDefError && (
+                <div className="tw" style={{ marginTop: 8 }}>
+                  <p className="text-xs text-destructive">{customDefError}</p>
+                </div>
+              )}
               {customDefinitions.length > 0 && (
                 <div className="custom-vitals-list">
                   {customDefinitions.map(def => (
@@ -473,13 +479,15 @@ export default function RecordVitalsForm({
 
           {/* Submit */}
           <div className="vitals-form-actions">
-            <button
-              type="submit"
-              disabled={saving || !patientId}
-              className="admin-v2-btn admin-v2-btn-primary vitals-submit-btn"
-            >
-              {saving ? 'Saving...' : submitLabel}
-            </button>
+            <div className="tw">
+              <Button
+                type="submit"
+                disabled={saving || !patientId}
+                className="h-auto px-8 py-3 text-base font-semibold"
+              >
+                {saving ? 'Saving...' : submitLabel}
+              </Button>
+            </div>
           </div>
         </form>
       </div>

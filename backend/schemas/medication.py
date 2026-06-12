@@ -31,6 +31,10 @@ class Medication(Base):
     concentration = Column(String)
     quantity = Column(Float, nullable=False)
     quantity_unit = Column(String, nullable=False, default='tablets')
+    low_stock_threshold = Column(Float, nullable=True)  # NULL = no low-stock alerting for this med
+    # How to interpret low_stock_threshold: 'quantity' = raw on-hand amount,
+    # 'days' = days of supply left, projected from the med's active schedules
+    low_stock_threshold_type = Column(String(20), nullable=False, default='quantity')
     instructions = Column(Text)
     start_date = Column(TIMESTAMP(timezone=True), nullable=True)
     end_date = Column(TIMESTAMP(timezone=True), nullable=True)

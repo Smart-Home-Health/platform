@@ -25,6 +25,8 @@ import {
   ChevronRightIcon,
   AlertIcon,
 } from '../../components/Icons';
+import { Button } from '@/components/ui/button';
+import { Alert } from '@/components/ui/alert';
 import './AdminV2.css';
 
 const VITAL_LABELS = {
@@ -272,7 +274,7 @@ const AdminV2ReportsWeekly = () => {
       return <div className="admin-v2-monitoring-empty"><p>Select a patient from the sidebar to view the weekly summary.</p></div>;
     }
     if (loading) return <div className="overnight-loading">Loading weekly summary...</div>;
-    if (error) return <div className="overnight-error">{error}</div>;
+    if (error) return <div className="tw"><Alert variant="destructive">{error}</Alert></div>;
     if (!data) return null;
 
     const c = data.compliance || {};
@@ -385,8 +387,8 @@ const AdminV2ReportsWeekly = () => {
         )}
 
         {/* Print button */}
-        <div className="weekly-print-row">
-          <button className="admin-v2-btn" onClick={() => window.print()}>Print Summary</button>
+        <div className="weekly-print-row tw">
+          <Button variant="secondary" onClick={() => window.print()}>Print Summary</Button>
         </div>
       </div>
     );

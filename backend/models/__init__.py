@@ -56,6 +56,8 @@ from schemas.vent_sample import VentSample
 from schemas.vent_device_info import VentDeviceInfo
 from models.readers import Reader
 from models.custom_vital_definition import CustomVitalDefinition
+from models.user_messages import UserMessage, UserMessageAcknowledgement
+from models.vent_ingested_files import VentIngestedFile
 
 # Schedule-related Pydantic models
 from models.schedule import CompleteItemRequest, BulkCompleteRequest
@@ -70,5 +72,6 @@ __all__ = [
     'DiagnosticReport', 'LabResult', 'ClinicalDocument', 'ImagingStudy', 'Implant', 'ImplantNote',
     'VentImport', 'VentParameterDictionary', 'VentSample', 'VentDeviceInfo',
     'CompleteItemRequest', 'BulkCompleteRequest', 'Organization', 'OrganizationMembership',
-    'OrganizationType', 'PatientAccess', 'AccessLevel', 'Reader', 'CustomVitalDefinition'
+    'OrganizationType', 'PatientAccess', 'AccessLevel', 'Reader', 'CustomVitalDefinition',
+    'UserMessage', 'UserMessageAcknowledgement', 'VentIngestedFile'
 ]

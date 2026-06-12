@@ -20,6 +20,7 @@ import { Link, useLocation } from 'react-router-dom';
 import logoImage from '../../assets/logo2.png';
 import { AdminPatientProvider, useAdminPatient } from '../../contexts/AdminPatientContext';
 import PatientSelector from '../admin/PatientSelector';
+import MessagesAutoPop from '../MessagesAutoPop';
 import './Layout.css';
 
 const AdminNav = () => {
@@ -117,6 +118,7 @@ const Layout = ({ children }) => {
     return (
       <AdminPatientProvider>
         <div className="layout">
+          <MessagesAutoPop />
           <main className="main-content">
             {children}
           </main>
@@ -124,9 +126,10 @@ const Layout = ({ children }) => {
       </AdminPatientProvider>
     );
   }
-  
+
   return (
     <div className="layout">
+      <MessagesAutoPop />
       {isAdminRoute ? (
         <AdminPatientProvider>
           <AdminNav />

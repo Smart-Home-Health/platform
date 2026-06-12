@@ -21,7 +21,22 @@ import {
   Tooltip, Area, Line,
 } from 'recharts';
 import config from '../../config';
-import { ChevronLeftIcon, ChevronRightIcon, ClockIcon, XIcon } from '../../components/Icons';
+import { ChevronLeftIcon, ChevronRightIcon, ClockIcon } from '../../components/Icons';
+import { Button } from '@/components/ui/button';
+import { Alert } from '@/components/ui/alert';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 const GROUP_COLORS = {
   Ventilation: '#3b82f6',
@@ -211,55 +226,44 @@ const AdminV2MonitoringVentilator = ({ patientId }) => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Date controls */}
-      <div style={{
+      <div className="tw" style={{
         display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
         padding: '12px 14px',
         background: 'rgba(255,255,255,0.04)',
         border: '1px solid rgba(255,255,255,0.08)',
         borderRadius: 10,
       }}>
-        <button
+        <Button
+          variant="secondary"
+          size="icon"
           onClick={goPrev}
           disabled={dateIndex.idx >= days.length - 1}
-          style={navBtn(dateIndex.idx >= days.length - 1)}
           title="Older day with data"
-        ><ChevronLeftIcon size={16} /></button>
+        ><ChevronLeftIcon size={16} /></Button>
 
-        <select
-          value={selectedDate || ''}
-          onChange={e => setSelectedDate(e.target.value)}
-          style={{
-            padding: '8px 12px', borderRadius: 6,
-            background: '#2d3748', color: '#fff',
-            border: '1px solid rgba(255,255,255,0.15)',
-            fontSize: 14, fontWeight: 600, cursor: 'pointer',
-          }}
-        >
-          {days.map(d => (
-            <option key={d.date} value={d.date}>
-              {fmtDateLong(d.date)} — {d.sample_count.toLocaleString()} samples
-            </option>
-          ))}
-        </select>
+        <Select value={selectedDate || undefined} onValueChange={setSelectedDate}>
+          <SelectTrigger className="w-auto min-w-[260px] font-semibold"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {days.map(d => (
+              <SelectItem key={d.date} value={d.date}>
+                {fmtDateLong(d.date)} — {d.sample_count.toLocaleString()} samples
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
-        <button
+        <Button
+          variant="secondary"
+          size="icon"
           onClick={goNext}
           disabled={dateIndex.idx <= 0}
-          style={navBtn(dateIndex.idx <= 0)}
           title="Newer day with data"
-        ><ChevronRightIcon size={16} /></button>
+        ><ChevronRightIcon size={16} /></Button>
 
-        <button
+        <Button
           onClick={goNewest}
           disabled={dateIndex.idx === 0}
-          style={{
-            padding: '8px 14px', borderRadius: 6, border: 'none',
-            background: dateIndex.idx === 0 ? 'rgba(255,255,255,0.08)' : '#3b82f6',
-            color: dateIndex.idx === 0 ? '#a0aec0' : '#fff',
-            cursor: dateIndex.idx === 0 ? 'not-allowed' : 'pointer',
-            fontSize: 13, fontWeight: 600,
-          }}
-        >Newest</button>
+        >Newest</Button>
 
         <span style={{ marginLeft: 'auto', color: '#a0aec0', fontSize: 12 }}>
           {dateIndex.idx + 1} of {dateIndex.total}
@@ -310,12 +314,7 @@ const AdminV2MonitoringVentilator = ({ patientId }) => {
       )}
 
       {error && (
-        <div role="alert" style={{
-          padding: '12px 14px', borderRadius: 8,
-          background: 'rgba(220,53,69,0.15)',
-          border: '1px solid rgba(220,53,69,0.5)',
-          color: '#f8d7da', fontSize: 13,
-        }}>{error}</div>
+        <div className="tw"><Alert variant="destructive">{error}</Alert></div>
       )}
 
       {/* Grouped parameter cards */}
@@ -371,14 +370,6 @@ const AdminV2MonitoringVentilator = ({ patientId }) => {
 };
 
 // ---- small subcomponents ----
-
-const navBtn = (disabled) => ({
-  padding: '8px 10px', borderRadius: 6,
-  border: '1px solid rgba(255,255,255,0.15)',
-  background: 'transparent', color: disabled ? '#4a5568' : '#e6edf3',
-  cursor: disabled ? 'not-allowed' : 'pointer',
-  display: 'inline-flex', alignItems: 'center',
-});
 
 const SummaryTile = ({ label, value }) => (
   <div style={{
@@ -510,61 +501,31 @@ const ParameterDetailModal = ({ detail, date, loading, data, error, onClose }) =
     { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0,
-        backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: 1070,
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: '#1a2332',
-          border: '1px solid rgba(255,255,255,0.08)',
-          borderLeft: `5px solid ${accent}`,
-          borderRadius: 12, padding: 20,
-          width: '95%', maxWidth: 820, maxHeight: '90vh',
-          overflow: 'auto', color: '#e6edf3',
-          boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
-        }}
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent
+        className="sm:max-w-[820px]"
+        style={{ borderLeft: `5px solid ${accent}` }}
+        aria-describedby={undefined}
       >
-        <div style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-          gap: 12, marginBottom: 6,
-        }}>
-          <div>
-            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>
-              {parameter.display_label}
-              {parameter.display_units && (
-                <span style={{ color: '#a0aec0', fontWeight: 500, fontSize: 14, marginLeft: 8 }}>
-                  {parameter.display_units}
-                </span>
-              )}
-            </h3>
-            <div style={{ color: '#a0aec0', fontSize: 12, marginTop: 2 }}>
-              {date} · #{parameter.parameter_key}
-            </div>
+        <DialogHeader>
+          <DialogTitle>
+            {parameter.display_label}
+            {parameter.display_units && (
+              <span style={{ color: '#a0aec0', fontWeight: 500, fontSize: 14, marginLeft: 8 }}>
+                {parameter.display_units}
+              </span>
+            )}
+          </DialogTitle>
+          <div style={{ color: '#a0aec0', fontSize: 12 }}>
+            {date} · #{parameter.parameter_key}
           </div>
-          <button
-            onClick={onClose}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#a0aec0', padding: 0 }}
-            aria-label="Close"
-          ><XIcon size={20} /></button>
-        </div>
+        </DialogHeader>
 
         {loading && (
           <div style={{ padding: 30, color: '#a0aec0', textAlign: 'center' }}>Loading…</div>
         )}
         {error && (
-          <div role="alert" style={{
-            padding: '10px 12px', borderRadius: 6, margin: '12px 0',
-            background: 'rgba(220,53,69,0.15)',
-            border: '1px solid rgba(220,53,69,0.5)',
-            color: '#f8d7da', fontSize: 13,
-          }}>{error}</div>
+          <Alert variant="destructive">{error}</Alert>
         )}
 
         {!loading && data && chartData.length === 0 && (
@@ -610,8 +571,8 @@ const ParameterDetailModal = ({ detail, date, loading, data, error, onClose }) =
             </div>
           </div>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 

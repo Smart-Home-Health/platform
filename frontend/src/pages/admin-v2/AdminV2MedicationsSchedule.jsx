@@ -29,6 +29,15 @@ import {
   XIcon
 } from '../../components/Icons';
 import { checkAdministrationWindow, formatDurationMinutes } from '../../utils/timezone';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import './AdminV2.css';
 
 const AdminV2MedicationsSchedule = () => {
@@ -345,11 +354,8 @@ const AdminV2MedicationsSchedule = () => {
       <div className="admin-v2-page">
         {selectedPatient ? (
           <>
-            {/* Section Title */}
-            <h1 className="schedule-section-title">Daily Medication Schedule</h1>
-
             {/* Stats Row */}
-            <div className="admin-v2-stats-row">
+            <div className="admin-v2-summary-stats admin-v2-meds-schedule-summary">
               <div 
                 className={`admin-v2-stat-card ${statusFilters.ready ? 'selected' : ''}`}
                 onClick={() => setStatusFilters(f => ({ ...f, ready: !f.ready }))}
@@ -405,24 +411,20 @@ const AdminV2MedicationsSchedule = () => {
             </div>
 
             {/* Refresh Button */}
-            <div className="admin-v2-page-header">
+            <div className="admin-v2-page-header tw">
               <h3 style={{ margin: 0, color: '#e6edf3' }}>
                 Today & Yesterday ({filteredMeds.length} of {scheduledMedications.length})
               </h3>
-              <button 
-                className="admin-v2-btn admin-v2-btn-primary"
-                onClick={fetchSchedule}
-                disabled={loading}
-              >
+              <Button onClick={fetchSchedule} disabled={loading}>
                 {loading ? 'Refreshing...' : 'Refresh'}
-              </button>
+              </Button>
             </div>
 
             {/* Schedule Content */}
             {loading ? (
               <div className="admin-v2-loading">Loading schedule...</div>
             ) : error ? (
-              <div className="admin-v2-error">{error}</div>
+              <div className="tw"><Alert variant="destructive">{error}</Alert></div>
             ) : filteredMeds.length === 0 ? (
               <div className="admin-v2-empty-state">
                 <MedicationsIcon size={48} />
@@ -571,12 +573,11 @@ const AdminV2MedicationsSchedule = () => {
             <MedicationsIcon size={48} />
             <h2>Select a Patient</h2>
             <p>Choose a patient to view their daily medication schedule</p>
-            <button 
-              className="admin-v2-btn admin-v2-btn-primary"
-              onClick={() => setShowPatientModal(true)}
-            >
-              Select Patient
-            </button>
+            <div className="tw">
+              <Button onClick={() => setShowPatientModal(true)}>
+                Select Patient
+              </Button>
+            </div>
           </div>
         )}
 
@@ -607,44 +608,26 @@ const AdminV2MedicationsSchedule = () => {
           const confirmLabel = isLate ? 'Confirm Late Administration' : 'Confirm Early Administration';
           const close = () => setWindowConfirm({ open: false, medication: null, check: null });
           return (
-            <div className="admin-v2-modal-overlay" onClick={close}>
-              <div className="admin-v2-modal admin-v2-modal-sm" onClick={e => e.stopPropagation()}>
-                <div className="admin-v2-modal-header">
-                  <h2>{title}</h2>
-                  <button className="admin-v2-modal-close" onClick={close}>
-                    <XIcon size={20} />
-                  </button>
-                </div>
-                <div className="admin-v2-modal-body">
-                  <div
-                    role="alert"
-                    style={{
-                      background: 'rgba(187, 128, 9, 0.15)',
-                      border: '1px solid rgba(187, 128, 9, 0.6)',
-                      borderRadius: 6,
-                      padding: '0.75rem 1rem',
-                      color: '#e6edf3'
-                    }}
-                  >
-                    <div style={{ fontWeight: 600, color: '#f0883e', marginBottom: '0.35rem' }}>
-                      {heading}
-                    </div>
-                    <div style={{ fontSize: '0.9rem' }}>
+            <Dialog open={windowConfirm.open && !!windowConfirm.medication} onOpenChange={(o) => { if (!o) close(); }}>
+              <DialogContent className="sm:max-w-[480px]" aria-describedby={undefined}>
+                <DialogHeader>
+                  <DialogTitle>{title}</DialogTitle>
+                </DialogHeader>
+                {windowConfirm.medication && windowConfirm.check && (
+                  <Alert variant="warning">
+                    <AlertTitle className="text-[#f0883e]">{heading}</AlertTitle>
+                    <AlertDescription>
                       <strong>{windowConfirm.medication.name}</strong> is scheduled for{' '}
                       <strong>{windowConfirm.check.scheduledLocal}</strong>
                       {' '}— that's <strong>{offsetText}</strong>.
                       {' '}{consequence} Confirm this is intentional.
-                    </div>
-                  </div>
-                </div>
-                <div className="admin-v2-modal-footer">
-                  <button type="button" className="admin-v2-btn" onClick={close}>
-                    Cancel
-                  </button>
-                  <button
+                    </AlertDescription>
+                  </Alert>
+                )}
+                <DialogFooter>
+                  <Button type="button" variant="secondary" onClick={close}>Cancel</Button>
+                  <Button
                     type="button"
-                    className="admin-v2-btn"
-                    style={{ background: '#bb8009', borderColor: '#bb8009', color: '#0d1117' }}
                     onClick={async () => {
                       const med = windowConfirm.medication;
                       close();
@@ -652,10 +635,10 @@ const AdminV2MedicationsSchedule = () => {
                     }}
                   >
                     {confirmLabel}
-                  </button>
-                </div>
-              </div>
-            </div>
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           );
         })()}
       </div>

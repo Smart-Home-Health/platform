@@ -21,6 +21,7 @@ import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import { HistoryIcon, RefreshIcon, UndoIcon } from '../../components/Icons';
+import { Button } from '@/components/ui/button';
 import './AdminV2.css';
 
 // Maps the backend item_type to a friendly label.
@@ -93,21 +94,19 @@ const AdminV2ScheduleUndoLog = () => {
     <AdminV2Layout>
       <div className="admin-v2-page">
         <div className="admin-v2-page-header">
-          <div>
-            <h1 className="schedule-section-title">Undo Log</h1>
-            <p className="admin-v2-text-muted">
-              Every undone dose, feed, or care task — who reversed it and when. Undone items
-              are kept (soft-deleted), not erased.
-            </p>
+          <p className="admin-v2-text-muted" style={{ margin: 0 }}>
+            Every undone dose, feed, or care task — who reversed it and when. Undone items
+            are kept (soft-deleted), not erased.
+          </p>
+          <div className="tw">
+            <Button
+              onClick={fetchEntries}
+              disabled={loading || !canView}
+              title="Refresh"
+            >
+              <RefreshIcon size={16} /> Refresh
+            </Button>
           </div>
-          <button
-            className="admin-v2-btn admin-v2-btn-secondary"
-            onClick={fetchEntries}
-            disabled={loading || !canView}
-            title="Refresh"
-          >
-            <RefreshIcon size={16} /> Refresh
-          </button>
         </div>
 
         {!canView ? (
@@ -118,7 +117,9 @@ const AdminV2ScheduleUndoLog = () => {
         ) : error ? (
           <div className="admin-v2-empty-container">
             <p>{error}</p>
-            <button className="admin-v2-btn admin-v2-btn-secondary" onClick={fetchEntries}>Retry</button>
+            <div className="tw">
+              <Button variant="secondary" onClick={fetchEntries}>Retry</Button>
+            </div>
           </div>
         ) : loading ? (
           <div className="admin-v2-loading">Loading undo log...</div>
@@ -128,40 +129,42 @@ const AdminV2ScheduleUndoLog = () => {
             <p>No undos recorded yet.</p>
           </div>
         ) : (
-          <table className="admin-v2-table">
-            <thead>
-              <tr>
-                <th>Undone At</th>
-                <th>Type</th>
-                <th>Item</th>
-                <th>Patient</th>
-                <th>Originally Scheduled</th>
-                <th>Undone By</th>
-              </tr>
-            </thead>
-            <tbody>
-              {entries.map((e) => (
-                <tr key={e.id}>
-                  <td className="history-datetime">{formatDateTime(e.undone_at)}</td>
-                  <td>{TYPE_LABELS[e.item_type] || e.item_type}</td>
-                  <td>
-                    <span className="history-med-name">{e.item_name || '—'}</span>
-                    {e.dose_amount != null && (
-                      <span className="history-dose"> · {e.dose_amount}</span>
-                    )}
-                    {e.quantity_restored != null && (
-                      <span className="admin-v2-text-muted"> (restored {e.quantity_restored})</span>
-                    )}
-                  </td>
-                  <td>{patientName(e.patient_id)}</td>
-                  <td className="history-datetime">
-                    {e.scheduled_time ? formatDateTime(e.scheduled_time) : <span className="history-unscheduled">As Needed</span>}
-                  </td>
-                  <td>{e.undone_by || '—'}</td>
+          <div className="admin-v2-table-container admin-v2-table-cards-wrap">
+            <table className="admin-v2-table admin-v2-table-cards">
+              <thead>
+                <tr>
+                  <th>Undone At</th>
+                  <th>Type</th>
+                  <th>Item</th>
+                  <th>Patient</th>
+                  <th>Originally Scheduled</th>
+                  <th>Undone By</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {entries.map((e) => (
+                  <tr key={e.id}>
+                    <td data-label="Undone At" className="history-datetime">{formatDateTime(e.undone_at)}</td>
+                    <td data-label="Type">{TYPE_LABELS[e.item_type] || e.item_type}</td>
+                    <td className="admin-v2-cell-name">
+                      <span className="history-med-name">{e.item_name || '—'}</span>
+                      {e.dose_amount != null && (
+                        <span className="history-dose"> · {e.dose_amount}</span>
+                      )}
+                      {e.quantity_restored != null && (
+                        <span className="admin-v2-text-muted"> (restored {e.quantity_restored})</span>
+                      )}
+                    </td>
+                    <td data-label="Patient">{patientName(e.patient_id)}</td>
+                    <td data-label="Scheduled" className="history-datetime">
+                      {e.scheduled_time ? formatDateTime(e.scheduled_time) : <span className="history-unscheduled">As Needed</span>}
+                    </td>
+                    <td data-label="Undone By">{e.undone_by || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </AdminV2Layout>

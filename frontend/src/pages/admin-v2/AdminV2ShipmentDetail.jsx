@@ -23,12 +23,29 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import {
   PlusIcon,
-  XIcon,
   EquipmentIcon,
   CheckIcon,
   AlertIcon,
   ChevronLeftIcon
 } from '../../components/Icons';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Alert } from '@/components/ui/alert';
+import { Field, FormRow } from '@/components/ui/field';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
 import './AdminV2.css';
 
 const CONDITION_OPTIONS = [
@@ -503,14 +520,14 @@ const AdminV2ShipmentDetail = () => {
   if (error || !shipment) {
     return (
       <AdminV2Layout>
-        <div className="admin-v2-page">
-          <div className="admin-v2-error">{error || 'Shipment not found'}</div>
-          <button 
-            className="admin-v2-btn" 
+        <div className="admin-v2-page tw flex flex-col items-start gap-4">
+          <Alert variant="destructive">{error || 'Shipment not found'}</Alert>
+          <Button
+            variant="secondary"
             onClick={() => navigate(`/care/equipment/shipments?patient=${selectedPatient?.id}`)}
           >
             <ChevronLeftIcon size={16} /> Back to Shipments
-          </button>
+          </Button>
         </div>
       </AdminV2Layout>
     );
@@ -528,13 +545,13 @@ const AdminV2ShipmentDetail = () => {
     <AdminV2Layout>
       <div className="admin-v2-page">
         {/* Back Button & Header */}
-        <div className="admin-v2-page-header">
-          <button 
-            className="admin-v2-btn admin-v2-btn-ghost"
+        <div className="admin-v2-page-header tw">
+          <Button
+            variant="ghost"
             onClick={() => navigate(`/care/equipment/shipments?patient=${selectedPatient?.id}`)}
           >
             <ChevronLeftIcon size={16} /> Back
-          </button>
+          </Button>
         </div>
 
         {/* Shipment Header */}
@@ -648,12 +665,11 @@ const AdminV2ShipmentDetail = () => {
               <p>Add items to this shipment, then mark it as Ordered when ready.</p>
             </div>
             {hasPermission('equipment.update') && canMarkOrdered && (
-              <button
-                className="admin-v2-btn admin-v2-btn-primary"
-                onClick={handleMarkAsOrdered}
-              >
-                <CheckIcon size={16} /> Mark as Ordered
-              </button>
+              <div className="tw">
+                <Button onClick={handleMarkAsOrdered}>
+                  <CheckIcon size={16} /> Mark as Ordered
+                </Button>
+              </div>
             )}
           </div>
         )}
@@ -666,12 +682,11 @@ const AdminV2ShipmentDetail = () => {
               <p>When the shipment arrives, begin receiving to record quantities.</p>
             </div>
             {hasPermission('equipment.update') && canBeginReceiving && (
-              <button
-                className="admin-v2-btn admin-v2-btn-primary"
-                onClick={handleBeginReceiving}
-              >
-                <CheckIcon size={16} /> Begin Receiving
-              </button>
+              <div className="tw">
+                <Button onClick={handleBeginReceiving}>
+                  <CheckIcon size={16} /> Begin Receiving
+                </Button>
+              </div>
             )}
           </div>
         )}
@@ -683,21 +698,13 @@ const AdminV2ShipmentDetail = () => {
               <strong>Receiving in Progress</strong>
               <p>Update shipped, backordered, and received quantities below. Click Save to record changes.</p>
             </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button
-                className="admin-v2-btn admin-v2-btn-secondary"
-                onClick={() => setReceivingMode(false)}
-                disabled={savingItems}
-              >
+            <div className="tw flex gap-2">
+              <Button variant="secondary" onClick={() => setReceivingMode(false)} disabled={savingItems}>
                 Cancel
-              </button>
-              <button
-                className="admin-v2-btn admin-v2-btn-success"
-                onClick={handleSaveReceiving}
-                disabled={savingItems}
-              >
+              </Button>
+              <Button onClick={handleSaveReceiving} disabled={savingItems}>
                 {savingItems ? 'Saving...' : 'Save & Finalize'}
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -707,12 +714,11 @@ const AdminV2ShipmentDetail = () => {
           <div className="admin-v2-section-header">
             <h2>Items</h2>
             {hasPermission('equipment.update') && !isFinalized && (
-              <button
-                className="admin-v2-btn admin-v2-btn-primary"
-                onClick={() => setShowAddItemModal(true)}
-              >
-                <PlusIcon size={16} /> Add Item
-              </button>
+              <div className="tw">
+                <Button onClick={() => setShowAddItemModal(true)}>
+                  <PlusIcon size={16} /> Add Item
+                </Button>
+              </div>
             )}
           </div>
 
@@ -848,12 +854,11 @@ const AdminV2ShipmentDetail = () => {
               <EquipmentIcon size={32} />
               <p>No items in this shipment yet.</p>
               {hasPermission('equipment.update') && !isFinalized && (
-                <button
-                  className="admin-v2-btn admin-v2-btn-primary"
-                  onClick={() => setShowAddItemModal(true)}
-                >
-                  <PlusIcon size={16} /> Add Item
-                </button>
+                <div className="tw">
+                  <Button onClick={() => setShowAddItemModal(true)}>
+                    <PlusIcon size={16} /> Add Item
+                  </Button>
+                </div>
               )}
             </div>
           )}
@@ -902,14 +907,10 @@ const AdminV2ShipmentDetail = () => {
 
         {/* Finalize Button */}
         {canFinalize && hasPermission('equipment.update') && (
-          <div className="admin-v2-finalize-section">
-            <button
-              className="admin-v2-btn admin-v2-btn-primary admin-v2-btn-lg"
-              onClick={handleFinalizeShipment}
-              disabled={finalizing}
-            >
+          <div className="admin-v2-finalize-section tw">
+            <Button size="lg" onClick={handleFinalizeShipment} disabled={finalizing}>
               {finalizing ? 'Finalizing...' : 'Finalize Shipment'}
-            </button>
+            </Button>
             <p className="admin-v2-text-muted">
               Finalizing will create backorder shipments for B/O items and generate alerts for any discrepancies.
             </p>
@@ -924,138 +925,125 @@ const AdminV2ShipmentDetail = () => {
           </div>
         )}
 
-        {/* Add Item Modal */}
-        {showAddItemModal && (
-          <div className="admin-v2-modal-overlay" onClick={() => setShowAddItemModal(false)}>
-            <div className="admin-v2-modal" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>Add Shipment Item</h2>
-                <button className="admin-v2-modal-close" onClick={() => setShowAddItemModal(false)}>
-                  <XIcon size={20} />
-                </button>
+        {/* Add Item Dialog */}
+        <Dialog open={showAddItemModal} onOpenChange={(o) => { if (!o) setShowAddItemModal(false); }}>
+          <DialogContent className="sm:max-w-[640px]" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>Add Shipment Item</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleAddItem} className="flex flex-col gap-4">
+              {itemFormError && <Alert variant="destructive">{itemFormError}</Alert>}
+
+              <Field label="Link to Equipment (optional)">
+                <Select
+                  value={itemFormData.equipment_id || '__none__'}
+                  onValueChange={(v) => {
+                    const eqId = v === '__none__' ? '' : v;
+                    if (eqId) {
+                      const eq = equipment.find(eq => eq.id === parseInt(eqId));
+                      if (eq) {
+                        setItemFormData(prev => ({
+                          ...prev,
+                          equipment_id: eqId,
+                          item_number: eq.item_number || '',
+                          manufacturer_name: eq.default_manufacturer || '',
+                          unit_of_measure: eq.unit_of_measure || '',
+                          unit_description: eq.unit_description || ''
+                        }));
+                        return;
+                      }
+                    }
+                    setItemFormData(prev => ({ ...prev, equipment_id: eqId }));
+                  }}
+                >
+                  <SelectTrigger><SelectValue placeholder="-- No Link --" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">-- No Link --</SelectItem>
+                    {equipment.map(eq => (
+                      <SelectItem key={eq.id} value={String(eq.id)}>
+                        {eq.name} {eq.item_number ? `(${eq.item_number})` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+
+              <FormRow>
+                <Field label="Item Number" required htmlFor="item-number">
+                  <Input
+                    id="item-number"
+                    value={itemFormData.item_number}
+                    onChange={e => setItemFormData({...itemFormData, item_number: e.target.value})}
+                    required
+                    placeholder="e.g., 6025"
+                  />
+                </Field>
+                <Field label="Manufacturer" htmlFor="item-mfr">
+                  <Input
+                    id="item-mfr"
+                    value={itemFormData.manufacturer_name}
+                    onChange={e => setItemFormData({...itemFormData, manufacturer_name: e.target.value})}
+                    placeholder="e.g., Hollister"
+                  />
+                </Field>
+              </FormRow>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <Field label="Qty Ordered" htmlFor="item-qty-ordered">
+                  <Input
+                    id="item-qty-ordered"
+                    type="number"
+                    min="0"
+                    value={itemFormData.qty_ordered}
+                    onChange={e => setItemFormData({...itemFormData, qty_ordered: e.target.value})}
+                  />
+                </Field>
+                <Field label="Qty Shipped" htmlFor="item-qty-shipped">
+                  <Input
+                    id="item-qty-shipped"
+                    type="number"
+                    min="0"
+                    value={itemFormData.qty_shipped}
+                    onChange={e => setItemFormData({...itemFormData, qty_shipped: e.target.value})}
+                  />
+                </Field>
+                <Field label="Qty B/O" htmlFor="item-qty-bo">
+                  <Input
+                    id="item-qty-bo"
+                    type="number"
+                    min="0"
+                    value={itemFormData.qty_backordered}
+                    onChange={e => setItemFormData({...itemFormData, qty_backordered: e.target.value})}
+                  />
+                </Field>
               </div>
-              <form onSubmit={handleAddItem}>
-                <div className="admin-v2-modal-body">
-                  {itemFormError && (
-                    <div className="admin-v2-form-error">{itemFormError}</div>
-                  )}
 
-                  <div className="admin-v2-form-group">
-                    <label>Link to Equipment (optional)</label>
-                    <select
-                      value={itemFormData.equipment_id}
-                      onChange={e => {
-                        const eqId = e.target.value;
-                        setItemFormData(prev => ({ ...prev, equipment_id: eqId }));
-                        if (eqId) {
-                          const eq = equipment.find(eq => eq.id === parseInt(eqId));
-                          if (eq) {
-                            setItemFormData(prev => ({
-                              ...prev,
-                              equipment_id: eqId,
-                              item_number: eq.item_number || '',
-                              manufacturer_name: eq.default_manufacturer || '',
-                              unit_of_measure: eq.unit_of_measure || '',
-                              unit_description: eq.unit_description || ''
-                            }));
-                          }
-                        }
-                      }}
-                    >
-                      <option value="">-- No Link --</option>
-                      {equipment.map(eq => (
-                        <option key={eq.id} value={eq.id}>
-                          {eq.name} {eq.item_number ? `(${eq.item_number})` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+              <FormRow>
+                <Field label="Unit of Measure" htmlFor="item-uom">
+                  <Input
+                    id="item-uom"
+                    value={itemFormData.unit_of_measure}
+                    onChange={e => setItemFormData({...itemFormData, unit_of_measure: e.target.value})}
+                    placeholder="e.g., Box"
+                  />
+                </Field>
+                <Field label="Unit Description" htmlFor="item-unit-desc">
+                  <Input
+                    id="item-unit-desc"
+                    value={itemFormData.unit_description}
+                    onChange={e => setItemFormData({...itemFormData, unit_description: e.target.value})}
+                    placeholder="e.g., Box of 10"
+                  />
+                </Field>
+              </FormRow>
 
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Item Number *</label>
-                      <input
-                        type="text"
-                        value={itemFormData.item_number}
-                        onChange={e => setItemFormData({...itemFormData, item_number: e.target.value})}
-                        required
-                        placeholder="e.g., 6025"
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Manufacturer</label>
-                      <input
-                        type="text"
-                        value={itemFormData.manufacturer_name}
-                        onChange={e => setItemFormData({...itemFormData, manufacturer_name: e.target.value})}
-                        placeholder="e.g., Hollister"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Qty Ordered</label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={itemFormData.qty_ordered}
-                        onChange={e => setItemFormData({...itemFormData, qty_ordered: e.target.value})}
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Qty Shipped</label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={itemFormData.qty_shipped}
-                        onChange={e => setItemFormData({...itemFormData, qty_shipped: e.target.value})}
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Qty B/O</label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={itemFormData.qty_backordered}
-                        onChange={e => setItemFormData({...itemFormData, qty_backordered: e.target.value})}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Unit of Measure</label>
-                      <input
-                        type="text"
-                        value={itemFormData.unit_of_measure}
-                        onChange={e => setItemFormData({...itemFormData, unit_of_measure: e.target.value})}
-                        placeholder="e.g., Box"
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Unit Description</label>
-                      <input
-                        type="text"
-                        value={itemFormData.unit_description}
-                        onChange={e => setItemFormData({...itemFormData, unit_description: e.target.value})}
-                        placeholder="e.g., Box of 10"
-                      />
-                    </div>
-                  </div>
-                </div>
-                <div className="admin-v2-modal-footer">
-                  <button type="button" className="admin-v2-btn" onClick={() => setShowAddItemModal(false)}>
-                    Cancel
-                  </button>
-                  <button type="submit" className="admin-v2-btn admin-v2-btn-primary" disabled={savingItem}>
-                    {savingItem ? 'Adding...' : 'Add Item'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+              <DialogFooter>
+                <Button type="button" variant="secondary" onClick={() => setShowAddItemModal(false)}>Cancel</Button>
+                <Button type="submit" disabled={savingItem}>{savingItem ? 'Adding...' : 'Add Item'}</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
     </AdminV2Layout>
   );

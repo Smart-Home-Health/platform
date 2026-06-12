@@ -33,6 +33,8 @@ import {
 } from '../../components/Icons';
 import CameraLiveModal from '../../components/CameraLiveModal';
 import config, { API_BASE_URL, getApiBaseUrl } from '../../config';
+import { Button } from '@/components/ui/button';
+import { Alert } from '@/components/ui/alert';
 import './AdminV2.css';
 
 // Calculate age from DOB
@@ -86,7 +88,7 @@ const AdminV2Dashboard = () => {
           const data = await res.json();
           setPatientReadings(data);
         }
-      } catch (e) {
+      } catch {
         // ignore
       }
     };
@@ -102,7 +104,9 @@ const AdminV2Dashboard = () => {
         if (data.type === 'sensor_update' && data.state && data.state.patient_readings) {
           setPatientReadings(data.state.patient_readings);
         }
-      } catch (_) {}
+      } catch {
+        // ignore malformed WS payloads
+      }
     };
     ws.onerror = () => {};
     ws.onclose = () => {};
@@ -110,7 +114,7 @@ const AdminV2Dashboard = () => {
     return () => {
       clearInterval(pollInterval);
       if (wsRef.current) {
-        try { wsRef.current.close(); } catch (_) {}
+        try { wsRef.current.close(); } catch { /* already closed */ }
       }
     };
   }, []);
@@ -176,11 +180,13 @@ const AdminV2Dashboard = () => {
       <div className="admin-v2-dashboard">
         {/* Error State */}
         {error && (
-          <div className="admin-v2-error-message">
-            <p>Error loading dashboard: {error}</p>
-            <button onClick={fetchDashboardData} className="admin-v2-btn admin-v2-btn-primary">
-              Retry
-            </button>
+          <div className="tw" style={{ marginBottom: '1.5rem' }}>
+            <Alert variant="destructive" className="flex items-center justify-between gap-3">
+              <span>Error loading dashboard: {error}</span>
+              <Button size="sm" className="shrink-0" onClick={fetchDashboardData}>
+                Retry
+              </Button>
+            </Alert>
           </div>
         )}
 
@@ -242,9 +248,13 @@ const AdminV2Dashboard = () => {
             <PatientsIcon size={48} />
             <h3>No patients yet</h3>
             <p>Add your first patient to get started</p>
-            <Link to="/care/patients/create" className="admin-v2-btn admin-v2-btn-primary">
-              <PlusIcon size={16} /> Add Patient
-            </Link>
+            <div className="tw">
+              <Button asChild>
+                <Link to="/care/patients/create">
+                  <PlusIcon size={16} /> Add Patient
+                </Link>
+              </Button>
+            </div>
           </div>
         )}
 
@@ -364,13 +374,17 @@ const AdminV2Dashboard = () => {
                 </div>
 
                 {/* Actions */}
-                <div className="admin-v2-patient-actions">
-                  <Link to={`/care/profile?patient=${patient.id}`} className="admin-v2-btn">
-                    View Details
-                  </Link>
-                  <Link to={`/care/schedule?patient=${patient.id}`} className="admin-v2-btn admin-v2-btn-primary">
-                    <CalendarIcon size={16} /> Schedule
-                  </Link>
+                <div className="admin-v2-patient-actions tw">
+                  <Button asChild variant="secondary" className="max-md:min-w-[120px] max-md:flex-1">
+                    <Link to={`/care/profile?patient=${patient.id}`}>
+                      View Details
+                    </Link>
+                  </Button>
+                  <Button asChild className="max-md:min-w-[120px] max-md:flex-1">
+                    <Link to={`/care/schedule?patient=${patient.id}`}>
+                      <CalendarIcon size={16} /> Schedule
+                    </Link>
+                  </Button>
                 </div>
               </div>
               );

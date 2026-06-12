@@ -417,13 +417,21 @@ def get_nutrition_intake_by_id(db: Session, intake_id: int) -> Optional[Nutritio
     """Get a nutrition intake record by ID"""
     return db.query(NutritionIntake).filter(NutritionIntake.id == intake_id).first()
 
-def get_patient_nutrition_intake(db: Session, patient_id: int, limit: int = 50) -> List[NutritionIntake]:
-    """Get nutrition intake records for a patient"""
-    return db.query(NutritionIntake)\
-        .filter(NutritionIntake.patient_id == patient_id)\
-        .order_by(desc(NutritionIntake.consumed_at))\
-        .limit(limit)\
-        .all()
+def get_patient_nutrition_intake(
+    db: Session,
+    patient_id: int,
+    limit: int = 50,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+) -> List[NutritionIntake]:
+    """Get nutrition intake records for a patient, optionally bounded by a
+    consumed_at date range (UTC datetimes)."""
+    query = db.query(NutritionIntake).filter(NutritionIntake.patient_id == patient_id)
+    if start_date:
+        query = query.filter(NutritionIntake.consumed_at >= start_date)
+    if end_date:
+        query = query.filter(NutritionIntake.consumed_at <= end_date)
+    return query.order_by(desc(NutritionIntake.consumed_at)).limit(limit).all()
 
 def get_daily_nutrition_intake(
     db: Session,

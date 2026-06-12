@@ -29,6 +29,15 @@ import {
   ClockIcon,
   AlertIcon,
 } from '../../components/Icons';
+import { Input } from '@/components/ui/input';
+import { Alert } from '@/components/ui/alert';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
 import './AdminV2.css';
 
 Chart.register(annotationPlugin);
@@ -238,7 +247,7 @@ const AdminV2ReportsOvernight = () => {
       return <div className="admin-v2-monitoring-empty"><p>Select a patient from the sidebar to view the overnight report.</p></div>;
     }
     if (loading) return <div className="overnight-loading">Loading overnight summary...</div>;
-    if (error) return <div className="overnight-error">{error}</div>;
+    if (error) return <div className="tw"><Alert variant="destructive">{error}</Alert></div>;
     if (!data) return null;
 
     const vs = data.vitals_summary || {};
@@ -397,21 +406,32 @@ const AdminV2ReportsOvernight = () => {
 
         {selectedPatient && (
           <div className="overnight-controls">
-            <div className="overnight-date-nav">
+            <div className="overnight-date-nav tw">
               <button className="dod-cal-nav" onClick={prevDate}><ChevronLeftIcon size={16} /></button>
-              <input type="date" value={reportDate} onChange={e => setReportDate(e.target.value)} className="overnight-date-input" />
+              <Input
+                type="date"
+                value={reportDate}
+                onChange={e => setReportDate(e.target.value)}
+                className="w-[160px]"
+              />
               <button className="dod-cal-nav" onClick={nextDate}><ChevronRightIcon size={16} /></button>
             </div>
-            <div className="overnight-hour-range">
+            <div className="overnight-hour-range tw">
               <label className="dod-label">Window</label>
               <div className="dod-hour-selects">
-                <select value={startHour} onChange={e => setStartHour(Number(e.target.value))} className="dod-select dod-select-hour">
-                  {HOUR_LABELS.map((lbl, i) => <option key={i} value={i}>{lbl}</option>)}
-                </select>
+                <Select value={String(startHour)} onValueChange={(v) => setStartHour(Number(v))}>
+                  <SelectTrigger className="w-[90px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {HOUR_LABELS.map((lbl, i) => <SelectItem key={i} value={String(i)}>{lbl}</SelectItem>)}
+                  </SelectContent>
+                </Select>
                 <span className="dod-hour-sep">to</span>
-                <select value={endHour} onChange={e => setEndHour(Number(e.target.value))} className="dod-select dod-select-hour">
-                  {HOUR_LABELS.map((lbl, i) => <option key={i} value={i}>{lbl}</option>)}
-                </select>
+                <Select value={String(endHour)} onValueChange={(v) => setEndHour(Number(v))}>
+                  <SelectTrigger className="w-[90px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {HOUR_LABELS.map((lbl, i) => <SelectItem key={i} value={String(i)}>{lbl}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </div>

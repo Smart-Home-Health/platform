@@ -19,6 +19,11 @@ import React, { useState, useEffect } from 'react';
 import config from '../../config';
 import AdminV2Layout from './AdminV2Layout';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Alert } from '@/components/ui/alert';
+import { Field } from '@/components/ui/field';
 import './AdminV2.css';
 
 export default function AdminV2ProfileMqtt() {
@@ -159,7 +164,6 @@ export default function AdminV2ProfileMqtt() {
     return (
       <AdminV2Layout>
         <div className="admin-v2-content-inner">
-          <h1 className="admin-v2-page-title">MQTT (Profile)</h1>
           <p className="admin-v2-muted">
             MQTT is not enabled for this patient. Enable it in Configuration → MQTT and set
             section permissions, then return here to configure topics and discovery.
@@ -172,84 +176,56 @@ export default function AdminV2ProfileMqtt() {
   return (
     <AdminV2Layout>
       <div className="admin-v2-content-inner">
-        <h1 className="admin-v2-page-title">MQTT (Profile)</h1>
-        <p className="admin-v2-settings-description">
-          Configure MQTT topics for {selectedPatient.first_name} {selectedPatient.last_name}.
-          Leave blank to use defaults. After saving, run discovery so Home Assistant sees this
-          patient.
-        </p>
-        {error && (
-          <div className="admin-v2-alert admin-v2-alert-error" role="alert">
-            {error}
-          </div>
-        )}
-        {success && (
-          <div className="admin-v2-alert admin-v2-alert-success" role="status">
-            {success}
-          </div>
-        )}
+        <div className="tw flex flex-col gap-6">
+          {error && <Alert variant="destructive" role="alert">{error}</Alert>}
+          {success && <Alert variant="success" role="status">{success}</Alert>}
 
-        <section className="admin-v2-settings-section">
-          <h2 className="admin-v2-settings-section-title">Topic overrides</h2>
-          <div className="admin-v2-settings-card">
-            <div className="admin-v2-settings-field">
-              <label>State topic (device → HA)</label>
-              <input
-                type="text"
-                value={topicOverrides.state_topic}
-                onChange={e =>
-                  setTopicOverrides(prev => ({ ...prev, state_topic: e.target.value }))
-                }
-                placeholder={defaultStateTopic}
-              />
-              {defaultStateTopic && (
-                <span className="admin-v2-settings-hint">Default: {defaultStateTopic}</span>
-              )}
-            </div>
-            <div className="admin-v2-settings-field">
-              <label>Set topic (HA → device)</label>
-              <input
-                type="text"
-                value={topicOverrides.set_topic}
-                onChange={e =>
-                  setTopicOverrides(prev => ({ ...prev, set_topic: e.target.value }))
-                }
-                placeholder={defaultSetTopic}
-              />
-              {defaultSetTopic && (
-                <span className="admin-v2-settings-hint">Default: {defaultSetTopic}</span>
-              )}
-            </div>
-            <div className="admin-v2-settings-actions">
-              <button
-                type="button"
-                className="admin-v2-btn admin-v2-btn-primary"
-                onClick={saveTopicOverrides}
-                disabled={saving}
+          {/* Topic overrides */}
+          <Card>
+            <CardHeader><CardTitle>Topic overrides</CardTitle></CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <Field
+                label="State topic (device → HA)"
+                hint={defaultStateTopic ? `Default: ${defaultStateTopic}` : undefined}
               >
+                <Input
+                  value={topicOverrides.state_topic}
+                  onChange={e => setTopicOverrides(prev => ({ ...prev, state_topic: e.target.value }))}
+                  placeholder={defaultStateTopic}
+                />
+              </Field>
+              <Field
+                label="Set topic (HA → device)"
+                hint={defaultSetTopic ? `Default: ${defaultSetTopic}` : undefined}
+              >
+                <Input
+                  value={topicOverrides.set_topic}
+                  onChange={e => setTopicOverrides(prev => ({ ...prev, set_topic: e.target.value }))}
+                  placeholder={defaultSetTopic}
+                />
+              </Field>
+            </CardContent>
+            <CardFooter>
+              <Button onClick={saveTopicOverrides} disabled={saving}>
                 {saving ? 'Saving…' : 'Save topic settings'}
-              </button>
-            </div>
-          </div>
-        </section>
+              </Button>
+            </CardFooter>
+          </Card>
 
-        <section className="admin-v2-settings-section">
-          <h2 className="admin-v2-settings-section-title">Home Assistant discovery</h2>
-          <div className="admin-v2-settings-card">
-            <p className="admin-v2-settings-description">
-              Send discovery for this patient so Home Assistant creates one entity with combined
-              vitals (SpO₂, BPM, alarm, etc.).
-            </p>
-            <button
-              type="button"
-              className="admin-v2-btn admin-v2-btn-primary"
-              onClick={sendDiscovery}
-              disabled={sendingDiscovery}
-            >
-              {sendingDiscovery ? 'Sending…' : 'Run discovery for this patient'}
-            </button>
-          </div>
-        </section>
+          {/* Home Assistant discovery */}
+          <Card>
+            <CardHeader><CardTitle>Home Assistant discovery</CardTitle></CardHeader>
+            <CardContent className="flex flex-col items-start gap-4">
+              <p className="text-sm text-muted-foreground">
+                Send discovery for this patient so Home Assistant creates one entity with combined
+                vitals (SpO₂, BPM, alarm, etc.).
+              </p>
+              <Button onClick={sendDiscovery} disabled={sendingDiscovery}>
+                {sendingDiscovery ? 'Sending…' : 'Run discovery for this patient'}
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </AdminV2Layout>
   );

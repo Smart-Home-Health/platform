@@ -130,11 +130,14 @@ async def get_nutrition_intake_endpoint(
 async def get_patient_nutrition_intake_endpoint(
     patient_id: int,
     limit: int = 50,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
     db: Session = Depends(get_db),
     _: bool = Depends(require_read_access)
 ):
-    """Get nutrition intake records for a patient"""
-    intake_records = get_patient_nutrition_intake(db, patient_id, limit)
+    """Get nutrition intake records for a patient, optionally bounded by a
+    consumed_at date range."""
+    intake_records = get_patient_nutrition_intake(db, patient_id, limit, start_date, end_date)
     return intake_records
 
 @router.get("/patients/{patient_id}/nutrition-intake/daily")

@@ -26,6 +26,7 @@ class MedicationBase(BaseModel):
     # one whose stock is tracked elsewhere). Quantity is on-hand inventory, not a dose.
     quantity: float = Field(..., ge=0)
     quantity_unit: str = Field(..., min_length=1, max_length=50)
+    low_stock_threshold: Optional[float] = Field(None, ge=0)  # None = no low-stock alerting
     instructions: str
     start_date: date
     end_date: Optional[date] = None
@@ -43,6 +44,10 @@ class MedicationCreate(BaseModel):
     # one whose stock is tracked elsewhere). Quantity is on-hand inventory, not a dose.
     quantity: float = Field(..., ge=0)
     quantity_unit: str = Field(..., min_length=1, max_length=50)
+    low_stock_threshold: Optional[float] = Field(None, ge=0)  # None = no low-stock alerting
+    # 'quantity' = threshold is a raw on-hand amount; 'days' = days of supply
+    # left, projected from the med's active schedules
+    low_stock_threshold_type: str = Field('quantity', pattern='^(quantity|days)$')
     instructions: str
     start_date: date
     end_date: Optional[date] = None
@@ -62,6 +67,8 @@ class MedicationUpdate(BaseModel):
     # by the create-time "must have stock" rule — the edit form resends quantity.
     quantity: Optional[float] = Field(None, ge=0)
     quantity_unit: Optional[str] = Field(None, min_length=1, max_length=50)
+    low_stock_threshold: Optional[float] = Field(None, ge=0)
+    low_stock_threshold_type: Optional[str] = Field(None, pattern='^(quantity|days)$')
     instructions: Optional[str] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
@@ -80,6 +87,7 @@ class MedicationResponse(BaseModel):
     concentration: str
     quantity: float
     quantity_unit: str
+    low_stock_threshold: Optional[float] = None
     instructions: str
     start_date: date
     end_date: Optional[date]

@@ -16,7 +16,8 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import config, { apiFetch } from '../config';
+import config from '../config';
+import { useAuth } from './AuthContext';
 
 const AdminPatientContext = createContext();
 
@@ -29,17 +30,25 @@ export const useAdminPatient = () => {
 };
 
 export const AdminPatientProvider = ({ children }) => {
+  const { authLevel, hasReadAccess } = useAuth();
   const [patients, setPatients] = useState([]);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [loadingPatients, setLoadingPatients] = useState(true);
-  
+
   // Legacy support - keep selectedPatientId as derived value
   const selectedPatientId = selectedPatient?.id?.toString() || null;
 
-  // Fetch patients on mount
+  // Fetch patients whenever we have read access — covers initial load AND
+  // regaining access after an idle lock / unlock without a full remount.
+  // /api/patients 403s while restricted, so a one-time mount fetch could
+  // otherwise leave the list empty until the next route remount.
   useEffect(() => {
-    fetchPatients();
-  }, []);
+    if (authLevel && hasReadAccess) {
+      fetchPatients();
+    } else {
+      setLoadingPatients(false);
+    }
+  }, [authLevel, hasReadAccess]);
 
   // Load saved patient from session storage after patients are fetched
   useEffect(() => {

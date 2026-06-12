@@ -24,6 +24,15 @@ import {
   ChevronRightIcon,
   XIcon,
 } from '../../components/Icons';
+import { Button } from '@/components/ui/button';
+import { Alert } from '@/components/ui/alert';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
 
 Chart.register(zoomPlugin);
 
@@ -347,70 +356,73 @@ const AdminV2ReportsDayOverDay = ({ patientId }) => {
   return (
     <div className="dod-report">
       <div className="dod-controls">
-        <div className="dod-vital-select">
+        <div className="dod-vital-select tw">
           <label className="dod-label">Vital Type</label>
-          <select
-            value={vitalType}
-            onChange={e => setVitalType(e.target.value)}
-            className="dod-select"
-          >
-            {VITAL_TYPES.map(vt => (
-              <option key={vt.value} value={vt.value}>{vt.label}</option>
-            ))}
-          </select>
+          <Select value={vitalType} onValueChange={setVitalType}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {VITAL_TYPES.map(vt => (
+                <SelectItem key={vt.value} value={vt.value}>{vt.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
-        <div className="dod-vital-select">
+        <div className="dod-vital-select tw">
           <label className="dod-label">Aggregation</label>
-          <select
-            value={aggregation}
-            onChange={e => setAggregation(e.target.value)}
-            className="dod-select"
-          >
-            <option value="hour">Hourly</option>
-            <option value="15min">15 min</option>
-            <option value="5min">5 min</option>
-            <option value="none">Raw</option>
-          </select>
+          <Select value={aggregation} onValueChange={setAggregation}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="hour">Hourly</SelectItem>
+              <SelectItem value="15min">15 min</SelectItem>
+              <SelectItem value="5min">5 min</SelectItem>
+              <SelectItem value="none">Raw</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
-        <div className="dod-hour-range">
+        <div className="dod-hour-range tw">
           <label className="dod-label">Hour Range</label>
           <div className="dod-hour-selects">
-            <select
-              value={startHour}
-              onChange={e => {
-                const v = Number(e.target.value);
-                setStartHour(v);
-                if (v > endHour) setEndHour(v);
+            <Select
+              value={String(startHour)}
+              onValueChange={(v) => {
+                const n = Number(v);
+                setStartHour(n);
+                if (n > endHour) setEndHour(n);
               }}
-              className="dod-select dod-select-hour"
             >
-              {HOUR_LABELS.map((lbl, i) => (
-                <option key={i} value={i}>{lbl}</option>
-              ))}
-            </select>
+              <SelectTrigger className="w-[90px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {HOUR_LABELS.map((lbl, i) => (
+                  <SelectItem key={i} value={String(i)}>{lbl}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <span className="dod-hour-sep">to</span>
-            <select
-              value={endHour}
-              onChange={e => {
-                const v = Number(e.target.value);
-                setEndHour(v);
-                if (v < startHour) setStartHour(v);
+            <Select
+              value={String(endHour)}
+              onValueChange={(v) => {
+                const n = Number(v);
+                setEndHour(n);
+                if (n < startHour) setStartHour(n);
               }}
-              className="dod-select dod-select-hour"
             >
-              {HOUR_LABELS.map((lbl, i) => (
-                <option key={i} value={i}>{lbl}</option>
-              ))}
-            </select>
+              <SelectTrigger className="w-[90px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {HOUR_LABELS.map((lbl, i) => (
+                  <SelectItem key={i} value={String(i)}>{lbl}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {(startHour !== 0 || endHour !== 23) && (
-              <button
-                className="dod-hour-reset"
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => { setStartHour(0); setEndHour(23); }}
               >
                 Reset
-              </button>
+              </Button>
             )}
           </div>
         </div>
@@ -482,7 +494,7 @@ const AdminV2ReportsDayOverDay = ({ patientId }) => {
           <div className="dod-loading">Loading...</div>
         )}
         {error && (
-          <div className="dod-error">{error}</div>
+          <div className="tw"><Alert variant="destructive">{error}</Alert></div>
         )}
         {!loading && !error && selectedDates.length === 0 && (
           <div className="dod-empty">

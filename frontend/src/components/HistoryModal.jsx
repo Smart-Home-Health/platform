@@ -22,6 +22,7 @@ import SimpleEventChart from './SimpleEventChart';
 import RecordVitalsForm from './vitals/RecordVitalsForm';
 import { useAdminPatient } from '../contexts/AdminPatientContext';
 import { formatVitalDisplayName } from '../utils/vitals';
+import { Button } from '@/components/ui/button';
 import Chart from 'chart.js/auto';
 import 'chartjs-adapter-date-fns';
 // Pull in admin styling so we can use .admin-v2-table on the history table.
@@ -350,79 +351,28 @@ const HistoryModal = ({ onClose }) => {
 
   return (
     <ModalBase isOpen={true} onClose={onClose} title={
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button
-              onClick={() => {
-                setActiveTab('graphs');
-                setShowAddVitals(false);
-              }}
-              style={{
-                padding: '8px 16px',
-                border: 'none',
-                borderRadius: '6px',
-                backgroundColor: activeTab === 'graphs' ? '#007bff' : '#f8f9fa',
-                color: activeTab === 'graphs' ? '#fff' : '#333',
-                cursor: 'pointer',
-                fontWeight: '500',
-                fontSize: '14px'
-              }}
-            >
-              Graphs
-            </button>
-            {/* Placeholder for future tab */}
-            <button
-              onClick={() => {
-                setActiveTab('reports');
-                setShowAddVitals(false);
-              }}
-              style={{
-                padding: '8px 16px',
-                border: 'none',
-                borderRadius: '6px',
-                backgroundColor: activeTab === 'reports' ? '#007bff' : '#f8f9fa',
-                color: activeTab === 'reports' ? '#fff' : '#333',
-                cursor: 'pointer',
-                fontWeight: '500',
-                fontSize: '14px'
-              }}
-            >
-              Reports
-            </button>
-          </div>
+      <div className="tw flex w-full items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant={activeTab === 'graphs' ? 'default' : 'secondary'}
+            onClick={() => { setActiveTab('graphs'); setShowAddVitals(false); }}
+          >Graphs</Button>
+          <Button
+            size="sm"
+            variant={activeTab === 'reports' ? 'default' : 'secondary'}
+            onClick={() => { setActiveTab('reports'); setShowAddVitals(false); }}
+          >Reports</Button>
         </div>
-        <div style={{ display: 'flex', gap: '12px', marginLeft: '24px' }}>
-          <button
-            onClick={() => setShowAddVitals(true)}
-            style={{
-              padding: '8px 16px',
-              border: 'none',
-              borderRadius: '6px',
-              backgroundColor: '#28a745',
-              color: '#fff',
-              cursor: 'pointer',
-              fontWeight: '500',
-              fontSize: '14px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}
-          >
-            + Add Vitals
-          </button>
-        </div>
+        <Button size="sm" onClick={() => setShowAddVitals(true)}>+ Add Vitals</Button>
       </div>
     }>
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
         <div style={{ flex: 1, overflow: 'auto' }}>
           {showAddVitals ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <button
-                  onClick={handleCloseVitals}
-                  className="admin-v2-btn admin-v2-btn-secondary"
-                >← Back to History</button>
+              <div className="tw" style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <Button variant="secondary" size="sm" onClick={handleCloseVitals}>← Back to History</Button>
               </div>
               <RecordVitalsForm
                 patientId={selectedPatient?.id}
@@ -439,31 +389,19 @@ const HistoryModal = ({ onClose }) => {
               border: '1px solid #4a5568',
               height: '100%'
             }}>
-              <div className="vital-type-buttons" style={{ 
-                display: 'flex', 
-                gap: '10px', 
-                marginBottom: '20px',
-                flexWrap: 'wrap'
-              }}>
-                {vitalTypes.map((type) => (
-                  <button
-                    key={type}
-                    className={type === selectedType ? "active" : ""}
-                    onClick={() => handleTypeSelect(type)}
-                    style={{
-                      padding: '8px 16px',
-                      border: '1px solid #30363d',
-                      borderRadius: '6px',
-                      backgroundColor: type === selectedType ? '#1f6feb' : '#21262d',
-                      color: type === selectedType ? '#fff' : '#c9d1d9',
-                      cursor: 'pointer',
-                      fontSize: '13px',
-                      fontWeight: 500,
-                    }}
-                  >
-                    {formatVitalDisplayName(type)}
-                  </button>
-                ))}
+              <div className="tw" style={{ marginBottom: '20px' }}>
+                <div className="flex flex-wrap gap-2">
+                  {vitalTypes.map((type) => (
+                    <Button
+                      key={type}
+                      size="sm"
+                      variant={type === selectedType ? 'default' : 'secondary'}
+                      onClick={() => handleTypeSelect(type)}
+                    >
+                      {formatVitalDisplayName(type)}
+                    </Button>
+                  ))}
+                </div>
               </div>
               {selectedType && (
                 <>
@@ -539,26 +477,16 @@ const HistoryModal = ({ onClose }) => {
                   </table>
                 </div>
               )}
-              <div className="pagination-controls" style={{
+              <div className="tw pagination-controls" style={{
                 marginTop: 16,
                 display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12,
                 padding: 12,
               }}>
-                <button
-                  onClick={handlePrev}
-                  disabled={page === 1}
-                  className="admin-v2-btn admin-v2-btn-secondary"
-                  style={{ opacity: page === 1 ? 0.5 : 1, cursor: page === 1 ? 'not-allowed' : 'pointer' }}
-                >← Previous</button>
+                <Button variant="secondary" size="sm" onClick={handlePrev} disabled={page === 1}>← Previous</Button>
                 <span style={{ color: '#c9d1d9', fontSize: 13, fontWeight: 500 }}>
                   Page {page} of {totalPages}
                 </span>
-                <button
-                  onClick={handleNext}
-                  disabled={page === totalPages}
-                  className="admin-v2-btn admin-v2-btn-secondary"
-                  style={{ opacity: page === totalPages ? 0.5 : 1, cursor: page === totalPages ? 'not-allowed' : 'pointer' }}
-                >Next →</button>
+                <Button variant="secondary" size="sm" onClick={handleNext} disabled={page === totalPages}>Next →</Button>
               </div>
             </div>
               </>

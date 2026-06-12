@@ -19,6 +19,10 @@ import { useState, useEffect } from 'react';
 import config from '../../config';
 import AlertDetailInline from '../AlertDetailInline';
 import { AlertIcon, CheckIcon, ClockIcon, HeartIcon } from '../Icons';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import { Alert } from '@/components/ui/alert';
 
 const AlertsList = ({ onAlertAcknowledge, patientId }) => {
   const [alerts, setAlerts] = useState([]);
@@ -182,7 +186,7 @@ const AlertsList = ({ onAlertAcknowledge, patientId }) => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Controls bar */}
-      <div style={{
+      <div className="tw" style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         flexWrap: 'wrap', gap: 12,
         padding: '12px 14px',
@@ -191,58 +195,26 @@ const AlertsList = ({ onAlertAcknowledge, patientId }) => {
         borderRadius: 8,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <button
-            onClick={fetchAlerts}
-            disabled={loading}
-            style={{
-              padding: '8px 16px', borderRadius: 6,
-              border: '1px solid rgba(255,255,255,0.15)',
-              background: 'transparent', color: '#e6edf3',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              fontSize: 13, fontWeight: 500,
-              opacity: loading ? 0.6 : 1,
-            }}
-          >
+          <Button variant="secondary" onClick={fetchAlerts} disabled={loading}>
             {loading ? 'Loading…' : 'Refresh'}
-          </button>
-          <button
-            onClick={acknowledgeAllAlerts}
-            disabled={acknowledgeAllLoading || loading}
-            style={{
-              padding: '8px 16px', borderRadius: 6, border: 'none',
-              background: '#3fb950', color: '#0d1117',
-              cursor: (acknowledgeAllLoading || loading) ? 'not-allowed' : 'pointer',
-              fontSize: 13, fontWeight: 600,
-              opacity: (acknowledgeAllLoading || loading) ? 0.6 : 1,
-              display: 'flex', alignItems: 'center', gap: 6,
-            }}
-          >
+          </Button>
+          <Button onClick={acknowledgeAllAlerts} disabled={acknowledgeAllLoading || loading}>
             <CheckIcon size={14} />
             {acknowledgeAllLoading ? 'Acknowledging…' : 'Acknowledge All'}
-          </button>
+          </Button>
         </div>
-        <label style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          cursor: 'pointer', fontSize: 13, color: '#cbd5e0',
-          userSelect: 'none',
-        }}>
-          <input
-            type="checkbox"
+        <div className="flex items-center gap-2">
+          <Checkbox
+            id="show-acknowledged"
             checked={showAcknowledged}
-            onChange={() => setShowAcknowledged(!showAcknowledged)}
-            style={{ width: 16, height: 16, cursor: 'pointer', accentColor: '#3fb950' }}
+            onCheckedChange={() => setShowAcknowledged(!showAcknowledged)}
           />
-          Show Acknowledged
-        </label>
+          <Label htmlFor="show-acknowledged" className="cursor-pointer">Show Acknowledged</Label>
+        </div>
       </div>
 
       {error && (
-        <div role="alert" style={{
-          padding: '12px 14px', borderRadius: 8,
-          background: 'rgba(220,53,69,0.15)',
-          border: '1px solid rgba(220,53,69,0.5)',
-          color: '#f8d7da', fontSize: 13,
-        }}>{error}</div>
+        <div className="tw"><Alert variant="destructive">{error}</Alert></div>
       )}
 
       {loading ? (
@@ -365,34 +337,18 @@ const AlertsList = ({ onAlertAcknowledge, patientId }) => {
                 )}
 
                 {/* Actions */}
-                <div style={{
+                <div className="tw" style={{
                   display: 'flex', justifyContent: 'flex-end', gap: 8,
                   borderTop: '1px solid rgba(255,255,255,0.06)',
                   paddingTop: 10,
                 }}>
-                  <button
-                    onClick={() => handleViewDetails(alert)}
-                    style={{
-                      padding: '7px 14px', borderRadius: 6,
-                      border: '1px solid rgba(255,255,255,0.15)',
-                      background: 'transparent', color: '#e6edf3',
-                      cursor: 'pointer', fontSize: 13, fontWeight: 500,
-                    }}
-                  >
+                  <Button variant="secondary" size="sm" onClick={() => handleViewDetails(alert)}>
                     View Details
-                  </button>
+                  </Button>
                   {!alert.acknowledged && (
-                    <button
-                      onClick={() => handleAcknowledge(alert.id)}
-                      style={{
-                        padding: '7px 14px', borderRadius: 6, border: 'none',
-                        background: '#3fb950', color: '#0d1117',
-                        cursor: 'pointer', fontSize: 13, fontWeight: 600,
-                        display: 'flex', alignItems: 'center', gap: 6,
-                      }}
-                    >
+                    <Button size="sm" onClick={() => handleAcknowledge(alert.id)}>
                       <CheckIcon size={14} /> Acknowledge
-                    </button>
+                    </Button>
                   )}
                 </div>
               </div>

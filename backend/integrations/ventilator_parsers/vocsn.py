@@ -32,6 +32,7 @@ Skips (for now): slogger.log{1,2}, crashLog.bin, paramBackup.bin, usageMonitors.
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import logging
 import os
@@ -43,6 +44,7 @@ from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm.attributes import flag_modified
 
+from models.vent_ingested_files import VentIngestedFile
 from schemas.vent_device_info import VentDeviceInfo
 from schemas.vent_parameter_dictionary import VentParameterDictionary
 from schemas.vent_sample import VentSample
@@ -52,7 +54,6 @@ from .base import VentilatorParser
 logger = logging.getLogger("ventilator.vocsn")
 
 VENDOR = "vocsn"
-SAMPLE_BATCH_SIZE = 5000
 # A column name in the batch CSV header is "<KeyID>" optionally followed by
 # "_<suffix>" where suffix is N (single sample) or 5/50/95 (percentile aggregates).
 HEADER_COL_RX = re.compile(r"^(?P<key>\d+)(?:_(?P<suffix>[A-Za-z0-9]+))?$")
@@ -62,6 +63,11 @@ SKIPPED_FILES = {
     "slogger.log1", "slogger.log2", "crashLog.bin",
     "paramBackup.bin", "usageMonitors.dat",
 }
+
+# VOCSN message id for the user-pressed "Mark Event" button (MsgName
+# "MarkEventEvt" in TrendMetaData.json) — the event clock calibration
+# anchors against.
+MARK_EVENT_MSG_ID = 6007
 
 
 class VocsnParser(VentilatorParser):
@@ -95,6 +101,8 @@ class VocsnParser(VentilatorParser):
             "dictionary_count": 0,
             "sample_count": 0,
             "batch_files_parsed": 0,
+            "batch_files_skipped_existing": 0,
+            "batch_files_appended": 0,
             "earliest_sample_raw": None,
             "latest_sample_raw": None,
             "calibration": None,
@@ -159,6 +167,7 @@ class VocsnParser(VentilatorParser):
             if f.startswith("batch_") and f.endswith(".csv")
         ])
         event_anchors: List[datetime] = []  # vent-time of all E-type rows
+        mark_events: List[datetime] = []    # vent-time of MarkEventEvt rows only
 
         # Pre-build a quick lookup: is this parameter_key enum?
         enum_keys = {
@@ -167,13 +176,30 @@ class VocsnParser(VentilatorParser):
         }
 
         sample_buffer: List[Dict[str, Any]] = []
-        earliest_raw: Optional[datetime] = None
-        latest_raw: Optional[datetime] = None
+
+        # Ledger of batch files this integration already ingested. Exports are
+        # rolling windows, so most files in this archive are byte-identical to
+        # a previous upload (skip them) and at most the previously-live file
+        # has grown append-only (ingest just its tail).
+        ledger: Dict[str, VentIngestedFile] = {
+            r.file_name: r for r in db.query(VentIngestedFile).filter(
+                VentIngestedFile.integration_id == vi.integration_id
+            ).all()
+        }
 
         for batch_name in batch_files:
             batch_path = os.path.join(self.extracted_dir, batch_name)
+            sha = self._sha256_file(batch_path)
+            entry = ledger.get(batch_name)
+            if entry and entry.sha256 == sha:
+                summary["batch_files_skipped_existing"] += 1
+                continue
+            # Known name with a different hash = the file grew since last
+            # ingest (verified append-only) — resume after the rows we have.
+            skip_rows = entry.line_count if entry else 0
+
             try:
-                header_map, rows_emitted, events = self._parse_batch_csv(
+                header_map, rows_emitted, events, markers, row_count = self._parse_batch_csv(
                     batch_path,
                     param_meta=param_meta,
                     enum_keys=enum_keys,
@@ -182,9 +208,13 @@ class VocsnParser(VentilatorParser):
                     db=db,
                     patient_id=vi.patient_id,
                     import_id=vi.id,
+                    skip_rows=skip_rows,
                 )
             except Exception as e:
                 # Don't lose the whole import for one bad CSV — record it.
+                # Drop any partially-buffered rows so they can't be flushed
+                # (and duplicated) alongside the next file.
+                sample_buffer.clear()
                 summary.setdefault("file_errors", []).append({
                     "file": batch_name, "error": str(e),
                 })
@@ -192,30 +222,39 @@ class VocsnParser(VentilatorParser):
                 continue
 
             summary["batch_files_parsed"] += 1
+            if entry:
+                summary["batch_files_appended"] += 1
             summary["sample_count"] += rows_emitted
             event_anchors.extend(events)
+            mark_events.extend(markers)
 
-            # Track time range across all batches.
-            if events or rows_emitted:
-                # Pull from sample_buffer tail since rows_emitted is the count
-                # just inserted in this batch — we already flushed; cheaper to
-                # track during _parse_batch_csv. We update in batch via
-                # bookkeeping in events list (E-type) and let max/min update
-                # below via a quick query at the end.
-                pass
-
-            # Periodic flush + progress
-            if len(sample_buffer) >= SAMPLE_BATCH_SIZE:
-                self._flush_samples(db, sample_buffer)
-                # Update parser_summary so the polling UI sees progress.
-                vi.parser_summary = dict(summary)
-                flag_modified(vi, "parser_summary")
-                db.add(vi)
-                db.commit()
-
-        # Final flush
-        if sample_buffer:
-            self._flush_samples(db, sample_buffer)
+            # Flush this file's samples, then record it in the ledger in the
+            # same transaction so a re-upload skips it.
+            if sample_buffer:
+                db.bulk_insert_mappings(VentSample, sample_buffer)
+                sample_buffer.clear()
+            now = datetime.now(timezone.utc)
+            if entry:
+                entry.sha256 = sha
+                entry.line_count = row_count
+                entry.updated_at = now
+            else:
+                entry = VentIngestedFile(
+                    integration_id=vi.integration_id,
+                    import_id=vi.id,
+                    file_name=batch_name,
+                    sha256=sha,
+                    line_count=row_count,
+                    created_at=now,
+                    updated_at=now,
+                )
+                ledger[batch_name] = entry
+            db.add(entry)
+            # Update parser_summary so the polling UI sees progress.
+            vi.parser_summary = dict(summary)
+            flag_modified(vi, "parser_summary")
+            db.add(vi)
+            db.commit()
 
         # 4. Compute earliest/latest sample times for the summary.
         rng = db.execute(text("""
@@ -231,9 +270,31 @@ class VocsnParser(VentilatorParser):
             if f in SKIPPED_FILES:
                 summary["skipped_files"].append(f)
 
-        # 6. Calibration anchoring (if pending and we saw events)
-        if pending_at and event_anchors:
-            anchor = self._closest_anchor(event_anchors, pending_at)
+        # 6. Calibration anchoring (if pending). The vent clock can be
+        # arbitrarily wrong (that's what we're measuring), so we can't match
+        # the Mark Event to `pending_at` by absolute time. Instead we use
+        # elapsed time, which is clock-offset-invariant: the user marks the
+        # event right after pressing Calibrate, and the vent keeps recording
+        # until export, so in vent-time the mark can be at most
+        # (upload_real - press_real) before the end of the archive. A mark
+        # older than that is from a previous session — and an archive whose
+        # newest mark fails the test was exported before the user marked.
+        if pending_at:
+            archive_end = rng.hi if rng else None
+            uploaded_at = vi.uploaded_at
+            anchor = None
+            if mark_events and archive_end is not None and uploaded_at is not None:
+                max_elapsed = (uploaded_at - pending_at) + timedelta(hours=1)
+                candidates = [m for m in mark_events if (archive_end - m) <= max_elapsed]
+                if candidates:
+                    # The mark paired with this tap should sit (upload − tap)
+                    # before the end of the archive (less any export→upload
+                    # delay). Picking the candidate closest to that expected
+                    # spot keeps a stray extra mark (pressed later without a
+                    # new tap) from stealing the anchor.
+                    expected = archive_end - (uploaded_at - pending_at)
+                    anchor = min(candidates, key=lambda m: abs(m - expected))
+
             if anchor is not None:
                 computed_offset = (pending_at - anchor).total_seconds()
                 self._apply_calibration(
@@ -248,17 +309,20 @@ class VocsnParser(VentilatorParser):
                     "real_time": pending_at.isoformat(),
                     "offset_seconds": computed_offset,
                 }
+            elif mark_events:
+                summary["calibration"] = {
+                    "status": "archive_predates_mark",
+                    "pending_at": pending_at.isoformat(),
+                    "latest_mark_event_vent_time": max(mark_events).isoformat(),
+                    "archive_end_vent_time": archive_end.isoformat() if archive_end else None,
+                    "mark_events_seen": len(mark_events),
+                }
             else:
                 summary["calibration"] = {
-                    "status": "no_anchor_in_window",
+                    "status": "no_mark_events_in_archive",
                     "pending_at": pending_at.isoformat(),
                     "events_seen": len(event_anchors),
                 }
-        elif pending_at:
-            summary["calibration"] = {
-                "status": "no_events_in_archive",
-                "pending_at": pending_at.isoformat(),
-            }
 
         return summary
 
@@ -400,17 +464,23 @@ class VocsnParser(VentilatorParser):
         db,
         patient_id: int,
         import_id: str,
-    ) -> Tuple[List[Optional[Tuple[str, Optional[str]]]], int, List[datetime]]:
+        skip_rows: int = 0,
+    ) -> Tuple[List[Optional[Tuple[str, Optional[str]]]], int, List[datetime], List[datetime], int]:
         """Parse one batch_NNNNNN.csv. Appends sample dicts to `sample_buffer`
-        (the caller flushes when it grows too large). Returns (header_map,
-        rows_emitted, event_anchor_times)."""
+        (the caller flushes per file). With `skip_rows` > 0 (file grew since a
+        previous ingest), the first `skip_rows` CSV rows — header included —
+        are only counted, not emitted. Returns (header_map, rows_emitted,
+        event_anchor_times, mark_event_times, total_row_count)."""
         header_map: List[Optional[Tuple[str, Optional[str]]]] = []
         events: List[datetime] = []
+        markers: List[datetime] = []
         rows_emitted = 0
+        row_index = -1
 
         with open(path, newline="") as f:
             reader = csv.reader(f)
             for row in reader:
+                row_index += 1
                 if not row:
                     continue
                 # The first row is the header definition: cols 1–4 are data-ish
@@ -420,6 +490,8 @@ class VocsnParser(VentilatorParser):
                     header_map = self._parse_header(row)
                     continue
 
+                if row_index < skip_rows:
+                    continue
                 if len(row) < 4:
                     continue
                 msg_type = row[2] or None
@@ -436,6 +508,8 @@ class VocsnParser(VentilatorParser):
 
                 if msg_type == "E":
                     events.append(recorded_raw)
+                    if msg_id == MARK_EVENT_MSG_ID:
+                        markers.append(recorded_raw)
 
                 # Walk value columns
                 for idx in range(4, min(len(row), len(header_map))):
@@ -468,7 +542,7 @@ class VocsnParser(VentilatorParser):
                     })
                     rows_emitted += 1
 
-        return header_map, rows_emitted, events
+        return header_map, rows_emitted, events, markers, row_index + 1
 
     @staticmethod
     def _parse_header(row: List[str]) -> List[Optional[Tuple[str, Optional[str]]]]:
@@ -484,29 +558,12 @@ class VocsnParser(VentilatorParser):
         return out
 
     @staticmethod
-    def _flush_samples(db, buffer: List[Dict[str, Any]]) -> None:
-        if not buffer:
-            return
-        db.bulk_insert_mappings(VentSample, buffer)
-        db.commit()
-        buffer.clear()
-
-    @staticmethod
-    def _closest_anchor(
-        anchors: List[datetime], pending_at: datetime,
-        window: timedelta = timedelta(hours=2),
-    ) -> Optional[datetime]:
-        """Pick the E-type event whose vent-time is closest to `pending_at`,
-        provided it falls within ±window."""
-        best: Optional[datetime] = None
-        best_dt: Optional[timedelta] = None
-        for a in anchors:
-            dt = abs(a - pending_at)
-            if dt > window:
-                continue
-            if best_dt is None or dt < best_dt:
-                best, best_dt = a, dt
-        return best
+    def _sha256_file(path: str) -> str:
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        return h.hexdigest()
 
     @staticmethod
     def _apply_calibration(

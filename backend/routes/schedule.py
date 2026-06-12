@@ -183,6 +183,7 @@ async def get_daily_schedule(
                 "minute": med["scheduled_time"].minute,
                 "description": med["description"],
                 "completed": med["completed"],
+                "skipped": med.get("skipped", False),
                 "completed_at": med["completed_at"],
                 "completed_by": med["completed_by"],
                 "is_prn": med.get("is_prn", False),
@@ -226,6 +227,7 @@ async def get_daily_schedule(
                 "minute": task["scheduled_time"].minute,
                 "notes": task.get("notes"),
                 "completed": task["completed"],
+                "status": task.get("status"),
                 "completed_at": task["completed_at"],
                 "completed_by": task["completed_by"],
                 "category_id": task.get("category_id"),
@@ -422,27 +424,29 @@ async def complete_care_task(
         if future is not None:
             return future
 
-        early = guard_early_administration(
-            scheduled_dt,
-            early_override=data.early_override,
-            item_label="care task",
-            schedule_id=data.schedule_id,
-            completed_at=data.completed_at,
-        )
-        if early is not None:
-            return early
+        # Skips are an explicit "not done" — they aren't gated by the window.
+        if not data.skipped:
+            early = guard_early_administration(
+                scheduled_dt,
+                early_override=data.early_override,
+                item_label="care task",
+                schedule_id=data.schedule_id,
+                completed_at=data.completed_at,
+            )
+            if early is not None:
+                return early
 
         # Parse completed_at time if provided, otherwise use now
         if data.completed_at:
             completed_at = parse_scheduled_time(data.completed_at)
         else:
             completed_at = utc_now()
-        
+
         # Get the schedule to find care task ID
         schedule = db.query(CareTaskSchedule).filter(CareTaskSchedule.id == data.schedule_id).first()
         if not schedule:
             return {"success": False, "error": "Schedule not found"}
-        
+
         # Create log entry
         log = CareTaskLog(
             care_task_id=schedule.care_task_id,
@@ -451,7 +455,7 @@ async def complete_care_task(
             scheduled_time=scheduled_dt,
             completed_at=completed_at,
             is_scheduled=True,
-            status="completed",
+            status="skipped" if data.skipped else "completed",
             notes=data.notes,
             performed_by=data.user_id,
             created_at=utc_now()

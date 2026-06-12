@@ -40,7 +40,8 @@ from crud.medications import (add_medication, get_active_medications, get_inacti
                   get_all_medication_schedules, update_medication_schedule, delete_medication_schedule, 
                   toggle_medication_schedule_active, get_daily_medication_schedule, administer_medication,
                   get_medication_history, get_medication_names_for_dropdown,
-                  get_due_and_upcoming_medications_count)
+                  get_due_and_upcoming_medications_count, set_low_stock_days_for_scheduled_meds)
+from pydantic import BaseModel, Field
 from crud.settings import get_setting
 from models import Medication
 from utils.early_administration import guard_early_administration, guard_future_administration
@@ -116,6 +117,8 @@ async def api_add_medication(data: MedicationCreate, db: Session = Depends(get_d
             concentration=data.concentration,
             quantity=data.quantity,
             quantity_unit=data.quantity_unit,
+            low_stock_threshold=data.low_stock_threshold,
+            low_stock_threshold_type=data.low_stock_threshold_type,
             instructions=data.instructions,
             start_date=data.start_date,
             end_date=data.end_date,
@@ -203,6 +206,8 @@ async def get_admin_active_medications_endpoint(patient_id: Optional[int] = None
                 'concentration': med.concentration,
                 'quantity': med.quantity,
                 'quantity_unit': med.quantity_unit,
+                'low_stock_threshold': med.low_stock_threshold,
+                'low_stock_threshold_type': med.low_stock_threshold_type,
                 'instructions': med.instructions,
                 'start_date': med.start_date.isoformat() if med.start_date else None,
                 'end_date': med.end_date.isoformat() if med.end_date else None,
@@ -254,6 +259,8 @@ async def get_admin_inactive_medications_endpoint(patient_id: Optional[int] = No
                 'concentration': med.concentration,
                 'quantity': med.quantity,
                 'quantity_unit': med.quantity_unit,
+                'low_stock_threshold': med.low_stock_threshold,
+                'low_stock_threshold_type': med.low_stock_threshold_type,
                 'instructions': med.instructions,
                 'start_date': med.start_date.isoformat() if med.start_date else None,
                 'end_date': med.end_date.isoformat() if med.end_date else None,
@@ -272,6 +279,18 @@ async def get_admin_inactive_medications_endpoint(patient_id: Optional[int] = No
     except Exception as e:
         logger.error(f"Error fetching admin inactive medications: {e}")
         return JSONResponse(status_code=500, content={"detail": str(e)})
+
+
+class BulkLowStockDaysRequest(BaseModel):
+    days: float = Field(..., gt=0, le=365)
+
+
+@router.post("/medications/low-stock-threshold/apply-days")
+async def apply_low_stock_days_bulk(data: BulkLowStockDaysRequest, db: Session = Depends(get_db)):
+    """Set a days-of-supply low-stock threshold on every active medication
+    that has at least one active schedule."""
+    updated = set_low_stock_days_for_scheduled_meds(db, data.days)
+    return {"status": "success", "updated_count": len(updated), "medications": updated}
 
 
 @router.put("/medications/{med_id}")

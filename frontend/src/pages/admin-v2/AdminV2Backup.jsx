@@ -21,7 +21,22 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import { apiFetch } from '../../config';
 import config from '../../config';
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Alert } from '@/components/ui/alert';
+import { Field } from '@/components/ui/field';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
 import './AdminV2.css';
+
+// Radix Select forbids an empty-string value, so use a sentinel for "none".
+const NONE = '__none__';
 
 const AdminV2Backup = () => {
   const { user } = useAuth();
@@ -125,113 +140,88 @@ const AdminV2Backup = () => {
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
-        <div className="admin-v2-page-header">
-          <h1 className="admin-v2-page-title">Backup &amp; Restore</h1>
-          <p className="admin-v2-page-subtitle">
-            Export a patient and all of their related history (medications, providers,
-            care tasks, vitals, nutrition, diagnoses, implants, equipment, and more) into
-            a single compressed archive — or restore one back into this account.
-          </p>
-        </div>
-
-        <div className="admin-v2-content-grid">
+        <div className="tw grid gap-6 lg:grid-cols-2">
           {/* Export */}
-          <div className="admin-v2-card">
-            <div className="admin-v2-card-header">
-              <h2>Export Patient</h2>
-            </div>
-            <div className="admin-v2-card-body">
-              {exportError && <div className="admin-v2-alert error">{exportError}</div>}
-              {exportSuccess && <div className="admin-v2-alert success">{exportSuccess}</div>}
+          <Card>
+            <CardHeader><CardTitle>Export Patient</CardTitle></CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              {exportError && <Alert variant="destructive">{exportError}</Alert>}
+              {exportSuccess && <Alert variant="success">{exportSuccess}</Alert>}
 
-              <div className="admin-v2-form-group">
-                <label htmlFor="export-patient">Patient</label>
-                <select
-                  id="export-patient"
-                  value={exportPatientId}
-                  onChange={(e) => setExportPatientId(e.target.value)}
+              <Field
+                label="Patient"
+                htmlFor="export-patient"
+                hint="All rows tied to this patient will be included. The download is a gzipped tar archive containing one JSON file per entity."
+              >
+                <Select
+                  value={exportPatientId ? String(exportPatientId) : NONE}
+                  onValueChange={(v) => setExportPatientId(v === NONE ? '' : v)}
                   disabled={loadingPatients || exporting}
                 >
-                  <option value="">-- Select patient --</option>
-                  {activePatients.map(p => (
-                    <option key={p.id} value={p.id}>
-                      {p.first_name} {p.last_name}{p.medical_record_number ? ` (MRN ${p.medical_record_number})` : ''}
-                    </option>
-                  ))}
-                </select>
-                <span className="admin-v2-form-help">
-                  All rows tied to this patient will be included. The download is a
-                  gzipped tar archive containing one JSON file per entity.
-                </span>
-              </div>
-
-              <div className="admin-v2-form-actions">
-                <button
-                  type="button"
-                  className="admin-v2-btn primary"
-                  onClick={handleExport}
-                  disabled={exporting || !exportPatientId}
-                >
-                  {exporting ? 'Exporting…' : 'Download Backup'}
-                </button>
-              </div>
-            </div>
-          </div>
+                  <SelectTrigger id="export-patient">
+                    <SelectValue placeholder="-- Select patient --" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NONE}>-- Select patient --</SelectItem>
+                    {activePatients.map(p => (
+                      <SelectItem key={p.id} value={String(p.id)}>
+                        {p.first_name} {p.last_name}{p.medical_record_number ? ` (MRN ${p.medical_record_number})` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            </CardContent>
+            <CardFooter>
+              <Button type="button" onClick={handleExport} disabled={exporting || !exportPatientId}>
+                {exporting ? 'Exporting…' : 'Download Backup'}
+              </Button>
+            </CardFooter>
+          </Card>
 
           {/* Restore */}
-          <div className="admin-v2-card">
-            <div className="admin-v2-card-header">
-              <h2>Restore Patient</h2>
-            </div>
-            <div className="admin-v2-card-body">
-              {restoreError && <div className="admin-v2-alert error">{restoreError}</div>}
+          <Card>
+            <CardHeader><CardTitle>Restore Patient</CardTitle></CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              {restoreError && <Alert variant="destructive">{restoreError}</Alert>}
               {restoreResult && (
-                <div className="admin-v2-alert success">
+                <Alert variant="success">
                   <div>
                     Restored patient as new id <strong>{restoreResult.new_patient_id}</strong>.
                     Inserted {totalRestored} rows across {Object.keys(restoreResult.inserted || {}).length} tables.
                   </div>
-                  <details style={{ marginTop: '0.5rem' }}>
-                    <summary style={{ cursor: 'pointer' }}>Per-table breakdown</summary>
-                    <ul style={{ marginTop: '0.5rem' }}>
+                  <details className="mt-2">
+                    <summary className="cursor-pointer">Per-table breakdown</summary>
+                    <ul className="mt-2 list-disc pl-5">
                       {Object.entries(restoreResult.inserted || {}).map(([table, count]) => (
                         <li key={table}>{table}: {count}</li>
                       ))}
                     </ul>
                   </details>
-                </div>
+                </Alert>
               )}
 
-              <div className="admin-v2-form-group">
-                <label htmlFor="restore-file-input">Backup file (.tar.gz)</label>
-                <input
+              <Field
+                label="Backup file (.tar.gz)"
+                htmlFor="restore-file-input"
+                hint="A new patient record will be created in this account. Original ids are not preserved — every foreign key is remapped. Any user references that no longer exist in this account will be attributed to the hidden “Imported (legacy attribution)” user, which is created automatically on first restore."
+              >
+                <Input
                   id="restore-file-input"
                   type="file"
                   accept=".gz,.tar.gz,application/gzip,application/x-tar"
+                  className="h-auto cursor-pointer py-1.5 file:mr-3 file:cursor-pointer"
                   onChange={(e) => setRestoreFile(e.target.files?.[0] || null)}
                   disabled={restoring}
                 />
-                <span className="admin-v2-form-help">
-                  A new patient record will be created in this account. Original ids are
-                  not preserved — every foreign key is remapped. Any user references that
-                  no longer exist in this account will be attributed to the hidden
-                  &ldquo;Imported (legacy attribution)&rdquo; user, which is created
-                  automatically on first restore.
-                </span>
-              </div>
-
-              <div className="admin-v2-form-actions">
-                <button
-                  type="button"
-                  className="admin-v2-btn primary"
-                  onClick={handleRestore}
-                  disabled={restoring || !restoreFile}
-                >
-                  {restoring ? 'Restoring…' : 'Restore From Backup'}
-                </button>
-              </div>
-            </div>
-          </div>
+              </Field>
+            </CardContent>
+            <CardFooter>
+              <Button type="button" onClick={handleRestore} disabled={restoring || !restoreFile}>
+                {restoring ? 'Restoring…' : 'Restore From Backup'}
+              </Button>
+            </CardFooter>
+          </Card>
         </div>
       </div>
     </AdminV2Layout>

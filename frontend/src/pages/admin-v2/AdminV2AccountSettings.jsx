@@ -19,33 +19,33 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { API_BASE_URL } from '../../config';
 import AdminV2Layout from './AdminV2Layout';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Alert } from '@/components/ui/alert';
+import { Field } from '@/components/ui/field';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
 import './AdminV2.css';
 
 export default function AdminV2AccountSettings() {
-  const { account, user } = useAuth();
-
-  // Only system admins can access account settings
-  if (user && !user.is_system_admin) {
-    return (
-      <AdminV2Layout>
-        <div style={{ padding: '2rem', color: '#8b949e', textAlign: 'center' }}>
-          <h3 style={{ color: '#e6edf3' }}>Access Denied</h3>
-          <p>Account settings are only available to system administrators.</p>
-        </div>
-      </AdminV2Layout>
-    );
-  }
+  const { user } = useAuth();
   const [accountData, setAccountData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  
+
   // Form states
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [timezone, setTimezone] = useState('');
-  
+
   // Password change
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -169,6 +169,18 @@ export default function AdminV2AccountSettings() {
     'Australia/Sydney',
   ];
 
+  // Only system admins can access account settings
+  if (user && !user.is_system_admin) {
+    return (
+      <AdminV2Layout>
+        <div style={{ padding: '2rem', color: '#8b949e', textAlign: 'center' }}>
+          <h3 style={{ color: '#e6edf3' }}>Access Denied</h3>
+          <p>Account settings are only available to system administrators.</p>
+        </div>
+      </AdminV2Layout>
+    );
+  }
+
   if (loading) {
     return (
       <AdminV2Layout>
@@ -182,27 +194,17 @@ export default function AdminV2AccountSettings() {
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
-        <div className="admin-v2-page-header">
-          <h1 className="admin-v2-page-title">Account Settings</h1>
-          <p className="admin-v2-page-subtitle">
-            Manage your account name, login credentials, and preferences
-          </p>
-        </div>
-
-        <div className="admin-v2-content-grid">
+        <div className="tw grid gap-6 lg:grid-cols-2">
           {/* Account Details Card */}
-          <div className="admin-v2-card">
-            <div className="admin-v2-card-header">
-              <h2>Account Details</h2>
-            </div>
-            <div className="admin-v2-card-body">
-              {error && <div className="admin-v2-alert error">{error}</div>}
-              {success && <div className="admin-v2-alert success">{success}</div>}
-              
-              <form onSubmit={handleSubmit} className="admin-v2-form">
-                <div className="admin-v2-form-group">
-                  <label htmlFor="name">Account Name</label>
-                  <input
+          <Card>
+            <CardHeader><CardTitle>Account Details</CardTitle></CardHeader>
+            <CardContent>
+              <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+                {error && <Alert variant="destructive">{error}</Alert>}
+                {success && <Alert variant="success">{success}</Alert>}
+
+                <Field label="Account Name" htmlFor="name" hint="Display name for this account">
+                  <Input
                     type="text"
                     id="name"
                     value={name}
@@ -210,14 +212,14 @@ export default function AdminV2AccountSettings() {
                     placeholder="Enter account name"
                     required
                   />
-                  <span className="admin-v2-form-help">
-                    Display name for this account
-                  </span>
-                </div>
+                </Field>
 
-                <div className="admin-v2-form-group">
-                  <label htmlFor="slug">Account ID (Login)</label>
-                  <input
+                <Field
+                  label="Account ID (Login)"
+                  htmlFor="slug"
+                  hint="Used for logging in. Lowercase letters, numbers, and hyphens only."
+                >
+                  <Input
                     type="text"
                     id="slug"
                     value={slug}
@@ -226,71 +228,58 @@ export default function AdminV2AccountSettings() {
                     required
                     pattern="[a-z0-9-]+"
                   />
-                  <span className="admin-v2-form-help">
-                    Used for logging in. Lowercase letters, numbers, and hyphens only.
-                  </span>
-                </div>
+                </Field>
 
-                <div className="admin-v2-form-group">
-                  <label htmlFor="timezone">Timezone</label>
-                  <select
-                    id="timezone"
-                    value={timezone}
-                    onChange={(e) => setTimezone(e.target.value)}
-                  >
-                    {timezones.map(tz => (
-                      <option key={tz} value={tz}>{tz}</option>
-                    ))}
-                  </select>
-                  <span className="admin-v2-form-help">
-                    Default timezone for schedules and logs
-                  </span>
-                </div>
+                <Field label="Timezone" htmlFor="timezone" hint="Default timezone for schedules and logs">
+                  <Select value={timezone} onValueChange={setTimezone}>
+                    <SelectTrigger id="timezone"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {timezones.map(tz => (
+                        <SelectItem key={tz} value={tz}>{tz}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
 
-                <div className="admin-v2-form-actions">
-                  <button type="submit" className="admin-v2-btn primary" disabled={saving}>
+                <div className="flex justify-end">
+                  <Button type="submit" disabled={saving}>
                     {saving ? 'Saving...' : 'Save Changes'}
-                  </button>
+                  </Button>
                 </div>
               </form>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
           {/* Password Card */}
-          <div className="admin-v2-card">
-            <div className="admin-v2-card-header">
-              <h2>Account Password</h2>
-            </div>
-            <div className="admin-v2-card-body">
+          <Card>
+            <CardHeader><CardTitle>Account Password</CardTitle></CardHeader>
+            <CardContent>
               {!showPasswordForm ? (
-                <div className="admin-v2-password-info">
-                  <p>The account password is used to log in at the account level before selecting a user profile.</p>
-                  <button 
-                    className="admin-v2-btn secondary"
-                    onClick={() => setShowPasswordForm(true)}
-                  >
+                <div className="flex flex-col items-start gap-4">
+                  <p className="text-sm text-muted-foreground">
+                    The account password is used to log in at the account level before selecting a user profile.
+                  </p>
+                  <Button variant="secondary" onClick={() => setShowPasswordForm(true)}>
                     Change Password
-                  </button>
+                  </Button>
                 </div>
               ) : (
-                <form onSubmit={handlePasswordChange} className="admin-v2-form">
-                  {passwordError && <div className="admin-v2-alert error">{passwordError}</div>}
-                  {passwordSuccess && <div className="admin-v2-alert success">{passwordSuccess}</div>}
-                  
-                  <div className="admin-v2-form-group">
-                    <label htmlFor="currentPassword">Current Password</label>
-                    <input
+                <form onSubmit={handlePasswordChange} className="flex flex-col gap-4">
+                  {passwordError && <Alert variant="destructive">{passwordError}</Alert>}
+                  {passwordSuccess && <Alert variant="success">{passwordSuccess}</Alert>}
+
+                  <Field label="Current Password" htmlFor="currentPassword">
+                    <Input
                       type="password"
                       id="currentPassword"
                       value={currentPassword}
                       onChange={(e) => setCurrentPassword(e.target.value)}
                       required
                     />
-                  </div>
+                  </Field>
 
-                  <div className="admin-v2-form-group">
-                    <label htmlFor="newPassword">New Password</label>
-                    <input
+                  <Field label="New Password" htmlFor="newPassword" hint="Minimum 8 characters">
+                    <Input
                       type="password"
                       id="newPassword"
                       value={newPassword}
@@ -298,14 +287,10 @@ export default function AdminV2AccountSettings() {
                       minLength={8}
                       required
                     />
-                    <span className="admin-v2-form-help">
-                      Minimum 8 characters
-                    </span>
-                  </div>
+                  </Field>
 
-                  <div className="admin-v2-form-group">
-                    <label htmlFor="confirmPassword">Confirm New Password</label>
-                    <input
+                  <Field label="Confirm New Password" htmlFor="confirmPassword">
+                    <Input
                       type="password"
                       id="confirmPassword"
                       value={confirmPassword}
@@ -313,12 +298,12 @@ export default function AdminV2AccountSettings() {
                       minLength={8}
                       required
                     />
-                  </div>
+                  </Field>
 
-                  <div className="admin-v2-form-actions">
-                    <button 
-                      type="button" 
-                      className="admin-v2-btn secondary"
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
                       onClick={() => {
                         setShowPasswordForm(false);
                         setCurrentPassword('');
@@ -328,50 +313,57 @@ export default function AdminV2AccountSettings() {
                       }}
                     >
                       Cancel
-                    </button>
-                    <button type="submit" className="admin-v2-btn primary" disabled={savingPassword}>
+                    </Button>
+                    <Button type="submit" disabled={savingPassword}>
                       {savingPassword ? 'Changing...' : 'Change Password'}
-                    </button>
+                    </Button>
                   </div>
                 </form>
               )}
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
           {/* Account Info Card */}
-          <div className="admin-v2-card">
-            <div className="admin-v2-card-header">
-              <h2>Account Information</h2>
-            </div>
-            <div className="admin-v2-card-body">
-              <div className="admin-v2-info-list">
-                <div className="admin-v2-info-item">
-                  <span className="admin-v2-info-label">Account ID</span>
-                  <span className="admin-v2-info-value">{accountData?.id}</span>
+          <Card>
+            <CardHeader><CardTitle>Account Information</CardTitle></CardHeader>
+            <CardContent>
+              <dl className="flex flex-col divide-y divide-border text-sm">
+                <div className="flex items-center justify-between py-2">
+                  <dt className="text-muted-foreground">Account ID</dt>
+                  <dd className="font-medium text-foreground">{accountData?.id}</dd>
                 </div>
-                <div className="admin-v2-info-item">
-                  <span className="admin-v2-info-label">Created</span>
-                  <span className="admin-v2-info-value">
-                    {accountData?.created_at 
-                      ? new Date(accountData.created_at).toLocaleDateString() 
+                <div className="flex items-center justify-between py-2">
+                  <dt className="text-muted-foreground">Created</dt>
+                  <dd className="font-medium text-foreground">
+                    {accountData?.created_at
+                      ? new Date(accountData.created_at).toLocaleDateString()
                       : 'Unknown'}
-                  </span>
+                  </dd>
                 </div>
-                <div className="admin-v2-info-item">
-                  <span className="admin-v2-info-label">Status</span>
-                  <span className={`admin-v2-badge ${accountData?.is_active ? 'success' : 'error'}`}>
-                    {accountData?.is_active ? 'Active' : 'Inactive'}
-                  </span>
+                <div className="flex items-center justify-between py-2">
+                  <dt className="text-muted-foreground">Status</dt>
+                  <dd>
+                    <span
+                      className={
+                        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium " +
+                        (accountData?.is_active
+                          ? "bg-success/20 text-[#3fb950]"
+                          : "bg-destructive/20 text-[#ff7b72]")
+                      }
+                    >
+                      {accountData?.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                  </dd>
                 </div>
                 {accountData?.organization && (
-                  <div className="admin-v2-info-item">
-                    <span className="admin-v2-info-label">Organization</span>
-                    <span className="admin-v2-info-value">{accountData.organization.name}</span>
+                  <div className="flex items-center justify-between py-2">
+                    <dt className="text-muted-foreground">Organization</dt>
+                    <dd className="font-medium text-foreground">{accountData.organization.name}</dd>
                   </div>
                 )}
-              </div>
-            </div>
-          </div>
+              </dl>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </AdminV2Layout>

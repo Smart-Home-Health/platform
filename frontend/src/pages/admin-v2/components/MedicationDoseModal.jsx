@@ -17,11 +17,22 @@
  */
 import React, { useEffect, useState } from 'react';
 import config from '../../../config';
-import { XIcon } from '../../../components/Icons';
 import {
   getCurrentLocalDateTime,
   localDateTimeToUTC,
 } from '../../../utils/timezone';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Field } from '@/components/ui/field';
+import { Alert } from '@/components/ui/alert';
 
 const emptyForm = () => ({
   dose_amount: '',
@@ -63,7 +74,7 @@ const MedicationDoseModal = ({ open, onClose, onSaved, patient, medication, defa
     });
   }, [open, medication, defaultDateTime]);
 
-  if (!open || !medication) return null;
+  if (!medication) return null;
 
   const handleSave = async () => {
     if (!patient) return;
@@ -95,75 +106,64 @@ const MedicationDoseModal = ({ open, onClose, onSaved, patient, medication, defa
   };
 
   return (
-    <div className="admin-v2-modal-overlay" onClick={onClose}>
-      <div className="admin-v2-modal admin-v2-modal-sm" onClick={e => e.stopPropagation()}>
-        <div className="admin-v2-modal-header">
-          <h2>Record Dose — {medication.name}</h2>
-          <button className="admin-v2-modal-close" onClick={onClose}>
-            <XIcon size={20} />
-          </button>
-        </div>
-        <div className="admin-v2-modal-body">
-          {error && <div className="admin-v2-error-banner" style={{ marginBottom: '1rem' }}>{error}</div>}
-          {medication.instructions && (
-            <div style={{
-              background: '#21262d', borderRadius: 6, padding: '0.75rem 1rem', marginBottom: '1rem',
-              color: '#8b949e', fontSize: '0.85rem',
-            }}>
-              {medication.instructions}
-            </div>
-          )}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <div className="admin-v2-form-group">
-              <label>Dose Amount *</label>
-              <input
-                type="number"
-                step="0.1"
-                value={form.dose_amount}
-                onChange={e => setForm({ ...form, dose_amount: e.target.value })}
-                placeholder="Amount given"
-              />
-            </div>
-            <div className="admin-v2-form-group">
-              <label>Unit</label>
-              <input
-                type="text"
-                value={form.dose_unit}
-                onChange={e => setForm({ ...form, dose_unit: e.target.value })}
-                placeholder="mg, ml, tablets..."
-              />
-            </div>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose?.(); }}>
+      <DialogContent className="sm:max-w-[480px]" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>Record Dose — {medication.name}</DialogTitle>
+        </DialogHeader>
+
+        {error && <Alert variant="destructive">{error}</Alert>}
+
+        {medication.instructions && (
+          <div className="rounded-md bg-secondary px-4 py-3 text-sm text-muted-foreground">
+            {medication.instructions}
           </div>
-          <div className="admin-v2-form-group">
-            <label>Given At *</label>
-            <input
-              type="datetime-local"
-              value={form.given_at}
-              onChange={e => setForm({ ...form, given_at: e.target.value })}
+        )}
+
+        <Field label="Dose Amount" required>
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              step="0.1"
+              value={form.dose_amount}
+              onChange={e => setForm({ ...form, dose_amount: e.target.value })}
+              placeholder="Amount given"
+              className="flex-1"
             />
+            <span className="shrink-0 text-sm text-muted-foreground">
+              {form.dose_unit || medication.quantity_unit || 'units'}
+            </span>
           </div>
-          <div className="admin-v2-form-group">
-            <label>Notes (optional)</label>
-            <textarea
-              value={form.notes}
-              onChange={e => setForm({ ...form, notes: e.target.value })}
-              rows={2}
-            />
-          </div>
-        </div>
-        <div className="admin-v2-modal-footer">
-          <button type="button" className="admin-v2-btn" onClick={onClose}>Cancel</button>
-          <button
+        </Field>
+
+        <Field label="Given At" required>
+          <Input
+            type="datetime-local"
+            value={form.given_at}
+            onChange={e => setForm({ ...form, given_at: e.target.value })}
+          />
+        </Field>
+
+        <Field label="Notes (optional)">
+          <Textarea
+            value={form.notes}
+            onChange={e => setForm({ ...form, notes: e.target.value })}
+            rows={2}
+          />
+        </Field>
+
+        <DialogFooter>
+          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button
             type="button"
-            className="admin-v2-btn admin-v2-btn-primary"
             onClick={handleSave}
             disabled={saving || !form.dose_amount}
           >
             {saving ? 'Saving...' : 'Record Administration'}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 };
 

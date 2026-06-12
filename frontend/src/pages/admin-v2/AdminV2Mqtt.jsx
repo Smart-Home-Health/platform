@@ -18,6 +18,12 @@
 import React, { useState, useEffect } from 'react';
 import config from '../../config';
 import AdminV2Layout from './AdminV2Layout';
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Alert } from '@/components/ui/alert';
+import { Field, FormRow } from '@/components/ui/field';
 import './AdminV2.css';
 
 const MQTT_SECTIONS = [
@@ -41,6 +47,10 @@ const PERM_OPTIONS = [
   { value: 'set', label: 'Set only' },
   { value: 'both', label: 'Both' },
 ];
+
+// Compact native <select> used in the dense per-patient permission grid.
+const cellSelectClass =
+  'h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground focus:border-ring focus:outline-none';
 
 export default function AdminV2Mqtt() {
   const [connSettings, setConnSettings] = useState({
@@ -235,204 +245,175 @@ export default function AdminV2Mqtt() {
     );
   }
 
+  const mqttOff = !connSettings.mqtt_enabled;
+
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
-        <div className="admin-v2-page-header">
-          <h1 className="admin-v2-page-title">MQTT Configuration</h1>
-          <p className="admin-v2-page-subtitle">Configure the MQTT broker connection used by sensors and integrations</p>
-        </div>
-        {error && (
-          <div className="admin-v2-alert admin-v2-alert-error" role="alert">
-            {error}
-          </div>
-        )}
-        {success && (
-          <div className="admin-v2-alert admin-v2-alert-success" role="status">
-            {success}
-          </div>
-        )}
+        <div className="tw space-y-6">
+          {error && <Alert variant="destructive" role="alert">{error}</Alert>}
+          {success && <Alert variant="success" role="status">{success}</Alert>}
 
-        <section className="admin-v2-settings-section">
-          <h2 className="admin-v2-settings-section-title">Connection</h2>
-          <div className="admin-v2-settings-card">
-            <div className="admin-v2-settings-group">
-              <label className="admin-v2-checkbox-label">
-                <input
-                  type="checkbox"
+          {/* Connection */}
+          <Card>
+            <CardHeader><CardTitle>Connection</CardTitle></CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <label className="flex w-fit cursor-pointer items-center gap-2">
+                <Checkbox
                   checked={connSettings.mqtt_enabled}
-                  onChange={e => handleConnChange('mqtt_enabled', e.target.checked)}
+                  onCheckedChange={(v) => handleConnChange('mqtt_enabled', v === true)}
                 />
-                Enable MQTT
+                <span className="text-sm text-foreground">Enable MQTT</span>
               </label>
-            </div>
-            <div className="admin-v2-settings-row">
-              <div className="admin-v2-settings-field">
-                <label>Broker</label>
-                <input
-                  type="text"
-                  value={connSettings.mqtt_broker}
-                  onChange={e => handleConnChange('mqtt_broker', e.target.value)}
-                  placeholder="localhost"
-                  disabled={!connSettings.mqtt_enabled}
+
+              <FormRow>
+                <Field label="Broker">
+                  <Input
+                    value={connSettings.mqtt_broker}
+                    onChange={e => handleConnChange('mqtt_broker', e.target.value)}
+                    placeholder="localhost"
+                    disabled={mqttOff}
+                  />
+                </Field>
+                <Field label="Port">
+                  <Input
+                    type="number"
+                    value={connSettings.mqtt_port}
+                    onChange={e => handleConnChange('mqtt_port', parseInt(e.target.value, 10))}
+                    disabled={mqttOff}
+                  />
+                </Field>
+              </FormRow>
+
+              <FormRow>
+                <Field label="Username">
+                  <Input
+                    value={connSettings.mqtt_username}
+                    onChange={e => handleConnChange('mqtt_username', e.target.value)}
+                    disabled={mqttOff}
+                  />
+                </Field>
+                <Field label="Password">
+                  <Input
+                    type="password"
+                    value={connSettings.mqtt_password}
+                    onChange={e => handleConnChange('mqtt_password', e.target.value)}
+                    disabled={mqttOff}
+                  />
+                </Field>
+              </FormRow>
+
+              <Field label="Client ID">
+                <Input
+                  value={connSettings.mqtt_client_id}
+                  onChange={e => handleConnChange('mqtt_client_id', e.target.value)}
+                  placeholder="sensor_monitor"
+                  disabled={mqttOff}
                 />
-              </div>
-              <div className="admin-v2-settings-field">
-                <label>Port</label>
-                <input
-                  type="number"
-                  value={connSettings.mqtt_port}
-                  onChange={e => handleConnChange('mqtt_port', parseInt(e.target.value, 10))}
-                  disabled={!connSettings.mqtt_enabled}
+              </Field>
+
+              <Field label="Base topic">
+                <Input
+                  value={connSettings.mqtt_base_topic}
+                  onChange={e => handleConnChange('mqtt_base_topic', e.target.value)}
+                  placeholder="shh"
+                  disabled={mqttOff}
                 />
-              </div>
-            </div>
-            <div className="admin-v2-settings-row">
-              <div className="admin-v2-settings-field">
-                <label>Username</label>
-                <input
-                  type="text"
-                  value={connSettings.mqtt_username}
-                  onChange={e => handleConnChange('mqtt_username', e.target.value)}
-                  disabled={!connSettings.mqtt_enabled}
-                />
-              </div>
-              <div className="admin-v2-settings-field">
-                <label>Password</label>
-                <input
-                  type="password"
-                  value={connSettings.mqtt_password}
-                  onChange={e => handleConnChange('mqtt_password', e.target.value)}
-                  disabled={!connSettings.mqtt_enabled}
-                />
-              </div>
-            </div>
-            <div className="admin-v2-settings-field">
-              <label>Client ID</label>
-              <input
-                type="text"
-                value={connSettings.mqtt_client_id}
-                onChange={e => handleConnChange('mqtt_client_id', e.target.value)}
-                placeholder="sensor_monitor"
-                disabled={!connSettings.mqtt_enabled}
-              />
-            </div>
-            <div className="admin-v2-settings-field">
-              <label>Base topic</label>
-              <input
-                type="text"
-                value={connSettings.mqtt_base_topic}
-                onChange={e => handleConnChange('mqtt_base_topic', e.target.value)}
-                placeholder="shh"
-                disabled={!connSettings.mqtt_enabled}
-              />
-            </div>
-            <div className="admin-v2-settings-actions">
-              <button
-                type="button"
-                className="admin-v2-btn admin-v2-btn-secondary"
-                onClick={testConnection}
-                disabled={!connSettings.mqtt_enabled || testingConn}
-              >
+              </Field>
+            </CardContent>
+            <CardFooter>
+              <Button variant="secondary" onClick={testConnection} disabled={mqttOff || testingConn}>
                 {testingConn ? 'Testing…' : 'Test connection'}
-              </button>
-              <button
-                type="button"
-                className="admin-v2-btn admin-v2-btn-primary"
-                onClick={saveConnection}
-                disabled={savingConn}
-              >
+              </Button>
+              <Button onClick={saveConnection} disabled={savingConn}>
                 {savingConn ? 'Saving…' : 'Save connection'}
-              </button>
-            </div>
-          </div>
-        </section>
+              </Button>
+            </CardFooter>
+          </Card>
 
-        <section className="admin-v2-settings-section">
-          <h2 className="admin-v2-settings-section-title">Per-patient MQTT</h2>
-          <p className="admin-v2-settings-description">
-            Enable MQTT for each patient and set section permissions: Get (device → HA), Set (HA → device), or Both.
-          </p>
-          <div className="admin-v2-settings-card">
-            <div className="admin-v2-mqtt-table-wrap">
-              <table className="admin-v2-mqtt-table">
-                <thead>
-                  <tr>
-                    <th>Patient</th>
-                    <th>Enable</th>
-                    {MQTT_SECTIONS.map(s => (
-                      <th key={s.id} title={s.label}>
-                        {s.label}
-                      </th>
-                    ))}
-                    <th>Save</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {patientsConfig.map(row => (
-                    <tr key={row.patient_id}>
-                      <td>{row.patient_name || `Patient ${row.patient_id}`}</td>
-                      <td>
-                        <input
-                          type="checkbox"
-                          checked={!!row.enabled}
-                          onChange={e => setPatientEnabled(row.patient_id, e.target.checked)}
-                        />
-                      </td>
-                      {MQTT_SECTIONS.map(section => (
-                        <td key={section.id}>
-                          <select
-                            value={(row.sections || {})[section.id] || 'off'}
-                            onChange={e =>
-                              updatePatientSection(row.patient_id, section.id, e.target.value)
-                            }
-                          >
-                            {PERM_OPTIONS.map(opt => (
-                              <option key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
+          {/* Per-patient MQTT */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Per-patient MQTT</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Enable MQTT for each patient and set section permissions: Get (device → HA), Set (HA → device), or Both.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {patientsConfig.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No patients. Add patients in Configuration → Patients.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-sm">
+                    <thead>
+                      <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
+                        <th className="p-2 font-medium">Patient</th>
+                        <th className="p-2 font-medium">Enable</th>
+                        {MQTT_SECTIONS.map(s => (
+                          <th key={s.id} className="whitespace-nowrap p-2 font-medium">{s.label}</th>
+                        ))}
+                        <th className="p-2 font-medium">Save</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {patientsConfig.map(row => (
+                        <tr key={row.patient_id} className="border-b border-border/60">
+                          <td className="whitespace-nowrap p-2 text-foreground">
+                            {row.patient_name || `Patient ${row.patient_id}`}
+                          </td>
+                          <td className="p-2">
+                            <Checkbox
+                              checked={!!row.enabled}
+                              onCheckedChange={(v) => setPatientEnabled(row.patient_id, v === true)}
+                            />
+                          </td>
+                          {MQTT_SECTIONS.map(section => (
+                            <td key={section.id} className="p-2">
+                              <select
+                                className={cellSelectClass}
+                                value={(row.sections || {})[section.id] || 'off'}
+                                onChange={e => updatePatientSection(row.patient_id, section.id, e.target.value)}
+                              >
+                                {PERM_OPTIONS.map(opt => (
+                                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                              </select>
+                            </td>
+                          ))}
+                          <td className="p-2">
+                            <Button
+                              size="sm"
+                              onClick={() => savePatientConfig(row.patient_id)}
+                              disabled={savingPatientId === row.patient_id}
+                            >
+                              {savingPatientId === row.patient_id ? 'Saving…' : 'Save'}
+                            </Button>
+                          </td>
+                        </tr>
                       ))}
-                      <td>
-                        <button
-                          type="button"
-                          className="admin-v2-btn admin-v2-btn-primary admin-v2-btn-sm"
-                          onClick={() => savePatientConfig(row.patient_id)}
-                          disabled={savingPatientId === row.patient_id}
-                        >
-                          {savingPatientId === row.patient_id ? 'Saving…' : 'Save'}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {patientsConfig.length === 0 && (
-              <p className="admin-v2-muted">No patients. Add patients in Configuration → Patients.</p>
-            )}
-          </div>
-        </section>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-        <section className="admin-v2-settings-section">
-          <h2 className="admin-v2-settings-section-title">Home Assistant discovery</h2>
-          <div className="admin-v2-settings-card">
-            <p className="admin-v2-settings-description">
-              Send discovery for all enabled patients so Home Assistant creates one entity per patient
-              (combined vitals: SpO₂, BPM, alarm, etc.).
-            </p>
-            <button
-              type="button"
-              className="admin-v2-btn admin-v2-btn-primary"
-              onClick={sendDiscoveryAll}
-              disabled={sendingDiscovery || !connSettings.mqtt_enabled}
-            >
-              {sendingDiscovery ? 'Sending…' : 'Send discovery for all enabled patients'}
-            </button>
-          </div>
-        </section>
+          {/* Home Assistant discovery */}
+          <Card>
+            <CardHeader><CardTitle>Home Assistant discovery</CardTitle></CardHeader>
+            <CardContent className="flex flex-col items-start gap-4">
+              <p className="text-sm text-muted-foreground">
+                Send discovery for all enabled patients so Home Assistant creates one entity per patient
+                (combined vitals: SpO₂, BPM, alarm, etc.).
+              </p>
+              <Button onClick={sendDiscoveryAll} disabled={sendingDiscovery || mqttOff}>
+                {sendingDiscovery ? 'Sending…' : 'Send discovery for all enabled patients'}
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </AdminV2Layout>
   );

@@ -1089,6 +1089,19 @@ def logout(response: Response, current_user: User = Depends(get_current_user), d
     return {"message": "Logged out successfully"}
 
 
+@router.post("/lock")
+def lock(response: Response):
+    """
+    Idle lock: drop full auth to account level by clearing ONLY the
+    session_token cookie. The 24h account_token is preserved so the user
+    lands on user-select (not the account-password page) and no account
+    password re-prompt is needed. Has no auth dependency so it still works
+    if the session_token is already gone.
+    """
+    response.delete_cookie(key="session_token")
+    return {"message": "Locked to account level"}
+
+
 @router.get("/session", response_model=SessionInfo)
 def get_session(
     request: Request,

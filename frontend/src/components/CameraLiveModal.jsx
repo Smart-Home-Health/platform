@@ -20,6 +20,8 @@ import Hls from 'hls.js';
 import ModalBase from './ModalBase';
 import ZoomableVideo from './ZoomableVideo';
 import { API_BASE_URL } from '../config';
+import { Button } from '@/components/ui/button';
+import { Alert } from '@/components/ui/alert';
 
 /**
  * Modal that plays the live Frigate stream for a patient.
@@ -114,14 +116,7 @@ export default function CameraLiveModal({ patientId, patientName, onClose }) {
         )}
 
         {error && (
-          <div role="alert" style={{
-            padding: '10px 12px', borderRadius: 8,
-            background: 'rgba(220,53,69,0.15)',
-            border: '1px solid rgba(220,53,69,0.5)',
-            color: '#f8d7da', fontSize: 13,
-          }}>
-            {error}
-          </div>
+          <div className="tw"><Alert variant="destructive">{error}</Alert></div>
         )}
 
         {loading ? (
@@ -144,14 +139,11 @@ export default function CameraLiveModal({ patientId, patientName, onClose }) {
         ) : null}
 
         {info?.snapshot_url && (
-          <a
-            href={info.snapshot_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ color: '#58a6ff', fontSize: 12 }}
-          >
-            Open snapshot
-          </a>
+          <div className="tw">
+            <Button asChild variant="link" className="h-auto self-start p-0 text-xs">
+              <a href={info.snapshot_url} target="_blank" rel="noopener noreferrer">Open snapshot</a>
+            </Button>
+          </div>
         )}
       </div>
     </ModalBase>

@@ -16,19 +16,26 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 import React, { useState, useEffect, useMemo } from 'react';
-import { useSearchParams, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
 import config from '../../config';
-import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import { XIcon, SearchIcon } from '../../components/Icons';
 import RecordVitalsForm from '../../components/vitals/RecordVitalsForm';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
+import { Field } from '@/components/ui/field';
 import './AdminV2.css';
 
 const AdminV2Vitals = () => {
-  const { user } = useAuth();
   const location = useLocation();
-  const [searchParams] = useSearchParams();
   const { selectedPatient: contextPatient } = useAdminPatient();
 
   const selectedPatient = contextPatient;
@@ -159,6 +166,8 @@ const AdminV2Vitals = () => {
     setSearchTerm('');
   };
 
+  const hasActiveFilters = !!(filterType || filterDateFrom || filterDateTo || searchTerm);
+
   const renderRecordView = () => (
     <RecordVitalsForm
       patientId={selectedPatient?.id}
@@ -170,37 +179,69 @@ const AdminV2Vitals = () => {
   const renderHistoryView = () => (
     <div className="admin-v2-vitals-content">
       <div className="vitals-history-filters">
-        <div className="vitals-filter-row">
-          <div className="vitals-filter-group search">
-            <label>Search</label>
-            <div className="vitals-search-wrapper">
-              <SearchIcon size={18} />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search vitals..."
+        <div className="tw flex flex-col gap-4">
+          {/* Search Input */}
+          <div className="relative">
+            <SearchIcon size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Search vitals..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-9 pr-9"
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+              >
+                <XIcon size={14} />
+              </button>
+            )}
+          </div>
+
+          {/* Filters grid */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Field label="Type">
+              <Select value={filterType || '__all__'} onValueChange={(v) => setFilterType(v === '__all__' ? '' : v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">All Types</SelectItem>
+                  {allVitalTypes.map(vt => (
+                    <SelectItem key={vt.value} value={vt.value}>{vt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+
+            <Field label="From" htmlFor="vitals-hist-from">
+              <Input
+                id="vitals-hist-from"
+                type="date"
+                value={filterDateFrom}
+                onChange={(e) => setFilterDateFrom(e.target.value)}
               />
+            </Field>
+
+            <Field label="To" htmlFor="vitals-hist-to">
+              <Input
+                id="vitals-hist-to"
+                type="date"
+                value={filterDateTo}
+                onChange={(e) => setFilterDateTo(e.target.value)}
+              />
+            </Field>
+          </div>
+
+          {/* Actions */}
+          {hasActiveFilters && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="secondary" onClick={clearFilters}>
+                Clear Filters
+              </Button>
             </div>
-          </div>
-          <div className="vitals-filter-group">
-            <label>Type</label>
-            <select value={filterType} onChange={(e) => setFilterType(e.target.value)}>
-              <option value="">All Types</option>
-              {allVitalTypes.map(vt => (<option key={vt.value} value={vt.value}>{vt.label}</option>))}
-            </select>
-          </div>
-          <div className="vitals-filter-group">
-            <label>From</label>
-            <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} />
-          </div>
-          <div className="vitals-filter-group">
-            <label>To</label>
-            <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} />
-          </div>
-          <div className="vitals-filter-group actions">
-            <button className="vitals-clear-btn" onClick={clearFilters}>Clear Filters</button>
-          </div>
+          )}
         </div>
       </div>
       <div className="admin-v2-table-container">

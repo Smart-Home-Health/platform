@@ -26,7 +26,6 @@ import {
   PlusIcon,
   EditIcon,
   TrashIcon,
-  XIcon,
   NutritionIcon,
   ClockIcon,
   DropletIcon,
@@ -65,8 +64,280 @@ import {
   CheckIcon,
   TargetIcon
 } from '../../components/Icons';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import { Alert } from '@/components/ui/alert';
+import { Field, FormRow } from '@/components/ui/field';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
 import { localTimeToUTC, localTimeAndDaysToUTC, utcCronToLocalDaysAndTime, formatCronExpression, getCurrentLocalDateTime, localDateTimeToUTC, getLocalDateTimeString } from '../../utils/timezone';
 import './AdminV2.css';
+
+// Module-scope so the inputs don't lose focus on each keystroke (a component
+// defined inside render remounts every change).
+function ScheduleFormFields({
+  scheduleForm, setScheduleForm, editingItem,
+  scheduleMode, setScheduleMode,
+  selectedDays, setSelectedDays,
+  selectedDayOfMonth, setSelectedDayOfMonth,
+  scheduleTime, setScheduleTime,
+  daysOfWeek,
+}) {
+  const showDefaults = ['meal', 'hydration', 'snack', 'supplement'].includes(scheduleForm.schedule_type);
+  return (
+    <div className="flex flex-col gap-4">
+      <FormRow>
+        <Field label="Schedule Type" required>
+          <Select
+            value={scheduleForm.schedule_type}
+            onValueChange={(v) => setScheduleForm({ ...scheduleForm, schedule_type: v })}
+          >
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="meal">Meal</SelectItem>
+              <SelectItem value="hydration">Hydration</SelectItem>
+              <SelectItem value="snack">Snack</SelectItem>
+              <SelectItem value="supplement">Supplement</SelectItem>
+              <SelectItem value="diaper_check">Diaper Check</SelectItem>
+              <SelectItem value="bathroom_assist">Bathroom Assist</SelectItem>
+              <SelectItem value="catheter_care">Catheter Care</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Name" required htmlFor="sched-name">
+          <Input
+            id="sched-name"
+            value={scheduleForm.name}
+            onChange={e => setScheduleForm({ ...scheduleForm, name: e.target.value })}
+            placeholder="e.g., Morning Feed, Afternoon Water"
+            required
+          />
+        </Field>
+      </FormRow>
+
+      {!editingItem && (
+        <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
+          <h4 className="text-sm font-semibold text-foreground">Timing</h4>
+          <div className="flex flex-wrap gap-2">
+            {['daily', 'weekly', 'monthly'].map(m => (
+              <Button
+                key={m}
+                type="button"
+                size="sm"
+                variant={scheduleMode === m ? 'default' : 'secondary'}
+                className="capitalize"
+                onClick={() => setScheduleMode(m)}
+              >
+                {m}
+              </Button>
+            ))}
+          </div>
+
+          {scheduleMode === 'weekly' && (
+            <div className="flex flex-wrap gap-2">
+              {daysOfWeek.map((day, index) => (
+                <Button
+                  key={day}
+                  type="button"
+                  size="sm"
+                  variant={selectedDays.includes(index) ? 'default' : 'secondary'}
+                  onClick={() => setSelectedDays(
+                    selectedDays.includes(index)
+                      ? selectedDays.filter(d => d !== index)
+                      : [...selectedDays, index]
+                  )}
+                >
+                  {day}
+                </Button>
+              ))}
+            </div>
+          )}
+
+          {scheduleMode === 'monthly' && (
+            <Field label="Day of Month">
+              <Select
+                value={String(selectedDayOfMonth)}
+                onValueChange={(v) => setSelectedDayOfMonth(parseInt(v, 10))}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 28 }, (_, i) => i + 1).map(day => (
+                    <SelectItem key={day} value={String(day)}>{day}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          )}
+
+          <Field label="Time" htmlFor="sched-time">
+            <Input
+              id="sched-time"
+              type="time"
+              value={scheduleTime}
+              onChange={e => setScheduleTime(e.target.value)}
+            />
+          </Field>
+        </div>
+      )}
+
+      {showDefaults && (
+        <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
+          <h4 className="text-sm font-semibold text-foreground">Default Values (optional)</h4>
+          <FormRow cols={4}>
+            <Field label="Item Name" htmlFor="sched-item">
+              <Input
+                id="sched-item"
+                value={scheduleForm.default_item_name}
+                onChange={e => setScheduleForm({ ...scheduleForm, default_item_name: e.target.value })}
+                placeholder="e.g., Peptamen, Water"
+              />
+            </Field>
+            <Field label="Amount" htmlFor="sched-amount">
+              <Input
+                id="sched-amount"
+                type="number"
+                step="0.1"
+                value={scheduleForm.default_amount}
+                onChange={e => setScheduleForm({ ...scheduleForm, default_amount: e.target.value })}
+              />
+            </Field>
+            <Field label="Unit">
+              <Select
+                value={scheduleForm.default_amount_unit}
+                onValueChange={(v) => setScheduleForm({ ...scheduleForm, default_amount_unit: v })}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ml">ml</SelectItem>
+                  <SelectItem value="oz">oz</SelectItem>
+                  <SelectItem value="cups">cups</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Calories" htmlFor="sched-cal">
+              <Input
+                id="sched-cal"
+                type="number"
+                step="1"
+                value={scheduleForm.default_calories}
+                onChange={e => setScheduleForm({ ...scheduleForm, default_calories: e.target.value })}
+              />
+            </Field>
+          </FormRow>
+        </div>
+      )}
+
+      <FormRow>
+        <Field label="Reminder (minutes before)" htmlFor="sched-reminder">
+          <Input
+            id="sched-reminder"
+            type="number"
+            value={scheduleForm.reminder_minutes_before}
+            onChange={e => setScheduleForm({ ...scheduleForm, reminder_minutes_before: parseInt(e.target.value) || 0 })}
+          />
+        </Field>
+        <div className="flex items-center gap-2 pt-7">
+          <Checkbox
+            id="sched-care-task"
+            checked={scheduleForm.create_care_task}
+            onCheckedChange={(c) => setScheduleForm({ ...scheduleForm, create_care_task: c === true })}
+          />
+          <Label htmlFor="sched-care-task">Create Care Task</Label>
+        </div>
+      </FormRow>
+
+      <Field label="Instructions" htmlFor="sched-instructions">
+        <Textarea
+          id="sched-instructions"
+          value={scheduleForm.instructions}
+          onChange={e => setScheduleForm({ ...scheduleForm, instructions: e.target.value })}
+          rows={2}
+          placeholder="Instructions for caregiver..."
+        />
+      </Field>
+
+      <Field label="Notes" htmlFor="sched-notes">
+        <Textarea
+          id="sched-notes"
+          value={scheduleForm.notes}
+          onChange={e => setScheduleForm({ ...scheduleForm, notes: e.target.value })}
+          rows={2}
+        />
+      </Field>
+    </div>
+  );
+}
+
+function GoalFormFields({ goalForm, setGoalForm }) {
+  const set = (k) => (e) => setGoalForm({ ...goalForm, [k]: e.target.value });
+  return (
+    <div className="flex flex-col gap-4">
+      <Field label="Effective Date" required htmlFor="goal-date">
+        <Input id="goal-date" type="date" value={goalForm.effective_date} onChange={set('effective_date')} required />
+      </Field>
+
+      <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
+        <h4 className="text-sm font-semibold text-foreground">Fluid Targets</h4>
+        <FormRow>
+          <Field label="Water Target (ml)" htmlFor="goal-water">
+            <Input id="goal-water" type="number" value={goalForm.water_ml_target} onChange={set('water_ml_target')} placeholder="e.g., 2000" />
+          </Field>
+          <Field label="Total Fluids (ml)" htmlFor="goal-total-fluid">
+            <Input id="goal-total-fluid" type="number" value={goalForm.total_fluid_ml_target} onChange={set('total_fluid_ml_target')} placeholder="Including food liquids" />
+          </Field>
+        </FormRow>
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
+        <h4 className="text-sm font-semibold text-foreground">Calorie Targets</h4>
+        <FormRow cols={4}>
+          <Field label="Calories Target" htmlFor="goal-cal"><Input id="goal-cal" type="number" value={goalForm.calories_target} onChange={set('calories_target')} placeholder="e.g., 2000" /></Field>
+          <Field label="Min Calories" htmlFor="goal-cal-min"><Input id="goal-cal-min" type="number" value={goalForm.calories_min} onChange={set('calories_min')} /></Field>
+          <Field label="Max Calories" htmlFor="goal-cal-max"><Input id="goal-cal-max" type="number" value={goalForm.calories_max} onChange={set('calories_max')} /></Field>
+        </FormRow>
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
+        <h4 className="text-sm font-semibold text-foreground">Macronutrient Targets</h4>
+        <FormRow cols={4}>
+          <Field label="Protein (g)" htmlFor="goal-protein"><Input id="goal-protein" type="number" value={goalForm.protein_grams_target} onChange={set('protein_grams_target')} /></Field>
+          <Field label="Carbs (g)" htmlFor="goal-carbs"><Input id="goal-carbs" type="number" value={goalForm.carbs_grams_target} onChange={set('carbs_grams_target')} /></Field>
+          <Field label="Fat (g)" htmlFor="goal-fat"><Input id="goal-fat" type="number" value={goalForm.fat_grams_target} onChange={set('fat_grams_target')} /></Field>
+          <Field label="Fiber (g)" htmlFor="goal-fiber"><Input id="goal-fiber" type="number" value={goalForm.fiber_grams_target} onChange={set('fiber_grams_target')} /></Field>
+        </FormRow>
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
+        <h4 className="text-sm font-semibold text-foreground">Restrictions & Output Targets</h4>
+        <FormRow cols={4}>
+          <Field label="Max Sodium (mg)" htmlFor="goal-sodium"><Input id="goal-sodium" type="number" value={goalForm.sodium_mg_max} onChange={set('sodium_mg_max')} placeholder="For low-sodium diets" /></Field>
+          <Field label="Min Urine Output (ml)" htmlFor="goal-urine"><Input id="goal-urine" type="number" value={goalForm.urine_output_ml_min} onChange={set('urine_output_ml_min')} /></Field>
+          <Field label="BM Target (per day)" htmlFor="goal-bm"><Input id="goal-bm" type="number" value={goalForm.bowel_movements_target} onChange={set('bowel_movements_target')} /></Field>
+        </FormRow>
+      </div>
+
+      <Field label="Notes" htmlFor="goal-notes">
+        <Textarea id="goal-notes" value={goalForm.notes} onChange={set('notes')} rows={2} placeholder="Any special dietary notes..." />
+      </Field>
+    </div>
+  );
+}
 
 const AdminV2Nutrition = () => {
   const { user } = useAuth();
@@ -124,7 +395,13 @@ const AdminV2Nutrition = () => {
   const [editingItem, setEditingItem] = useState(null);
   const [deletingItem, setDeletingItem] = useState(null);
   const [deleteType, setDeleteType] = useState(null);
-  
+
+  // Date-range filters for the Intake / Output history tabs.
+  const [intakeStart, setIntakeStart] = useState('');
+  const [intakeEnd, setIntakeEnd] = useState('');
+  const [outputStart, setOutputStart] = useState('');
+  const [outputEnd, setOutputEnd] = useState('');
+
   // Intake/output form state lives inside the shared modal components now.
 
   const [scheduleForm, setScheduleForm] = useState({
@@ -205,7 +482,7 @@ const AdminV2Nutrition = () => {
     if (selectedPatient) {
       fetchData();
     }
-  }, [selectedPatient, activeTab, overviewDate]);
+  }, [selectedPatient, activeTab, overviewDate, intakeStart, intakeEnd, outputStart, outputEnd]);
 
   // The Overview page needs the current goal to compute % targets — but
   // currentGoal is only loaded by the goals tab in fetchData. Load it once
@@ -291,16 +568,22 @@ const AdminV2Nutrition = () => {
           setDailyOutputs([]);
         }
       } else if (activeTab === 'intake') {
+        const params = new URLSearchParams({ limit: '500' });
+        if (intakeStart) params.append('start_date', new Date(`${intakeStart}T00:00:00`).toISOString());
+        if (intakeEnd) params.append('end_date', new Date(`${intakeEnd}T23:59:59`).toISOString());
         const response = await fetch(
-          `${config.apiUrl}/api/patients/${selectedPatient.id}/nutrition-intake`,
+          `${config.apiUrl}/api/patients/${selectedPatient.id}/nutrition-intake?${params.toString()}`,
           { credentials: 'include' }
         );
         if (response.ok) {
           setIntakes(await response.json());
         }
       } else if (activeTab === 'output') {
+        const params = new URLSearchParams({ limit: '500' });
+        if (outputStart) params.append('start_date', new Date(`${outputStart}T00:00:00`).toISOString());
+        if (outputEnd) params.append('end_date', new Date(`${outputEnd}T23:59:59`).toISOString());
         const response = await fetch(
-          `${config.apiUrl}/api/nutrition/outputs/patient/${selectedPatient.id}?limit=100`,
+          `${config.apiUrl}/api/nutrition/outputs/patient/${selectedPatient.id}?${params.toString()}`,
           { credentials: 'include' }
         );
         if (response.ok) {
@@ -825,6 +1108,75 @@ const AdminV2Nutrition = () => {
     return labels[type] || type;
   };
 
+  // Output display helpers (shared by single + merged rows).
+  const outputDetailText = (o) =>
+    [o.consistency, o.color, o.clarity, o.diaper_wetness ? `Wetness: ${o.diaper_wetness}` : null]
+      .filter(Boolean)
+      .join(', ');
+  const outputConcernText = (o) =>
+    [o.has_blood && 'Blood', o.has_mucus && 'Mucus', o.pain_reported && 'Pain', o.straining && 'Straining']
+      .filter(Boolean)
+      .join(', ');
+
+  // Stool size is qualitative (smear/small/medium/large) and stored in
+  // amount_unit with amount=null; measured outputs (urine) use amount + unit.
+  const SIZE_UNITS = new Set(['smear', 'small', 'medium', 'large']);
+  const outputAmountText = (o) => {
+    if (o.amount != null && o.amount !== '') {
+      return `${o.amount}${o.amount_unit ? ` ${o.amount_unit}` : ''}`;
+    }
+    if (o.amount_unit && SIZE_UNITS.has(String(o.amount_unit).toLowerCase())) {
+      const s = String(o.amount_unit);
+      return s.charAt(0).toUpperCase() + s.slice(1);
+    }
+    return '';
+  };
+
+  // Diaper outputs logged within a few minutes of each other are one physical
+  // change (e.g. urine + bowel) — merge them into a single display event,
+  // mirroring the schedule view's 3-minute window. Backend already date-filters.
+  const DIAPER_MERGE_WINDOW_MS = 3 * 60 * 1000;
+  const buildOutputEvents = (list) => {
+    const sorted = [...list].sort((a, b) => new Date(a.occurred_at) - new Date(b.occurred_at));
+    const diaperGroups = [];
+    sorted.filter(o => o.is_diaper).forEach((o) => {
+      const last = diaperGroups[diaperGroups.length - 1];
+      if (last && (new Date(o.occurred_at) - new Date(last[last.length - 1].occurred_at)) <= DIAPER_MERGE_WINDOW_MS) {
+        last.push(o);
+      } else {
+        diaperGroups.push([o]);
+      }
+    });
+    const events = [];
+    diaperGroups.forEach(g => events.push(
+      g.length > 1
+        ? { kind: 'merged', members: g, time: g[0].occurred_at }
+        : { kind: 'single', output: g[0], time: g[0].occurred_at }
+    ));
+    sorted.filter(o => !o.is_diaper).forEach(o => events.push({ kind: 'single', output: o, time: o.occurred_at }));
+    events.sort((a, b) => new Date(b.time) - new Date(a.time));
+    return events;
+  };
+  const outputEvents = buildOutputEvents(outputs);
+
+  // Delete every record in a merged diaper event (mirrors the schedule undo,
+  // which voids all members of a mixed diaper together).
+  const handleDeleteOutputEvent = async (members) => {
+    const types = members.map(m => m.output_type).join(' + ');
+    if (!window.confirm(`Delete this diaper event (${types})? This removes ${members.length} records.`)) return;
+    setSaving(true);
+    try {
+      await Promise.all(members.map(m =>
+        fetch(`${config.apiUrl}/api/nutrition/outputs/${m.id}`, { method: 'DELETE', credentials: 'include' })
+      ));
+      fetchData();
+    } catch (err) {
+      console.error('Error deleting output event:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // Loading state
   if (loadingPatients) {
     return (
@@ -849,16 +1201,13 @@ const AdminV2Nutrition = () => {
             <NutritionIcon size={48} />
             <h3>No Patient Selected</h3>
             <p>Please select a patient to manage nutrition and output tracking.</p>
-            <button 
-              className="admin-v2-btn admin-v2-btn-primary"
-              onClick={() => setShowPatientModal(true)}
-            >
-              Select Patient
-            </button>
+            <div className="tw">
+              <Button onClick={() => setShowPatientModal(true)}>Select Patient</Button>
+            </div>
           </div>
         ) : (
           <>
-            {error && <div className="admin-v2-error">{error}</div>}
+            {error && <div className="tw"><Alert variant="destructive">{error}</Alert></div>}
 
             {/* OVERVIEW TAB — rendered outside .admin-v2-content so the
                 sticky date nav binds to the outer Layout scroll container. */}
@@ -898,19 +1247,40 @@ const AdminV2Nutrition = () => {
               {/* INTAKE TAB */}
               {activeTab === 'intake' && (
                 <div className="admin-v2-section">
-                  <div className="admin-v2-section-header">
-                    <h3>Intake Log</h3>
-                    {hasPermission('nutrition.create') && (
-                      <button 
-                        className="admin-v2-btn admin-v2-btn-primary"
-                        onClick={() => openIntakeModal()}
-                      >
-                        <PlusIcon size={16} />
-                        Log Intake
-                      </button>
-                    )}
+                  {/* Date range filter */}
+                  <div className="tw mb-4">
+                    <div className="rounded-lg border border-border bg-card p-4">
+                      <div className="grid grid-cols-1 items-end gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                        <Field label="From" htmlFor="intake-from">
+                          <Input
+                            id="intake-from"
+                            type="date"
+                            value={intakeStart}
+                            onChange={e => setIntakeStart(e.target.value)}
+                          />
+                        </Field>
+                        <Field label="To" htmlFor="intake-to">
+                          <Input
+                            id="intake-to"
+                            type="date"
+                            value={intakeEnd}
+                            onChange={e => setIntakeEnd(e.target.value)}
+                          />
+                        </Field>
+                        {(intakeStart || intakeEnd) && (
+                          <div>
+                            <Button
+                              variant="secondary"
+                              onClick={() => { setIntakeStart(''); setIntakeEnd(''); }}
+                            >
+                              Clear Filters
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  
+
                   {loading ? (
                     <div className="admin-v2-loading">Loading...</div>
                   ) : intakes.length === 0 ? (
@@ -918,8 +1288,8 @@ const AdminV2Nutrition = () => {
                       <p>No intake records found</p>
                     </div>
                   ) : (
-                    <div className="admin-v2-table-container">
-                      <table className="admin-v2-table">
+                    <div className="admin-v2-table-container admin-v2-table-cards-wrap">
+                      <table className="admin-v2-table admin-v2-table-cards">
                         <thead>
                           <tr>
                             <th>Time</th>
@@ -934,20 +1304,20 @@ const AdminV2Nutrition = () => {
                         <tbody>
                           {intakes.map(intake => (
                             <tr key={intake.id}>
-                              <td>{formatDateTime(intake.consumed_at)}</td>
-                              <td><strong>{intake.item_name}</strong></td>
-                              <td>
+                              <td data-label="Time">{formatDateTime(intake.consumed_at)}</td>
+                              <td className="admin-v2-cell-name"><strong>{intake.item_name}</strong></td>
+                              <td data-label="Type">
                                 <span className={`admin-v2-badge admin-v2-badge-${intake.item_type}`}>
                                   {intake.item_type}
                                 </span>
                               </td>
-                              <td>{intake.amount} {intake.amount_unit}</td>
-                              <td>{intake.calories || '-'}</td>
-                              <td>{intake.meal_type || '-'}</td>
-                              <td>
+                              <td data-label="Amount">{intake.amount} {intake.amount_unit}</td>
+                              <td data-label="Calories">{intake.calories || '-'}</td>
+                              <td data-label="Meal">{intake.meal_type || '-'}</td>
+                              <td className="admin-v2-cell-actions">
                                 <div className="admin-v2-table-actions">
                                   {hasPermission('nutrition.update') && (
-                                    <button 
+                                    <button
                                       className="admin-v2-action-btn admin-v2-action-btn-edit"
                                       onClick={() => openIntakeModal(intake)}
                                     >
@@ -955,7 +1325,7 @@ const AdminV2Nutrition = () => {
                                     </button>
                                   )}
                                   {hasPermission('nutrition.delete') && (
-                                    <button 
+                                    <button
                                       className="admin-v2-action-btn admin-v2-action-btn-delete"
                                       onClick={() => openDeleteModal(intake, 'intake')}
                                     >
@@ -976,28 +1346,49 @@ const AdminV2Nutrition = () => {
               {/* OUTPUT TAB */}
               {activeTab === 'output' && (
                 <div className="admin-v2-section">
-                  <div className="admin-v2-section-header">
-                    <h3>Output Log</h3>
-                    {hasPermission('nutrition.create') && (
-                      <button 
-                        className="admin-v2-btn admin-v2-btn-primary"
-                        onClick={() => openOutputModal()}
-                      >
-                        <PlusIcon size={16} />
-                        Log Output
-                      </button>
-                    )}
+                  {/* Date range filter */}
+                  <div className="tw mb-4">
+                    <div className="rounded-lg border border-border bg-card p-4">
+                      <div className="grid grid-cols-1 items-end gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                        <Field label="From" htmlFor="output-from">
+                          <Input
+                            id="output-from"
+                            type="date"
+                            value={outputStart}
+                            onChange={e => setOutputStart(e.target.value)}
+                          />
+                        </Field>
+                        <Field label="To" htmlFor="output-to">
+                          <Input
+                            id="output-to"
+                            type="date"
+                            value={outputEnd}
+                            onChange={e => setOutputEnd(e.target.value)}
+                          />
+                        </Field>
+                        {(outputStart || outputEnd) && (
+                          <div>
+                            <Button
+                              variant="secondary"
+                              onClick={() => { setOutputStart(''); setOutputEnd(''); }}
+                            >
+                              Clear Filters
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  
+
                   {loading ? (
                     <div className="admin-v2-loading">Loading...</div>
-                  ) : outputs.length === 0 ? (
+                  ) : outputEvents.length === 0 ? (
                     <div className="admin-v2-empty-state">
                       <p>No output records found</p>
                     </div>
                   ) : (
-                    <div className="admin-v2-table-container">
-                      <table className="admin-v2-table">
+                    <div className="admin-v2-table-container admin-v2-table-cards-wrap">
+                      <table className="admin-v2-table admin-v2-table-cards">
                         <thead>
                           <tr>
                             <th>Time</th>
@@ -1010,57 +1401,106 @@ const AdminV2Nutrition = () => {
                           </tr>
                         </thead>
                         <tbody>
-                          {outputs.map(output => (
-                            <tr key={output.id}>
-                              <td>{formatDateTime(output.occurred_at)}</td>
-                              <td>
-                                <span className={`admin-v2-badge admin-v2-badge-${output.output_type}`}>
-                                  {output.output_type}
-                                </span>
-                                {output.is_diaper && <span className="admin-v2-badge admin-v2-badge-info" style={{ marginLeft: '4px' }}>Diaper</span>}
-                              </td>
-                              <td>
-                                {output.consistency && <span>{output.consistency}</span>}
-                                {output.color && <span>, {output.color}</span>}
-                                {output.clarity && <span>, {output.clarity}</span>}
-                                {output.diaper_wetness && <span>Wetness: {output.diaper_wetness}</span>}
-                              </td>
-                              <td>{output.amount ? `${output.amount} ${output.amount_unit || ''}` : '-'}</td>
-                              <td>
-                                {(output.has_blood || output.has_mucus || output.pain_reported || output.straining) ? (
-                                  <span className="admin-v2-badge admin-v2-badge-danger">
-                                    {[
-                                      output.has_blood && 'Blood',
-                                      output.has_mucus && 'Mucus',
-                                      output.pain_reported && 'Pain',
-                                      output.straining && 'Straining'
-                                    ].filter(Boolean).join(', ')}
+                          {outputEvents.map((ev) => {
+                            if (ev.kind === 'merged') {
+                              const members = ev.members;
+                              const concerns = members.map(outputConcernText).filter(Boolean).join(', ');
+                              const notes = members.map(m => m.notes).filter(Boolean).join('; ');
+                              return (
+                                <tr key={`merged-${members.map(m => m.id).join('-')}`}>
+                                  <td className="admin-v2-cell-name">{formatDateTime(ev.time)}</td>
+                                  <td data-label="Type">
+                                    {members.map(m => (
+                                      <span key={m.id} className={`admin-v2-badge admin-v2-badge-${m.output_type}`} style={{ marginRight: '4px' }}>
+                                        {m.output_type}
+                                      </span>
+                                    ))}
+                                    <span className="admin-v2-badge admin-v2-badge-info">Diaper</span>
+                                  </td>
+                                  <td data-label="Details" className="admin-v2-cell-stack">
+                                    {members.map(m => {
+                                      const line = [outputDetailText(m), outputAmountText(m)].filter(Boolean).join(', ');
+                                      return (
+                                        <span key={m.id} className="admin-v2-output-detail-line">
+                                          <span className="admin-v2-output-detail-type">{m.output_type}</span>
+                                          {line || '—'}
+                                        </span>
+                                      );
+                                    })}
+                                  </td>
+                                  <td data-label="Amount">-</td>
+                                  <td data-label="Concerns">
+                                    {concerns ? <span className="admin-v2-badge admin-v2-badge-danger">{concerns}</span> : '-'}
+                                  </td>
+                                  <td data-label="Notes">{notes || '-'}</td>
+                                  <td className="admin-v2-cell-actions">
+                                    <div className="admin-v2-table-actions">
+                                      {hasPermission('nutrition.update') && members.map(m => (
+                                        <button
+                                          key={m.id}
+                                          className="admin-v2-action-btn admin-v2-action-btn-edit"
+                                          onClick={() => openOutputModal(m)}
+                                          title={`Edit ${m.output_type}`}
+                                        >
+                                          <EditIcon size={14} />
+                                          <span>{m.output_type}</span>
+                                        </button>
+                                      ))}
+                                      {hasPermission('nutrition.delete') && (
+                                        <button
+                                          className="admin-v2-action-btn admin-v2-action-btn-delete"
+                                          onClick={() => handleDeleteOutputEvent(members)}
+                                          title="Delete diaper event"
+                                        >
+                                          <TrashIcon size={14} />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            }
+                            const output = ev.output;
+                            return (
+                              <tr key={output.id}>
+                                <td className="admin-v2-cell-name">{formatDateTime(output.occurred_at)}</td>
+                                <td data-label="Type">
+                                  <span className={`admin-v2-badge admin-v2-badge-${output.output_type}`}>
+                                    {output.output_type}
                                   </span>
-                                ) : '-'}
-                              </td>
-                              <td>{output.notes || '-'}</td>
-                              <td>
-                                <div className="admin-v2-table-actions">
-                                  {hasPermission('nutrition.update') && (
-                                    <button 
-                                      className="admin-v2-action-btn admin-v2-action-btn-edit"
-                                      onClick={() => openOutputModal(output)}
-                                    >
-                                      <EditIcon size={14} />
-                                    </button>
-                                  )}
-                                  {hasPermission('nutrition.delete') && (
-                                    <button 
-                                      className="admin-v2-action-btn admin-v2-action-btn-delete"
-                                      onClick={() => openDeleteModal(output, 'output')}
-                                    >
-                                      <TrashIcon size={14} />
-                                    </button>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
+                                  {output.is_diaper && <span className="admin-v2-badge admin-v2-badge-info" style={{ marginLeft: '4px' }}>Diaper</span>}
+                                </td>
+                                <td data-label="Details" className="admin-v2-cell-stack">{outputDetailText(output)}</td>
+                                <td data-label="Amount">{outputAmountText(output) || '-'}</td>
+                                <td data-label="Concerns">
+                                  {outputConcernText(output)
+                                    ? <span className="admin-v2-badge admin-v2-badge-danger">{outputConcernText(output)}</span>
+                                    : '-'}
+                                </td>
+                                <td data-label="Notes">{output.notes || '-'}</td>
+                                <td className="admin-v2-cell-actions">
+                                  <div className="admin-v2-table-actions">
+                                    {hasPermission('nutrition.update') && (
+                                      <button
+                                        className="admin-v2-action-btn admin-v2-action-btn-edit"
+                                        onClick={() => openOutputModal(output)}
+                                      >
+                                        <EditIcon size={14} />
+                                      </button>
+                                    )}
+                                    {hasPermission('nutrition.delete') && (
+                                      <button
+                                        className="admin-v2-action-btn admin-v2-action-btn-delete"
+                                        onClick={() => openDeleteModal(output, 'output')}
+                                      >
+                                        <TrashIcon size={14} />
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -1173,13 +1613,12 @@ const AdminV2Nutrition = () => {
                   <div className="admin-v2-section-header">
                     <h3>Nutrition & Care Schedules</h3>
                     {hasPermission('nutrition.create') && (
-                      <button 
-                        className="admin-v2-btn admin-v2-btn-primary"
-                        onClick={() => openScheduleModal()}
-                      >
-                        <PlusIcon size={16} />
-                        Add Schedule
-                      </button>
+                      <div className="tw">
+                        <Button onClick={() => openScheduleModal()}>
+                          <PlusIcon size={16} />
+                          Add Schedule
+                        </Button>
+                      </div>
                     )}
                   </div>
                   
@@ -1268,13 +1707,12 @@ const AdminV2Nutrition = () => {
                   <div className="admin-v2-section-header">
                     <h3>Daily Nutrition Goals</h3>
                     {hasPermission('nutrition.create') && (
-                      <button 
-                        className="admin-v2-btn admin-v2-btn-primary"
-                        onClick={() => openGoalModal()}
-                      >
-                        <PlusIcon size={16} />
-                        Set New Goals
-                      </button>
+                      <div className="tw">
+                        <Button onClick={() => openGoalModal()}>
+                          <PlusIcon size={16} />
+                          Set New Goals
+                        </Button>
+                      </div>
                     )}
                   </div>
 
@@ -1417,13 +1855,12 @@ const AdminV2Nutrition = () => {
                             Effective: {formatDate(currentGoal.effective_date)}
                           </span>
                           {hasPermission('nutrition.update') && (
-                            <button 
-                              className="admin-v2-btn admin-v2-btn-secondary"
-                              onClick={() => openGoalModal(currentGoal)}
-                            >
-                              <EditIcon size={14} />
-                              Edit Current Goals
-                            </button>
+                            <div className="tw">
+                              <Button variant="secondary" onClick={() => openGoalModal(currentGoal)}>
+                                <EditIcon size={14} />
+                                Edit Current Goals
+                              </Button>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -1522,420 +1959,79 @@ const AdminV2Nutrition = () => {
 
 
       {/* Schedule Modal */}
-      {showScheduleModal && (
-        <div className="admin-v2-modal-overlay" onClick={() => setShowScheduleModal(false)}>
-          <div className="admin-v2-modal admin-v2-modal-lg" onClick={e => e.stopPropagation()}>
-            <div className="admin-v2-modal-header">
-              <h3>{editingItem ? 'Edit Schedule' : 'Add Schedule'}</h3>
-              <button className="admin-v2-modal-close" onClick={() => setShowScheduleModal(false)}>
-                <XIcon size={20} />
-              </button>
-            </div>
-            <form onSubmit={handleSaveSchedule}>
-              <div className="admin-v2-modal-body">
-                {formError && <div className="admin-v2-form-error">{formError}</div>}
-                
-                <div className="admin-v2-form-row">
-                  <div className="admin-v2-form-group">
-                    <label>Schedule Type *</label>
-                    <select
-                      value={scheduleForm.schedule_type}
-                      onChange={e => setScheduleForm({...scheduleForm, schedule_type: e.target.value})}
-                    >
-                      <option value="meal">Meal</option>
-                      <option value="hydration">Hydration</option>
-                      <option value="snack">Snack</option>
-                      <option value="supplement">Supplement</option>
-                      <option value="diaper_check">Diaper Check</option>
-                      <option value="bathroom_assist">Bathroom Assist</option>
-                      <option value="catheter_care">Catheter Care</option>
-                    </select>
-                  </div>
-                  <div className="admin-v2-form-group" style={{ flex: 2 }}>
-                    <label>Name *</label>
-                    <input
-                      type="text"
-                      value={scheduleForm.name}
-                      onChange={e => setScheduleForm({...scheduleForm, name: e.target.value})}
-                      placeholder="e.g., Morning Feed, Afternoon Water"
-                      required
-                    />
-                  </div>
-                </div>
-
-                {!editingItem && (
-                  <div className="admin-v2-form-section">
-                    <h4>Timing</h4>
-                    <div className="admin-v2-schedule-mode">
-                      <label>
-                        <input
-                          type="radio"
-                          name="scheduleMode"
-                          checked={scheduleMode === 'daily'}
-                          onChange={() => setScheduleMode('daily')}
-                        />
-                        Daily
-                      </label>
-                      <label>
-                        <input
-                          type="radio"
-                          name="scheduleMode"
-                          checked={scheduleMode === 'weekly'}
-                          onChange={() => setScheduleMode('weekly')}
-                        />
-                        Weekly
-                      </label>
-                      <label>
-                        <input
-                          type="radio"
-                          name="scheduleMode"
-                          checked={scheduleMode === 'monthly'}
-                          onChange={() => setScheduleMode('monthly')}
-                        />
-                        Monthly
-                      </label>
-                    </div>
-
-                    {scheduleMode === 'weekly' && (
-                      <div className="admin-v2-day-picker">
-                        {daysOfWeek.map((day, index) => (
-                          <label key={day} className={`admin-v2-day-chip ${selectedDays.includes(index) ? 'selected' : ''}`}>
-                            <input
-                              type="checkbox"
-                              checked={selectedDays.includes(index)}
-                              onChange={e => {
-                                if (e.target.checked) {
-                                  setSelectedDays([...selectedDays, index]);
-                                } else {
-                                  setSelectedDays(selectedDays.filter(d => d !== index));
-                                }
-                              }}
-                            />
-                            {day}
-                          </label>
-                        ))}
-                      </div>
-                    )}
-
-                    {scheduleMode === 'monthly' && (
-                      <div className="admin-v2-form-group">
-                        <label>Day of Month</label>
-                        <select
-                          value={selectedDayOfMonth}
-                          onChange={e => setSelectedDayOfMonth(parseInt(e.target.value))}
-                        >
-                          {Array.from({ length: 28 }, (_, i) => i + 1).map(day => (
-                            <option key={day} value={day}>{day}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
-                    <div className="admin-v2-form-group">
-                      <label>Time</label>
-                      <input
-                        type="time"
-                        value={scheduleTime}
-                        onChange={e => setScheduleTime(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {['meal', 'hydration', 'snack', 'supplement'].includes(scheduleForm.schedule_type) && (
-                  <div className="admin-v2-form-section">
-                    <h4>Default Values (optional)</h4>
-                    <div className="admin-v2-form-row">
-                      <div className="admin-v2-form-group">
-                        <label>Item Name</label>
-                        <input
-                          type="text"
-                          value={scheduleForm.default_item_name}
-                          onChange={e => setScheduleForm({...scheduleForm, default_item_name: e.target.value})}
-                          placeholder="e.g., Peptamen, Water"
-                        />
-                      </div>
-                      <div className="admin-v2-form-group">
-                        <label>Amount</label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          value={scheduleForm.default_amount}
-                          onChange={e => setScheduleForm({...scheduleForm, default_amount: e.target.value})}
-                        />
-                      </div>
-                      <div className="admin-v2-form-group">
-                        <label>Unit</label>
-                        <select
-                          value={scheduleForm.default_amount_unit}
-                          onChange={e => setScheduleForm({...scheduleForm, default_amount_unit: e.target.value})}
-                        >
-                          <option value="ml">ml</option>
-                          <option value="oz">oz</option>
-                          <option value="cups">cups</option>
-                        </select>
-                      </div>
-                      <div className="admin-v2-form-group">
-                        <label>Calories</label>
-                        <input
-                          type="number"
-                          step="1"
-                          value={scheduleForm.default_calories}
-                          onChange={e => setScheduleForm({...scheduleForm, default_calories: e.target.value})}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div className="admin-v2-form-row">
-                  <div className="admin-v2-form-group">
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={scheduleForm.create_care_task}
-                        onChange={e => setScheduleForm({...scheduleForm, create_care_task: e.target.checked})}
-                      />
-                      {' '}Create Care Task
-                    </label>
-                  </div>
-                  <div className="admin-v2-form-group">
-                    <label>Reminder (minutes before)</label>
-                    <input
-                      type="number"
-                      value={scheduleForm.reminder_minutes_before}
-                      onChange={e => setScheduleForm({...scheduleForm, reminder_minutes_before: parseInt(e.target.value) || 0})}
-                    />
-                  </div>
-                </div>
-
-                <div className="admin-v2-form-group">
-                  <label>Instructions</label>
-                  <textarea
-                    value={scheduleForm.instructions}
-                    onChange={e => setScheduleForm({...scheduleForm, instructions: e.target.value})}
-                    rows={2}
-                    placeholder="Instructions for caregiver..."
-                  />
-                </div>
-
-                <div className="admin-v2-form-group">
-                  <label>Notes</label>
-                  <textarea
-                    value={scheduleForm.notes}
-                    onChange={e => setScheduleForm({...scheduleForm, notes: e.target.value})}
-                    rows={2}
-                  />
-                </div>
-              </div>
-              <div className="admin-v2-modal-footer">
-                <button type="button" className="admin-v2-btn admin-v2-btn-secondary" onClick={() => setShowScheduleModal(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="admin-v2-btn admin-v2-btn-primary" disabled={saving}>
-                  {saving ? 'Saving...' : (editingItem ? 'Update' : 'Save')}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <Dialog open={showScheduleModal} onOpenChange={(o) => { if (!o) setShowScheduleModal(false); }}>
+        <DialogContent className="sm:max-w-[640px]" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle>{editingItem ? 'Edit Schedule' : 'Add Schedule'}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSaveSchedule} className="flex flex-col gap-4">
+            {formError && <Alert variant="destructive">{formError}</Alert>}
+            <ScheduleFormFields
+              scheduleForm={scheduleForm}
+              setScheduleForm={setScheduleForm}
+              editingItem={editingItem}
+              scheduleMode={scheduleMode}
+              setScheduleMode={setScheduleMode}
+              selectedDays={selectedDays}
+              setSelectedDays={setSelectedDays}
+              selectedDayOfMonth={selectedDayOfMonth}
+              setSelectedDayOfMonth={setSelectedDayOfMonth}
+              scheduleTime={scheduleTime}
+              setScheduleTime={setScheduleTime}
+              daysOfWeek={daysOfWeek}
+            />
+            <DialogFooter>
+              <Button type="button" variant="secondary" onClick={() => setShowScheduleModal(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={saving}>
+                {saving ? 'Saving...' : (editingItem ? 'Update' : 'Save')}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Goal Modal */}
-      {showGoalModal && (
-        <div className="admin-v2-modal-overlay" onClick={() => setShowGoalModal(false)}>
-          <div className="admin-v2-modal admin-v2-modal-lg" onClick={e => e.stopPropagation()}>
-            <div className="admin-v2-modal-header">
-              <h3>{editingItem ? 'Edit Goals' : 'Set Daily Goals'}</h3>
-              <button className="admin-v2-modal-close" onClick={() => setShowGoalModal(false)}>
-                <XIcon size={20} />
-              </button>
-            </div>
-            <form onSubmit={handleSaveGoal}>
-              <div className="admin-v2-modal-body">
-                {formError && <div className="admin-v2-form-error">{formError}</div>}
-                
-                <div className="admin-v2-form-group">
-                  <label>Effective Date *</label>
-                  <input
-                    type="date"
-                    value={goalForm.effective_date}
-                    onChange={e => setGoalForm({...goalForm, effective_date: e.target.value})}
-                    required
-                  />
-                </div>
-
-                <div className="admin-v2-form-section">
-                  <h4>Fluid Targets</h4>
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Water Target (ml)</label>
-                      <input
-                        type="number"
-                        value={goalForm.water_ml_target}
-                        onChange={e => setGoalForm({...goalForm, water_ml_target: e.target.value})}
-                        placeholder="e.g., 2000"
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Total Fluids (ml)</label>
-                      <input
-                        type="number"
-                        value={goalForm.total_fluid_ml_target}
-                        onChange={e => setGoalForm({...goalForm, total_fluid_ml_target: e.target.value})}
-                        placeholder="Including food liquids"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="admin-v2-form-section">
-                  <h4>Calorie Targets</h4>
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Calories Target</label>
-                      <input
-                        type="number"
-                        value={goalForm.calories_target}
-                        onChange={e => setGoalForm({...goalForm, calories_target: e.target.value})}
-                        placeholder="e.g., 2000"
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Min Calories</label>
-                      <input
-                        type="number"
-                        value={goalForm.calories_min}
-                        onChange={e => setGoalForm({...goalForm, calories_min: e.target.value})}
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Max Calories</label>
-                      <input
-                        type="number"
-                        value={goalForm.calories_max}
-                        onChange={e => setGoalForm({...goalForm, calories_max: e.target.value})}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="admin-v2-form-section">
-                  <h4>Macronutrient Targets</h4>
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Protein (g)</label>
-                      <input
-                        type="number"
-                        value={goalForm.protein_grams_target}
-                        onChange={e => setGoalForm({...goalForm, protein_grams_target: e.target.value})}
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Carbs (g)</label>
-                      <input
-                        type="number"
-                        value={goalForm.carbs_grams_target}
-                        onChange={e => setGoalForm({...goalForm, carbs_grams_target: e.target.value})}
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Fat (g)</label>
-                      <input
-                        type="number"
-                        value={goalForm.fat_grams_target}
-                        onChange={e => setGoalForm({...goalForm, fat_grams_target: e.target.value})}
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Fiber (g)</label>
-                      <input
-                        type="number"
-                        value={goalForm.fiber_grams_target}
-                        onChange={e => setGoalForm({...goalForm, fiber_grams_target: e.target.value})}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="admin-v2-form-section">
-                  <h4>Restrictions & Output Targets</h4>
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Max Sodium (mg)</label>
-                      <input
-                        type="number"
-                        value={goalForm.sodium_mg_max}
-                        onChange={e => setGoalForm({...goalForm, sodium_mg_max: e.target.value})}
-                        placeholder="For low-sodium diets"
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Min Urine Output (ml)</label>
-                      <input
-                        type="number"
-                        value={goalForm.urine_output_ml_min}
-                        onChange={e => setGoalForm({...goalForm, urine_output_ml_min: e.target.value})}
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>BM Target (per day)</label>
-                      <input
-                        type="number"
-                        value={goalForm.bowel_movements_target}
-                        onChange={e => setGoalForm({...goalForm, bowel_movements_target: e.target.value})}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="admin-v2-form-group">
-                  <label>Notes</label>
-                  <textarea
-                    value={goalForm.notes}
-                    onChange={e => setGoalForm({...goalForm, notes: e.target.value})}
-                    rows={2}
-                    placeholder="Any special dietary notes..."
-                  />
-                </div>
-              </div>
-              <div className="admin-v2-modal-footer">
-                <button type="button" className="admin-v2-btn admin-v2-btn-secondary" onClick={() => setShowGoalModal(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="admin-v2-btn admin-v2-btn-primary" disabled={saving}>
-                  {saving ? 'Saving...' : (editingItem ? 'Update' : 'Save')}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <Dialog open={showGoalModal} onOpenChange={(o) => { if (!o) setShowGoalModal(false); }}>
+        <DialogContent className="sm:max-w-[640px]" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle>{editingItem ? 'Edit Goals' : 'Set Daily Goals'}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSaveGoal} className="flex flex-col gap-4">
+            {formError && <Alert variant="destructive">{formError}</Alert>}
+            <GoalFormFields goalForm={goalForm} setGoalForm={setGoalForm} />
+            <DialogFooter>
+              <Button type="button" variant="secondary" onClick={() => setShowGoalModal(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={saving}>
+                {saving ? 'Saving...' : (editingItem ? 'Update' : 'Save')}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation Modal */}
-      {showDeleteModal && (
-        <div className="admin-v2-modal-overlay" onClick={() => setShowDeleteModal(false)}>
-          <div className="admin-v2-modal admin-v2-modal-sm" onClick={e => e.stopPropagation()}>
-            <div className="admin-v2-modal-header">
-              <h3>Confirm Delete</h3>
-              <button className="admin-v2-modal-close" onClick={() => setShowDeleteModal(false)}>
-                <XIcon size={20} />
-              </button>
-            </div>
-            <div className="admin-v2-modal-body">
-              <p>Are you sure you want to delete this {deleteType}? This action cannot be undone.</p>
-            </div>
-            <div className="admin-v2-modal-footer">
-              <button className="admin-v2-btn admin-v2-btn-secondary" onClick={() => setShowDeleteModal(false)}>
-                Cancel
-              </button>
-              <button className="admin-v2-btn admin-v2-btn-danger" onClick={handleDelete} disabled={saving}>
-                {saving ? 'Deleting...' : 'Delete'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Dialog open={showDeleteModal} onOpenChange={(o) => { if (!o) setShowDeleteModal(false); }}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>Confirm Delete</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this {deleteType}? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setShowDeleteModal(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={saving}>
+              {saving ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AdminV2Layout>
   );
 };

@@ -24,39 +24,73 @@ import {
   PlusIcon,
   EditIcon,
   TrashIcon,
-  XIcon,
   UsersIcon,
   CheckIcon
 } from '../../components/Icons';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Alert } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Field, FormRow } from '@/components/ui/field';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
+import { cn } from '@/lib/utils';
 import './AdminV2.css';
+
+// Radix Select forbids an empty-string value, so use a sentinel for "none".
+const NONE = '__none__';
+
+// Label/value row used inside the provider cards.
+function Row({ label, value }) {
+  return (
+    <div className="flex justify-between gap-3">
+      <span className="shrink-0 text-muted-foreground">{label}:</span>
+      <span className="text-right text-foreground">{value}</span>
+    </div>
+  );
+}
 
 const AdminV2Providers = () => {
   const { user } = useAuth();
-  const { 
-    selectedPatient: contextPatient, 
-    loadingPatients 
+  const {
+    selectedPatient: contextPatient,
+    loadingPatients
   } = useAdminPatient();
-  
+
   // Use context patient as the source of truth
   const selectedPatient = contextPatient;
-  
+
   // Providers state
   const [providers, setProviders] = useState([]);
   const [businesses, setBusinesses] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  
+
   // Filter state
   const [activeTab, setActiveTab] = useState('active');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('');
   const [providerTypes, setProviderTypes] = useState([]);
-  
+
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState(null);
-  
+
   // Form state
   const [formData, setFormData] = useState({
     business_id: '',
@@ -78,7 +112,7 @@ const AdminV2Providers = () => {
   const [saving, setSaving] = useState(false);
 
   const providerTypeOptions = [
-    'medical', 'therapy', 'rehab', 'school', 'pharmacy', 'specialist', 
+    'medical', 'therapy', 'rehab', 'school', 'pharmacy', 'specialist',
     'nursing', 'social_worker', 'case_manager', 'other'
   ];
 
@@ -104,16 +138,16 @@ const AdminV2Providers = () => {
 
   const fetchProviders = async () => {
     if (!selectedPatient) return;
-    
+
     try {
       setLoading(true);
       setError(null);
-      
+
       let url = `${config.apiUrl}/api/providers/patient/${selectedPatient.id}?active_only=${activeTab === 'active'}`;
       if (filterType) {
         url += `&provider_type=${encodeURIComponent(filterType)}`;
       }
-      
+
       const response = await fetch(url, { credentials: 'include' });
       if (response.ok) {
         const data = await response.json();
@@ -171,10 +205,10 @@ const AdminV2Providers = () => {
         business_id: formData.business_id ? parseInt(formData.business_id) : null
       };
 
-      const endpoint = selectedProvider 
+      const endpoint = selectedProvider
         ? `${config.apiUrl}/api/providers/${selectedProvider.id}`
         : `${config.apiUrl}/api/providers`;
-      
+
       const method = selectedProvider ? 'PUT' : 'POST';
       const response = await fetch(endpoint, {
         method,
@@ -191,7 +225,7 @@ const AdminV2Providers = () => {
         const data = await response.json();
         setFormError(data.detail || 'Failed to save provider');
       }
-    } catch (err) {
+    } catch {
       setFormError('Error connecting to server');
     } finally {
       setSaving(false);
@@ -227,7 +261,6 @@ const AdminV2Providers = () => {
       });
       if (response.ok) {
         fetchProviders();
-        setShowDeleteModal(false);
         setSelectedProvider(null);
       }
     } catch (err) {
@@ -306,225 +339,27 @@ const AdminV2Providers = () => {
     );
   }
 
-  // Create/Edit modal
-  const renderFormModal = () => (
-    <div className="admin-v2-modal-overlay" onClick={(e) => {
-      if (e.target === e.currentTarget) {
-        setShowCreateModal(false);
-        resetForm();
-      }
-    }}>
-      <div className="admin-v2-modal admin-v2-modal-lg">
-        <div className="admin-v2-modal-header">
-          <h3>{selectedProvider ? 'Edit Provider' : 'Add New Provider'}</h3>
-          <button 
-            className="admin-v2-modal-close"
-            onClick={() => {
-              setShowCreateModal(false);
-              resetForm();
-            }}
-          >
-            <XIcon size={20} />
-          </button>
-        </div>
-        <form onSubmit={handleSubmit}>
-          <div className="admin-v2-modal-body">
-            {formError && (
-              <div className="admin-v2-form-error">{formError}</div>
-            )}
-            
-            <div className="admin-v2-form-grid">
-              <div className="admin-v2-form-group">
-                <label>First Name *</label>
-                <input
-                  type="text"
-                  value={formData.first_name}
-                  onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
-                  required
-                />
-              </div>
-
-              <div className="admin-v2-form-group">
-                <label>Last Name *</label>
-                <input
-                  type="text"
-                  value={formData.last_name}
-                  onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
-                  required
-                />
-              </div>
-
-              <div className="admin-v2-form-group">
-                <label>Title</label>
-                <input
-                  type="text"
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  placeholder="Dr., RN, PT, OT, etc."
-                />
-              </div>
-
-              <div className="admin-v2-form-group">
-                <label>Provider Type *</label>
-                <select
-                  value={formData.provider_type}
-                  onChange={(e) => setFormData({ ...formData, provider_type: e.target.value })}
-                  required
-                >
-                  {providerTypeOptions.map(type => (
-                    <option key={type} value={type}>
-                      {type.replace('_', ' ').toUpperCase()}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="admin-v2-form-group">
-                <label>Specialty</label>
-                <input
-                  type="text"
-                  value={formData.specialty}
-                  onChange={(e) => setFormData({ ...formData, specialty: e.target.value })}
-                  placeholder="Cardiologist, Physical Therapist, etc."
-                />
-              </div>
-
-              <div className="admin-v2-form-group">
-                <label>Associated Business</label>
-                <select
-                  value={formData.business_id}
-                  onChange={(e) => setFormData({ ...formData, business_id: e.target.value })}
-                >
-                  <option value="">No Business Association</option>
-                  {businesses.map(business => (
-                    <option key={business.id} value={business.id}>
-                      {business.name} ({business.business_type})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="admin-v2-form-group">
-                <label>Phone</label>
-                <input
-                  type="tel"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                />
-              </div>
-
-              <div className="admin-v2-form-group">
-                <label>Email</label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                />
-              </div>
-
-              <div className="admin-v2-form-group">
-                <label>Fax</label>
-                <input
-                  type="tel"
-                  value={formData.fax}
-                  onChange={(e) => setFormData({ ...formData, fax: e.target.value })}
-                />
-              </div>
-
-              <div className="admin-v2-form-group">
-                <label>License Number</label>
-                <input
-                  type="text"
-                  value={formData.license_number}
-                  onChange={(e) => setFormData({ ...formData, license_number: e.target.value })}
-                />
-              </div>
-
-              <div className="admin-v2-form-group">
-                <label>NPI Number</label>
-                <input
-                  type="text"
-                  value={formData.npi_number}
-                  onChange={(e) => setFormData({ ...formData, npi_number: e.target.value })}
-                />
-              </div>
-
-              <div className="admin-v2-form-group">
-                <label>Department</label>
-                <input
-                  type="text"
-                  value={formData.department}
-                  onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                />
-              </div>
-
-              <div className="admin-v2-form-group admin-v2-form-full">
-                <label>Notes</label>
-                <textarea
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  rows="3"
-                />
-              </div>
-
-              <div className="admin-v2-form-group admin-v2-form-full">
-                <label className="admin-v2-checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={formData.is_primary}
-                    onChange={(e) => setFormData({ ...formData, is_primary: e.target.checked })}
-                  />
-                  Primary provider for this type
-                </label>
-              </div>
-            </div>
-          </div>
-          <div className="admin-v2-modal-footer">
-            <button 
-              type="button" 
-              className="admin-v2-btn admin-v2-btn-secondary"
-              onClick={() => {
-                setShowCreateModal(false);
-                resetForm();
-              }}
-            >
-              Cancel
-            </button>
-            <button 
-              type="submit" 
-              className="admin-v2-btn admin-v2-btn-primary"
-              disabled={saving}
-            >
-              {saving ? 'Saving...' : (selectedProvider ? 'Update Provider' : 'Add Provider')}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
         {selectedPatient ? (
           <>
-            {/* Section Title */}
-            <h1 className="schedule-section-title">Care Team & Providers</h1>
-
             {error && (
-              <div className="admin-v2-error-banner">{error}</div>
+              <div className="tw mb-4">
+                <Alert variant="destructive">{error}</Alert>
+              </div>
             )}
 
             {/* Tabs and Filters */}
             <div className="admin-v2-controls-bar">
               <div className="admin-v2-tabs">
-                <button 
+                <button
                   className={`admin-v2-tab ${activeTab === 'active' ? 'active' : ''}`}
                   onClick={() => setActiveTab('active')}
                 >
                   Active ({providers.filter(p => p.active).length})
                 </button>
-                <button 
+                <button
                   className={`admin-v2-tab ${activeTab === 'inactive' ? 'active' : ''}`}
                   onClick={() => setActiveTab('inactive')}
                 >
@@ -553,7 +388,7 @@ const AdminV2Providers = () => {
               </div>
 
               {hasPermission('providers.create') && (
-                <button 
+                <button
                   className="admin-v2-btn admin-v2-btn-primary"
                   onClick={openCreateModal}
                 >
@@ -563,123 +398,76 @@ const AdminV2Providers = () => {
             </div>
 
             {/* Provider Cards Grid */}
-            {loading ? (
-              <div className="admin-v2-loading">Loading providers...</div>
-            ) : filteredProviders.length === 0 ? (
-              <div className="admin-v2-empty-state">
-                <UsersIcon size={48} />
-                <h3>{searchTerm ? 'No providers found matching your search.' : 'No providers found for this patient.'}</h3>
-                {hasPermission('providers.create') && (
-                  <button 
-                    className="admin-v2-btn admin-v2-btn-primary"
-                    onClick={openCreateModal}
-                  >
-                    <PlusIcon size={16} /> Add First Provider
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div className="admin-v2-cards-grid">
-                {filteredProviders.map(provider => (
-                  <div key={provider.id} className={`admin-v2-card ${!provider.active ? 'inactive' : ''}`}>
-                    <div className="admin-v2-card-header">
-                      <div className="admin-v2-card-title-row">
-                        <h3>
-                          {provider.title} {provider.first_name} {provider.last_name}
-                        </h3>
-                        {provider.is_primary && (
-                          <span className="admin-v2-badge admin-v2-badge-primary">PRIMARY</span>
-                        )}
-                      </div>
-                      <span className={`admin-v2-badge admin-v2-badge-type-${provider.provider_type}`}>
-                        {provider.provider_type.replace('_', ' ').toUpperCase()}
-                      </span>
-                    </div>
-                    
-                    <div className="admin-v2-card-body">
-                      {provider.specialty && (
-                        <div className="admin-v2-card-row">
-                          <span className="label">Specialty:</span>
-                          <span className="value">{provider.specialty}</span>
+            <div className="tw mt-4">
+              {loading ? (
+                <p className="text-sm text-muted-foreground">Loading providers...</p>
+              ) : filteredProviders.length === 0 ? (
+                <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border py-12 text-center text-muted-foreground">
+                  <UsersIcon size={48} />
+                  <h3 className="text-base font-semibold text-foreground">
+                    {searchTerm ? 'No providers found matching your search.' : 'No providers found for this patient.'}
+                  </h3>
+                  {hasPermission('providers.create') && (
+                    <Button onClick={openCreateModal}>
+                      <PlusIcon size={16} /> Add First Provider
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {filteredProviders.map(provider => (
+                    <Card key={provider.id} className={cn(!provider.active && "opacity-60")}>
+                      <CardHeader className="gap-2 py-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <CardTitle className="text-sm">
+                            {provider.title} {provider.first_name} {provider.last_name}
+                          </CardTitle>
+                          {provider.is_primary && <Badge variant="info">PRIMARY</Badge>}
                         </div>
-                      )}
-                      {provider.business && (
-                        <div className="admin-v2-card-row">
-                          <span className="label">Business:</span>
-                          <span className="value">{provider.business.name}</span>
-                        </div>
-                      )}
-                      {provider.department && (
-                        <div className="admin-v2-card-row">
-                          <span className="label">Department:</span>
-                          <span className="value">{provider.department}</span>
-                        </div>
-                      )}
-                      {provider.phone && (
-                        <div className="admin-v2-card-row">
-                          <span className="label">Phone:</span>
-                          <span className="value">{provider.phone}</span>
-                        </div>
-                      )}
-                      {provider.email && (
-                        <div className="admin-v2-card-row">
-                          <span className="label">Email:</span>
-                          <span className="value">{provider.email}</span>
-                        </div>
-                      )}
-                      {provider.license_number && (
-                        <div className="admin-v2-card-row">
-                          <span className="label">License:</span>
-                          <span className="value">{provider.license_number}</span>
-                        </div>
-                      )}
-                    </div>
+                        <Badge variant="secondary" className="w-fit">
+                          {provider.provider_type.replace('_', ' ').toUpperCase()}
+                        </Badge>
+                      </CardHeader>
 
-                    <div className="admin-v2-card-actions">
-                      {hasPermission('providers.update') && (
-                        <button 
-                          className="admin-v2-action-btn admin-v2-action-btn-edit"
-                          onClick={() => handleEdit(provider)}
-                        >
-                          <EditIcon size={14} />
-                          <span>Edit</span>
-                        </button>
-                      )}
-                      {!provider.is_primary && provider.active && hasPermission('providers.update') && (
-                        <button 
-                          className="admin-v2-action-btn admin-v2-action-btn-primary-set"
-                          onClick={() => handleSetPrimary(provider.id)}
-                        >
-                          <CheckIcon size={14} />
-                          <span>Set Primary</span>
-                        </button>
-                      )}
-                      {provider.active ? (
-                        hasPermission('providers.delete') && (
-                          <button 
-                            className="admin-v2-action-btn admin-v2-action-btn-delete"
-                            onClick={() => handleDelete(provider.id)}
-                          >
-                            <TrashIcon size={14} />
-                            <span>Deactivate</span>
-                          </button>
-                        )
-                      ) : (
-                        hasPermission('providers.update') && (
-                          <button 
-                            className="admin-v2-action-btn admin-v2-action-btn-success"
-                            onClick={() => handleActivate(provider.id)}
-                          >
-                            <CheckIcon size={14} />
-                            <span>Activate</span>
-                          </button>
-                        )
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                      <CardContent className="flex flex-col gap-1.5 py-3 text-sm">
+                        {provider.specialty && <Row label="Specialty" value={provider.specialty} />}
+                        {provider.business && <Row label="Business" value={provider.business.name} />}
+                        {provider.department && <Row label="Department" value={provider.department} />}
+                        {provider.phone && <Row label="Phone" value={provider.phone} />}
+                        {provider.email && <Row label="Email" value={provider.email} />}
+                        {provider.license_number && <Row label="License" value={provider.license_number} />}
+                      </CardContent>
+
+                      <CardFooter className="flex-wrap justify-start gap-2 py-3">
+                        {hasPermission('providers.update') && (
+                          <Button size="sm" variant="ghost" onClick={() => handleEdit(provider)}>
+                            <EditIcon size={14} /> Edit
+                          </Button>
+                        )}
+                        {!provider.is_primary && provider.active && hasPermission('providers.update') && (
+                          <Button size="sm" variant="ghost" onClick={() => handleSetPrimary(provider.id)}>
+                            <CheckIcon size={14} /> Set Primary
+                          </Button>
+                        )}
+                        {provider.active ? (
+                          hasPermission('providers.delete') && (
+                            <Button size="sm" variant="ghost" className="text-[#ff7b72] hover:text-[#ff7b72]" onClick={() => handleDelete(provider.id)}>
+                              <TrashIcon size={14} /> Deactivate
+                            </Button>
+                          )
+                        ) : (
+                          hasPermission('providers.update') && (
+                            <Button size="sm" variant="ghost" className="text-[#3fb950] hover:text-[#3fb950]" onClick={() => handleActivate(provider.id)}>
+                              <CheckIcon size={14} /> Activate
+                            </Button>
+                          )
+                        )}
+                      </CardFooter>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
           </>
         ) : (
           <div className="admin-v2-placeholder-page">
@@ -689,8 +477,109 @@ const AdminV2Providers = () => {
           </div>
         )}
 
-        {/* Modals */}
-        {showCreateModal && renderFormModal()}
+        {/* Create / Edit Dialog */}
+        <Dialog open={showCreateModal} onOpenChange={(o) => { if (!o) { setShowCreateModal(false); resetForm(); } }}>
+          <DialogContent className="sm:max-w-[680px]" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>{selectedProvider ? 'Edit Provider' : 'Add New Provider'}</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+              {formError && <Alert variant="destructive">{formError}</Alert>}
+
+              <FormRow>
+                <Field label="First Name" required htmlFor="prov-first">
+                  <Input id="prov-first" value={formData.first_name} onChange={(e) => setFormData({ ...formData, first_name: e.target.value })} required />
+                </Field>
+                <Field label="Last Name" required htmlFor="prov-last">
+                  <Input id="prov-last" value={formData.last_name} onChange={(e) => setFormData({ ...formData, last_name: e.target.value })} required />
+                </Field>
+              </FormRow>
+
+              <FormRow>
+                <Field label="Title" htmlFor="prov-title">
+                  <Input id="prov-title" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} placeholder="Dr., RN, PT, OT, etc." />
+                </Field>
+                <Field label="Provider Type" required>
+                  <Select value={formData.provider_type} onValueChange={(v) => setFormData({ ...formData, provider_type: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {providerTypeOptions.map(type => (
+                        <SelectItem key={type} value={type}>{type.replace('_', ' ').toUpperCase()}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              </FormRow>
+
+              <FormRow>
+                <Field label="Specialty" htmlFor="prov-specialty">
+                  <Input id="prov-specialty" value={formData.specialty} onChange={(e) => setFormData({ ...formData, specialty: e.target.value })} placeholder="Cardiologist, Physical Therapist, etc." />
+                </Field>
+                <Field label="Associated Business">
+                  <Select
+                    value={formData.business_id ? String(formData.business_id) : NONE}
+                    onValueChange={(v) => setFormData({ ...formData, business_id: v === NONE ? '' : v })}
+                  >
+                    <SelectTrigger><SelectValue placeholder="No Business Association" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NONE}>No Business Association</SelectItem>
+                      {businesses.map(business => (
+                        <SelectItem key={business.id} value={String(business.id)}>
+                          {business.name} ({business.business_type})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              </FormRow>
+
+              <FormRow>
+                <Field label="Phone" htmlFor="prov-phone">
+                  <Input id="prov-phone" type="tel" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
+                </Field>
+                <Field label="Email" htmlFor="prov-email">
+                  <Input id="prov-email" type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
+                </Field>
+              </FormRow>
+
+              <FormRow>
+                <Field label="Fax" htmlFor="prov-fax">
+                  <Input id="prov-fax" type="tel" value={formData.fax} onChange={(e) => setFormData({ ...formData, fax: e.target.value })} />
+                </Field>
+                <Field label="License Number" htmlFor="prov-license">
+                  <Input id="prov-license" value={formData.license_number} onChange={(e) => setFormData({ ...formData, license_number: e.target.value })} />
+                </Field>
+              </FormRow>
+
+              <FormRow>
+                <Field label="NPI Number" htmlFor="prov-npi">
+                  <Input id="prov-npi" value={formData.npi_number} onChange={(e) => setFormData({ ...formData, npi_number: e.target.value })} />
+                </Field>
+                <Field label="Department" htmlFor="prov-dept">
+                  <Input id="prov-dept" value={formData.department} onChange={(e) => setFormData({ ...formData, department: e.target.value })} />
+                </Field>
+              </FormRow>
+
+              <Field label="Notes" htmlFor="prov-notes">
+                <Textarea id="prov-notes" rows={3} value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} />
+              </Field>
+
+              <label className="flex w-fit cursor-pointer items-center gap-2">
+                <Checkbox checked={formData.is_primary} onCheckedChange={(v) => setFormData({ ...formData, is_primary: v === true })} />
+                <span className="text-sm text-foreground">Primary provider for this type</span>
+              </label>
+
+              <DialogFooter>
+                <Button type="button" variant="secondary" onClick={() => { setShowCreateModal(false); resetForm(); }}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={saving}>
+                  {saving ? 'Saving...' : (selectedProvider ? 'Update Provider' : 'Add Provider')}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
     </AdminV2Layout>
   );

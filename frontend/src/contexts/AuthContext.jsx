@@ -15,8 +15,10 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { API_BASE_URL } from '../config';
+import { installAuthInterceptor } from '../utils/authInterceptor';
+import { clearMessagesPopThrottle } from '../utils/messagesPopThrottle';
 
 const AuthContext = createContext();
 
@@ -63,9 +65,24 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [showAuthModal, setShowAuthModal] = useState(false);
 
+  // Keep a ref in sync with authLevel so the fetch interceptor (installed once)
+  // always reads the current value rather than a stale closure.
+  const authLevelRef = useRef(authLevel);
+  useEffect(() => { authLevelRef.current = authLevel; }, [authLevel]);
+
   // Check first-run status and session on mount
   useEffect(() => {
     checkFirstRunAndSession();
+  }, []);
+
+  // Install the global stale-JWT handler once. On a 401 (both tokens expired)
+  // or a 403 while fully authed (session expired, account_token still valid),
+  // re-check the session; ProtectedRoute then routes to the correct flow.
+  useEffect(() => {
+    installAuthInterceptor({
+      getAuthLevel: () => authLevelRef.current,
+      onStale: () => checkFirstRunAndSession(),
+    });
   }, []);
 
   const checkFirstRunAndSession = async () => {
@@ -448,6 +465,7 @@ export const AuthProvider = ({ children }) => {
       console.error('Logout error:', error);
     } finally {
       sessionStorage.removeItem('auth_token');
+      clearMessagesPopThrottle();
       setAccount(null);
       setUser(null);
       setAuthLevel(null);
@@ -458,6 +476,7 @@ export const AuthProvider = ({ children }) => {
 
   // Switch user within same account (keeps account logged in)
   const switchUser = async () => {
+    clearMessagesPopThrottle();
     setUser(null);
     setAuthLevel('account');
     // Account stays logged in, just need to select user again

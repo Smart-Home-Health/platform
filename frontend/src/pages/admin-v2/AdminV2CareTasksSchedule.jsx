@@ -24,6 +24,15 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import config from '../../config';
 import { checkAdministrationWindow, formatDurationMinutes } from '../../utils/timezone';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import './AdminV2.css';
 
 const AdminV2CareTasksSchedule = () => {
@@ -305,11 +314,8 @@ const AdminV2CareTasksSchedule = () => {
       <div className="admin-v2-page">
         {selectedPatient ? (
           <>
-            {/* Section Title */}
-            <h1 className="schedule-section-title">Daily Care Tasks Schedule</h1>
-
             {/* Stats Row */}
-            <div className="admin-v2-stats-row admin-v2-stats-row-compact admin-v2-stats-row-3col">
+            <div className="admin-v2-summary-stats admin-v2-care-tasks-stat-summary">
               <div 
                 className={`admin-v2-stat-card ${statusFilters.due_on_time && statusFilters.due_warning && statusFilters.due_late ? 'selected' : ''}`}
                 onClick={() => setStatusFilters(f => ({ 
@@ -400,24 +406,20 @@ const AdminV2CareTasksSchedule = () => {
             </div>
 
             {/* Refresh Button */}
-            <div className="admin-v2-page-header">
+            <div className="admin-v2-page-header tw">
               <h3 style={{ margin: 0, color: '#e6edf3' }}>
                 Today & Yesterday ({filteredTasks.length} of {scheduledTasks.length})
               </h3>
-              <button 
-                className="admin-v2-btn admin-v2-btn-primary"
-                onClick={fetchSchedule}
-                disabled={loading}
-              >
+              <Button onClick={fetchSchedule} disabled={loading}>
                 {loading ? 'Refreshing...' : 'Refresh'}
-              </button>
+              </Button>
             </div>
 
             {/* Schedule Content */}
             {loading ? (
               <div className="admin-v2-loading">Loading schedule...</div>
             ) : error ? (
-              <div className="admin-v2-error">{error}</div>
+              <div className="tw"><Alert variant="destructive">{error}</Alert></div>
             ) : filteredTasks.length === 0 ? (
               <div className="admin-v2-empty-state">
                 <TasksIcon size={48} />
@@ -564,12 +566,11 @@ const AdminV2CareTasksSchedule = () => {
             <TasksIcon size={48} />
             <h2>Select a Patient</h2>
             <p>Choose a patient to view their daily care tasks schedule</p>
-            <button 
-              className="admin-v2-btn admin-v2-btn-primary"
-              onClick={() => setShowPatientModal(true)}
-            >
-              Select Patient
-            </button>
+            <div className="tw">
+              <Button onClick={() => setShowPatientModal(true)}>
+                Select Patient
+              </Button>
+            </div>
           </div>
         )}
 
@@ -584,57 +585,39 @@ const AdminV2CareTasksSchedule = () => {
           />
         )}
 
-        {/* Off-window (early or late) completion confirmation modal */}
-        {windowConfirm.open && windowConfirm.task && (() => {
+        {/* Off-window (early or late) completion confirmation Dialog */}
+        {(() => {
           const isLate = windowConfirm.check?.status === 'late';
           const title = isLate ? 'Warning: Late Completion' : 'Warning: Early Completion';
           const heading = isLate
             ? 'This care task was scheduled earlier'
             : 'This care task is scheduled later';
-          const offsetText = isLate
+          const offsetText = windowConfirm.check && (isLate
             ? `${formatDurationMinutes(Math.abs(windowConfirm.check.minutesOffset))} ago`
-            : `${formatDurationMinutes(windowConfirm.check.minutesOffset)} from now`;
+            : `${formatDurationMinutes(windowConfirm.check.minutesOffset)} from now`);
           const confirmLabel = isLate ? 'Confirm Late Completion' : 'Confirm Early Completion';
           const close = () => setWindowConfirm({ open: false, task: null, check: null });
           return (
-            <div className="admin-v2-modal-overlay" onClick={close}>
-              <div className="admin-v2-modal admin-v2-modal-sm" onClick={e => e.stopPropagation()}>
-                <div className="admin-v2-modal-header">
-                  <h2>{title}</h2>
-                  <button className="admin-v2-modal-close" onClick={close}>
-                    <XIcon size={20} />
-                  </button>
-                </div>
-                <div className="admin-v2-modal-body">
-                  <div
-                    role="alert"
-                    style={{
-                      background: 'rgba(187, 128, 9, 0.15)',
-                      border: '1px solid rgba(187, 128, 9, 0.6)',
-                      borderRadius: 6,
-                      padding: '0.75rem 1rem',
-                      color: '#e6edf3'
-                    }}
-                  >
-                    <div style={{ fontWeight: 600, color: '#f0883e', marginBottom: '0.35rem' }}>
-                      {heading}
-                    </div>
-                    <div style={{ fontSize: '0.9rem' }}>
+            <Dialog open={windowConfirm.open && !!windowConfirm.task} onOpenChange={(o) => { if (!o) close(); }}>
+              <DialogContent className="sm:max-w-[480px]" aria-describedby={undefined}>
+                <DialogHeader>
+                  <DialogTitle>{title}</DialogTitle>
+                </DialogHeader>
+                {windowConfirm.task && windowConfirm.check && (
+                  <Alert variant="warning">
+                    <AlertTitle className="text-[#f0883e]">{heading}</AlertTitle>
+                    <AlertDescription>
                       <strong>{windowConfirm.task.care_task_name || windowConfirm.task.name}</strong> is scheduled for{' '}
                       <strong>{windowConfirm.check.scheduledLocal}</strong>
                       {' '}— that's <strong>{offsetText}</strong>.
                       {' '}Confirm this is intentional before marking it complete.
-                    </div>
-                  </div>
-                </div>
-                <div className="admin-v2-modal-footer">
-                  <button type="button" className="admin-v2-btn" onClick={close}>
-                    Cancel
-                  </button>
-                  <button
+                    </AlertDescription>
+                  </Alert>
+                )}
+                <DialogFooter>
+                  <Button type="button" variant="secondary" onClick={close}>Cancel</Button>
+                  <Button
                     type="button"
-                    className="admin-v2-btn"
-                    style={{ background: '#bb8009', borderColor: '#bb8009', color: '#0d1117' }}
                     onClick={async () => {
                       const task = windowConfirm.task;
                       close();
@@ -642,10 +625,10 @@ const AdminV2CareTasksSchedule = () => {
                     }}
                   >
                     {confirmLabel}
-                  </button>
-                </div>
-              </div>
-            </div>
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           );
         })()}
       </div>

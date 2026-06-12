@@ -37,6 +37,9 @@ class CompleteItemRequest(BaseModel):
     item_name: Optional[str] = None
     # Set to True to bypass the >1h-early administration guard
     early_override: bool = False
+    # Set to True to record the item as skipped rather than completed
+    # (care tasks: log.status='skipped'; skips aren't gated by the window).
+    skipped: bool = False
 
 
 class BulkCompleteRequest(BaseModel):

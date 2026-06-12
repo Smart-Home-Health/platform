@@ -24,6 +24,8 @@ import json
 import logging
 import os
 import secrets
+import time
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, Dict, Any
 
@@ -31,6 +33,7 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 import httpx
 
 from db import get_db, SessionLocal
@@ -38,6 +41,11 @@ from dependencies import require_read_access
 from models.readers import Reader
 from bus import EventBus
 from events import SensorUpdate, AlarmPanelState, EventSource
+from utils.pairing_crypto import (
+    PAIR_PROTOCOL_VERSION,
+    derive_fernet_key,
+    public_key_b64,
+)
 
 logger = logging.getLogger('app.readers')
 router = APIRouter(prefix="/api/readers", tags=["readers"])
@@ -62,12 +70,6 @@ class PairRequest(BaseModel):
     port: int = 8080  # Reader API port (default 8080)
     patient_id: Optional[int] = None
     host_url: Optional[str] = None  # e.g., "http://192.168.1.50:8000"
-
-
-class PairConfirm(BaseModel):
-    reader_id: int
-    code: str
-    host_url: Optional[str] = None
 
 
 # --- Active Connections ---
@@ -147,13 +149,14 @@ def list_readers(db: Session, active_only: bool = False) -> list:
 
 
 def create_reader(db: Session, ip_address: str, port: int = 8080, name: str = None, patient_id: int = None) -> Reader:
-    encryption_key = Fernet.generate_key().decode()
+    # The Fernet key is derived during pairing (ECDH with the reader),
+    # not generated upfront.
     reader = Reader(
         name=name or f"Reader-{ip_address}",
         ip_address=ip_address,
         port=port,
         patient_id=patient_id,
-        encryption_key=encryption_key,
+        encryption_key=None,
         is_active=True,
         is_paired=False
     )
@@ -226,7 +229,7 @@ async def create_reader_endpoint(
     if existing:
         raise HTTPException(status_code=400, detail="Reader with this IP already exists")
     
-    reader = create_reader(db, data.ip_address, data.name, data.patient_id)
+    reader = create_reader(db, data.ip_address, name=data.name, patient_id=data.patient_id)
     return {"success": True, "reader": reader.to_dict()}
 
 
@@ -260,8 +263,22 @@ async def delete_reader_endpoint(
 
 # --- Pairing Flow ---
 
-# Store pending pairing codes: reader_id -> code
-pending_pairings: Dict[int, str] = {}
+# Pending pairing requests awaiting user approval on the reader.
+# Memory-only: a hub restart cancels in-flight pairings (they take seconds).
+PENDING_PAIR_TTL = 180  # seconds
+
+
+@dataclass
+class PendingPairing:
+    private_key: X25519PrivateKey  # ephemeral, discarded once the key is derived
+    host_ws_url: str
+    created_at: float  # time.monotonic()
+
+    def expired(self) -> bool:
+        return time.monotonic() - self.created_at > PENDING_PAIR_TTL
+
+
+pending_pairings: Dict[int, PendingPairing] = {}
 
 
 def _reader_facing_ws_url(reader_id: int, request_host_url: Optional[str]) -> str:
@@ -285,10 +302,13 @@ async def initiate_pairing(
 ):
     """
     Initiate pairing with a reader device.
-    
+
     1. Creates reader record if needed
-    2. Sends pairing request to reader (host gives reader the URL to connect back to)
-    3. Returns pairing code from reader for user to confirm
+    2. Sends our ephemeral X25519 public key to the reader; the Fernet key
+       is derived on both sides once the user approves on the reader, so no
+       key material ever crosses the wire
+    3. Returns pending status — the frontend polls /pair/status while the
+       user clicks Allow on the reader's screen
     """
     # Check if reader exists or create new
     reader = get_reader_by_ip(db, data.ip_address)
@@ -300,10 +320,12 @@ async def initiate_pairing(
         # Update port if it changed
         if reader.port != data.port:
             update_reader(db, reader, port=data.port)
-    
+
     # URL the host gives to the reader (reader will connect to this)
     host_ws_url = _reader_facing_ws_url(reader.id, data.host_url)
-    
+
+    private_key = X25519PrivateKey.generate()
+
     try:
         # Send pairing request to reader
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -311,96 +333,102 @@ async def initiate_pairing(
                 f"http://{data.ip_address}:{data.port}/api/pair",
                 json={
                     "host_url": host_ws_url,
-                    "encryption_key": reader.encryption_key
+                    "hub_public_key": public_key_b64(private_key),
+                    "protocol_version": PAIR_PROTOCOL_VERSION
                 }
             )
-            
+
             if response.status_code != 200:
                 raise HTTPException(status_code=502, detail="Reader rejected pairing request")
-            
+
             result = response.json()
-            code = result.get('code')
             device_name = result.get('device_name')
-            
-            if not code:
-                raise HTTPException(status_code=502, detail="Reader did not return pairing code")
-            
-            # Store pending pairing
-            pending_pairings[reader.id] = code
-            
+
+            if result.get('status') != 'pending':
+                raise HTTPException(status_code=502, detail="Reader did not accept the pairing request")
+
+            # Store pending pairing until the user approves on the reader
+            pending_pairings[reader.id] = PendingPairing(
+                private_key=private_key,
+                host_ws_url=host_ws_url,
+                created_at=time.monotonic()
+            )
+
             # Update reader name if provided
             if device_name and reader.name.startswith("Reader-"):
                 update_reader(db, reader, name=device_name)
-            
+
             return {
                 "success": True,
                 "reader_id": reader.id,
                 "reader_name": device_name or reader.name,
-                "code": code,
-                "message": "Confirm the code shown on the reader device"
+                "status": "pending_approval",
+                "message": "Approve the pairing request on the reader"
             }
-            
+
     except httpx.RequestError as e:
         raise HTTPException(status_code=502, detail=f"Cannot reach reader at {data.ip_address}: {e}")
 
 
-@router.post("/pair/confirm")
-async def confirm_pairing(
-    data: PairConfirm,
+@router.get("/{reader_id}/pair/status")
+async def pairing_status(
+    reader_id: int,
     db: Session = Depends(get_db)
 ):
     """
-    Confirm pairing with the code shown on reader.
-    
-    Completes the pairing process and instructs reader to start connection.
+    Poll the reader for the outcome of a pending pairing request.
+
+    Once the user clicks Allow on the reader, the reader returns its public
+    key and both sides derive the same Fernet key.
     """
-    reader = get_reader(db, data.reader_id)
+    reader = get_reader(db, reader_id)
     if not reader:
         raise HTTPException(status_code=404, detail="Reader not found")
-    
-    expected_code = pending_pairings.get(data.reader_id)
-    if not expected_code:
-        raise HTTPException(status_code=400, detail="No pending pairing for this reader")
-    
-    if data.code != expected_code:
-        raise HTTPException(status_code=400, detail="Invalid pairing code")
-    
-    # Same URL the host gives to the reader (must match initiate_pairing)
-    host_ws_url = _reader_facing_ws_url(reader.id, data.host_url)
-    
+
+    pending = pending_pairings.get(reader_id)
+    if not pending or pending.expired():
+        pending_pairings.pop(reader_id, None)
+        return {"status": "expired"}
+
     try:
-        # Confirm pairing with reader
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(
-                f"http://{reader.ip_address}:{reader.port}/api/pair/confirm",
-                json={
-                    "code": data.code,
-                    "host_url": host_ws_url,
-                    "encryption_key": reader.encryption_key
-                }
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(
+                f"http://{reader.ip_address}:{reader.port}/api/pair/status"
             )
-            
             if response.status_code != 200:
-                raise HTTPException(status_code=502, detail="Reader rejected confirmation")
-            
+                return {"status": "pending", "reachable": False}
             result = response.json()
-            if not result.get('success'):
-                raise HTTPException(status_code=502, detail=result.get('error', 'Unknown error'))
-        
-        # Update reader as paired
-        update_reader(db, reader, is_paired=True, paired_at=datetime.utcnow())
-        
-        # Clear pending pairing
-        pending_pairings.pop(data.reader_id, None)
-        
-        return {
-            "success": True,
-            "reader": reader.to_dict(),
-            "message": "Reader paired successfully"
-        }
-        
-    except httpx.RequestError as e:
-        raise HTTPException(status_code=502, detail=f"Cannot reach reader: {e}")
+    except httpx.RequestError:
+        # Transient network hiccup — keep waiting rather than failing the poll
+        return {"status": "pending", "reachable": False}
+
+    reader_status = result.get('status')
+
+    if reader_status == 'pending':
+        return {"status": "pending"}
+
+    if reader_status == 'denied':
+        pending_pairings.pop(reader_id, None)
+        return {"status": "denied"}
+
+    if reader_status == 'approved':
+        reader_public_key = result.get('reader_public_key')
+        if not reader_public_key:
+            raise HTTPException(status_code=502, detail="Reader approved but returned no public key")
+        derived = derive_fernet_key(pending.private_key, reader_public_key)
+        update_reader(
+            db, reader,
+            is_paired=True,
+            paired_at=datetime.utcnow(),
+            encryption_key=derived
+        )
+        pending_pairings.pop(reader_id, None)
+        return {"status": "paired", "reader": reader.to_dict()}
+
+    # Reader reports no pending request while we still have one — it
+    # restarted (its pending state is memory-only) or timed out.
+    pending_pairings.pop(reader_id, None)
+    return {"status": "expired"}
 
 
 @router.post("/{reader_id}/unpair")
@@ -412,20 +440,28 @@ async def unpair_reader(
     reader = get_reader(db, reader_id)
     if not reader:
         raise HTTPException(status_code=404, detail="Reader not found")
-    
-    # Generate new encryption key (invalidates old one)
-    new_key = Fernet.generate_key().decode()
-    update_reader(
-        db, reader,
-        is_paired=False,
-        paired_at=None,
-        encryption_key=new_key
-    )
-    
+
+    # Keys are derived per-pairing, so just drop this one.
+    # (update_reader skips None values, so set these directly.)
+    reader.is_paired = False
+    reader.paired_at = None
+    reader.encryption_key = None
+    reader.updated_at = datetime.utcnow()
+    db.commit()
+    pending_pairings.pop(reader_id, None)
+
+    # Best-effort: tell the reader so it stops reconnecting with a stale key
+    # and its unpaired data gating re-engages.
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(f"http://{reader.ip_address}:{reader.port}/api/unpair")
+    except httpx.RequestError:
+        logger.warning(f"Could not notify reader {reader_id} of unpair (unreachable)")
+
     # Disconnect if connected
     if connection_manager.is_connected(reader_id):
         connection_manager.disconnect(reader_id)
-    
+
     return {"success": True}
 
 

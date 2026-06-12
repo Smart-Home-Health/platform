@@ -16,7 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
@@ -24,14 +23,70 @@ import {
   PlusIcon,
   EditIcon,
   TrashIcon,
-  CheckIcon,
   XIcon,
   ShieldIcon,
   KeyIcon,
   UsersIcon,
   SearchIcon
 } from '../../components/Icons';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Alert } from '@/components/ui/alert';
+import { Field, FormRow } from '@/components/ui/field';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
+import { cn } from '@/lib/utils';
 import './AdminV2.css';
+
+// Scrollable checkbox list used for role / patient assignment. Module-scope so
+// it isn't recreated each render.
+function ToggleList({ items, selectedIds, onToggle, getId, renderLabel, isDisabled, empty }) {
+  if (!items || items.length === 0) {
+    return (
+      <div className="rounded-md border border-border bg-background/40 p-3 text-sm text-muted-foreground">
+        {empty}
+      </div>
+    );
+  }
+  return (
+    <div className="flex max-h-48 flex-col gap-1 overflow-y-auto rounded-md border border-border bg-background/40 p-2">
+      {items.map(item => {
+        const id = getId(item);
+        const disabled = isDisabled ? isDisabled(item) : false;
+        return (
+          <label
+            key={id}
+            className={cn(
+              "flex items-start gap-2 rounded px-2 py-1.5",
+              disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-accent"
+            )}
+          >
+            <Checkbox
+              className="mt-0.5"
+              checked={selectedIds.includes(id)}
+              onCheckedChange={() => onToggle(id)}
+              disabled={disabled}
+            />
+            <span className="text-sm text-foreground">{renderLabel(item)}</span>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
 
 const AdminV2Users = () => {
   const { user } = useAuth();
@@ -40,7 +95,7 @@ const AdminV2Users = () => {
   const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  
+
   // Filter state
   const [searchQuery, setSearchQuery] = useState('');
   const [filterRole, setFilterRole] = useState('');
@@ -54,13 +109,13 @@ const AdminV2Users = () => {
     if (user.is_system_admin) return true;
     return user.permissions?.includes(permission) || false;
   };
-  
+
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
-  
+
   // Form state
   const [formData, setFormData] = useState({
     username: '',
@@ -188,7 +243,7 @@ const AdminV2Users = () => {
           setFormError(data.detail || 'Failed to create user');
         }
       }
-    } catch (err) {
+    } catch {
       setFormError('Error connecting to server');
     } finally {
       setSaving(false);
@@ -231,7 +286,7 @@ const AdminV2Users = () => {
           setFormError(data.detail || 'Failed to update user');
         }
       }
-    } catch (err) {
+    } catch {
       setFormError('Error connecting to server');
     } finally {
       setSaving(false);
@@ -240,7 +295,7 @@ const AdminV2Users = () => {
 
   const updateUserRoles = async (userId, newRoleIds) => {
     const currentRoleIds = selectedUser.roles?.map(r => r.id) || [];
-    
+
     // Add new roles
     for (const roleId of newRoleIds) {
       if (!currentRoleIds.includes(roleId)) {
@@ -250,7 +305,7 @@ const AdminV2Users = () => {
         });
       }
     }
-    
+
     // Remove old roles
     for (const roleId of currentRoleIds) {
       if (!newRoleIds.includes(roleId)) {
@@ -278,7 +333,7 @@ const AdminV2Users = () => {
         const data = await response.json();
         setFormError(data.detail || 'Failed to delete user');
       }
-    } catch (err) {
+    } catch {
       setFormError('Error connecting to server');
     } finally {
       setSaving(false);
@@ -286,13 +341,13 @@ const AdminV2Users = () => {
   };
 
   // System-admin-only: flag a user to reset their password on next sign-in.
-  const handleForcePasswordReset = async (user) => {
+  const handleForcePasswordReset = async (u) => {
     if (!window.confirm(
-      `Require ${user.full_name || user.username} to set a new password on their next sign-in?`
+      `Require ${u.full_name || u.username} to set a new password on their next sign-in?`
     )) return;
     try {
       const response = await fetch(
-        `${config.apiUrl}/api/users/${user.id}/force-password-reset`,
+        `${config.apiUrl}/api/users/${u.id}/force-password-reset`,
         { method: 'POST', credentials: 'include' }
       );
       if (response.ok) {
@@ -306,24 +361,24 @@ const AdminV2Users = () => {
     }
   };
 
-  const openEditModal = (user) => {
-    setSelectedUser(user);
+  const openEditModal = (u) => {
+    setSelectedUser(u);
     setFormData({
-      username: user.username,
-      full_name: user.full_name,
-      email: user.email || '',
+      username: u.username,
+      full_name: u.full_name,
+      email: u.email || '',
       password: '',
       pin: '',
-      is_active: user.is_active,
-      role_ids: user.roles?.map(r => r.id) || [],
-      patient_ids: user.patient_ids || []
+      is_active: u.is_active,
+      role_ids: u.roles?.map(r => r.id) || [],
+      patient_ids: u.patient_ids || []
     });
     setFormError(null);
     setShowEditModal(true);
   };
 
-  const openDeleteModal = (user) => {
-    setSelectedUser(user);
+  const openDeleteModal = (u) => {
+    setSelectedUser(u);
     setFormError(null);
     setShowDeleteModal(true);
   };
@@ -396,30 +451,74 @@ const AdminV2Users = () => {
     // Search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      const matchesSearch = 
+      const matchesSearch =
         u.full_name.toLowerCase().includes(query) ||
         u.username.toLowerCase().includes(query) ||
         (u.email && u.email.toLowerCase().includes(query));
       if (!matchesSearch) return false;
     }
-    
+
     // Role filter
     if (filterRole) {
       const hasRole = u.roles?.some(r => r.id === parseInt(filterRole));
       if (!hasRole) return false;
     }
-    
+
     // Status filter
     if (filterStatus === 'active' && !u.is_active) return false;
     if (filterStatus === 'inactive' && u.is_active) return false;
-    
+
     // Stale login filter
     if (filterStaleLogin && !isStaleLogin(u.last_login)) return false;
-    
+
     return true;
   });
 
   const hasActiveFilters = searchQuery || filterRole || filterStatus || filterStaleLogin;
+
+  // Render the role + patient assignment fields shared by both dialogs.
+  const renderRoleField = (disableSystemAdmin) => (
+    <Field label="Roles">
+      <ToggleList
+        items={roles}
+        selectedIds={formData.role_ids}
+        onToggle={handleRoleToggle}
+        getId={(r) => r.id}
+        isDisabled={disableSystemAdmin ? (r) => r.name === 'system_admin' && selectedUser?.is_system_admin : undefined}
+        renderLabel={(r) => (
+          <>
+            {r.display_name}
+            {r.description && <small className="block text-xs text-muted-foreground">{r.description}</small>}
+          </>
+        )}
+        empty="No roles available"
+      />
+    </Field>
+  );
+
+  const renderPatientField = () => (
+    <Field label="Patient Assignments">
+      {isFormSystemAdmin() ? (
+        <div className="rounded-md border border-border bg-background/40 p-3 text-sm text-muted-foreground">
+          System admins have access to all patients automatically.
+        </div>
+      ) : (
+        <ToggleList
+          items={patients}
+          selectedIds={formData.patient_ids}
+          onToggle={handlePatientToggle}
+          getId={(p) => p.id}
+          renderLabel={(p) => (
+            <>
+              {p.first_name} {p.last_name}
+              {p.medical_record_number && <small className="block text-xs text-muted-foreground">MRN: {p.medical_record_number}</small>}
+            </>
+          )}
+          empty="No patients configured yet."
+        />
+      )}
+    </Field>
+  );
 
   // Show loading while waiting for auth
   if (!user) {
@@ -441,14 +540,10 @@ const AdminV2Users = () => {
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
-        {/* Page Header */}
-        <div className="admin-v2-page-header">
-          <h1 className="admin-v2-page-title">User Management</h1>
-          <p className="admin-v2-page-subtitle">Manage user accounts, roles, and permissions</p>
-        </div>
-
         {error && (
-          <div className="admin-v2-error-banner">{error}</div>
+          <div className="tw mb-4">
+            <Alert variant="destructive">{error}</Alert>
+          </div>
         )}
 
         {/* Summary Stats */}
@@ -539,7 +634,7 @@ const AdminV2Users = () => {
             </button>
           )}
           {hasPermission('users.create') && (
-            <button 
+            <button
               className="admin-v2-btn admin-v2-btn-primary"
               onClick={openCreateModal}
             >
@@ -610,8 +705,8 @@ const AdminV2Users = () => {
                   </td>
                   <td>
                     <span className={isStaleLogin(u.last_login) ? 'admin-v2-text-warning' : ''}>
-                      {u.last_login 
-                        ? new Date(u.last_login).toLocaleDateString() 
+                      {u.last_login
+                        ? new Date(u.last_login).toLocaleDateString()
                         : 'Never'}
                     </span>
                   </td>
@@ -636,7 +731,7 @@ const AdminV2Users = () => {
                         </button>
                       )}
                       {!u.is_system_admin && (
-                        <button 
+                        <button
                           className="admin-v2-action-btn admin-v2-action-btn-delete"
                           onClick={() => openDeleteModal(u)}
                           title="Delete user"
@@ -653,342 +748,193 @@ const AdminV2Users = () => {
           </table>
         </div>
 
-        {/* Create User Modal */}
-        {showCreateModal && (
-          <div className="admin-v2-modal-overlay" onClick={() => setShowCreateModal(false)}>
-            <div className="admin-v2-modal" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>Create New User</h2>
-                <button className="admin-v2-modal-close" onClick={() => setShowCreateModal(false)}>
-                  <XIcon size={20} />
-                </button>
-              </div>
-              <form onSubmit={handleCreateUser}>
-                <div className="admin-v2-modal-body">
-                  {formError && (
-                    <div className="admin-v2-form-error">{formError}</div>
-                  )}
-                  
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Username *</label>
-                      <input
-                        type="text"
-                        value={formData.username}
-                        onChange={e => setFormData({...formData, username: e.target.value})}
-                        required
-                        minLength={3}
-                        placeholder="Enter username"
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Full Name *</label>
-                      <input
-                        type="text"
-                        value={formData.full_name}
-                        onChange={e => setFormData({...formData, full_name: e.target.value})}
-                        required
-                        placeholder="Enter full name"
-                      />
-                    </div>
-                  </div>
+        {/* Create User Dialog */}
+        <Dialog open={showCreateModal} onOpenChange={(o) => { if (!o) setShowCreateModal(false); }}>
+          <DialogContent className="sm:max-w-[640px]" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>Create New User</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleCreateUser} className="flex flex-col gap-4">
+              {formError && <Alert variant="destructive">{formError}</Alert>}
 
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Email</label>
-                      <input
-                        type="email"
-                        value={formData.email}
-                        onChange={e => setFormData({...formData, email: e.target.value})}
-                        placeholder="Enter email address"
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Password *</label>
-                      <input
-                        type="password"
-                        value={formData.password}
-                        onChange={e => setFormData({...formData, password: e.target.value})}
-                        required
-                        minLength={8}
-                        placeholder="Min 8 characters"
-                      />
-                    </div>
-                  </div>
+              <FormRow>
+                <Field label="Username" required htmlFor="u-username">
+                  <Input
+                    id="u-username"
+                    value={formData.username}
+                    onChange={e => setFormData({ ...formData, username: e.target.value })}
+                    required
+                    minLength={3}
+                    placeholder="Enter username"
+                  />
+                </Field>
+                <Field label="Full Name" required htmlFor="u-fullname">
+                  <Input
+                    id="u-fullname"
+                    value={formData.full_name}
+                    onChange={e => setFormData({ ...formData, full_name: e.target.value })}
+                    required
+                    placeholder="Enter full name"
+                  />
+                </Field>
+              </FormRow>
 
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>PIN (4-8 digits)</label>
-                      <input
-                        type="password"
-                        value={formData.pin}
-                        onChange={e => setFormData({...formData, pin: e.target.value})}
-                        placeholder="Optional quick-login PIN"
-                        maxLength={8}
-                        pattern="[0-9]*"
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Status</label>
-                      <select
-                        value={formData.is_active ? 'active' : 'inactive'}
-                        onChange={e => setFormData({...formData, is_active: e.target.value === 'active'})}
-                      >
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
-                      </select>
-                    </div>
-                  </div>
+              <FormRow>
+                <Field label="Email" htmlFor="u-email">
+                  <Input
+                    id="u-email"
+                    type="email"
+                    value={formData.email}
+                    onChange={e => setFormData({ ...formData, email: e.target.value })}
+                    placeholder="Enter email address"
+                  />
+                </Field>
+                <Field label="Password" required htmlFor="u-password">
+                  <Input
+                    id="u-password"
+                    type="password"
+                    value={formData.password}
+                    onChange={e => setFormData({ ...formData, password: e.target.value })}
+                    required
+                    minLength={8}
+                    placeholder="Min 8 characters"
+                  />
+                </Field>
+              </FormRow>
 
-                  <div className="admin-v2-form-group">
-                    <label>Roles</label>
-                    <div className="admin-v2-role-selector">
-                      {roles.map(role => (
-                        <label key={role.id} className="admin-v2-role-option">
-                          <input
-                            type="checkbox"
-                            checked={formData.role_ids.includes(role.id)}
-                            onChange={() => handleRoleToggle(role.id)}
-                          />
-                          <span className="admin-v2-role-option-label">
-                            {role.display_name}
-                            <small>{role.description}</small>
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="admin-v2-form-group">
-                    <label>Patient Assignments</label>
-                    {isFormSystemAdmin() ? (
-                      <div className="admin-v2-placeholder-box">
-                        System admins have access to all patients automatically.
-                      </div>
-                    ) : patients.length === 0 ? (
-                      <div className="admin-v2-placeholder-box">No patients configured yet.</div>
-                    ) : (
-                      <div className="admin-v2-role-selector">
-                        {patients.map(p => (
-                          <label key={p.id} className="admin-v2-role-option">
-                            <input
-                              type="checkbox"
-                              checked={formData.patient_ids.includes(p.id)}
-                              onChange={() => handlePatientToggle(p.id)}
-                            />
-                            <span className="admin-v2-role-option-label">
-                              {p.first_name} {p.last_name}
-                              {p.medical_record_number && <small>MRN: {p.medical_record_number}</small>}
-                            </span>
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div className="admin-v2-modal-footer">
-                  <button 
-                    type="button" 
-                    className="admin-v2-btn"
-                    onClick={() => setShowCreateModal(false)}
+              <FormRow>
+                <Field label="PIN (4-8 digits)" htmlFor="u-pin">
+                  <Input
+                    id="u-pin"
+                    type="password"
+                    value={formData.pin}
+                    onChange={e => setFormData({ ...formData, pin: e.target.value })}
+                    placeholder="Optional quick-login PIN"
+                    maxLength={8}
+                    pattern="[0-9]*"
+                  />
+                </Field>
+                <Field label="Status">
+                  <Select
+                    value={formData.is_active ? 'active' : 'inactive'}
+                    onValueChange={(v) => setFormData({ ...formData, is_active: v === 'active' })}
                   >
-                    Cancel
-                  </button>
-                  <button 
-                    type="submit" 
-                    className="admin-v2-btn admin-v2-btn-primary"
-                    disabled={saving}
-                  >
-                    {saving ? 'Creating...' : 'Create User'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+              </FormRow>
 
-        {/* Edit User Modal */}
-        {showEditModal && selectedUser && (
-          <div className="admin-v2-modal-overlay" onClick={() => setShowEditModal(false)}>
-            <div className="admin-v2-modal" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>Edit User: {selectedUser.username}</h2>
-                <button className="admin-v2-modal-close" onClick={() => setShowEditModal(false)}>
-                  <XIcon size={20} />
-                </button>
-              </div>
-              <form onSubmit={handleUpdateUser}>
-                <div className="admin-v2-modal-body">
-                  {formError && (
-                    <div className="admin-v2-form-error">{formError}</div>
-                  )}
-                  
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Username</label>
-                      <input
-                        type="text"
-                        value={formData.username}
-                        disabled
-                        className="disabled"
-                      />
-                      <small>Username cannot be changed</small>
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Full Name *</label>
-                      <input
-                        type="text"
-                        value={formData.full_name}
-                        onChange={e => setFormData({...formData, full_name: e.target.value})}
-                        required
-                        placeholder="Enter full name"
-                      />
-                    </div>
-                  </div>
+              {renderRoleField(false)}
+              {renderPatientField()}
 
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Email</label>
-                      <input
-                        type="email"
-                        value={formData.email}
-                        onChange={e => setFormData({...formData, email: e.target.value})}
-                        placeholder="Enter email address"
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>New PIN (leave blank to keep)</label>
-                      <input
-                        type="password"
-                        value={formData.pin}
-                        onChange={e => setFormData({...formData, pin: e.target.value})}
-                        placeholder="Enter new PIN"
-                        maxLength={8}
-                        pattern="[0-9]*"
-                      />
-                    </div>
-                  </div>
+              <DialogFooter>
+                <Button type="button" variant="secondary" onClick={() => setShowCreateModal(false)}>Cancel</Button>
+                <Button type="submit" disabled={saving}>{saving ? 'Creating...' : 'Create User'}</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
 
-                  <div className="admin-v2-form-group">
-                    <label>Status</label>
-                    <select
-                      value={formData.is_active ? 'active' : 'inactive'}
-                      onChange={e => setFormData({...formData, is_active: e.target.value === 'active'})}
-                      disabled={selectedUser.is_system_admin}
-                    >
-                      <option value="active">Active</option>
-                      <option value="inactive">Inactive</option>
-                    </select>
-                    {selectedUser.is_system_admin && (
-                      <small>System admin status cannot be changed</small>
-                    )}
-                  </div>
+        {/* Edit User Dialog */}
+        <Dialog open={showEditModal && !!selectedUser} onOpenChange={(o) => { if (!o) setShowEditModal(false); }}>
+          <DialogContent className="sm:max-w-[640px]" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>Edit User: {selectedUser?.username}</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleUpdateUser} className="flex flex-col gap-4">
+              {formError && <Alert variant="destructive">{formError}</Alert>}
 
-                  <div className="admin-v2-form-group">
-                    <label>Roles</label>
-                    <div className="admin-v2-role-selector">
-                      {roles.map(role => (
-                        <label key={role.id} className="admin-v2-role-option">
-                          <input
-                            type="checkbox"
-                            checked={formData.role_ids.includes(role.id)}
-                            onChange={() => handleRoleToggle(role.id)}
-                            disabled={role.name === 'system_admin' && selectedUser.is_system_admin}
-                          />
-                          <span className="admin-v2-role-option-label">
-                            {role.display_name}
-                            <small>{role.description}</small>
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
+              <FormRow>
+                <Field label="Username" htmlFor="u-username-edit" hint="Username cannot be changed">
+                  <Input id="u-username-edit" value={formData.username} disabled />
+                </Field>
+                <Field label="Full Name" required htmlFor="u-fullname-edit">
+                  <Input
+                    id="u-fullname-edit"
+                    value={formData.full_name}
+                    onChange={e => setFormData({ ...formData, full_name: e.target.value })}
+                    required
+                    placeholder="Enter full name"
+                  />
+                </Field>
+              </FormRow>
 
-                  <div className="admin-v2-form-group">
-                    <label>Patient Assignments</label>
-                    {isFormSystemAdmin() ? (
-                      <div className="admin-v2-placeholder-box">
-                        System admins have access to all patients automatically.
-                      </div>
-                    ) : patients.length === 0 ? (
-                      <div className="admin-v2-placeholder-box">No patients configured yet.</div>
-                    ) : (
-                      <div className="admin-v2-role-selector">
-                        {patients.map(p => (
-                          <label key={p.id} className="admin-v2-role-option">
-                            <input
-                              type="checkbox"
-                              checked={formData.patient_ids.includes(p.id)}
-                              onChange={() => handlePatientToggle(p.id)}
-                            />
-                            <span className="admin-v2-role-option-label">
-                              {p.first_name} {p.last_name}
-                              {p.medical_record_number && <small>MRN: {p.medical_record_number}</small>}
-                            </span>
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div className="admin-v2-modal-footer">
-                  <button 
-                    type="button" 
-                    className="admin-v2-btn"
-                    onClick={() => setShowEditModal(false)}
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    type="submit" 
-                    className="admin-v2-btn admin-v2-btn-primary"
-                    disabled={saving}
-                  >
-                    {saving ? 'Saving...' : 'Save Changes'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+              <FormRow>
+                <Field label="Email" htmlFor="u-email-edit">
+                  <Input
+                    id="u-email-edit"
+                    type="email"
+                    value={formData.email}
+                    onChange={e => setFormData({ ...formData, email: e.target.value })}
+                    placeholder="Enter email address"
+                  />
+                </Field>
+                <Field label="New PIN (leave blank to keep)" htmlFor="u-pin-edit">
+                  <Input
+                    id="u-pin-edit"
+                    type="password"
+                    value={formData.pin}
+                    onChange={e => setFormData({ ...formData, pin: e.target.value })}
+                    placeholder="Enter new PIN"
+                    maxLength={8}
+                    pattern="[0-9]*"
+                  />
+                </Field>
+              </FormRow>
 
-        {/* Delete Confirmation Modal */}
-        {showDeleteModal && selectedUser && (
-          <div className="admin-v2-modal-overlay" onClick={() => setShowDeleteModal(false)}>
-            <div className="admin-v2-modal admin-v2-modal-sm" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>Delete User</h2>
-                <button className="admin-v2-modal-close" onClick={() => setShowDeleteModal(false)}>
-                  <XIcon size={20} />
-                </button>
-              </div>
-              <div className="admin-v2-modal-body">
-                {formError && (
-                  <div className="admin-v2-form-error">{formError}</div>
-                )}
-                <p>Are you sure you want to delete the user <strong>{selectedUser.full_name}</strong> (@{selectedUser.username})?</p>
-                <p className="admin-v2-warning-text">This action cannot be undone.</p>
-              </div>
-              <div className="admin-v2-modal-footer">
-                <button 
-                  type="button" 
-                  className="admin-v2-btn"
-                  onClick={() => setShowDeleteModal(false)}
+              <Field
+                label="Status"
+                hint={selectedUser?.is_system_admin ? 'System admin status cannot be changed' : undefined}
+              >
+                <Select
+                  value={formData.is_active ? 'active' : 'inactive'}
+                  onValueChange={(v) => setFormData({ ...formData, is_active: v === 'active' })}
+                  disabled={selectedUser?.is_system_admin}
                 >
-                  Cancel
-                </button>
-                <button 
-                  type="button" 
-                  className="admin-v2-btn admin-v2-btn-danger"
-                  onClick={handleDeleteUser}
-                  disabled={saving}
-                >
-                  {saving ? 'Deleting...' : 'Delete User'}
-                </button>
-              </div>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+
+              {renderRoleField(true)}
+              {renderPatientField()}
+
+              <DialogFooter>
+                <Button type="button" variant="secondary" onClick={() => setShowEditModal(false)}>Cancel</Button>
+                <Button type="submit" disabled={saving}>{saving ? 'Saving...' : 'Save Changes'}</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog open={showDeleteModal && !!selectedUser} onOpenChange={(o) => { if (!o) setShowDeleteModal(false); }}>
+          <DialogContent className="sm:max-w-[420px]">
+            <DialogHeader>
+              <DialogTitle>Delete User</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-2 text-sm">
+              {formError && <Alert variant="destructive">{formError}</Alert>}
+              <p className="text-foreground">
+                Are you sure you want to delete the user <strong>{selectedUser?.full_name}</strong> (@{selectedUser?.username})?
+              </p>
+              <p className="text-muted-foreground">This action cannot be undone.</p>
             </div>
-          </div>
-        )}
+            <DialogFooter>
+              <Button variant="secondary" onClick={() => setShowDeleteModal(false)}>Cancel</Button>
+              <Button variant="destructive" onClick={handleDeleteUser} disabled={saving}>
+                {saving ? 'Deleting...' : 'Delete User'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </AdminV2Layout>
   );

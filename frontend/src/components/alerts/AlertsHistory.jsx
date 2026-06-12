@@ -17,6 +17,14 @@
  */
 import { useState, useEffect } from 'react';
 import config from '../../config';
+import { Alert } from '@/components/ui/alert';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
 
 const AlertsHistory = ({ patientId }) => {
   const [availableDates, setAvailableDates] = useState([]);
@@ -141,28 +149,29 @@ const AlertsHistory = ({ patientId }) => {
     <div className="alerts-history">
       <div className="history-header">
         <h2>Pulse Oximetry Analysis</h2>
-        <div className="date-selector">
+        <div className="date-selector tw">
           <label htmlFor="date-select">Select Date:</label>
-          <select
-            id="date-select"
-            value={selectedDate}
-            onChange={(e) => handleDateChange(e.target.value)}
+          <Select
+            value={selectedDate || undefined}
+            onValueChange={handleDateChange}
             disabled={loading}
           >
-            <option value="">Choose a date...</option>
-            {availableDates.map(date => (
-              <option key={date} value={date}>
-                {formatDate(date)}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger id="date-select" className="w-auto min-w-[240px]">
+              <SelectValue placeholder="Choose a date..." />
+            </SelectTrigger>
+            <SelectContent>
+              {availableDates.map(date => (
+                <SelectItem key={date} value={date}>
+                  {formatDate(date)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
       {error && (
-        <div className="error-message">
-          {error}
-        </div>
+        <div className="tw"><Alert variant="destructive">{error}</Alert></div>
       )}
 
       {loading && (

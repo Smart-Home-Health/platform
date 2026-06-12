@@ -34,6 +34,9 @@ import {
 } from "../components/Icons";
 import logoImage from '../assets/logo2.png';
 import config from '../config';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Alert } from '@/components/ui/alert';
 import AlertsModal from "../components/AlertsModal";
 import EquipmentModal from "../components/EquipmentModal";
 import HistoryModal from "../components/HistoryModal";
@@ -41,6 +44,7 @@ import MedicationModal from "../components/MedicationModal";
 import NutritionModal from "../components/NutritionModal";
 import CareTaskModal from "../components/CareTaskModal";
 import CameraLiveModal from "../components/CameraLiveModal";
+import MessagesModal from "../components/MessagesModal";
 import { formatVitalDisplayName } from "../utils/vitals";
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -67,7 +71,15 @@ export default function Dashboard() {
   const [unlockError, setUnlockError] = useState('');
   const [unlockLoading, setUnlockLoading] = useState(false);
   const [forceRelock, setForceRelock] = useState(false);
-  const needsUnlock = !!readRestricted || !!forceRelock;
+  // Account-password prompt requested by an action (24h re-confirm lapsed).
+  const [actionUnlockOpen, setActionUnlockOpen] = useState(false);
+  // Only genuine no-read-access blocks VIEWING (the server returns no data in
+  // that mode anyway). The 24h re-confirm (forceRelock) does NOT blank the
+  // screen — it gates actions instead, so the live dashboard stays a visible
+  // monitoring view and only prompts for the account password when the user
+  // actually does something.
+  const needsUnlock = !!readRestricted;
+  const unlockModalOpen = needsUnlock || actionUnlockOpen;
 
   // Patient selection
   const [showPatientModal, setShowPatientModal] = useState(false);
@@ -145,7 +157,7 @@ export default function Dashboard() {
   // viewport. Set a CSS variable that the modal CSS reads, so the modal
   // docks under a small banner showing the 3 large vital readings — vitals
   // must remain visible during any auth prompt.
-  const authModalActive = needsUnlock || pinChallengeOpen;
+  const authModalActive = unlockModalOpen || pinChallengeOpen;
   useEffect(() => {
     const root = document.documentElement;
     if (isMobile && authModalActive) {
@@ -712,8 +724,11 @@ export default function Dashboard() {
   //     and this awaits its outcome. Cancel → caller bails.
   // Returns true when the caller may proceed to open its modal.
   const requireUnlockAndFreshUser = async () => {
-    if (needsUnlock) {
-      setUnlockError('Enter account password to unlock.');
+    // Account password is required before acting when read access was never
+    // granted (readRestricted) or the 24h re-confirm window has lapsed.
+    if (readRestricted || forceRelock) {
+      setActionUnlockOpen(true);
+      setUnlockError('Enter account password to continue.');
       return false;
     }
     const ok = await requirePinAuth();
@@ -824,6 +839,7 @@ export default function Dashboard() {
     if (result.success) {
       localStorage.setItem('dashboardUnlockedAt', String(Date.now()));
       setForceRelock(false);
+      setActionUnlockOpen(false);
       setUnlockPassword('');
       setUnlockError('');
     } else {
@@ -834,56 +850,37 @@ export default function Dashboard() {
   return (
     <div className="dashboard-wrapper">
       <ModalBase
-        isOpen={needsUnlock}
-        onClose={() => {}}
+        isOpen={unlockModalOpen}
+        onClose={() => { if (!needsUnlock) setActionUnlockOpen(false); }}
         title="Unlock"
       >
-        <form onSubmit={handleUnlockSubmit}>
-          <p style={{ marginTop: 0 }}>
-            Enter the account unlock password to view dashboard data.
-          </p>
-          {unlockError && (
-            <div style={{ color: '#f85149', marginBottom: '0.75rem' }}>
-              {unlockError}
-            </div>
-          )}
-          <input
-            type="password"
-            value={unlockPassword}
-            onChange={(e) => setUnlockPassword(e.target.value)}
-            placeholder="Account password"
-            autoFocus
-            disabled={unlockLoading}
-            style={{
-              width: '100%',
-              padding: '0.75rem',
-              borderRadius: '8px',
-              border: '1px solid #30363d',
-              background: '#0d1117',
-              color: '#f0f6fc',
-              marginBottom: '0.75rem'
-            }}
-          />
-          <button
-            type="submit"
-            disabled={unlockLoading || !unlockPassword}
-            style={{
-              width: '100%',
-              padding: '0.75rem',
-              borderRadius: '8px',
-              border: '1px solid #2ea043',
-              background: '#238636',
-              color: '#fff',
-              cursor: unlockLoading ? 'default' : 'pointer'
-            }}
-          >
-            {unlockLoading ? 'Unlocking…' : 'Unlock'}
-          </button>
+        <form onSubmit={handleUnlockSubmit} className="tw">
+          <div className="flex flex-col gap-3">
+            <p className="m-0 text-sm text-muted-foreground">
+              {needsUnlock
+                ? 'Enter the account unlock password to view dashboard data.'
+                : 'Enter the account password to continue.'}
+            </p>
+            {unlockError && (
+              <Alert variant="destructive">{unlockError}</Alert>
+            )}
+            <Input
+              type="password"
+              value={unlockPassword}
+              onChange={(e) => setUnlockPassword(e.target.value)}
+              placeholder="Account password"
+              autoFocus
+              disabled={unlockLoading}
+            />
+            <Button type="submit" className="w-full" disabled={unlockLoading || !unlockPassword}>
+              {unlockLoading ? 'Unlocking…' : 'Unlock'}
+            </Button>
+          </div>
         </form>
       </ModalBase>
 
       <ModalBase
-        isOpen={!needsUnlock && showPatientModal}
+        isOpen={!unlockModalOpen && showPatientModal}
         onClose={() => { if (selectedPatient) setShowPatientModal(false); }}
         title="Select Patient"
       >
@@ -1435,27 +1432,7 @@ export default function Dashboard() {
 
       {/* Messages Modal */}
       {isMessagesModalOpen && (
-        <ModalBase
-          isOpen={isMessagesModalOpen}
-          onClose={() => setIsMessagesModalOpen(false)}
-          title="Messages"
-        >
-          <div style={{
-            backgroundColor: 'rgba(30,32,40,0.95)',
-            borderRadius: '12px',
-            padding: '40px',
-            border: '1px solid #4a5568',
-            height: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            <div style={{ textAlign: 'center', color: '#ccc' }}>
-              <h3 style={{ color: '#fff', marginBottom: '16px' }}>Messages</h3>
-              <p>Messaging functionality coming soon...</p>
-            </div>
-          </div>
-        </ModalBase>
+        <MessagesModal onClose={() => setIsMessagesModalOpen(false)} />
       )}
 
       {/* Medication Modal */}

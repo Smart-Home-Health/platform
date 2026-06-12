@@ -24,10 +24,26 @@ import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import {
   AlertIcon,
   CheckIcon,
-  EquipmentIcon,
-  PlusIcon,
-  XIcon
+  PlusIcon
 } from '../../components/Icons';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Alert } from '@/components/ui/alert';
+import { Field } from '@/components/ui/field';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
 import './AdminV2.css';
 
 const ALERT_TYPE_OPTIONS = [
@@ -241,6 +257,18 @@ const AdminV2ShipmentAlerts = () => {
     }
   };
 
+  // Same mapping as getAlertTypeBadgeClass, for the shadcn <Badge> in the dialog.
+  const getAlertTypeBadgeVariant = (type) => {
+    switch (type) {
+      case 'short': return 'warning';
+      case 'wrong_item': return 'danger';
+      case 'damaged': return 'danger';
+      case 'extra': return 'info';
+      case 'backorder': return 'warning';
+      default: return 'secondary';
+    }
+  };
+
   // Stats
   const unresolvedCount = alerts.filter(a => !a.resolved).length;
 
@@ -309,13 +337,11 @@ const AdminV2ShipmentAlerts = () => {
                 </div>
                 
                 {hasPermission('equipment.create') && selectedAlerts.length > 0 && (
-                  <button
-                    className="admin-v2-btn admin-v2-btn-primary"
-                    onClick={() => setShowFollowUpModal(true)}
-                    style={{ marginLeft: 'auto' }}
-                  >
-                    <PlusIcon size={16} /> Create Follow-Up Order ({selectedAlerts.length})
-                  </button>
+                  <div className="tw" style={{ marginLeft: 'auto' }}>
+                    <Button onClick={() => setShowFollowUpModal(true)}>
+                      <PlusIcon size={16} /> Create Follow-Up Order ({selectedAlerts.length})
+                    </Button>
+                  </div>
                 )}
               </div>
             </div>
@@ -324,7 +350,7 @@ const AdminV2ShipmentAlerts = () => {
             {loading ? (
               <div className="admin-v2-loading">Loading alerts...</div>
             ) : error ? (
-              <div className="admin-v2-error">{error}</div>
+              <div className="tw"><Alert variant="destructive">{error}</Alert></div>
             ) : alerts.length === 0 ? (
               <div className="admin-v2-empty-state">
                 <CheckIcon size={48} />
@@ -420,67 +446,59 @@ const AdminV2ShipmentAlerts = () => {
           <div className="admin-v2-loading">Select a patient from the sidebar</div>
         )}
 
-        {/* Follow-Up Order Modal */}
-        {showFollowUpModal && (
-          <div className="admin-v2-modal-overlay" onClick={() => setShowFollowUpModal(false)}>
-            <div className="admin-v2-modal" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>Create Follow-Up Order</h2>
-                <button className="admin-v2-modal-close" onClick={() => setShowFollowUpModal(false)}>
-                  <XIcon size={20} />
-                </button>
-              </div>
-              <div className="admin-v2-modal-body">
-                <p>Create a new order for {selectedAlerts.length} alert(s)?</p>
-                
-                <div className="admin-v2-form-group">
-                  <label>Supplier (optional)</label>
-                  <select
-                    value={selectedSupplierId}
-                    onChange={e => setSelectedSupplierId(e.target.value)}
-                  >
-                    <option value="">-- Select Supplier --</option>
-                    {suppliers.map(s => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
-                </div>
+        {/* Follow-Up Order Dialog */}
+        <Dialog open={showFollowUpModal} onOpenChange={(o) => { if (!o) setShowFollowUpModal(false); }}>
+          <DialogContent className="sm:max-w-[560px]" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>Create Follow-Up Order</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-4">
+              <p className="text-sm text-foreground">Create a new order for {selectedAlerts.length} alert(s)?</p>
 
-                <div className="admin-v2-selected-alerts">
-                  <h4>Selected Items:</h4>
-                  <ul>
-                    {alerts
-                      .filter(a => selectedAlerts.includes(a.id))
-                      .map(a => (
-                        <li key={a.id}>
-                          <span className={`admin-v2-badge ${getAlertTypeBadgeClass(a.alert_type)}`}>
-                            {a.alert_type}
-                          </span>
-                          {' '}
-                          {a.item_number || a.equipment_name || 'Item'} 
-                          {' - '}
-                          Qty: {Math.abs(a.expected_qty - a.actual_qty)}
-                        </li>
-                      ))
-                    }
-                  </ul>
-                </div>
-              </div>
-              <div className="admin-v2-modal-footer">
-                <button type="button" className="admin-v2-btn" onClick={() => setShowFollowUpModal(false)}>
-                  Cancel
-                </button>
-                <button 
-                  className="admin-v2-btn admin-v2-btn-primary" 
-                  onClick={handleCreateFollowUp}
-                  disabled={creatingFollowUp}
+              <Field label="Supplier (optional)">
+                <Select
+                  value={selectedSupplierId || '__none__'}
+                  onValueChange={(v) => setSelectedSupplierId(v === '__none__' ? '' : v)}
                 >
-                  {creatingFollowUp ? 'Creating...' : 'Create Order'}
-                </button>
+                  <SelectTrigger><SelectValue placeholder="-- Select Supplier --" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">-- Select Supplier --</SelectItem>
+                    {suppliers.map(s => (
+                      <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+
+              <div className="flex flex-col gap-2">
+                <h4 className="text-sm font-semibold text-foreground">Selected Items:</h4>
+                <ul className="flex flex-col gap-1.5">
+                  {alerts
+                    .filter(a => selectedAlerts.includes(a.id))
+                    .map(a => (
+                      <li key={a.id} className="flex items-center gap-2 text-sm text-foreground">
+                        <Badge variant={getAlertTypeBadgeVariant(a.alert_type)}>
+                          {a.alert_type}
+                        </Badge>
+                        <span>
+                          {a.item_number || a.equipment_name || 'Item'} — Qty: {Math.abs(a.expected_qty - a.actual_qty)}
+                        </span>
+                      </li>
+                    ))
+                  }
+                </ul>
               </div>
             </div>
-          </div>
-        )}
+            <DialogFooter>
+              <Button type="button" variant="secondary" onClick={() => setShowFollowUpModal(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleCreateFollowUp} disabled={creatingFollowUp}>
+                {creatingFollowUp ? 'Creating...' : 'Create Order'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </AdminV2Layout>
   );

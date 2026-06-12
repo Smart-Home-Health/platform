@@ -835,6 +835,10 @@ def get_scheduled_medications(db: Session, target_date, patient_id: int, tz_offs
                         'description': schedule.description,
                         'cron_expression': schedule.cron_expression,
                         'completed': log is not None,
+                        # A skipped scheduled dose is recorded as a log with
+                        # dose_amount == 0; surface it so the frontend can show
+                        # "skipped" distinctly from a real administration.
+                        'skipped': log is not None and (log.dose_amount or 0) == 0,
                         'completed_at': log.administered_at.isoformat() if log else None,
                         'completed_by': log.administered_by if log else None,
                         'log_id': log.id if log else None,
@@ -968,6 +972,9 @@ def get_scheduled_care_tasks(db: Session, target_date, patient_id: int, tz_offse
                         'category_color': category.color if category else None,
                         # Completion info
                         'completed': log is not None,
+                        # care_task_log.status is completed | skipped | partial;
+                        # surface it so skipped tasks render distinctly.
+                        'status': log.status if log else None,
                         'completed_at': log.completed_at.isoformat() if log else None,
                         'completed_by': log.performed_by if log else None,
                         'log_id': log.id if log else None,

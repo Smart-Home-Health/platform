@@ -23,14 +23,31 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import {
   PlusIcon,
-  XIcon,
   EquipmentIcon,
   ClockIcon,
-  CheckIcon,
   ChevronRightIcon,
   AlertIcon,
   CopyIcon
 } from '../../components/Icons';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Alert } from '@/components/ui/alert';
+import { Field, FormRow } from '@/components/ui/field';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
 import './AdminV2.css';
 
 const STATUS_OPTIONS = [
@@ -347,13 +364,11 @@ const AdminV2Shipments = () => {
                 </div>
                 
                 {hasPermission('equipment.create') && (
-                  <button
-                    className="admin-v2-btn admin-v2-btn-primary"
-                    onClick={() => { resetForm(); setShowCreateModal(true); }}
-                    style={{ marginLeft: 'auto' }}
-                  >
-                    <PlusIcon size={16} /> New Shipment
-                  </button>
+                  <div className="tw" style={{ marginLeft: 'auto' }}>
+                    <Button onClick={() => { resetForm(); setShowCreateModal(true); }}>
+                      <PlusIcon size={16} /> New Shipment
+                    </Button>
+                  </div>
                 )}
               </div>
             </div>
@@ -362,19 +377,18 @@ const AdminV2Shipments = () => {
             {loading ? (
               <div className="admin-v2-loading">Loading shipments...</div>
             ) : error ? (
-              <div className="admin-v2-error">{error}</div>
+              <div className="tw"><Alert variant="destructive">{error}</Alert></div>
             ) : shipments.length === 0 ? (
               <div className="admin-v2-empty-state">
                 <EquipmentIcon size={48} />
                 <h3>No Shipments Found</h3>
                 <p className="admin-v2-text-muted">Create a shipment to start tracking DME deliveries.</p>
                 {hasPermission('equipment.create') && (
-                  <button
-                    className="admin-v2-btn admin-v2-btn-primary"
-                    onClick={() => { resetForm(); setShowCreateModal(true); }}
-                  >
-                    <PlusIcon size={16} /> New Shipment
-                  </button>
+                  <div className="tw">
+                    <Button onClick={() => { resetForm(); setShowCreateModal(true); }}>
+                      <PlusIcon size={16} /> New Shipment
+                    </Button>
+                  </div>
                 )}
               </div>
             ) : (
@@ -437,118 +451,108 @@ const AdminV2Shipments = () => {
           <div className="admin-v2-loading">Select a patient from the sidebar</div>
         )}
 
-        {/* Create Shipment Modal */}
-        {showCreateModal && (
-          <div className="admin-v2-modal-overlay" onClick={() => setShowCreateModal(false)}>
-            <div className="admin-v2-modal" onClick={e => e.stopPropagation()}>
-              <div className="admin-v2-modal-header">
-                <h2>New Shipment</h2>
-                <button className="admin-v2-modal-close" onClick={() => setShowCreateModal(false)}>
-                  <XIcon size={20} />
-                </button>
-              </div>
-              <form onSubmit={handleCreateShipment}>
-                <div className="admin-v2-modal-body">
-                  {formError && (
-                    <div className="admin-v2-form-error">{formError}</div>
-                  )}
-                  
-                  <div className="admin-v2-form-group">
-                    <label>Supplier (DME Provider)</label>
-                    <select
-                      value={selectedSupplierId}
-                      onChange={e => setSelectedSupplierId(e.target.value)}
-                    >
-                      <option value="">-- Select Supplier --</option>
-                      {suppliers.map(s => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
-                  </div>
+        {/* Create Shipment Dialog */}
+        <Dialog open={showCreateModal} onOpenChange={(o) => { if (!o) setShowCreateModal(false); }}>
+          <DialogContent className="sm:max-w-[640px]" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>New Shipment</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleCreateShipment} className="flex flex-col gap-4">
+              {formError && <Alert variant="destructive">{formError}</Alert>}
 
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>PO Number</label>
-                      <input
-                        type="text"
-                        value={formData.po_number}
-                        onChange={e => setFormData({...formData, po_number: e.target.value})}
-                        placeholder="e.g., 55811"
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Order Number</label>
-                      <input
-                        type="text"
-                        value={formData.order_number}
-                        onChange={e => setFormData({...formData, order_number: e.target.value})}
-                        placeholder="e.g., 1099274055"
-                      />
-                    </div>
-                  </div>
+              <Field label="Supplier (DME Provider)">
+                <Select
+                  value={selectedSupplierId || '__none__'}
+                  onValueChange={(v) => setSelectedSupplierId(v === '__none__' ? '' : v)}
+                >
+                  <SelectTrigger><SelectValue placeholder="-- Select Supplier --" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">-- Select Supplier --</SelectItem>
+                    {suppliers.map(s => (
+                      <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
 
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Ship Date</label>
-                      <input
-                        type="date"
-                        value={formData.ship_date}
-                        onChange={e => setFormData({...formData, ship_date: e.target.value})}
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Expected Delivery</label>
-                      <input
-                        type="date"
-                        value={formData.expected_delivery}
-                        onChange={e => setFormData({...formData, expected_delivery: e.target.value})}
-                      />
-                    </div>
-                  </div>
+              <FormRow>
+                <Field label="PO Number" htmlFor="ship-po">
+                  <Input
+                    id="ship-po"
+                    value={formData.po_number}
+                    onChange={e => setFormData({...formData, po_number: e.target.value})}
+                    placeholder="e.g., 55811"
+                  />
+                </Field>
+                <Field label="Order Number" htmlFor="ship-order">
+                  <Input
+                    id="ship-order"
+                    value={formData.order_number}
+                    onChange={e => setFormData({...formData, order_number: e.target.value})}
+                    placeholder="e.g., 1099274055"
+                  />
+                </Field>
+              </FormRow>
 
-                  <div className="admin-v2-form-row">
-                    <div className="admin-v2-form-group">
-                      <label>Tracking Number</label>
-                      <input
-                        type="text"
-                        value={formData.tracking_number}
-                        onChange={e => setFormData({...formData, tracking_number: e.target.value})}
-                        placeholder="Tracking #"
-                      />
-                    </div>
-                    <div className="admin-v2-form-group">
-                      <label>Ship Method</label>
-                      <input
-                        type="text"
-                        value={formData.ship_method}
-                        onChange={e => setFormData({...formData, ship_method: e.target.value})}
-                        placeholder="e.g., FedEx-Ground"
-                      />
-                    </div>
-                  </div>
+              <FormRow>
+                <Field label="Ship Date" htmlFor="ship-date">
+                  <Input
+                    id="ship-date"
+                    type="date"
+                    value={formData.ship_date}
+                    onChange={e => setFormData({...formData, ship_date: e.target.value})}
+                  />
+                </Field>
+                <Field label="Expected Delivery" htmlFor="ship-expected">
+                  <Input
+                    id="ship-expected"
+                    type="date"
+                    value={formData.expected_delivery}
+                    onChange={e => setFormData({...formData, expected_delivery: e.target.value})}
+                  />
+                </Field>
+              </FormRow>
 
-                  <div className="admin-v2-form-group">
-                    <label>Notes</label>
-                    <textarea
-                      value={formData.notes}
-                      onChange={e => setFormData({...formData, notes: e.target.value})}
-                      rows={2}
-                      placeholder="Optional notes"
-                    />
-                  </div>
-                </div>
-                <div className="admin-v2-modal-footer">
-                  <button type="button" className="admin-v2-btn" onClick={() => setShowCreateModal(false)}>
-                    Cancel
-                  </button>
-                  <button type="submit" className="admin-v2-btn admin-v2-btn-primary" disabled={saving}>
-                    {saving ? 'Creating...' : 'Create & Add Items'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+              <FormRow>
+                <Field label="Tracking Number" htmlFor="ship-tracking">
+                  <Input
+                    id="ship-tracking"
+                    value={formData.tracking_number}
+                    onChange={e => setFormData({...formData, tracking_number: e.target.value})}
+                    placeholder="Tracking #"
+                  />
+                </Field>
+                <Field label="Ship Method" htmlFor="ship-method">
+                  <Input
+                    id="ship-method"
+                    value={formData.ship_method}
+                    onChange={e => setFormData({...formData, ship_method: e.target.value})}
+                    placeholder="e.g., FedEx-Ground"
+                  />
+                </Field>
+              </FormRow>
+
+              <Field label="Notes" htmlFor="ship-notes">
+                <Textarea
+                  id="ship-notes"
+                  value={formData.notes}
+                  onChange={e => setFormData({...formData, notes: e.target.value})}
+                  rows={2}
+                  placeholder="Optional notes"
+                />
+              </Field>
+
+              <DialogFooter>
+                <Button type="button" variant="secondary" onClick={() => setShowCreateModal(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={saving}>
+                  {saving ? 'Creating...' : 'Create & Add Items'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
     </AdminV2Layout>
   );

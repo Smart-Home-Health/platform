@@ -18,34 +18,13 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
-import { PatientSelectorModal, MedicationDoseModal } from './components';
+import { PatientSelectorModal } from './components';
 import config from '../../config';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import { MedicationsIcon } from '../../components/Icons';
+import { Button } from '@/components/ui/button';
+import { Alert } from '@/components/ui/alert';
 import './AdminV2.css';
-
-// Map a med's timing relative to next_due into a traffic-light color. A med
-// that's both PRN and scheduled (e.g. Olanzapine 9pm daily with PRN allowed)
-// follows the schedule colors — only fall back to the PRN "always green" when
-// there is no scheduled next_due to compare against.
-//   ≤60 min away      → green   (acceptable window)
-//   60–120 min away   → yellow  (off-window, soft)
-//   >120 min away     → red     (well off-window — confirm)
-//   PRN, no next_due  → green   (always available)
-//   no schedule data  → grey
-const doseTimingColor = (med) => {
-  if (med.next_due) {
-    const due = new Date(med.next_due);
-    if (!isNaN(due.getTime())) {
-      const minutesOff = Math.abs((due.getTime() - Date.now()) / 60000);
-      if (minutesOff <= 60) return { bg: '#238636', label: 'on-window' };
-      if (minutesOff <= 120) return { bg: '#bb8009', label: 'soft' };
-      return { bg: '#da3633', label: 'hard' };
-    }
-  }
-  if (med.as_needed) return { bg: '#238636', label: 'ok' };
-  return { bg: '#6e7681', label: 'unknown' };
-};
 
 const formatDateTime = (iso) => {
   if (!iso) return '—';
@@ -77,9 +56,6 @@ const AdminV2Medications = () => {
   const [medications, setMedications] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-
-  const [doseModalMed, setDoseModalMed] = useState(null);
-  const [showDoseModal, setShowDoseModal] = useState(false);
 
   // 'auto' = table on desktop, cards on mobile (via CSS media query).
   // 'cards' = force the card layout at any width (handy on iPad).
@@ -162,28 +138,27 @@ const AdminV2Medications = () => {
         {selectedPatient ? (
           <>
             <div className="admin-v2-meds-header">
-              <h1 className="schedule-section-title">Medications Overview</h1>
-              <div className="admin-v2-meds-view-toggle" role="group" aria-label="View mode">
-                <button
+              <div className="tw flex gap-2" role="group" aria-label="View mode">
+                <Button
                   type="button"
-                  className={`admin-v2-btn admin-v2-btn-sm${viewMode === 'auto' ? ' admin-v2-btn-primary' : ''}`}
+                  variant={viewMode === 'auto' ? 'default' : 'secondary'}
                   onClick={() => setViewMode('auto')}
                   aria-pressed={viewMode === 'auto'}
                 >
                   Table
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  className={`admin-v2-btn admin-v2-btn-sm${viewMode === 'cards' ? ' admin-v2-btn-primary' : ''}`}
+                  variant={viewMode === 'cards' ? 'default' : 'secondary'}
                   onClick={() => setViewMode('cards')}
                   aria-pressed={viewMode === 'cards'}
                 >
                   Cards
-                </button>
+                </Button>
               </div>
             </div>
 
-            {error && <div className="admin-v2-error-banner">{error}</div>}
+            {error && <div className="tw mb-4"><Alert variant="destructive">{error}</Alert></div>}
 
             {loading ? (
               <div className="admin-v2-loading">Loading medications...</div>
@@ -206,12 +181,10 @@ const AdminV2Medications = () => {
                         <th>Status</th>
                         <th>Last Given</th>
                         <th>Next Due</th>
-                        <th></th>
                       </tr>
                     </thead>
                     <tbody>
                       {medications.map(med => {
-                        const timing = doseTimingColor(med);
                         return (
                           <tr key={med.id}>
                             <td>
@@ -236,28 +209,6 @@ const AdminV2Medications = () => {
                             </td>
                             <td>{formatDateTime(med.last_administered)}</td>
                             <td>{formatDateTime(med.next_due)}</td>
-                            <td>
-                              <button
-                                type="button"
-                                className="admin-v2-btn admin-v2-btn-sm"
-                                onClick={() => { setDoseModalMed(med); setShowDoseModal(true); }}
-                                title={
-                                  med.next_due
-                                    ? `Next due ${formatDateTime(med.next_due)}${med.as_needed ? ' (PRN also)' : ''}`
-                                    : med.as_needed
-                                      ? 'Log an as-needed dose'
-                                      : 'No scheduled dose'
-                                }
-                                style={{
-                                  background: timing.bg,
-                                  borderColor: timing.bg,
-                                  color: '#fff',
-                                  fontWeight: 600,
-                                }}
-                              >
-                                Dose
-                              </button>
-                            </td>
                           </tr>
                         );
                       })}
@@ -268,7 +219,6 @@ const AdminV2Medications = () => {
                 {/* Mobile: stacked card list */}
                 <div className="admin-v2-meds-cards">
                   {medications.map(med => {
-                    const timing = doseTimingColor(med);
                     return (
                       <div key={med.id} className="admin-v2-med-card">
                         <div className="admin-v2-med-card-row admin-v2-med-card-header">
@@ -313,20 +263,6 @@ const AdminV2Medications = () => {
                             <span>{formatDateTime(med.next_due)}</span>
                           </div>
                         </div>
-
-                        <button
-                          type="button"
-                          className="admin-v2-btn admin-v2-med-card-dose"
-                          onClick={() => { setDoseModalMed(med); setShowDoseModal(true); }}
-                          style={{
-                            background: timing.bg,
-                            borderColor: timing.bg,
-                            color: '#fff',
-                            fontWeight: 600,
-                          }}
-                        >
-                          Dose
-                        </button>
                       </div>
                     );
                   })}
@@ -339,12 +275,11 @@ const AdminV2Medications = () => {
             <MedicationsIcon size={48} />
             <h2>Select a Patient</h2>
             <p>Choose a patient to view their medications</p>
-            <button
-              className="admin-v2-btn admin-v2-btn-primary"
-              onClick={() => setShowPatientModal(true)}
-            >
-              Select Patient
-            </button>
+            <div className="tw">
+              <Button onClick={() => setShowPatientModal(true)}>
+                Select Patient
+              </Button>
+            </div>
           </div>
         )}
 
@@ -358,13 +293,6 @@ const AdminV2Medications = () => {
           />
         )}
 
-        <MedicationDoseModal
-          open={showDoseModal}
-          onClose={() => { setShowDoseModal(false); setDoseModalMed(null); }}
-          onSaved={fetchActiveMedications}
-          patient={selectedPatient}
-          medication={doseModalMed}
-        />
       </div>
     </AdminV2Layout>
   );

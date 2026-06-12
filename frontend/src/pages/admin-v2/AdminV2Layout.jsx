@@ -39,8 +39,20 @@ import {
   ClipboardListIcon,
   VirusIcon,
   MenuIcon,
-  BarChartIcon
+  BarChartIcon,
+  MessagesIcon
 } from '../../components/Icons';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Alert } from '@/components/ui/alert';
 import './AdminV2.css';
 
 // Side navigation items - main app sections
@@ -50,6 +62,7 @@ const sideNavItems = [
   { path: '/care/vitals', label: 'Vitals', Icon: ClipboardListIcon, requiredPermissions: ['vitals.read', 'vitals.create'] },
   { path: '/care/symptoms', label: 'Symptoms', Icon: VirusIcon, requiredPermissions: ['vitals.read', 'vitals.create'] },
   { path: '/care/monitoring', label: 'Monitoring', Icon: MonitoringIcon, requiredPermissions: ['monitoring.read', 'monitoring.create', 'monitoring.update', 'monitoring.delete'] },
+  { path: '/care/messages', label: 'Messages', Icon: MessagesIcon },
   { path: '/care/reports', label: 'Reports', Icon: BarChartIcon, requiredPermissions: ['vitals.read'] },
   { path: '/care/medications', label: 'Medications', Icon: MedicationsIcon, requiredPermissions: ['medications.read', 'medications.create', 'medications.update', 'medications.delete'] },
   { path: '/care/care-tasks', label: 'Care Tasks', Icon: TasksIcon, requiredPermissions: ['care_tasks.read', 'care_tasks.create', 'care_tasks.update', 'care_tasks.delete'] },
@@ -66,7 +79,7 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
       { path: '/care/schedule', label: 'Schedule' },
       // Undo Log is an audit view — only surface it to users with audit access.
       ...(hasAnyPermission(['audit.read'])
-        ? [{ path: '/care/schedule/undo-log', label: 'Undo Log' }] : []),
+        ? [{ path: '/care/schedule/undo-log', label: 'Undo' }] : []),
     ],
     vitals: hasReadAccess
       ? [
@@ -87,7 +100,7 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
       { path: '/care/medications/history', label: 'History' },
       { path: '/care/medications/manage', label: 'Manage' },
       ...(hasAnyPermission(['audit.read'])
-        ? [{ path: '/care/schedule/undo-log', label: 'Undo Log' }] : []),
+        ? [{ path: '/care/schedule/undo-log', label: 'Undo' }] : []),
     ],
     'care-tasks': [
       { path: '/care/care-tasks', label: 'Overview' },
@@ -95,7 +108,7 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
       { path: '/care/care-tasks/schedule', label: 'Schedule' },
       { path: '/care/care-tasks/history', label: 'History' },
       ...(hasAnyPermission(['audit.read'])
-        ? [{ path: '/care/schedule/undo-log', label: 'Undo Log' }] : []),
+        ? [{ path: '/care/schedule/undo-log', label: 'Undo' }] : []),
     ],
     equipment: [
       { path: '/care/equipment', label: 'Overview' },
@@ -105,12 +118,12 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
     ],
     nutrition: [
       { path: '/care/nutrition', label: 'Overview' },
-      { path: '/care/nutrition/intake', label: 'Intake Log' },
-      { path: '/care/nutrition/output', label: 'Output Log' },
+      { path: '/care/nutrition/intake', label: 'Intake' },
+      { path: '/care/nutrition/output', label: 'Output' },
       { path: '/care/nutrition/schedules', label: 'Schedules' },
-      { path: '/care/nutrition/goals', label: 'Daily Goals' },
+      { path: '/care/nutrition/goals', label: 'Goals' },
       ...(hasAnyPermission(['audit.read'])
-        ? [{ path: '/care/schedule/undo-log', label: 'Undo Log' }] : []),
+        ? [{ path: '/care/schedule/undo-log', label: 'Undo' }] : []),
     ],
     monitoring: [
       { path: '/care/monitoring', label: 'Alerts' },
@@ -154,7 +167,7 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
         ? [{ path: '/care/configuration/users/permissions', label: 'Permissions' }] : []),
       { path: '/care/configuration/mqtt', label: 'MQTT' },
       ...(isSystemAdmin
-        ? [{ path: '/care/configuration/backup', label: 'Backup & Restore' }] : []),
+        ? [{ path: '/care/configuration/backup', label: 'Backup' }] : []),
     ],
   };
   return navItems[section] || [];
@@ -528,33 +541,37 @@ const AdminV2Layout = ({ children }) => {
         )}
 
         {/* Unlock modal */}
-        {showUnlockModal && (
-          <div className="admin-v2-modal-overlay" onClick={() => !unlockLoading && setShowUnlockModal(false)}>
-            <div className="admin-v2-modal" onClick={e => e.stopPropagation()}>
-              <h3>Unlock read access</h3>
-              <p>Enter account password to view data.</p>
-              <form onSubmit={handleUnlockSubmit}>
-                {unlockError && <div className="admin-v2-unlock-error">{unlockError}</div>}
-                <input
-                  type="password"
-                  value={unlockPassword}
-                  onChange={e => setUnlockPassword(e.target.value)}
-                  placeholder="Account password"
-                  autoFocus
-                  className="admin-v2-unlock-input"
-                />
-                <div className="admin-v2-modal-actions">
-                  <button type="button" className="admin-v2-btn-secondary" onClick={() => !unlockLoading && setShowUnlockModal(false)} disabled={unlockLoading}>
-                    Cancel
-                  </button>
-                  <button type="submit" className="admin-v2-btn-primary" disabled={unlockLoading}>
-                    {unlockLoading ? 'Unlocking...' : 'Unlock'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+        <Dialog open={showUnlockModal} onOpenChange={(o) => { if (!o && !unlockLoading) setShowUnlockModal(false); }}>
+          <DialogContent className="sm:max-w-[400px]">
+            <DialogHeader>
+              <DialogTitle>Unlock read access</DialogTitle>
+              <DialogDescription>Enter account password to view data.</DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleUnlockSubmit} className="flex flex-col gap-3">
+              {unlockError && <Alert variant="destructive">{unlockError}</Alert>}
+              <Input
+                type="password"
+                value={unlockPassword}
+                onChange={e => setUnlockPassword(e.target.value)}
+                placeholder="Account password"
+                autoFocus
+              />
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => !unlockLoading && setShowUnlockModal(false)}
+                  disabled={unlockLoading}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={unlockLoading}>
+                  {unlockLoading ? 'Unlocking...' : 'Unlock'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
 
         {/* Top Navigation - only show if section has sub-navigation */}
         {topNavItems.length > 0 && (

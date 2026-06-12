@@ -18,6 +18,16 @@
 import React, { useState, useEffect } from 'react';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import { API_BASE_URL } from '../../config';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Alert } from '@/components/ui/alert';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
 import './AdminV2.css';
 
 const WINDOW_PRESETS = [
@@ -113,29 +123,32 @@ export default function AdminV2MonitoringInteractions() {
   return (
     <div style={{ padding: '0.5rem 0' }}>
       {/* Header + controls */}
-      <div style={{ marginBottom: '1.5rem' }}>
+      <div className="tw" style={{ marginBottom: '1.5rem' }}>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div style={{ flex: 1, minWidth: 200 }}>
             <label style={{ display: 'block', fontSize: '0.8rem', color: '#8b949e', marginBottom: '0.35rem' }}>Medication</label>
-            <select
-              className="admin-v2-input"
-              value={selectedMedId || ''}
-              onChange={e => setSelectedMedId(Number(e.target.value))}
+            <Select
+              value={selectedMedId != null ? String(selectedMedId) : undefined}
+              onValueChange={(v) => setSelectedMedId(Number(v))}
               disabled={medsLoading}
             >
-              {medications.map(m => (
-                <option key={m.id} value={m.id}>{m.name} {m.concentration} ({m.dose_count} doses)</option>
-              ))}
-            </select>
+              <SelectTrigger><SelectValue placeholder="Select medication" /></SelectTrigger>
+              <SelectContent>
+                {medications.map(m => (
+                  <SelectItem key={m.id} value={String(m.id)}>{m.name} {m.concentration} ({m.dose_count} doses)</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
         {/* Window presets */}
         <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
           {WINDOW_PRESETS.map((p, i) => (
-            <button
+            <Button
               key={i}
-              className={`admin-v2-btn admin-v2-btn-sm ${activePreset === i && !showCustom ? 'admin-v2-btn-primary' : 'admin-v2-btn-ghost'}`}
+              size="sm"
+              variant={activePreset === i && !showCustom ? 'default' : 'secondary'}
               onClick={() => {
                 setActivePreset(i);
                 setShowCustom(false);
@@ -147,36 +160,37 @@ export default function AdminV2MonitoringInteractions() {
               title={p.desc}
             >
               {p.label}
-            </button>
+            </Button>
           ))}
-          <button
-            className={`admin-v2-btn admin-v2-btn-sm ${showCustom ? 'admin-v2-btn-primary' : 'admin-v2-btn-ghost'}`}
+          <Button
+            size="sm"
+            variant={showCustom ? 'default' : 'secondary'}
             onClick={() => setShowCustom(v => !v)}
           >
             Custom
-          </button>
+          </Button>
         </div>
 
         {showCustom && (
           <div style={{ display: 'flex', gap: '1rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', color: '#8b949e' }}>Before start (min)</label>
-              <input type="number" className="admin-v2-input" style={{ width: 90 }}
+              <label style={{ display: 'block', fontSize: '0.75rem', color: '#8b949e', marginBottom: '0.35rem' }}>Before start (min)</label>
+              <Input type="number" className="w-[90px]"
                      value={preStart} onChange={e => setPreStart(Number(e.target.value))} min={5} max={10080} />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', color: '#8b949e' }}>Before end (min)</label>
-              <input type="number" className="admin-v2-input" style={{ width: 90 }}
+              <label style={{ display: 'block', fontSize: '0.75rem', color: '#8b949e', marginBottom: '0.35rem' }}>Before end (min)</label>
+              <Input type="number" className="w-[90px]"
                      value={preEnd} onChange={e => setPreEnd(Number(e.target.value))} min={0} max={60} />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', color: '#8b949e' }}>After start (min)</label>
-              <input type="number" className="admin-v2-input" style={{ width: 90 }}
+              <label style={{ display: 'block', fontSize: '0.75rem', color: '#8b949e', marginBottom: '0.35rem' }}>After start (min)</label>
+              <Input type="number" className="w-[90px]"
                      value={postStart} onChange={e => setPostStart(Number(e.target.value))} min={0} max={1440} />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', color: '#8b949e' }}>After end (min)</label>
-              <input type="number" className="admin-v2-input" style={{ width: 90 }}
+              <label style={{ display: 'block', fontSize: '0.75rem', color: '#8b949e', marginBottom: '0.35rem' }}>After end (min)</label>
+              <Input type="number" className="w-[90px]"
                      value={postEnd} onChange={e => setPostEnd(Number(e.target.value))} min={30} max={10080} />
             </div>
           </div>
@@ -184,8 +198,8 @@ export default function AdminV2MonitoringInteractions() {
       </div>
 
       {error && (
-        <div className="admin-v2-alert admin-v2-alert-danger" style={{ marginBottom: '1rem' }}>
-          {error}
+        <div className="tw" style={{ marginBottom: '1rem' }}>
+          <Alert variant="destructive">{error}</Alert>
         </div>
       )}
 

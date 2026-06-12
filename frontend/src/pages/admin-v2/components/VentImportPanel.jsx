@@ -17,7 +17,17 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import config from '../../../config';
-import { XIcon, CheckIcon, ClockIcon, RefreshIcon } from '../../../components/Icons';
+import { CheckIcon, ClockIcon, RefreshIcon } from '../../../components/Icons';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Field } from '@/components/ui/field';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
 const PROGRESS_STATUSES = new Set(['queued', 'extracting', 'parsing']);
 
@@ -278,439 +288,305 @@ const VentImportPanel = ({ open, onClose, patientId, integrationId, integrationN
     return `${parts.join(' ')} ${s >= 0 ? 'behind' : 'ahead'}`;
   };
 
+  // Unmount entirely when closed — also tears down the calibration sub-dialog.
   if (!open) return null;
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0,
-        backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: 1060,
-      }}
-    >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          background: '#1a2332',
-          border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: 12, padding: 24,
-          maxWidth: 760, width: '92%', maxHeight: '88vh',
-          overflow: 'auto',
-          boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
-          color: '#e6edf3',
-        }}
-      >
-        {/* Header */}
-        <div style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          marginBottom: 16, paddingBottom: 12,
-          borderBottom: '1px solid rgba(255,255,255,0.08)',
-        }}>
-          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>
-            {integrationName} — Log Imports
-          </h3>
-          <button
-            onClick={onClose}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#a0aec0', padding: 0 }}
-            aria-label="Close"
-          >
-            <XIcon size={20} />
-          </button>
-        </div>
+    <>
+      <Dialog open onOpenChange={(o) => { if (!o) onClose?.(); }}>
+        <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-[760px]" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle>{integrationName} — Log Imports</DialogTitle>
+          </DialogHeader>
 
-        {error && (
-          <div role="alert" style={{
-            padding: '10px 12px', borderRadius: 6, marginBottom: 14,
-            background: 'rgba(220,53,69,0.15)',
-            border: '1px solid rgba(220,53,69,0.5)',
-            color: '#f8d7da', fontSize: 13,
-          }}>{error}</div>
-        )}
+          {error && <Alert variant="destructive">{error}</Alert>}
 
-        {/* Upload form */}
-        <div style={{
-          display: 'flex', gap: 8, alignItems: 'center',
-          padding: 14, marginBottom: 16,
-          background: 'rgba(255,255,255,0.04)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: 8,
-          flexWrap: 'wrap',
-        }}>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".tar,.tar.gz,.tgz"
-            onChange={e => setSelectedFile(e.target.files?.[0] || null)}
-            disabled={uploading}
-            style={{
-              flex: 1, minWidth: 200,
-              color: '#e6edf3', fontSize: 13,
-            }}
-          />
-          <button
-            onClick={handleUpload}
-            disabled={uploading || !selectedFile}
-            style={{
-              padding: '8px 16px', borderRadius: 6, border: 'none',
-              background: '#3fb950', color: '#0d1117',
-              cursor: (uploading || !selectedFile) ? 'not-allowed' : 'pointer',
-              fontSize: 14, fontWeight: 600,
-              opacity: (uploading || !selectedFile) ? 0.6 : 1,
-            }}
-          >
-            {uploading ? 'Uploading…' : 'Upload'}
-          </button>
-          <button
-            onClick={fetchImports}
-            disabled={loading}
-            title="Refresh"
-            style={{
-              padding: '8px 12px', borderRadius: 6,
-              border: '1px solid rgba(255,255,255,0.15)',
-              background: 'transparent', color: '#e6edf3',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              fontSize: 13,
-            }}
-          >
-            <RefreshIcon size={14} className={loading ? 'spinning' : ''} />
-          </button>
-          <button
-            onClick={openCalibrationModal}
-            title="Calibrate the vent's clock vs. real time"
-            style={{
-              padding: '8px 12px', borderRadius: 6,
-              border: '1px solid rgba(167,113,247,0.5)',
-              background: 'rgba(167,113,247,0.12)', color: '#d2a8ff',
-              cursor: 'pointer', fontSize: 13, fontWeight: 600,
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-            }}
-          >
-            <ClockIcon size={14} /> Calibrate Clock
-          </button>
-        </div>
-
-        {/* Imports list */}
-        {imports.length === 0 ? (
-          <div style={{
-            textAlign: 'center', padding: 30,
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px dashed rgba(255,255,255,0.15)',
-            borderRadius: 8, color: '#a0aec0',
-          }}>
-            No imports yet. Upload a tar/tar.gz export above.
+          {/* Upload form */}
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-secondary/50 p-3">
+            <Input
+              ref={fileInputRef}
+              type="file"
+              accept=".tar,.tar.gz,.tgz"
+              onChange={e => setSelectedFile(e.target.files?.[0] || null)}
+              disabled={uploading}
+              className="min-w-[200px] flex-1 cursor-pointer"
+            />
+            <Button
+              onClick={handleUpload}
+              disabled={uploading || !selectedFile}
+            >
+              {uploading ? 'Uploading…' : 'Upload'}
+            </Button>
+            <Button
+              variant="secondary"
+              size="icon"
+              onClick={fetchImports}
+              disabled={loading}
+              title="Refresh"
+            >
+              <RefreshIcon size={14} className={loading ? 'spinning' : ''} />
+            </Button>
+            <Button
+              variant="secondary"
+              className="border-[#a371f7]/50 bg-[#a371f7]/10 font-semibold text-[#d2a8ff] hover:bg-[#a371f7]/20"
+              onClick={openCalibrationModal}
+              title="Calibrate the vent's clock vs. real time"
+            >
+              <ClockIcon size={14} /> Calibrate Clock
+            </Button>
           </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {imports.map(row => {
-              const st = STATUS_COLORS[row.status] || STATUS_COLORS.queued;
-              const inProgress = PROGRESS_STATUSES.has(row.status);
-              const counts = row.summary?.classifications || {};
-              const fileCount = row.summary?.file_count;
-              return (
-                <div key={row.id} style={{
-                  background: '#0d1117',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  borderLeft: `5px solid ${st.color}`,
-                  borderRadius: 10, padding: '12px 14px',
-                  display: 'flex', flexDirection: 'column', gap: 8,
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-                    <span style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 6,
-                      padding: '3px 10px', borderRadius: 12,
-                      background: st.bg, color: st.color,
-                      border: `1px solid ${st.color}40`,
-                      fontSize: 12, fontWeight: 700,
-                    }}>
-                      {inProgress ? <ClockIcon size={12} /> : (row.status === 'completed' ? <CheckIcon size={12} /> : null)}
-                      {st.label}
-                    </span>
-                    <span style={{ color: '#a0aec0', fontSize: 12 }}>
-                      {fmtDate(row.uploaded_at)}
-                    </span>
-                  </div>
 
-                  <div style={{ color: '#e6edf3', fontSize: 14, fontWeight: 600, wordBreak: 'break-all' }}>
-                    {row.file_name}
-                    <span style={{ color: '#a0aec0', fontWeight: 400, marginLeft: 8, fontSize: 12 }}>
-                      {fmtBytes(row.file_size_bytes)}
-                    </span>
-                  </div>
-
-                  {row.status === 'completed' && (
-                    <div style={{ color: '#cbd5e0', fontSize: 13, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-                      {row.summary?.sample_count != null && (
-                        <span style={{
-                          display: 'inline-block', padding: '2px 8px', borderRadius: 10,
-                          background: 'rgba(63,185,80,0.15)', color: '#9ae6b4',
-                          border: '1px solid rgba(63,185,80,0.4)',
-                          fontSize: 11, fontWeight: 700,
-                        }}>{(row.summary.sample_count).toLocaleString()} samples</span>
-                      )}
-                      {row.summary?.dictionary_count != null && (
-                        <span style={{
-                          display: 'inline-block', padding: '2px 8px', borderRadius: 10,
-                          background: 'rgba(96,165,250,0.15)', color: '#93c5fd',
-                          border: '1px solid rgba(96,165,250,0.4)',
-                          fontSize: 11, fontWeight: 700,
-                        }}>{row.summary.dictionary_count} params</span>
-                      )}
-                      {row.summary?.batch_files_parsed != null && (
-                        <span style={{ color: '#a0aec0', fontSize: 12 }}>
-                          {row.summary.batch_files_parsed}/{fileCount} files
-                        </span>
-                      )}
-                      {row.summary?.calibration?.status === 'anchored' && (
-                        <span style={{
-                          display: 'inline-block', padding: '2px 8px', borderRadius: 10,
-                          background: 'rgba(167,113,247,0.15)', color: '#d2a8ff',
-                          border: '1px solid rgba(167,113,247,0.4)',
-                          fontSize: 11, fontWeight: 700,
-                        }}>clock anchored ({Math.round(row.summary.calibration.offset_seconds)}s)</span>
-                      )}
-                    </div>
-                  )}
-                  {row.status === 'completed' && row.summary?.earliest_sample_raw && (
-                    <div style={{ color: '#8b949e', fontSize: 12 }}>
-                      {fmtDate(row.summary.earliest_sample_raw)} → {fmtDate(row.summary.latest_sample_raw)} (vent time)
-                    </div>
-                  )}
-
-                  {row.status === 'failed' && row.error && (
-                    <div style={{ color: '#feb2b2', fontSize: 13 }}>
-                      {row.error}
-                    </div>
-                  )}
-
-                  <div style={{
-                    display: 'flex', justifyContent: 'flex-end', gap: 8,
-                    borderTop: '1px solid rgba(255,255,255,0.06)',
-                    paddingTop: 8, marginTop: 2,
-                  }}>
-                    <button
-                      onClick={() => handleDelete(row.id)}
-                      style={{
-                        padding: '6px 12px', borderRadius: 6,
-                        border: '1px solid rgba(220,53,69,0.5)',
-                        background: 'transparent', color: '#feb2b2',
-                        cursor: 'pointer', fontSize: 12, fontWeight: 500,
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Calibration sub-modal */}
-      {calModalOpen && (
-        <div
-          onClick={closeCalibrationModal}
-          style={{
-            position: 'fixed', inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            zIndex: 1070,
-          }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: '#1a2332',
-              border: '1px solid rgba(255,255,255,0.08)',
-              borderRadius: 12, padding: 24,
-              maxWidth: 480, width: '92%', maxHeight: '88vh',
-              overflow: 'auto',
-              boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
-              color: '#e6edf3',
-            }}
-          >
-            <div style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              marginBottom: 16, paddingBottom: 12,
-              borderBottom: '1px solid rgba(255,255,255,0.08)',
-            }}>
-              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>
-                Calibrate Vent Clock
-              </h3>
-              <button
-                onClick={closeCalibrationModal}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#a0aec0', padding: 0 }}
-                aria-label="Close"
-              ><XIcon size={20} /></button>
+          {/* Imports list */}
+          {imports.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border p-8 text-center text-muted-foreground">
+              No imports yet. Upload a tar/tar.gz export above.
             </div>
-
-            {calibration.loading && (
-              <div style={{ color: '#a0aec0', textAlign: 'center', padding: 20 }}>Loading…</div>
-            )}
-            {calibration.error && (
-              <div role="alert" style={{
-                padding: '10px 12px', borderRadius: 6, marginBottom: 14,
-                background: 'rgba(220,53,69,0.15)',
-                border: '1px solid rgba(220,53,69,0.5)',
-                color: '#f8d7da', fontSize: 13,
-              }}>{calibration.error}</div>
-            )}
-
-            {!calibration.loading && calibration.settings && (() => {
-              const s = calibration.settings || {};
-              const off = s.clock_offset_seconds;
-              const pending = s.clock_calibration_pending_at;
-              return (
-                <>
-                  {/* Status banner */}
-                  <div style={{
-                    padding: '10px 12px', borderRadius: 8, marginBottom: 16,
-                    background: off != null
-                      ? 'rgba(63,185,80,0.10)'
-                      : pending ? 'rgba(240,180,0,0.10)' : 'rgba(255,255,255,0.04)',
-                    border: `1px solid ${off != null
-                      ? 'rgba(63,185,80,0.40)'
-                      : pending ? 'rgba(240,180,0,0.40)' : 'rgba(255,255,255,0.12)'}`,
-                    fontSize: 13, color: '#cbd5e0',
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              {imports.map(row => {
+                const st = STATUS_COLORS[row.status] || STATUS_COLORS.queued;
+                const inProgress = PROGRESS_STATUSES.has(row.status);
+                const fileCount = row.summary?.file_count;
+                return (
+                  <div key={row.id} style={{
+                    background: '#0d1117',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    borderLeft: `5px solid ${st.color}`,
+                    borderRadius: 10, padding: '12px 14px',
+                    display: 'flex', flexDirection: 'column', gap: 8,
                   }}>
-                    {off != null ? (
-                      <>
-                        <div style={{ color: '#9ae6b4', fontWeight: 700, marginBottom: 4 }}>
-                          Offset: {fmtOffset(off)} ({Math.round(off)}s)
-                        </div>
-                        <div style={{ fontSize: 12 }}>
-                          Anchored at {fmtDate(s.clock_calibrated_at)} against vent time {fmtDate(s.clock_calibration_anchor)}.
-                        </div>
-                      </>
-                    ) : pending ? (
-                      <>
-                        <div style={{ color: '#f0b400', fontWeight: 700, marginBottom: 4 }}>
-                          Calibration pending
-                        </div>
-                        <div style={{ fontSize: 12 }}>
-                          Waiting for next upload to anchor against the manual-mark event you pressed at {fmtDate(pending)}.
-                        </div>
-                      </>
-                    ) : (
-                      <span>Not calibrated. Vent sample timestamps reflect the vent's clock as-is.</span>
-                    )}
-                  </div>
-
-                  {/* Tap-in-unison */}
-                  <div style={{ marginBottom: 14 }}>
-                    <div style={{ color: '#e6edf3', fontWeight: 600, fontSize: 14, marginBottom: 4 }}>
-                      Tap-in-unison
-                    </div>
-                    <div style={{ color: '#a0aec0', fontSize: 12, marginBottom: 10 }}>
-                      Press the manual-mark button on your VOCSN <em>at the same time</em> as tapping below.
-                      The next upload will anchor the offset to that event automatically.
-                    </div>
-                    <button
-                      type="button"
-                      onPointerDown={submitTapUnison}
-                      style={{
-                        width: '100%', padding: '20px 14px', borderRadius: 10, border: 'none',
-                        background: tapFlash ? '#3fb950' : '#6f42c1',
-                        color: '#fff',
-                        fontSize: 16, fontWeight: 700,
-                        cursor: 'pointer',
-                        transition: 'background-color 0.2s',
-                      }}
-                    >
-                      {tapFlash ? '✓ Tap recorded' : 'Tap Now'}
-                    </button>
-                  </div>
-
-                  {/* Manual entry */}
-                  <div style={{ marginTop: 12 }}>
-                    <button
-                      type="button"
-                      onClick={() => setShowManual(v => !v)}
-                      style={{
-                        background: 'none', border: 'none', cursor: 'pointer',
-                        color: '#93c5fd', fontSize: 13, fontWeight: 500,
-                        padding: 0,
-                      }}
-                    >
-                      {showManual ? '▾' : '▸'} Or enter the vent's current time manually
-                    </button>
-                    {showManual && (
-                      <div style={{
-                        marginTop: 10, padding: 12,
-                        background: 'rgba(255,255,255,0.04)',
-                        border: '1px solid rgba(255,255,255,0.08)',
-                        borderRadius: 8,
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                      <span style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        padding: '3px 10px', borderRadius: 12,
+                        background: st.bg, color: st.color,
+                        border: `1px solid ${st.color}40`,
+                        fontSize: 12, fontWeight: 700,
                       }}>
-                        <div style={{ marginBottom: 10 }}>
-                          <label style={{ display: 'block', fontSize: 12, color: '#a0aec0', marginBottom: 4 }}>
-                            Your phone time now
-                          </label>
-                          <input
-                            type="datetime-local"
-                            value={manualForm.real_time}
-                            onChange={e => setManualForm(f => ({ ...f, real_time: e.target.value }))}
-                            style={{
-                              width: '100%', padding: 8, fontSize: 13,
-                              background: '#2d3748', color: '#fff',
-                              border: '1px solid rgba(255,255,255,0.15)', borderRadius: 6,
-                              boxSizing: 'border-box',
-                            }}
-                          />
-                        </div>
-                        <div style={{ marginBottom: 12 }}>
-                          <label style={{ display: 'block', fontSize: 12, color: '#a0aec0', marginBottom: 4 }}>
-                            Vent's currently-displayed time
-                          </label>
-                          <input
-                            type="datetime-local"
-                            value={manualForm.vent_time}
-                            onChange={e => setManualForm(f => ({ ...f, vent_time: e.target.value }))}
-                            style={{
-                              width: '100%', padding: 8, fontSize: 13,
-                              background: '#2d3748', color: '#fff',
-                              border: '1px solid rgba(255,255,255,0.15)', borderRadius: 6,
-                              boxSizing: 'border-box',
-                            }}
-                          />
-                        </div>
-                        <button
-                          onClick={submitManualCalibration}
-                          style={{
-                            width: '100%', padding: '10px 14px', borderRadius: 6, border: 'none',
-                            background: '#3fb950', color: '#0d1117',
-                            cursor: 'pointer', fontSize: 14, fontWeight: 600,
-                          }}
-                        >Save Offset</button>
+                        {inProgress ? <ClockIcon size={12} /> : (row.status === 'completed' ? <CheckIcon size={12} /> : null)}
+                        {st.label}
+                      </span>
+                      <span style={{ color: '#a0aec0', fontSize: 12 }}>
+                        {fmtDate(row.uploaded_at)}
+                      </span>
+                    </div>
+
+                    <div style={{ color: '#e6edf3', fontSize: 14, fontWeight: 600, wordBreak: 'break-all' }}>
+                      {row.file_name}
+                      <span style={{ color: '#a0aec0', fontWeight: 400, marginLeft: 8, fontSize: 12 }}>
+                        {fmtBytes(row.file_size_bytes)}
+                      </span>
+                    </div>
+
+                    {row.status === 'completed' && (
+                      <div style={{ color: '#cbd5e0', fontSize: 13, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                        {row.summary?.sample_count != null && (
+                          <span style={{
+                            display: 'inline-block', padding: '2px 8px', borderRadius: 10,
+                            background: 'rgba(63,185,80,0.15)', color: '#9ae6b4',
+                            border: '1px solid rgba(63,185,80,0.4)',
+                            fontSize: 11, fontWeight: 700,
+                          }}>{(row.summary.sample_count).toLocaleString()} samples</span>
+                        )}
+                        {row.summary?.dictionary_count != null && (
+                          <span style={{
+                            display: 'inline-block', padding: '2px 8px', borderRadius: 10,
+                            background: 'rgba(96,165,250,0.15)', color: '#93c5fd',
+                            border: '1px solid rgba(96,165,250,0.4)',
+                            fontSize: 11, fontWeight: 700,
+                          }}>{row.summary.dictionary_count} params</span>
+                        )}
+                        {row.summary?.batch_files_parsed != null && (
+                          <span style={{ color: '#a0aec0', fontSize: 12 }}>
+                            {row.summary.batch_files_parsed}/{fileCount} files
+                            {row.summary.batch_files_skipped_existing > 0 && (
+                              <> · {row.summary.batch_files_skipped_existing} already imported</>
+                            )}
+                            {row.summary.batch_files_appended > 0 && (
+                              <> · {row.summary.batch_files_appended} appended</>
+                            )}
+                          </span>
+                        )}
+                        {row.summary?.calibration?.status === 'anchored' && (
+                          <span style={{
+                            display: 'inline-block', padding: '2px 8px', borderRadius: 10,
+                            background: 'rgba(167,113,247,0.15)', color: '#d2a8ff',
+                            border: '1px solid rgba(167,113,247,0.4)',
+                            fontSize: 11, fontWeight: 700,
+                          }}>clock anchored ({Math.round(row.summary.calibration.offset_seconds)}s)</span>
+                        )}
+                        {row.summary?.calibration && row.summary.calibration.status !== 'anchored' && (
+                          <span style={{
+                            display: 'inline-block', padding: '2px 8px', borderRadius: 10,
+                            background: 'rgba(240,180,0,0.12)', color: '#f0b400',
+                            border: '1px solid rgba(240,180,0,0.4)',
+                            fontSize: 11, fontWeight: 700,
+                          }}>
+                            {row.summary.calibration.status === 'archive_predates_mark'
+                              ? 'clock not anchored — file exported before mark event'
+                              : 'clock not anchored — no mark event in file'}
+                          </span>
+                        )}
                       </div>
                     )}
-                  </div>
+                    {row.status === 'completed' && row.summary?.earliest_sample_raw && (
+                      <div style={{ color: '#8b949e', fontSize: 12 }}>
+                        {fmtDate(row.summary.earliest_sample_raw)} → {fmtDate(row.summary.latest_sample_raw)} (vent time)
+                      </div>
+                    )}
 
-                  {(off != null || pending) && (
-                    <div style={{
-                      marginTop: 16, paddingTop: 12,
-                      borderTop: '1px solid rgba(255,255,255,0.08)',
-                      textAlign: 'right',
-                    }}>
-                      <button
-                        onClick={clearCalibration}
-                        style={{
-                          padding: '6px 12px', borderRadius: 6,
-                          border: '1px solid rgba(220,53,69,0.5)',
-                          background: 'transparent', color: '#feb2b2',
-                          cursor: 'pointer', fontSize: 12, fontWeight: 500,
-                        }}
-                      >Clear calibration</button>
+                    {row.status === 'failed' && row.error && (
+                      <div style={{ color: '#feb2b2', fontSize: 13 }}>
+                        {row.error}
+                      </div>
+                    )}
+
+                    <div className="mt-0.5 flex justify-end gap-2 border-t border-[rgba(255,255,255,0.06)] pt-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 border border-destructive/50 px-3 text-xs text-[#feb2b2] hover:bg-destructive/10"
+                        onClick={() => handleDelete(row.id)}
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Calibration sub-modal */}
+      <Dialog open={calModalOpen} onOpenChange={(o) => { if (!o) closeCalibrationModal(); }}>
+        <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-[480px]" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle>Calibrate Vent Clock</DialogTitle>
+          </DialogHeader>
+
+          {calibration.loading && (
+            <p className="py-4 text-center text-muted-foreground">Loading…</p>
+          )}
+          {calibration.error && <Alert variant="destructive">{calibration.error}</Alert>}
+
+          {!calibration.loading && calibration.settings && (() => {
+            const s = calibration.settings || {};
+            const off = s.clock_offset_seconds;
+            const pending = s.clock_calibration_pending_at;
+            return (
+              <>
+                {/* Status banner */}
+                {off != null ? (
+                  <Alert variant="success">
+                    <AlertTitle>Offset: {fmtOffset(off)} ({Math.round(off)}s)</AlertTitle>
+                    <AlertDescription>
+                      Anchored at {fmtDate(s.clock_calibrated_at)} against vent time {fmtDate(s.clock_calibration_anchor)}.
+                    </AlertDescription>
+                  </Alert>
+                ) : pending ? (() => {
+                  // If an upload already tried (and failed) to anchor this
+                  // pending calibration, say why instead of just "waiting".
+                  const lastCal = imports.find(i =>
+                    i.status === 'completed' && i.summary?.calibration &&
+                    i.summary.calibration.status !== 'anchored'
+                  )?.summary?.calibration;
+                  return (
+                    <Alert variant="warning">
+                      <AlertTitle className="text-[#f0b400]">Calibration pending</AlertTitle>
+                      <AlertDescription>
+                        Waiting for an upload containing the manual-mark event you paired with the tap
+                        at {fmtDate(pending)}.
+                        {lastCal?.status === 'archive_predates_mark' && (
+                          <> The last upload's data ends at vent
+                          time {fmtDate(lastCal.archive_end_vent_time)} — it was exported <em>before</em> you
+                          marked the event. Export a fresh file from the vent and upload it.</>
+                        )}
+                        {lastCal?.status === 'no_mark_events_in_archive' && (
+                          <> The last upload contained no mark events at all — make sure to press the
+                          manual-mark (event) button on the vent, then export and upload again.</>
+                        )}
+                      </AlertDescription>
+                    </Alert>
+                  );
+                })() : (
+                  <Alert>
+                    Not calibrated. Vent sample timestamps reflect the vent's clock as-is.
+                  </Alert>
+                )}
+
+                {/* Tap-in-unison */}
+                <div>
+                  <div className="mb-1 text-sm font-semibold">Tap-in-unison</div>
+                  <p className="mb-2.5 text-xs text-muted-foreground">
+                    Press the manual-mark button on your VOCSN <em>at the same time</em> as tapping below.
+                    The next upload will anchor the offset to that event automatically.
+                  </p>
+                  <Button
+                    type="button"
+                    onPointerDown={submitTapUnison}
+                    className={`h-auto w-full py-5 text-base font-bold text-white transition-colors ${
+                      tapFlash
+                        ? 'bg-[#3fb950] hover:bg-[#3fb950]'
+                        : 'bg-[#6f42c1] hover:bg-[#6f42c1]/90'
+                    }`}
+                  >
+                    {tapFlash ? '✓ Tap recorded' : 'Tap Now'}
+                  </Button>
+                </div>
+
+                {/* Manual entry */}
+                <div>
+                  <Button
+                    type="button"
+                    variant="link"
+                    className="h-auto p-0 text-[13px] font-medium text-[#93c5fd]"
+                    onClick={() => setShowManual(v => !v)}
+                  >
+                    {showManual ? '▾' : '▸'} Or enter the vent's current time manually
+                  </Button>
+                  {showManual && (
+                    <div className="mt-2.5 flex flex-col gap-3 rounded-lg border border-border bg-secondary/50 p-3">
+                      <Field label="Your phone time now">
+                        <Input
+                          type="datetime-local"
+                          value={manualForm.real_time}
+                          onChange={e => setManualForm(f => ({ ...f, real_time: e.target.value }))}
+                        />
+                      </Field>
+                      <Field label="Vent's currently-displayed time">
+                        <Input
+                          type="datetime-local"
+                          value={manualForm.vent_time}
+                          onChange={e => setManualForm(f => ({ ...f, vent_time: e.target.value }))}
+                        />
+                      </Field>
+                      <Button onClick={submitManualCalibration} className="w-full">
+                        Save Offset
+                      </Button>
                     </div>
                   )}
-                </>
-              );
-            })()}
-          </div>
-        </div>
-      )}
-    </div>
+                </div>
+
+                {(off != null || pending) && (
+                  <div className="flex justify-end border-t border-border pt-3">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="border border-destructive/50 text-[#feb2b2] hover:bg-destructive/10"
+                      onClick={clearCalibration}
+                    >
+                      Clear calibration
+                    </Button>
+                  </div>
+                )}
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 
