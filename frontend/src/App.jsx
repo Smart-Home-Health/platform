@@ -77,6 +77,7 @@ import FirstRunSetup from './components/FirstRunSetup';
 import { ActiveInputProvider } from './contexts/ActiveInputContext';
 import { PinChallengeProvider } from './contexts/PinChallengeContext';
 import { IdleLockProvider } from './contexts/IdleLockContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 import VirtualKeyboard from './components/VirtualKeyboard/VirtualKeyboard';
 import { useVirtualKeyboard } from './hooks/useVirtualKeyboard';
 import "./App.css";
@@ -93,8 +94,8 @@ function AppContent() {
         justifyContent: 'center', 
         height: '100vh',
         fontSize: '18px',
-        color: '#718096',
-        background: '#1a1f2e'
+        color: 'var(--muted-foreground)',
+        background: 'var(--background)'
       }}>
         Loading...
       </div>
@@ -102,6 +103,7 @@ function AppContent() {
   }
 
   return (
+    <ThemeProvider>
     <ActiveInputProvider>
       <PinChallengeProvider>
       <Router>
@@ -188,7 +190,6 @@ function AppContent() {
           <Route path="/care/monitoring/timeline" element={<ProtectedRoute><Layout><AdminV2Monitoring /></Layout></ProtectedRoute>} />
           <Route path="/care/monitoring/ventilator" element={<ProtectedRoute><Layout><AdminV2Monitoring /></Layout></ProtectedRoute>} />
           <Route path="/care/monitoring/interactions" element={<ProtectedRoute><Layout><AdminV2Monitoring /></Layout></ProtectedRoute>} />
-          <Route path="/care/monitoring/settings" element={<ProtectedRoute><Layout><AdminV2Monitoring /></Layout></ProtectedRoute>} />
 
           {/* Care Messages Routes */}
           <Route path="/care/messages" element={<ProtectedRoute><Layout><AdminV2Messages /></Layout></ProtectedRoute>} />
@@ -217,6 +218,7 @@ function AppContent() {
       <VirtualKeyboard show={showVKB} />
       </PinChallengeProvider>
     </ActiveInputProvider>
+    </ThemeProvider>
   );
 }
 

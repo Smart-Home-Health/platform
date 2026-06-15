@@ -21,6 +21,8 @@ import { XIcon } from '../Icons';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 // Pull in AdminV2 styles so the admin-v2-* classes resolve when this form is
 // mounted from outside the admin-v2 route (e.g. the live dashboard History
 // modal). Vite dedupes with admin pages that also import it.
@@ -465,12 +467,17 @@ export default function RecordVitalsForm({
 
           {/* Notes */}
           {showNotes && (
-            <div className="vitals-notes-section">
-              <label>Notes (optional)</label>
-              <textarea
+            <div className="tw mb-6 rounded-xl border border-border bg-secondary p-4 sm:p-5">
+              <Label
+                htmlFor="vitals-notes"
+                className="mb-3 block text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+              >
+                Notes (optional)
+              </Label>
+              <Textarea
+                id="vitals-notes"
                 value={vitalsFormData.notes}
                 onChange={e => setVitalsFormData(p => ({ ...p, notes: e.target.value }))}
-                className="admin-v2-input"
                 rows={2}
                 placeholder="Any additional notes..."
               />

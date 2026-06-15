@@ -36,7 +36,7 @@ from schemas.auth import (
     UserSelectRequest, UserSelectResponse, AccountUserItem,
     UserResetPasswordRequest
 )
-from schemas.user import UserResponse, UserCreate, UserUpdate, UserListItem
+from schemas.user import UserResponse, UserCreate, UserUpdate, UserListItem, UserPreferencesUpdate
 from crud.users import (
     get_user_by_username, get_user_by_id, get_user_by_email, verify_password, verify_pin,
     update_login_timestamp, is_user_locked, increment_failed_login,
@@ -1191,7 +1191,48 @@ def get_session(
         last_activity=current_user.last_activity,
         last_full_password_login=current_user.last_full_password_login,
         roles=[role.name for role in current_user.roles if role.is_active],
-        permissions=permissions
+        permissions=permissions,
+        preferences=current_user.preferences
+    )
+
+
+@router.patch("/preferences", response_model=SessionInfo)
+def update_my_preferences(
+    payload: UserPreferencesUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Shallow-merge the current user's UI preferences (e.g. theme).
+
+    Any authenticated user may update their own preferences; no management
+    permission is required. Returns the refreshed session so the client can
+    reconcile state.
+    """
+    merged = dict(current_user.preferences or {})
+    merged.update(payload.preferences)
+    current_user.preferences = merged  # reassign so SQLAlchemy detects the JSON change
+    current_user.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(current_user)
+
+    return SessionInfo(
+        user_id=current_user.id,
+        username=current_user.username,
+        full_name=current_user.full_name,
+        account_id=current_user.account_id,
+        auth_level="full",
+        is_authenticated=True,
+        is_system_admin=current_user.is_system_admin,
+        requires_full_password=current_user.needs_full_password(),
+        last_activity=current_user.last_activity,
+        last_full_password_login=current_user.last_full_password_login,
+        roles=[role.name for role in current_user.roles if role.is_active],
+        permissions=(["*"] if current_user.is_superuser else list(set(
+            perm.name
+            for role in current_user.roles if role.is_active
+            for perm in role.permissions if perm.is_active
+        ))),
+        preferences=current_user.preferences,
     )
 
 

@@ -103,6 +103,11 @@ class UserUpdate(BaseModel):
     role_ids: Optional[List[int]] = None
 
 
+class UserPreferencesUpdate(BaseModel):
+    """Partial update of the current user's UI preferences (shallow-merged)."""
+    preferences: dict = Field(..., description='e.g. {"theme": "light|dark|system"}')
+
+
 class UserPasswordUpdate(BaseModel):
     """Password update schema"""
     current_password: str
@@ -130,10 +135,11 @@ class UserResponse(UserBase):
     last_login: Optional[datetime] = None
     last_activity: Optional[datetime] = None
     last_full_password_login: Optional[datetime] = None
+    preferences: Optional[dict] = None
     created_at: datetime
     updated_at: datetime
     roles: List[RoleResponse] = []
-    
+
     class Config:
         from_attributes = True
 

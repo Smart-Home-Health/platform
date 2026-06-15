@@ -131,7 +131,6 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
       { path: '/care/monitoring/timeline', label: 'Timeline' },
       { path: '/care/monitoring/ventilator', label: 'Ventilator' },
       { path: '/care/monitoring/interactions', label: 'Interactions' },
-      { path: '/care/monitoring/settings', label: 'Alert Settings' },
     ],
     reports: [
       { path: '/care/reports', label: 'Day over Day' },
@@ -202,6 +201,7 @@ const AdminV2Layout = ({ children }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const dropdownRef = useRef(null);
+  const topNavRef = useRef(null);
   const currentSection = getCurrentSection(location.pathname);
 
   // Detect mobile viewport
@@ -296,7 +296,20 @@ const AdminV2Layout = ({ children }) => {
   };
   
   const topNavItems = getTopNavItems(currentSection, hasAnyPermission, hasReadAccess, user?.is_system_admin);
-  
+
+  // Keep the active top-nav item centered in its (horizontally scrollable) track
+  // when the route changes, instead of leaving the track scrolled to the start.
+  useEffect(() => {
+    const nav = topNavRef.current;
+    if (!nav) return;
+    const active = nav.querySelector('.admin-v2-topnav-link.active');
+    if (!active) return;
+    const navRect = nav.getBoundingClientRect();
+    const activeRect = active.getBoundingClientRect();
+    const delta = (activeRect.left - navRect.left) - (nav.clientWidth - active.clientWidth) / 2;
+    nav.scrollBy({ left: delta, behavior: 'smooth' });
+  }, [location.pathname, topNavItems.length]);
+
   // Get URL with preserved query params for certain sections
   const getNavUrl = (path) => {
     // For medications, care-tasks, and equipment sections, preserve patient param
@@ -517,28 +530,50 @@ const AdminV2Layout = ({ children }) => {
 
       {/* Main Content Area */}
       <div className="admin-v2-main">
-        {/* Mobile header - menu button and page title (visible only on small screens) */}
-        <header className="admin-v2-mobile-header">
-          <button
-            type="button"
-            className="admin-v2-mobile-menu-btn"
-            onClick={toggleSidebar}
-            aria-label="Open menu"
-          >
-            <MenuIcon size={24} />
-          </button>
-          <span className="admin-v2-mobile-header-title">{activeNavLabel}</span>
-        </header>
-
-        {/* Restricted mode banner */}
-        {!hasReadAccess && (
-          <div className="admin-v2-restricted-banner">
-            <span className="admin-v2-restricted-text">Restricted mode — You can only log and record. Enter account password to view data.</span>
-            <button type="button" className="admin-v2-unlock-btn" onClick={() => setShowUnlockModal(true)}>
-              Unlock
+        {/* Pinned top: mobile header + restricted banner + sub-nav stay fixed while content scrolls.
+            Grouped in one sticky container so they never overlap each other (two sibling
+            sticky bars would collide at top:0 and one would hide the other). */}
+        <div className="admin-v2-pinned-top">
+          {/* Mobile header - menu button and page title (visible only on small screens) */}
+          <header className="admin-v2-mobile-header">
+            <button
+              type="button"
+              className="admin-v2-mobile-menu-btn"
+              onClick={toggleSidebar}
+              aria-label="Open menu"
+            >
+              <MenuIcon size={24} />
             </button>
-          </div>
-        )}
+            <span className="admin-v2-mobile-header-title">{activeNavLabel}</span>
+          </header>
+
+          {/* Restricted mode banner */}
+          {!hasReadAccess && (
+            <div className="admin-v2-restricted-banner">
+              <span className="admin-v2-restricted-text">Restricted mode — You can only log and record. Enter account password to view data.</span>
+              <button type="button" className="admin-v2-unlock-btn" onClick={() => setShowUnlockModal(true)}>
+                Unlock
+              </button>
+            </div>
+          )}
+
+          {/* Top Navigation - only show if section has sub-navigation */}
+          {topNavItems.length > 0 && (
+            <header className="admin-v2-topnav">
+              <nav className="admin-v2-topnav-links" ref={topNavRef}>
+                {topNavItems.map((item) => (
+                  <Link
+                    key={item.path}
+                    to={getNavUrl(item.path)}
+                    className={`admin-v2-topnav-link ${isExactMatch(item.path) ? 'active' : ''}`}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+              </nav>
+            </header>
+          )}
+        </div>
 
         {/* Unlock modal */}
         <Dialog open={showUnlockModal} onOpenChange={(o) => { if (!o && !unlockLoading) setShowUnlockModal(false); }}>
@@ -573,23 +608,6 @@ const AdminV2Layout = ({ children }) => {
           </DialogContent>
         </Dialog>
 
-        {/* Top Navigation - only show if section has sub-navigation */}
-        {topNavItems.length > 0 && (
-          <header className="admin-v2-topnav">
-            <nav className="admin-v2-topnav-links">
-              {topNavItems.map((item) => (
-                <Link
-                  key={item.path}
-                  to={getNavUrl(item.path)}
-                  className={`admin-v2-topnav-link ${isExactMatch(item.path) ? 'active' : ''}`}
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </nav>
-          </header>
-        )}
-        
         {/* Page Content */}
         <main className={`admin-v2-content ${topNavItems.length > 0 ? 'with-topnav' : ''}`}>
           {children}

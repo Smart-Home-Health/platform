@@ -37,7 +37,10 @@ class MQTTModule:
         self.mqtt_publisher = None
         self.is_connected = False
         self._patient_state_cache: Dict[int, Dict[str, Any]] = {}
-        
+        # Cached alarm thresholds (min_spo2, max_spo2, min_bpm, max_bpm) + monotonic fetch time.
+        self._alarm_thresholds: Optional[tuple] = None
+        self._alarm_thresholds_ts: float = 0.0
+
     def set_mqtt_components(self, mqtt_manager, mqtt_publisher):
         """Set the MQTT manager and publisher components."""
         self.mqtt_manager = mqtt_manager
@@ -107,12 +110,61 @@ class MQTTModule:
                 if patient_id not in self._patient_state_cache:
                     self._patient_state_cache[patient_id] = {}
                 self._patient_state_cache[patient_id].update(event.values)
-                if self.mqtt_publisher and self.mqtt_publisher.is_available():
-                    self.mqtt_publisher.publish_patient_combined_state(
-                        patient_id, self._patient_state_cache[patient_id]
-                    )
+                await self._publish_patient_state_with_alarms(patient_id)
             except Exception as e:
                 logger.error(f"Error publishing patient state to MQTT: {e}")
+
+    async def _get_alarm_thresholds(self) -> tuple:
+        """Return (min_spo2, max_spo2, min_bpm, max_bpm) from settings, cached for 60s."""
+        import time
+        now = time.monotonic()
+        if self._alarm_thresholds is None or now - self._alarm_thresholds_ts > 60:
+            def _load():
+                from crud.settings import get_setting
+                from state_manager import get_db_session
+                with get_db_session() as db:
+                    return (
+                        int(get_setting(db, 'min_spo2', 90)),
+                        int(get_setting(db, 'max_spo2', 100)),
+                        int(get_setting(db, 'min_bpm', 55)),
+                        int(get_setting(db, 'max_bpm', 155)),
+                    )
+            try:
+                self._alarm_thresholds = await asyncio.to_thread(_load)
+                self._alarm_thresholds_ts = now
+            except Exception as e:
+                logger.error(f"Error loading alarm thresholds, using defaults: {e}")
+                return self._alarm_thresholds or (90, 100, 55, 155)
+        return self._alarm_thresholds
+
+    @staticmethod
+    def _compute_alarm_flags(state: Dict[str, Any], thresholds: tuple) -> Dict[str, str]:
+        """Map SpO₂/BPM readings to HA binary-sensor payloads ("ON"/"OFF").
+
+        Returns the safe "OFF" whenever the reading is in range, missing, or
+        the sensor reports disconnected (-1), so Home Assistant never shows
+        "Unknown" for an alarm that is simply not firing.
+        """
+        min_spo2, max_spo2, min_bpm, max_bpm = thresholds
+
+        def _flag(value, lo, hi) -> str:
+            if isinstance(value, (int, float)) and not isinstance(value, bool) and value != -1:
+                return "ON" if (value < lo or value > hi) else "OFF"
+            return "OFF"
+
+        return {
+            "spo2_alarm": _flag(state.get("spo2"), min_spo2, max_spo2),
+            "bpm_alarm": _flag(state.get("bpm"), min_bpm, max_bpm),
+        }
+
+    async def _publish_patient_state_with_alarms(self, patient_id: int) -> bool:
+        """Publish a patient's cached state to MQTT with computed alarm flags included."""
+        if not (self.mqtt_publisher and self.mqtt_publisher.is_available()):
+            return False
+        state = self._patient_state_cache.get(patient_id, {})
+        thresholds = await self._get_alarm_thresholds()
+        payload = {**state, **self._compute_alarm_flags(state, thresholds)}
+        return self.mqtt_publisher.publish_patient_combined_state(patient_id, payload)
         
     async def _subscribe_to_vital_saved(self):
         """Subscribe to vital_saved events and publish them to MQTT."""
@@ -180,9 +232,7 @@ class MQTTModule:
                             if patient_id not in self._patient_state_cache:
                                 self._patient_state_cache[patient_id] = {}
                             self._patient_state_cache[patient_id].update(state_update)
-                            if self.mqtt_publisher.publish_patient_combined_state(
-                                patient_id, self._patient_state_cache[patient_id]
-                            ):
+                            if await self._publish_patient_state_with_alarms(patient_id):
                                 logger.info(f"Published {vital_type} to patient {patient_id} state topic for HA")
                             else:
                                 logger.debug(f"Patient {patient_id} state topic not configured or filtered out")

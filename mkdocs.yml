@@ -1,0 +1,87 @@
+site_name: Smart Home Health Hub
+site_description: >-
+  Documentation for the Smart Home Health Hub — a home-care monitoring system for
+  families and caregivers.
+repo_url: https://github.com/Smart-Home-Health/smart-home-health-hub
+repo_name: Smart-Home-Health/smart-home-health-hub
+docs_dir: docs
+edit_uri: edit/main/docs/
+
+# Pre-existing contributor note; kept in the repo but not part of the user docs nav.
+not_in_nav: |
+  /refactor-orm-split.md
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - navigation.footer
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+  palette:
+    # Dark mode default — matches the app's GitHub-dark look.
+    - scheme: slate
+      primary: green
+      accent: green
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+    - scheme: default
+      primary: green
+      accent: green
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+  icon:
+    repo: fontawesome/brands/github
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+nav:
+  - Home: index.md
+  - Installation:
+      - installation/index.md
+      - Configuration: installation/configuration.md
+      - First-run setup: installation/first-run.md
+  - Using the app:
+      - Dashboard: using/dashboard.md
+      - Schedule: using/schedule.md
+      - Vitals: using/vitals.md
+      - Symptoms: using/symptoms.md
+      - Medications: using/medications.md
+      - Care Tasks: using/care-tasks.md
+      - Equipment & Supplies: using/equipment.md
+      - Nutrition: using/nutrition.md
+      - Monitoring: using/monitoring.md
+      - Reports: using/reports.md
+      - Messages: using/messages.md
+      - Profile: using/profile.md
+      - Configuration: using/configuration.md
+  - Integrations:
+      - integrations/index.md
+      - Epic / FHIR: integrations/epic-fhir.md
+      - Withings: integrations/withings.md
+      - MQTT: integrations/mqtt.md
+      - Frigate: integrations/frigate.md
+      - Manual entry: integrations/manual-entry.md

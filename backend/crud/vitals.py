@@ -419,8 +419,20 @@ def analyze_pulse_ox_day(db: Session, date_str, patient_id=None):
         error_spo2_readings = [reading for reading in data if reading.spo2 is not None and reading.spo2 <= 0]
         error_bpm_readings = [reading for reading in data if reading.bpm is not None and reading.bpm <= 0]
         
-        # Calculate time logged (assume readings every ~5 seconds, so multiply by 5 and convert to minutes)
-        time_logged_minutes = (len(data) * 5) / 60
+        # Time logged = actual monitored duration, derived from reading
+        # timestamps. Summing the gaps between consecutive readings adapts to the
+        # device's real sample rate (varies by device — e.g. 2s vs 5s) instead of
+        # assuming a fixed interval, which previously over-counted (e.g. a 16h
+        # span reported as ~40h). Gaps longer than the cap are treated as the
+        # sensor being off/removed and are not counted.
+        MAX_GAP_SECONDS = 60
+        timestamps = sorted(r.timestamp for r in data if r.timestamp is not None)
+        logged_seconds = 0.0
+        for prev, cur in zip(timestamps, timestamps[1:]):
+            delta = (cur - prev).total_seconds()
+            if 0 < delta <= MAX_GAP_SECONDS:
+                logged_seconds += delta
+        time_logged_minutes = logged_seconds / 60
         
         # Categorize SpO2 readings - Full breakdown
         spo2_distribution = {

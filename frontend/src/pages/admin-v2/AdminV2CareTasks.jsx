@@ -167,7 +167,7 @@ function CategoryFormFields({ categoryFormData, setCategoryFormData }) {
               className="h-7 w-7 cursor-pointer rounded-full p-0"
               style={{
                 backgroundColor: color,
-                border: categoryFormData.color === color ? '3px solid #f0f6fc' : '2px solid #30363d',
+                border: categoryFormData.color === color ? '3px solid #f0f6fc' : '2px solid var(--border)',
               }}
             />
           ))}
@@ -804,9 +804,9 @@ const AdminV2CareTasks = () => {
               <div className="admin-v2-categories-section" style={{ 
                 marginBottom: '2rem',
                 padding: '1.5rem',
-                background: '#161b22',
+                background: 'var(--card)',
                 borderRadius: '8px',
-                border: '1px solid #30363d'
+                border: '1px solid var(--border)'
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                   <h3 style={{ margin: 0, color: '#f0f6fc' }}>Care Task Categories</h3>
@@ -818,7 +818,7 @@ const AdminV2CareTasks = () => {
                 </div>
 
                 {categories.length === 0 ? (
-                  <p style={{ color: '#8b949e', margin: 0 }}>No categories created yet.</p>
+                  <p style={{ color: 'var(--muted-foreground)', margin: 0 }}>No categories created yet.</p>
                 ) : (
                   <div className="admin-v2-category-grid" style={{
                     display: 'grid',
@@ -830,7 +830,7 @@ const AdminV2CareTasks = () => {
                         key={cat.id} 
                         className="admin-v2-category-card"
                         style={{
-                          background: '#21262d',
+                          background: 'var(--secondary)',
                           borderRadius: '6px',
                           padding: '1rem',
                           borderLeft: `4px solid ${cat.color || '#a371f7'}`,
@@ -855,19 +855,19 @@ const AdminV2CareTasks = () => {
                               {cat.is_default && (
                                 <span style={{
                                   fontSize: '0.7rem',
-                                  background: '#30363d',
+                                  background: 'var(--border)',
                                   padding: '2px 6px',
                                   borderRadius: '10px',
-                                  color: '#8b949e'
+                                  color: 'var(--muted-foreground)'
                                 }}>Default</span>
                               )}
                             </div>
                             {cat.description && (
-                              <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: '#8b949e' }}>
+                              <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: 'var(--muted-foreground)' }}>
                                 {cat.description}
                               </p>
                             )}
-                            <span style={{ fontSize: '0.8rem', color: '#6e7681' }}>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--muted-foreground)' }}>
                               {getCategoryTaskCount(cat.id)} task{getCategoryTaskCount(cat.id) !== 1 ? 's' : ''}
                             </span>
                           </div>

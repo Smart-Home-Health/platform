@@ -6,8 +6,8 @@
   bottom: 0;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(135deg, #1a1f2e 0%, #2d3748 100%);
-  color: #e2e8f0;
+  background: linear-gradient(135deg, #1a1f2e 0%, var(--card) 100%);
+  color: var(--foreground);
   overflow-y: auto;
   overflow-x: hidden;
   z-index: 100;
@@ -58,12 +58,12 @@
 }
 
 .landing-btn-primary {
-  background: #4299e1;
+  background: var(--ring);
   color: white;
 }
 
 .landing-btn-primary:hover {
-  background: #3182ce;
+  background: var(--ring);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(66, 153, 225, 0.4);
 }
@@ -93,7 +93,7 @@
   font-size: 3rem;
   font-weight: 700;
   margin-bottom: 1.5rem;
-  background: linear-gradient(135deg, #fff 0%, #a0aec0 100%);
+  background: linear-gradient(135deg, #fff 0%, var(--muted-foreground) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -101,7 +101,7 @@
 
 .landing-subtitle {
   font-size: 1.25rem;
-  color: #a0aec0;
+  color: var(--muted-foreground);
   line-height: 1.6;
   margin-bottom: 2rem;
 }
@@ -141,7 +141,7 @@
   align-items: center;
   justify-content: center;
   margin-bottom: 1rem;
-  color: #4299e1;
+  color: var(--ring);
   background: rgba(66, 153, 225, 0.1);
   border-radius: 12px;
 }
@@ -155,7 +155,7 @@
 
 .landing-feature p {
   font-size: 0.9rem;
-  color: #a0aec0;
+  color: var(--muted-foreground);
   line-height: 1.5;
 }
 
@@ -163,7 +163,7 @@
 .landing-footer {
   text-align: center;
   padding: 1.5rem;
-  color: #718096;
+  color: var(--muted-foreground);
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 

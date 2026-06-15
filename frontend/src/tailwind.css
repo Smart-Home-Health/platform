@@ -35,6 +35,10 @@
   --color-destructive-foreground: var(--destructive-foreground);
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-accent-purple: var(--accent-purple);
+  --color-accent-purple-foreground: var(--accent-purple-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -44,8 +48,18 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* Dark-only palette mapped to the existing GitHub-dark look. */
-:root {
+/* ---- Theme palettes -----------------------------------------------------
+   Dark is the default (`:root`, and explicit `.dark`) so nothing regresses if
+   the theme class is missing. `:root.light` (toggled on <html> by the theme
+   boot script / ThemeContext) supplies the GitHub-light equivalents.
+   "System" mode resolves to one of these classes via prefers-color-scheme.
+   `.force-dark` pins a subtree to the dark palette regardless of the active
+   theme (custom props inherit, so descendants override `:root.light`) — used by
+   the live dashboard, which has no light design. */
+:root,
+:root.dark,
+.force-dark {
+  color-scheme: dark;
   --radius: 0.5rem;
   --background: #0d1117;
   --foreground: #e6edf3;
@@ -65,9 +79,43 @@
   --destructive-foreground: #ffffff;
   --success: #238636;
   --success-foreground: #ffffff;
+  --warning: #d29922;
+  --warning-foreground: #1c2128;
+  --accent-purple: #a371f7;
+  --accent-purple-foreground: #ffffff;
   --border: #30363d;
   --input: #30363d;
   --ring: #58a6ff;
+}
+
+:root.light {
+  color-scheme: light;
+  --radius: 0.5rem;
+  --background: #ffffff;
+  --foreground: #1f2328;
+  --card: #f6f8fa;
+  --card-foreground: #1f2328;
+  --popover: #ffffff;
+  --popover-foreground: #1f2328;
+  --primary: #1f883d;
+  --primary-foreground: #ffffff;
+  --secondary: #eaeef2;
+  --secondary-foreground: #1f2328;
+  --muted: #f6f8fa;
+  --muted-foreground: #656d76;
+  --accent: #eaeef2;
+  --accent-foreground: #1f2328;
+  --destructive: #cf222e;
+  --destructive-foreground: #ffffff;
+  --success: #1f883d;
+  --success-foreground: #ffffff;
+  --warning: #9a6700;
+  --warning-foreground: #ffffff;
+  --accent-purple: #8250df;
+  --accent-purple-foreground: #ffffff;
+  --border: #d0d7de;
+  --input: #d0d7de;
+  --ring: #0969da;
 }
 
 /* ---- Minimal scoped base (unlayered so it reliably wins) ---------------- */

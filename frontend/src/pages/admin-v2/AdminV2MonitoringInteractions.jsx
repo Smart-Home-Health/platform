@@ -105,7 +105,7 @@ export default function AdminV2MonitoringInteractions() {
 
   if (!selectedPatient) {
     return (
-      <div style={{ textAlign: 'center', padding: '3rem', color: '#8b949e' }}>
+      <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--muted-foreground)' }}>
         <p>Select a patient to view medication-vital interactions.</p>
       </div>
     );
@@ -126,7 +126,7 @@ export default function AdminV2MonitoringInteractions() {
       <div className="tw" style={{ marginBottom: '1.5rem' }}>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div style={{ flex: 1, minWidth: 200 }}>
-            <label style={{ display: 'block', fontSize: '0.8rem', color: '#8b949e', marginBottom: '0.35rem' }}>Medication</label>
+            <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--muted-foreground)', marginBottom: '0.35rem' }}>Medication</label>
             <Select
               value={selectedMedId != null ? String(selectedMedId) : undefined}
               onValueChange={(v) => setSelectedMedId(Number(v))}
@@ -174,22 +174,22 @@ export default function AdminV2MonitoringInteractions() {
         {showCustom && (
           <div style={{ display: 'flex', gap: '1rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
             <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', color: '#8b949e', marginBottom: '0.35rem' }}>Before start (min)</label>
+              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--muted-foreground)', marginBottom: '0.35rem' }}>Before start (min)</label>
               <Input type="number" className="w-[90px]"
                      value={preStart} onChange={e => setPreStart(Number(e.target.value))} min={5} max={10080} />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', color: '#8b949e', marginBottom: '0.35rem' }}>Before end (min)</label>
+              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--muted-foreground)', marginBottom: '0.35rem' }}>Before end (min)</label>
               <Input type="number" className="w-[90px]"
                      value={preEnd} onChange={e => setPreEnd(Number(e.target.value))} min={0} max={60} />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', color: '#8b949e', marginBottom: '0.35rem' }}>After start (min)</label>
+              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--muted-foreground)', marginBottom: '0.35rem' }}>After start (min)</label>
               <Input type="number" className="w-[90px]"
                      value={postStart} onChange={e => setPostStart(Number(e.target.value))} min={0} max={1440} />
             </div>
             <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', color: '#8b949e', marginBottom: '0.35rem' }}>After end (min)</label>
+              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--muted-foreground)', marginBottom: '0.35rem' }}>After end (min)</label>
               <Input type="number" className="w-[90px]"
                      value={postEnd} onChange={e => setPostEnd(Number(e.target.value))} min={30} max={10080} />
             </div>
@@ -208,7 +208,7 @@ export default function AdminV2MonitoringInteractions() {
       {results && !loading && (
         <>
           {/* Summary */}
-          <div style={{ fontSize: '0.85rem', color: '#8b949e', marginBottom: '1rem' }}>
+          <div style={{ fontSize: '0.85rem', color: 'var(--muted-foreground)', marginBottom: '1rem' }}>
             {results.total_dose_events} dose events analyzed
             {results.metrics.length > 0 && (
               <> &mdash; {results.metrics.filter(m => m.significant).length} significant correlation{results.metrics.filter(m => m.significant).length !== 1 ? 's' : ''} found</>
@@ -226,7 +226,7 @@ export default function AdminV2MonitoringInteractions() {
           )}
 
           {results.metrics.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '2rem', color: '#8b949e' }}>
+            <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--muted-foreground)' }}>
               Not enough data to analyze. Need at least 3 dose events with matching vital readings in the selected time windows.
             </div>
           ) : (
@@ -235,10 +235,10 @@ export default function AdminV2MonitoringInteractions() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
                   <span style={{
                     width: 10, height: 10, borderRadius: '50%',
-                    background: SOURCE_COLORS[source] || '#8b949e',
+                    background: SOURCE_COLORS[source] || 'var(--muted-foreground)',
                     display: 'inline-block',
                   }} />
-                  <span style={{ fontSize: '0.9rem', fontWeight: 600, color: '#e6edf3' }}>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--foreground)' }}>
                     {SOURCE_LABELS[source] || source}
                   </span>
                 </div>
@@ -262,14 +262,14 @@ function MetricCard({ metric, sourceColor }) {
   const arrow = isUp ? '↑' : m.delta < 0 ? '↓' : '→';
   const deltaColor = m.significant
     ? (isUp ? '#f0883e' : '#3fb950')
-    : '#8b949e';
+    : 'var(--muted-foreground)';
 
   return (
     <div className="admin-v2-card" style={{ borderTop: `3px solid ${m.significant ? sourceColor : 'transparent'}` }}>
       <div className="admin-v2-card-header" style={{ borderBottom: 'none', paddingBottom: 0 }}>
         <div>
-          <h3 style={{ fontSize: '0.95rem', margin: 0, color: '#e6edf3' }}>{m.display_name}</h3>
-          {m.units && <span style={{ fontSize: '0.75rem', color: '#8b949e' }}>{m.units}</span>}
+          <h3 style={{ fontSize: '0.95rem', margin: 0, color: 'var(--foreground)' }}>{m.display_name}</h3>
+          {m.units && <span style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>{m.units}</span>}
         </div>
         <span className={`admin-v2-badge ${m.significant ? 'admin-v2-badge-success' : 'admin-v2-badge-muted'}`}
               style={{ fontSize: '0.7rem' }}>
@@ -282,7 +282,7 @@ function MetricCard({ metric, sourceColor }) {
           <span style={{ fontSize: '1.6rem', fontWeight: 700, color: deltaColor }}>
             {arrow} {Math.abs(m.delta).toFixed(1)}
           </span>
-          <span style={{ fontSize: '0.8rem', color: '#8b949e', marginLeft: '0.35rem' }}>
+          <span style={{ fontSize: '0.8rem', color: 'var(--muted-foreground)', marginLeft: '0.35rem' }}>
             ({m.pct_change > 0 ? '+' : ''}{m.pct_change}%)
           </span>
         </div>
@@ -290,22 +290,22 @@ function MetricCard({ metric, sourceColor }) {
         {/* Pre → Post */}
         <div style={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          background: 'rgba(255,255,255,0.03)', borderRadius: 6, padding: '0.5rem 0.75rem',
+          background: 'var(--secondary)', borderRadius: 6, padding: '0.5rem 0.75rem',
           fontSize: '0.85rem',
         }}>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ color: '#8b949e', fontSize: '0.7rem', marginBottom: 2 }}>Before</div>
-            <div style={{ color: '#e6edf3', fontWeight: 600 }}>{m.pre_mean}</div>
+            <div style={{ color: 'var(--muted-foreground)', fontSize: '0.7rem', marginBottom: 2 }}>Before</div>
+            <div style={{ color: 'var(--foreground)', fontWeight: 600 }}>{m.pre_mean}</div>
           </div>
-          <div style={{ color: '#484f58', fontSize: '1.2rem' }}>→</div>
+          <div style={{ color: 'var(--muted-foreground)', fontSize: '1.2rem' }}>→</div>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ color: '#8b949e', fontSize: '0.7rem', marginBottom: 2 }}>After</div>
-            <div style={{ color: '#e6edf3', fontWeight: 600 }}>{m.post_mean}</div>
+            <div style={{ color: 'var(--muted-foreground)', fontSize: '0.7rem', marginBottom: 2 }}>After</div>
+            <div style={{ color: 'var(--foreground)', fontWeight: 600 }}>{m.post_mean}</div>
           </div>
         </div>
 
         {/* Stats row */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem', fontSize: '0.78rem', color: '#8b949e' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem', fontSize: '0.78rem', color: 'var(--muted-foreground)' }}>
           <span>p = {m.p_value < 0.001 ? '<0.001' : m.p_value.toFixed(3)}</span>
           <span>{m.n_events} paired events</span>
         </div>

@@ -124,7 +124,8 @@ export const AuthProvider = ({ children }) => {
             full_name: sessionData.full_name,
             is_system_admin: sessionData.is_system_admin || false,
             roles: sessionData.roles || [],
-            permissions: sessionData.permissions || []
+            permissions: sessionData.permissions || [],
+            preferences: sessionData.preferences || null
           });
           
           // Get account info if available

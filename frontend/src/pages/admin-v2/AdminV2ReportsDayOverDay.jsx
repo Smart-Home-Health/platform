@@ -255,13 +255,13 @@ const AdminV2ReportsDayOverDay = ({ patientId }) => {
             type: 'linear',
             min: startHour,
             max: endHour,
-            title: { display: true, text: 'Hour of Day', font: { size: 12 }, color: '#8b949e' },
-            grid: { color: 'rgba(255,255,255,0.06)' },
+            title: { display: true, text: 'Hour of Day', font: { size: 12 }, color: 'var(--muted-foreground)' },
+            grid: { color: 'color-mix(in srgb, var(--foreground) 6%, transparent)' },
             ticks: {
               stepSize: agg === 'hour' ? 1 : agg === '15min' ? 0.5 : undefined,
               autoSkip: true,
               maxTicksLimit: 24,
-              color: '#8b949e',
+              color: 'var(--muted-foreground)',
               font: { size: 11 },
               maxRotation: 0,
               callback: (val) => {
@@ -282,16 +282,16 @@ const AdminV2ReportsDayOverDay = ({ patientId }) => {
               display: true,
               text: `${VITAL_TYPES.find(v => v.value === reportData.vital_type)?.label || ''} (${reportData.unit || ''})`,
               font: { size: 12 },
-              color: '#8b949e',
+              color: 'var(--muted-foreground)',
             },
-            grid: { color: 'rgba(255,255,255,0.06)' },
-            ticks: { color: '#8b949e', font: { size: 11 } },
+            grid: { color: 'color-mix(in srgb, var(--foreground) 6%, transparent)' },
+            ticks: { color: 'var(--muted-foreground)', font: { size: 11 } },
           },
         },
         plugins: {
           legend: {
             position: 'top',
-            labels: { usePointStyle: true, padding: 15, font: { size: 12 }, color: '#e6edf3' },
+            labels: { usePointStyle: true, padding: 15, font: { size: 12 }, color: 'var(--foreground)' },
           },
           tooltip: {
             callbacks: {

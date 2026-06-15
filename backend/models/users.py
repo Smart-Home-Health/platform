@@ -76,6 +76,7 @@ class User(Base):
     last_full_password_login = Column(DateTime, nullable=True)  # Track daily password requirement
     failed_login_attempts = Column(Integer, default=0, nullable=False)
     locked_until = Column(DateTime, nullable=True)  # Account lockout
+    preferences = Column(JSON, nullable=True)  # Per-user UI preferences, e.g. {"theme": "light|dark|system"}
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     

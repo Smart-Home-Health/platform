@@ -431,7 +431,7 @@ const AdminV2Permissions = () => {
                     <div key={perm.id} className="flex items-center gap-2 text-sm text-foreground">
                       <span
                         className="h-2 w-2 shrink-0 rounded-full"
-                        style={{ background: perm.is_active ? '#3fb950' : '#6e7681' }}
+                        style={{ background: perm.is_active ? '#3fb950' : 'var(--muted-foreground)' }}
                       />
                       <span>{perm.display_name}</span>
                     </div>

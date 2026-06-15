@@ -20,6 +20,19 @@ import SimpleEventChart from './SimpleEventChart';
 import config from '../config';
 import ZoomableVideo from './ZoomableVideo';
 import { AlertIcon, CheckIcon, ClockIcon, HeartIcon, CameraIcon } from './Icons';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import { Alert } from '@/components/ui/alert';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
+import { cn } from '@/lib/utils';
 
 const AlertDetailInline = ({ alert, onClose, onAcknowledge, initiateAcknowledge = false }) => {
   const [eventData, setEventData] = useState(null);
@@ -184,9 +197,9 @@ const AlertDetailInline = ({ alert, onClose, onAcknowledge, initiateAcknowledge 
 
   const severity = !alert.end_time ? 'active' : alert.acknowledged ? 'acknowledged' : 'unacknowledged';
   const SEV = {
-    active:         { color: '#dc3545', bg: 'rgba(220,53,69,0.12)', label: 'Active', icon: <AlertIcon size={14} /> },
-    unacknowledged: { color: '#f0883e', bg: 'rgba(240,136,62,0.12)', label: 'Unacknowledged', icon: <ClockIcon size={14} /> },
-    acknowledged:   { color: '#3fb950', bg: 'rgba(63,185,80,0.12)', label: 'Acknowledged', icon: <CheckIcon size={14} /> },
+    active:         { label: 'Active',         icon: <AlertIcon size={14} />, badge: 'bg-destructive/10 text-destructive border-destructive/30', accent: 'var(--destructive)' },
+    unacknowledged: { label: 'Unacknowledged', icon: <ClockIcon size={14} />, badge: 'bg-warning/10 text-warning border-warning/30',             accent: 'var(--warning)' },
+    acknowledged:   { label: 'Acknowledged',   icon: <CheckIcon size={14} />, badge: 'bg-success/10 text-success border-success/30',             accent: 'var(--success)' },
   }[severity];
 
   const triggeredAlarms = [];
@@ -196,60 +209,38 @@ const AlertDetailInline = ({ alert, onClose, onAcknowledge, initiateAcknowledge 
   if (alert.hr_alarm_triggered) triggeredAlarms.push('BPM');
 
   const infoItem = (label, value) => (
-    <div style={{
-      display: 'flex', flexDirection: 'column', gap: 4,
-      padding: '10px 12px',
-      background: 'rgba(255,255,255,0.04)',
-      border: '1px solid rgba(255,255,255,0.08)',
-      borderRadius: 8, minWidth: 0,
-    }}>
-      <span style={{ color: '#a0aec0', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+    <div className="flex min-w-0 flex-col gap-1 rounded-lg border border-border bg-card px-3 py-2.5">
+      <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         {label}
       </span>
-      <span style={{ color: '#e6edf3', fontSize: 14, fontWeight: 500, wordBreak: 'break-word' }}>
+      <span className="break-words text-sm font-medium text-foreground">
         {value}
       </span>
     </div>
   );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, color: '#e6edf3' }}>
+    <div className="tw flex flex-col gap-4 text-foreground">
       {/* Back button + title */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 12,
-        paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.08)',
-      }}>
-        <button
-          onClick={onClose}
-          style={{
-            padding: '8px 14px', borderRadius: 6,
-            border: '1px solid rgba(255,255,255,0.15)',
-            background: 'transparent', color: '#e6edf3',
-            cursor: 'pointer', fontSize: 13, fontWeight: 500,
-            display: 'flex', alignItems: 'center', gap: 6,
-          }}
-        >
-          ← Back
-        </button>
-        <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600 }}>Alert Event Details</h3>
+      <div className="flex items-center gap-3 border-b border-border pb-3">
+        <Button variant="outline" size="sm" onClick={onClose}>← Back</Button>
+        <h3 className="m-0 text-lg font-semibold">Alert Event Details</h3>
       </div>
 
       {/* Status banner */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
-        background: SEV.bg, border: `1px solid ${SEV.color}40`, borderRadius: 8,
-      }}>
-        <span style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          padding: '4px 10px', borderRadius: 12,
-          background: SEV.color, color: '#0d1117',
-          fontSize: 12, fontWeight: 700,
-        }}>
+      <div
+        style={{ borderLeftWidth: 4, borderLeftColor: SEV.accent }}
+        className="flex flex-wrap items-center gap-2.5 rounded-lg border border-border bg-card px-3.5 py-2.5"
+      >
+        <span className={cn(
+          'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold',
+          SEV.badge
+        )}>
           {SEV.icon} {SEV.label}
         </span>
         {triggeredAlarms.length > 0 && (
-          <span style={{ color: '#cbd5e0', fontSize: 13 }}>
-            Alarms: <strong>{triggeredAlarms.join(', ')}</strong>
+          <span className="text-sm text-muted-foreground">
+            Alarms: <strong className="text-foreground">{triggeredAlarms.join(', ')}</strong>
           </span>
         )}
       </div>
@@ -270,46 +261,30 @@ const AlertDetailInline = ({ alert, onClose, onAcknowledge, initiateAcknowledge 
         gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
         gap: 12,
       }}>
-        <div style={{
-          background: 'rgba(72,187,120,0.1)',
-          border: '1px solid rgba(72,187,120,0.3)',
-          borderRadius: 10, padding: '14px 16px',
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-            <span style={{ color: '#9ae6b4', fontSize: 13, fontWeight: 600 }}>SpO₂ Range</span>
+        <div className="rounded-xl border border-success/20 bg-success/10 px-4 py-3.5">
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="text-sm font-semibold text-success">SpO₂ Range</span>
             {alert.spo2_alarm_triggered && (
-              <span style={{
-                background: '#f56565', color: '#fff',
-                padding: '2px 8px', borderRadius: 10,
-                fontSize: 10, fontWeight: 700,
-              }}>ALARM</span>
+              <span className="rounded-full bg-destructive px-2 py-0.5 text-[10px] font-bold text-destructive-foreground">ALARM</span>
             )}
           </div>
-          <div style={{ color: '#e6edf3', fontSize: 22, fontWeight: 700 }}>
+          <div className="text-2xl font-bold text-foreground">
             {alert.spo2_min !== null && alert.spo2_max !== null
               ? (alert.spo2_min === alert.spo2_max ? `${alert.spo2_min}%` : `${alert.spo2_min}–${alert.spo2_max}%`)
               : 'N/A'}
           </div>
         </div>
 
-        <div style={{
-          background: 'rgba(245,101,101,0.1)',
-          border: '1px solid rgba(245,101,101,0.3)',
-          borderRadius: 10, padding: '14px 16px',
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#feb2b2', fontSize: 13, fontWeight: 600 }}>
+        <div className="rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3.5">
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-sm font-semibold text-destructive">
               <HeartIcon size={14} /> Heart Rate Range
             </span>
             {alert.hr_alarm_triggered && (
-              <span style={{
-                background: '#f56565', color: '#fff',
-                padding: '2px 8px', borderRadius: 10,
-                fontSize: 10, fontWeight: 700,
-              }}>ALARM</span>
+              <span className="rounded-full bg-destructive px-2 py-0.5 text-[10px] font-bold text-destructive-foreground">ALARM</span>
             )}
           </div>
-          <div style={{ color: '#e6edf3', fontSize: 22, fontWeight: 700 }}>
+          <div className="text-2xl font-bold text-foreground">
             {alert.bpm_min !== null && alert.bpm_max !== null
               ? (alert.bpm_min === alert.bpm_max ? `${alert.bpm_min} BPM` : `${alert.bpm_min}–${alert.bpm_max} BPM`)
               : 'N/A'}
@@ -319,31 +294,19 @@ const AlertDetailInline = ({ alert, onClose, onAcknowledge, initiateAcknowledge 
 
       {/* Charts */}
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 30, color: '#a0aec0' }}>Loading data…</div>
+        <div className="py-8 text-center text-muted-foreground">Loading data…</div>
       ) : error ? (
-        <div style={{
-          padding: '12px 14px', borderRadius: 8,
-          background: 'rgba(220,53,69,0.15)',
-          border: '1px solid rgba(220,53,69,0.5)',
-          color: '#f8d7da', fontSize: 13,
-        }}>{error}</div>
+        <Alert variant="destructive">{error}</Alert>
       ) : !eventData || eventData.length === 0 ? (
-        <div style={{
-          textAlign: 'center', padding: 24,
-          background: 'rgba(255,255,255,0.04)',
-          border: '1px dashed rgba(255,255,255,0.15)',
-          borderRadius: 8, color: '#a0aec0',
-        }}>No data available for this event</div>
+        <div className="rounded-lg border border-dashed border-border py-6 text-center text-muted-foreground">
+          No data available for this event
+        </div>
       ) : (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-          gap: 12,
-        }}>
-          <div style={{ background: '#1a202c', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: 12 }}>
+        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
+          <div className="h-64 rounded-xl border border-border bg-card p-3">
             <SimpleEventChart title="Blood Oxygen" color="#48BB78" unit="SpO₂ (%)" data={spo2ChartData} />
           </div>
-          <div style={{ background: '#1a202c', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: 12 }}>
+          <div className="h-64 rounded-xl border border-border bg-card p-3">
             <SimpleEventChart title="Pulse Rate" color="#F56565" unit="BPM" data={bpmChartData} />
           </div>
         </div>
@@ -351,53 +314,24 @@ const AlertDetailInline = ({ alert, onClose, onAcknowledge, initiateAcknowledge 
 
       {/* Frigate event footage — hidden when patient has no integration */}
       {clipStatus && !clipStatus.noIntegration && (
-        <div style={{
-          background: '#0d1117',
-          border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: 10,
-          padding: 12,
-          display: 'flex', flexDirection: 'column', gap: 8,
-        }}>
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            gap: 12, flexWrap: 'wrap',
-          }}>
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: 8,
-              color: '#e6edf3', fontSize: 13, fontWeight: 600,
-            }}>
+        <div className="flex flex-col gap-2 rounded-xl border border-border bg-card p-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="inline-flex items-center gap-2 text-sm font-semibold text-foreground">
               <CameraIcon size={16} />
               Event Footage{clipStatus.camera ? ` — ${clipStatus.camera}` : ''}
               {clipStatus.saved && clipStatus.file_size && (
-                <span style={{ color: '#8b949e', fontWeight: 400 }}>
+                <span className="font-normal text-muted-foreground">
                   &middot; {(clipStatus.file_size / (1024 * 1024)).toFixed(1)} MB
                 </span>
               )}
             </span>
             {clipStatus.saved && (
-              <a
-                href={clipFileUrl(true)}
-                download
-                style={{
-                  padding: '6px 12px', borderRadius: 6,
-                  border: '1px solid rgba(255,255,255,0.15)',
-                  background: 'transparent', color: '#58a6ff',
-                  fontSize: 12, fontWeight: 600,
-                  textDecoration: 'none',
-                }}
-              >
-                Download to device
-              </a>
+              <Button asChild variant="outline" size="sm">
+                <a href={clipFileUrl(true)} download>Download to device</a>
+              </Button>
             )}
           </div>
-          {clipError && (
-            <div role="alert" style={{
-              padding: '8px 10px', borderRadius: 6,
-              background: 'rgba(220,53,69,0.15)',
-              border: '1px solid rgba(220,53,69,0.5)',
-              color: '#f8d7da', fontSize: 12,
-            }}>{clipError}</div>
-          )}
+          {clipError && <Alert variant="destructive">{clipError}</Alert>}
           {clipStatus.saved ? (
             <ZoomableVideo
               key={clipFileUrl(false)}
@@ -409,26 +343,13 @@ const AlertDetailInline = ({ alert, onClose, onAcknowledge, initiateAcknowledge 
               containerStyle={{ maxHeight: '50vh' }}
             />
           ) : (
-            <div style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
-              padding: 24, background: 'rgba(255,255,255,0.03)',
-              border: '1px dashed rgba(255,255,255,0.12)', borderRadius: 8,
-            }}>
-              <span style={{ color: '#a0aec0', fontSize: 13 }}>
+            <div className="flex flex-col items-center gap-2.5 rounded-lg border border-dashed border-border bg-muted/40 p-6">
+              <span className="text-sm text-muted-foreground">
                 No clip saved for this event yet
               </span>
-              <button
-                onClick={handleSaveClip}
-                disabled={savingClip}
-                style={{
-                  padding: '8px 16px', borderRadius: 6, border: 'none',
-                  background: '#238636', color: '#fff',
-                  cursor: savingClip ? 'default' : 'pointer',
-                  fontSize: 13, fontWeight: 600,
-                }}
-              >
+              <Button onClick={handleSaveClip} disabled={savingClip}>
                 {savingClip ? 'Saving from Frigate...' : 'Save clip to server'}
-              </button>
+              </Button>
             </div>
           )}
         </div>
@@ -436,103 +357,64 @@ const AlertDetailInline = ({ alert, onClose, onAcknowledge, initiateAcknowledge 
 
       {/* Actions */}
       {!showOxygenForm ? (
-        <div style={{
-          display: 'flex', justifyContent: 'flex-end', gap: 10,
-          paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.08)',
-        }}>
-          <button onClick={onClose} style={{
-            padding: '9px 18px', borderRadius: 6,
-            border: '1px solid rgba(255,255,255,0.15)',
-            background: 'transparent', color: '#e6edf3',
-            cursor: 'pointer', fontSize: 14, fontWeight: 500,
-          }}>Back to List</button>
+        <div className="flex justify-end gap-2.5 border-t border-border pt-3">
+          <Button variant="secondary" onClick={onClose}>Back to List</Button>
           {!alert.acknowledged && (
-            <button onClick={() => setShowOxygenForm(true)} style={{
-              padding: '9px 18px', borderRadius: 6, border: 'none',
-              background: '#3fb950', color: '#0d1117',
-              cursor: 'pointer', fontSize: 14, fontWeight: 600,
-              display: 'flex', alignItems: 'center', gap: 6,
-            }}>
+            <Button onClick={() => setShowOxygenForm(true)}>
               <CheckIcon size={14} /> Acknowledge
-            </button>
+            </Button>
           )}
         </div>
       ) : (
-        <div style={{
-          padding: '16px', borderRadius: 10,
-          background: 'rgba(255,255,255,0.04)',
-          border: '1px solid rgba(255,255,255,0.1)',
-        }}>
-          <h4 style={{ margin: '0 0 12px 0', fontSize: 16, fontWeight: 600 }}>Acknowledge Alert</h4>
-          <p style={{ margin: '0 0 12px 0', color: '#cbd5e0', fontSize: 14 }}>
+        <div className="rounded-xl border border-border bg-card p-4">
+          <h4 className="m-0 mb-3 text-base font-semibold">Acknowledge Alert</h4>
+          <p className="m-0 mb-3 text-sm text-muted-foreground">
             Confirm if oxygen was administered during this alert.
           </p>
-          <label style={{
-            display: 'flex', alignItems: 'center', gap: 10,
-            cursor: 'pointer', padding: '10px 12px',
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: 8, marginBottom: 12, userSelect: 'none',
-          }}>
-            <input type="checkbox" checked={oxygenUsed} onChange={e => setOxygenUsed(e.target.checked)}
-                   style={{ width: 18, height: 18, cursor: 'pointer', accentColor: '#3fb950' }} />
-            <span style={{ fontSize: 14 }}>Oxygen was administered</span>
+          <label className="mb-3 flex cursor-pointer select-none items-center gap-2.5 rounded-lg border border-border bg-muted/40 px-3 py-2.5">
+            <Checkbox checked={oxygenUsed} onCheckedChange={(v) => setOxygenUsed(!!v)} />
+            <span className="text-sm">Oxygen was administered</span>
           </label>
           {oxygenUsed && (
-            <div style={{ marginBottom: 12 }}>
-              <label style={{ display: 'block', marginBottom: 6, fontSize: 13, fontWeight: 600 }}>
+            <div className="mb-3">
+              <Label className="mb-1.5 block text-xs font-semibold">
                 Highest flow / concentration
-              </label>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input type="number" value={oxygenValue}
-                       onChange={e => { const v = e.target.value; if (v === '' || parseFloat(v) >= 0) setOxygenValue(v); }}
-                       step="0.1" min="0" placeholder="Enter value"
-                       style={{
-                         flex: 1, padding: 10, fontSize: 14,
-                         background: '#2d3748', color: '#fff',
-                         border: '1px solid rgba(255,255,255,0.15)',
-                         borderRadius: 6, boxSizing: 'border-box',
-                       }} />
-                <select value={oxygenUnit} onChange={e => setOxygenUnit(e.target.value)}
-                        style={{
-                          padding: 10, fontSize: 14,
-                          background: '#2d3748', color: '#fff',
-                          border: '1px solid rgba(255,255,255,0.15)',
-                          borderRadius: 6,
-                        }}>
-                  <option value="L/min">L/min</option>
-                  <option value="%">%</option>
-                </select>
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  value={oxygenValue}
+                  onChange={e => { const v = e.target.value; if (v === '' || parseFloat(v) >= 0) setOxygenValue(v); }}
+                  step="0.1"
+                  min="0"
+                  placeholder="Enter value"
+                  className="flex-1"
+                />
+                <Select value={oxygenUnit} onValueChange={setOxygenUnit}>
+                  <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="L/min">L/min</SelectItem>
+                    <SelectItem value="%">%</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           )}
-          {submitError && (
-            <div style={{
-              padding: '10px 12px', borderRadius: 6,
-              background: 'rgba(220,53,69,0.15)',
-              border: '1px solid rgba(220,53,69,0.5)',
-              color: '#f8d7da', fontSize: 13, marginBottom: 12,
-            }}>{submitError}</div>
-          )}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-            <button onClick={() => { setShowOxygenForm(false); setSubmitError(null); }}
-                    disabled={acknowledgingAlert}
-                    style={{
-                      padding: '9px 18px', borderRadius: 6,
-                      border: '1px solid rgba(255,255,255,0.15)',
-                      background: 'transparent', color: '#e6edf3',
-                      cursor: acknowledgingAlert ? 'not-allowed' : 'pointer',
-                      fontSize: 14, fontWeight: 500,
-                    }}>Cancel</button>
-            <button onClick={handleSubmitAcknowledge}
-                    disabled={acknowledgingAlert || (oxygenUsed && !oxygenValue)}
-                    style={{
-                      padding: '9px 18px', borderRadius: 6, border: 'none',
-                      background: '#3fb950', color: '#0d1117',
-                      cursor: (acknowledgingAlert || (oxygenUsed && !oxygenValue)) ? 'not-allowed' : 'pointer',
-                      fontSize: 14, fontWeight: 600,
-                      opacity: (acknowledgingAlert || (oxygenUsed && !oxygenValue)) ? 0.6 : 1,
-                    }}>{acknowledgingAlert ? 'Submitting…' : 'Submit'}</button>
+          {submitError && <div className="mb-3"><Alert variant="destructive">{submitError}</Alert></div>}
+          <div className="flex justify-end gap-2.5">
+            <Button
+              variant="secondary"
+              onClick={() => { setShowOxygenForm(false); setSubmitError(null); }}
+              disabled={acknowledgingAlert}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmitAcknowledge}
+              disabled={acknowledgingAlert || (oxygenUsed && !oxygenValue)}
+            >
+              {acknowledgingAlert ? 'Submitting…' : 'Submit'}
+            </Button>
           </div>
         </div>
       )}

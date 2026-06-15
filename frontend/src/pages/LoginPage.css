@@ -7,7 +7,7 @@
   height: 100%;
   overflow-y: auto;
   display: flex;
-  background: linear-gradient(135deg, #1a1f2e 0%, #2d3748 100%);
+  background: linear-gradient(135deg, var(--background) 0%, var(--card) 100%);
   padding: 2rem;
 }
 
@@ -29,7 +29,7 @@
   gap: 0.75rem;
   font-size: 1.5rem;
   font-weight: 600;
-  color: #fff;
+  color: var(--foreground);
   text-decoration: none;
   margin-bottom: 2rem;
 }
@@ -40,12 +40,12 @@
 }
 
 .login-card {
-  background: #2d3748;
+  background: var(--card);
   border-radius: 16px;
   padding: 2rem;
   width: 100%;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border);
 }
 
 .login-header {
@@ -56,30 +56,30 @@
 .login-header h2 {
   font-size: 1.5rem;
   font-weight: 600;
-  color: #fff;
+  color: var(--foreground);
   margin-bottom: 0.5rem;
 }
 
 .login-header p {
-  color: #a0aec0;
+  color: var(--muted-foreground);
   font-size: 0.9rem;
 }
 
 .login-form-secondary {
   margin-top: 1rem;
   padding-top: 1rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid var(--border);
 }
 
 .submit-button-secondary {
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  color: #a0aec0;
+  border: 1px solid var(--border);
+  color: var(--muted-foreground);
 }
 
 .submit-button-secondary:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: #fff;
+  background: var(--accent);
+  color: var(--foreground);
 }
 
 /* User Selection */
@@ -94,7 +94,7 @@
 .no-users-message {
   text-align: center;
   padding: 2rem;
-  color: #a0aec0;
+  color: var(--muted-foreground);
 }
 
 .user-card {
@@ -102,8 +102,8 @@
   align-items: center;
   gap: 1rem;
   padding: 1rem;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--secondary);
+  border: 1px solid var(--border);
   border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -112,8 +112,8 @@
 }
 
 .user-card:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(66, 153, 225, 0.5);
+  background: var(--accent);
+  border-color: var(--ring);
   transform: translateX(4px);
 }
 
@@ -121,7 +121,7 @@
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);
+  background: linear-gradient(135deg, var(--ring) 0%, var(--ring) 100%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -144,13 +144,13 @@
 
 .user-name {
   font-weight: 500;
-  color: #fff;
+  color: var(--foreground);
   margin-bottom: 0.25rem;
 }
 
 .user-roles {
   font-size: 0.8rem;
-  color: #a0aec0;
+  color: var(--muted-foreground);
 }
 
 /* Login Form */
@@ -166,7 +166,7 @@
   align-items: center;
   gap: 0.5rem;
   padding-bottom: 1rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--border);
 }
 
 .selected-user .user-name {
@@ -176,7 +176,7 @@
 .change-user-button {
   background: none;
   border: none;
-  color: #4299e1;
+  color: var(--ring);
   font-size: 0.85rem;
   cursor: pointer;
   padding: 0.25rem 0.5rem;
@@ -192,30 +192,36 @@
   gap: 0.5rem;
 }
 
-.form-group label {
+.login-page .form-group label {
   font-size: 0.9rem;
   font-weight: 500;
-  color: #e2e8f0;
+  color: var(--foreground);
 }
 
 .login-page .form-group input {
+  width: 100%;
+  box-sizing: border-box;
   padding: 0.875rem 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--input);
   border-radius: 8px;
-  background: rgba(0, 0, 0, 0.2);
-  color: #fff;
+  background: var(--background);
+  color: var(--foreground);
   font-size: 1rem;
   transition: all 0.2s ease;
 }
 
+/* Override App.css's global `.form-group input:focus` (equal specificity, loaded
+   later) which would otherwise swap in a dark background on the focused field. */
 .login-page .form-group input:focus {
   outline: none;
-  border-color: #4299e1;
+  background: var(--background);
+  color: var(--foreground);
+  border-color: var(--ring);
   box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.2);
 }
 
 .login-page .form-group input::placeholder {
-  color: #718096;
+  color: var(--muted-foreground);
 }
 
 .error-message {
@@ -223,14 +229,14 @@
   border: 1px solid rgba(245, 101, 101, 0.3);
   border-radius: 8px;
   padding: 0.75rem 1rem;
-  color: #fc8181;
+  color: var(--destructive);
   font-size: 0.9rem;
   text-align: center;
 }
 
 .submit-button {
   padding: 0.875rem 1.5rem;
-  background: #4299e1;
+  background: var(--ring);
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -241,7 +247,7 @@
 }
 
 .submit-button:hover:not(:disabled) {
-  background: #3182ce;
+  background: var(--ring);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(66, 153, 225, 0.4);
 }
@@ -254,7 +260,7 @@
 .toggle-auth-method {
   background: none;
   border: none;
-  color: #a0aec0;
+  color: var(--muted-foreground);
   font-size: 0.85rem;
   cursor: pointer;
   text-align: center;
@@ -262,7 +268,7 @@
 }
 
 .toggle-auth-method:hover {
-  color: #4299e1;
+  color: var(--ring);
 }
 
 /* Footer */
@@ -271,14 +277,14 @@
 }
 
 .back-link {
-  color: #a0aec0;
+  color: var(--muted-foreground);
   text-decoration: none;
   font-size: 0.9rem;
   transition: color 0.2s ease;
 }
 
 .back-link:hover {
-  color: #fff;
+  color: var(--foreground);
 }
 
 /* Responsive */

@@ -24,6 +24,7 @@ import config from '../../config';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { useChartColors } from '../../hooks/useChartColors';
 import './AdminV2.css';
 
 const getSeverityColor = (severity) => {
@@ -167,6 +168,7 @@ const PrinterIcon = () => (
 const AdminV2ProfileSummary = () => {
   const [searchParams] = useSearchParams();
   const { selectedPatient, setPatientId } = useAdminPatient();
+  const chart = useChartColors();
 
   // Sync URL ?patient= id to active patient (e.g. from dashboard View Details)
   useEffect(() => {
@@ -430,7 +432,7 @@ const AdminV2ProfileSummary = () => {
     );
   }
 
-  const tooltipStyle = { backgroundColor: '#1f2937', border: 'none', borderRadius: '8px' };
+  const tooltipStyle = { backgroundColor: chart.cutout, border: `1px solid ${chart.grid}`, borderRadius: '8px', color: chart.foreground };
 
   return (
     <AdminV2Layout>
@@ -562,13 +564,13 @@ const AdminV2ProfileSummary = () => {
                       {loadingPulseOx ? <Muted>Loading…</Muted> : (
                         <ResponsiveContainer width="100%" height={180}>
                           <ComposedChart data={formatPulseOxChartData('spo2')} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                            <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#9ca3af' }} interval="preserveStartEnd" minTickGap={40} />
-                            <YAxis domain={[80, 100]} tick={{ fontSize: 10, fill: '#9ca3af' }} />
+                            <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
+                            <XAxis dataKey="date" tick={{ fontSize: 10, fill: chart.axis }} interval="preserveStartEnd" minTickGap={40} />
+                            <YAxis domain={[80, 100]} tick={{ fontSize: 10, fill: chart.axis }} />
                             <Tooltip contentStyle={tooltipStyle} />
                             <ReferenceLine y={92} stroke="#ef4444" strokeDasharray="3 3" />
                             <Area type="monotone" dataKey="max" stroke="none" fill="#3b82f6" fillOpacity={0.15} />
-                            <Area type="monotone" dataKey="min" stroke="none" fill="#1f2937" fillOpacity={1} />
+                            <Area type="monotone" dataKey="min" stroke="none" fill={chart.cutout} fillOpacity={1} />
                             <Line type="monotone" dataKey="avg" stroke="#3b82f6" strokeWidth={2} dot={false} connectNulls />
                           </ComposedChart>
                         </ResponsiveContainer>
@@ -580,12 +582,12 @@ const AdminV2ProfileSummary = () => {
                       {loadingPulseOx ? <Muted>Loading…</Muted> : (
                         <ResponsiveContainer width="100%" height={180}>
                           <ComposedChart data={formatPulseOxChartData('heart_rate')} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                            <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#9ca3af' }} interval="preserveStartEnd" minTickGap={40} />
-                            <YAxis domain={[40, 140]} tick={{ fontSize: 10, fill: '#9ca3af' }} />
+                            <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
+                            <XAxis dataKey="date" tick={{ fontSize: 10, fill: chart.axis }} interval="preserveStartEnd" minTickGap={40} />
+                            <YAxis domain={[40, 140]} tick={{ fontSize: 10, fill: chart.axis }} />
                             <Tooltip contentStyle={tooltipStyle} />
                             <Area type="monotone" dataKey="max" stroke="none" fill="#ef4444" fillOpacity={0.15} />
-                            <Area type="monotone" dataKey="min" stroke="none" fill="#1f2937" fillOpacity={1} />
+                            <Area type="monotone" dataKey="min" stroke="none" fill={chart.cutout} fillOpacity={1} />
                             <Line type="monotone" dataKey="avg" stroke="#ef4444" strokeWidth={2} dot={false} connectNulls />
                           </ComposedChart>
                         </ResponsiveContainer>
@@ -601,12 +603,12 @@ const AdminV2ProfileSummary = () => {
                           {(useVent ? loadingVentBreath : loadingVitals) ? <Muted>Loading…</Muted> : (
                             <ResponsiveContainer width="100%" height={180}>
                               <ComposedChart data={data} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                                <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#9ca3af' }} interval={useVent ? 'preserveStartEnd' : 6} minTickGap={useVent ? 40 : undefined} />
-                                <YAxis domain={[0, 40]} tick={{ fontSize: 10, fill: '#9ca3af' }} />
+                                <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
+                                <XAxis dataKey="date" tick={{ fontSize: 10, fill: chart.axis }} interval={useVent ? 'preserveStartEnd' : 6} minTickGap={useVent ? 40 : undefined} />
+                                <YAxis domain={[0, 40]} tick={{ fontSize: 10, fill: chart.axis }} />
                                 <Tooltip contentStyle={tooltipStyle} />
                                 <Area type="monotone" dataKey="max" stroke="none" fill="#22c55e" fillOpacity={0.15} />
-                                <Area type="monotone" dataKey="min" stroke="none" fill="#1f2937" fillOpacity={1} />
+                                <Area type="monotone" dataKey="min" stroke="none" fill={chart.cutout} fillOpacity={1} />
                                 <Line type="monotone" dataKey="avg" stroke="#22c55e" strokeWidth={2} dot={false} connectNulls />
                               </ComposedChart>
                             </ResponsiveContainer>
@@ -619,13 +621,13 @@ const AdminV2ProfileSummary = () => {
                       <h3 className="mb-1 text-sm font-medium text-foreground">Temperature (°F)</h3>
                       <ResponsiveContainer width="100%" height={180}>
                         <ComposedChart data={formatVitalChartData('temperature')} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                          <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#9ca3af' }} interval={6} />
-                          <YAxis domain={[96, 102]} tick={{ fontSize: 10, fill: '#9ca3af' }} />
+                          <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
+                          <XAxis dataKey="date" tick={{ fontSize: 10, fill: chart.axis }} interval={6} />
+                          <YAxis domain={[96, 102]} tick={{ fontSize: 10, fill: chart.axis }} />
                           <Tooltip contentStyle={tooltipStyle} />
                           <ReferenceLine y={100.4} stroke="#ef4444" strokeDasharray="3 3" />
                           <Area type="monotone" dataKey="max" stroke="none" fill="#f59e0b" fillOpacity={0.15} />
-                          <Area type="monotone" dataKey="min" stroke="none" fill="#1f2937" fillOpacity={1} />
+                          <Area type="monotone" dataKey="min" stroke="none" fill={chart.cutout} fillOpacity={1} />
                           <Line type="monotone" dataKey="avg" stroke="#f59e0b" strokeWidth={2} dot={false} connectNulls />
                         </ComposedChart>
                       </ResponsiveContainer>
@@ -635,14 +637,14 @@ const AdminV2ProfileSummary = () => {
                       <h3 className="mb-1 text-sm font-medium text-foreground">Mean Arterial Pressure (mmHg)</h3>
                       <ResponsiveContainer width="100%" height={180}>
                         <ComposedChart data={formatVitalChartData('blood_pressure')} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                          <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#9ca3af' }} interval={6} />
-                          <YAxis domain={[60, 110]} tick={{ fontSize: 10, fill: '#9ca3af' }} />
+                          <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
+                          <XAxis dataKey="date" tick={{ fontSize: 10, fill: chart.axis }} interval={6} />
+                          <YAxis domain={[60, 110]} tick={{ fontSize: 10, fill: chart.axis }} />
                           <Tooltip contentStyle={tooltipStyle} />
                           <ReferenceLine y={70} stroke="#f59e0b" strokeDasharray="3 3" label={{ value: 'Low', fill: '#f59e0b', fontSize: 10 }} />
                           <ReferenceLine y={100} stroke="#f59e0b" strokeDasharray="3 3" label={{ value: 'High', fill: '#f59e0b', fontSize: 10 }} />
                           <Area type="monotone" dataKey="max" stroke="none" fill="#8b5cf6" fillOpacity={0.15} />
-                          <Area type="monotone" dataKey="min" stroke="none" fill="#1f2937" fillOpacity={1} />
+                          <Area type="monotone" dataKey="min" stroke="none" fill={chart.cutout} fillOpacity={1} />
                           <Line type="monotone" dataKey="avg" stroke="#8b5cf6" strokeWidth={2} dot={false} connectNulls name="MAP" />
                         </ComposedChart>
                       </ResponsiveContainer>
@@ -660,14 +662,14 @@ const AdminV2ProfileSummary = () => {
                   <div className="min-w-0">
                     <ResponsiveContainer width="100%" height={240}>
                       <LineChart data={formatNutritionChartData()} margin={{ top: 10, right: 30, bottom: 5, left: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                        <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#9ca3af' }} interval={4} />
-                        <YAxis domain={nutritionChartDomain()} tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={(value) => `${value > 0 ? '+' : ''}${value}%`} />
+                        <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
+                        <XAxis dataKey="date" tick={{ fontSize: 10, fill: chart.axis }} interval={4} />
+                        <YAxis domain={nutritionChartDomain()} tick={{ fontSize: 10, fill: chart.axis }} tickFormatter={(value) => `${value > 0 ? '+' : ''}${value}%`} />
                         <Tooltip contentStyle={tooltipStyle} formatter={(value, name) => (value === null ? ['No target set', name] : [`${value > 0 ? '+' : ''}${value}%`, name])} />
                         <Legend />
-                        <ReferenceLine y={25} stroke="#374151" strokeDasharray="2 4" />
-                        <ReferenceLine y={-25} stroke="#374151" strokeDasharray="2 4" />
-                        <ReferenceLine y={0} stroke="#9ca3af" strokeWidth={2} label={{ value: 'Goal', fill: '#9ca3af', fontSize: 10, position: 'right' }} />
+                        <ReferenceLine y={25} stroke={chart.grid} strokeDasharray="2 4" />
+                        <ReferenceLine y={-25} stroke={chart.grid} strokeDasharray="2 4" />
+                        <ReferenceLine y={0} stroke={chart.axis} strokeWidth={2} label={{ value: 'Goal', fill: chart.axis, fontSize: 10, position: 'right' }} />
                         <Line type="monotone" dataKey="calories" stroke="#f59e0b" strokeWidth={2} dot={false} name="Calories" connectNulls />
                         <Line type="monotone" dataKey="fluids" stroke="#3b82f6" strokeWidth={2} dot={false} name="Fluids" connectNulls />
                       </LineChart>
@@ -687,8 +689,8 @@ const AdminV2ProfileSummary = () => {
                       <h3 className="mb-1 text-sm font-medium text-foreground">Urine Output <span className="text-xs text-muted-foreground">— count (left) · volume mL (right)</span></h3>
                       <ResponsiveContainer width="100%" height={180}>
                         <LineChart data={formatOutputChartData()} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                          <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#9ca3af' }} interval={6} />
+                          <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
+                          <XAxis dataKey="date" tick={{ fontSize: 10, fill: chart.axis }} interval={6} />
                           <YAxis yAxisId="count" orientation="left" allowDecimals={false} tick={{ fontSize: 10, fill: '#a855f7' }} />
                           <YAxis yAxisId="ml" orientation="right" tick={{ fontSize: 10, fill: '#06b6d4' }} />
                           <Tooltip contentStyle={tooltipStyle} formatter={(value, name) => (name === 'Volume (ml)' ? [`${value} mL`, name] : [value, name])} />
@@ -705,9 +707,9 @@ const AdminV2ProfileSummary = () => {
                       <h3 className="mb-1 text-sm font-medium text-foreground">Bowel Movements (count)</h3>
                       <ResponsiveContainer width="100%" height={180}>
                         <LineChart data={formatOutputChartData()} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                          <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#9ca3af' }} interval={6} />
-                          <YAxis domain={[0, 5]} tick={{ fontSize: 10, fill: '#9ca3af' }} />
+                          <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
+                          <XAxis dataKey="date" tick={{ fontSize: 10, fill: chart.axis }} interval={6} />
+                          <YAxis domain={[0, 5]} tick={{ fontSize: 10, fill: chart.axis }} />
                           <Tooltip contentStyle={tooltipStyle} formatter={(value, name) => (name === 'bowel' ? [value, 'Bowel Movements'] : [value, name])} />
                           <Line type="stepAfter" dataKey="bowel" stroke="#a855f7" strokeWidth={2} dot={false} connectNulls />
                         </LineChart>

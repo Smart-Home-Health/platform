@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Alert } from '@/components/ui/alert';
+import { cn } from '@/lib/utils';
 
 const AlertsList = ({ onAlertAcknowledge, patientId }) => {
   const [alerts, setAlerts] = useState([]);
@@ -152,10 +153,12 @@ const AlertsList = ({ onAlertAcknowledge, patientId }) => {
     return 'acknowledged';
   };
 
+  // Theme-aware severity styling: Tailwind utilities driven by semantic tokens,
+  // plus a CSS-var accent for the card's colored left border.
   const SEVERITY = {
-    active:         { color: '#dc3545', bg: 'rgba(220,53,69,0.12)', label: 'Active', icon: <AlertIcon size={14} /> },
-    unacknowledged: { color: '#f0883e', bg: 'rgba(240,136,62,0.12)', label: 'Unacknowledged', icon: <ClockIcon size={14} /> },
-    acknowledged:   { color: '#3fb950', bg: 'rgba(63,185,80,0.12)', label: 'Acknowledged', icon: <CheckIcon size={14} /> },
+    active:         { label: 'Active',         icon: <AlertIcon size={14} />, badge: 'bg-destructive/10 text-destructive border-destructive/30', accent: 'var(--destructive)' },
+    unacknowledged: { label: 'Unacknowledged', icon: <ClockIcon size={14} />, badge: 'bg-warning/10 text-warning border-warning/30',             accent: 'var(--warning)' },
+    acknowledged:   { label: 'Acknowledged',   icon: <CheckIcon size={14} />, badge: 'bg-success/10 text-success border-success/30',             accent: 'var(--success)' },
   };
 
   const triggeredAlarms = (alert) => {
@@ -184,17 +187,10 @@ const AlertsList = ({ onAlertAcknowledge, patientId }) => {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div className="tw flex flex-col gap-4">
       {/* Controls bar */}
-      <div className="tw" style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        flexWrap: 'wrap', gap: 12,
-        padding: '12px 14px',
-        background: 'rgba(255,255,255,0.04)',
-        border: '1px solid rgba(255,255,255,0.08)',
-        borderRadius: 8,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-3.5 py-3">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="secondary" onClick={fetchAlerts} disabled={loading}>
             {loading ? 'Loading…' : 'Refresh'}
           </Button>
@@ -213,24 +209,17 @@ const AlertsList = ({ onAlertAcknowledge, patientId }) => {
         </div>
       </div>
 
-      {error && (
-        <div className="tw"><Alert variant="destructive">{error}</Alert></div>
-      )}
+      {error && <Alert variant="destructive">{error}</Alert>}
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 40, color: '#a0aec0' }}>Loading alerts…</div>
+        <div className="py-10 text-center text-muted-foreground">Loading alerts…</div>
       ) : alerts.length === 0 ? (
-        <div style={{
-          textAlign: 'center', padding: 40,
-          background: 'rgba(255,255,255,0.04)',
-          border: '1px dashed rgba(255,255,255,0.15)',
-          borderRadius: 8, color: '#a0aec0',
-        }}>
-          <div style={{ marginBottom: 8 }}><CheckIcon size={28} /></div>
+        <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border py-10 text-center text-muted-foreground">
+          <CheckIcon size={28} />
           No alerts to show.
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className="flex flex-col gap-2.5">
           {alerts.map(alert => {
             const severity = getAlertSeverity(alert);
             const sev = SEVERITY[severity];
@@ -238,52 +227,32 @@ const AlertsList = ({ onAlertAcknowledge, patientId }) => {
             return (
               <div
                 key={alert.id}
-                style={{
-                  position: 'relative',
-                  background: '#1a2332',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  borderLeft: `5px solid ${sev.color}`,
-                  borderRadius: 10,
-                  padding: '14px 16px',
-                  display: 'flex', flexDirection: 'column', gap: 12,
-                  boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
-                  opacity: severity === 'acknowledged' ? 0.75 : 1,
-                }}
+                style={{ borderLeftWidth: 4, borderLeftColor: sev.accent }}
+                className={cn(
+                  'flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-sm',
+                  severity === 'acknowledged' && 'opacity-75'
+                )}
               >
                 {/* Top row: status + timestamp */}
-                <div style={{
-                  display: 'flex', justifyContent: 'space-between',
-                  alignItems: 'center', flexWrap: 'wrap', gap: 8,
-                }}>
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 6,
-                    padding: '4px 10px', borderRadius: 12,
-                    background: sev.bg, color: sev.color,
-                    fontSize: 12, fontWeight: 700,
-                    border: `1px solid ${sev.color}40`,
-                  }}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className={cn(
+                    'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold',
+                    sev.badge
+                  )}>
                     {sev.icon} {sev.label}
                   </span>
-                  <span style={{ color: '#a0aec0', fontSize: 12, fontWeight: 500 }}>
+                  <span className="text-xs font-medium text-muted-foreground">
                     {formatDateTime(alert.start_time)}
                   </span>
                 </div>
 
                 {/* Metric row: SpO2, BPM, Duration */}
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
-                  gap: 10,
-                }}>
-                  <div style={{
-                    background: 'rgba(72,187,120,0.1)',
-                    border: '1px solid rgba(72,187,120,0.3)',
-                    borderRadius: 8, padding: '8px 12px',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#9ae6b4', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                <div className="grid gap-2.5" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))' }}>
+                  <div className="rounded-lg border border-success/20 bg-success/10 px-3 py-2">
+                    <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-success">
                       SpO₂
                     </div>
-                    <div style={{ color: '#e6edf3', fontSize: 16, fontWeight: 700, marginTop: 2 }}>
+                    <div className="mt-0.5 text-base font-bold text-foreground">
                       {alert.spo2_min !== null && alert.spo2_max !== null
                         ? (alert.spo2_min === alert.spo2_max
                             ? `${alert.spo2_min}%`
@@ -291,15 +260,11 @@ const AlertsList = ({ onAlertAcknowledge, patientId }) => {
                         : '—'}
                     </div>
                   </div>
-                  <div style={{
-                    background: 'rgba(245,101,101,0.1)',
-                    border: '1px solid rgba(245,101,101,0.3)',
-                    borderRadius: 8, padding: '8px 12px',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#feb2b2', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  <div className="rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2">
+                    <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-destructive">
                       <HeartIcon size={12} /> BPM
                     </div>
-                    <div style={{ color: '#e6edf3', fontSize: 16, fontWeight: 700, marginTop: 2 }}>
+                    <div className="mt-0.5 text-base font-bold text-foreground">
                       {alert.bpm_min !== null && alert.bpm_max !== null
                         ? (alert.bpm_min === alert.bpm_max
                             ? alert.bpm_min
@@ -307,15 +272,11 @@ const AlertsList = ({ onAlertAcknowledge, patientId }) => {
                         : '—'}
                     </div>
                   </div>
-                  <div style={{
-                    background: 'rgba(96,165,250,0.1)',
-                    border: '1px solid rgba(96,165,250,0.3)',
-                    borderRadius: 8, padding: '8px 12px',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#93c5fd', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  <div className="rounded-lg border border-ring/20 bg-ring/10 px-3 py-2">
+                    <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-ring">
                       <ClockIcon size={12} /> Duration
                     </div>
-                    <div style={{ color: '#e6edf3', fontSize: 16, fontWeight: 700, marginTop: 2 }}>
+                    <div className="mt-0.5 text-base font-bold text-foreground">
                       {formatDuration(alert.start_time, alert.end_time)}
                     </div>
                   </div>
@@ -323,25 +284,18 @@ const AlertsList = ({ onAlertAcknowledge, patientId }) => {
 
                 {/* Alarms */}
                 {alarms.length > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    <span style={{ color: '#a0aec0', fontSize: 12, fontWeight: 500 }}>Alarms:</span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs font-medium text-muted-foreground">Alarms:</span>
                     {alarms.map(a => (
-                      <span key={a} style={{
-                        padding: '2px 8px', borderRadius: 10,
-                        background: 'rgba(245,101,101,0.15)',
-                        color: '#feb2b2', fontSize: 11, fontWeight: 600,
-                        border: '1px solid rgba(245,101,101,0.4)',
-                      }}>{a}</span>
+                      <span key={a} className="rounded-full border border-destructive/40 bg-destructive/15 px-2 py-0.5 text-[11px] font-semibold text-destructive">
+                        {a}
+                      </span>
                     ))}
                   </div>
                 )}
 
                 {/* Actions */}
-                <div className="tw" style={{
-                  display: 'flex', justifyContent: 'flex-end', gap: 8,
-                  borderTop: '1px solid rgba(255,255,255,0.06)',
-                  paddingTop: 10,
-                }}>
+                <div className="flex justify-end gap-2 border-t border-border pt-2.5">
                   <Button variant="secondary" size="sm" onClick={() => handleViewDetails(alert)}>
                     View Details
                   </Button>
