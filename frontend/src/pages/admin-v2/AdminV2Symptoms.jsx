@@ -51,7 +51,7 @@ import './AdminV2.css';
 
 // Severity color mapping
 const getSeverityColor = (severity) => {
-  if (!severity) return '#8b949e';
+  if (!severity) return 'var(--muted-foreground)';
   if (severity <= 3) return '#3fb950';  // Green - mild
   if (severity <= 6) return '#d29922';  // Yellow - moderate
   if (severity <= 8) return '#db6d28';  // Orange - significant

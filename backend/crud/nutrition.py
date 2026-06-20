@@ -106,6 +106,7 @@ def _publish_nutrition_mqtt(db: Session, patient_id: int):
             timestamp=utc_now(),
             source=EventSource.API,
             metadata={
+                "patient_id": patient_id,
                 "day_start": dashboard_data["day_start"],
                 "day_end": dashboard_data["day_end"]
             }
@@ -134,12 +135,13 @@ def _publish_nutrition_mqtt(db: Session, patient_id: int):
             timestamp=utc_now(),
             source=EventSource.API,
             metadata={
+                "patient_id": patient_id,
                 "day_start": dashboard_data["day_start"],
                 "day_end": dashboard_data["day_end"]
             }
         )
         _publish_event_async(calories_target_event)
-        
+
         logger.info(f"Published nutrition MQTT: {dashboard_data['total_calories']} cal, {dashboard_data['total_water_ml']} ml")
     except Exception as e:
         logger.error(f"Error publishing nutrition to MQTT: {e}")
@@ -228,12 +230,13 @@ def _publish_nutrition_targets_mqtt(db: Session, patient_id: int):
             timestamp=utc_now(),
             source=EventSource.API,
             metadata={
+                "patient_id": patient_id,
                 "day_start": day_start.isoformat(),
                 "day_end": day_end.isoformat()
             }
         )
         _publish_event_async(calories_target_event)
-        
+
         logger.info(f"Published nutrition targets MQTT: {target_calories} cal, {target_water} ml")
     except Exception as e:
         logger.error(f"Error publishing nutrition targets to MQTT: {e}")
@@ -255,15 +258,15 @@ def _get_nutrition_dashboard_data(db: Session, patient_id: int) -> dict:
     target_calories = float(target_calories_setting) if target_calories_setting else 2000
     target_water = float(target_water_setting) if target_water_setting else 2000  # ml
     
-    # Calculate the current "day" based on day_start_hour
+    # Calculate the current "day" based on day_start_hour.
+    # Keep tzinfo (now is tz-aware UTC) so later `now - day_start` and the
+    # consumed_at comparisons don't mix naive/aware datetimes.
     now = utc_now()
-    
-    # If current hour is before day_start_hour, we're still in "yesterday"
+    day_start = now.replace(hour=day_start_hour, minute=0, second=0, microsecond=0)
     if now.hour < day_start_hour:
-        day_start = datetime(now.year, now.month, now.day, day_start_hour, 0, 0) - timedelta(days=1)
-    else:
-        day_start = datetime(now.year, now.month, now.day, day_start_hour, 0, 0)
-    
+        # Still in "yesterday"
+        day_start -= timedelta(days=1)
+
     day_end = day_start + timedelta(days=1)
     
     # Get nutrition data for current "day"
@@ -278,7 +281,7 @@ def _get_nutrition_dashboard_data(db: Session, patient_id: int) -> dict:
     total_water_ml = 0
     
     for intake in daily_intake:
-        if intake.item_type == 'liquid':
+        if intake.item_type in WATER_ITEM_TYPES:  # liquid + hydration (schedule completions)
             amount_ml = intake.amount
             # Convert units to ml
             unit = intake.amount_unit.lower()
@@ -358,6 +361,98 @@ def _get_nutrition_dashboard_data(db: Session, patient_id: int) -> dict:
         "day_end": day_end.isoformat()
     }
 
+# Intake types that count as water/fluid. 'hydration' is assigned when a
+# hydration schedule is completed; 'liquid' is the manual IntakeModal type.
+WATER_ITEM_TYPES = ('liquid', 'hydration')
+
+
+def _intake_amount_to_ml(amount, unit) -> float:
+    """Convert a liquid intake amount to ml (mirrors _get_nutrition_dashboard_data)."""
+    if amount is None:
+        return 0.0
+    u = (unit or 'ml').lower()
+    if u in ('oz', 'ounces'):
+        return amount * 29.5735
+    if u in ('cup', 'cups'):
+        return amount * 236.588
+    if u in ('liter', 'liters', 'l'):
+        return amount * 1000
+    return amount  # already ml (or unitless)
+
+
+def get_patient_nutrition_mqtt_state(db: Session, patient_id: int) -> dict:
+    """Calorie + water values for the per-patient MQTT combined state (HA):
+    - calories_last / calories_intake (today's total) / calories_target (goal), kcal
+    - water_last    / water_intake (today's total)    / water_target (goal),    ml
+    The MQTT layer filters these by the patient's `sections` config.
+
+    Self-contained (does not call _get_nutrition_dashboard_data, which mixes
+    tz-aware/naive datetimes) and tz-aware throughout.
+    """
+    from crud.settings import get_setting
+
+    # Daily goals: prefer the dedicated nutrition-goals module (active goal),
+    # falling back to the legacy app-wide settings only if no goal is set.
+    goal = get_current_nutrition_goal(db, patient_id)
+    if goal is not None and goal.calories_target is not None:
+        cal_target = float(goal.calories_target)
+    else:
+        cs = get_setting(db, 'daily_calories')
+        cal_target = float(cs) if cs else 2000.0
+    if goal is not None and goal.water_ml_target is not None:
+        water_target = float(goal.water_ml_target)
+    else:
+        ws = get_setting(db, 'daily_water')
+        water_target = float(ws) if ws else 2000.0
+
+    # Current "day" window based on day_start_hour, keeping tzinfo (aware UTC).
+    dsh_setting = get_setting(db, 'day_start_hour')
+    day_start_hour = int(dsh_setting) if dsh_setting else 7
+    now = utc_now()
+    day_start = now.replace(hour=day_start_hour, minute=0, second=0, microsecond=0)
+    if now.hour < day_start_hour:
+        day_start -= timedelta(days=1)
+
+    todays = (
+        db.query(NutritionIntake)
+        .filter(
+            NutritionIntake.patient_id == patient_id,
+            NutritionIntake.consumed_at >= day_start,
+        )
+        .all()
+    )
+    cal_today = sum(i.calories or 0 for i in todays)
+    # Water = liquid + hydration item types (hydration is assigned when a
+    # hydration *schedule* is completed) — matches get_nutrition_summary().
+    water_today = sum(_intake_amount_to_ml(i.amount, i.amount_unit)
+                      for i in todays if i.item_type in WATER_ITEM_TYPES)
+
+    last_cal = (
+        db.query(NutritionIntake)
+        .filter(NutritionIntake.patient_id == patient_id, NutritionIntake.calories.isnot(None))
+        .order_by(NutritionIntake.consumed_at.desc())
+        .first()
+    )
+    last_liquid = (
+        db.query(NutritionIntake)
+        .filter(NutritionIntake.patient_id == patient_id,
+                NutritionIntake.item_type.in_(WATER_ITEM_TYPES))
+        .order_by(NutritionIntake.consumed_at.desc())
+        .first()
+    )
+
+    out = {
+        "calories_intake": round(cal_today),
+        "calories_target": round(cal_target),
+        "water_intake": round(water_today),
+        "water_target": round(water_target),
+    }
+    if last_cal is not None and last_cal.calories is not None:
+        out["calories_last"] = round(last_cal.calories)
+    if last_liquid is not None and last_liquid.amount is not None:
+        out["water_last"] = round(_intake_amount_to_ml(last_liquid.amount, last_liquid.amount_unit))
+    return out
+
 def create_nutrition_intake(db: Session, intake_data: dict, patient_id: int = None) -> NutritionIntake:
     """Create a new nutrition intake record"""
     try:
@@ -372,6 +467,8 @@ def create_nutrition_intake(db: Session, intake_data: dict, patient_id: int = No
         nutrition_intake = NutritionIntake(
             patient_id=patient_id,
             care_task_log_id=intake_data.get('care_task_log_id'),
+            schedule_id=intake_data.get('schedule_id'),
+            scheduled_time=intake_data.get('scheduled_time'),
             item_name=intake_data['item_name'],
             item_type=intake_data['item_type'],
             amount=intake_data['amount'],
@@ -718,6 +815,65 @@ def delete_nutrition_goal(db: Session, goal_id: int) -> bool:
 
 from schemas.nutrition_output import NutritionOutput
 
+
+def get_patient_bathroom_mqtt_state(db: Session, patient_id: int) -> dict:
+    """Bathroom value for the per-patient MQTT combined state: the *kind* of the
+    most recent output — 'urine', 'bowel', or 'both' (a mixed diaper logs a urine
+    row and a bowel row under the same care_task_log_id). Returns {} if none.
+    The MQTT layer filters this by the patient's `sections` config.
+    """
+    last = (
+        db.query(NutritionOutput)
+        .filter(NutritionOutput.patient_id == patient_id)
+        .order_by(NutritionOutput.occurred_at.desc())
+        .first()
+    )
+    if last is None:
+        return {}
+
+    # A mixed diaper logs a urine row + a bowel row together — grouped by
+    # care_task_log_id (scheduled) or, for ad-hoc/PRN entries, the shared
+    # occurred_at timestamp (care_task_log_id is null in that case).
+    group_q = db.query(NutritionOutput).filter(NutritionOutput.patient_id == patient_id)
+    if last.care_task_log_id is not None:
+        group = group_q.filter(NutritionOutput.care_task_log_id == last.care_task_log_id).all()
+    else:
+        group = group_q.filter(NutritionOutput.occurred_at == last.occurred_at).all()
+
+    types = set()
+    for o in group:
+        types.add(o.output_type)
+        if getattr(o, 'diaper_soiled', None):  # a soiled diaper implies bowel
+            types.add('bowel')
+
+    has_urine, has_bowel = 'urine' in types, 'bowel' in types
+    if has_urine and has_bowel:
+        kind = 'both'
+    elif has_bowel:
+        kind = 'bowel'
+    elif has_urine:
+        kind = 'urine'
+    else:
+        kind = last.output_type  # e.g. 'vomit' — pass through
+    return {'bathroom': kind}
+
+
+def _publish_bathroom_mqtt(db: Session, patient_id: int):
+    """Signal that bathroom/output data changed for a patient. The MQTT module
+    recomputes the last-kind and publishes it to the per-patient combined state."""
+    try:
+        from events import NutritionSensorUpdate, EventSource
+        _publish_event_async(NutritionSensorUpdate(
+            sensor_type="bathroom",
+            value=None,
+            timestamp=utc_now(),
+            source=EventSource.API,
+            metadata={"patient_id": patient_id},
+        ))
+    except Exception as e:
+        logger.error(f"Error publishing bathroom MQTT for patient {patient_id}: {e}")
+
+
 def create_nutrition_output(db: Session, output_data: dict) -> NutritionOutput:
     """Create a new output log entry"""
     try:
@@ -730,6 +886,7 @@ def create_nutrition_output(db: Session, output_data: dict) -> NutritionOutput:
         db.commit()
         db.refresh(output)
         logger.info(f"Created nutrition output {output.id} for patient {output.patient_id}")
+        _publish_bathroom_mqtt(db, output.patient_id)
         return output
     except Exception as e:
         db.rollback()
@@ -849,6 +1006,7 @@ def update_nutrition_output(db: Session, output_id: int, update_data: dict) -> O
         db.commit()
         db.refresh(output)
         logger.info(f"Updated nutrition output {output_id}")
+        _publish_bathroom_mqtt(db, output.patient_id)
         return output
     except Exception as e:
         db.rollback()
@@ -862,9 +1020,11 @@ def delete_nutrition_output(db: Session, output_id: int) -> bool:
         output = db.query(NutritionOutput).filter(NutritionOutput.id == output_id).first()
         if not output:
             return False
+        pid = output.patient_id
         db.delete(output)
         db.commit()
         logger.info(f"Deleted nutrition output {output_id}")
+        _publish_bathroom_mqtt(db, pid)
         return True
     except Exception as e:
         db.rollback()

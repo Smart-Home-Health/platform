@@ -25,6 +25,21 @@ const AuthContext = createContext();
 // Exported for use by components that make their own API calls
 export { authFetch, isIframe };
 
+// FastAPI error responses put a string in `detail` for HTTPException, but a
+// 422 validation error makes `detail` an ARRAY of {loc,msg,type}. Throwing
+// `new Error(detail)` on the array stringifies to "[object Object]" in the UI
+// (e.g. a too-short PIN). Coerce any shape to a readable string.
+export function errorMessage(body, fallback = 'Something went wrong') {
+  const d = body?.detail;
+  if (typeof d === 'string') return d;
+  if (Array.isArray(d)) {
+    const msg = d.map(e => (e && e.msg) || (typeof e === 'string' ? e : '')).filter(Boolean).join('; ');
+    return msg || fallback;
+  }
+  if (d && typeof d === 'object') return d.msg || fallback;
+  return fallback;
+}
+
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
@@ -124,7 +139,8 @@ export const AuthProvider = ({ children }) => {
             full_name: sessionData.full_name,
             is_system_admin: sessionData.is_system_admin || false,
             roles: sessionData.roles || [],
-            permissions: sessionData.permissions || []
+            permissions: sessionData.permissions || [],
+            preferences: sessionData.preferences || null
           });
           
           // Get account info if available
@@ -185,7 +201,7 @@ export const AuthProvider = ({ children }) => {
 
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.detail || 'Account login failed');
+        throw new Error(errorMessage(error, 'Account login failed'));
       }
 
       const data = await res.json();
@@ -221,7 +237,7 @@ export const AuthProvider = ({ children }) => {
           setIsFirstRun(true);
           return { success: false, error: 'No account found. Starting setup...' };
         }
-        throw new Error(error.detail || 'Account access failed');
+        throw new Error(errorMessage(error, 'Account access failed'));
       }
 
       const data = await res.json();
@@ -251,7 +267,7 @@ export const AuthProvider = ({ children }) => {
 
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.detail || 'Invalid account password');
+        throw new Error(errorMessage(error, 'Invalid account password'));
       }
 
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -270,7 +286,7 @@ export const AuthProvider = ({ children }) => {
 
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.detail || 'Failed to get users');
+        throw new Error(errorMessage(error, 'Failed to get users'));
       }
 
       return await res.json();
@@ -295,7 +311,7 @@ export const AuthProvider = ({ children }) => {
 
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.detail || 'User selection failed');
+        throw new Error(errorMessage(error, 'User selection failed'));
       }
 
       const data = await res.json();
@@ -350,7 +366,7 @@ export const AuthProvider = ({ children }) => {
 
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.detail || 'Password reset failed');
+        throw new Error(errorMessage(error, 'Password reset failed'));
       }
 
       const data = await res.json();
@@ -388,7 +404,7 @@ export const AuthProvider = ({ children }) => {
 
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.detail || 'Login failed');
+        throw new Error(errorMessage(error, 'Login failed'));
       }
 
       const data = await res.json();
@@ -426,7 +442,7 @@ export const AuthProvider = ({ children }) => {
 
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.detail || 'PIN verification failed');
+        throw new Error(errorMessage(error, 'PIN verification failed'));
       }
 
       const data = await res.json();
@@ -492,7 +508,7 @@ export const AuthProvider = ({ children }) => {
 
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.detail || 'Setup failed');
+        throw new Error(errorMessage(error, 'Setup failed'));
       }
 
       const data = await res.json();

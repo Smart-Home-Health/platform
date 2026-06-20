@@ -127,6 +127,7 @@ class SessionInfo(BaseModel):
     last_full_password_login: Optional[datetime] = None
     roles: list[str] = []
     permissions: list[str] = []
+    preferences: Optional[dict] = None  # Per-user UI preferences, e.g. {"theme": "light|dark|system"}
 
 
 class FirstRunSetup(BaseModel):

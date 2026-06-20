@@ -349,8 +349,8 @@ const VentImportPanel = ({ open, onClose, patientId, integrationId, integrationN
                 const fileCount = row.summary?.file_count;
                 return (
                   <div key={row.id} style={{
-                    background: '#0d1117',
-                    border: '1px solid rgba(255,255,255,0.08)',
+                    background: 'var(--background)',
+                    border: '1px solid color-mix(in srgb, var(--foreground) 8%, transparent)',
                     borderLeft: `5px solid ${st.color}`,
                     borderRadius: 10, padding: '12px 14px',
                     display: 'flex', flexDirection: 'column', gap: 8,
@@ -366,20 +366,20 @@ const VentImportPanel = ({ open, onClose, patientId, integrationId, integrationN
                         {inProgress ? <ClockIcon size={12} /> : (row.status === 'completed' ? <CheckIcon size={12} /> : null)}
                         {st.label}
                       </span>
-                      <span style={{ color: '#a0aec0', fontSize: 12 }}>
+                      <span style={{ color: 'var(--muted-foreground)', fontSize: 12 }}>
                         {fmtDate(row.uploaded_at)}
                       </span>
                     </div>
 
-                    <div style={{ color: '#e6edf3', fontSize: 14, fontWeight: 600, wordBreak: 'break-all' }}>
+                    <div style={{ color: 'var(--foreground)', fontSize: 14, fontWeight: 600, wordBreak: 'break-all' }}>
                       {row.file_name}
-                      <span style={{ color: '#a0aec0', fontWeight: 400, marginLeft: 8, fontSize: 12 }}>
+                      <span style={{ color: 'var(--muted-foreground)', fontWeight: 400, marginLeft: 8, fontSize: 12 }}>
                         {fmtBytes(row.file_size_bytes)}
                       </span>
                     </div>
 
                     {row.status === 'completed' && (
-                      <div style={{ color: '#cbd5e0', fontSize: 13, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                      <div style={{ color: 'var(--foreground)', fontSize: 13, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
                         {row.summary?.sample_count != null && (
                           <span style={{
                             display: 'inline-block', padding: '2px 8px', borderRadius: 10,
@@ -397,7 +397,7 @@ const VentImportPanel = ({ open, onClose, patientId, integrationId, integrationN
                           }}>{row.summary.dictionary_count} params</span>
                         )}
                         {row.summary?.batch_files_parsed != null && (
-                          <span style={{ color: '#a0aec0', fontSize: 12 }}>
+                          <span style={{ color: 'var(--muted-foreground)', fontSize: 12 }}>
                             {row.summary.batch_files_parsed}/{fileCount} files
                             {row.summary.batch_files_skipped_existing > 0 && (
                               <> · {row.summary.batch_files_skipped_existing} already imported</>
@@ -430,7 +430,7 @@ const VentImportPanel = ({ open, onClose, patientId, integrationId, integrationN
                       </div>
                     )}
                     {row.status === 'completed' && row.summary?.earliest_sample_raw && (
-                      <div style={{ color: '#8b949e', fontSize: 12 }}>
+                      <div style={{ color: 'var(--muted-foreground)', fontSize: 12 }}>
                         {fmtDate(row.summary.earliest_sample_raw)} → {fmtDate(row.summary.latest_sample_raw)} (vent time)
                       </div>
                     )}
@@ -441,7 +441,7 @@ const VentImportPanel = ({ open, onClose, patientId, integrationId, integrationN
                       </div>
                     )}
 
-                    <div className="mt-0.5 flex justify-end gap-2 border-t border-[rgba(255,255,255,0.06)] pt-2">
+                    <div className="mt-0.5 flex justify-end gap-2 border-t border-border pt-2">
                       <Button
                         variant="ghost"
                         size="sm"

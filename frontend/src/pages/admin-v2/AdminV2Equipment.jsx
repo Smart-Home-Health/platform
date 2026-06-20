@@ -748,7 +748,7 @@ const AdminV2Equipment = () => {
 
             {/* Action Bar */}
             <div className="admin-v2-page-header">
-              <h3 style={{ margin: 0, color: '#e6edf3' }}>
+              <h3 style={{ margin: 0, color: 'var(--foreground)' }}>
                 {activeTab === 'all' ? 'All Items' : activeTab === 'equipment' ? 'Equipment' : activeTab === 'supply' ? 'Supplies' : 'Consumables'} ({filteredEquipment.length})
               </h3>
               {hasPermission('equipment.create') && (

@@ -17,6 +17,7 @@
  */
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import { API_BASE_URL } from '../../config';
 import AdminV2Layout from './AdminV2Layout';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -35,6 +36,7 @@ import './AdminV2.css';
 
 export default function AdminV2AccountSettings() {
   const { user } = useAuth();
+  const { theme, setTheme } = useTheme();
   const [accountData, setAccountData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -173,8 +175,8 @@ export default function AdminV2AccountSettings() {
   if (user && !user.is_system_admin) {
     return (
       <AdminV2Layout>
-        <div style={{ padding: '2rem', color: '#8b949e', textAlign: 'center' }}>
-          <h3 style={{ color: '#e6edf3' }}>Access Denied</h3>
+        <div style={{ padding: '2rem', color: 'var(--muted-foreground)', textAlign: 'center' }}>
+          <h3 style={{ color: 'var(--foreground)' }}>Access Denied</h3>
           <p>Account settings are only available to system administrators.</p>
         </div>
       </AdminV2Layout>
@@ -195,6 +197,27 @@ export default function AdminV2AccountSettings() {
     <AdminV2Layout>
       <div className="admin-v2-page">
         <div className="tw grid gap-6 lg:grid-cols-2">
+          {/* Appearance Card (per-user theme preference) */}
+          <Card>
+            <CardHeader><CardTitle>Appearance</CardTitle></CardHeader>
+            <CardContent>
+              <Field
+                label="Theme"
+                htmlFor="theme"
+                hint="Applies to your profile and follows you across devices. “System” matches your device’s light/dark setting."
+              >
+                <Select value={theme} onValueChange={setTheme}>
+                  <SelectTrigger id="theme"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="light">Light</SelectItem>
+                    <SelectItem value="dark">Dark</SelectItem>
+                    <SelectItem value="system">System</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+            </CardContent>
+          </Card>
+
           {/* Account Details Card */}
           <Card>
             <CardHeader><CardTitle>Account Details</CardTitle></CardHeader>

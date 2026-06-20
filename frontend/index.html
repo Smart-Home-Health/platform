@@ -11,6 +11,21 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="SHH" />
     <title>Smart Home Health</title>
+    <!-- Apply the saved theme before React mounts to avoid a flash of the wrong theme. -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('theme'); // "light" | "dark" | "system"
+          var theme = (stored === 'light' || stored === 'dark') ? stored
+            : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+          var el = document.documentElement;
+          el.classList.remove('light', 'dark');
+          el.classList.add(theme);
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute('content', theme === 'dark' ? '#161b22' : '#ffffff');
+        } catch (e) { document.documentElement.classList.add('dark'); }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

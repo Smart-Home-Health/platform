@@ -848,7 +848,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="dashboard-wrapper">
+    <div className="dashboard-wrapper force-dark">
       <ModalBase
         isOpen={unlockModalOpen}
         onClose={() => { if (!needsUnlock) setActionUnlockOpen(false); }}

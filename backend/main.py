@@ -24,6 +24,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from datetime import datetime
 
+# Load .env BEFORE importing modules that capture secrets at import time
+# (middleware.py / routes/auth.py read JWT_SECRET_KEY when imported).
+load_dotenv()
+
+# Fail fast on a missing/insecure JWT secret. The fallback default in
+# middleware.py / routes/auth.py is a value baked into (AGPL, public) source, so
+# running with it would let anyone forge auth tokens for any user. Require a real
+# secret in the environment (backend/.env). Generate one with:
+#   python -c "import secrets; print(secrets.token_urlsafe(64))"
+_INSECURE_JWT_DEFAULT = "change-this-secret-key-in-production"
+_jwt_secret = os.getenv("JWT_SECRET_KEY")
+if not _jwt_secret or _jwt_secret == _INSECURE_JWT_DEFAULT:
+    raise RuntimeError(
+        "JWT_SECRET_KEY is unset or set to the insecure default. Set a strong "
+        "value in the environment (e.g. backend/.env). Generate one with: "
+        "python -c \"import secrets; print(secrets.token_urlsafe(64))\""
+    )
+
 # Import event bus and events
 from bus import EventBus
 from events import SensorUpdate, EventSource
@@ -34,7 +52,7 @@ from modules.mqtt_module import MQTTModule
 from modules.state_module import StateModule
 
 # Import route modules
-from routes import core, settings, vitals, medications, care_tasks, equipment, monitoring, mqtt, status, patients, nutrition, businesses, providers, auth, users, schedule, dashboard, symptoms, diagnoses, implants, dme_shipments, account, integrations, integration_imports, frigate as frigate_routes, readers, backup, analysis, reports, messages
+from routes import core, settings, vitals, medications, care_tasks, equipment, monitoring, mqtt, status, patients, nutrition, businesses, providers, auth, users, schedule, dashboard, symptoms, diagnoses, implants, dme_shipments, account, integrations, integration_imports, frigate as frigate_routes, readers, backup, analysis, reports, messages, system
 
 # Import legacy components
 from mqtt import initialize_mqtt_service, shutdown_mqtt_service
@@ -43,6 +61,7 @@ from crud.settings import get_setting, save_setting
 
 # Import auth components
 from middleware import AuthenticationMiddleware
+from rate_limit import RateLimitMiddleware
 from seed_auth import seed_default_data
 
 # Install the global soft-delete filter so undone (voided) completion logs are
@@ -50,8 +69,6 @@ from seed_auth import seed_default_data
 # ORM models are registered first.
 from soft_delete import register_soft_delete_filter
 register_soft_delete_filter()
-
-load_dotenv()
 
 # Initialize a logger for your application
 logger = logging.getLogger("app")
@@ -63,8 +80,11 @@ logging.basicConfig(level=logging.INFO)
 app = FastAPI()
 
 # Middleware is a stack: last-added = outermost (runs first).
-# CORS must be outermost so ALL responses (including auth 401s) get CORS headers.
+# CORS must be outermost so ALL responses (including auth 401s/429s) get CORS headers.
+# Order: CORS (outer) -> RateLimit -> Auth (inner). RateLimit runs before auth so
+# public login routes are throttled, but inside CORS so 429s carry CORS headers.
 app.add_middleware(AuthenticationMiddleware)
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[],  # No wildcard when credentials=True
@@ -106,6 +126,7 @@ app.include_router(backup.router)
 app.include_router(analysis.router)
 app.include_router(reports.router)
 app.include_router(messages.router)
+app.include_router(system.router)
 
 # Global event bus and modules
 event_bus = EventBus(maxsize=1000)

@@ -29,13 +29,13 @@
 }
 
 .login-header h2 {
-  color: #2d3748;
+  color: var(--card);
   font-size: 24px;
   margin-bottom: 8px;
 }
 
 .login-header p {
-  color: #718096;
+  color: var(--muted-foreground);
   font-size: 14px;
 }
 
@@ -50,7 +50,7 @@
   align-items: center;
   gap: 16px;
   padding: 16px;
-  border: 2px solid #e2e8f0;
+  border: 2px solid var(--foreground);
   border-radius: 12px;
   background: white;
   cursor: pointer;
@@ -60,7 +60,7 @@
 
 .user-card:hover {
   border-color: #667eea;
-  background: #f7fafc;
+  background: var(--foreground);
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
 }
@@ -90,14 +90,14 @@
 }
 
 .user-name {
-  color: #2d3748;
+  color: var(--card);
   font-weight: 600;
   font-size: 16px;
   margin-bottom: 4px;
 }
 
 .user-roles {
-  color: #718096;
+  color: var(--muted-foreground);
   font-size: 13px;
 }
 
@@ -113,7 +113,7 @@
   align-items: center;
   gap: 12px;
   padding: 20px;
-  background: #f7fafc;
+  background: var(--foreground);
   border-radius: 12px;
   margin-bottom: 10px;
 }
@@ -141,14 +141,14 @@
 }
 
 .form-group label {
-  color: #2d3748;
+  color: var(--card);
   font-weight: 600;
   font-size: 14px;
 }
 
 .form-group input {
   padding: 12px;
-  border: 2px solid #e2e8f0;
+  border: 2px solid var(--foreground);
   border-radius: 8px;
   font-size: 16px;
   transition: border-color 0.2s;

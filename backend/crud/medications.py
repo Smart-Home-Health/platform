@@ -988,6 +988,53 @@ def _count_overdue(items):
     return count
 
 
+def _count_due_now_and_late(items):
+    """Split open schedule occurrences into ``{'due_now', 'late'}`` for the MQTT
+    badge sensors.
+
+    The thresholds match the per-patient MQTT badge spec, independent of the
+    dashboard's due/overdue window:
+    - ``due_now``: scheduled time within ±1 hour of now (the item is happening
+      around now).
+    - ``late``: scheduled more than 1 hour in the past.
+
+    Items more than an hour in the future are "upcoming" and counted in neither.
+    Completed/skipped occurrences are excluded. The lower bound (start of the
+    prior local day) is inherent to the daily-schedule range passed in, so
+    ``late`` doesn't reach back indefinitely.
+    """
+    now = utc_now()
+    due_now = 0
+    late = 0
+    for item in items:
+        if item.get('is_completed'):
+            continue
+        scheduled_time = item.get('scheduled_time')
+        if isinstance(scheduled_time, str):
+            scheduled_time = datetime.fromisoformat(scheduled_time)
+        if scheduled_time is None:
+            continue
+        if scheduled_time.tzinfo is None:
+            scheduled_time = scheduled_time.replace(tzinfo=timezone.utc)
+        diff_seconds = (scheduled_time - now).total_seconds()
+        if diff_seconds < -3600:
+            late += 1
+        elif diff_seconds <= 3600:
+            due_now += 1
+    return {'due_now': due_now, 'late': late}
+
+
+def get_medication_due_now_late_counts(db: Session, patient_id=None, tz=None):
+    """Return {'due_now', 'late'} medication badge counts (see _count_due_now_and_late)."""
+    try:
+        schedule_data = get_daily_medication_schedule(db, patient_id=patient_id, tz=tz)
+        meds = schedule_data.get('scheduled_medications', [])
+        return _count_due_now_and_late(meds)
+    except Exception as e:
+        logger.error(f"Error getting due_now/late medication counts: {e}")
+        return {'due_now': 0, 'late': 0}
+
+
 def get_medication_schedule_counts(db: Session, patient_id=None, tz=None):
     """Return {'due', 'overdue'} medication counts from one schedule fetch."""
     try:

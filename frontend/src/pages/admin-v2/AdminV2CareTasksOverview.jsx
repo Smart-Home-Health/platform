@@ -212,7 +212,7 @@ const AdminV2CareTasksOverview = () => {
         )}
 
         {/* Per-task breakdown */}
-        <h3 style={{ marginTop: '2rem', color: '#e6edf3' }}>By Task</h3>
+        <h3 style={{ marginTop: '2rem', color: 'var(--foreground)' }}>By Task</h3>
         {perTask.length === 0 ? (
           <div className="admin-v2-empty-state" style={{ padding: '1.5rem' }}>
             <p className="admin-v2-text-muted">No completion logs in this window.</p>
@@ -260,7 +260,7 @@ const AdminV2CareTasksOverview = () => {
         )}
 
         {/* Per-user activity */}
-        <h3 style={{ marginTop: '2rem', color: '#e6edf3' }}>By User</h3>
+        <h3 style={{ marginTop: '2rem', color: 'var(--foreground)' }}>By User</h3>
         {perUser.length === 0 ? (
           <div className="admin-v2-empty-state" style={{ padding: '1.5rem' }}>
             <p className="admin-v2-text-muted">No completion logs in this window.</p>

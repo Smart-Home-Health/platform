@@ -36,7 +36,7 @@ from schemas.auth import (
     UserSelectRequest, UserSelectResponse, AccountUserItem,
     UserResetPasswordRequest
 )
-from schemas.user import UserResponse, UserCreate, UserUpdate, UserListItem
+from schemas.user import UserResponse, UserCreate, UserUpdate, UserListItem, UserPreferencesUpdate
 from crud.users import (
     get_user_by_username, get_user_by_id, get_user_by_email, verify_password, verify_pin,
     update_login_timestamp, is_user_locked, increment_failed_login,
@@ -45,7 +45,9 @@ from crud.users import (
     assign_role_to_user, get_all_users, update_user, delete_user,
     get_all_roles, assign_role_to_user as add_role_to_user,
     remove_role_from_user, update_user_password, update_user_pin,
-    set_force_password_reset
+    set_force_password_reset,
+    is_account_locked, increment_account_failed_login, reset_account_failed_login,
+    account_lock_seconds_remaining
 )
 from schemas.patient import Patient
 from dependencies import get_current_user, require_permission, get_current_account_id, get_current_account, require_full_auth, require_read_access
@@ -118,12 +120,7 @@ def _set_account_cookie(response: Response, account: Account, read_restricted: b
     )
 
 
-def get_client_ip(request: Request) -> str:
-    """Get client IP address from request"""
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0]
-    return request.client.host if request.client else "unknown"
+from utils.client_ip import get_client_ip  # shared with rate-limit middleware
 
 
 @router.get("/first-run", response_model=FirstRunStatus)
@@ -327,9 +324,19 @@ def account_login(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account is inactive"
         )
-    
+
+    # Brute-force lockout (mirrors per-user lockout)
+    if is_account_locked(account):
+        retry = account_lock_seconds_remaining(account)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account temporarily locked due to failed attempts. Try again later.",
+            headers={"Retry-After": str(retry)},
+        )
+
     # Verify password
     if not bcrypt.checkpw(credentials.password.encode('utf-8'), account.password_hash.encode('utf-8')):
+        increment_account_failed_login(db, account.id)
         create_audit_log(
             db,
             user_id=None,
@@ -342,7 +349,9 @@ def account_login(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid account credentials"
         )
-    
+
+    reset_account_failed_login(db, account.id)
+
     # Create account-level token (with password = full read access)
     token = create_access_token(account=account, auth_level="account", read_restricted=False)
 
@@ -407,7 +416,15 @@ def account_access(
     read_restricted = True
 
     if password_provided:
+        if is_account_locked(account):
+            retry = account_lock_seconds_remaining(account)
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account temporarily locked due to failed attempts. Try again later.",
+                headers={"Retry-After": str(retry)},
+            )
         if not bcrypt.checkpw(body.password.encode("utf-8"), account.password_hash.encode("utf-8")):
+            increment_account_failed_login(db, account.id)
             create_audit_log(
                 db,
                 user_id=None,
@@ -420,6 +437,7 @@ def account_access(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid account credentials"
             )
+        reset_account_failed_login(db, account.id)
         read_restricted = False
 
     token = create_access_token(account=account, auth_level="account", read_restricted=read_restricted)
@@ -498,7 +516,16 @@ def account_unlock(
     if not account:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account not found")
 
+    if is_account_locked(account):
+        retry = account_lock_seconds_remaining(account)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account temporarily locked due to failed attempts. Try again later.",
+            headers={"Retry-After": str(retry)},
+        )
+
     if not bcrypt.checkpw(body.password.encode("utf-8"), account.password_hash.encode("utf-8")):
+        increment_account_failed_login(db, account.id)
         create_audit_log(
             db,
             user_id=getattr(request.state, "user_id", None),
@@ -508,6 +535,8 @@ def account_unlock(
             user_agent=request.headers.get("User-Agent"),
         )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid account password")
+
+    reset_account_failed_login(db, account.id)
 
     user_id = getattr(request.state, "user_id", None)
     auth_level = getattr(request.state, "auth_level", "account")
@@ -1191,7 +1220,48 @@ def get_session(
         last_activity=current_user.last_activity,
         last_full_password_login=current_user.last_full_password_login,
         roles=[role.name for role in current_user.roles if role.is_active],
-        permissions=permissions
+        permissions=permissions,
+        preferences=current_user.preferences
+    )
+
+
+@router.patch("/preferences", response_model=SessionInfo)
+def update_my_preferences(
+    payload: UserPreferencesUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Shallow-merge the current user's UI preferences (e.g. theme).
+
+    Any authenticated user may update their own preferences; no management
+    permission is required. Returns the refreshed session so the client can
+    reconcile state.
+    """
+    merged = dict(current_user.preferences or {})
+    merged.update(payload.preferences)
+    current_user.preferences = merged  # reassign so SQLAlchemy detects the JSON change
+    current_user.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(current_user)
+
+    return SessionInfo(
+        user_id=current_user.id,
+        username=current_user.username,
+        full_name=current_user.full_name,
+        account_id=current_user.account_id,
+        auth_level="full",
+        is_authenticated=True,
+        is_system_admin=current_user.is_system_admin,
+        requires_full_password=current_user.needs_full_password(),
+        last_activity=current_user.last_activity,
+        last_full_password_login=current_user.last_full_password_login,
+        roles=[role.name for role in current_user.roles if role.is_active],
+        permissions=(["*"] if current_user.is_superuser else list(set(
+            perm.name
+            for role in current_user.roles if role.is_active
+            for perm in role.permissions if perm.is_active
+        ))),
+        preferences=current_user.preferences,
     )
 
 

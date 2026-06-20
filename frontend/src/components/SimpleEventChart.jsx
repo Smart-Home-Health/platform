@@ -15,18 +15,35 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useEffect, useRef, memo } from 'react';
+import { useEffect, useRef, useState, memo } from 'react';
 import Chart from 'chart.js/auto';
 import 'chartjs-adapter-date-fns';
+
+// Resolve a theme token (e.g. "--muted-foreground") to its computed color,
+// falling back to a sensible default so the chart still renders if unset.
+const themeColor = (token, fallback) => {
+  if (typeof window === 'undefined') return fallback;
+  const v = getComputedStyle(document.documentElement).getPropertyValue(token).trim();
+  return v || fallback;
+};
 
 // Use React.memo to prevent re-renders when props don't change
 const SimpleEventChart = memo(({ title, color, data, unit, xType = 'category' }) => {
   const chartRef = useRef(null);
   const chartInstance = useRef(null);
   const canvasId = useRef(`chart-${Math.random().toString(36).substr(2, 9)}`);
-  
-  // Store the data in a ref to compare with future renders
+
+  // Store the data/theme used for the last render so we can skip needless rebuilds.
   const prevDataRef = useRef(null);
+  const prevThemeRef = useRef(null);
+
+  // Bump on light/dark switches so the canvas re-renders with theme-aware colors.
+  const [themeVersion, setThemeVersion] = useState(0);
+  useEffect(() => {
+    const observer = new MutationObserver(() => setThemeVersion(v => v + 1));
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     // Don't try to render if we don't have data
@@ -34,19 +51,20 @@ const SimpleEventChart = memo(({ title, color, data, unit, xType = 'category' })
       console.log(`No data available for ${title} chart`);
       return;
     }
-    
-    // Check if data has actually changed to avoid unnecessary updates
-    const dataChanged = prevDataRef.current !== data || 
+
+    // Rebuild when the data OR the theme changes.
+    const dataChanged = prevDataRef.current !== data ||
                         JSON.stringify(prevDataRef.current) !== JSON.stringify(data);
-    
-    // If data hasn't changed, don't recreate the chart
-    if (chartInstance.current && !dataChanged) {
-      console.log(`Skipping ${title} chart update - data unchanged`);
+    const themeChanged = prevThemeRef.current !== themeVersion;
+
+    if (chartInstance.current && !dataChanged && !themeChanged) {
+      console.log(`Skipping ${title} chart update - data & theme unchanged`);
       return;
     }
-    
-    // Update the data reference
+
+    // Update the data/theme references
     prevDataRef.current = data;
+    prevThemeRef.current = themeVersion;
     
     console.log(`Rendering ${title} chart with ${data.length} data points`);
     
@@ -60,7 +78,12 @@ const SimpleEventChart = memo(({ title, color, data, unit, xType = 'category' })
     // Create a new chart
     try {
       const ctx = chartRef.current.getContext('2d');
-      
+
+      // Theme-aware axis/grid colors resolved from the active palette.
+      const tickColor = themeColor('--muted-foreground', '#a0aec0');
+      const titleColor = themeColor('--foreground', '#e6edf3');
+      const gridColor = themeColor('--border', 'rgba(160, 174, 192, 0.2)');
+
       chartInstance.current = new Chart(ctx, {
         type: 'line',
         data: {
@@ -99,28 +122,30 @@ const SimpleEventChart = memo(({ title, color, data, unit, xType = 'category' })
               } : {}),
               title: {
                 display: true,
-                text: 'Time'
+                text: 'Time',
+                color: titleColor
               },
               ticks: {
-                color: '#a0aec0',
+                color: tickColor,
                 maxRotation: 0,
                 autoSkip: true,
                 maxTicksLimit: 8,
               },
               grid: {
-                color: 'rgba(160, 174, 192, 0.1)'
+                color: gridColor
               }
             },
             y: {
               title: {
                 display: true,
-                text: unit
+                text: unit,
+                color: titleColor
               },
               ticks: {
-                color: '#a0aec0'
+                color: tickColor
               },
               grid: {
-                color: 'rgba(160, 174, 192, 0.1)'
+                color: gridColor
               }
             }
           }
@@ -140,7 +165,7 @@ const SimpleEventChart = memo(({ title, color, data, unit, xType = 'category' })
         chartInstance.current = null;
       }
     };
-  }, [title, color, data, unit, xType]);
+  }, [title, color, data, unit, xType, themeVersion]);
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>

@@ -150,7 +150,7 @@ const AdminV2CareTasksSchedule = () => {
       'upcoming': { label: 'Upcoming', color: '#58a6ff', bg: 'rgba(88, 166, 255, 0.15)', border: '#58a6ff' },
       'missed': { label: 'Missed', color: '#f85149', bg: 'rgba(248, 81, 73, 0.15)', border: '#f85149' },
       'completed': { label: 'Completed', color: '#238636', bg: 'rgba(35, 134, 54, 0.15)', border: '#238636' },
-      'skipped': { label: 'Skipped', color: '#8b949e', bg: 'rgba(139, 148, 158, 0.15)', border: '#8b949e' }
+      'skipped': { label: 'Skipped', color: 'var(--muted-foreground)', bg: 'rgba(139, 148, 158, 0.15)', border: 'var(--muted-foreground)' }
     };
     return statusMap[status] || statusMap.upcoming;
   };
@@ -407,7 +407,7 @@ const AdminV2CareTasksSchedule = () => {
 
             {/* Refresh Button */}
             <div className="admin-v2-page-header tw">
-              <h3 style={{ margin: 0, color: '#e6edf3' }}>
+              <h3 style={{ margin: 0, color: 'var(--foreground)' }}>
                 Today & Yesterday ({filteredTasks.length} of {scheduledTasks.length})
               </h3>
               <Button onClick={fetchSchedule} disabled={loading}>
@@ -552,7 +552,7 @@ const AdminV2CareTasksSchedule = () => {
                   <span>Upcoming</span>
                 </div>
                 <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: '#8b949e' }}></span>
+                  <span className="admin-v2-legend-dot" style={{ backgroundColor: 'var(--muted-foreground)' }}></span>
                   <span>Skipped</span>
                 </div>
               </div>

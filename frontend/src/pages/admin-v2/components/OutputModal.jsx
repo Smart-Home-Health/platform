@@ -352,7 +352,7 @@ const OutputModal = ({ open, onClose, onSaved, patient, editing, defaultDateTime
               {!isCatheter && (
                 <div className="admin-v2-output-type-section">
                   <label className="admin-v2-output-section-label">
-                    What was it? * <span style={{ color: '#8b949e', fontWeight: 400, fontSize: '0.8rem' }}>(pick one or both)</span>
+                    What was it? * <span style={{ color: 'var(--muted-foreground)', fontWeight: 400, fontSize: '0.8rem' }}>(pick one or both)</span>
                   </label>
                   <div className="admin-v2-output-type-grid">
                     {(!editing || editing.output_type === 'urine') && (

@@ -185,9 +185,9 @@ const AdminV2ReportsOvernight = () => {
             type: 'linear',
             min: windowStart,
             max: windowEnd,
-            grid: { color: 'rgba(255,255,255,0.06)' },
+            grid: { color: 'color-mix(in srgb, var(--foreground) 6%, transparent)' },
             ticks: {
-              color: '#8b949e',
+              color: 'var(--muted-foreground)',
               font: { size: 11 },
               maxTicksLimit: 12,
               callback: (val) => {
@@ -205,7 +205,7 @@ const AdminV2ReportsOvernight = () => {
             min: Math.max(0, (data.vitals_summary?.spo2?.min || 90) - 5),
             max: 100,
             title: { display: true, text: 'SpO2 %', color: '#58a6ff', font: { size: 11 } },
-            grid: { color: 'rgba(255,255,255,0.06)' },
+            grid: { color: 'color-mix(in srgb, var(--foreground) 6%, transparent)' },
             ticks: { color: '#58a6ff', font: { size: 10 } },
           },
           y1: {
@@ -218,7 +218,7 @@ const AdminV2ReportsOvernight = () => {
         },
         plugins: {
           legend: {
-            labels: { usePointStyle: true, padding: 12, font: { size: 11 }, color: '#e6edf3' },
+            labels: { usePointStyle: true, padding: 12, font: { size: 11 }, color: 'var(--foreground)' },
           },
           annotation: { annotations: alertAnnotations },
           tooltip: {
