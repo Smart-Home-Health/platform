@@ -136,6 +136,33 @@ def save_temperature(db: Session, body_temp=None, skin_temp=None, timestamp=None
     return vital_ids
 
 
+def get_patient_vitals_mqtt_state(db: Session, patient_id: int) -> dict:
+    """Latest manually-entered vitals as per-patient MQTT combined-state keys
+    (weight, body_temp/skin_temp, systolic_bp/diastolic_bp/map_bp). Used to seed
+    the in-memory state cache so these survive a restart instead of being blanked
+    out of the retained state by the next live-reader publish."""
+    def _latest(vital_type, group=None):
+        q = db.query(Vital).filter(Vital.patient_id == patient_id, Vital.vital_type == vital_type)
+        if group is not None:
+            q = q.filter(Vital.vital_group == group)
+        return q.order_by(Vital.timestamp.desc()).first()
+
+    out = {}
+    pairs = [
+        ('weight', None, 'weight'),
+        ('temperature', 'body', 'body_temp'),
+        ('temperature', 'skin', 'skin_temp'),
+        ('blood_pressure', 'systolic', 'systolic_bp'),
+        ('blood_pressure', 'diastolic', 'diastolic_bp'),
+        ('blood_pressure', 'map', 'map_bp'),
+    ]
+    for vital_type, group, key in pairs:
+        row = _latest(vital_type, group)
+        if row is not None and row.value is not None:
+            out[key] = row.value
+    return out
+
+
 def get_distinct_vital_types(db: Session):
     logger.info(f"DB connection: {db.bind.url}")
     logger.info("Fetching distinct vital types...")

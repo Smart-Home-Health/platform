@@ -42,7 +42,9 @@ class VentSample(Base):
     )
 
     recorded_at_raw = Column(TIMESTAMP(timezone=True), nullable=False)
-    recorded_at = Column(TIMESTAMP(timezone=True), nullable=False)
+    # Part of the composite PK: TimescaleDB requires the hypertable partition
+    # column in every PK/UNIQUE constraint. `id` keeps its own sequence.
+    recorded_at = Column(TIMESTAMP(timezone=True), primary_key=True, nullable=False)
 
     parameter_key = Column(String(100), nullable=False)
     # _N (single sample) / _5 / _50 / _95 (percentile aggregates). NULL if none.

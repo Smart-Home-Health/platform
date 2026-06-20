@@ -288,6 +288,8 @@ class Account(Base):
     password_hash = Column(String(255), nullable=False)  # bcrypt hash for account login
     is_default = Column(Boolean, default=False, nullable=False)  # Default account for migration
     is_active = Column(Boolean, default=True, nullable=False)
+    failed_login_attempts = Column(Integer, default=0, nullable=False)  # Account-login brute-force lockout
+    locked_until = Column(DateTime, nullable=True)
     settings = Column(JSON, nullable=True)  # Account-specific settings
     contact_email = Column(String(255), nullable=True)
     contact_phone = Column(String(50), nullable=True)

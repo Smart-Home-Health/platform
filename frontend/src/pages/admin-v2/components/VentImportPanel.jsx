@@ -441,7 +441,7 @@ const VentImportPanel = ({ open, onClose, patientId, integrationId, integrationN
                       </div>
                     )}
 
-                    <div className="mt-0.5 flex justify-end gap-2 border-t border-[color-mix(in srgb, var(--foreground) 6%, transparent)] pt-2">
+                    <div className="mt-0.5 flex justify-end gap-2 border-t border-border pt-2">
                       <Button
                         variant="ghost"
                         size="sm"

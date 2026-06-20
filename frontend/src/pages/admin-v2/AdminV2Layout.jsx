@@ -148,7 +148,6 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
         ? [{ path: '/care/profile/implants', label: 'Implants' }] : []),
       ...(hasAnyPermission(['businesses.read', 'businesses.create', 'businesses.update', 'businesses.delete'])
         ? [{ path: '/care/profile/businesses', label: 'Businesses' }] : []),
-      { path: '/care/profile/mqtt', label: 'MQTT' },
     ],
     configuration: [
       // System-wide configuration
@@ -162,11 +161,11 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
         ? [{ path: '/care/configuration/users', label: 'Users' }] : []),
       ...(hasAnyPermission(['roles.read', 'roles.create', 'roles.update', 'roles.delete', 'users.read'])
         ? [{ path: '/care/configuration/users/roles', label: 'Roles' }] : []),
-      ...(hasAnyPermission(['roles.read', 'roles.create', 'roles.update', 'roles.delete', 'users.read'])
-        ? [{ path: '/care/configuration/users/permissions', label: 'Permissions' }] : []),
       { path: '/care/configuration/mqtt', label: 'MQTT' },
       ...(isSystemAdmin
         ? [{ path: '/care/configuration/backup', label: 'Backup' }] : []),
+      ...(isSystemAdmin
+        ? [{ path: '/care/configuration/system-health', label: 'System' }] : []),
     ],
   };
   return navItems[section] || [];

@@ -111,10 +111,9 @@ class MQTTService:
         db = next(get_db())
         try:
             discovery_enabled = get_setting(db, 'mqtt_discovery_enabled', True)
-            test_mode = get_setting(db, 'mqtt_test_mode', True)
-            
+
             if discovery_enabled:
-                send_mqtt_discovery(self.mqtt_client, test_mode=test_mode)
+                send_mqtt_discovery(self.mqtt_client)
                 logger.info("[mqtt.service] MQTT discovery messages sent")
         finally:
             db.close()

@@ -81,10 +81,19 @@ export default function UserSelectionPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    const usingPin = !usePassword && selectedUser.has_pin;
+    // Guard the PIN length client-side so a too-short PIN gets a clear message
+    // instead of the backend's Pydantic 422 ("String should have at least…").
+    if (usingPin && (pin.length < 4 || pin.length > 8)) {
+      setError('PIN must be 4–8 digits');
+      return;
+    }
+
     setLoading(true);
 
     let result;
-    
+
     if (usePassword || !selectedUser.has_pin) {
       // Full password login
       result = await selectUser(selectedUser.id, null, password);

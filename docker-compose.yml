@@ -2,8 +2,14 @@ version: '3.8'
 
 services:
   db:
-    image: postgres:15-alpine
+    # TimescaleDB (PG15-compatible). Pin to a specific patch (e.g. 2.17.2-pg15)
+    # for reproducible deploys; `latest-pg15` is fine for single-user dev.
+    image: timescale/timescaledb:latest-pg15
     container_name: shh_db
+    # TimescaleDB must be preloaded. The image only writes this into a *fresh*
+    # initdb config; since we reuse a volume first created by stock postgres,
+    # set it explicitly here so `CREATE EXTENSION timescaledb` works.
+    command: postgres -c shared_preload_libraries=timescaledb
     environment:
       POSTGRES_USER: shh_user
       POSTGRES_PASSWORD: shh_dev_pass

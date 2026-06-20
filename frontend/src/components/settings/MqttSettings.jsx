@@ -27,7 +27,6 @@ const MqttSettings = () => {
     mqtt_password: '',
     mqtt_client_id: 'sensor_monitor',
     mqtt_discovery_enabled: true,
-    mqtt_test_mode: true,
     mqtt_base_topic: 'shh',
     // Topic configuration for each vital
     topics: {
@@ -224,7 +223,7 @@ const MqttSettings = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ test_mode: mqttSettings.mqtt_test_mode }),
+        body: JSON.stringify({}),
       });
 
       if (response.ok) {
@@ -779,36 +778,6 @@ const MqttSettings = () => {
                 }}
               />
               <span>Enable Home Assistant Discovery</span>
-            </label>
-          </div>
-
-          <div style={{ marginBottom: '16px' }}>
-            <label style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '10px',
-              fontSize: '14px', 
-              color: '#ffffff',
-              fontWeight: '500',
-              cursor: 'pointer',
-              padding: '12px',
-              backgroundColor: '#1a202c',
-              borderRadius: '6px',
-              border: '1px solid #4a5568'
-            }}>
-              <input
-                type="checkbox"
-                checked={mqttSettings.mqtt_test_mode}
-                onChange={(e) => handleInputChange('mqtt_test_mode', e.target.checked)}
-                disabled={!mqttSettings.mqtt_enabled || !mqttSettings.mqtt_discovery_enabled}
-                style={{ 
-                  width: '18px',
-                  height: '18px',
-                  accentColor: '#007bff',
-                  cursor: 'pointer'
-                }}
-              />
-              <span>Test Mode (uses "medical-test" prefix)</span>
             </label>
           </div>
 
