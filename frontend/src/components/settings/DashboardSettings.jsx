@@ -166,13 +166,13 @@ const DashboardSettings = () => {
   };
 
   if (isLoading) {
-    return <div style={{ color: '#ffffff', textAlign: 'center', padding: '20px' }}>Loading dashboard settings...</div>;
+    return <div style={{ color: 'var(--dash-text)', textAlign: 'center', padding: '20px' }}>Loading dashboard settings...</div>;
   }
 
   return (
     <div>
       <h3 style={{ 
-        color: '#ffffff', 
+        color: 'var(--dash-text)', 
         fontSize: '1.25rem', 
         marginBottom: '16px',
         fontWeight: '600'
@@ -181,7 +181,7 @@ const DashboardSettings = () => {
       {/* Chart Time Range and Display Options */}
       <div style={{ marginBottom: '24px' }}>
         <h4 style={{ 
-          color: '#ffffff', 
+          color: 'var(--dash-text)', 
           fontSize: '1.1rem', 
           marginBottom: '12px',
           fontWeight: '500'
@@ -189,7 +189,7 @@ const DashboardSettings = () => {
         
         <div style={{ marginBottom: '16px' }}>
           <label style={{ 
-            color: '#e2e8f0', 
+            color: 'var(--dash-text-muted)', 
             fontSize: '13px', 
             fontWeight: '500', 
             marginBottom: '6px', 
@@ -201,10 +201,10 @@ const DashboardSettings = () => {
             style={{
               width: '100%',
               padding: '10px 12px',
-              backgroundColor: '#2d3748',
-              border: '1px solid #4a5568',
+              backgroundColor: 'var(--dash-surface-2)',
+              border: '1px solid var(--dash-border-strong)',
               borderRadius: '6px',
-              color: '#ffffff',
+              color: 'var(--dash-text)',
               fontSize: '14px',
               outline: 'none',
               cursor: 'pointer',
@@ -219,7 +219,7 @@ const DashboardSettings = () => {
             <option value="1h">1 Hour</option>
           </select>
           <div style={{ 
-            color: '#cbd5e0', 
+            color: 'var(--dash-text-muted)', 
             fontSize: '12px', 
             marginTop: '6px',
             fontStyle: 'italic'
@@ -233,9 +233,9 @@ const DashboardSettings = () => {
           alignItems: 'center', 
           gap: '10px', 
           padding: '12px',
-          backgroundColor: '#1a202c',
+          backgroundColor: 'var(--dash-surface)',
           borderRadius: '6px',
-          border: '1px solid #4a5568'
+          border: '1px solid var(--dash-border-strong)'
         }}>
           <input
             type="checkbox"
@@ -249,14 +249,14 @@ const DashboardSettings = () => {
             }}
           />
           <label style={{ 
-            color: '#ffffff', 
+            color: 'var(--dash-text)', 
             fontSize: '14px', 
             fontWeight: '500',
             cursor: 'pointer'
           }}>Show Value Statistics (Min/Max/Avg)</label>
         </div>
         <div style={{ 
-          color: '#cbd5e0', 
+          color: 'var(--dash-text-muted)', 
           fontSize: '12px', 
           marginTop: '6px',
           fontStyle: 'italic'
@@ -268,7 +268,7 @@ const DashboardSettings = () => {
         {/* Card Display Options */}
         <div style={{ marginBottom: '24px' }}>
           <h4 style={{ 
-            color: '#ffffff', 
+            color: 'var(--dash-text)', 
             fontSize: '1.1rem', 
             marginBottom: '12px',
             fontWeight: '500'
@@ -277,13 +277,13 @@ const DashboardSettings = () => {
           {/* Sub-chart Selection */}
           <div style={{ marginBottom: '16px' }}>
             <h5 style={{ 
-              color: '#e2e8f0', 
+              color: 'var(--dash-text-muted)', 
               fontSize: '1rem', 
               marginBottom: '8px',
               fontWeight: '500'
             }}>Vital Charts Selection</h5>
             <div style={{ 
-              color: '#cbd5e0', 
+              color: 'var(--dash-text-muted)', 
               fontSize: '12px', 
               marginBottom: '12px',
               fontStyle: 'italic'
@@ -294,7 +294,7 @@ const DashboardSettings = () => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <div>
                 <label style={{ 
-                  color: '#e2e8f0', 
+                  color: 'var(--dash-text-muted)', 
                   fontSize: '13px', 
                   fontWeight: '500', 
                   marginBottom: '6px', 
@@ -306,10 +306,10 @@ const DashboardSettings = () => {
                   style={{
                     width: '100%',
                     padding: '10px 12px',
-                    backgroundColor: '#2d3748',
-                    border: '1px solid #4a5568',
+                    backgroundColor: 'var(--dash-surface-2)',
+                    border: '1px solid var(--dash-border-strong)',
                     borderRadius: '6px',
-                    color: '#ffffff',
+                    color: 'var(--dash-text)',
                     fontSize: '14px',
                     outline: 'none',
                     cursor: 'pointer',
@@ -327,7 +327,7 @@ const DashboardSettings = () => {
               
               <div>
                 <label style={{ 
-                  color: '#e2e8f0', 
+                  color: 'var(--dash-text-muted)', 
                   fontSize: '13px', 
                   fontWeight: '500', 
                   marginBottom: '6px', 
@@ -339,10 +339,10 @@ const DashboardSettings = () => {
                   style={{
                     width: '100%',
                     padding: '10px 12px',
-                    backgroundColor: '#2d3748',
-                    border: '1px solid #4a5568',
+                    backgroundColor: 'var(--dash-surface-2)',
+                    border: '1px solid var(--dash-border-strong)',
                     borderRadius: '6px',
-                    color: '#ffffff',
+                    color: 'var(--dash-text)',
                     fontSize: '14px',
                     outline: 'none',
                     cursor: 'pointer',
@@ -364,7 +364,7 @@ const DashboardSettings = () => {
         {/* Perfusion Display Mode */}
         <div style={{ marginBottom: '24px' }}>
           <h4 style={{ 
-            color: '#ffffff', 
+            color: 'var(--dash-text)', 
             fontSize: '1.1rem', 
             marginBottom: '12px',
             fontWeight: '500'
@@ -374,9 +374,9 @@ const DashboardSettings = () => {
             alignItems: 'center', 
             gap: '10px', 
             padding: '12px',
-            backgroundColor: '#1a202c',
+            backgroundColor: 'var(--dash-surface)',
             borderRadius: '6px',
-            border: '1px solid #4a5568'
+            border: '1px solid var(--dash-border-strong)'
           }}>
             <input
               type="checkbox"
@@ -390,14 +390,14 @@ const DashboardSettings = () => {
               }}
             />
             <label style={{ 
-              color: '#ffffff', 
+              color: 'var(--dash-text)', 
               fontSize: '14px', 
               fontWeight: '500',
               cursor: 'pointer'
             }}>Display Perfusion as Percent (%)</label>
           </div>
           <div style={{ 
-            color: '#cbd5e0', 
+            color: 'var(--dash-text-muted)', 
             fontSize: '12px', 
             marginTop: '6px',
             fontStyle: 'italic'
@@ -433,7 +433,7 @@ const DashboardSettings = () => {
             disabled={isSubmitting}
             style={{
               backgroundColor: '#007bff',
-              color: '#ffffff',
+              color: 'var(--dash-text)',
               border: 'none',
               borderRadius: '6px',
               padding: '10px 24px',

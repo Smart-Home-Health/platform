@@ -46,10 +46,11 @@ import CareTaskModal from "../components/CareTaskModal";
 import CameraLiveModal from "../components/CameraLiveModal";
 import MessagesModal from "../components/MessagesModal";
 import { formatVitalDisplayName } from "../utils/vitals";
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useAdminPatient } from '../contexts/AdminPatientContext';
 import { usePinChallenge } from '../contexts/PinChallengeContext';
+import { useDashboardTheme } from '../contexts/DashboardThemeContext';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -58,6 +59,7 @@ export default function Dashboard() {
   const { isAuthenticated, readRestricted, unlockWithAccountPassword } = useAuth();
   const { patients, selectedPatient, selectPatient, loadingPatients } = useAdminPatient();
   const { requirePinAuth, pinChallengeOpen } = usePinChallenge();
+  const { scheme, chartChrome } = useDashboardTheme();
 
   // Add mobile detection state
   const [isMobile, setIsMobile] = useState(false);
@@ -848,7 +850,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="dashboard-wrapper force-dark">
+    <div className={`dashboard-wrapper force-dark theme-${scheme}`}>
       <ModalBase
         isOpen={unlockModalOpen}
         onClose={() => { if (!needsUnlock) setActionUnlockOpen(false); }}
@@ -1113,16 +1115,6 @@ export default function Dashboard() {
               <SettingsIcon />
               <span>Settings</span>
             </div>
-            
-            <Link 
-              to="/admin"
-              className="mobile-menu-item admin-link"
-              onClick={() => setIsMobileMenuOpen(false)}
-              style={{ textDecoration: 'none', color: 'inherit' }}
-            >
-              <span style={{ fontSize: '20px' }}>⚙️</span>
-              <span>Admin</span>
-            </Link>
           </div>
         </div>
       )}
@@ -1332,6 +1324,7 @@ export default function Dashboard() {
                     dataset={datasets.spo2}
                     showXaxis={false}
                     showYaxis={true}
+                    chrome={chartChrome}
                   />
                 </div>
               </div>
@@ -1347,6 +1340,7 @@ export default function Dashboard() {
                     dataset={datasets.bpm}
                     showXaxis={false}
                     showYaxis={true}
+                    chrome={chartChrome}
                   />
                 </div>
               </div>
@@ -1362,6 +1356,7 @@ export default function Dashboard() {
                     dataset={datasets.perfusion}
                     showXaxis={true}
                     showYaxis={true}
+                    chrome={chartChrome}
                   />
                 </div>
               </div>
@@ -1374,6 +1369,7 @@ export default function Dashboard() {
                   data={dashboardChart1.data}
                   title={`Chart 1: ${formatVitalDisplayName(dashboardChart1.vital_type)} History`}
                   patientId={selectedPatient?.id}
+                  chrome={chartChrome}
                   onSaved={() => fetchChartData(dashboardChart1.vital_type, 1)}
                 />
               </div>
@@ -1384,6 +1380,7 @@ export default function Dashboard() {
                   data={dashboardChart2.data}
                   title={`Chart 2: ${formatVitalDisplayName(dashboardChart2.vital_type)} History`}
                   patientId={selectedPatient?.id}
+                  chrome={chartChrome}
                   onSaved={() => fetchChartData(dashboardChart2.vital_type, 2)}
                 />
               </div>

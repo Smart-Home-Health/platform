@@ -101,6 +101,20 @@ class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     is_active: Optional[bool] = None
     role_ids: Optional[List[int]] = None
+    pin: Optional[str] = Field(None, min_length=4, max_length=8)
+
+    @field_validator('pin')
+    @classmethod
+    def validate_pin(cls, v):
+        if v is not None and not v.isdigit():
+            raise ValueError('PIN must contain only digits')
+        return v
+
+
+class AdminPasswordReset(BaseModel):
+    """System-admin direct password reset for another user."""
+    new_password: str = Field(..., min_length=8)
+    require_change: bool = False
 
 
 class UserPreferencesUpdate(BaseModel):

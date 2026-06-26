@@ -26,6 +26,7 @@ import MedicationDoseModal from '../pages/admin-v2/components/MedicationDoseModa
 import UpdateQuantityModal from '../pages/admin-v2/components/UpdateQuantityModal';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -245,31 +246,31 @@ const MedicationModal = ({ onClose }) => {
     const nextDue = formatTimestamp(med.next_due);
     return (
       <div key={med.id} className="medication-card" style={{
-        backgroundColor: '#fff', borderRadius: '6px', padding: '12px', marginBottom: '8px',
+        backgroundColor: 'var(--dash-surface)', borderRadius: '6px', padding: '12px', marginBottom: '8px',
         boxShadow: '0 1px 3px rgba(0,0,0,0.08)', border: '1px solid #28a745', borderLeft: '4px solid #28a745'
       }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
-            <h4 style={{ margin: 0, color: '#333', fontSize: '16px', fontWeight: 600 }}>{med.name}</h4>
+            <h4 style={{ margin: 0, color: 'var(--dash-text)', fontSize: '16px', fontWeight: 600 }}>{med.name}</h4>
             {med.concentration && (
-              <span style={{ fontSize: 12, color: '#666', fontWeight: 500 }}>{med.concentration}</span>
+              <span style={{ fontSize: 12, color: 'var(--dash-text-muted)', fontWeight: 500 }}>{med.concentration}</span>
             )}
             {med.as_needed && (
               <span style={{ background: '#ede1ff', color: '#6f42c1', padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600 }}>PRN</span>
             )}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '6px 16px', fontSize: 13, color: '#555' }}>
-            <span><strong style={{ color: '#333' }}>On hand:</strong> {med.quantity ?? '—'} {med.quantity_unit || 'units'}</span>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '6px 16px', fontSize: 13, color: 'var(--dash-text-muted)' }}>
+            <span><strong style={{ color: 'var(--dash-text)' }}>On hand:</strong> {med.quantity ?? '—'} {med.quantity_unit || 'units'}</span>
             <span>
-              <strong style={{ color: '#333' }}>Last given:</strong>{' '}
+              <strong style={{ color: 'var(--dash-text)' }}>Last given:</strong>{' '}
               {lastGiven
-                ? <>{lastGiven}{med.last_dose_amount != null && <span style={{ color: '#888' }}> ({med.last_dose_amount})</span>}</>
-                : <span style={{ color: '#999' }}>never</span>}
+                ? <>{lastGiven}{med.last_dose_amount != null && <span style={{ color: 'var(--dash-text-muted)' }}> ({med.last_dose_amount})</span>}</>
+                : <span style={{ color: 'var(--dash-text-dim)' }}>never</span>}
             </span>
-            {nextDue && <span><strong style={{ color: '#333' }}>Next due:</strong> {nextDue}</span>}
+            {nextDue && <span><strong style={{ color: 'var(--dash-text)' }}>Next due:</strong> {nextDue}</span>}
           </div>
           {med.notes && (
-            <div style={{ fontSize: 12, color: '#777', marginTop: 8, fontStyle: 'italic' }}>
+            <div style={{ fontSize: 12, color: 'var(--dash-text-muted)', marginTop: 8, fontStyle: 'italic' }}>
               {med.notes.length > 80 ? med.notes.substring(0, 80) + '…' : med.notes}
             </div>
           )}
@@ -334,9 +335,9 @@ const MedicationModal = ({ onClose }) => {
             )}
             {tab === 'active' && (
               loading
-                ? <div style={{ textAlign: 'center', padding: 40, color: '#a0aec0' }}>Loading…</div>
+                ? <div style={{ textAlign: 'center', padding: 40, color: 'var(--dash-text-muted)' }}>Loading…</div>
                 : activeMedications.length === 0
-                  ? <div style={{ textAlign: 'center', padding: 40, color: '#a0aec0' }}>No active medications.</div>
+                  ? <div style={{ textAlign: 'center', padding: 40, color: 'var(--dash-text-muted)' }}>No active medications.</div>
                   : <div>{activeMedications.map(renderMedicationCard)}</div>
             )}
           </div>
@@ -380,10 +381,16 @@ const MedicationModal = ({ onClose }) => {
                 type="button"
                 variant="secondary"
                 onClick={() => pickPrnMed(med)}
-                className="h-auto justify-between py-3"
+                className="h-auto w-full justify-between whitespace-normal px-4 py-3 text-left"
               >
-                <span>{med.name}{med.concentration ? ` · ${med.concentration}` : ''}</span>
-                <span className="text-xs text-muted-foreground">{med.quantity ?? '—'} {med.quantity_unit || ''} on hand</span>
+                <span className="flex min-w-0 flex-col">
+                  <strong>{med.name}</strong>
+                  <span className="text-xs font-normal text-muted-foreground">
+                    {med.concentration ? `${med.concentration} • ` : ''}
+                    {med.quantity ?? '—'} {med.quantity_unit || ''} on hand
+                  </span>
+                </span>
+                <Badge className="ml-2 shrink-0">Give</Badge>
               </Button>
             ))}
           </div>

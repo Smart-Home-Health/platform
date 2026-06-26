@@ -127,7 +127,7 @@ const ThresholdSettings = () => {
         justifyContent: 'center', 
         alignItems: 'center', 
         padding: '40px',
-        color: '#ffffff' 
+        color: 'var(--dash-text)' 
       }}>
         Loading threshold settings...
       </div>
@@ -138,7 +138,7 @@ const ThresholdSettings = () => {
     <div>
       <div style={{ marginBottom: '24px' }}>
         <h3 style={{ 
-          color: '#ffffff', 
+          color: 'var(--dash-text)', 
           fontSize: '1.25rem', 
           marginBottom: '16px',
           fontWeight: '600'
@@ -146,7 +146,7 @@ const ThresholdSettings = () => {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
           <div>
             <label style={{ 
-              color: '#e2e8f0', 
+              color: 'var(--dash-text-muted)', 
               fontSize: '13px', 
               fontWeight: '500', 
               marginBottom: '6px', 
@@ -161,10 +161,10 @@ const ThresholdSettings = () => {
               style={{
                 width: '100%',
                 padding: '10px 12px',
-                backgroundColor: '#2d3748',
-                border: '1px solid #4a5568',
+                backgroundColor: 'var(--dash-surface-2)',
+                border: '1px solid var(--dash-border-strong)',
                 borderRadius: '6px',
-                color: '#ffffff',
+                color: 'var(--dash-text)',
                 fontSize: '14px',
                 outline: 'none',
                 boxSizing: 'border-box'
@@ -173,7 +173,7 @@ const ThresholdSettings = () => {
           </div>
           <div>
             <label style={{ 
-              color: '#e2e8f0', 
+              color: 'var(--dash-text-muted)', 
               fontSize: '13px', 
               fontWeight: '500', 
               marginBottom: '6px', 
@@ -188,10 +188,10 @@ const ThresholdSettings = () => {
               style={{
                 width: '100%',
                 padding: '10px 12px',
-                backgroundColor: '#2d3748',
-                border: '1px solid #4a5568',
+                backgroundColor: 'var(--dash-surface-2)',
+                border: '1px solid var(--dash-border-strong)',
                 borderRadius: '6px',
-                color: '#ffffff',
+                color: 'var(--dash-text)',
                 fontSize: '14px',
                 outline: 'none',
                 boxSizing: 'border-box'
@@ -200,7 +200,7 @@ const ThresholdSettings = () => {
           </div>
           <div>
             <label style={{ 
-              color: '#e2e8f0', 
+              color: 'var(--dash-text-muted)', 
               fontSize: '13px', 
               fontWeight: '500', 
               marginBottom: '6px', 
@@ -215,10 +215,10 @@ const ThresholdSettings = () => {
               style={{
                 width: '100%',
                 padding: '10px 12px',
-                backgroundColor: '#2d3748',
-                border: '1px solid #4a5568',
+                backgroundColor: 'var(--dash-surface-2)',
+                border: '1px solid var(--dash-border-strong)',
                 borderRadius: '6px',
-                color: '#ffffff',
+                color: 'var(--dash-text)',
                 fontSize: '14px',
                 outline: 'none',
                 boxSizing: 'border-box'
@@ -227,7 +227,7 @@ const ThresholdSettings = () => {
           </div>
           <div>
             <label style={{ 
-              color: '#e2e8f0', 
+              color: 'var(--dash-text-muted)', 
               fontSize: '13px', 
               fontWeight: '500', 
               marginBottom: '6px', 
@@ -242,10 +242,10 @@ const ThresholdSettings = () => {
               style={{
                 width: '100%',
                 padding: '10px 12px',
-                backgroundColor: '#2d3748',
-                border: '1px solid #4a5568',
+                backgroundColor: 'var(--dash-surface-2)',
+                border: '1px solid var(--dash-border-strong)',
                 borderRadius: '6px',
-                color: '#ffffff',
+                color: 'var(--dash-text)',
                 fontSize: '14px',
                 outline: 'none',
                 boxSizing: 'border-box'
@@ -286,7 +286,7 @@ const ThresholdSettings = () => {
           }}
           style={{
             backgroundColor: '#007bff',
-            color: '#ffffff',
+            color: 'var(--dash-text)',
             border: 'none',
             borderRadius: '6px',
             padding: '10px 24px',

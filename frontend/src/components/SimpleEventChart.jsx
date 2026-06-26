@@ -23,7 +23,10 @@ import 'chartjs-adapter-date-fns';
 // falling back to a sensible default so the chart still renders if unset.
 const themeColor = (token, fallback) => {
   if (typeof window === 'undefined') return fallback;
-  const v = getComputedStyle(document.documentElement).getPropertyValue(token).trim();
+  // On the live dashboard, theme tokens are set on .dashboard-wrapper (per-board
+  // scheme, which can differ from the admin <html> theme); prefer it when present.
+  const el = document.querySelector('.dashboard-wrapper') || document.documentElement;
+  const v = getComputedStyle(el).getPropertyValue(token).trim();
   return v || fallback;
 };
 
