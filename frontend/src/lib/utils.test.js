@@ -25,7 +25,8 @@ describe('cn', () => {
   });
 
   it('applies clsx conditional/array/object inputs', () => {
-    expect(cn('a', false && 'b', null, ['c', 'd'], { e: true, f: false })).toBe('a c d e');
+    const off = false; // avoid a constant `&&` (lint) while still exercising falsy skips
+    expect(cn('a', off && 'b', null, ['c', 'd'], { e: true, f: false })).toBe('a c d e');
   });
 
   it('dedupes conflicting Tailwind classes (last wins)', () => {

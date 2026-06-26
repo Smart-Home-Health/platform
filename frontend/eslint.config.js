@@ -30,4 +30,11 @@ export default [
       ],
     },
   },
+  {
+    // Tooling + E2E run in Node (process, __dirname) rather than the browser.
+    files: ['vitest.config.js', 'playwright.config.js', 'e2e/**/*.{js,jsx}', 'src/test/**/*.{js,jsx}'],
+    languageOptions: {
+      globals: { ...globals.node },
+    },
+  },
 ]
