@@ -1,5 +1,5 @@
 /*
- * Smart Home Health Hub
+ * Smart Home Health
  * Copyright (C) 2026 John Carty
  *
  * This program is free software: you can redistribute it and/or modify
@@ -462,7 +462,7 @@ const AdminV2SettingsGeneral = () => {
 
           {/* About */}
           <Card>
-            <SectionHeader icon="ℹ️" title="About" subtitle="Smart Home Health Hub" />
+            <SectionHeader icon="ℹ️" title="About" subtitle="Smart Home Health" />
             <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
               <p>
                 This software is free and open source, licensed under the{' '}

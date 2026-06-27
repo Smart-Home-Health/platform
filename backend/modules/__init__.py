@@ -1,4 +1,4 @@
-# Smart Home Health Hub
+# Smart Home Health
 # Copyright (C) 2026 John Carty
 #
 # This program is free software: you can redistribute it and/or modify
@@ -15,7 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # modules/__init__.py
 """
-Event-driven modules for the Smart Home Health Hub.
+Event-driven modules for the Smart Home Health.
 
 Each module manages its own state and publishes events to the bus.
 """

@@ -1,5 +1,5 @@
 /*
- * Smart Home Health Hub
+ * Smart Home Health
  * Copyright (C) 2026 John Carty
  *
  * This program is free software: you can redistribute it and/or modify
@@ -332,11 +332,11 @@ const CareTaskModal = ({ onClose }) => {
 
             {tab === 'active' && (
               loading
-                ? <div style={{ textAlign: 'center', padding: 40, color: '#a0aec0' }}>Loading…</div>
+                ? <div style={{ textAlign: 'center', padding: 40, color: 'var(--dash-text-muted)' }}>Loading…</div>
                 : activeTasks.length === 0
                   ? (
-                    <div style={{ textAlign: 'center', padding: 40, color: '#a0aec0', backgroundColor: '#2d3748', borderRadius: 8, border: '1px solid #4a5568' }}>
-                      <p style={{ margin: '0 0 10px 0', fontSize: 18, fontWeight: 500, color: '#fff' }}>No active care tasks</p>
+                    <div style={{ textAlign: 'center', padding: 40, color: 'var(--dash-text-muted)', backgroundColor: 'var(--dash-surface-2)', borderRadius: 8, border: '1px solid var(--dash-border-strong)' }}>
+                      <p style={{ margin: '0 0 10px 0', fontSize: 18, fontWeight: 500, color: 'var(--dash-text)' }}>No active care tasks</p>
                       <p style={{ margin: 0 }}>Add care tasks from the Care Tasks admin page.</p>
                     </div>
                   ) : (
@@ -345,20 +345,20 @@ const CareTaskModal = ({ onClose }) => {
                         <div key={group.id ?? 'uncat'} style={{ marginBottom: 24 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, paddingBottom: 6, borderBottom: `2px solid ${group.color}` }}>
                             <span style={{ width: 14, height: 14, borderRadius: '50%', backgroundColor: group.color, boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
-                            <h4 style={{ margin: 0, color: '#fff', fontSize: 16, fontWeight: 700 }}>{group.name}</h4>
-                            <span style={{ fontSize: 12, color: '#cbd5e0', fontWeight: 500, backgroundColor: 'rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: 10 }}>{group.tasks.length}</span>
+                            <h4 style={{ margin: 0, color: 'var(--dash-text)', fontSize: 16, fontWeight: 700 }}>{group.name}</h4>
+                            <span style={{ fontSize: 12, color: 'var(--dash-text-muted)', fontWeight: 500, backgroundColor: 'var(--dash-surface-2)', padding: '2px 8px', borderRadius: 10 }}>{group.tasks.length}</span>
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                             {group.tasks.map(task => (
                               <button key={task.id} onClick={() => pickPrnTask(task)} style={{
-                                textAlign: 'left', backgroundColor: '#fff', border: '1px solid #e9ecef',
+                                textAlign: 'left', backgroundColor: 'var(--dash-surface)', border: '1px solid var(--dash-border)',
                                 borderLeft: `5px solid ${group.color}`, borderRadius: 8, padding: '12px 14px',
                                 cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
                                 display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
                               }}>
                                 <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ color: '#333', fontWeight: 600, fontSize: 15, marginBottom: 2 }}>{task.name}</div>
-                                  {task.description && <div style={{ color: '#666', fontSize: 13, lineHeight: 1.3 }}>{task.description}</div>}
+                                  <div style={{ color: 'var(--dash-text)', fontWeight: 600, fontSize: 15, marginBottom: 2 }}>{task.name}</div>
+                                  {task.description && <div style={{ color: 'var(--dash-text-muted)', fontSize: 13, lineHeight: 1.3 }}>{task.description}</div>}
                                 </div>
                                 <span style={{ backgroundColor: '#28a745', color: '#fff', padding: '6px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, flexShrink: 0 }}>Mark Done</span>
                               </button>

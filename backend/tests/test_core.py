@@ -1,0 +1,93 @@
+# Smart Home Health
+# Copyright (C) 2026 John Carty
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""Wave 6 — core routes (routes/core.py): limits, first-run, test, /ws/sensors.
+
+These were the only backend route module without dedicated coverage. The
+websocket tests pin the delegation contract in core.py: it looks up the
+WebSocket module via main.get_modules() and closes 1011 when it is absent.
+"""
+import pytest
+from starlette.websockets import WebSocketDisconnect
+
+
+def test_limits_shape(admin_client):
+    resp = admin_client.get("/limits")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert set(body) == {"spo2", "bpm"}
+    assert set(body["spo2"]) == {"min", "max"}
+    assert set(body["bpm"]) == {"min", "max"}
+
+
+def test_limits_is_public(client):
+    # /limits is mounted at the root (no /api prefix). With the unified-image
+    # change, only /api/* is auth-gated — non-/api paths (static/SPA + these
+    # legacy root routes) are public, so /limits no longer needs a token.
+    resp = client.get("/limits")
+    assert resp.status_code == 200
+    assert set(resp.json()) == {"spo2", "bpm"}
+
+
+def test_api_test_endpoint(admin_client):
+    resp = admin_client.get("/api/test")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "success"
+
+
+def test_first_run_false_when_admin_exists(admin_client):
+    # admin_client materializes a system-admin user.
+    resp = admin_client.get("/first-run")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["is_first_run"] is False
+    assert body["has_admin"] is True
+
+
+def test_first_run_true_without_admin(account_client):
+    # Account-level token, no system-admin user seeded in this transaction.
+    resp = account_client.get("/first-run")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["is_first_run"] is True
+    assert body["has_admin"] is False
+
+
+def test_ws_sensors_closes_1011_when_module_missing(client, monkeypatch):
+    """/ws/ is public; with no WebSocket module the endpoint closes 1011."""
+    import main
+    monkeypatch.setattr(main, "get_modules", lambda: {})
+    with pytest.raises(WebSocketDisconnect) as exc:
+        with client.websocket_connect("/ws/sensors") as ws:
+            ws.receive_text()
+    assert exc.value.code == 1011
+
+
+def test_ws_sensors_delegates_to_module(client, monkeypatch):
+    """When a WebSocket module is present, the connection is handed to it."""
+    import main
+    handled = {}
+
+    class FakeWebSocketModule:
+        async def handle_websocket_connection(self, websocket):
+            handled["called"] = True
+            await websocket.accept()
+            await websocket.send_json({"ok": True})
+            await websocket.close()
+
+    monkeypatch.setattr(main, "get_modules", lambda: {"websocket": FakeWebSocketModule()})
+    with client.websocket_connect("/ws/sensors") as ws:
+        assert ws.receive_json() == {"ok": True}
+    assert handled["called"] is True

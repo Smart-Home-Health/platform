@@ -1,4 +1,4 @@
-# Smart Home Health Hub
+# Smart Home Health
 # Copyright (C) 2026 John Carty
 #
 # This program is free software: you can redistribute it and/or modify
@@ -13,7 +13,7 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-# MQTT Package for Smart Home Health Hub
+# MQTT Package for Smart Home Health
 from .client import get_mqtt_client, MQTTManager
 from .publisher import MQTTPublisher
 from .discovery import send_mqtt_discovery

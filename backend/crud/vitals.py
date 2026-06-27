@@ -1,4 +1,4 @@
-# Smart Home Health Hub
+# Smart Home Health
 # Copyright (C) 2026 John Carty
 #
 # This program is free software: you can redistribute it and/or modify
@@ -164,7 +164,9 @@ def get_patient_vitals_mqtt_state(db: Session, patient_id: int) -> dict:
 
 
 def get_distinct_vital_types(db: Session):
-    logger.info(f"DB connection: {db.bind.url}")
+    # `.get_bind().engine.url` works whether the session is bound to an Engine
+    # (normal request) or a Connection (e.g. transactional test session).
+    logger.info(f"DB connection: {db.get_bind().engine.url}")
     logger.info("Fetching distinct vital types...")
     types = db.query(Vital.vital_type).filter(Vital.vital_type.isnot(None)).filter(Vital.vital_type != '').distinct().all()
     logger.info(f"Distinct vital types fetched: {types}")

@@ -1,4 +1,4 @@
-# Smart Home Health Hub
+# Smart Home Health
 # Copyright (C) 2026 John Carty
 #
 # This program is free software: you can redistribute it and/or modify
@@ -22,7 +22,6 @@ Handles pairing, management, and WebSocket data ingestion from reader devices.
 import asyncio
 import json
 import logging
-import os
 import secrets
 import time
 from dataclasses import dataclass
@@ -283,12 +282,16 @@ pending_pairings: Dict[int, PendingPairing] = {}
 
 def _reader_facing_ws_url(reader_id: int, request_host_url: Optional[str]) -> str:
     """
-    URL the host gives to the reader during pairing. Uses READER_FACING_BASE_URL
-    when set (e.g. http://host.docker.internal:8000 so readers in Docker can reach host);
-    otherwise uses the URL provided by the client (e.g. from frontend API_BASE_URL).
-    Path must match the WebSocket route: /api/readers/ws/{reader_id}.
+    URL the host gives to the reader during pairing, derived from the host_url the
+    frontend reports (its own origin). Path must match the WebSocket route
+    /api/readers/ws/{reader_id}.
+
+    This works in both deploy modes because the reader connects to the same origin
+    the browser used: in the unified image that origin IS the backend; in split dev
+    the Vite proxy forwards /api/readers/ws (ws) to the backend. (The old
+    READER_FACING_BASE_URL override is no longer needed and has been removed.)
     """
-    base = os.environ.get("READER_FACING_BASE_URL", "").strip() or request_host_url
+    base = (request_host_url or "").strip()
     if base:
         ws = base.replace("http://", "ws://").replace("https://", "wss://").rstrip("/")
         return f"{ws}/api/readers/ws/{reader_id}"

@@ -1,0 +1,36 @@
+# Isolated test stack: an ephemeral Timescale DB + a one-shot test runner.
+# Used by scripts/run_tests.sh as the pre-image-build gate. Does NOT touch the
+# dev `db`/`backend` services or their volumes.
+services:
+  db-test:
+    image: timescale/timescaledb:latest-pg15
+    environment:
+      POSTGRES_USER: shh_user
+      POSTGRES_PASSWORD: shh_dev_pass
+      POSTGRES_DB: shh_test
+    tmpfs:
+      - /var/lib/postgresql/data   # ephemeral — fast, nothing to clean up
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shh_user -d shh_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks: [shh-test-net]
+
+  tests:
+    build: ./backend
+    depends_on:
+      db-test:
+        condition: service_healthy
+    environment:
+      TEST_DATABASE_URL: postgresql://shh_user:shh_dev_pass@db-test:5432/shh_test
+      JWT_SECRET_KEY: test-secret-not-for-production
+    volumes:
+      - ./backend:/app
+    working_dir: /app
+    # Reuse the backend image (prod deps) and add test-only deps at runtime.
+    command: sh -c "pip install --no-cache-dir -r requirements-dev.txt && pytest"
+    networks: [shh-test-net]
+
+networks:
+  shh-test-net:

@@ -1,5 +1,5 @@
 /*
- * Smart Home Health Hub
+ * Smart Home Health
  * Copyright (C) 2026 John Carty
  *
  * This program is free software: you can redistribute it and/or modify
@@ -178,16 +178,16 @@ export default function ScheduleList({
   );
 
   if (loading) {
-    return <div style={{ textAlign: 'center', padding: 40, color: '#a0aec0' }}>Loading…</div>;
+    return <div style={{ textAlign: 'center', padding: 40, color: 'var(--dash-text-muted)' }}>Loading…</div>;
   }
 
   if (items.length === 0) {
     return (
       <div style={{
-        textAlign: 'center', padding: 40, color: '#a0aec0',
-        backgroundColor: '#2d3748', borderRadius: 8, border: '1px solid #4a5568',
+        textAlign: 'center', padding: 40, color: 'var(--dash-text-muted)',
+        backgroundColor: 'var(--dash-surface-2)', borderRadius: 8, border: '1px solid var(--dash-border-strong)',
       }}>
-        <p style={{ margin: '0 0 10px 0', fontSize: 18, fontWeight: 500, color: '#fff' }}>{emptyText}</p>
+        <p style={{ margin: '0 0 10px 0', fontSize: 18, fontWeight: 500, color: 'var(--dash-text)' }}>{emptyText}</p>
       </div>
     );
   }
@@ -205,7 +205,7 @@ export default function ScheduleList({
         marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center',
       }}>
         {title && (
-          <h3 style={{ margin: 0, color: '#fff', fontSize: 18, fontWeight: 600 }}>{title}</h3>
+          <h3 style={{ margin: 0, color: 'var(--dash-text)', fontSize: 18, fontWeight: 600 }}>{title}</h3>
         )}
         <button
           onClick={() => setShowFilters(!showFilters)}
@@ -222,13 +222,13 @@ export default function ScheduleList({
       {showFilters && (
         <div style={{
           marginBottom: 20, padding: 16,
-          backgroundColor: '#2d3748', borderRadius: 8, border: '1px solid #4a5568',
+          backgroundColor: 'var(--dash-surface-2)', borderRadius: 8, border: '1px solid var(--dash-border-strong)',
         }}>
           <div style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             marginBottom: 12,
           }}>
-            <h4 style={{ margin: 0, color: '#fff', fontSize: 14, fontWeight: 600 }}>
+            <h4 style={{ margin: 0, color: 'var(--dash-text)', fontSize: 14, fontWeight: 600 }}>
               Filter by Status:
             </h4>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -246,10 +246,10 @@ export default function ScheduleList({
             {FILTER_OPTIONS.map(opt => (
               <label key={opt.key} style={{
                 display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
-                color: '#e2e8f0', fontSize: 12,
+                color: 'var(--dash-text-muted)', fontSize: 12,
                 padding: '4px 8px', borderRadius: 4,
-                backgroundColor: statusFilters[opt.key] ? '#4a5568' : 'transparent',
-                border: '1px solid #4a5568',
+                backgroundColor: statusFilters[opt.key] ? 'var(--dash-border-strong)' : 'transparent',
+                border: '1px solid var(--dash-border-strong)',
               }}>
                 <input
                   type="checkbox"
@@ -271,8 +271,8 @@ export default function ScheduleList({
       {filtered.length !== items.length && (
         <div style={{
           marginBottom: 16, padding: '8px 12px',
-          backgroundColor: '#374151', borderRadius: 6,
-          color: '#e2e8f0', fontSize: 12,
+          backgroundColor: 'var(--dash-surface-2)', borderRadius: 6,
+          color: 'var(--dash-text-muted)', fontSize: 12,
         }}>
           Showing {filtered.length} of {items.length} items
         </div>
@@ -280,10 +280,10 @@ export default function ScheduleList({
 
       {filtered.length === 0 ? (
         <div style={{
-          textAlign: 'center', padding: 40, color: '#a0aec0',
-          backgroundColor: '#2d3748', borderRadius: 8, border: '1px solid #4a5568',
+          textAlign: 'center', padding: 40, color: 'var(--dash-text-muted)',
+          backgroundColor: 'var(--dash-surface-2)', borderRadius: 8, border: '1px solid var(--dash-border-strong)',
         }}>
-          <p style={{ margin: '0 0 10px 0', fontSize: 18, fontWeight: 500, color: '#fff' }}>
+          <p style={{ margin: '0 0 10px 0', fontSize: 18, fontWeight: 500, color: 'var(--dash-text)' }}>
             No items match current filters
           </p>
           <p style={{ margin: 0 }}>Adjust your status filters to see more items.</p>
@@ -292,28 +292,28 @@ export default function ScheduleList({
         sortedDays.map(dayKey => (
           <div key={dayKey} style={{ marginBottom: 36 }}>
             <div style={{
-              fontWeight: 800, fontSize: 22, color: '#fff', marginBottom: 8,
+              fontWeight: 800, fontSize: 22, color: 'var(--dash-text)', marginBottom: 8,
               letterSpacing: 0.5, textShadow: '0 1px 2px #222',
             }}>{dayKey}</div>
-            <div style={{ borderBottom: '2px solid #e2e8f0', marginBottom: 16 }} />
+            <div style={{ borderBottom: '2px solid var(--dash-border-strong)', marginBottom: 16 }} />
 
             {Object.keys(groupByDay[dayKey].times).sort().map(timeKey => {
               const slot = groupByDay[dayKey].times[timeKey];
               return (
                 <div key={timeKey} style={{
                   marginBottom: 32,
-                  background: '#181f2a', borderRadius: 18,
+                  background: 'var(--dash-surface)', borderRadius: 18,
                   boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
                   padding: '18px 24px',
                   display: 'flex', flexDirection: 'column',
-                  border: '1.5px solid #2d3748',
+                  border: '1.5px solid var(--dash-border)',
                 }}>
                   <div style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     marginBottom: 16,
                   }}>
                     <div style={{
-                      fontWeight: 700, fontSize: 20, color: '#00bfff', letterSpacing: 0.2,
+                      fontWeight: 700, fontSize: 20, color: 'var(--ring)', letterSpacing: 0.2,
                       textShadow: '0 1px 2px #222',
                     }}>{slot.label}</div>
                     {(onMarkAll || onMarkComplete) && slot.items.some(i => !i.is_completed) && (
@@ -469,14 +469,14 @@ export default function ScheduleList({
       {showLegend && (
         <div style={{
           marginTop: 24, padding: 16,
-          backgroundColor: '#2d3748', borderRadius: 8, border: '1px solid #4a5568',
+          backgroundColor: 'var(--dash-surface-2)', borderRadius: 8, border: '1px solid var(--dash-border-strong)',
         }}>
-          <h4 style={{ margin: '0 0 12px 0', color: '#fff', fontSize: 14, fontWeight: 600 }}>
+          <h4 style={{ margin: '0 0 12px 0', color: 'var(--dash-text)', fontSize: 14, fontWeight: 600 }}>
             Status Legend:
           </h4>
           <div style={{
             display: 'flex', flexWrap: 'wrap', gap: 16, fontSize: 12,
-            color: '#e2e8f0', marginBottom: 12,
+            color: 'var(--dash-text-muted)', marginBottom: 12,
           }}>
             <Legend color="#28a745" label="Ready / On time" />
             <Legend color="#ffc107" label="Warning (running late)" />
@@ -484,8 +484,8 @@ export default function ScheduleList({
             <Legend color="#17a2b8" label="Upcoming" />
           </div>
           <div style={{
-            fontSize: 12, color: '#e2e8f0', marginTop: 8, paddingTop: 8,
-            borderTop: '1px solid #4a5568',
+            fontSize: 12, color: 'var(--dash-text-muted)', marginTop: 8, paddingTop: 8,
+            borderTop: '1px solid var(--dash-border-strong)',
           }}>
             <span style={{ fontWeight: 600 }}>Category color:</span> Left border indicates item category
           </div>

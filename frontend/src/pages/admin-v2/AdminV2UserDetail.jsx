@@ -1,5 +1,5 @@
 /*
- * Smart Home Health Hub
+ * Smart Home Health
  * Copyright (C) 2026 John Carty
  *
  * This program is free software: you can redistribute it and/or modify
@@ -58,6 +58,11 @@ export default function AdminV2UserDetail() {
   const [savingAccess, setSavingAccess] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [showResetPw, setShowResetPw] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [requireChange, setRequireChange] = useState(false);
+  const [resettingPw, setResettingPw] = useState(false);
 
   const hasPermission = (permission) => {
     if (!currentUser) return false;
@@ -208,6 +213,49 @@ export default function AdminV2UserDetail() {
     }
   };
 
+  const openResetPw = () => {
+    setNewPassword('');
+    setConfirmPassword('');
+    setRequireChange(false);
+    setError('');
+    setShowResetPw(true);
+  };
+
+  const handleResetPassword = async () => {
+    if (newPassword.length < 8) {
+      setError('Password must be at least 8 characters');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+    setResettingPw(true);
+    setError('');
+    try {
+      const res = await fetch(`${config.apiUrl}/api/users/${userId}/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ new_password: newPassword, require_change: requireChange }),
+      });
+      if (res.ok) {
+        setTarget(await res.json());
+        setShowResetPw(false);
+        flash('Password reset');
+      } else {
+        const data = await res.json();
+        setError(Array.isArray(data.detail)
+          ? data.detail.map(e => e.msg || e.message || JSON.stringify(e)).join(', ')
+          : (data.detail || 'Failed to reset password'));
+      }
+    } catch {
+      setError('Error connecting to server');
+    } finally {
+      setResettingPw(false);
+    }
+  };
+
   const handleDelete = async () => {
     setDeleting(true);
     setError('');
@@ -320,6 +368,11 @@ export default function AdminV2UserDetail() {
               <Button onClick={saveDetails} disabled={savingDetails}>
                 {savingDetails ? 'Saving…' : 'Save details'}
               </Button>
+              {currentUser?.is_system_admin && target && target.id !== currentUser.id && (
+                <Button variant="secondary" onClick={openResetPw}>
+                  Reset password
+                </Button>
+              )}
               {currentUser?.is_system_admin && target && target.id !== currentUser.id && !target.force_password_reset && (
                 <Button variant="secondary" onClick={handleForcePasswordReset}>
                   Require first login
@@ -388,6 +441,51 @@ export default function AdminV2UserDetail() {
             </CardFooter>
           </Card>
         </div>
+
+        {/* Reset password */}
+        <Dialog open={showResetPw} onOpenChange={(o) => { if (!o) setShowResetPw(false); }}>
+          <DialogContent className="sm:max-w-[420px]">
+            <DialogHeader>
+              <DialogTitle>Reset Password</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-4">
+              <p className="text-sm text-muted-foreground">
+                Set a new password for <strong className="text-foreground">{target?.full_name}</strong> (@{target?.username}).
+              </p>
+              {error && <Alert variant="destructive" role="alert">{error}</Alert>}
+              <Field label="New password" htmlFor="rp-new">
+                <Input
+                  id="rp-new" type="password" autoComplete="new-password"
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  placeholder="At least 8 characters"
+                />
+              </Field>
+              <Field label="Confirm password" htmlFor="rp-confirm">
+                <Input
+                  id="rp-confirm" type="password" autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={e => setConfirmPassword(e.target.value)}
+                  placeholder="Re-enter new password"
+                />
+              </Field>
+              <label className="flex items-center gap-2 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  checked={requireChange}
+                  onChange={e => setRequireChange(e.target.checked)}
+                />
+                Require the user to choose a new password at next sign-in
+              </label>
+            </div>
+            <DialogFooter>
+              <Button variant="secondary" onClick={() => setShowResetPw(false)}>Cancel</Button>
+              <Button onClick={handleResetPassword} disabled={resettingPw}>
+                {resettingPw ? 'Resetting…' : 'Reset password'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Delete confirmation */}
         <Dialog open={showDelete} onOpenChange={(o) => { if (!o) setShowDelete(false); }}>

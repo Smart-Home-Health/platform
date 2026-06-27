@@ -1,5 +1,5 @@
 /*
- * Smart Home Health Hub
+ * Smart Home Health
  * Copyright (C) 2026 John Carty
  *
  * This program is free software: you can redistribute it and/or modify
@@ -25,15 +25,6 @@ import LoginPage from './pages/LoginPage';
 import UserSelectionPage from './pages/UserSelectionPage';
 import PasswordResetPage from './pages/PasswordResetPage';
 import Dashboard from './pages/Dashboard';
-import AdminDashboard from './pages/admin/AdminDashboard';
-import AdminSchedule from './pages/admin/AdminSchedule';
-import AdminMedications from './pages/admin/AdminMedications';
-import AdminCareTasks from './pages/admin/AdminCareTasks';
-import AdminEquipment from './pages/admin/AdminEquipment';
-import AdminMonitoring from './pages/admin/AdminMonitoring';
-import AdminSettings from './pages/admin/AdminSettings';
-import AdminBusinesses from './pages/admin/AdminBusinesses';
-import AdminProviders from './pages/admin/AdminProviders';
 import AdminV2Dashboard from './pages/admin-v2/AdminV2Dashboard';
 import AdminV2Users from './pages/admin-v2/AdminV2Users';
 import AdminV2UserDetail from './pages/admin-v2/AdminV2UserDetail';
@@ -80,6 +71,7 @@ import { ActiveInputProvider } from './contexts/ActiveInputContext';
 import { PinChallengeProvider } from './contexts/PinChallengeContext';
 import { IdleLockProvider } from './contexts/IdleLockContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { DashboardThemeProvider } from './contexts/DashboardThemeContext';
 import VirtualKeyboard from './components/VirtualKeyboard/VirtualKeyboard';
 import { useVirtualKeyboard } from './hooks/useVirtualKeyboard';
 import "./App.css";
@@ -121,22 +113,13 @@ function AppContent() {
           <Route path="/live" element={
             <ProtectedRoute requireFullAuth={false}>
               <Layout>
-                <Dashboard />
+                <DashboardThemeProvider>
+                  <Dashboard />
+                </DashboardThemeProvider>
               </Layout>
             </ProtectedRoute>
           } />
           
-          {/* Admin Routes - Protected */}
-          <Route path="/admin" element={<ProtectedRoute><Layout><AdminDashboard /></Layout></ProtectedRoute>} />
-          <Route path="/admin/schedule" element={<ProtectedRoute><Layout><AdminSchedule /></Layout></ProtectedRoute>} />
-          <Route path="/admin/medications" element={<ProtectedRoute><Layout><AdminMedications /></Layout></ProtectedRoute>} />
-          <Route path="/admin/care-tasks" element={<ProtectedRoute><Layout><AdminCareTasks /></Layout></ProtectedRoute>} />
-          <Route path="/admin/equipment" element={<ProtectedRoute><Layout><AdminEquipment /></Layout></ProtectedRoute>} />
-          <Route path="/admin/monitoring" element={<ProtectedRoute><Layout><AdminMonitoring /></Layout></ProtectedRoute>} />
-          <Route path="/admin/settings" element={<ProtectedRoute><Layout><AdminSettings /></Layout></ProtectedRoute>} />
-          <Route path="/admin/businesses" element={<ProtectedRoute><Layout><AdminBusinesses /></Layout></ProtectedRoute>} />
-          <Route path="/admin/providers" element={<ProtectedRoute><Layout><AdminProviders /></Layout></ProtectedRoute>} />
-            
           {/* Care Routes - Protected */}
           <Route path="/care" element={<ProtectedRoute><Layout><AdminV2Dashboard /></Layout></ProtectedRoute>} />
           <Route path="/care/users" element={<ProtectedRoute><Layout><AdminV2Users /></Layout></ProtectedRoute>} />

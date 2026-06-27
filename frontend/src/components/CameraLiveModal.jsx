@@ -1,5 +1,5 @@
 /*
- * Smart Home Health Hub
+ * Smart Home Health
  * Copyright (C) 2026 John Carty
  *
  * This program is free software: you can redistribute it and/or modify
@@ -109,8 +109,8 @@ export default function CameraLiveModal({ patientId, patientName, onClose }) {
     <ModalBase isOpen={true} onClose={onClose} title={title}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {info?.camera && (
-          <div style={{ color: '#a0aec0', fontSize: 13 }}>
-            Camera: <strong style={{ color: '#e6edf3' }}>{info.camera}</strong>
+          <div style={{ color: 'var(--dash-text-muted)', fontSize: 13 }}>
+            Camera: <strong style={{ color: 'var(--dash-text)' }}>{info.camera}</strong>
             {info.live_mode ? <span> &middot; {info.live_mode.toUpperCase()}</span> : null}
           </div>
         )}
@@ -120,7 +120,7 @@ export default function CameraLiveModal({ patientId, patientName, onClose }) {
         )}
 
         {loading ? (
-          <div style={{ textAlign: 'center', padding: 30, color: '#a0aec0' }}>
+          <div style={{ textAlign: 'center', padding: 30, color: 'var(--dash-text-muted)' }}>
             Loading stream…
           </div>
         ) : info?.live_url ? (
@@ -133,7 +133,7 @@ export default function CameraLiveModal({ patientId, patientName, onClose }) {
             containerStyle={{ maxHeight: '70vh', borderRadius: 8 }}
           />
         ) : !error ? (
-          <div style={{ textAlign: 'center', padding: 30, color: '#a0aec0' }}>
+          <div style={{ textAlign: 'center', padding: 30, color: 'var(--dash-text-muted)' }}>
             No stream available
           </div>
         ) : null}

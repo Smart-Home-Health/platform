@@ -1,5 +1,5 @@
 /*
- * Smart Home Health Hub
+ * Smart Home Health
  * Copyright (C) 2026 John Carty
  *
  * This program is free software: you can redistribute it and/or modify
@@ -16,8 +16,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { CHART_CHROME } from "../contexts/DashboardThemeContext";
 
-export default function ChartBlock({ title, yLabel, color, dataset, showXaxis = true, showYaxis = true }) {
+export default function ChartBlock({ title, yLabel, color, dataset, showXaxis = true, showYaxis = true, chrome = CHART_CHROME.blue }) {
   // Map colors to match value displays
   const getColor = (colorName) => {
     switch (colorName.toLowerCase()) {
@@ -55,11 +56,11 @@ export default function ChartBlock({ title, yLabel, color, dataset, showXaxis = 
   };
   
   return (
-    <div style={{ 
-      width: "100%", 
-      height: "100%", 
-      position: "relative", 
-      backgroundColor: "#161e2e",
+    <div style={{
+      width: "100%",
+      height: "100%",
+      position: "relative",
+      backgroundColor: chrome.bg,
       borderRadius: "0px"
     }}>
       {/* Removed the title div that was here */}
@@ -70,7 +71,7 @@ export default function ChartBlock({ title, yLabel, color, dataset, showXaxis = 
           justifyContent: 'center',
           alignItems: 'center',
           height: '100%',
-          color: '#999'
+          color: chrome.axis
         }}>
           Waiting for data...
         </div>
@@ -86,25 +87,25 @@ export default function ChartBlock({ title, yLabel, color, dataset, showXaxis = 
                   const d = new Date(unixTime);
                   return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`;
                 }}
-                axisLine={{ stroke: '#333' }}
-                tickLine={{ stroke: '#333' }}
-                tick={{ fill: '#999', fontSize: 10 }}
+                axisLine={{ stroke: chrome.grid }}
+                tickLine={{ stroke: chrome.grid }}
+                tick={{ fill: chrome.axis, fontSize: 10 }}
               />
             )}
             {showYaxis && (
-              <YAxis 
+              <YAxis
                 domain={calculateYDomain()}
-                label={{ value: yLabel, angle: -90, position: 'insideLeft', fill: '#999', fontSize: 12 }} 
-                axisLine={{ stroke: '#333' }}
-                tickLine={{ stroke: '#333' }}
-                tick={{ fill: '#999', fontSize: 10 }}
+                label={{ value: yLabel, angle: -90, position: 'insideLeft', fill: chrome.axis, fontSize: 12 }}
+                axisLine={{ stroke: chrome.grid }}
+                tickLine={{ stroke: chrome.grid }}
+                tick={{ fill: chrome.axis, fontSize: 10 }}
               />
             )}
-            <Tooltip 
-              labelFormatter={(unixTime) => new Date(unixTime).toLocaleTimeString()} 
-              contentStyle={{ backgroundColor: '#161e2e', border: '1px solid #333', borderRadius: '4px' }}
+            <Tooltip
+              labelFormatter={(unixTime) => new Date(unixTime).toLocaleTimeString()}
+              contentStyle={{ backgroundColor: chrome.tooltipBg, border: `1px solid ${chrome.tooltipBorder}`, borderRadius: '4px' }}
               itemStyle={{ color: chartColor }}
-              labelStyle={{ color: '#fff' }}
+              labelStyle={{ color: chrome.tooltipText }}
             />
             <Line 
               type="monotone" 

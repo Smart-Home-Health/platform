@@ -1,4 +1,4 @@
-# GitHub Copilot Instructions for Smart Home Health Hub
+# GitHub Copilot Instructions for Smart Home Health
 
 ## Project Overview
 

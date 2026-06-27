@@ -1,0 +1,65 @@
+# Production stack: TimescaleDB + ONE app image that serves both the SPA and the
+# API on port 8000 (built from the repo-root Dockerfile). No frontend container.
+#
+#   JWT_SECRET_KEY=$(openssl rand -hex 32) docker compose -f docker-compose.prod.yml up -d --build
+#
+# Local hot-reload dev still uses docker-compose.yml (split frontend + backend).
+services:
+  db:
+    image: timescale/timescaledb:latest-pg15
+    container_name: shh_prod_db
+    command: postgres -c shared_preload_libraries=timescaledb
+    environment:
+      POSTGRES_USER: shh_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-shh_dev_pass}
+      POSTGRES_DB: shh
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shh_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - shh-network
+
+  app:
+    # Pulls the published image by default; pin a version with
+    # APP_IMAGE=smarthomehealth/platform:0.1.0. Run with `--build`
+    # to build locally from ./Dockerfile instead (tags it as APP_IMAGE).
+    image: ${APP_IMAGE:-smarthomehealth/platform:latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: shh_app
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    environment:
+      TZ: UTC
+      DATABASE_URL: postgresql://shh_user:${POSTGRES_PASSWORD:-shh_dev_pass}@db:5432/shh
+      # Required — main.py refuses to start on the insecure default secret.
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?set JWT_SECRET_KEY (e.g. openssl rand -hex 32)}
+      # Optional integrations / tuning — forwarded only if set in your env/.env.
+      MIN_SPO2: ${MIN_SPO2:-}
+      MAX_SPO2: ${MAX_SPO2:-}
+      MIN_BPM: ${MIN_BPM:-}
+      MAX_BPM: ${MAX_BPM:-}
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-}
+      WITHINGS_CLIENT_ID: ${WITHINGS_CLIENT_ID:-}
+      WITHINGS_CLIENT_SECRET: ${WITHINGS_CLIENT_SECRET:-}
+    volumes:
+      # Persist uploaded artifacts (vent log tarballs, etc.) outside the container.
+      - app_data_prod:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - shh-network
+
+volumes:
+  postgres_data_prod:
+  app_data_prod:
+
+networks:
+  shh-network:
+    driver: bridge
