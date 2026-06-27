@@ -19,7 +19,7 @@ RUN npm run build
 FROM python:3.11-slim
 # OCI provenance. The source label matters for AGPL-3.0: network users are
 # entitled to the corresponding source, so it must be discoverable from the image.
-LABEL org.opencontainers.image.title="Smart Home Health Hub" \
+LABEL org.opencontainers.image.title="Smart Home Health" \
       org.opencontainers.image.description="Unified image: FastAPI backend + built SPA frontend (DB runs separately)." \
       org.opencontainers.image.source="https://github.com/Smart-Home-Health/platform" \
       org.opencontainers.image.licenses="AGPL-3.0-or-later"

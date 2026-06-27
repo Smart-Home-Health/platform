@@ -1,7 +1,7 @@
 {
   "name": "Smart Home Health",
   "short_name": "SHH",
-  "description": "Smart Home Health Hub",
+  "description": "Smart Home Health",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0d1117",

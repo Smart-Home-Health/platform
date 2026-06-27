@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build and push the unified Smart Home Health Hub image to a registry as a
+# Build and push the unified Smart Home Health image to a registry as a
 # multi-arch (amd64 + arm64) manifest.
 #
 # Usage:

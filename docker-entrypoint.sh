@@ -1,5 +1,5 @@
 #!/bin/sh
-# Smart Home Health Hub — unified image entrypoint.
+# Smart Home Health — unified image entrypoint.
 # Waits for the database to accept connections (so a `docker run` against a cold
 # or still-initializing DB doesn't crash-loop), runs migrations, then serves.
 set -e
