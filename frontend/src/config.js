@@ -15,16 +15,20 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-// Base API URL for backend requests. Resolved at runtime so the app works from any device (e.g. phone at 192.168.1.184).
-// If env is set to localhost (or unset) and we're in the browser, use current host so remote devices reach the server.
+// Base API URL for backend requests. Resolved at runtime so the app works from
+// any device (e.g. a phone at 192.168.1.184) with no rebuild.
+//
+// Same-origin by default: the unified production image serves this SPA and the
+// API from one origin, and split dev runs behind a Vite proxy (/api + /ws ->
+// backend:8000, see vite.config.js), so the browser only ever talks to the host
+// it loaded the page from. `window.location.origin` therefore works for both —
+// no hardcoded :8000 port. An explicit non-localhost VITE_API_URL still wins
+// (e.g. pointing a standalone frontend at a remote API).
 export function getApiBaseUrl() {
   const envUrl = import.meta.env.VITE_API_URL;
-  if (typeof window !== 'undefined') {
-    const current = `${window.location.protocol}//${window.location.hostname}:8000`;
-    if (!envUrl || String(envUrl).includes('localhost')) return current;
-    return envUrl;
-  }
-  return envUrl || 'http://localhost:8000';
+  if (envUrl && !String(envUrl).includes('localhost')) return envUrl;
+  if (typeof window !== 'undefined') return window.location.origin;
+  return 'http://localhost:8000';
 }
 // Coerce to string when used in template literals or .replace(); always returns current value.
 export const API_BASE_URL = { toString: getApiBaseUrl, valueOf: getApiBaseUrl };

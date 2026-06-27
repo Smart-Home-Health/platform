@@ -65,8 +65,11 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
-    # Leave VITE_API_URL unset so the frontend uses current host (works from phone/LAN at e.g. http://192.168.1.184:5173)
-    environment: {}
+    # Leave VITE_API_URL unset so the frontend uses same-origin (works from
+    # phone/LAN at e.g. http://192.168.1.184:5173). Vite proxies /api + /ws to
+    # the backend container (see vite.config.js).
+    environment:
+      VITE_PROXY_TARGET: http://backend:8000
     depends_on:
       - backend
     networks:

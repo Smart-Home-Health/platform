@@ -69,3 +69,24 @@ def test_trailing_slash_redirects(admin_client):
         follow_redirects=False,
     )
     assert resp.status_code == 307
+
+
+def test_free_text_fields_are_not_sql_injectable(admin_client):
+    """A SQL payload pasted into free-text fields is stored as literal data
+    (SQLAlchemy parameterizes — nothing is concatenated into the query) and the
+    table is unharmed. Defense-in-depth regression guard for the ORM contract."""
+    payload = "Robert'); DROP TABLE patients;-- "
+    created = admin_client.post("/api/patients", json={
+        "first_name": payload, "last_name": "Tables", "notes": payload,
+    })
+    assert created.status_code == 200
+    pid = created.json()["id"]
+
+    # Stored and returned verbatim — not executed, not stripped/escaped.
+    got = admin_client.get(f"/api/patients/{pid}").json()
+    assert got["first_name"] == payload
+    assert got["notes"] == payload
+
+    # The DROP never ran: the table still exists and the row is queryable.
+    listing = admin_client.get("/api/patients").json()
+    assert any(p["id"] == pid for p in listing)

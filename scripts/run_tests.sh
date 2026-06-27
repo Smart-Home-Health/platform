@@ -8,7 +8,10 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.."
 
-COMPOSE="docker compose -f docker-compose.test.yml"
+# Dedicated project name so this stack is isolated from the dev stack — without
+# it, `down --remove-orphans` would treat the running dev containers (same
+# default project name / directory) as orphans and remove them.
+COMPOSE="docker compose -p shh_test -f docker-compose.test.yml"
 
 cleanup() { $COMPOSE down -v --remove-orphans >/dev/null 2>&1 || true; }
 trap cleanup EXIT

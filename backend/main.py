@@ -19,8 +19,11 @@ import json  # Add this import
 import logging
 import os
 from typing import Optional
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+import mimetypes
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from dotenv import load_dotenv
 from datetime import datetime
 
@@ -127,6 +130,45 @@ app.include_router(analysis.router)
 app.include_router(reports.router)
 app.include_router(messages.router)
 app.include_router(system.router)
+
+# --- Static frontend (unified single-image deploy) --------------------------
+# In the unified production image the built SPA is copied in and STATIC_DIR
+# points at it; this app then serves the frontend on the same origin as the API
+# (no separate Vite/nginx container). In split dev STATIC_DIR is unset, so none
+# of this registers and the backend behaves exactly as before — Vite serves the
+# frontend on :5173 and proxies /api + /ws here.
+#
+# This MUST come after every include_router() so the SPA catch-all is the
+# lowest-priority route and never shadows an API endpoint.
+mimetypes.add_type("application/wasm", ".wasm")
+mimetypes.add_type("application/javascript", ".js")
+
+STATIC_DIR = os.getenv("STATIC_DIR")
+if STATIC_DIR:
+    STATIC_DIR = os.path.realpath(STATIC_DIR)
+if STATIC_DIR and os.path.isdir(STATIC_DIR):
+    _assets_dir = os.path.join(STATIC_DIR, "assets")
+    if os.path.isdir(_assets_dir):
+        # Hashed, immutable build assets get the efficient StaticFiles handler.
+        app.mount("/assets", StaticFiles(directory=_assets_dir), name="assets")
+
+    _index_file = os.path.join(STATIC_DIR, "index.html")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str):
+        """Serve a real static file if one exists (favicon, *.wasm, ...),
+        otherwise return index.html so client-side routing handles the path."""
+        # Unknown /api or /ws paths are genuine 404s, not the SPA shell.
+        if full_path.startswith(("api", "ws")):
+            raise HTTPException(status_code=404)
+        candidate = os.path.join(STATIC_DIR, full_path)
+        # Guard against path traversal escaping STATIC_DIR.
+        if full_path and os.path.isfile(candidate) and \
+                os.path.commonpath([os.path.realpath(candidate), STATIC_DIR]) == STATIC_DIR:
+            return FileResponse(candidate)
+        return FileResponse(_index_file)
+
+    logger.info(f"[main] Serving static frontend from {STATIC_DIR}")
 
 # Global event bus and modules
 event_bus = EventBus(maxsize=1000)

@@ -18,8 +18,9 @@ Account management routes for the current authenticated account
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
+from zoneinfo import available_timezones
 import bcrypt
 
 from db import get_db
@@ -50,6 +51,19 @@ class AccountUpdateRequest(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     slug: Optional[str] = Field(None, min_length=1, max_length=50, pattern=r'^[a-z0-9-]+$')
     timezone: Optional[str] = None
+
+    @field_validator('timezone')
+    @classmethod
+    def validate_timezone(cls, v):
+        """Reject anything that isn't a real IANA zone. The value is later
+        embedded into SQL for day-bucketing (`AT TIME ZONE '<tz>'`); it is safe
+        today only because reads re-validate via ZoneInfo, so enforce it at the
+        source too (defense-in-depth + a clear 422 instead of silent fallback)."""
+        if v is None:
+            return v
+        if v not in available_timezones():
+            raise ValueError(f"Invalid timezone: {v!r} (expected an IANA name like 'America/New_York')")
+        return v
 
 
 class PasswordChangeRequest(BaseModel):

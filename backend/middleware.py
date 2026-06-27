@@ -56,6 +56,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             "/api/auth/account/login",  # Account login (Layer 1)
             "/api/auth/account/access",  # Account access (password optional, single account)
             "/api/auth/session",  # Session check (can return 401)
+            "/api/status/health",  # Liveness probe (container/LB healthcheck)
             "/api/core/first-run",  # First run check (legacy)
             "/ws/",  # WebSocket connections
             "/api/readers/ws/",  # Reader device WebSocket (auth via encryption key after connect)
@@ -67,10 +68,20 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
         
         # Check if path is public
         path = request.url.path
-        # Exact match for "/" or startswith for other paths
-        is_public = path == "/" or any(
-            path.startswith(public_path) 
-            for public_path in public_paths if public_path != "/"
+        # The API is the only auth-gated surface. Everything else served by this
+        # app is the built single-page frontend (index.html, /assets/*, *.wasm)
+        # or its client-side routes (/login, /care, ...), which must load without
+        # a token — the SPA then calls /api, where auth IS enforced. So anything
+        # not under /api is public; /api paths are public only via the allowlist.
+        # (In split dev the frontend is served by Vite, not here, so this only
+        # affects the unified production image — but it's harmless either way.)
+        is_public = (
+            path == "/"
+            or not path.startswith("/api")
+            or any(
+                path.startswith(public_path)
+                for public_path in public_paths if public_path != "/"
+            )
         )
         
         if is_public:

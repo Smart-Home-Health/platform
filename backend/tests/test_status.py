@@ -22,6 +22,12 @@ def test_health(admin_client):
     assert resp.json()["status"] == "healthy"
 
 
-def test_requires_auth(client):
-    # /health is not on the public allowlist -> still requires a token.
-    assert client.get("/api/status/health").status_code == 401
+def test_health_is_public(client):
+    # /health is the container/LB liveness probe -> public (no token needed).
+    assert client.get("/api/status/health").status_code == 200
+
+
+def test_other_status_routes_require_auth(client):
+    # A non-allowlisted /api route still requires a token (auth runs before the
+    # handler, so this is 401 regardless of module state).
+    assert client.get("/api/status/modules").status_code == 401

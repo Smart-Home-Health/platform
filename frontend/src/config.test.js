@@ -27,14 +27,14 @@ afterEach(() => {
 });
 
 describe('getApiBaseUrl', () => {
-  it('uses the current host:8000 when env is unset', () => {
+  it('uses the same origin when env is unset', () => {
     vi.stubEnv('VITE_API_URL', '');
-    expect(getApiBaseUrl()).toBe('http://localhost:8000');
+    expect(getApiBaseUrl()).toBe(window.location.origin);
   });
 
-  it('uses the current host when env points at localhost', () => {
+  it('uses the same origin when env points at localhost', () => {
     vi.stubEnv('VITE_API_URL', 'http://localhost:9999');
-    expect(getApiBaseUrl()).toBe('http://localhost:8000');
+    expect(getApiBaseUrl()).toBe(window.location.origin);
   });
 
   it('passes through an explicit non-localhost env URL', () => {
@@ -44,9 +44,10 @@ describe('getApiBaseUrl', () => {
 });
 
 describe('config.wsUrl', () => {
-  it('derives ws:// from an http API url', () => {
+  it('derives ws:// from the same-origin API url', () => {
     vi.stubEnv('VITE_API_URL', '');
-    expect(config.wsUrl).toBe('ws://localhost:8000/ws/sensors');
+    const host = new URL(window.location.origin).host;
+    expect(config.wsUrl).toBe(`ws://${host}/ws/sensors`);
   });
 
   it('derives wss:// from an https API url', () => {
