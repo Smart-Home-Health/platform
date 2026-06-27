@@ -29,9 +29,14 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     proxy: {
+      // ws:true so the reader-pairing WebSocket (/api/readers/ws/:id) upgrades
+      // through the proxy too — a paired reader connects to the browser's origin
+      // (:5173 in dev), and Vite forwards it to the backend. Plain /api HTTP is
+      // unaffected.
       '/api': {
         target: process.env.VITE_PROXY_TARGET || 'http://localhost:8000',
         changeOrigin: true,
+        ws: true,
       },
       '/ws': {
         target: process.env.VITE_PROXY_TARGET || 'http://localhost:8000',

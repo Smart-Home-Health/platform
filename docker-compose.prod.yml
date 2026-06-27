@@ -47,9 +47,6 @@ services:
       RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-}
       WITHINGS_CLIENT_ID: ${WITHINGS_CLIENT_ID:-}
       WITHINGS_CLIENT_SECRET: ${WITHINGS_CLIENT_SECRET:-}
-      EPIC_CLIENT_ID: ${EPIC_CLIENT_ID:-}
-      EPIC_CLIENT_SECRET: ${EPIC_CLIENT_SECRET:-}
-      READER_FACING_BASE_URL: ${READER_FACING_BASE_URL:-}
     volumes:
       # Persist uploaded artifacts (vent log tarballs, etc.) outside the container.
       - app_data_prod:/app/data
