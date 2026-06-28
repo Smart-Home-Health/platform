@@ -311,24 +311,8 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved, ch
         }}
         onClick={() => setIsFlipped(true)}
         >
-          {/* Quick-add button (skip if no patient context) */}
-          {patientId && (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); setQuickAddOpen(true); }}
-              title={`Add ${displayTitle}`}
-              aria-label={`Add ${displayTitle}`}
-              style={{
-                position: 'absolute', top: 6, right: 6, zIndex: 5,
-                width: 28, height: 28, borderRadius: '50%',
-                border: '1px solid rgba(255,255,255,0.18)',
-                background: 'rgba(0,0,0,0.45)',
-                color: '#fff', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 18, lineHeight: 1, fontWeight: 600,
-              }}
-            >+</button>
-          )}
+          {/* Quick-add lives on the flipped (details) side, not here — keeps the
+              chart view clean. See the back side below. */}
           <h3 style={{
             color: vitalType === 'bathroom' && primaryGroup ?
               getChartColor(vitalType, primaryGroup) :
@@ -537,7 +521,29 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved, ch
               </tbody>
             </table>
           </div>
-          
+
+          {/* Quick-add button — only on the details side, at the bottom.
+              backfaceVisibility:hidden keeps it from bleeding onto the front. */}
+          {patientId && (
+            <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 4 }}>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setQuickAddOpen(true); }}
+                title={`Add ${displayTitle}`}
+                aria-label={`Add ${displayTitle}`}
+                style={{
+                  backfaceVisibility: 'hidden',
+                  width: 30, height: 30, borderRadius: '50%',
+                  border: '1px solid rgba(255,255,255,0.18)',
+                  background: 'rgba(0,0,0,0.45)',
+                  color: '#fff', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 18, lineHeight: 1, fontWeight: 600,
+                }}
+              >+</button>
+            </div>
+          )}
+
           {/* Click hint */}
           <div style={{
             textAlign: 'center',

@@ -33,15 +33,35 @@ beforeEach(() => {
 
 afterEach(() => {
   window.fetch = originalFetch;
+  sessionStorage.clear();
+  // Restore non-iframe state (some tests redefine window.top).
+  Object.defineProperty(window, 'top', { value: window, configurable: true });
 });
 
 // Install a fresh interceptor on top of a base fetch mock that returns `response`.
-async function install({ response, getAuthLevel, onStale }) {
+// `iframe: true` makes the module detect a cross-origin embedding (window.top
+// differs from window.self) — must be set before the dynamic import since the
+// module reads `isIframe` at load.
+async function install({ response, getAuthLevel, onStale, iframe = false }) {
+  if (iframe) {
+    Object.defineProperty(window, 'top', { value: {}, configurable: true });
+  }
   const base = vi.fn().mockResolvedValue(response);
   window.fetch = base;
   const { installAuthInterceptor } = await import('./authInterceptor');
   installAuthInterceptor({ getAuthLevel, onStale });
   return base;
+}
+
+// Authorization header sent to the base fetch for a given mock call (0-indexed).
+function authHeaderOf(base, callIndex = 0) {
+  const init = base.mock.calls[callIndex]?.[1];
+  const headers = init?.headers;
+  if (!headers) return undefined;
+  if (typeof Headers !== 'undefined' && headers instanceof Headers) {
+    return headers.get('Authorization') ?? undefined;
+  }
+  return headers.Authorization;
 }
 
 describe('installAuthInterceptor', () => {
@@ -108,5 +128,73 @@ describe('installAuthInterceptor', () => {
     await install({ response, getAuthLevel: () => 'full', onStale: vi.fn() });
     const out = await window.fetch('http://localhost/api/x');
     expect(out).toBe(response);
+  });
+
+  describe('iframe Bearer injection', () => {
+    it('attaches the stored token for same-origin requests when embedded', async () => {
+      sessionStorage.setItem('auth_token', 'tok123');
+      const base = await install({
+        response: res(200), getAuthLevel: () => 'full', onStale: vi.fn(), iframe: true,
+      });
+
+      await window.fetch(`${window.location.origin}/api/dashboard/summary`);
+      expect(authHeaderOf(base)).toBe('Bearer tok123');
+    });
+
+    it('does NOT attach the token when not in an iframe', async () => {
+      sessionStorage.setItem('auth_token', 'tok123');
+      const base = await install({
+        response: res(200), getAuthLevel: () => 'full', onStale: vi.fn(), iframe: false,
+      });
+
+      await window.fetch(`${window.location.origin}/api/dashboard/summary`);
+      expect(authHeaderOf(base)).toBeUndefined();
+    });
+
+    it('does NOT attach the token when none is stored', async () => {
+      const base = await install({
+        response: res(200), getAuthLevel: () => 'full', onStale: vi.fn(), iframe: true,
+      });
+
+      await window.fetch(`${window.location.origin}/api/dashboard/summary`);
+      expect(authHeaderOf(base)).toBeUndefined();
+    });
+
+    it('does NOT attach the token to cross-origin requests', async () => {
+      sessionStorage.setItem('auth_token', 'tok123');
+      const base = await install({
+        response: res(200), getAuthLevel: () => 'full', onStale: vi.fn(), iframe: true,
+      });
+
+      await window.fetch('https://evil.example.com/steal');
+      expect(authHeaderOf(base)).toBeUndefined();
+    });
+
+    it('does NOT clobber a caller-supplied Authorization header', async () => {
+      sessionStorage.setItem('auth_token', 'tok123');
+      const base = await install({
+        response: res(200), getAuthLevel: () => 'full', onStale: vi.fn(), iframe: true,
+      });
+
+      await window.fetch(`${window.location.origin}/api/x`, {
+        headers: { Authorization: 'Bearer existing' },
+      });
+      expect(authHeaderOf(base)).toBe('Bearer existing');
+    });
+
+    it('merges into an existing init without dropping other options', async () => {
+      sessionStorage.setItem('auth_token', 'tok123');
+      const base = await install({
+        response: res(200), getAuthLevel: () => 'full', onStale: vi.fn(), iframe: true,
+      });
+
+      await window.fetch(`${window.location.origin}/api/x`, {
+        method: 'POST', credentials: 'include',
+      });
+      const init = base.mock.calls[0][1];
+      expect(init.method).toBe('POST');
+      expect(init.credentials).toBe('include');
+      expect(authHeaderOf(base)).toBe('Bearer tok123');
+    });
   });
 });

@@ -344,6 +344,35 @@ html, body, #root {
   background-color: rgba(255, 140, 0, 0.1);
 }
 
+/* Tight desktop screens (e.g. iPad landscape, Home Assistant embedded iframe):
+   drop the "Smart Home Health" wordmark to just the logo icon, and let the menu
+   icon row flow into the full width between the logo and the clock instead of
+   being boxed into the rigid centre 50%. Below 769px the mobile header (with the
+   hamburger) takes over, so this only targets the cramped desktop range. */
+@media (min-width: 769px) and (max-width: 1150px) {
+  .logo-text {
+    display: none;
+  }
+  .logo-container {
+    width: auto;
+    flex: 0 0 auto;
+    justify-content: flex-start;
+    padding-left: 12px;
+  }
+  .datetime-container {
+    width: auto;
+    flex: 0 0 auto;
+    padding: 0 12px;
+  }
+  .menu-container {
+    position: static;
+    left: auto;
+    right: auto;
+    flex: 1 1 auto;
+    gap: clamp(8px, 2vw, 25px);
+  }
+}
+
 .icon-wrapper {
   position: relative;
   display: flex;
@@ -837,6 +866,20 @@ html, body, #root {
 .perfusion .unit,
 .perfusion .value-stats {
   color: #EF6C00; /* Orange for Perfusion */
+}
+
+/* Tight desktop screens (iPad landscape / embedded iframe): scale the large
+   vital readouts down so they don't overflow the card or collide with the
+   rotated title. Placed AFTER the base .value/.unit rules above so it wins on
+   source order (same specificity). */
+@media (min-width: 769px) and (max-width: 1150px) {
+  .value {
+    font-size: 3.5rem;
+  }
+  .unit {
+    font-size: 1.1rem;
+    margin-top: 8px;
+  }
 }
 
 /* Update ClockCard to work in the header */

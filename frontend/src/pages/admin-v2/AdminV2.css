@@ -1066,6 +1066,45 @@
   color: var(--muted-foreground);
 }
 
+/* Tablet / embedded iPad (above the 768px mobile cutoff but still tight): the
+   full-size summary cards wrap into two rows and eat vertical space above the
+   patient list. Condense them into a single compact row of four (icon + value
+   stacked, smaller label kept). The ≤768px mobile block below handles phones. */
+@media (min-width: 769px) and (max-width: 1150px) {
+  .admin-v2-dashboard .admin-v2-summary-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+  .admin-v2-dashboard .admin-v2-summary-stats .admin-v2-stat-card {
+    padding: 0.6rem 0.4rem;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 0.3rem;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+  .admin-v2-dashboard .admin-v2-summary-stats .admin-v2-stat-icon {
+    width: 36px;
+    height: 36px;
+  }
+  .admin-v2-dashboard .admin-v2-summary-stats .admin-v2-stat-icon svg {
+    width: 20px;
+    height: 20px;
+  }
+  .admin-v2-dashboard .admin-v2-summary-stats .admin-v2-stat-info h4 {
+    margin: 0;
+    font-size: 1.2rem;
+    line-height: 1.1;
+  }
+  .admin-v2-dashboard .admin-v2-summary-stats .admin-v2-stat-info p {
+    margin: 0.1rem 0 0 0;
+    font-size: 0.7rem;
+    line-height: 1.1;
+  }
+}
+
 /* Section Header */
 .admin-v2-section-header {
   display: flex;
@@ -4502,6 +4541,56 @@
   max-height: 600px;
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+/* ============================================================
+   App shell (tablet + desktop, >=769px): make .admin-v2-content the SINGLE
+   scroll area so the document itself never scrolls. This keeps the fixed
+   sidebar and any sticky page header pinned in place instead of sliding off the
+   top — the "top nav scrolls away on iPad" problem. Mobile (<769px) keeps its
+   existing document-scroll + sticky date-nav behavior untouched. */
+@media (min-width: 769px) {
+  .admin-v2-main {
+    /* Bound the height (was only min-height) so the child content scrolls
+       instead of the whole page growing. overflow:hidden stops .admin-v2-main
+       itself from becoming a second scroller (its overflow-x:hidden would
+       otherwise compute overflow-y to auto). */
+    height: calc(100vh - var(--vkb-height, 0px));
+    height: calc(100dvh - var(--vkb-height, 0px));
+    overflow: hidden;
+  }
+  .admin-v2-content {
+    min-height: 0; /* allow the flex child to shrink so its overflow engages */
+  }
+
+  /* Schedule: pin the date/nav bar to the top of the scroll area. The stat
+     cards deliberately scroll away (kept off the pinned bar to preserve
+     timeline height on short landscape screens). Collapsing the timeline's
+     inner scroll keeps .admin-v2-content the one and only scroller. */
+  .admin-v2-schedule-nav {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: var(--card);
+    /* No transparent gap under the opaque bar — otherwise rows scrolling past
+       show through the margin. Full-bleed over the content's 1.5rem padding and
+       square off the corners so nothing peeks around the edges. */
+    margin: 0 -1.5rem;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    border-top: none;
+    padding: 1rem 1.5rem;
+  }
+  /* The timeline column header is sticky top:0 too, which pinned it *behind*
+     the date bar (the "TIME / MEDICATIONS / NUTRITION" bleed). Let it scroll
+     with the rows so only the date bar stays pinned. */
+  .admin-v2-schedule-header {
+    position: static;
+  }
+  .admin-v2-schedule-body {
+    max-height: none;
+  }
 }
 
 /* Schedule Row */
