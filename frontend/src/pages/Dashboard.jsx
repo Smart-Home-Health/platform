@@ -1367,7 +1367,7 @@ export default function Dashboard() {
                 <DynamicVitalsCard
                   vitalType={dashboardChart1.vital_type}
                   data={dashboardChart1.data}
-                  title={`Chart 1: ${formatVitalDisplayName(dashboardChart1.vital_type)} History`}
+                  title={formatVitalDisplayName(dashboardChart1.vital_type)}
                   patientId={selectedPatient?.id}
                   chrome={chartChrome}
                   onSaved={() => fetchChartData(dashboardChart1.vital_type, 1)}
@@ -1378,7 +1378,7 @@ export default function Dashboard() {
                 <DynamicVitalsCard
                   vitalType={dashboardChart2.vital_type}
                   data={dashboardChart2.data}
-                  title={`Chart 2: ${formatVitalDisplayName(dashboardChart2.vital_type)} History`}
+                  title={formatVitalDisplayName(dashboardChart2.vital_type)}
                   patientId={selectedPatient?.id}
                   chrome={chartChrome}
                   onSaved={() => fetchChartData(dashboardChart2.vital_type, 2)}

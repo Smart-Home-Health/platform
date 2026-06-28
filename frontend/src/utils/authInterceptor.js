@@ -43,6 +43,12 @@ const RECOVERY_DEBOUNCE_MS = 1000;
 
 let installed = false;
 
+// Detect a cross-origin iframe (e.g. Home Assistant embedding). Same idiom as
+// config.js (_isIframe) and AuthContext (isIframe). Computed once at load.
+const isIframe = (() => {
+  try { return window.self !== window.top; } catch { return true; }
+})();
+
 // Pull the path out of whatever the first fetch() arg is (string, URL, Request).
 function getRequestPath(input) {
   try {
@@ -51,6 +57,53 @@ function getRequestPath(input) {
   } catch {
     return '';
   }
+}
+
+// True only for same-origin requests, so we never attach the auth token to an
+// external host.
+function isSameOrigin(input) {
+  try {
+    const url = typeof input === 'string' ? input : input?.url ?? String(input);
+    return new URL(url, window.location.origin).origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+// True if the caller already set an Authorization header (authFetch/apiFetch do),
+// so we don't clobber it. Handles plain-object and Headers-instance init.headers.
+function hasAuthHeader(init) {
+  const headers = init?.headers;
+  if (!headers) return false;
+  if (typeof Headers !== 'undefined' && headers instanceof Headers) {
+    return headers.has('Authorization');
+  }
+  return Object.keys(headers).some((k) => k.toLowerCase() === 'authorization');
+}
+
+// In a cross-origin iframe the SameSite session cookies are blocked, so attach
+// the stored JWT as a Bearer header for same-origin requests. Returns possibly
+// new fetch args; leaves args untouched outside the iframe (cookie auth path).
+// Note: only the (url|URL, init) form is handled — Request inputs (which carry
+// their own headers) are not used by this app's data fetches and pass through.
+function withIframeAuth(args) {
+  if (!isIframe) return args;
+  const [input, init] = args;
+  if (input instanceof Request) return args;
+  if (!isSameOrigin(input) || hasAuthHeader(init)) return args;
+
+  const token = sessionStorage.getItem('auth_token');
+  if (!token) return args;
+
+  const nextInit = { ...(init || {}) };
+  if (typeof Headers !== 'undefined' && nextInit.headers instanceof Headers) {
+    const merged = new Headers(nextInit.headers);
+    merged.set('Authorization', `Bearer ${token}`);
+    nextInit.headers = merged;
+  } else {
+    nextInit.headers = { ...nextInit.headers, Authorization: `Bearer ${token}` };
+  }
+  return [input, nextInit];
 }
 
 // Only the AuthenticationMiddleware's rejection carries `requires_auth: true`.
@@ -86,7 +139,9 @@ export function installAuthInterceptor({ getAuthLevel, onStale }) {
   };
 
   window.fetch = async (...args) => {
-    const response = await originalFetch(...args);
+    // Attach the Bearer header when embedded so raw fetch() data calls (which
+    // rely on cookies) still authenticate in a cross-origin iframe.
+    const response = await originalFetch(...withIframeAuth(args));
 
     const path = getRequestPath(args[0]);
     // Never react to the auth endpoints themselves (recovery + public probes).
