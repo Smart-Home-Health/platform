@@ -27,6 +27,7 @@ remote-access-brainstorm.md
 # Patient data — never commit. The /data bind mount holds uploaded vent log
 # tar balls and their extracted contents (CSV, JSON, binary device dumps).
 /data/
+backend/data/
 # Also catch other common locations operators might use.
 **/uploads/
 **/imports/

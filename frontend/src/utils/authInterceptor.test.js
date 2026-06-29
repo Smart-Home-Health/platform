@@ -34,6 +34,7 @@ beforeEach(() => {
 afterEach(() => {
   window.fetch = originalFetch;
   sessionStorage.clear();
+  delete window.__BASE_PATH__;
   // Restore non-iframe state (some tests redefine window.top).
   Object.defineProperty(window, 'top', { value: window, configurable: true });
 });
@@ -128,6 +129,28 @@ describe('installAuthInterceptor', () => {
     await install({ response, getAuthLevel: () => 'full', onStale: vi.fn() });
     const out = await window.fetch('http://localhost/api/x');
     expect(out).toBe(response);
+  });
+
+  describe('behind HA ingress (base path)', () => {
+    it('still passes /api/auth/* through after stripping the ingress prefix', async () => {
+      window.__BASE_PATH__ = '/api/hassio_ingress/abc';
+      const onStale = vi.fn();
+      await install({ response: res(401, { requires_auth: true }), getAuthLevel: () => 'full', onStale });
+
+      await window.fetch('http://localhost/api/hassio_ingress/abc/api/auth/session');
+      await flush();
+      expect(onStale).not.toHaveBeenCalled();
+    });
+
+    it('still recovers on a prefixed non-auth 401', async () => {
+      window.__BASE_PATH__ = '/api/hassio_ingress/abc';
+      const onStale = vi.fn();
+      await install({ response: res(401, { requires_auth: true }), getAuthLevel: () => 'full', onStale });
+
+      await window.fetch('http://localhost/api/hassio_ingress/abc/api/patients');
+      await flush();
+      expect(onStale).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('iframe Bearer injection', () => {

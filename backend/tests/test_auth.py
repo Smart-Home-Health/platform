@@ -29,6 +29,19 @@ def test_first_run_is_public(client):
     assert isinstance(resp.json(), dict)
 
 
+def test_first_run_skip_account_password_defaults_false(client, monkeypatch):
+    monkeypatch.delenv("SHH_SKIP_ACCOUNT_PASSWORD", raising=False)
+    resp = client.get("/api/auth/first-run")
+    assert resp.json()["skip_account_password"] is False
+
+
+def test_first_run_skip_account_password_reflects_env(client, monkeypatch):
+    """The flag is read per-request, so the HA add-on option can toggle it."""
+    monkeypatch.setenv("SHH_SKIP_ACCOUNT_PASSWORD", "1")
+    resp = client.get("/api/auth/first-run")
+    assert resp.json()["skip_account_password"] is True
+
+
 # --- Unauthenticated access to protected routes ------------------------------
 def test_protected_route_requires_auth(client):
     resp = client.get("/api/patients")

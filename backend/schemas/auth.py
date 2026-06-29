@@ -146,3 +146,6 @@ class FirstRunStatus(BaseModel):
     is_first_run: bool
     has_admin: bool
     message: str
+    # When true, the UI skips the account-password screen and goes straight to
+    # user selection in monitoring mode (deployment-wide opt-in via env).
+    skip_account_password: bool = False

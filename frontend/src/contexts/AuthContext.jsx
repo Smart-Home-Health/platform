@@ -79,6 +79,9 @@ export const AuthProvider = ({ children }) => {
   const [isFirstRun, setIsFirstRun] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  // Deployment-wide opt-in (env) to skip the account password -> straight to
+  // user selection in monitoring mode. Surfaced by /api/auth/first-run.
+  const [skipAccountPassword, setSkipAccountPassword] = useState(false);
 
   // Keep a ref in sync with authLevel so the fetch interceptor (installed once)
   // always reads the current value rather than a stale closure.
@@ -116,6 +119,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       const firstRunData = await firstRunRes.json();
+      setSkipAccountPassword(!!firstRunData.skip_account_password);
 
       if (firstRunData.is_first_run) {
         setIsFirstRun(true);
@@ -156,6 +160,10 @@ export const AuthProvider = ({ children }) => {
           setAuthLevel('account');
           setUser(null);
           // Don't show auth modal - user needs to select a profile
+        } else if (firstRunData.skip_account_password) {
+          // Deployment opts to skip the account password: auto-acquire an
+          // account-level (monitoring) token so routing lands on user selection.
+          await accountAccess(null);
         } else {
           // No auth
           setAccount(null);
@@ -163,6 +171,8 @@ export const AuthProvider = ({ children }) => {
           setAuthLevel(null);
           setShowAuthModal(true);
         }
+      } else if (firstRunData.skip_account_password) {
+        await accountAccess(null);
       } else {
         // No active session
         setAccount(null);
@@ -540,6 +550,7 @@ export const AuthProvider = ({ children }) => {
     loading,
     showAuthModal,
     setShowAuthModal,
+    skipAccountPassword,
 
     // Two-layer auth methods
     accountLogin,

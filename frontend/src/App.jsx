@@ -100,7 +100,7 @@ function AppContent() {
     <ThemeProvider>
     <ActiveInputProvider>
       <PinChallengeProvider>
-      <Router>
+      <Router basename={(typeof window !== 'undefined' && window.__BASE_PATH__) || undefined}>
         <IdleLockProvider>
         {isFirstRun ? <FirstRunSetup /> : <Routes>
           {/* Public Routes */}

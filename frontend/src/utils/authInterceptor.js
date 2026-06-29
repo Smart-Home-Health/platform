@@ -49,11 +49,23 @@ const isIframe = (() => {
   try { return window.self !== window.top; } catch { return true; }
 })();
 
-// Pull the path out of whatever the first fetch() arg is (string, URL, Request).
+// Ingress base path (e.g. "/api/hassio_ingress/<token>"), trailing slash trimmed.
+function basePath() {
+  return (typeof window !== 'undefined' && typeof window.__BASE_PATH__ === 'string')
+    ? window.__BASE_PATH__.replace(/\/$/, '')
+    : '';
+}
+
+// Pull the app-relative path out of whatever the first fetch() arg is (string,
+// URL, Request), with the ingress base prefix stripped so checks like
+// startsWith('/api/auth/') still match when served behind HA's proxy.
 function getRequestPath(input) {
   try {
     const url = typeof input === 'string' ? input : input?.url ?? String(input);
-    return new URL(url, window.location.origin).pathname;
+    let path = new URL(url, window.location.origin).pathname;
+    const base = basePath();
+    if (base && path.startsWith(base)) path = path.slice(base.length) || '/';
+    return path;
   } catch {
     return '';
   }

@@ -19,11 +19,12 @@
 // apiFetch Bearer injection. jsdom default host is localhost, which we exploit
 // for the env branches instead of stubbing window.location.
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import config, { getApiBaseUrl, apiFetch } from './config';
+import config, { getApiBaseUrl, getBasePath, apiFetch } from './config';
 
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
+  delete window.__BASE_PATH__;
 });
 
 describe('getApiBaseUrl', () => {
@@ -53,6 +54,36 @@ describe('config.wsUrl', () => {
   it('derives wss:// from an https API url', () => {
     vi.stubEnv('VITE_API_URL', 'https://example.com:8000');
     expect(config.wsUrl).toBe('wss://example.com:8000/ws/sensors');
+  });
+});
+
+describe('ingress base path', () => {
+  it('getBasePath is empty when window.__BASE_PATH__ is unset', () => {
+    expect(getBasePath()).toBe('');
+  });
+
+  it('trims a trailing slash off the base path', () => {
+    window.__BASE_PATH__ = '/api/hassio_ingress/abc/';
+    expect(getBasePath()).toBe('/api/hassio_ingress/abc');
+  });
+
+  it('apiUrl appends the ingress prefix to the same origin', () => {
+    vi.stubEnv('VITE_API_URL', '');
+    window.__BASE_PATH__ = '/api/hassio_ingress/abc';
+    expect(getApiBaseUrl()).toBe(`${window.location.origin}/api/hassio_ingress/abc`);
+  });
+
+  it('wsUrl carries the ingress prefix in the ws path', () => {
+    vi.stubEnv('VITE_API_URL', '');
+    window.__BASE_PATH__ = '/api/hassio_ingress/abc';
+    const host = new URL(window.location.origin).host;
+    expect(config.wsUrl).toBe(`ws://${host}/api/hassio_ingress/abc/ws/sensors`);
+  });
+
+  it('an explicit non-localhost env URL ignores the base path', () => {
+    vi.stubEnv('VITE_API_URL', 'http://192.168.1.184:8000');
+    window.__BASE_PATH__ = '/api/hassio_ingress/abc';
+    expect(getApiBaseUrl()).toBe('http://192.168.1.184:8000');
   });
 });
 

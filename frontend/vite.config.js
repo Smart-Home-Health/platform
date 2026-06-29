@@ -4,7 +4,11 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+  // Production build uses relative asset URLs ('./assets/...') so the injected
+  // <base href> (set to the Home Assistant ingress prefix at serve time) governs
+  // where they load from. Dev server stays at root ('/') — no ingress there.
+  base: command === 'build' ? './' : '/',
   plugins: [
     react(),
     tailwindcss(),
@@ -45,4 +49,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

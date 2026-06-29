@@ -91,3 +91,30 @@ def test_ws_sensors_delegates_to_module(client, monkeypatch):
     with client.websocket_connect("/ws/sensors") as ws:
         assert ws.receive_json() == {"ok": True}
     assert handled["called"] is True
+
+
+# --- Home Assistant ingress base-path injection (SPA shell) -------------------
+
+_SHELL = '<head><base href="/" /><script>window.__BASE_PATH__ = "";</script></head>'
+
+
+def test_inject_ingress_base_rewrites_prefix():
+    from main import inject_ingress_base
+    out = inject_ingress_base(_SHELL, "/api/hassio_ingress/abc")
+    assert '<base href="/api/hassio_ingress/abc/">' in out
+    assert 'window.__BASE_PATH__ = "/api/hassio_ingress/abc"' in out
+
+
+def test_inject_ingress_base_strips_trailing_slash():
+    from main import inject_ingress_base
+    out = inject_ingress_base(_SHELL, "/api/hassio_ingress/abc/")
+    assert '<base href="/api/hassio_ingress/abc/">' in out
+    assert 'window.__BASE_PATH__ = "/api/hassio_ingress/abc"' in out
+
+
+def test_inject_ingress_base_empty_keeps_root():
+    """No ingress header -> app stays at root (identical to today's behavior)."""
+    from main import inject_ingress_base
+    out = inject_ingress_base(_SHELL, "")
+    assert '<base href="/">' in out
+    assert 'window.__BASE_PATH__ = ""' in out
