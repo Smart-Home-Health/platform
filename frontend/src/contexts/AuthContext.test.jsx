@@ -134,6 +134,18 @@ describe('AuthProvider state machine', () => {
     expect(screen.getByTestId('user').textContent).toBe('claude');
   });
 
+  it('skip_account_password auto-acquires account level on mount', async () => {
+    setFetch([
+      { path: '/api/auth/first-run', res: ok({ is_first_run: false, skip_account_password: true }) },
+      { path: '/api/auth/session', res: fail(401, { detail: 'Not authenticated' }) },
+      { path: '/api/auth/account/access', method: 'POST', res: ok({ account: { id: 1 }, read_restricted: true }) },
+    ]);
+    await renderAuth();
+    expect(screen.getByTestId('level').textContent).toBe('account');
+    expect(screen.getByTestId('isAcct').textContent).toBe('true');
+    expect(screen.getByTestId('isAuth').textContent).toBe('false');
+  });
+
   it('adopts an existing full session on mount', async () => {
     setFetch([
       { path: '/api/auth/first-run', res: ok({ is_first_run: false }) },

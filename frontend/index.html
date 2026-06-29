@@ -1,10 +1,16 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <!-- Base path for Home Assistant ingress. The backend rewrites this <base>
+         (and window.__BASE_PATH__) to the ingress prefix when served behind HA;
+         in dev and the normal unified image it stays "/". Must come first so the
+         relative URLs below resolve against it. -->
+    <base href="/" />
+    <script>window.__BASE_PATH__ = "";</script>
     <meta charset="UTF-8" />
-    <link rel="icon" href="/favicon.ico" />
-    <link rel="apple-touch-icon" href="/icon-192.png" />
-    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" href="favicon.ico" />
+    <link rel="apple-touch-icon" href="icon-192.png" />
+    <link rel="manifest" href="manifest.json" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#161b22" />
     <meta name="apple-mobile-web-app-capable" content="yes" />

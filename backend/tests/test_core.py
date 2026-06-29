@@ -91,3 +91,49 @@ def test_ws_sensors_delegates_to_module(client, monkeypatch):
     with client.websocket_connect("/ws/sensors") as ws:
         assert ws.receive_json() == {"ok": True}
     assert handled["called"] is True
+
+
+# --- Home Assistant ingress base-path injection (SPA shell) -------------------
+
+_SHELL = '<head><base href="/" /><script>window.__BASE_PATH__ = "";</script></head>'
+
+
+def test_inject_ingress_base_rewrites_prefix():
+    from main import inject_ingress_base
+    out = inject_ingress_base(_SHELL, "/api/hassio_ingress/abc")
+    assert '<base href="/api/hassio_ingress/abc/">' in out
+    assert 'window.__BASE_PATH__ = "/api/hassio_ingress/abc"' in out
+
+
+def test_inject_ingress_base_strips_trailing_slash():
+    from main import inject_ingress_base
+    out = inject_ingress_base(_SHELL, "/api/hassio_ingress/abc/")
+    assert '<base href="/api/hassio_ingress/abc/">' in out
+    assert 'window.__BASE_PATH__ = "/api/hassio_ingress/abc"' in out
+
+
+def test_inject_ingress_base_empty_keeps_root():
+    """No ingress header -> app stays at root (identical to today's behavior)."""
+    from main import inject_ingress_base
+    out = inject_ingress_base(_SHELL, "")
+    assert '<base href="/">' in out
+    assert 'window.__BASE_PATH__ = ""' in out
+
+
+def test_inject_ingress_base_rejects_crafted_header():
+    """A directly-reachable backend must not reflect a crafted X-Ingress-Path
+    into the SPA shell (HTML/JS injection) -> falls back to root."""
+    from main import inject_ingress_base
+    out = inject_ingress_base(_SHELL, '/x"><script>alert(1)</script>')
+    assert "<script>alert(1)" not in out
+    assert '<base href="/">' in out
+    assert 'window.__BASE_PATH__ = ""' in out
+
+
+def test_inject_ingress_base_rejects_backslash_payload():
+    """Backslashes aren't valid ingress-path chars and would be re.sub
+    backreferences -> rejected to root."""
+    from main import inject_ingress_base
+    out = inject_ingress_base(_SHELL, r"/a\1b")
+    assert '<base href="/">' in out
+    assert 'window.__BASE_PATH__ = ""' in out

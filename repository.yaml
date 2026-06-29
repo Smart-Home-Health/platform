@@ -1,0 +1,6 @@
+# Used when this add-on is distributed via a Home Assistant add-on repository.
+# (For local testing you can instead copy the `addon/` folder to /addons/ on the
+# HA host — see DOCS.md.)
+name: Smart Home Health Add-ons
+url: https://github.com/Smart-Home-Health/platform
+maintainer: John Carty

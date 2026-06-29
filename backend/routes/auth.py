@@ -64,6 +64,13 @@ SESSION_TIMEOUT_MINUTES = 30
 ACCOUNT_SESSION_HOURS = 24  # Account-level cookie lasts 24h per browser
 
 
+def skip_account_password_enabled() -> bool:
+    """Deployment-wide opt-in (env) to skip the account-password login and drop
+    straight into user selection in monitoring mode. Read at request time so the
+    flag is togglable without re-importing the module (e.g. HA add-on option)."""
+    return os.getenv("SHH_SKIP_ACCOUNT_PASSWORD", "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def create_access_token(
     user: User = None,
     account: Account = None,
@@ -130,11 +137,12 @@ def check_first_run(db: Session = Depends(get_db)):
     This endpoint is public and used to determine if setup is needed.
     """
     has_admin = has_any_admin_user(db)
-    
+
     return FirstRunStatus(
         is_first_run=not has_admin,
         has_admin=has_admin,
-        message="Admin user exists" if has_admin else "First run - admin setup required"
+        message="Admin user exists" if has_admin else "First run - admin setup required",
+        skip_account_password=skip_account_password_enabled(),
     )
 
 

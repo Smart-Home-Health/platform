@@ -20,10 +20,11 @@ import logging
 import os
 from typing import Optional
 import mimetypes
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+import re
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from dotenv import load_dotenv
 from datetime import datetime
 
@@ -143,6 +144,35 @@ app.include_router(system.router)
 mimetypes.add_type("application/wasm", ".wasm")
 mimetypes.add_type("application/javascript", ".js")
 
+
+# A real HA ingress path looks like "/api/hassio_ingress/<token>" — only slashes
+# and URL-safe token chars. Anything else (quotes, <, >, backslashes, ...) is
+# rejected so a directly-reachable backend can't be tricked into reflecting a
+# crafted X-Ingress-Path header into the SPA shell (HTML/JS injection).
+_INGRESS_PATH_RE = re.compile(r"\A/[A-Za-z0-9_./-]*\Z")
+
+
+def inject_ingress_base(html: str, ingress_path: str) -> str:
+    """Rewrite the SPA shell's <base> tag and window.__BASE_PATH__ to the Home
+    Assistant ingress prefix so relative assets, the router, and API/WS URLs all
+    resolve under HA's proxy path. `ingress_path` is the X-Ingress-Path header
+    value (e.g. "/api/hassio_ingress/<token>"); "" (or anything that doesn't
+    match the strict ingress-path shape) leaves the app at root."""
+    base = (ingress_path or "").rstrip("/")
+    if base and not _INGRESS_PATH_RE.match(base):
+        base = ""
+    # Use function replacements so `base` is treated as a literal, not an re.sub
+    # template (no backslash/backreference interpretation).
+    html = re.sub(r'<base\s+href="[^"]*"\s*/?>', lambda _m: f'<base href="{base}/">', html, count=1)
+    html = re.sub(
+        r'window\.__BASE_PATH__\s*=\s*"[^"]*"',
+        lambda _m: f'window.__BASE_PATH__ = "{base}"',
+        html,
+        count=1,
+    )
+    return html
+
+
 STATIC_DIR = os.getenv("STATIC_DIR")
 if STATIC_DIR:
     STATIC_DIR = os.path.realpath(STATIC_DIR)
@@ -153,11 +183,16 @@ if STATIC_DIR and os.path.isdir(STATIC_DIR):
         app.mount("/assets", StaticFiles(directory=_assets_dir), name="assets")
 
     _index_file = os.path.join(STATIC_DIR, "index.html")
+    # Read the shell once; the base path is injected per-request (it varies with
+    # the HA ingress token).
+    with open(_index_file, encoding="utf-8") as _f:
+        _index_template = _f.read()
 
     @app.get("/{full_path:path}", include_in_schema=False)
-    async def spa_fallback(full_path: str):
+    async def spa_fallback(full_path: str, request: Request):
         """Serve a real static file if one exists (favicon, *.wasm, ...),
-        otherwise return index.html so client-side routing handles the path."""
+        otherwise return the SPA shell (with the ingress base path injected) so
+        client-side routing handles the path."""
         # Unknown /api or /ws paths are genuine 404s, not the SPA shell.
         if full_path.startswith(("api", "ws")):
             raise HTTPException(status_code=404)
@@ -166,7 +201,8 @@ if STATIC_DIR and os.path.isdir(STATIC_DIR):
         if full_path and os.path.isfile(candidate) and \
                 os.path.commonpath([os.path.realpath(candidate), STATIC_DIR]) == STATIC_DIR:
             return FileResponse(candidate)
-        return FileResponse(_index_file)
+        html = inject_ingress_base(_index_template, request.headers.get("X-Ingress-Path", ""))
+        return HTMLResponse(html)
 
     logger.info(f"[main] Serving static frontend from {STATIC_DIR}")
 

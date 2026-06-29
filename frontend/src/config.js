@@ -24,10 +24,20 @@
 // it loaded the page from. `window.location.origin` therefore works for both —
 // no hardcoded :8000 port. An explicit non-localhost VITE_API_URL still wins
 // (e.g. pointing a standalone frontend at a remote API).
+// Ingress base path (e.g. "/api/hassio_ingress/<token>") injected into the page
+// by the backend when served behind Home Assistant. Empty in dev and the normal
+// unified image. Trailing slash trimmed so callers can do `${base}/api/...`.
+export function getBasePath() {
+  if (typeof window !== 'undefined' && typeof window.__BASE_PATH__ === 'string') {
+    return window.__BASE_PATH__.replace(/\/$/, '');
+  }
+  return '';
+}
+
 export function getApiBaseUrl() {
   const envUrl = import.meta.env.VITE_API_URL;
   if (envUrl && !String(envUrl).includes('localhost')) return envUrl;
-  if (typeof window !== 'undefined') return window.location.origin;
+  if (typeof window !== 'undefined') return window.location.origin + getBasePath();
   return 'http://localhost:8000';
 }
 // Coerce to string when used in template literals or .replace(); always returns current value.
@@ -57,11 +67,13 @@ const config = {
     return getApiBaseUrl();
   },
   
-  // WebSocket URL derived from API URL
+  // WebSocket URL derived from API URL. Carries the ingress base path (in
+  // url.pathname) so the socket connects through HA's proxy too.
   get wsUrl() {
     const url = new URL(this.apiUrl);
     const protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${protocol}//${url.host}/ws/sensors`;
+    const base = url.pathname.replace(/\/$/, '');
+    return `${protocol}//${url.host}${base}/ws/sensors`;
   },
   
   // Add other configuration values here
