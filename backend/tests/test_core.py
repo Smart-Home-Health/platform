@@ -118,3 +118,22 @@ def test_inject_ingress_base_empty_keeps_root():
     out = inject_ingress_base(_SHELL, "")
     assert '<base href="/">' in out
     assert 'window.__BASE_PATH__ = ""' in out
+
+
+def test_inject_ingress_base_rejects_crafted_header():
+    """A directly-reachable backend must not reflect a crafted X-Ingress-Path
+    into the SPA shell (HTML/JS injection) -> falls back to root."""
+    from main import inject_ingress_base
+    out = inject_ingress_base(_SHELL, '/x"><script>alert(1)</script>')
+    assert "<script>alert(1)" not in out
+    assert '<base href="/">' in out
+    assert 'window.__BASE_PATH__ = ""' in out
+
+
+def test_inject_ingress_base_rejects_backslash_payload():
+    """Backslashes aren't valid ingress-path chars and would be re.sub
+    backreferences -> rejected to root."""
+    from main import inject_ingress_base
+    out = inject_ingress_base(_SHELL, r"/a\1b")
+    assert '<base href="/">' in out
+    assert 'window.__BASE_PATH__ = ""' in out

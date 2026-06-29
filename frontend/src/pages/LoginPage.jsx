@@ -48,7 +48,14 @@ export default function LoginPage() {
   useEffect(() => {
     if (skipAccountPassword && !isAccountAuthenticated && !autoSkipTried) {
       setAutoSkipTried(true);
-      accountAccess(null);
+      accountAccess(null).then((result) => {
+        // On failure (backend starting up, network error, ...) surface an error
+        // so the guarded "Continuing…" screen falls through to the normal login
+        // form instead of hanging forever.
+        if (!result?.success) {
+          setError(result?.error || 'Could not continue automatically. Please try again.');
+        }
+      });
     }
   }, [skipAccountPassword, isAccountAuthenticated, autoSkipTried, accountAccess]);
 

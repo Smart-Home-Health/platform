@@ -145,16 +145,28 @@ mimetypes.add_type("application/wasm", ".wasm")
 mimetypes.add_type("application/javascript", ".js")
 
 
+# A real HA ingress path looks like "/api/hassio_ingress/<token>" — only slashes
+# and URL-safe token chars. Anything else (quotes, <, >, backslashes, ...) is
+# rejected so a directly-reachable backend can't be tricked into reflecting a
+# crafted X-Ingress-Path header into the SPA shell (HTML/JS injection).
+_INGRESS_PATH_RE = re.compile(r"\A/[A-Za-z0-9_./-]*\Z")
+
+
 def inject_ingress_base(html: str, ingress_path: str) -> str:
     """Rewrite the SPA shell's <base> tag and window.__BASE_PATH__ to the Home
     Assistant ingress prefix so relative assets, the router, and API/WS URLs all
     resolve under HA's proxy path. `ingress_path` is the X-Ingress-Path header
-    value (e.g. "/api/hassio_ingress/<token>"); "" leaves the app at root."""
+    value (e.g. "/api/hassio_ingress/<token>"); "" (or anything that doesn't
+    match the strict ingress-path shape) leaves the app at root."""
     base = (ingress_path or "").rstrip("/")
-    html = re.sub(r'<base\s+href="[^"]*"\s*/?>', f'<base href="{base}/">', html, count=1)
+    if base and not _INGRESS_PATH_RE.match(base):
+        base = ""
+    # Use function replacements so `base` is treated as a literal, not an re.sub
+    # template (no backslash/backreference interpretation).
+    html = re.sub(r'<base\s+href="[^"]*"\s*/?>', lambda _m: f'<base href="{base}/">', html, count=1)
     html = re.sub(
         r'window\.__BASE_PATH__\s*=\s*"[^"]*"',
-        f'window.__BASE_PATH__ = "{base}"',
+        lambda _m: f'window.__BASE_PATH__ = "{base}"',
         html,
         count=1,
     )
