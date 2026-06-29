@@ -1,5 +1,5 @@
 /*
- * Smart Home Health Hub
+ * Smart Home Health
  * Copyright (C) 2026 John Carty
  *
  * This program is free software: you can redistribute it and/or modify
@@ -24,6 +24,21 @@ const AuthContext = createContext();
 
 // Exported for use by components that make their own API calls
 export { authFetch, isIframe };
+
+// FastAPI error responses put a string in `detail` for HTTPException, but a
+// 422 validation error makes `detail` an ARRAY of {loc,msg,type}. Throwing
+// `new Error(detail)` on the array stringifies to "[object Object]" in the UI
+// (e.g. a too-short PIN). Coerce any shape to a readable string.
+export function errorMessage(body, fallback = 'Something went wrong') {
+  const d = body?.detail;
+  if (typeof d === 'string') return d;
+  if (Array.isArray(d)) {
+    const msg = d.map(e => (e && e.msg) || (typeof e === 'string' ? e : '')).filter(Boolean).join('; ');
+    return msg || fallback;
+  }
+  if (d && typeof d === 'object') return d.msg || fallback;
+  return fallback;
+}
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -64,6 +79,9 @@ export const AuthProvider = ({ children }) => {
   const [isFirstRun, setIsFirstRun] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  // Deployment-wide opt-in (env) to skip the account password -> straight to
+  // user selection in monitoring mode. Surfaced by /api/auth/first-run.
+  const [skipAccountPassword, setSkipAccountPassword] = useState(false);
 
   // Keep a ref in sync with authLevel so the fetch interceptor (installed once)
   // always reads the current value rather than a stale closure.
@@ -101,6 +119,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       const firstRunData = await firstRunRes.json();
+      setSkipAccountPassword(!!firstRunData.skip_account_password);
 
       if (firstRunData.is_first_run) {
         setIsFirstRun(true);
@@ -124,7 +143,8 @@ export const AuthProvider = ({ children }) => {
             full_name: sessionData.full_name,
             is_system_admin: sessionData.is_system_admin || false,
             roles: sessionData.roles || [],
-            permissions: sessionData.permissions || []
+            permissions: sessionData.permissions || [],
+            preferences: sessionData.preferences || null
           });
           
           // Get account info if available
@@ -140,6 +160,10 @@ export const AuthProvider = ({ children }) => {
           setAuthLevel('account');
           setUser(null);
           // Don't show auth modal - user needs to select a profile
+        } else if (firstRunData.skip_account_password) {
+          // Deployment opts to skip the account password: auto-acquire an
+          // account-level (monitoring) token so routing lands on user selection.
+          await accountAccess(null);
         } else {
           // No auth
           setAccount(null);
@@ -147,6 +171,8 @@ export const AuthProvider = ({ children }) => {
           setAuthLevel(null);
           setShowAuthModal(true);
         }
+      } else if (firstRunData.skip_account_password) {
+        await accountAccess(null);
       } else {
         // No active session
         setAccount(null);
@@ -185,7 +211,7 @@ export const AuthProvider = ({ children }) => {
 
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.detail || 'Account login failed');
+        throw new Error(errorMessage(error, 'Account login failed'));
       }
 
       const data = await res.json();
@@ -221,7 +247,7 @@ export const AuthProvider = ({ children }) => {
           setIsFirstRun(true);
           return { success: false, error: 'No account found. Starting setup...' };
         }
-        throw new Error(error.detail || 'Account access failed');
+        throw new Error(errorMessage(error, 'Account access failed'));
       }
 
       const data = await res.json();
@@ -251,7 +277,7 @@ export const AuthProvider = ({ children }) => {
 
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.detail || 'Invalid account password');
+        throw new Error(errorMessage(error, 'Invalid account password'));
       }
 
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -270,7 +296,7 @@ export const AuthProvider = ({ children }) => {
 
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.detail || 'Failed to get users');
+        throw new Error(errorMessage(error, 'Failed to get users'));
       }
 
       return await res.json();
@@ -295,7 +321,7 @@ export const AuthProvider = ({ children }) => {
 
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.detail || 'User selection failed');
+        throw new Error(errorMessage(error, 'User selection failed'));
       }
 
       const data = await res.json();
@@ -350,7 +376,7 @@ export const AuthProvider = ({ children }) => {
 
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.detail || 'Password reset failed');
+        throw new Error(errorMessage(error, 'Password reset failed'));
       }
 
       const data = await res.json();
@@ -388,7 +414,7 @@ export const AuthProvider = ({ children }) => {
 
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.detail || 'Login failed');
+        throw new Error(errorMessage(error, 'Login failed'));
       }
 
       const data = await res.json();
@@ -426,7 +452,7 @@ export const AuthProvider = ({ children }) => {
 
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.detail || 'PIN verification failed');
+        throw new Error(errorMessage(error, 'PIN verification failed'));
       }
 
       const data = await res.json();
@@ -492,7 +518,7 @@ export const AuthProvider = ({ children }) => {
 
       if (!res.ok) {
         const error = await res.json();
-        throw new Error(error.detail || 'Setup failed');
+        throw new Error(errorMessage(error, 'Setup failed'));
       }
 
       const data = await res.json();
@@ -524,6 +550,7 @@ export const AuthProvider = ({ children }) => {
     loading,
     showAuthModal,
     setShowAuthModal,
+    skipAccountPassword,
 
     // Two-layer auth methods
     accountLogin,

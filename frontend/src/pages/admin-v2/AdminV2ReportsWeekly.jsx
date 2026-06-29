@@ -1,5 +1,5 @@
 /*
- * Smart Home Health Hub
+ * Smart Home Health
  * Copyright (C) 2026 John Carty
  *
  * This program is free software: you can redistribute it and/or modify
@@ -160,7 +160,7 @@ const AdminV2ReportsWeekly = () => {
         labels: ['On Time', 'Late', 'Missed', 'Skipped'],
         datasets: [{
           data: [onTime, late, missed, skipped],
-          backgroundColor: ['#3fb950', '#d29922', '#f85149', '#8b949e'],
+          backgroundColor: ['#3fb950', '#d29922', '#f85149', 'var(--muted-foreground)'],
           borderWidth: 0,
         }],
       },
@@ -225,8 +225,8 @@ const AdminV2ReportsWeekly = () => {
           annotation: { annotations },
         },
         scales: {
-          x: { grid: { display: false }, ticks: { color: '#8b949e', font: { size: 10 } } },
-          y: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { color: '#8b949e', font: { size: 10 } } },
+          x: { grid: { display: false }, ticks: { color: 'var(--muted-foreground)', font: { size: 10 } } },
+          y: { grid: { color: 'color-mix(in srgb, var(--foreground) 6%, transparent)' }, ticks: { color: 'var(--muted-foreground)', font: { size: 10 } } },
         },
         animation: false,
       },
@@ -259,8 +259,8 @@ const AdminV2ReportsWeekly = () => {
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          x: { grid: { display: false }, ticks: { color: '#8b949e', font: { size: 10 } } },
-          y: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { color: '#8b949e', font: { size: 10 }, stepSize: 1 } },
+          x: { grid: { display: false }, ticks: { color: 'var(--muted-foreground)', font: { size: 10 } } },
+          y: { grid: { color: 'color-mix(in srgb, var(--foreground) 6%, transparent)' }, ticks: { color: 'var(--muted-foreground)', font: { size: 10 }, stepSize: 1 } },
         },
         animation: false,
       },
@@ -316,7 +316,7 @@ const AdminV2ReportsWeekly = () => {
                 <div className="weekly-legend-item"><span className="weekly-legend-dot" style={{ background: '#3fb950' }} /> On Time <strong>{(c.medications?.on_time || 0) + (c.care_tasks?.completed || 0)}</strong></div>
                 <div className="weekly-legend-item"><span className="weekly-legend-dot" style={{ background: '#d29922' }} /> Late <strong>{c.medications?.late || 0}</strong></div>
                 <div className="weekly-legend-item"><span className="weekly-legend-dot" style={{ background: '#f85149' }} /> Missed <strong>{(c.medications?.missed || 0) + (c.care_tasks?.missed || 0)}</strong></div>
-                <div className="weekly-legend-item"><span className="weekly-legend-dot" style={{ background: '#8b949e' }} /> Skipped <strong>{(c.medications?.skipped || 0) + (c.care_tasks?.skipped || 0)}</strong></div>
+                <div className="weekly-legend-item"><span className="weekly-legend-dot" style={{ background: 'var(--muted-foreground)' }} /> Skipped <strong>{(c.medications?.skipped || 0) + (c.care_tasks?.skipped || 0)}</strong></div>
               </div>
             </div>
           </div>

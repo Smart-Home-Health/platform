@@ -1,4 +1,4 @@
-# Smart Home Health Hub
+# Smart Home Health
 # Copyright (C) 2026 John Carty
 #
 # This program is free software: you can redistribute it and/or modify
@@ -22,7 +22,9 @@ class PulseOxData(Base):
     __tablename__ = 'pulse_ox_data'
     id = Column(Integer, primary_key=True, autoincrement=True)
     patient_id = Column(Integer, ForeignKey('patients.id'), nullable=False)
-    timestamp = Column(TIMESTAMP(timezone=True), nullable=False)
+    # Part of the composite PK: TimescaleDB requires the hypertable partition
+    # column in every PK/UNIQUE constraint. `id` keeps its own sequence.
+    timestamp = Column(TIMESTAMP(timezone=True), primary_key=True, nullable=False)
     spo2 = Column(Integer)
     bpm = Column(Integer)
     pa = Column(Float)

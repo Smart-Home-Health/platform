@@ -1,5 +1,5 @@
 /*
- * Smart Home Health Hub
+ * Smart Home Health
  * Copyright (C) 2026 John Carty
  *
  * This program is free software: you can redistribute it and/or modify
@@ -33,9 +33,7 @@ const AdminV2Monitoring = () => {
   const isTimelineView = location.pathname.includes('/care/monitoring/timeline');
   const isVentilatorView = location.pathname.includes('/care/monitoring/ventilator');
   const isHistoryView = location.pathname.includes('/care/monitoring/history');
-  const isSettingsView = location.pathname.includes('/care/monitoring/settings');
   const isInteractionsView = location.pathname.includes('/care/monitoring/interactions');
-  const isAlertsView = !isHistoryView && !isSettingsView && !isTimelineView && !isVentilatorView && !isInteractionsView;
 
   const renderContent = () => {
     if (!selectedPatient) {
@@ -56,14 +54,6 @@ const AdminV2Monitoring = () => {
 
     if (isInteractionsView) {
       return <AdminV2MonitoringInteractions />;
-    }
-
-    if (isSettingsView) {
-      return (
-        <div className="admin-v2-monitoring-settings">
-          <p>Alert settings coming soon.</p>
-        </div>
-      );
     }
 
     if (isHistoryView) {

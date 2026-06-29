@@ -1,5 +1,5 @@
 /*
- * Smart Home Health Hub
+ * Smart Home Health
  * Copyright (C) 2026 John Carty
  *
  * This program is free software: you can redistribute it and/or modify
@@ -45,7 +45,11 @@ const BathroomHistoryChart = ({ data, title }) => {
     }
 
     const ctx = chartRef.current.getContext('2d');
-    
+    const css = (token, fb) => {
+      const el = document.querySelector('.dashboard-wrapper') || document.documentElement;
+      return getComputedStyle(el).getPropertyValue(token).trim() || fb;
+    };
+
     chartInstance.current = new Chart(ctx, {
       type: 'scatter',
       data: {
@@ -59,14 +63,14 @@ const BathroomHistoryChart = ({ data, title }) => {
             display: true,
             position: 'top',
             labels: {
-              color: '#fff',
+              color: css('--dash-text', '#e6edf3'),
               usePointStyle: true
             }
           },
           title: {
             display: true,
             text: title,
-            color: '#fff',
+            color: css('--dash-text', '#e6edf3'),
             font: {
               size: 16
             }
@@ -85,16 +89,16 @@ const BathroomHistoryChart = ({ data, title }) => {
             title: {
               display: true,
               text: 'Date',
-              color: '#ccc'
+              color: css('--dash-text-muted', '#8b949e')
             },
             ticks: {
-              color: '#ccc',
+              color: css('--dash-text-muted', '#8b949e'),
               maxTicksLimit: 8,
               maxRotation: 45,
               minRotation: 0
             },
             grid: {
-              color: '#444'
+              color: css('--dash-border', '#444')
             }
           },
           y: {
@@ -103,13 +107,13 @@ const BathroomHistoryChart = ({ data, title }) => {
             title: {
               display: true,
               text: 'Size',
-              color: '#ccc'
+              color: css('--dash-text-muted', '#8b949e')
             },
             ticks: {
-              color: '#ccc'
+              color: css('--dash-text-muted', '#8b949e')
             },
             grid: {
-              color: '#444'
+              color: css('--dash-border', '#444')
             }
           }
         },
@@ -383,10 +387,10 @@ const HistoryModal = ({ onClose }) => {
             <>
               {activeTab === 'graphs' && (
             <div style={{ 
-              backgroundColor: 'rgba(30,32,40,0.95)', 
+              backgroundColor: 'var(--dash-surface)', 
               borderRadius: '12px', 
               padding: '16px',
-              border: '1px solid #4a5568',
+              border: '1px solid var(--dash-border-strong)',
               height: '100%'
             }}>
               <div className="tw" style={{ marginBottom: '20px' }}>
@@ -408,7 +412,7 @@ const HistoryModal = ({ onClose }) => {
                   <div className="chart-container" style={{ 
                     height: 300, 
                     margin: "20px 0",
-                    background: "#161e2e",
+                    background: "var(--dash-bg)",
                     borderRadius: "8px",
                     padding: "10px"
                   }}>
@@ -430,7 +434,7 @@ const HistoryModal = ({ onClose }) => {
                   alignItems: "center",
                   justifyContent: "center",
                   height: "100%",
-                  color: "#ccc"
+                  color: "var(--dash-text-muted)"
                 }}>
                   <p style={{ textAlign: "center", margin: 0 }}>
                     No data available to chart for <b>{formatVitalDisplayName(selectedType)}</b>
@@ -440,7 +444,7 @@ const HistoryModal = ({ onClose }) => {
             </div>
             <div className="history-table">
               {loading ? (
-                <div style={{ textAlign: 'center', padding: '40px', color: '#8b949e' }}>
+                <div style={{ textAlign: 'center', padding: '40px', color: 'var(--dash-text-muted)' }}>
                   <div style={{ fontSize: '16px' }}>Loading...</div>
                 </div>
               ) : (
@@ -457,7 +461,7 @@ const HistoryModal = ({ onClose }) => {
                     <tbody>
                       {records.length === 0 ? (
                         <tr>
-                          <td colSpan={4} style={{ textAlign: 'center', fontStyle: 'italic', color: '#8b949e' }}>
+                          <td colSpan={4} style={{ textAlign: 'center', fontStyle: 'italic', color: 'var(--dash-text-muted)' }}>
                             No data available for {formatVitalDisplayName(selectedType)}
                           </td>
                         </tr>
@@ -467,7 +471,7 @@ const HistoryModal = ({ onClose }) => {
                             <td>{new Date(rec.datetime).toLocaleString()}</td>
                             <td>{getGroupDisplay(rec.vital_group)}</td>
                             <td style={{ fontWeight: 500 }}>{formatValueCell(rec)}</td>
-                            <td style={{ color: rec.notes ? '#c9d1d9' : '#6e7681', fontStyle: rec.notes ? 'normal' : 'italic' }}>
+                            <td style={{ color: rec.notes ? 'var(--dash-text)' : 'var(--dash-text-dim)', fontStyle: rec.notes ? 'normal' : 'italic' }}>
                               {rec.notes || 'No notes'}
                             </td>
                           </tr>
@@ -483,7 +487,7 @@ const HistoryModal = ({ onClose }) => {
                 padding: 12,
               }}>
                 <Button variant="secondary" size="sm" onClick={handlePrev} disabled={page === 1}>← Previous</Button>
-                <span style={{ color: '#c9d1d9', fontSize: 13, fontWeight: 500 }}>
+                <span style={{ color: 'var(--dash-text-muted)', fontSize: 13, fontWeight: 500 }}>
                   Page {page} of {totalPages}
                 </span>
                 <Button variant="secondary" size="sm" onClick={handleNext} disabled={page === totalPages}>Next →</Button>
@@ -495,17 +499,17 @@ const HistoryModal = ({ onClose }) => {
           )}
           {activeTab === 'reports' && (
             <div style={{ 
-              backgroundColor: 'rgba(30,32,40,0.95)', 
+              backgroundColor: 'var(--dash-surface)', 
               borderRadius: '12px', 
               padding: '16px',
-              border: '1px solid #4a5568',
+              border: '1px solid var(--dash-border-strong)',
               height: '100%',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center'
             }}>
-              <div style={{ textAlign: 'center', color: '#ccc' }}>
-                <h3 style={{ color: '#fff', marginBottom: '16px' }}>Reports</h3>
+              <div style={{ textAlign: 'center', color: 'var(--dash-text-muted)' }}>
+                <h3 style={{ color: 'var(--dash-text)', marginBottom: '16px' }}>Reports</h3>
                 <p>Reports functionality coming soon...</p>
               </div>
             </div>

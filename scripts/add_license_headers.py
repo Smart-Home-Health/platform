@@ -11,7 +11,7 @@ HOLDER = "Copyright (C) 2026 John Carty"
 MARKER = "GNU Affero General Public License"
 
 BODY = [
-    "Smart Home Health Hub",
+    "Smart Home Health",
     HOLDER,
     "",
     "This program is free software: you can redistribute it and/or modify",

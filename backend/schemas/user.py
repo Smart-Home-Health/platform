@@ -1,4 +1,4 @@
-# Smart Home Health Hub
+# Smart Home Health
 # Copyright (C) 2026 John Carty
 #
 # This program is free software: you can redistribute it and/or modify
@@ -101,6 +101,25 @@ class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     is_active: Optional[bool] = None
     role_ids: Optional[List[int]] = None
+    pin: Optional[str] = Field(None, min_length=4, max_length=8)
+
+    @field_validator('pin')
+    @classmethod
+    def validate_pin(cls, v):
+        if v is not None and not v.isdigit():
+            raise ValueError('PIN must contain only digits')
+        return v
+
+
+class AdminPasswordReset(BaseModel):
+    """System-admin direct password reset for another user."""
+    new_password: str = Field(..., min_length=8)
+    require_change: bool = False
+
+
+class UserPreferencesUpdate(BaseModel):
+    """Partial update of the current user's UI preferences (shallow-merged)."""
+    preferences: dict = Field(..., description='e.g. {"theme": "light|dark|system"}')
 
 
 class UserPasswordUpdate(BaseModel):
@@ -130,10 +149,11 @@ class UserResponse(UserBase):
     last_login: Optional[datetime] = None
     last_activity: Optional[datetime] = None
     last_full_password_login: Optional[datetime] = None
+    preferences: Optional[dict] = None
     created_at: datetime
     updated_at: datetime
     roles: List[RoleResponse] = []
-    
+
     class Config:
         from_attributes = True
 

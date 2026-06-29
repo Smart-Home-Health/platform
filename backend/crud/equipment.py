@@ -1,4 +1,4 @@
-# Smart Home Health Hub
+# Smart Home Health
 # Copyright (C) 2026 John Carty
 #
 # This program is free software: you can redistribute it and/or modify
@@ -494,6 +494,42 @@ def get_equipment_due_count(db: Session, account_id: int = None, patient_id: int
     except Exception as e:
         logger.error(f"Error calculating equipment due count: {e}")
         return 0
+
+
+def get_equipment_due_now_late_counts(db: Session, account_id: int = None, patient_id: int = None):
+    """Return {'due_now', 'late'} equipment badge counts for the per-patient MQTT
+    badge sensors.
+
+    Equipment due dates are date-precise (not hour-precise), so the ±1h badge
+    spec maps to whole days: ``due_now`` = due today, ``late`` = due before today.
+    Scoping matches get_equipment_due_count (own items + shared NULL items)."""
+    try:
+        from sqlalchemy import or_
+        query = db.query(Equipment).filter(Equipment.scheduled_replacement == True)
+        if account_id is not None:
+            query = query.filter(or_(Equipment.account_id == account_id, Equipment.account_id.is_(None)))
+        if patient_id is not None:
+            query = query.filter(or_(Equipment.patient_id == patient_id, Equipment.patient_id.is_(None)))
+        equipment = query.all()
+        due_now = 0
+        late = 0
+        today = utc_today()
+
+        for item in equipment:
+            if item.last_changed and item.useful_days:
+                if isinstance(item.last_changed, str):
+                    last = datetime.fromisoformat(item.last_changed)
+                else:
+                    last = item.last_changed
+                due_date = (last.date() if hasattr(last, 'date') else last) + timedelta(days=item.useful_days)
+                if due_date < today:
+                    late += 1
+                elif due_date == today:
+                    due_now += 1
+        return {'due_now': due_now, 'late': late}
+    except Exception as e:
+        logger.error(f"Error calculating equipment due_now/late counts: {e}")
+        return {'due_now': 0, 'late': 0}
 
 
 def get_equipment_due_soon(db: Session, days_ahead=7):

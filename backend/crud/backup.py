@@ -1,4 +1,4 @@
-# Smart Home Health Hub
+# Smart Home Health
 # Copyright (C) 2026 John Carty
 #
 # This program is free software: you can redistribute it and/or modify
@@ -32,11 +32,13 @@ import json
 import logging
 import os
 import tarfile
+import tempfile
+import uuid
 from datetime import datetime, date
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from sqlalchemy import inspect as sa_inspect
+from sqlalchemy import inspect as sa_inspect, func, select
 from sqlalchemy.orm import Session
 
 from schemas.patient import Patient
@@ -61,11 +63,35 @@ from schemas.nutrition_output import NutritionOutput
 from schemas.nutrition_schedule import NutritionSchedule
 from schemas.nutrition_goal import NutritionGoal
 from schemas.dme_shipment import DMEShipment, DMEShipmentItem, DMEReceiptItem, DMEShipmentAlert
+from schemas.allergy import AllergyIntolerance
+from schemas.clinical_results import DiagnosticReport, LabResult, ImagingStudy
+from schemas.integration import Integration, PatientIntegration
+from schemas.vent_import import VentImport
+from schemas.vent_sample import VentSample
+from schemas.vent_device_info import VentDeviceInfo
+from models.custom_vital_definition import CustomVitalDefinition
 from models.users import User
 
 logger = logging.getLogger(__name__)
 
-BACKUP_FORMAT_VERSION = 1
+# Synthetic integration that owns data brought in via restore (e.g. ventilator
+# imports, whose integration_id FK is NOT NULL). It is a DB-only catalog row —
+# deliberately NOT registered in the in-code IntegrationRegistry — so it never
+# appears in the "add integration" picker (registry-based) but does show on a
+# patient that has it (the per-patient list reads metadata from the DB row).
+IMPORTED_INTEGRATION_SLUG = "imported"
+
+# v2 (2026-06-15) added: allergies, custom_vital_definitions, diagnostic_reports,
+# lab_results, imaging_studies.
+# v3 (2026-06-15) streams large sensor tables as NDJSON (`pulse_ox_data.ndjson`,
+# `vent_samples.ndjson`) instead of one in-memory JSON array, to bound memory on
+# multi-million-row patients, and adds the ventilator import set (vent_imports,
+# vent_device_info, vent_samples). Restore stays backward-compatible: it reads
+# the `.ndjson` member if present, else falls back to the legacy `.json` array.
+BACKUP_FORMAT_VERSION = 3
+
+# Rows per batch when streaming large tables in/out (server-side cursor + bulk insert).
+STREAM_BATCH = 5000
 IMPORT_USER_PREFIX = "__import_account_"
 
 
@@ -100,6 +126,71 @@ def _add_to_tar(tar: tarfile.TarFile, name: str, data: bytes) -> None:
     info.size = len(data)
     info.mtime = int(datetime.utcnow().timestamp())
     tar.addfile(info, io.BytesIO(data))
+
+
+def _stream_table_to_tar(tar: tarfile.TarFile, db: Session, member_name: str,
+                         table, where) -> int:
+    """Stream a large table to the tar as NDJSON (one JSON object per line).
+
+    Reads with a server-side cursor (`stream_results` + `yield_per`) over the
+    raw table columns — no ORM identity map — and writes through a temp file so
+    neither the row list nor a giant JSON string is ever fully in memory.
+    Returns the row count.
+    """
+    stmt = select(table).where(where).execution_options(
+        stream_results=True, yield_per=STREAM_BATCH,
+    )
+    count = 0
+    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".ndjson",
+                                      delete=False, encoding="utf-8")
+    try:
+        for row in db.execute(stmt).mappings():
+            tmp.write(json.dumps(dict(row), default=_json_default))
+            tmp.write("\n")
+            count += 1
+        tmp.close()
+        tar.add(tmp.name, arcname=member_name)
+    finally:
+        tmp.close()
+        os.unlink(tmp.name)
+    return count
+
+
+def _restore_stream_ndjson(db: Session, archive_bytes: bytes, member_name: str,
+                           model, transform: Callable[[Dict[str, Any]], None]) -> int:
+    """Stream an NDJSON tar member line-by-line and bulk-insert in batches.
+
+    `transform` mutates each row dict in place (e.g. remap patient_id) and may
+    return ``False`` to drop the row (e.g. an orphan whose parent didn't
+    restore). The autoincrement `id` is dropped so the target DB assigns fresh
+    ids. Returns the number of rows inserted. Missing member -> 0.
+    """
+    with tarfile.open(fileobj=io.BytesIO(archive_bytes), mode="r:gz") as tar:
+        try:
+            f = tar.extractfile(member_name)
+        except KeyError:
+            return 0
+        if f is None:
+            return 0
+        inserted = 0
+        batch: List[Dict[str, Any]] = []
+        for raw in io.TextIOWrapper(f, encoding="utf-8"):
+            raw = raw.strip()
+            if not raw:
+                continue
+            row = json.loads(raw)
+            row.pop("id", None)
+            if transform(row) is False:
+                continue
+            batch.append(row)
+            if len(batch) >= STREAM_BATCH:
+                db.bulk_insert_mappings(model, batch)
+                inserted += len(batch)
+                batch.clear()
+        if batch:
+            db.bulk_insert_mappings(model, batch)
+            inserted += len(batch)
+    return inserted
 
 
 # ---------------------------------------------------------------------------
@@ -150,7 +241,8 @@ def export_patient_to_targz(db: Session, patient_id: int, account_id: int) -> Tu
     )
 
     vitals = db.query(Vital).filter(Vital.patient_id == patient_id).all()
-    pulse_ox = db.query(PulseOxData).filter(PulseOxData.patient_id == patient_id).all()
+    # pulse_ox_data is streamed (can be millions of rows) — only need its count here.
+    pulse_ox_count = db.query(func.count(PulseOxData.id)).filter(PulseOxData.patient_id == patient_id).scalar()
     monitoring_alerts = db.query(MonitoringAlert).filter(MonitoringAlert.patient_id == patient_id).all()
     ventilator_alerts = db.query(VentilatorAlert).filter(VentilatorAlert.patient_id == patient_id).all()
     symptoms = db.query(Symptom).filter(Symptom.patient_id == patient_id).all()
@@ -190,6 +282,22 @@ def export_patient_to_targz(db: Session, patient_id: int, account_id: int) -> Tu
         if shipment_ids else []
     )
 
+    # ---- clinical extras (allergies, custom vital defs, diagnostic reports) ----
+    allergies = db.query(AllergyIntolerance).filter(AllergyIntolerance.patient_id == patient_id).all()
+    custom_vital_definitions = db.query(CustomVitalDefinition).filter(CustomVitalDefinition.patient_id == patient_id).all()
+    diagnostic_reports = db.query(DiagnosticReport).filter(DiagnosticReport.patient_id == patient_id).all()
+    lab_results = db.query(LabResult).filter(LabResult.patient_id == patient_id).all()
+    imaging_studies = db.query(ImagingStudy).filter(ImagingStudy.patient_id == patient_id).all()
+
+    # ---- ventilator imports + device info (small); samples streamed below ----
+    vent_imports = db.query(VentImport).filter(VentImport.patient_id == patient_id).all()
+    vent_import_ids = [vi.id for vi in vent_imports]
+    vent_device_info = (
+        db.query(VentDeviceInfo).filter(VentDeviceInfo.import_id.in_(vent_import_ids)).all()
+        if vent_import_ids else []
+    )
+    vent_samples_count = db.query(func.count(VentSample.id)).filter(VentSample.patient_id == patient_id).scalar()
+
     # ---- collect referenced user ids for attribution preservation --------
     referenced_user_ids: set = set()
     def _collect(rows, *fields):
@@ -212,6 +320,8 @@ def export_patient_to_targz(db: Session, patient_id: int, account_id: int) -> Tu
     _collect(dme_shipments, "created_by", "finalized_by")
     _collect(dme_receipt_items, "received_by")
     _collect(dme_shipment_alerts, "resolved_by")
+    _collect(allergies, "created_by")
+    _collect(vent_imports, "uploaded_by")
 
     users_referenced = {}
     if referenced_user_ids:
@@ -242,7 +352,7 @@ def export_patient_to_targz(db: Session, patient_id: int, account_id: int) -> Tu
                 "equipment": len(equipment),
                 "equipment_change_logs": len(equipment_change_logs),
                 "vitals": len(vitals),
-                "pulse_ox_data": len(pulse_ox),
+                "pulse_ox_data": pulse_ox_count,
                 "monitoring_alerts": len(monitoring_alerts),
                 "ventilator_alerts": len(ventilator_alerts),
                 "symptoms": len(symptoms),
@@ -258,6 +368,14 @@ def export_patient_to_targz(db: Session, patient_id: int, account_id: int) -> Tu
                 "dme_shipment_items": len(dme_shipment_items),
                 "dme_receipt_items": len(dme_receipt_items),
                 "dme_shipment_alerts": len(dme_shipment_alerts),
+                "allergies": len(allergies),
+                "custom_vital_definitions": len(custom_vital_definitions),
+                "diagnostic_reports": len(diagnostic_reports),
+                "lab_results": len(lab_results),
+                "imaging_studies": len(imaging_studies),
+                "vent_imports": len(vent_imports),
+                "vent_device_info": len(vent_device_info),
+                "vent_samples": vent_samples_count,
                 "users_referenced": len(users_referenced),
             },
         }
@@ -274,7 +392,8 @@ def export_patient_to_targz(db: Session, patient_id: int, account_id: int) -> Tu
         _add_to_tar(tar, "equipment.json", _dump_json_bytes([_row_to_dict(r) for r in equipment]))
         _add_to_tar(tar, "equipment_change_logs.json", _dump_json_bytes([_row_to_dict(r) for r in equipment_change_logs]))
         _add_to_tar(tar, "vitals.json", _dump_json_bytes([_row_to_dict(r) for r in vitals]))
-        _add_to_tar(tar, "pulse_ox_data.json", _dump_json_bytes([_row_to_dict(r) for r in pulse_ox]))
+        _stream_table_to_tar(tar, db, "pulse_ox_data.ndjson",
+                             PulseOxData.__table__, PulseOxData.patient_id == patient_id)
         _add_to_tar(tar, "monitoring_alerts.json", _dump_json_bytes([_row_to_dict(r) for r in monitoring_alerts]))
         _add_to_tar(tar, "ventilator_alerts.json", _dump_json_bytes([_row_to_dict(r) for r in ventilator_alerts]))
         _add_to_tar(tar, "symptoms.json", _dump_json_bytes([_row_to_dict(r) for r in symptoms]))
@@ -290,6 +409,15 @@ def export_patient_to_targz(db: Session, patient_id: int, account_id: int) -> Tu
         _add_to_tar(tar, "dme_shipment_items.json", _dump_json_bytes([_row_to_dict(r) for r in dme_shipment_items]))
         _add_to_tar(tar, "dme_receipt_items.json", _dump_json_bytes([_row_to_dict(r) for r in dme_receipt_items]))
         _add_to_tar(tar, "dme_shipment_alerts.json", _dump_json_bytes([_row_to_dict(r) for r in dme_shipment_alerts]))
+        _add_to_tar(tar, "allergies.json", _dump_json_bytes([_row_to_dict(r) for r in allergies]))
+        _add_to_tar(tar, "custom_vital_definitions.json", _dump_json_bytes([_row_to_dict(r) for r in custom_vital_definitions]))
+        _add_to_tar(tar, "diagnostic_reports.json", _dump_json_bytes([_row_to_dict(r) for r in diagnostic_reports]))
+        _add_to_tar(tar, "lab_results.json", _dump_json_bytes([_row_to_dict(r) for r in lab_results]))
+        _add_to_tar(tar, "imaging_studies.json", _dump_json_bytes([_row_to_dict(r) for r in imaging_studies]))
+        _add_to_tar(tar, "vent_imports.json", _dump_json_bytes([_row_to_dict(r) for r in vent_imports]))
+        _add_to_tar(tar, "vent_device_info.json", _dump_json_bytes([_row_to_dict(r) for r in vent_device_info]))
+        _stream_table_to_tar(tar, db, "vent_samples.ndjson",
+                             VentSample.__table__, VentSample.patient_id == patient_id)
         _add_to_tar(tar, "users_referenced.json", json.dumps(users_referenced, default=_json_default, indent=2).encode("utf-8"))
 
     safe_last = "".join(c for c in (patient.last_name or "patient") if c.isalnum() or c in "-_") or "patient"
@@ -327,6 +455,45 @@ def get_or_create_import_user(db: Session, account_id: int) -> User:
     db.flush()
     logger.info("Created hidden import user id=%s for account %s", user.id, account_id)
     return user
+
+
+def get_or_create_imported_integration(db: Session, account_id: int, patient_id: int) -> int:
+    """Create (and return the id of) a synthetic 'Imported Data' patient
+    integration for `patient_id`, used as the FK target for restored device
+    imports (ventilator logs etc.). Mirrors the hidden import-user pattern.
+
+    The catalog row (slug ``imported``) is created once and is NOT in the code
+    registry, so it stays out of the 'add integration' picker; the per-patient
+    PatientIntegration row makes it visible on patients that actually have it."""
+    now = datetime.utcnow()
+    catalog = db.query(Integration).filter(Integration.slug == IMPORTED_INTEGRATION_SLUG).first()
+    if catalog is None:
+        catalog = Integration(
+            name="Imported Data",
+            slug=IMPORTED_INTEGRATION_SLUG,
+            description="Holds data brought in via backup/restore (e.g. ventilator imports). Not connectable.",
+            auth_type="none",
+            is_active=False,  # never offered as a new connection
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(catalog)
+        db.flush()
+
+    pi = PatientIntegration(
+        account_id=account_id,
+        patient_id=patient_id,
+        integration_id=catalog.id,
+        credentials=None,
+        settings={"imported": True},
+        is_enabled=True,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(pi)
+    db.flush()
+    logger.info("Created imported-data integration id=%s for patient %s", pi.id, patient_id)
+    return pi.id
 
 
 def _read_archive(archive_bytes: bytes) -> Dict[str, Any]:
@@ -394,10 +561,18 @@ def restore_patient_from_targz(
     the hidden per-account import user.
     """
     contents = _read_archive(archive_bytes)
+    # All member names (incl. streamed .ndjson files, which _read_archive skips).
+    with tarfile.open(fileobj=io.BytesIO(archive_bytes), mode="r:gz") as _tar:
+        archive_members = set(_tar.getnames())
 
     manifest = contents.get("manifest.json") or {}
-    if not manifest or manifest.get("format_version") != BACKUP_FORMAT_VERSION:
-        raise ValueError(f"Unsupported or missing manifest (expected version {BACKUP_FORMAT_VERSION})")
+    fmt = manifest.get("format_version")
+    # Accept any archive from v1 up to the current version (newer files are simply
+    # absent in older archives). Reject only missing manifests or future versions.
+    if not manifest or not isinstance(fmt, int) or fmt < 1 or fmt > BACKUP_FORMAT_VERSION:
+        raise ValueError(
+            f"Unsupported or missing manifest (supported format versions 1–{BACKUP_FORMAT_VERSION})"
+        )
 
     patient_rows = contents.get("patient.json") or []
     if not patient_rows:
@@ -420,6 +595,7 @@ def restore_patient_from_targz(
         "implant": {},
         "dme_shipment": {},
         "dme_shipment_item": {},
+        "diagnostic_report": {},
     }
 
     inserted_counts: Dict[str, int] = {}
@@ -590,6 +766,88 @@ def restore_patient_from_targz(
         _insert(ImplantNote, r)
     inserted_counts["implant_notes"] = len(contents.get("implant_notes.json") or [])
 
+    # ---- allergies + custom vital definitions (patient_id-only) ---------
+    for r in contents.get("allergies.json") or []:
+        r = dict(r)
+        r["patient_id"] = new_patient_id
+        r["created_by"] = resolve_user(r.get("created_by"))
+        _insert(AllergyIntolerance, r)
+    inserted_counts["allergies"] = len(contents.get("allergies.json") or [])
+
+    for r in contents.get("custom_vital_definitions.json") or []:
+        r = dict(r)
+        r["patient_id"] = new_patient_id
+        _insert(CustomVitalDefinition, r)
+    inserted_counts["custom_vital_definitions"] = len(contents.get("custom_vital_definitions.json") or [])
+
+    # ---- diagnostic reports + children (lab results, imaging studies) ---
+    for r in contents.get("diagnostic_reports.json") or []:
+        r = dict(r)
+        r["patient_id"] = new_patient_id
+        _insert(DiagnosticReport, r, map_name="diagnostic_report")
+    inserted_counts["diagnostic_reports"] = len(contents.get("diagnostic_reports.json") or [])
+
+    for r in contents.get("lab_results.json") or []:
+        r = dict(r)
+        r["patient_id"] = new_patient_id
+        old_rep = r.get("diagnostic_report_id")
+        r["diagnostic_report_id"] = id_maps["diagnostic_report"].get(old_rep) if old_rep else None
+        _insert(LabResult, r)
+    inserted_counts["lab_results"] = len(contents.get("lab_results.json") or [])
+
+    for r in contents.get("imaging_studies.json") or []:
+        r = dict(r)
+        r["patient_id"] = new_patient_id
+        old_rep = r.get("diagnostic_report_id")
+        r["diagnostic_report_id"] = id_maps["diagnostic_report"].get(old_rep) if old_rep else None
+        _insert(ImagingStudy, r)
+    inserted_counts["imaging_studies"] = len(contents.get("imaging_studies.json") or [])
+
+    # ---- ventilator imports + device info + samples ---------------------
+    # vent_imports has a string UUID PK and a NOT-NULL integration_id; mint a new
+    # UUID per import (str->str map for samples) and point them at a synthetic
+    # "Imported Data" integration (integrations themselves are not exported).
+    vent_import_id_map: Dict[str, str] = {}
+    vent_imports_in = contents.get("vent_imports.json") or []
+    imported_integration_id = (
+        get_or_create_imported_integration(db, account_id, new_patient_id)
+        if vent_imports_in else None
+    )
+    for r in vent_imports_in:
+        r = dict(r)
+        old_id = r.get("id")
+        new_id = str(uuid.uuid4())
+        r["id"] = new_id
+        r["patient_id"] = new_patient_id
+        r["integration_id"] = imported_integration_id
+        r["uploaded_by"] = resolve_user(r.get("uploaded_by"))
+        db.add(VentImport(**r))
+        db.flush()
+        if old_id is not None:
+            vent_import_id_map[old_id] = new_id
+    inserted_counts["vent_imports"] = len(vent_imports_in)
+
+    for r in contents.get("vent_device_info.json") or []:
+        r = dict(r)
+        old_imp = r.get("import_id")
+        if old_imp not in vent_import_id_map:
+            continue  # orphan (parent import didn't restore)
+        r.pop("id", None)
+        r["import_id"] = vent_import_id_map[old_imp]
+        db.add(VentDeviceInfo(**r))
+    db.flush()
+    inserted_counts["vent_device_info"] = len(contents.get("vent_device_info.json") or [])
+
+    # vent_samples: streamed NDJSON (v3+). Remap patient_id + import_id; drop orphans.
+    def _remap_vent_sample(r):
+        new_imp = vent_import_id_map.get(r.get("import_id"))
+        if new_imp is None:
+            return False
+        r["import_id"] = new_imp
+        r["patient_id"] = new_patient_id
+    inserted_counts["vent_samples"] = _restore_stream_ndjson(
+        db, archive_bytes, "vent_samples.ndjson", VentSample, _remap_vent_sample)
+
     # ---- vitals + alerts + symptoms (simple patient_id-only rows) -------
     for r in contents.get("vitals.json") or []:
         r = dict(r)
@@ -597,11 +855,18 @@ def restore_patient_from_targz(
         _insert(Vital, r)
     inserted_counts["vitals"] = len(contents.get("vitals.json") or [])
 
-    for r in contents.get("pulse_ox_data.json") or []:
-        r = dict(r)
-        r["patient_id"] = new_patient_id
-        _insert(PulseOxData, r)
-    inserted_counts["pulse_ox_data"] = len(contents.get("pulse_ox_data.json") or [])
+    # pulse_ox_data: streamed NDJSON (v3+); fall back to the legacy JSON array.
+    if "pulse_ox_data.ndjson" in archive_members:
+        def _remap_pulse_ox(r):
+            r["patient_id"] = new_patient_id
+        inserted_counts["pulse_ox_data"] = _restore_stream_ndjson(
+            db, archive_bytes, "pulse_ox_data.ndjson", PulseOxData, _remap_pulse_ox)
+    else:
+        for r in contents.get("pulse_ox_data.json") or []:
+            r = dict(r)
+            r["patient_id"] = new_patient_id
+            _insert(PulseOxData, r)
+        inserted_counts["pulse_ox_data"] = len(contents.get("pulse_ox_data.json") or [])
 
     for r in contents.get("monitoring_alerts.json") or []:
         r = dict(r)

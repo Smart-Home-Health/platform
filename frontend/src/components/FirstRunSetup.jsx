@@ -1,5 +1,5 @@
 /*
- * Smart Home Health Hub
+ * Smart Home Health
  * Copyright (C) 2026 John Carty
  *
  * This program is free software: you can redistribute it and/or modify
@@ -152,7 +152,7 @@ export default function FirstRunSetup() {
       </div>
       <div className="first-run-card">
         <div className="first-run-header">
-          <h1>Welcome to Smart Home Health Hub</h1>
+          <h1>Welcome to Smart Home Health</h1>
           <p>Let's set up your account and administrator profile</p>
         </div>
 

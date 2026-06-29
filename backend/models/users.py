@@ -1,4 +1,4 @@
-# Smart Home Health Hub
+# Smart Home Health
 # Copyright (C) 2026 John Carty
 #
 # This program is free software: you can redistribute it and/or modify
@@ -76,6 +76,7 @@ class User(Base):
     last_full_password_login = Column(DateTime, nullable=True)  # Track daily password requirement
     failed_login_attempts = Column(Integer, default=0, nullable=False)
     locked_until = Column(DateTime, nullable=True)  # Account lockout
+    preferences = Column(JSON, nullable=True)  # Per-user UI preferences, e.g. {"theme": "light|dark|system"}
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
@@ -287,6 +288,8 @@ class Account(Base):
     password_hash = Column(String(255), nullable=False)  # bcrypt hash for account login
     is_default = Column(Boolean, default=False, nullable=False)  # Default account for migration
     is_active = Column(Boolean, default=True, nullable=False)
+    failed_login_attempts = Column(Integer, default=0, nullable=False)  # Account-login brute-force lockout
+    locked_until = Column(DateTime, nullable=True)
     settings = Column(JSON, nullable=True)  # Account-specific settings
     contact_email = Column(String(255), nullable=True)
     contact_phone = Column(String(50), nullable=True)

@@ -1,0 +1,51 @@
+# Home Assistant add-on manifest for Smart Home Health.
+#
+# Single-container appliance: the add-on bundles PostgreSQL + TimescaleDB and the
+# unified FastAPI/SPA image, and is reached through HA ingress (sidebar panel).
+# Postgres data + uploaded artifacts live under the add-on's auto-persistent
+# /data, so they survive restarts and updates.
+name: Smart Home Health
+version: "0.1.0"
+slug: smart_home_health
+description: Caregiving vitals monitor + medication / care-task scheduling hub
+url: https://github.com/Smart-Home-Health/platform
+# Distributed as a prebuilt multi-arch image (see scripts/build-addon.sh). The
+# image is built from the repo root so it can pull in both backend/ and the SPA.
+image: "ghcr.io/smart-home-health/{arch}-addon"
+arch:
+  - amd64
+  - aarch64
+# We provide our own CMD (run.sh) under the HA base image's s6-overlay.
+init: false
+startup: application
+boot: auto
+
+# Ingress: served same-origin through HA's proxy under a per-token path prefix.
+# The app is base-path aware (backend injects the X-Ingress-Path into the SPA).
+ingress: true
+ingress_port: 8000
+panel_icon: mdi:heart-pulse
+panel_title: Health Hub
+panel_admin: true
+
+# Auto-discover HA's Mosquitto broker (optional; the app's MQTT settings still
+# live in its own DB, but this lets us seed the broker host on first run).
+services:
+  - mqtt:want
+
+options:
+  jwt_secret: ""
+  skip_account_password: false
+  min_spo2: 90
+  max_spo2: 100
+  min_bpm: 55
+  max_bpm: 155
+  log_level: info
+schema:
+  jwt_secret: "password?"
+  skip_account_password: bool
+  min_spo2: int(50,100)
+  max_spo2: int(50,110)
+  min_bpm: int(20,120)
+  max_bpm: int(80,250)
+  log_level: list(trace|debug|info|notice|warning|error|fatal)

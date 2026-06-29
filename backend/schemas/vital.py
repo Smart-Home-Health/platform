@@ -1,4 +1,4 @@
-# Smart Home Health Hub
+# Smart Home Health
 # Copyright (C) 2026 John Carty
 #
 # This program is free software: you can redistribute it and/or modify
@@ -23,7 +23,9 @@ class Vital(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     account_id = Column(Integer, ForeignKey('accounts.id', ondelete='CASCADE'), nullable=True, index=True)
     patient_id = Column(Integer, ForeignKey('patients.id'), nullable=False)
-    timestamp = Column(TIMESTAMP(timezone=True), nullable=False)
+    # Part of the composite PK: TimescaleDB requires the hypertable partition
+    # column in every PK/UNIQUE constraint. `id` keeps its own sequence.
+    timestamp = Column(TIMESTAMP(timezone=True), primary_key=True, nullable=False)
     vital_type = Column(String, nullable=False)  # e.g., "heart_rate", "blood_pressure", "weight", "spo2"
     vital_group = Column(String, nullable=True)  # Sub-type (e.g., 'systolic', 'diastolic', 'map' for BP)
     value = Column(Float, nullable=False)

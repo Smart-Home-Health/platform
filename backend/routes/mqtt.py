@@ -1,4 +1,4 @@
-# Smart Home Health Hub
+# Smart Home Health
 # Copyright (C) 2026 John Carty
 #
 # This program is free software: you can redistribute it and/or modify
@@ -144,9 +144,9 @@ async def get_mqtt_settings(db: Session = Depends(get_db)):
     try:
         settings = {}
         mqtt_keys = [
-            'mqtt_enabled', 'mqtt_broker', 'mqtt_port', 'mqtt_username', 
-            'mqtt_password', 'mqtt_client_id', 'mqtt_discovery_enabled', 
-            'mqtt_test_mode', 'mqtt_base_topic'
+            'mqtt_enabled', 'mqtt_broker', 'mqtt_port', 'mqtt_username',
+            'mqtt_password', 'mqtt_client_id', 'mqtt_discovery_enabled',
+            'mqtt_base_topic'
         ]
         
         for key in mqtt_keys:
@@ -185,7 +185,7 @@ async def save_mqtt_settings(settings: MQTTSettings, db: Session = Depends(get_d
         for key, value in settings_dict.items():
             if key != 'topics':  # Handle topics separately
                 # Determine data type
-                if key in ['mqtt_enabled', 'mqtt_discovery_enabled', 'mqtt_test_mode']:
+                if key in ['mqtt_enabled', 'mqtt_discovery_enabled']:
                     data_type = 'bool'
                 elif key == 'mqtt_port':
                     data_type = 'int'
@@ -427,16 +427,15 @@ async def update_mqtt_patient_config(
 async def send_mqtt_discovery_endpoint(request: MQTTDiscoveryRequest):
     """Send MQTT discovery messages to Home Assistant. Optional patient_id = that patient only."""
     try:
-        test_mode = request.test_mode
         patient_id = request.patient_id
-        
+
         # Get the MQTT manager from modules
         from main import get_modules
         modules = get_modules()
         mqtt_module = modules.get("mqtt")
-        
+
         if mqtt_module and mqtt_module.mqtt_manager and mqtt_module.mqtt_manager.is_connected():
-            send_mqtt_discovery(mqtt_module.mqtt_manager.client, test_mode=test_mode, patient_id=patient_id)
+            send_mqtt_discovery(mqtt_module.mqtt_manager.client, patient_id=patient_id)
             return {"message": "MQTT discovery messages sent successfully"}
         else:
             return JSONResponse(

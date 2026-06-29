@@ -1,5 +1,5 @@
 /*
- * Smart Home Health Hub
+ * Smart Home Health
  * Copyright (C) 2026 John Carty
  *
  * This program is free software: you can redistribute it and/or modify
@@ -18,6 +18,7 @@
 import { useState, useEffect } from 'react';
 import config from '../../config';
 import { Alert } from '@/components/ui/alert';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectTrigger,
@@ -25,6 +26,7 @@ import {
   SelectContent,
   SelectItem,
 } from '@/components/ui/select';
+import { cn } from '@/lib/utils';
 
 const AlertsHistory = ({ patientId }) => {
   const [availableDates, setAvailableDates] = useState([]);
@@ -145,18 +147,30 @@ const AlertsHistory = ({ patientId }) => {
     return labels[category] || category;
   };
 
+  const summaryCards = analysis ? [
+    { title: 'Time Logged', value: `${analysis.time_logged_hours}h`, valueClass: 'text-ring',
+      subtitle: `(${analysis.time_logged_minutes} minutes)` },
+    { title: 'Total Readings', value: analysis.total_readings.toLocaleString(), valueClass: 'text-success',
+      subtitle: `(${analysis.valid_spo2_readings} valid SpO₂${analysis.error_spo2_readings > 0 ? `, ${analysis.error_spo2_readings} errors` : ''})` },
+    { title: 'Average SpO₂', value: `${analysis.avg_spo2}%`, valueClass: 'text-warning',
+      subtitle: `Range: ${analysis.min_spo2}% - ${analysis.max_spo2}%` },
+    { title: 'Average BPM', value: analysis.avg_bpm, valueClass: 'text-ring',
+      subtitle: `Range: ${analysis.min_bpm} - ${analysis.max_bpm}` },
+  ] : [];
+
   return (
-    <div className="alerts-history">
-      <div className="history-header">
-        <h2>Pulse Oximetry Analysis</h2>
-        <div className="date-selector tw">
-          <label htmlFor="date-select">Select Date:</label>
+    <div className="tw flex flex-col gap-4 text-foreground">
+      {/* Header + date picker (stacks on mobile) */}
+      <div className="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="m-0 text-xl font-semibold">Pulse Oximetry Analysis</h2>
+        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2.5">
+          <Label htmlFor="date-select" className="text-muted-foreground">Select Date:</Label>
           <Select
             value={selectedDate || undefined}
             onValueChange={handleDateChange}
             disabled={loading}
           >
-            <SelectTrigger id="date-select" className="w-auto min-w-[240px]">
+            <SelectTrigger id="date-select" className="w-full sm:w-auto sm:min-w-[240px]">
               <SelectValue placeholder="Choose a date..." />
             </SelectTrigger>
             <SelectContent>
@@ -170,78 +184,65 @@ const AlertsHistory = ({ patientId }) => {
         </div>
       </div>
 
-      {error && (
-        <div className="tw"><Alert variant="destructive">{error}</Alert></div>
-      )}
+      {error && <Alert variant="destructive">{error}</Alert>}
 
       {loading && (
-        <div className="loading">
-          <div className="spinner"></div>
-          Loading analysis...
+        <div className="flex items-center justify-center gap-3 py-10 text-muted-foreground">
+          <span className="h-6 w-6 animate-spin rounded-full border-[3px] border-muted border-t-ring" />
+          Loading analysis…
         </div>
       )}
 
       {analysis && !loading && (
-        <div className="analysis-results">
-          <div className="analysis-header">
-            <h3>Pulse Oximetry Analysis for {formatDate(analysis.date)}</h3>
-          </div>
+        <div className="flex flex-col gap-5 rounded-xl border border-border bg-card p-4 sm:p-5">
+          <h3 className="m-0 text-center text-lg font-semibold">
+            Pulse Oximetry Analysis for {formatDate(analysis.date)}
+          </h3>
 
-          {/* Summary Cards */}
-          <div className="summary-cards">
-            <div className="summary-card">
-              <div className="card-title">Time Logged</div>
-              <div className="card-value primary">{analysis.time_logged_hours}h</div>
-              <div className="card-subtitle">({analysis.time_logged_minutes} minutes)</div>
-            </div>
-
-            <div className="summary-card">
-              <div className="card-title">Total Readings</div>
-              <div className="card-value success">{analysis.total_readings.toLocaleString()}</div>
-              <div className="card-subtitle">
-                ({analysis.valid_spo2_readings} valid SpO₂
-                {analysis.error_spo2_readings > 0 && `, ${analysis.error_spo2_readings} errors`})
+          {/* Summary cards */}
+          <div className="grid gap-3 sm:gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
+            {summaryCards.map(card => (
+              <div key={card.title} className="rounded-xl border border-border bg-muted/40 p-4 text-center">
+                <div className="mb-2 text-sm font-medium text-muted-foreground">{card.title}</div>
+                <div className={cn('text-2xl font-bold', card.valueClass)}>{card.value}</div>
+                <div className="mt-1 text-xs text-muted-foreground">{card.subtitle}</div>
               </div>
-            </div>
-
-            <div className="summary-card">
-              <div className="card-title">Average SpO₂</div>
-              <div className="card-value warning">{analysis.avg_spo2}%</div>
-              <div className="card-subtitle">Range: {analysis.min_spo2}% - {analysis.max_spo2}%</div>
-            </div>
-
-            <div className="summary-card">
-              <div className="card-title">Average BPM</div>
-              <div className="card-value info">{analysis.avg_bpm}</div>
-              <div className="card-subtitle">Range: {analysis.min_bpm} - {analysis.max_bpm}</div>
-            </div>
+            ))}
           </div>
 
-          {/* SpO2 Distribution */}
-          <div className="distribution-section">
-            <h4>SpO₂ Distribution</h4>
-            <div className="distribution-chart">
+          {/* SpO₂ distribution */}
+          <div className="rounded-xl border border-border bg-muted/30 p-4 sm:p-5">
+            <h4 className="m-0 mb-4 text-center text-base font-semibold">SpO₂ Distribution</h4>
+            <div className="flex flex-col gap-3">
               {analysis.spo2_distribution && Object.entries(analysis.spo2_distribution).map(([category, data]) => (
-                <div key={category} className="distribution-row">
-                  <div className="distribution-label">
-                    <div 
-                      className="color-indicator" 
-                      style={{ backgroundColor: getSpo2Color(category) }}
-                    ></div>
-                    <span>{getCategoryLabel(category)}</span>
+                <div
+                  key={category}
+                  className="flex flex-col gap-1.5 sm:grid sm:grid-cols-[minmax(140px,200px)_1fr_auto] sm:items-center sm:gap-4 sm:gap-y-0"
+                >
+                  {/* Label (+ inline stats on mobile) */}
+                  <div className="flex items-center justify-between gap-2 sm:justify-start">
+                    <div className="flex items-center gap-2 font-medium">
+                      <span className="h-3.5 w-3.5 shrink-0 rounded" style={{ backgroundColor: getSpo2Color(category) }} />
+                      <span className="text-sm">{getCategoryLabel(category)}</span>
+                    </div>
+                    <div className="flex items-baseline gap-1.5 sm:hidden">
+                      <span className="text-sm font-semibold text-foreground">{data.percentage}%</span>
+                      <span className="text-xs text-muted-foreground">({data.count.toLocaleString()})</span>
+                    </div>
                   </div>
-                  <div className="distribution-bar">
-                    <div 
-                      className="bar-fill" 
-                      style={{ 
-                        width: `${Math.max(data.percentage, 0.5)}%`,
-                        backgroundColor: getSpo2Color(category)
-                      }}
-                    ></div>
+
+                  {/* Bar */}
+                  <div className="h-2.5 overflow-hidden rounded-full bg-muted sm:h-5">
+                    <div
+                      className="h-full rounded-full transition-[width] duration-300"
+                      style={{ width: `${Math.max(data.percentage, 0.5)}%`, minWidth: 2, backgroundColor: getSpo2Color(category) }}
+                    />
                   </div>
-                  <div className="distribution-stats">
-                    <span className="percentage">{data.percentage}%</span>
-                    <span className="count">({data.count.toLocaleString()})</span>
+
+                  {/* Stats (desktop column) */}
+                  <div className="hidden flex-col items-end gap-0.5 sm:flex">
+                    <span className="text-sm font-semibold text-foreground">{data.percentage}%</span>
+                    <span className="text-xs text-muted-foreground">({data.count.toLocaleString()})</span>
                   </div>
                 </div>
               ))}
@@ -251,13 +252,13 @@ const AlertsHistory = ({ patientId }) => {
       )}
 
       {!analysis && !loading && selectedDate && (
-        <div className="no-data">
+        <div className="rounded-xl border border-border bg-card p-10 text-center text-muted-foreground">
           No pulse oximetry data found for {formatDate(selectedDate)}
         </div>
       )}
 
       {!selectedDate && !loading && (
-        <div className="no-selection">
+        <div className="rounded-xl border border-border bg-card p-10 text-center text-muted-foreground">
           Please select a date to view pulse oximetry analysis
         </div>
       )}

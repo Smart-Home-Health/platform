@@ -1,5 +1,5 @@
 /*
- * Smart Home Health Hub
+ * Smart Home Health
  * Copyright (C) 2026 John Carty
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Chart from 'chart.js/auto';
 import zoomPlugin from 'chartjs-plugin-zoom';
 import config, { apiFetch } from '../../config';
@@ -86,7 +86,10 @@ function toDateStr(year, month, day) {
 }
 
 const AdminV2ReportsDayOverDay = ({ patientId }) => {
-  const [selectedDates, setSelectedDates] = useState([]);
+  // Source of truth: each entry remembers the color slot it was assigned at
+  // selection time, so a date keeps its color regardless of sort order or
+  // later selections. `selectedDates` (sorted) is derived for queries/display.
+  const [selection, setSelection] = useState([]); // [{ date, color }]
   const [vitalType, setVitalType] = useState('spo2');
   const [reportData, setReportData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -105,19 +108,40 @@ const AdminV2ReportsDayOverDay = ({ patientId }) => {
 
   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
+  // Sorted date strings for the API query and chip ordering.
+  const selectedDates = useMemo(
+    () => selection.map(s => s.date).sort(),
+    [selection],
+  );
+  // date -> color slot index (stable across selections).
+  const colorByDate = useMemo(
+    () => Object.fromEntries(selection.map(s => [s.date, s.color])),
+    [selection],
+  );
+
   const toggleDate = useCallback((dateStr) => {
-    setSelectedDates(prev => {
-      if (prev.includes(dateStr)) {
-        return prev.filter(d => d !== dateStr);
+    setSelection(prev => {
+      if (prev.some(s => s.date === dateStr)) {
+        return prev.filter(s => s.date !== dateStr);
       }
       if (prev.length >= 7) return prev;
-      return [...prev, dateStr].sort();
+      // Reuse the lowest free color slot so the next pick takes red if red
+      // was just freed; otherwise grow to the next color.
+      const used = new Set(prev.map(s => s.color));
+      let color = 0;
+      while (used.has(color)) color++;
+      return [...prev, { date: dateStr, color }];
     });
   }, []);
 
   const removeDate = useCallback((dateStr) => {
-    setSelectedDates(prev => prev.filter(d => d !== dateStr));
+    setSelection(prev => prev.filter(s => s.date !== dateStr));
   }, []);
+
+  const colorFor = useCallback(
+    (dateStr) => DATE_COLORS[(colorByDate[dateStr] ?? 0) % DATE_COLORS.length],
+    [colorByDate],
+  );
 
   const prevMonth = useCallback(() => {
     setCalMonth(prev => {
@@ -193,7 +217,7 @@ const AdminV2ReportsDayOverDay = ({ patientId }) => {
 
     const agg = reportData.aggregation || 'hour';
     const datasets = days.map((day, idx) => {
-      const color = DATE_COLORS[idx % DATE_COLORS.length];
+      const color = DATE_COLORS[(colorByDate[day.date] ?? idx) % DATE_COLORS.length];
       const hourly = day.hourly || [];
       const points = hourly
         .filter(h => h.avg !== null && h.avg !== undefined && h.hour >= startHour && h.hour < endHour + 1)
@@ -239,6 +263,17 @@ const AdminV2ReportsDayOverDay = ({ patientId }) => {
       }
     }
 
+    // Canvas can't resolve CSS variables (or color-mix), so read the theme
+    // colors off the DOM and pass real hex strings to Chart.js. Keeps the
+    // chart legible in both dark and light themes.
+    const themeStyle = getComputedStyle(document.documentElement);
+    const cssVar = (name, fallback) =>
+      themeStyle.getPropertyValue(name).trim() || fallback;
+    const colorFg = cssVar('--foreground', '#e6edf3');
+    const colorMuted = cssVar('--muted-foreground', '#8b949e');
+    const colorBorder = cssVar('--border', '#30363d');
+    const colorGrid = colorBorder + '80'; // ~50% opacity for subtle gridlines
+
     const ctx = chartRef.current.getContext('2d');
     chartInstance.current = new Chart(ctx, {
       type: 'line',
@@ -255,13 +290,13 @@ const AdminV2ReportsDayOverDay = ({ patientId }) => {
             type: 'linear',
             min: startHour,
             max: endHour,
-            title: { display: true, text: 'Hour of Day', font: { size: 12 }, color: '#8b949e' },
-            grid: { color: 'rgba(255,255,255,0.06)' },
+            title: { display: true, text: 'Hour of Day', font: { size: 12 }, color: colorMuted },
+            grid: { color: colorGrid },
             ticks: {
               stepSize: agg === 'hour' ? 1 : agg === '15min' ? 0.5 : undefined,
               autoSkip: true,
               maxTicksLimit: 24,
-              color: '#8b949e',
+              color: colorMuted,
               font: { size: 11 },
               maxRotation: 0,
               callback: (val) => {
@@ -282,16 +317,16 @@ const AdminV2ReportsDayOverDay = ({ patientId }) => {
               display: true,
               text: `${VITAL_TYPES.find(v => v.value === reportData.vital_type)?.label || ''} (${reportData.unit || ''})`,
               font: { size: 12 },
-              color: '#8b949e',
+              color: colorMuted,
             },
-            grid: { color: 'rgba(255,255,255,0.06)' },
-            ticks: { color: '#8b949e', font: { size: 11 } },
+            grid: { color: colorGrid },
+            ticks: { color: colorMuted, font: { size: 11 } },
           },
         },
         plugins: {
           legend: {
             position: 'top',
-            labels: { usePointStyle: true, padding: 15, font: { size: 12 }, color: '#e6edf3' },
+            labels: { usePointStyle: true, padding: 15, font: { size: 12 }, color: colorFg },
           },
           tooltip: {
             callbacks: {
@@ -330,7 +365,7 @@ const AdminV2ReportsDayOverDay = ({ patientId }) => {
         chartInstance.current = null;
       }
     };
-  }, [reportData, startHour, endHour]);
+  }, [reportData, startHour, endHour, colorByDate]);
 
   // Calendar grid
   const numDays = daysInMonth(calYear, calMonth);
@@ -445,9 +480,8 @@ const AdminV2ReportsDayOverDay = ({ patientId }) => {
               }
               const ds = toDateStr(calYear, calMonth, day);
               const isFuture = ds > todayStr;
-              const isSelected = selectedDates.includes(ds);
-              const colorIdx = isSelected ? selectedDates.indexOf(ds) : -1;
-              const bgColor = colorIdx >= 0 ? DATE_COLORS[colorIdx % DATE_COLORS.length] : undefined;
+              const isSelected = colorByDate[ds] !== undefined;
+              const bgColor = isSelected ? colorFor(ds) : undefined;
 
               return (
                 <button
@@ -470,8 +504,8 @@ const AdminV2ReportsDayOverDay = ({ patientId }) => {
 
       {selectedDates.length > 0 && (
         <div className="dod-chips">
-          {selectedDates.map((ds, idx) => {
-            const color = DATE_COLORS[idx % DATE_COLORS.length];
+          {selectedDates.map((ds) => {
+            const color = colorFor(ds);
             const src = sourceByDate[ds];
             return (
               <span key={ds} className="dod-chip" style={{ borderColor: color }}>

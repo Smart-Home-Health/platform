@@ -1,4 +1,4 @@
-# Smart Home Health Hub
+# Smart Home Health
 # Copyright (C) 2026 John Carty
 #
 # This program is free software: you can redistribute it and/or modify
@@ -23,10 +23,11 @@ from typing import List, Optional
 import logging
 
 from db import get_db
-from schemas.user import UserResponse, UserCreate, UserUpdate, UserListItem
+from schemas.user import UserResponse, UserCreate, UserUpdate, UserListItem, AdminPasswordReset
 from crud.users import (
     get_user_by_id, get_user_by_username, get_user_by_email,
     get_all_users, create_user, update_user, delete_user,
+    update_user_password, update_user_pin,
     get_all_roles, get_role_by_id, get_role_by_name, create_role,
     assign_role_to_user, remove_role_from_user,
     get_all_permissions, get_permission_by_id, get_permission_by_name,
@@ -340,15 +341,6 @@ def update_existing_user(
             detail="User not found"
         )
     
-    # Check username uniqueness if changing
-    if user_data.username and user_data.username != user.username:
-        existing = get_user_by_username(db, user_data.username)
-        if existing:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Username already taken"
-            )
-    
     # Check email uniqueness if changing
     if user_data.email and user_data.email != user.email:
         existing = get_user_by_email(db, user_data.email)
@@ -357,9 +349,18 @@ def update_existing_user(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Email already in use"
             )
-    
+
     try:
-        updated_user = update_user(db, user_id, user_data)
+        updated_user = update_user(
+            db, user_id,
+            full_name=user_data.full_name,
+            email=user_data.email,
+            is_active=user_data.is_active,
+            role_ids=user_data.role_ids,
+        )
+        if user_data.pin:
+            update_user_pin(db, user_id, user_data.pin)
+            updated_user = get_user_by_id(db, user_id)
         return updated_user
     except Exception as e:
         logger.error(f"Error updating user: {e}")
@@ -399,6 +400,46 @@ def force_user_password_reset(
     )
 
     return updated_user
+
+
+@router.post("/{user_id}/reset-password", response_model=UserResponse)
+def admin_reset_user_password(
+    user_id: int,
+    payload: AdminPasswordReset,
+    current_user: User = Depends(require_system_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Directly set a new password for a user (system administrators only).
+
+    Unlike the flag-only force-password-reset, this immediately replaces the
+    user's password. Set ``require_change`` to also force them to choose their
+    own password the next time they sign in.
+    """
+    user = get_user_by_id(db, user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    update_user_password(db, user_id, payload.new_password)
+    if payload.require_change:
+        set_force_password_reset(db, user_id, True)
+
+    import json
+    create_audit_log(
+        db,
+        user_id=current_user.id,
+        action="user.password_reset.admin_set",
+        details=json.dumps({
+            "target_user_id": user_id,
+            "username": user.username,
+            "require_change": payload.require_change,
+        })
+    )
+
+    return get_user_by_id(db, user_id)
 
 
 @router.delete("/{user_id}")

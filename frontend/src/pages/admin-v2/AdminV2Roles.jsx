@@ -1,5 +1,5 @@
 /*
- * Smart Home Health Hub
+ * Smart Home Health
  * Copyright (C) 2026 John Carty
  *
  * This program is free software: you can redistribute it and/or modify
@@ -16,97 +16,40 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
+import { PlusIcon, ShieldIcon, SearchIcon } from '../../components/Icons';
 import {
-  PlusIcon,
-  EditIcon,
-  TrashIcon,
-  ShieldIcon
-} from '../../components/Icons';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
+  Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle,
 } from '@/components/ui/dialog';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 import { Alert } from '@/components/ui/alert';
 import { Field, FormRow } from '@/components/ui/field';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
-import { cn } from '@/lib/utils';
+import { PermissionSelector } from './components/PermissionSelector';
 import './AdminV2.css';
 
-// Category-grouped permission toggle pills, shared by the create/edit dialogs.
-function PermissionSelector({ permissionsByCategory, selectedIds, onToggle }) {
-  const categories = Object.entries(permissionsByCategory);
-  if (categories.length === 0) {
-    return <p className="text-sm text-muted-foreground">No permissions available</p>;
-  }
-  return (
-    <div className="flex max-h-64 flex-col gap-4 overflow-y-auto rounded-md border border-border bg-background/40 p-3">
-      {categories.map(([category, perms]) => (
-        <div key={category} className="flex flex-col gap-2">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{category}</h4>
-          <div className="flex flex-wrap gap-2">
-            {perms.map(perm => {
-              const isSelected = selectedIds.includes(perm.id);
-              const action = perm.name.includes('.') ? perm.name.split('.').pop() : perm.name;
-              const displayAction = action.charAt(0).toUpperCase() + action.slice(1);
-              return (
-                <button
-                  key={perm.id}
-                  type="button"
-                  onClick={() => onToggle(perm.id)}
-                  title={perm.display_name}
-                  className={cn(
-                    "rounded-full border px-3 py-1 text-xs transition-colors",
-                    isSelected
-                      ? "border-ring bg-ring/20 text-foreground"
-                      : "border-border bg-secondary text-muted-foreground hover:bg-accent hover:text-foreground"
-                  )}
-                >
-                  {displayAction}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
+const emptyForm = {
+  name: '', display_name: '', description: '', is_active: true, permission_ids: [],
+};
 
 const AdminV2Roles = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
+
   const [roles, setRoles] = useState([]);
   const [permissions, setPermissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // Modal states
+  // Create dialog
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [selectedRole, setSelectedRole] = useState(null);
-
-  // Form state
-  const [formData, setFormData] = useState({
-    name: '',
-    display_name: '',
-    description: '',
-    is_active: true,
-    permission_ids: []
-  });
+  const [formData, setFormData] = useState(emptyForm);
   const [formError, setFormError] = useState(null);
   const [saving, setSaving] = useState(false);
 
@@ -121,15 +64,9 @@ const AdminV2Roles = () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch(`${config.apiUrl}/api/users/roles`, {
-        credentials: 'include'
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setRoles(data);
-      } else {
-        setError('Failed to load roles');
-      }
+      const response = await fetch(`${config.apiUrl}/api/users/roles`, { credentials: 'include' });
+      if (response.ok) setRoles(await response.json());
+      else setError('Failed to load roles');
     } catch (err) {
       setError('Error connecting to server');
       console.error('Error fetching roles:', err);
@@ -140,13 +77,8 @@ const AdminV2Roles = () => {
 
   const fetchPermissions = async () => {
     try {
-      const response = await fetch(`${config.apiUrl}/api/users/permissions`, {
-        credentials: 'include'
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setPermissions(data);
-      }
+      const response = await fetch(`${config.apiUrl}/api/users/permissions`, { credentials: 'include' });
+      if (response.ok) setPermissions(await response.json());
     } catch (err) {
       console.error('Error fetching permissions:', err);
     }
@@ -156,18 +88,16 @@ const AdminV2Roles = () => {
     e.preventDefault();
     setFormError(null);
     setSaving(true);
-
     try {
       const response = await fetch(`${config.apiUrl}/api/users/roles`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(formData)
+        body: JSON.stringify(formData),
       });
-
       if (response.ok) {
         setShowCreateModal(false);
-        resetForm();
+        setFormData(emptyForm);
         fetchRoles();
       } else {
         const data = await response.json();
@@ -180,94 +110,9 @@ const AdminV2Roles = () => {
     }
   };
 
-  const handleUpdateRole = async (e) => {
-    e.preventDefault();
-    setFormError(null);
-    setSaving(true);
-
-    try {
-      const response = await fetch(`${config.apiUrl}/api/users/roles/${selectedRole.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          display_name: formData.display_name,
-          description: formData.description,
-          is_active: formData.is_active,
-          permission_ids: formData.permission_ids
-        })
-      });
-
-      if (response.ok) {
-        setShowEditModal(false);
-        resetForm();
-        fetchRoles();
-      } else {
-        const data = await response.json();
-        setFormError(data.detail || 'Failed to update role');
-      }
-    } catch {
-      setFormError('Error connecting to server');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDeleteRole = async () => {
-    setSaving(true);
-    try {
-      const response = await fetch(`${config.apiUrl}/api/users/roles/${selectedRole.id}`, {
-        method: 'DELETE',
-        credentials: 'include'
-      });
-
-      if (response.ok) {
-        setShowDeleteModal(false);
-        setSelectedRole(null);
-        fetchRoles();
-      } else {
-        const data = await response.json();
-        setFormError(data.detail || 'Failed to delete role');
-      }
-    } catch {
-      setFormError('Error connecting to server');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const openEditModal = (role) => {
-    setSelectedRole(role);
-    setFormData({
-      name: role.name,
-      display_name: role.display_name,
-      description: role.description || '',
-      is_active: role.is_active,
-      permission_ids: role.permissions?.map(p => p.id) || []
-    });
-    setFormError(null);
-    setShowEditModal(true);
-  };
-
-  const openDeleteModal = (role) => {
-    setSelectedRole(role);
-    setShowDeleteModal(true);
-  };
-
-  const resetForm = () => {
-    setFormData({
-      name: '',
-      display_name: '',
-      description: '',
-      is_active: true,
-      permission_ids: []
-    });
-    setFormError(null);
-    setSelectedRole(null);
-  };
-
   const openCreateModal = () => {
-    resetForm();
+    setFormData(emptyForm);
+    setFormError(null);
     setShowCreateModal(true);
   };
 
@@ -276,18 +121,30 @@ const AdminV2Roles = () => {
       ...prev,
       permission_ids: prev.permission_ids.includes(permissionId)
         ? prev.permission_ids.filter(id => id !== permissionId)
-        : [...prev.permission_ids, permissionId]
+        : [...prev.permission_ids, permissionId],
     }));
   };
 
-  // Group permissions by category
   const permissionsByCategory = permissions.reduce((acc, perm) => {
-    if (!acc[perm.category]) {
-      acc[perm.category] = [];
-    }
-    acc[perm.category].push(perm);
+    (acc[perm.category] = acc[perm.category] || []).push(perm);
     return acc;
   }, {});
+
+  const filtered = roles.filter((r) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      r.display_name.toLowerCase().includes(q) ||
+      r.name.toLowerCase().includes(q) ||
+      (r.description && r.description.toLowerCase().includes(q))
+    );
+  });
+
+  const stats = {
+    total: roles.length,
+    active: roles.filter(r => r.is_active).length,
+    permissions: permissions.length,
+  };
 
   if (!user) {
     return (
@@ -297,129 +154,89 @@ const AdminV2Roles = () => {
     );
   }
 
-  if (loading) {
-    return (
-      <AdminV2Layout>
-        <div className="admin-v2-loading">Loading roles...</div>
-      </AdminV2Layout>
-    );
-  }
-
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
-        <div className="tw mb-4 flex justify-end">
-          <Button onClick={openCreateModal}>
-            <PlusIcon size={16} />
-            Add Role
-          </Button>
-        </div>
+        <div className="tw space-y-6">
+          {/* Stats — compact, 3 across even on mobile */}
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: 'Total Roles', value: stats.total },
+              { label: 'Active', value: stats.active },
+              { label: 'Permissions', value: stats.permissions },
+            ].map((s) => (
+              <Card key={s.label}>
+                <CardContent className="flex flex-col items-center gap-0.5 py-4">
+                  <span className="text-2xl font-semibold text-foreground">{s.value}</span>
+                  <span className="text-xs uppercase tracking-wide text-muted-foreground">{s.label}</span>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
 
-        {error && (
-          <div className="tw mb-4">
-            <Alert variant="destructive">{error}</Alert>
+          {/* Filter bar */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative flex-1">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                <SearchIcon size={16} />
+              </span>
+              <Input
+                className="pl-9"
+                placeholder="Search roles…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            <Button className="gap-1.5" onClick={openCreateModal}>
+              <PlusIcon size={16} /> Add Role
+            </Button>
           </div>
-        )}
 
-        {/* Summary Stats */}
-        <div className="admin-v2-stats-row">
-          <div className="admin-v2-stat-card">
-            <div className="admin-v2-stat-icon">
-              <ShieldIcon size={20} />
-            </div>
-            <div className="admin-v2-stat-content">
-              <span className="admin-v2-stat-value">{roles.length}</span>
-              <span className="admin-v2-stat-label">Total Roles</span>
-            </div>
-          </div>
-          <div className="admin-v2-stat-card">
-            <div className="admin-v2-stat-icon admin-v2-stat-icon-success">
-              <ShieldIcon size={20} />
-            </div>
-            <div className="admin-v2-stat-content">
-              <span className="admin-v2-stat-value">{roles.filter(r => r.is_active).length}</span>
-              <span className="admin-v2-stat-label">Active</span>
-            </div>
-          </div>
-          <div className="admin-v2-stat-card">
-            <div className="admin-v2-stat-icon admin-v2-stat-icon-info">
-              <ShieldIcon size={20} />
-            </div>
-            <div className="admin-v2-stat-content">
-              <span className="admin-v2-stat-value">{permissions.length}</span>
-              <span className="admin-v2-stat-label">Permissions</span>
-            </div>
-          </div>
-        </div>
+          {error && <Alert variant="destructive">{error}</Alert>}
 
-        {/* Roles Table */}
-        <div className="admin-v2-table-container">
-          <table className="admin-v2-table">
-            <thead>
-              <tr>
-                <th>ROLE</th>
-                <th>DESCRIPTION</th>
-                <th>PERMISSIONS</th>
-                <th>USERS</th>
-                <th>STATUS</th>
-                <th>ACTIONS</th>
-              </tr>
-            </thead>
-            <tbody>
-              {roles.map(role => (
-                <tr key={role.id}>
-                  <td>
-                    <div className="admin-v2-role-info">
-                      <span className="admin-v2-role-name">{role.display_name}</span>
-                      <small className="admin-v2-role-code">{role.name}</small>
-                    </div>
-                  </td>
-                  <td>
-                    <span className="admin-v2-text-muted">
-                      {role.description || '—'}
-                    </span>
-                  </td>
-                  <td>
-                    <span className="admin-v2-badge admin-v2-badge-info">
-                      {role.permissions?.length || 0} permissions
-                    </span>
-                  </td>
-                  <td>
-                    <span className="admin-v2-text-muted">
-                      {role.user_count || 0} users
-                    </span>
-                  </td>
-                  <td>
-                    <span className={`admin-v2-badge ${role.is_active ? 'admin-v2-badge-success' : 'admin-v2-badge-secondary'}`}>
-                      {role.is_active ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td>
-                    <div className="admin-v2-actions">
-                      <button
-                        className="admin-v2-action-btn admin-v2-action-btn-edit"
-                        onClick={() => openEditModal(role)}
-                        title="Edit role"
-                      >
-                        <EditIcon size={14} />
-                        <span>Edit</span>
-                      </button>
-                      {!role.is_system_role && (
-                        <button
-                          className="admin-v2-action-btn admin-v2-action-btn-delete"
-                          onClick={() => openDeleteModal(role)}
-                          title="Delete role"
-                        >
-                          <TrashIcon size={14} />
-                          <span>Delete</span>
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
+          {/* Role cards */}
+          {loading ? (
+            <div className="admin-v2-loading">Loading roles…</div>
+          ) : filtered.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
+                <ShieldIcon size={40} />
+                <h3 className="text-foreground">No roles found</h3>
+                <p className="text-sm text-muted-foreground">
+                  {searchQuery ? 'No roles match your search.' : 'Add a role to get started.'}
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {filtered.map((r) => (
+                <button
+                  key={r.id}
+                  onClick={() => navigate(`/care/configuration/users/roles/${r.id}`)}
+                  className="w-full min-w-0 text-left"
+                >
+                  <Card className={`transition-colors hover:border-ring ${!r.is_active ? 'opacity-60' : ''}`}>
+                    <CardContent className="flex items-center gap-3 py-4">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-secondary text-foreground">
+                        <ShieldIcon size={20} />
+                      </div>
+                      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <span className="truncate font-medium text-foreground">{r.display_name}</span>
+                        <span className="truncate text-xs text-muted-foreground">
+                          {r.name}
+                          {r.description ? ` · ${r.description}` : ''}
+                        </span>
+                        <span className="mt-1">
+                          <Badge variant="secondary">{r.permissions?.length || 0} permissions</Badge>
+                        </span>
+                      </div>
+                      {!r.is_active && <Badge variant="secondary">Inactive</Badge>}
+                    </CardContent>
+                  </Card>
+                </button>
               ))}
-            </tbody>
-          </table>
+            </div>
+          )}
         </div>
 
         {/* Create Role Dialog */}
@@ -437,8 +254,7 @@ const AdminV2Roles = () => {
                     id="role-name"
                     value={formData.name}
                     onChange={e => setFormData({ ...formData, name: e.target.value.toLowerCase().replace(/\s+/g, '_') })}
-                    required
-                    placeholder="e.g., nurse_aide"
+                    required placeholder="e.g., nurse_aide"
                   />
                 </Field>
                 <Field label="Display Name" required htmlFor="role-display">
@@ -446,8 +262,7 @@ const AdminV2Roles = () => {
                     id="role-display"
                     value={formData.display_name}
                     onChange={e => setFormData({ ...formData, display_name: e.target.value })}
-                    required
-                    placeholder="e.g., Nurse Aide"
+                    required placeholder="e.g., Nurse Aide"
                   />
                 </Field>
               </FormRow>
@@ -474,94 +289,6 @@ const AdminV2Roles = () => {
                 <Button type="submit" disabled={saving}>{saving ? 'Creating...' : 'Create Role'}</Button>
               </DialogFooter>
             </form>
-          </DialogContent>
-        </Dialog>
-
-        {/* Edit Role Dialog */}
-        <Dialog open={showEditModal && !!selectedRole} onOpenChange={(o) => { if (!o) setShowEditModal(false); }}>
-          <DialogContent className="sm:max-w-[640px]" aria-describedby={undefined}>
-            <DialogHeader>
-              <DialogTitle>Edit Role: {selectedRole?.display_name}</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleUpdateRole} className="flex flex-col gap-4">
-              {formError && <Alert variant="destructive">{formError}</Alert>}
-
-              <FormRow>
-                <Field label="Role Name (code)" htmlFor="role-name-edit" hint="Role code cannot be changed">
-                  <Input id="role-name-edit" value={formData.name} disabled />
-                </Field>
-                <Field label="Display Name" required htmlFor="role-display-edit">
-                  <Input
-                    id="role-display-edit"
-                    value={formData.display_name}
-                    onChange={e => setFormData({ ...formData, display_name: e.target.value })}
-                    required
-                  />
-                </Field>
-              </FormRow>
-
-              <Field label="Description" htmlFor="role-desc-edit">
-                <Input
-                  id="role-desc-edit"
-                  value={formData.description}
-                  onChange={e => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Brief description of this role"
-                />
-              </Field>
-
-              <Field
-                label="Status"
-                hint={selectedRole?.is_system_role ? 'System roles cannot be deactivated' : undefined}
-              >
-                <Select
-                  value={formData.is_active ? 'active' : 'inactive'}
-                  onValueChange={(v) => setFormData({ ...formData, is_active: v === 'active' })}
-                  disabled={selectedRole?.is_system_role}
-                >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="inactive">Inactive</SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
-
-              <Field label="Permissions">
-                <PermissionSelector
-                  permissionsByCategory={permissionsByCategory}
-                  selectedIds={formData.permission_ids}
-                  onToggle={handlePermissionToggle}
-                />
-              </Field>
-
-              <DialogFooter>
-                <Button type="button" variant="secondary" onClick={() => setShowEditModal(false)}>Cancel</Button>
-                <Button type="submit" disabled={saving}>{saving ? 'Saving...' : 'Save Changes'}</Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-
-        {/* Delete Confirmation Dialog */}
-        <Dialog open={showDeleteModal && !!selectedRole} onOpenChange={(o) => { if (!o) setShowDeleteModal(false); }}>
-          <DialogContent className="sm:max-w-[420px]">
-            <DialogHeader>
-              <DialogTitle>Delete Role</DialogTitle>
-            </DialogHeader>
-            <div className="flex flex-col gap-2 text-sm">
-              <p className="text-foreground">
-                Are you sure you want to delete the role <strong>{selectedRole?.display_name}</strong>?
-              </p>
-              <p className="text-muted-foreground">
-                This will remove the role from all users who have it assigned. This action cannot be undone.
-              </p>
-            </div>
-            <DialogFooter>
-              <Button variant="secondary" onClick={() => setShowDeleteModal(false)}>Cancel</Button>
-              <Button variant="destructive" onClick={handleDeleteRole} disabled={saving}>
-                {saving ? 'Deleting...' : 'Delete Role'}
-              </Button>
-            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>

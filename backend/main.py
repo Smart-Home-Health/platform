@@ -1,4 +1,4 @@
-# Smart Home Health Hub
+# Smart Home Health
 # Copyright (C) 2026 John Carty
 #
 # This program is free software: you can redistribute it and/or modify
@@ -19,10 +19,32 @@ import json  # Add this import
 import logging
 import os
 from typing import Optional
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+import mimetypes
+import re
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, HTMLResponse
 from dotenv import load_dotenv
 from datetime import datetime
+
+# Load .env BEFORE importing modules that capture secrets at import time
+# (middleware.py / routes/auth.py read JWT_SECRET_KEY when imported).
+load_dotenv()
+
+# Fail fast on a missing/insecure JWT secret. The fallback default in
+# middleware.py / routes/auth.py is a value baked into (AGPL, public) source, so
+# running with it would let anyone forge auth tokens for any user. Require a real
+# secret in the environment (backend/.env). Generate one with:
+#   python -c "import secrets; print(secrets.token_urlsafe(64))"
+_INSECURE_JWT_DEFAULT = "change-this-secret-key-in-production"
+_jwt_secret = os.getenv("JWT_SECRET_KEY")
+if not _jwt_secret or _jwt_secret == _INSECURE_JWT_DEFAULT:
+    raise RuntimeError(
+        "JWT_SECRET_KEY is unset or set to the insecure default. Set a strong "
+        "value in the environment (e.g. backend/.env). Generate one with: "
+        "python -c \"import secrets; print(secrets.token_urlsafe(64))\""
+    )
 
 # Import event bus and events
 from bus import EventBus
@@ -34,7 +56,7 @@ from modules.mqtt_module import MQTTModule
 from modules.state_module import StateModule
 
 # Import route modules
-from routes import core, settings, vitals, medications, care_tasks, equipment, monitoring, mqtt, status, patients, nutrition, businesses, providers, auth, users, schedule, dashboard, symptoms, diagnoses, implants, dme_shipments, account, integrations, integration_imports, frigate as frigate_routes, readers, backup, analysis, reports, messages
+from routes import core, settings, vitals, medications, care_tasks, equipment, monitoring, mqtt, status, patients, nutrition, businesses, providers, auth, users, schedule, dashboard, symptoms, diagnoses, implants, dme_shipments, account, integrations, integration_imports, frigate as frigate_routes, readers, backup, analysis, reports, messages, system
 
 # Import legacy components
 from mqtt import initialize_mqtt_service, shutdown_mqtt_service
@@ -43,6 +65,7 @@ from crud.settings import get_setting, save_setting
 
 # Import auth components
 from middleware import AuthenticationMiddleware
+from rate_limit import RateLimitMiddleware
 from seed_auth import seed_default_data
 
 # Install the global soft-delete filter so undone (voided) completion logs are
@@ -50,8 +73,6 @@ from seed_auth import seed_default_data
 # ORM models are registered first.
 from soft_delete import register_soft_delete_filter
 register_soft_delete_filter()
-
-load_dotenv()
 
 # Initialize a logger for your application
 logger = logging.getLogger("app")
@@ -63,8 +84,11 @@ logging.basicConfig(level=logging.INFO)
 app = FastAPI()
 
 # Middleware is a stack: last-added = outermost (runs first).
-# CORS must be outermost so ALL responses (including auth 401s) get CORS headers.
+# CORS must be outermost so ALL responses (including auth 401s/429s) get CORS headers.
+# Order: CORS (outer) -> RateLimit -> Auth (inner). RateLimit runs before auth so
+# public login routes are throttled, but inside CORS so 429s carry CORS headers.
 app.add_middleware(AuthenticationMiddleware)
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[],  # No wildcard when credentials=True
@@ -106,6 +130,81 @@ app.include_router(backup.router)
 app.include_router(analysis.router)
 app.include_router(reports.router)
 app.include_router(messages.router)
+app.include_router(system.router)
+
+# --- Static frontend (unified single-image deploy) --------------------------
+# In the unified production image the built SPA is copied in and STATIC_DIR
+# points at it; this app then serves the frontend on the same origin as the API
+# (no separate Vite/nginx container). In split dev STATIC_DIR is unset, so none
+# of this registers and the backend behaves exactly as before — Vite serves the
+# frontend on :5173 and proxies /api + /ws here.
+#
+# This MUST come after every include_router() so the SPA catch-all is the
+# lowest-priority route and never shadows an API endpoint.
+mimetypes.add_type("application/wasm", ".wasm")
+mimetypes.add_type("application/javascript", ".js")
+
+
+# A real HA ingress path looks like "/api/hassio_ingress/<token>" — only slashes
+# and URL-safe token chars. Anything else (quotes, <, >, backslashes, ...) is
+# rejected so a directly-reachable backend can't be tricked into reflecting a
+# crafted X-Ingress-Path header into the SPA shell (HTML/JS injection).
+_INGRESS_PATH_RE = re.compile(r"\A/[A-Za-z0-9_./-]*\Z")
+
+
+def inject_ingress_base(html: str, ingress_path: str) -> str:
+    """Rewrite the SPA shell's <base> tag and window.__BASE_PATH__ to the Home
+    Assistant ingress prefix so relative assets, the router, and API/WS URLs all
+    resolve under HA's proxy path. `ingress_path` is the X-Ingress-Path header
+    value (e.g. "/api/hassio_ingress/<token>"); "" (or anything that doesn't
+    match the strict ingress-path shape) leaves the app at root."""
+    base = (ingress_path or "").rstrip("/")
+    if base and not _INGRESS_PATH_RE.match(base):
+        base = ""
+    # Use function replacements so `base` is treated as a literal, not an re.sub
+    # template (no backslash/backreference interpretation).
+    html = re.sub(r'<base\s+href="[^"]*"\s*/?>', lambda _m: f'<base href="{base}/">', html, count=1)
+    html = re.sub(
+        r'window\.__BASE_PATH__\s*=\s*"[^"]*"',
+        lambda _m: f'window.__BASE_PATH__ = "{base}"',
+        html,
+        count=1,
+    )
+    return html
+
+
+STATIC_DIR = os.getenv("STATIC_DIR")
+if STATIC_DIR:
+    STATIC_DIR = os.path.realpath(STATIC_DIR)
+if STATIC_DIR and os.path.isdir(STATIC_DIR):
+    _assets_dir = os.path.join(STATIC_DIR, "assets")
+    if os.path.isdir(_assets_dir):
+        # Hashed, immutable build assets get the efficient StaticFiles handler.
+        app.mount("/assets", StaticFiles(directory=_assets_dir), name="assets")
+
+    _index_file = os.path.join(STATIC_DIR, "index.html")
+    # Read the shell once; the base path is injected per-request (it varies with
+    # the HA ingress token).
+    with open(_index_file, encoding="utf-8") as _f:
+        _index_template = _f.read()
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str, request: Request):
+        """Serve a real static file if one exists (favicon, *.wasm, ...),
+        otherwise return the SPA shell (with the ingress base path injected) so
+        client-side routing handles the path."""
+        # Unknown /api or /ws paths are genuine 404s, not the SPA shell.
+        if full_path.startswith(("api", "ws")):
+            raise HTTPException(status_code=404)
+        candidate = os.path.join(STATIC_DIR, full_path)
+        # Guard against path traversal escaping STATIC_DIR.
+        if full_path and os.path.isfile(candidate) and \
+                os.path.commonpath([os.path.realpath(candidate), STATIC_DIR]) == STATIC_DIR:
+            return FileResponse(candidate)
+        html = inject_ingress_base(_index_template, request.headers.get("X-Ingress-Path", ""))
+        return HTMLResponse(html)
+
+    logger.info(f"[main] Serving static frontend from {STATIC_DIR}")
 
 # Global event bus and modules
 event_bus = EventBus(maxsize=1000)

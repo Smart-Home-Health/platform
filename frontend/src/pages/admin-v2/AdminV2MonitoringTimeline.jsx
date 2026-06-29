@@ -1,5 +1,5 @@
 /*
- * Smart Home Health Hub
+ * Smart Home Health
  * Copyright (C) 2026 John Carty
  *
  * This program is free software: you can redistribute it and/or modify
@@ -30,6 +30,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
+import { useChartColors } from '../../hooks/useChartColors';
 
 Chart.register(annotationPlugin, zoomPlugin);
 
@@ -52,6 +53,7 @@ const ZOOM_PRESETS = [
 ];
 
 const AdminV2MonitoringTimeline = () => {
+  const chart = useChartColors();
   const { selectedPatient } = useAdminPatient();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [timelineData, setTimelineData] = useState(null);
@@ -337,9 +339,9 @@ const AdminV2MonitoringTimeline = () => {
               },
               tooltipFormat: 'h:mm:ss a',
             },
-            title: { display: true, text: 'Time', font: { size: 12 }, color: '#8b949e' },
-            grid: { color: 'rgba(255,255,255,0.06)' },
-            ticks: { maxRotation: 0, font: { size: 11 }, color: '#8b949e', autoSkip: true, maxTicksLimit: 24 },
+            title: { display: true, text: 'Time', font: { size: 12 }, color: chart.axis },
+            grid: { color: chart.grid },
+            ticks: { maxRotation: 0, font: { size: 11 }, color: chart.axis, autoSkip: true, maxTicksLimit: 24 },
           },
           ySpO2: {
             type: 'linear',
@@ -365,7 +367,7 @@ const AdminV2MonitoringTimeline = () => {
         plugins: {
           legend: {
             position: 'top',
-            labels: { usePointStyle: true, padding: 15, font: { size: 12 }, color: '#e6edf3' },
+            labels: { usePointStyle: true, padding: 15, font: { size: 12 }, color: chart.foreground },
           },
           tooltip: {
             callbacks: {
@@ -407,7 +409,7 @@ const AdminV2MonitoringTimeline = () => {
         chartInstance.current = null;
       }
     };
-  }, [timelineData, visibleLayers, selectedDate, showSpo2, showBpm]);
+  }, [timelineData, visibleLayers, selectedDate, showSpo2, showBpm, chart.grid, chart.axis, chart.foreground]);
 
   const toggleLayer = (key) => {
     setVisibleLayers(prev => ({ ...prev, [key]: !prev[key] }));
@@ -421,7 +423,7 @@ const AdminV2MonitoringTimeline = () => {
 
   if (!selectedPatient) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: '#8b949e' }}>
+      <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted-foreground)' }}>
         Select a patient from the sidebar to view the timeline.
       </div>
     );
@@ -464,7 +466,7 @@ const AdminV2MonitoringTimeline = () => {
       {/* Event Layer Toggles + Zoom Controls */}
       <div style={{
         display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: '1rem',
-        padding: '0.75rem 1rem', background: '#161b22', borderRadius: 8, border: '1px solid #30363d',
+        padding: '0.75rem 1rem', background: 'var(--card)', borderRadius: 8, border: '1px solid var(--border)',
         alignItems: 'center', justifyContent: 'space-between',
       }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
@@ -500,7 +502,7 @@ const AdminV2MonitoringTimeline = () => {
             BPM
           </button>
 
-          <span style={{ width: 1, height: 20, background: '#30363d', display: 'inline-block' }} />
+          <span style={{ width: 1, height: 20, background: 'var(--border)', display: 'inline-block' }} />
 
           {/* Event marker toggles */}
           {Object.entries(EVENT_TYPES).map(([key, cfg]) => (
@@ -530,7 +532,7 @@ const AdminV2MonitoringTimeline = () => {
 
         {/* Zoom presets */}
         <div className="tw" style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-          <span style={{ fontSize: 11, color: '#8b949e', marginRight: 4 }}>Zoom:</span>
+          <span style={{ fontSize: 11, color: 'var(--muted-foreground)', marginRight: 4 }}>Zoom:</span>
           {ZOOM_PRESETS.map(p => (
             <Button
               key={p.label}
@@ -553,22 +555,22 @@ const AdminV2MonitoringTimeline = () => {
       </div>
 
       {/* Zoom hint */}
-      <div style={{ fontSize: 11, color: '#484f58', marginBottom: 8, paddingLeft: 4 }}>
+      <div style={{ fontSize: 11, color: 'var(--muted-foreground)', marginBottom: 8, paddingLeft: 4 }}>
         Scroll to zoom &middot; Click and drag to pan
       </div>
 
       {/* Chart */}
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 60, color: '#8b949e' }}>Loading timeline data...</div>
+        <div style={{ textAlign: 'center', padding: 60, color: 'var(--muted-foreground)' }}>Loading timeline data...</div>
       ) : error ? (
         <div className="tw" style={{ padding: '0 0 1rem' }}><Alert variant="destructive">{error}</Alert></div>
       ) : !timelineData ? (
-        <div style={{ textAlign: 'center', padding: 60, color: '#8b949e' }}>No data available.</div>
+        <div style={{ textAlign: 'center', padding: 60, color: 'var(--muted-foreground)' }}>No data available.</div>
       ) : (
         <div
           ref={chartContainerRef}
           style={{
-            border: '1px solid #30363d', borderRadius: 8, background: '#161b22',
+            border: '1px solid var(--border)', borderRadius: 8, background: 'var(--card)',
             padding: '12px 8px',
             height: 440,
             position: 'relative',
@@ -632,8 +634,8 @@ const AdminV2MonitoringTimeline = () => {
 // Compact card showing event list - dark theme
 const EventSummaryCard = ({ title, color, items }) => (
   <div style={{
-    border: '1px solid #30363d', borderRadius: 8, overflow: 'hidden',
-    background: '#161b22',
+    border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden',
+    background: 'var(--card)',
   }}>
     <div style={{
       padding: '8px 12px', background: color, color: '#fff',
@@ -644,13 +646,13 @@ const EventSummaryCard = ({ title, color, items }) => (
     <div style={{ maxHeight: 200, overflowY: 'auto' }}>
       {items.map((item, i) => (
         <div key={i} style={{
-          padding: '6px 12px', fontSize: 12, borderBottom: '1px solid #21262d',
+          padding: '6px 12px', fontSize: 12, borderBottom: '1px solid var(--secondary)',
           display: 'flex', gap: 8, alignItems: 'baseline',
         }}>
-          <span style={{ color: '#8b949e', whiteSpace: 'nowrap', fontWeight: 600, minWidth: 60 }}>{item.time}</span>
-          <span style={{ color: '#e6edf3' }}>
+          <span style={{ color: 'var(--muted-foreground)', whiteSpace: 'nowrap', fontWeight: 600, minWidth: 60 }}>{item.time}</span>
+          <span style={{ color: 'var(--foreground)' }}>
             {item.text}
-            {item.subtext && <span style={{ color: '#8b949e', marginLeft: 4, fontSize: 11 }}>({item.subtext})</span>}
+            {item.subtext && <span style={{ color: 'var(--muted-foreground)', marginLeft: 4, fontSize: 11 }}>({item.subtext})</span>}
           </span>
         </div>
       ))}

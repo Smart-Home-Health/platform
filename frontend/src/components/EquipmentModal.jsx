@@ -1,5 +1,5 @@
 /*
- * Smart Home Health Hub
+ * Smart Home Health
  * Copyright (C) 2026 John Carty
  *
  * This program is free software: you can redistribute it and/or modify
@@ -224,10 +224,10 @@ export default function EquipmentModal({ isOpen, onClose, noModal, equipmentDueC
   // ===== Reusable tile (matches AlertsList metric tile) =====
   const metricTile = (label, value, accent = 'gray', highlight = false) => {
     const palette = {
-      blue:   { bg: 'rgba(96,165,250,0.1)',  border: 'rgba(96,165,250,0.3)', label: '#93c5fd' },
-      green:  { bg: 'rgba(72,187,120,0.1)',  border: 'rgba(72,187,120,0.3)', label: '#9ae6b4' },
-      red:    { bg: 'rgba(245,101,101,0.1)', border: 'rgba(245,101,101,0.3)', label: '#feb2b2' },
-      gray:   { bg: 'rgba(255,255,255,0.04)', border: 'rgba(255,255,255,0.1)', label: '#a0aec0' },
+      blue:   { bg: 'rgba(96,165,250,0.1)',  border: 'rgba(96,165,250,0.3)', label: 'var(--ring)' },
+      green:  { bg: 'rgba(72,187,120,0.1)',  border: 'rgba(72,187,120,0.3)', label: 'var(--success)' },
+      red:    { bg: 'rgba(245,101,101,0.1)', border: 'rgba(245,101,101,0.3)', label: 'var(--destructive)' },
+      gray:   { bg: 'var(--dash-surface-2)', border: 'var(--dash-border)', label: 'var(--dash-text-muted)' },
     }[accent];
     return (
       <div style={{
@@ -240,7 +240,7 @@ export default function EquipmentModal({ isOpen, onClose, noModal, equipmentDueC
           textTransform: 'uppercase', letterSpacing: 0.5,
         }}>{label}</div>
         <div style={{
-          color: highlight ? '#feb2b2' : '#e6edf3',
+          color: highlight ? 'var(--destructive)' : 'var(--dash-text)',
           fontSize: 16, fontWeight: 700, marginTop: 2,
         }}>{value}</div>
       </div>
@@ -268,11 +268,11 @@ export default function EquipmentModal({ isOpen, onClose, noModal, equipmentDueC
             flexDirection: isMobile ? 'column' : 'row',
             gap: isMobile ? 8 : 12,
             padding: '12px 14px',
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(255,255,255,0.08)',
+            background: 'var(--dash-surface-2)',
+            border: '1px solid var(--dash-border)',
             borderRadius: 8,
           }}>
-            <Label className="text-[#cbd5e0]">Equipment</Label>
+            <Label className="text-muted-foreground">Equipment</Label>
             <Select
               value={historyTab.selectedEquipment || '__all__'}
               onValueChange={(v) => handleEquipmentHistoryFilter(v === '__all__' ? '' : v)}
@@ -288,30 +288,30 @@ export default function EquipmentModal({ isOpen, onClose, noModal, equipmentDueC
           </div>
 
           {historyTab.loading ? (
-            <div style={{ textAlign: 'center', padding: 40, color: '#a0aec0' }}>Loading…</div>
+            <div style={{ textAlign: 'center', padding: 40, color: 'var(--dash-text-muted)' }}>Loading…</div>
           ) : historyTab.logs.length === 0 ? (
             <div style={{
               textAlign: 'center', padding: 40,
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px dashed rgba(255,255,255,0.15)',
-              borderRadius: 8, color: '#a0aec0', fontStyle: 'italic',
+              background: 'var(--dash-surface-2)',
+              border: '1px dashed var(--dash-border-strong)',
+              borderRadius: 8, color: 'var(--dash-text-muted)', fontStyle: 'italic',
             }}>No history found</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {historyTab.logs.map((log, i) => (
                 <div key={i} style={{
-                  background: '#1a2332',
-                  border: '1px solid rgba(255,255,255,0.08)',
+                  background: 'var(--dash-surface)',
+                  border: '1px solid var(--dash-border)',
                   borderLeft: '4px solid #6c757d',
                   borderRadius: 8,
                   padding: '10px 14px',
                   display: 'flex', justifyContent: 'space-between',
                   alignItems: 'center', gap: 12,
                 }}>
-                  <span style={{ color: '#e6edf3', fontSize: 14, fontWeight: 600 }}>
+                  <span style={{ color: 'var(--dash-text)', fontSize: 14, fontWeight: 600 }}>
                     {log.equipment}
                   </span>
-                  <span style={{ color: '#a0aec0', fontSize: 12, fontWeight: 500 }}>
+                  <span style={{ color: 'var(--dash-text-muted)', fontSize: 12, fontWeight: 500 }}>
                     {formatDateTime(log.changed_at)}
                   </span>
                 </div>
@@ -320,13 +320,13 @@ export default function EquipmentModal({ isOpen, onClose, noModal, equipmentDueC
           )}
         </div>
       ) : loading ? (
-        <div style={{ textAlign: 'center', padding: 40, color: '#a0aec0' }}>Loading…</div>
+        <div style={{ textAlign: 'center', padding: 40, color: 'var(--dash-text-muted)' }}>Loading…</div>
       ) : equipment.length === 0 ? (
         <div style={{
           textAlign: 'center', padding: 40,
-          background: 'rgba(255,255,255,0.04)',
-          border: '1px dashed rgba(255,255,255,0.15)',
-          borderRadius: 8, color: '#a0aec0', fontStyle: 'italic',
+          background: 'var(--dash-surface-2)',
+          border: '1px dashed var(--dash-border-strong)',
+          borderRadius: 8, color: 'var(--dash-text-muted)', fontStyle: 'italic',
         }}>No equipment found</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -338,8 +338,8 @@ export default function EquipmentModal({ isOpen, onClose, noModal, equipmentDueC
                 key={equip.id}
                 style={{
                   position: 'relative',
-                  background: '#1a2332',
-                  border: '1px solid rgba(255,255,255,0.08)',
+                  background: 'var(--dash-surface)',
+                  border: '1px solid var(--dash-border)',
                   borderLeft: `5px solid ${status.color}`,
                   borderRadius: 10,
                   padding: '14px 16px',
@@ -352,7 +352,7 @@ export default function EquipmentModal({ isOpen, onClose, noModal, equipmentDueC
                   display: 'flex', justifyContent: 'space-between',
                   alignItems: 'center', flexWrap: 'wrap', gap: 8,
                 }}>
-                  <h4 style={{ margin: 0, color: '#e6edf3', fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>
+                  <h4 style={{ margin: 0, color: 'var(--dash-text)', fontSize: 16, fontWeight: 700, lineHeight: 1.3 }}>
                     {equip.name}
                   </h4>
                   <span style={{
@@ -383,7 +383,7 @@ export default function EquipmentModal({ isOpen, onClose, noModal, equipmentDueC
                 {/* Actions */}
                 <div className="tw" style={{
                   display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap',
-                  borderTop: '1px solid rgba(255,255,255,0.06)',
+                  borderTop: '1px solid var(--dash-border)',
                   paddingTop: 10,
                 }}>
                   <Button size="sm" onClick={() => handleReceive(equip)}>Receive</Button>

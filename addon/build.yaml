@@ -1,0 +1,12 @@
+# Base images per arch for the Home Assistant add-on build.
+# NOTE: the actual image is built with buildx from the REPO ROOT context (see
+# scripts/build-addon.sh / .github/workflows/addon.yml) because the Dockerfile
+# needs both backend/ and frontend/ — wider than the add-on folder. These
+# build_from values are the BUILD_FROM arg passed to addon/Dockerfile.
+build_from:
+  amd64: ghcr.io/home-assistant/amd64-base-debian:bookworm
+  aarch64: ghcr.io/home-assistant/aarch64-base-debian:bookworm
+labels:
+  org.opencontainers.image.title: "Smart Home Health (HA add-on)"
+  org.opencontainers.image.source: "https://github.com/Smart-Home-Health/platform"
+  org.opencontainers.image.licenses: "AGPL-3.0-or-later"

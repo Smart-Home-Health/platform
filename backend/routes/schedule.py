@@ -1,4 +1,4 @@
-# Smart Home Health Hub
+# Smart Home Health
 # Copyright (C) 2026 John Carty
 #
 # This program is free software: you can redistribute it and/or modify
@@ -29,6 +29,7 @@ from db import get_db
 from utils.datetime_utils import utc_now, resolve_tz_for_patient, local_day_bounds
 from models.schedule import CompleteItemRequest, BulkCompleteRequest
 from crud.scheduling import get_scheduled_medications, get_scheduled_care_tasks, get_scheduled_nutrition, get_due_and_upcoming_care_tasks_count
+from crud.nutrition import create_nutrition_intake, _publish_nutrition_mqtt, _publish_bathroom_mqtt
 from crud.users import create_audit_log
 from event_publisher import publish_due_counts_changed
 from dependencies import get_current_user, require_permission
@@ -382,26 +383,19 @@ async def complete_nutrition(
         amount = data.amount if data.amount is not None else (schedule.default_amount or 0)
         amount_unit = data.amount_unit or schedule.default_amount_unit or 'servings'
         
-        # Create nutrition intake record
-        intake = NutritionIntake(
-            patient_id=data.patient_id,
-            schedule_id=data.schedule_id,
-            item_name=item_name,
-            item_type=schedule.schedule_type or 'food',  # Map schedule_type to item_type
-            amount=amount,
-            amount_unit=amount_unit,
-            calories=schedule.default_calories,
-            consumed_at=completed_at,
-            scheduled_time=scheduled_dt,
-            notes=data.notes,
-            created_at=utc_now(),
-            updated_at=utc_now()
-        )
-        db.add(intake)
-        db.commit()
-
-        # Real-time badge: notify dashboards the nutrition due-count changed.
-        publish_due_counts_changed("nutrition", data.patient_id)
+        # Create via the dedicated nutrition module so MQTT/HA publishing and the
+        # due-count badge fire (the direct NutritionIntake(...) path skipped them).
+        intake = create_nutrition_intake(db, {
+            "schedule_id": data.schedule_id,
+            "item_name": item_name,
+            "item_type": schedule.schedule_type or 'food',  # Map schedule_type to item_type
+            "amount": amount,
+            "amount_unit": amount_unit,
+            "calories": schedule.default_calories,
+            "consumed_at": completed_at,
+            "scheduled_time": scheduled_dt,
+            "notes": data.notes,
+        }, patient_id=data.patient_id)
 
         return {"success": True, "intake_id": intake.id}
     except Exception as e:
@@ -675,6 +669,10 @@ async def complete_bulk(
             publish_due_counts_changed("medications", medications[0].patient_id)
         if nutrition:
             publish_due_counts_changed("nutrition", nutrition[0].patient_id)
+            # Bulk path builds NutritionIntake directly (transactional); fire the
+            # dedicated nutrition MQTT publish once per affected patient.
+            for pid in {n.patient_id for n in nutrition}:
+                _publish_nutrition_mqtt(db, pid)
         if care_tasks:
             publish_due_counts_changed("care_tasks", care_tasks[0].patient_id)
 
@@ -799,6 +797,8 @@ async def undo_completion(
             db.commit()
             # Real-time badge: undo restores the feed to "due".
             publish_due_counts_changed("nutrition", intake.patient_id)
+            # Recompute calorie state for HA (today's total / last feed changed).
+            _publish_nutrition_mqtt(db, intake.patient_id)
             return {"success": True}
 
         if item_type == "nutrition_output":
@@ -827,6 +827,8 @@ async def undo_completion(
             db.commit()
             # Real-time badge: undo restores the output to "due".
             publish_due_counts_changed("nutrition", first.patient_id)
+            # Republish bathroom state so HA reflects the now-most-recent output.
+            _publish_bathroom_mqtt(db, first.patient_id)
             return {"success": True}
 
         return JSONResponse(status_code=400, content={"detail": f"Unknown item_type: {item_type}"})

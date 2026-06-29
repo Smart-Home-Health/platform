@@ -1,5 +1,5 @@
 /*
- * Smart Home Health Hub
+ * Smart Home Health
  * Copyright (C) 2026 John Carty
  *
  * This program is free software: you can redistribute it and/or modify
@@ -25,19 +25,11 @@ import LoginPage from './pages/LoginPage';
 import UserSelectionPage from './pages/UserSelectionPage';
 import PasswordResetPage from './pages/PasswordResetPage';
 import Dashboard from './pages/Dashboard';
-import AdminDashboard from './pages/admin/AdminDashboard';
-import AdminSchedule from './pages/admin/AdminSchedule';
-import AdminMedications from './pages/admin/AdminMedications';
-import AdminCareTasks from './pages/admin/AdminCareTasks';
-import AdminEquipment from './pages/admin/AdminEquipment';
-import AdminMonitoring from './pages/admin/AdminMonitoring';
-import AdminSettings from './pages/admin/AdminSettings';
-import AdminBusinesses from './pages/admin/AdminBusinesses';
-import AdminProviders from './pages/admin/AdminProviders';
 import AdminV2Dashboard from './pages/admin-v2/AdminV2Dashboard';
 import AdminV2Users from './pages/admin-v2/AdminV2Users';
+import AdminV2UserDetail from './pages/admin-v2/AdminV2UserDetail';
 import AdminV2Roles from './pages/admin-v2/AdminV2Roles';
-import AdminV2Permissions from './pages/admin-v2/AdminV2Permissions';
+import AdminV2RoleDetail from './pages/admin-v2/AdminV2RoleDetail';
 import AdminV2Medications from './pages/admin-v2/AdminV2Medications';
 import AdminV2MedicationsManage from './pages/admin-v2/AdminV2MedicationsManage';
 import AdminV2MedicationsSchedule from './pages/admin-v2/AdminV2MedicationsSchedule';
@@ -52,6 +44,7 @@ import AdminV2Shipments from './pages/admin-v2/AdminV2Shipments';
 import AdminV2ShipmentDetail from './pages/admin-v2/AdminV2ShipmentDetail';
 import AdminV2ShipmentAlerts from './pages/admin-v2/AdminV2ShipmentAlerts';
 import AdminV2Patients from './pages/admin-v2/AdminV2Patients';
+import AdminV2PatientDetail from './pages/admin-v2/AdminV2PatientDetail';
 import AdminV2Providers from './pages/admin-v2/AdminV2Providers';
 import AdminV2Businesses from './pages/admin-v2/AdminV2Businesses';
 import AdminV2Schedule from './pages/admin-v2/AdminV2Schedule';
@@ -69,14 +62,16 @@ import AdminV2ReportsOvernight from './pages/admin-v2/AdminV2ReportsOvernight';
 import AdminV2ReportsWeekly from './pages/admin-v2/AdminV2ReportsWeekly';
 import AdminV2AccountSettings from './pages/admin-v2/AdminV2AccountSettings';
 import AdminV2Backup from './pages/admin-v2/AdminV2Backup';
+import AdminV2SystemHealth from './pages/admin-v2/AdminV2SystemHealth';
 import AdminV2Integrations from './pages/admin-v2/AdminV2Integrations';
 import AdminV2Mqtt from './pages/admin-v2/AdminV2Mqtt';
-import AdminV2ProfileMqtt from './pages/admin-v2/AdminV2ProfileMqtt';
 import { AdminV2SettingsGeneral } from './pages/admin-v2/settings';
 import FirstRunSetup from './components/FirstRunSetup';
 import { ActiveInputProvider } from './contexts/ActiveInputContext';
 import { PinChallengeProvider } from './contexts/PinChallengeContext';
 import { IdleLockProvider } from './contexts/IdleLockContext';
+import { ThemeProvider } from './contexts/ThemeContext';
+import { DashboardThemeProvider } from './contexts/DashboardThemeContext';
 import VirtualKeyboard from './components/VirtualKeyboard/VirtualKeyboard';
 import { useVirtualKeyboard } from './hooks/useVirtualKeyboard';
 import "./App.css";
@@ -93,8 +88,8 @@ function AppContent() {
         justifyContent: 'center', 
         height: '100vh',
         fontSize: '18px',
-        color: '#718096',
-        background: '#1a1f2e'
+        color: 'var(--muted-foreground)',
+        background: 'var(--background)'
       }}>
         Loading...
       </div>
@@ -102,9 +97,10 @@ function AppContent() {
   }
 
   return (
+    <ThemeProvider>
     <ActiveInputProvider>
       <PinChallengeProvider>
-      <Router>
+      <Router basename={(typeof window !== 'undefined' && window.__BASE_PATH__) || undefined}>
         <IdleLockProvider>
         {isFirstRun ? <FirstRunSetup /> : <Routes>
           {/* Public Routes */}
@@ -117,28 +113,18 @@ function AppContent() {
           <Route path="/live" element={
             <ProtectedRoute requireFullAuth={false}>
               <Layout>
-                <Dashboard />
+                <DashboardThemeProvider>
+                  <Dashboard />
+                </DashboardThemeProvider>
               </Layout>
             </ProtectedRoute>
           } />
           
-          {/* Admin Routes - Protected */}
-          <Route path="/admin" element={<ProtectedRoute><Layout><AdminDashboard /></Layout></ProtectedRoute>} />
-          <Route path="/admin/schedule" element={<ProtectedRoute><Layout><AdminSchedule /></Layout></ProtectedRoute>} />
-          <Route path="/admin/medications" element={<ProtectedRoute><Layout><AdminMedications /></Layout></ProtectedRoute>} />
-          <Route path="/admin/care-tasks" element={<ProtectedRoute><Layout><AdminCareTasks /></Layout></ProtectedRoute>} />
-          <Route path="/admin/equipment" element={<ProtectedRoute><Layout><AdminEquipment /></Layout></ProtectedRoute>} />
-          <Route path="/admin/monitoring" element={<ProtectedRoute><Layout><AdminMonitoring /></Layout></ProtectedRoute>} />
-          <Route path="/admin/settings" element={<ProtectedRoute><Layout><AdminSettings /></Layout></ProtectedRoute>} />
-          <Route path="/admin/businesses" element={<ProtectedRoute><Layout><AdminBusinesses /></Layout></ProtectedRoute>} />
-          <Route path="/admin/providers" element={<ProtectedRoute><Layout><AdminProviders /></Layout></ProtectedRoute>} />
-            
           {/* Care Routes - Protected */}
           <Route path="/care" element={<ProtectedRoute><Layout><AdminV2Dashboard /></Layout></ProtectedRoute>} />
           <Route path="/care/users" element={<ProtectedRoute><Layout><AdminV2Users /></Layout></ProtectedRoute>} />
           <Route path="/care/users/add" element={<ProtectedRoute><Layout><AdminV2Users /></Layout></ProtectedRoute>} />
           <Route path="/care/users/roles" element={<ProtectedRoute><Layout><AdminV2Roles /></Layout></ProtectedRoute>} />
-          <Route path="/care/users/permissions" element={<ProtectedRoute><Layout><AdminV2Permissions /></Layout></ProtectedRoute>} />
           <Route path="/care/medications" element={<ProtectedRoute><Layout><AdminV2Medications /></Layout></ProtectedRoute>} />
           <Route path="/care/medications/schedule" element={<ProtectedRoute><Layout><AdminV2MedicationsSchedule /></Layout></ProtectedRoute>} />
           <Route path="/care/medications/history" element={<ProtectedRoute><Layout><AdminV2MedicationsHistory /></Layout></ProtectedRoute>} />
@@ -180,7 +166,8 @@ function AppContent() {
           <Route path="/care/profile/diagnoses" element={<ProtectedRoute><Layout><AdminV2Diagnoses /></Layout></ProtectedRoute>} />
           <Route path="/care/profile/implants" element={<ProtectedRoute><Layout><AdminV2Implants /></Layout></ProtectedRoute>} />
           <Route path="/care/profile/businesses" element={<ProtectedRoute><Layout><AdminV2Businesses /></Layout></ProtectedRoute>} />
-          <Route path="/care/profile/mqtt" element={<ProtectedRoute><Layout><AdminV2ProfileMqtt /></Layout></ProtectedRoute>} />
+          {/* Per-patient MQTT consolidated onto the patient settings page */}
+          <Route path="/care/profile/mqtt" element={<Navigate to="/care/configuration/patients" replace />} />
             
           {/* Care Monitoring Routes */}
           <Route path="/care/monitoring" element={<ProtectedRoute><Layout><AdminV2Monitoring /></Layout></ProtectedRoute>} />
@@ -188,7 +175,6 @@ function AppContent() {
           <Route path="/care/monitoring/timeline" element={<ProtectedRoute><Layout><AdminV2Monitoring /></Layout></ProtectedRoute>} />
           <Route path="/care/monitoring/ventilator" element={<ProtectedRoute><Layout><AdminV2Monitoring /></Layout></ProtectedRoute>} />
           <Route path="/care/monitoring/interactions" element={<ProtectedRoute><Layout><AdminV2Monitoring /></Layout></ProtectedRoute>} />
-          <Route path="/care/monitoring/settings" element={<ProtectedRoute><Layout><AdminV2Monitoring /></Layout></ProtectedRoute>} />
 
           {/* Care Messages Routes */}
           <Route path="/care/messages" element={<ProtectedRoute><Layout><AdminV2Messages /></Layout></ProtectedRoute>} />
@@ -204,12 +190,15 @@ function AppContent() {
           <Route path="/care/configuration/account" element={<ProtectedRoute><Layout><AdminV2AccountSettings /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/integrations" element={<ProtectedRoute><Layout><AdminV2Integrations /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/patients" element={<ProtectedRoute><Layout><AdminV2Patients /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/patients/:patientId" element={<ProtectedRoute><Layout><AdminV2PatientDetail /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/mqtt" element={<ProtectedRoute><Layout><AdminV2Mqtt /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/backup" element={<ProtectedRoute><Layout><AdminV2Backup /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/system-health" element={<ProtectedRoute><Layout><AdminV2SystemHealth /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/users" element={<ProtectedRoute><Layout><AdminV2Users /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/users/roles" element={<ProtectedRoute><Layout><AdminV2Roles /></Layout></ProtectedRoute>} />
-          <Route path="/care/configuration/users/permissions" element={<ProtectedRoute><Layout><AdminV2Permissions /></Layout></ProtectedRoute>} />
-            
+          <Route path="/care/configuration/users/roles/:roleId" element={<ProtectedRoute><Layout><AdminV2RoleDetail /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/users/:userId" element={<ProtectedRoute><Layout><AdminV2UserDetail /></Layout></ProtectedRoute>} />
+
           <Route path="/care/*" element={<ProtectedRoute><Layout><AdminV2Dashboard /></Layout></ProtectedRoute>} />
         </Routes>}
         </IdleLockProvider>
@@ -217,6 +206,7 @@ function AppContent() {
       <VirtualKeyboard show={showVKB} />
       </PinChallengeProvider>
     </ActiveInputProvider>
+    </ThemeProvider>
   );
 }
 

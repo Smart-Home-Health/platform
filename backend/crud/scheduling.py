@@ -1,4 +1,4 @@
-# Smart Home Health Hub
+# Smart Home Health
 # Copyright (C) 2026 John Carty
 #
 # This program is free software: you can redistribute it and/or modify
@@ -633,6 +633,19 @@ def get_due_and_upcoming_care_tasks_count(db: Session, patient_id=None, tz=None)
     except Exception as e:
         logger.error(f"Error getting due/upcoming care tasks count: {e}")
         return 0
+
+
+def get_care_task_due_now_late_counts(db: Session, patient_id=None, tz=None):
+    """Return {'due_now', 'late'} care-task badge counts (mirrors the medication
+    badge counter; see crud.medications._count_due_now_and_late)."""
+    try:
+        from crud.medications import _count_due_now_and_late
+        schedule_data = get_daily_care_task_schedule(db, patient_id=patient_id, tz=tz)
+        tasks = schedule_data.get('scheduled_care_tasks', [])
+        return _count_due_now_and_late(tasks)
+    except Exception as e:
+        logger.error(f"Error getting due_now/late care task counts: {e}")
+        return {'due_now': 0, 'late': 0}
 
 
 def get_care_task_schedule_counts(db: Session, patient_id=None, tz=None):
@@ -1362,4 +1375,63 @@ def get_nutrition_schedule_counts(db: Session, patient_id=None, tz=None):
     except Exception as e:
         logger.error(f"Error getting nutrition schedule counts: {e}")
         return {'due': 0, 'overdue': 0}
+
+
+def get_nutrition_due_now_late_counts(db: Session, patient_id=None, tz=None):
+    """Return {'due_now', 'late'} nutrition badge counts.
+
+    Mirrors the medication/care-task badge counter for the per-patient MQTT
+    badge sensors: ``due_now`` = scheduled within ±1h of now, ``late`` = more
+    than 1h past. PRN intakes and completed items are excluded; the window is the
+    patient's account-local today+yesterday (same as the dashboard badge)."""
+    try:
+        if patient_id is None:
+            active_patient = get_active_patient(db)
+            if not active_patient:
+                return {'due_now': 0, 'late': 0}
+            patient_id = active_patient.id
+
+        if tz is None:
+            tz = resolve_tz_for_patient(db, patient_id)
+        bounds = local_day_bounds(tz)
+        now = bounds['now_utc']
+
+        raw = []
+        for utc_date in bounds['utc_dates']:
+            raw.extend(get_scheduled_nutrition(db, utc_date, patient_id))
+
+        seen = set()
+        due_now = 0
+        late = 0
+        for item in raw:
+            scheduled_time = item.get('scheduled_time')
+            if isinstance(scheduled_time, str):
+                scheduled_time = datetime.fromisoformat(scheduled_time)
+            if scheduled_time is None:
+                continue
+            if scheduled_time.tzinfo is None:
+                scheduled_time = scheduled_time.replace(tzinfo=timezone.utc)
+
+            if not (bounds['yesterday_start_utc'] <= scheduled_time < bounds['today_end_utc']):
+                continue
+            key = (item.get('schedule_id'), scheduled_time)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            if item.get('is_prn'):
+                continue
+            if item.get('completed'):
+                continue
+
+            diff_seconds = (scheduled_time - now).total_seconds()
+            if diff_seconds < -3600:
+                late += 1
+            elif diff_seconds <= 3600:
+                due_now += 1
+
+        return {'due_now': due_now, 'late': late}
+    except Exception as e:
+        logger.error(f"Error getting due_now/late nutrition counts: {e}")
+        return {'due_now': 0, 'late': 0}
 

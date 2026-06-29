@@ -1,4 +1,4 @@
-# Smart Home Health Hub
+# Smart Home Health
 
 Smart Home Health is a home‑care monitoring system for families and caregivers who
 need to track the health and daily care of a loved one. It brings medications,
@@ -6,9 +6,9 @@ vitals, equipment, nutrition, scheduling, and clinical records together in one p
 with a focus on being simple to set up and use while still able to grow into more
 complex care situations (multiple patients, ventilator monitoring, EHR ingest).
 
-Built with a modern web stack — **FastAPI + React (Vite), backed by PostgreSQL** —
-and an event‑driven backend that fans real‑time updates out to the browser over
-WebSockets and bridges to MQTT / home‑automation systems.
+Built with a modern web stack — **FastAPI + React (Vite), backed by PostgreSQL /
+TimescaleDB** — and an event‑driven backend that fans real‑time updates out to the
+browser over WebSockets and bridges to MQTT / home‑automation systems.
 
 > **For contributors:** architecture details (the event bus, models‑vs‑schemas split,
 > auth middleware, migrations, integration registry) live in [`CLAUDE.md`](CLAUDE.md).
@@ -49,9 +49,11 @@ WebSockets and bridges to MQTT / home‑automation systems.
 Third‑party data sources self‑register through an integration registry and are managed
 under **Settings → Integrations** in the web UI:
 
-- **Epic / FHIR R4 (EHR)** — pulls blood work (lab Observations) and imaging narratives
-  via the SMART‑on‑FHIR patient‑access API. Internal vital/unit types are mapped to
-  standard **LOINC** and **UCUM** codes ("FHIR at the edges, native core").
+- **Epic / FHIR R4 (EHR)** — _experimental / work in progress._ Pulls blood work
+  (lab Observations) and imaging narratives via the SMART‑on‑FHIR patient‑access API.
+  Internal vital/unit types are mapped to standard **LOINC** and **UCUM** codes
+  ("FHIR at the edges, native core"). The connector is built but not yet validated
+  against a live Epic endpoint.
 - **Withings** — vitals from Withings devices via their cloud API
 - **MQTT** — generic MQTT‑enabled devices and home‑automation systems
 - **Frigate** — NVR / camera event integration
@@ -68,47 +70,57 @@ under **Settings → Integrations** in the web UI:
 - **Docker** and **Docker Compose**
 - **Git**
 
-## Quick Start with Docker (Recommended)
+The app requires a **TimescaleDB** database (it uses hypertables — plain PostgreSQL
+will fail migrations). Both methods below provision the right database container for
+you; the database always runs separately from the app.
 
-### 1. Clone the repository
+## Run it (recommended)
+
+Runs the published **single image** — the backend API and the built web UI served
+together on one port — alongside a TimescaleDB container. It pulls
+[`smarthomehealth/platform`](https://hub.docker.com/r/smarthomehealth/platform)
+from Docker Hub (multi‑arch: amd64 + arm64), so there's nothing to build.
 
 ```bash
-git clone https://github.com/Smart-Home-Health/smart-home-health-hub.git
-cd smart-home-health-hub
+git clone https://github.com/Smart-Home-Health/platform.git
+cd platform
+
+cp .env.example .env          # then set JWT_SECRET_KEY and POSTGRES_PASSWORD
+docker compose -f docker-compose.prod.yml up -d
 ```
 
-### 2. Configure environment
+`JWT_SECRET_KEY` is **required** (`openssl rand -hex 32`) — the app refuses to start
+on an insecure default. Pin a version with `APP_IMAGE=smarthomehealth/platform:<tag>`.
 
-The backend reads its environment from `backend/.env` (mounted via `env_file` in
-`docker-compose.yml`). At minimum the database URL is provided by Compose; add
-integration credentials here as needed, for example:
+**Access the application:**
+- **Web app + API**: http://localhost:8000
+- **API docs (Swagger)**: http://localhost:8000/docs
 
-```env
-# Epic / FHIR app registration (https://fhir.epic.com)
-EPIC_CLIENT_ID=your-client-id
-EPIC_CLIENT_SECRET=your-client-secret   # only for a confidential client
-```
+On first launch you'll be guided through admin **first‑run setup**. It also works
+from a phone or other LAN device (e.g. `http://192.168.1.184:8000`). For publishing
+and deployment details, see [`docs/unified-image.md`](docs/unified-image.md).
 
-### 3. Start the application
+## Develop it (hot reload)
+
+The development stack runs the frontend (Vite) and backend (uvicorn `--reload`) as
+**two containers** with live reload, for working on the code.
 
 ```bash
 docker compose up -d
 ```
 
-On startup the stack will:
-- create the PostgreSQL database
-- run Alembic migrations (`alembic upgrade head`)
-- start the backend API (FastAPI / uvicorn with hot reload)
-- start the frontend dev server (Vite)
+On startup the stack creates the database, runs Alembic migrations
+(`alembic upgrade head`), and starts both dev servers.
 
 **Access the application:**
 - **Web interface**: http://localhost:5173
 - **API**: http://localhost:8000
 - **API docs (Swagger)**: http://localhost:8000/docs
 
-Because the frontend resolves the API URL from the current hostname at runtime, the
-app also works when opened from a phone or other device on your LAN
-(e.g. `http://192.168.1.184:5173`).
+The web UI works from a phone or other LAN device too (e.g.
+`http://192.168.1.184:5173`); it reaches the backend on the same origin via the Vite
+dev proxy. Integration credentials and other optional settings go in `backend/.env`
+for dev — see [`.env.example`](.env.example) for the recognized variables.
 
 ### Useful commands
 
@@ -126,7 +138,8 @@ docker compose exec backend alembic upgrade head
 
 ### Initial setup
 
-1. Open http://localhost:5173 and sign in (or create the first user).
+1. Open the web app (http://localhost:8000 for the single‑image run, or
+   http://localhost:5173 in dev) and sign in (or create the first user).
 2. Add a patient and configure alert thresholds under Settings.
 3. Start recording vitals manually, or connect a device/integration.
 

@@ -1,5 +1,5 @@
 /*
- * Smart Home Health Hub
+ * Smart Home Health
  * Copyright (C) 2026 John Carty
  *
  * This program is free software: you can redistribute it and/or modify
@@ -1398,7 +1398,7 @@ const AdminV2Schedule = () => {
                     type="button"
                     onClick={handleSubmitCompletion}
                     disabled={saving}
-                    className={isOffWindow ? 'bg-[#bb8009] text-[#0d1117] hover:bg-[#bb8009]/90' : undefined}
+                    className={isOffWindow ? 'bg-[#bb8009] text-[var(--background)] hover:bg-[#bb8009]/90' : undefined}
                   >
                     {label}
                   </Button>

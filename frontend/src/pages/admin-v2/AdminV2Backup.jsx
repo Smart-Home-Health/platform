@@ -1,5 +1,5 @@
 /*
- * Smart Home Health Hub
+ * Smart Home Health
  * Copyright (C) 2026 John Carty
  *
  * This program is free software: you can redistribute it and/or modify
@@ -55,8 +55,8 @@ const AdminV2Backup = () => {
   if (user && !user.is_system_admin) {
     return (
       <AdminV2Layout>
-        <div style={{ padding: '2rem', color: '#8b949e', textAlign: 'center' }}>
-          <h3 style={{ color: '#e6edf3' }}>Access Denied</h3>
+        <div style={{ padding: '2rem', color: 'var(--muted-foreground)', textAlign: 'center' }}>
+          <h3 style={{ color: 'var(--foreground)' }}>Access Denied</h3>
           <p>Backup &amp; Restore is only available to system administrators.</p>
         </div>
       </AdminV2Layout>

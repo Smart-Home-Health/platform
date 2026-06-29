@@ -1,4 +1,4 @@
-# Smart Home Health Hub
+# Smart Home Health
 # Copyright (C) 2026 John Carty
 #
 # This program is free software: you can redistribute it and/or modify
@@ -132,12 +132,31 @@ def get_patient_set_topic(patient_id: int) -> Optional[str]:
     return f"{base_override}/patient/{patient_id}/set"
 
 
+# Combined-state badge-count keys -> their MQTT section. Each badge section
+# (configured per patient like any other section) carries two counts: due_now
+# (within ±1h of due) and late (>1h past due). Equipment maps day-precise.
+BADGE_KEY_SECTIONS = {
+    "meds_due_now": "meds_counts",
+    "meds_late": "meds_counts",
+    "nutrition_due_now": "nutrition_counts",
+    "nutrition_late": "nutrition_counts",
+    "care_tasks_due_now": "care_task_counts",
+    "care_tasks_late": "care_task_counts",
+    "equipment_due_now": "equipment_counts",
+    "equipment_late": "equipment_counts",
+}
+
+
 def state_key_to_section(key: str) -> str:
     """Map state dict key to section name for permission check."""
+    if key in BADGE_KEY_SECTIONS:
+        return BADGE_KEY_SECTIONS[key]
     if key in ("systolic_bp", "diastolic_bp", "map_bp"):
         return "blood_pressure"
     if key in ("body_temp", "skin_temp"):
         return "temperature"
+    if key.startswith("calories_") or key.startswith("water_"):
+        return "nutrition"
     return key
 
 

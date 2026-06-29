@@ -1,4 +1,4 @@
-# Smart Home Health Hub
+# Smart Home Health
 # Copyright (C) 2026 John Carty
 #
 # This program is free software: you can redistribute it and/or modify
@@ -127,6 +127,7 @@ class SessionInfo(BaseModel):
     last_full_password_login: Optional[datetime] = None
     roles: list[str] = []
     permissions: list[str] = []
+    preferences: Optional[dict] = None  # Per-user UI preferences, e.g. {"theme": "light|dark|system"}
 
 
 class FirstRunSetup(BaseModel):
@@ -145,3 +146,6 @@ class FirstRunStatus(BaseModel):
     is_first_run: bool
     has_admin: bool
     message: str
+    # When true, the UI skips the account-password screen and goes straight to
+    # user selection in monitoring mode (deployment-wide opt-in via env).
+    skip_account_password: bool = False

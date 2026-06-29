@@ -1,16 +1,37 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <!-- Base path for Home Assistant ingress. The backend rewrites this <base>
+         (and window.__BASE_PATH__) to the ingress prefix when served behind HA;
+         in dev and the normal unified image it stays "/". Must come first so the
+         relative URLs below resolve against it. -->
+    <base href="/" />
+    <script>window.__BASE_PATH__ = "";</script>
     <meta charset="UTF-8" />
-    <link rel="icon" href="/favicon.ico" />
-    <link rel="apple-touch-icon" href="/icon-192.png" />
-    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" href="favicon.ico" />
+    <link rel="apple-touch-icon" href="icon-192.png" />
+    <link rel="manifest" href="manifest.json" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#161b22" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="SHH" />
     <title>Smart Home Health</title>
+    <!-- Apply the saved theme before React mounts to avoid a flash of the wrong theme. -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('theme'); // "light" | "dark" | "system"
+          var theme = (stored === 'light' || stored === 'dark') ? stored
+            : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+          var el = document.documentElement;
+          el.classList.remove('light', 'dark');
+          el.classList.add(theme);
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute('content', theme === 'dark' ? '#161b22' : '#ffffff');
+        } catch (e) { document.documentElement.classList.add('dark'); }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -5,7 +5,7 @@
   bottom: 0;
   z-index: 9999;
   background: #1a1f2e;
-  border-top: 1px solid #2d3748;
+  border-top: 1px solid var(--card);
   box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.4);
   padding: 8px 8px 12px;
   user-select: none;
@@ -24,8 +24,8 @@
 }
 
 .vkb-toolbar-button {
-  background: #2d3748;
-  color: #e2e8f0;
+  background: var(--card);
+  color: var(--foreground);
   border: none;
   border-radius: 6px;
   padding: 8px 14px;
@@ -34,7 +34,7 @@
 }
 
 .vkb-toolbar-button:hover {
-  background: #3a4759;
+  background: var(--secondary);
 }
 
 /* Style the react-simple-keyboard for a dark touch UI */
@@ -44,21 +44,21 @@
 
 .vkb-root .simple-keyboard .hg-button {
   height: 52px;
-  background: #2d3748;
-  color: #f7fafc;
-  border: 1px solid #3a4759;
+  background: var(--card);
+  color: var(--foreground);
+  border: 1px solid var(--secondary);
   border-radius: 6px;
   font-size: 18px;
 }
 
 .vkb-root .simple-keyboard .hg-button:active,
 .vkb-root .simple-keyboard .hg-button.hg-activeButton {
-  background: #4a5568;
+  background: var(--border);
 }
 
 .vkb-root .simple-keyboard .hg-button.hg-functionBtn {
-  background: #1f2937;
-  color: #cbd5e0;
+  background: var(--card);
+  color: var(--foreground);
 }
 
 /* Numpad mode: fewer keys per row, taller buttons, centered + narrower. */

@@ -1,5 +1,5 @@
 /*
- * Smart Home Health Hub
+ * Smart Home Health
  * Copyright (C) 2026 John Carty
  *
  * This program is free software: you can redistribute it and/or modify
@@ -151,7 +151,7 @@ const AdminV2MedicationsSchedule = () => {
       'missed': { label: 'Missed', color: '#f85149', bg: 'rgba(248, 81, 73, 0.15)', border: '#f85149' },
       'upcoming': { label: 'Upcoming', color: '#1f6feb', bg: 'rgba(31, 111, 235, 0.15)', border: '#1f6feb' },
       'ready': { label: 'Ready', color: '#58a6ff', bg: 'rgba(88, 166, 255, 0.15)', border: '#58a6ff' },
-      'skipped': { label: 'Skipped', color: '#8b949e', bg: 'rgba(139, 148, 158, 0.15)', border: '#8b949e' }
+      'skipped': { label: 'Skipped', color: 'var(--muted-foreground)', bg: 'rgba(139, 148, 158, 0.15)', border: 'var(--muted-foreground)' }
     };
     return statusMap[status] || statusMap.upcoming;
   };
@@ -412,7 +412,7 @@ const AdminV2MedicationsSchedule = () => {
 
             {/* Refresh Button */}
             <div className="admin-v2-page-header tw">
-              <h3 style={{ margin: 0, color: '#e6edf3' }}>
+              <h3 style={{ margin: 0, color: 'var(--foreground)' }}>
                 Today & Yesterday ({filteredMeds.length} of {scheduledMedications.length})
               </h3>
               <Button onClick={fetchSchedule} disabled={loading}>
@@ -562,7 +562,7 @@ const AdminV2MedicationsSchedule = () => {
                   <span>Completed</span>
                 </div>
                 <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: '#8b949e' }}></span>
+                  <span className="admin-v2-legend-dot" style={{ backgroundColor: 'var(--muted-foreground)' }}></span>
                   <span>Skipped</span>
                 </div>
               </div>

@@ -1,4 +1,4 @@
-# Smart Home Health Hub
+# Smart Home Health
 # Copyright (C) 2026 John Carty
 #
 # This program is free software: you can redistribute it and/or modify
@@ -47,6 +47,10 @@ SECTION_DISCOVERY: Dict[str, Tuple[str, str, str, str]] = {
     "alarm2": ("{{ value_json.alarm2 }}", "", "GPIO Alarm 2", "binary_sensor"),
 }
 
+# Sections whose value is categorical text, not a numeric measurement — these
+# must NOT get state_class=measurement (HA would mark them Unavailable).
+TEXT_SECTIONS = {"bathroom"}
+
 # Blood pressure: three sensors per patient (systolic, diastolic, MAP) on same state_topic
 BLOOD_PRESSURE_SENSORS: List[Tuple[str, str, str]] = [
     ("{{ value_json.systolic_bp }}", "mmHg", "Blood Pressure Systolic"),
@@ -54,15 +58,39 @@ BLOOD_PRESSURE_SENSORS: List[Tuple[str, str, str]] = [
     ("{{ value_json.map_bp }}", "mmHg", "Blood Pressure MAP"),
 ]
 
-# Nutrition: multiple sensors per patient on same state_topic
+# Nutrition: calorie + water sensors per patient on the same combined state_topic.
+# Last given feed, today's running total, and the daily goal (kcal / mL).
 NUTRITION_SENSORS: List[Tuple[str, str, str, str]] = [
-    ("{{ value_json.water_intake }}", "ml", "Water Intake", "water_intake"),
-    ("{{ value_json.water_scheduled }}", "ml", "Water Scheduled", "water_scheduled"),
-    ("{{ value_json.water_target }}", "ml", "Water Target", "water_target"),
-    ("{{ value_json.calories_intake }}", "kcal", "Calorie Intake", "calories_intake"),
-    ("{{ value_json.calories_scheduled }}", "kcal", "Calories Scheduled", "calories_scheduled"),
-    ("{{ value_json.calories_target }}", "kcal", "Calories Target", "calories_target"),
+    ("{{ value_json.calories_last }}", "kcal", "Calories Last", "calories_last"),
+    ("{{ value_json.calories_intake }}", "kcal", "Calories Today", "calories_intake"),
+    ("{{ value_json.calories_target }}", "kcal", "Calories Goal", "calories_target"),
+    ("{{ value_json.water_last }}", "mL", "Water Last", "water_last"),
+    ("{{ value_json.water_intake }}", "mL", "Water Today", "water_intake"),
+    ("{{ value_json.water_target }}", "mL", "Water Goal", "water_target"),
 ]
+
+# Badge-count sections: each expands into two sensors (due now + late). Values
+# are integers published into the combined state by MQTTModule. Keyed by the
+# section id used in the per-patient MQTT config.
+# Entries: (value_template, display_name, state_key_suffix)
+BADGE_SENSORS: Dict[str, List[Tuple[str, str, str]]] = {
+    "meds_counts": [
+        ("{{ value_json.meds_due_now }}", "Medications Due Now", "meds_due_now"),
+        ("{{ value_json.meds_late }}", "Medications Late", "meds_late"),
+    ],
+    "nutrition_counts": [
+        ("{{ value_json.nutrition_due_now }}", "Nutrition Due Now", "nutrition_due_now"),
+        ("{{ value_json.nutrition_late }}", "Nutrition Late", "nutrition_late"),
+    ],
+    "care_task_counts": [
+        ("{{ value_json.care_tasks_due_now }}", "Care Tasks Due Now", "care_tasks_due_now"),
+        ("{{ value_json.care_tasks_late }}", "Care Tasks Late", "care_tasks_late"),
+    ],
+    "equipment_counts": [
+        ("{{ value_json.equipment_due_now }}", "Equipment Due Now", "equipment_due_now"),
+        ("{{ value_json.equipment_late }}", "Equipment Late", "equipment_late"),
+    ],
+}
 
 
 def _safe_device_id(name: str, patient_id: int) -> str:
@@ -106,7 +134,7 @@ def _publish_discovery(
         return 0
 
 
-def send_mqtt_discovery(mqtt_client, test_mode: bool = True, patient_id: Optional[int] = None) -> bool:
+def send_mqtt_discovery(mqtt_client, patient_id: Optional[int] = None) -> bool:
     """
     Send MQTT Discovery messages to Home Assistant.
 
@@ -118,7 +146,6 @@ def send_mqtt_discovery(mqtt_client, test_mode: bool = True, patient_id: Optiona
 
     Args:
         mqtt_client: The connected MQTT client
-        test_mode: If True, uses {base_topic}-test instead of {base_topic}
         patient_id: If set, only this patient; else all enabled patients
 
     Returns:
@@ -134,8 +161,6 @@ def send_mqtt_discovery(mqtt_client, test_mode: bool = True, patient_id: Optiona
         return False
 
     base_topic = settings.get('base_topic', 'shh')
-    if test_mode:
-        base_topic = f"{base_topic}-test"
 
     patients: List[Dict[str, Any]] = get_patients_with_mqtt_enabled()
     if patient_id is not None:
@@ -195,6 +220,19 @@ def send_mqtt_discovery(mqtt_client, test_mode: bool = True, patient_id: Optiona
                     )
                 continue
 
+            # --- Badge counts: expand to two sensors (due now + late) ---
+            if section_key in BADGE_SENSORS:
+                for val_tpl, display_name, suffix in BADGE_SENSORS[section_key]:
+                    success_count += _publish_discovery(
+                        mqtt_client, discovery_prefix, "sensor",
+                        f"{device_ident}_{suffix}",
+                        f"{base_topic}_patient_{pid}_{suffix}",
+                        f"{patient_name} {display_name}",
+                        state_topic, val_tpl, "", device_info,
+                        stat_cla="measurement",
+                    )
+                continue
+
             # --- Standard and alarm sections ---
             section_config = SECTION_DISCOVERY.get(section_key)
             if not section_config:
@@ -208,7 +246,10 @@ def send_mqtt_discovery(mqtt_client, test_mode: bool = True, patient_id: Optiona
                 extra["pl_on"] = "ON"
                 extra["pl_off"] = "OFF"
                 extra["dev_cla"] = "problem"
-            else:
+            elif section_key not in TEXT_SECTIONS:
+                # state_class=measurement requires a numeric state; categorical
+                # text sensors (e.g. bathroom: urine/bowel/both) must omit it or
+                # HA marks them Unavailable on a non-numeric value.
                 extra["stat_cla"] = "measurement"
 
             success_count += _publish_discovery(
@@ -222,302 +263,3 @@ def send_mqtt_discovery(mqtt_client, test_mode: bool = True, patient_id: Optiona
 
     logger.info(f"Sent {success_count} MQTT Discovery messages (per-vital per patient)")
     return success_count > 0
-
-
-def _send_legacy_mqtt_discovery(mqtt_client, test_mode: bool, base_topic: str, topics_config: dict, device_info: dict) -> int:
-    """
-    Legacy: send one sensor per vital (old behavior). Used only when no patients have MQTT enabled.
-    Returns count of discovery messages sent.
-    """
-    discovery_prefix = "homeassistant"
-    sensors = {}
-    
-    for vital_name, config in topics_config.items():
-        if not config.get('enabled', False):
-            continue
-        
-        # Handle nutrition special case with multiple sensors
-        if vital_name == 'nutrition':
-            # Water intake (actual consumed)
-            water_topic = config.get('water_broadcast_topic')
-            if water_topic:
-                sensors[f"{vital_name}_water_intake"] = {
-                    "uniq_id": f"{base_topic}_sensor.water_intake",
-                    "name": "Water Intake",
-                    "stat_t": water_topic,
-                    "val_tpl": "{{ value_json.value }}",
-                    "json_attr_t": f"{water_topic}/attributes",
-                    "avty_t": f"{base_topic}/availability",
-                    "unit_of_meas": "ml",
-                    "stat_cla": "measurement",
-                    "icon": "mdi:water"
-                }
-                
-                # Water scheduled (expected progress)
-                sensors[f"{vital_name}_water_scheduled"] = {
-                    "uniq_id": f"{base_topic}_sensor.water_scheduled",
-                    "name": "Water Scheduled",
-                    "stat_t": f"{water_topic}/scheduled",
-                    "val_tpl": "{{ value_json.value }}",
-                    "json_attr_t": f"{water_topic}/scheduled/attributes",
-                    "avty_t": f"{base_topic}/availability",
-                    "unit_of_meas": "ml",
-                    "stat_cla": "measurement",
-                    "icon": "mdi:calendar-clock"
-                }
-                
-                # Water target (daily limit)
-                sensors[f"{vital_name}_water_target"] = {
-                    "uniq_id": f"{base_topic}_sensor.water_target",
-                    "name": "Water Target",
-                    "stat_t": f"{water_topic}/target",
-                    "val_tpl": "{{ value_json.value }}",
-                    "json_attr_t": f"{water_topic}/target/attributes",
-                    "avty_t": f"{base_topic}/availability",
-                    "unit_of_meas": "ml",
-                    "stat_cla": "measurement",
-                    "icon": "mdi:flag-checkered"
-                }
-            
-            # Calories intake (actual consumed)
-            calories_topic = config.get('calories_broadcast_topic')
-            if calories_topic:
-                sensors[f"{vital_name}_calories_intake"] = {
-                    "uniq_id": f"{base_topic}_sensor.calories_intake",
-                    "name": "Calorie Intake",
-                    "stat_t": calories_topic,
-                    "val_tpl": "{{ value_json.value }}",
-                    "json_attr_t": f"{calories_topic}/attributes",
-                    "avty_t": f"{base_topic}/availability",
-                    "unit_of_meas": "kcal",
-                    "stat_cla": "measurement",
-                    "icon": "mdi:food-apple"
-                }
-                
-                # Calories scheduled (expected progress)
-                sensors[f"{vital_name}_calories_scheduled"] = {
-                    "uniq_id": f"{base_topic}_sensor.calories_scheduled",
-                    "name": "Calories Scheduled",
-                    "stat_t": f"{calories_topic}/scheduled",
-                    "val_tpl": "{{ value_json.value }}",
-                    "json_attr_t": f"{calories_topic}/scheduled/attributes",
-                    "avty_t": f"{base_topic}/availability",
-                    "unit_of_meas": "kcal",
-                    "stat_cla": "measurement",
-                    "icon": "mdi:calendar-clock"
-                }
-                
-                # Calories target (daily limit)
-                sensors[f"{vital_name}_calories_target"] = {
-                    "uniq_id": f"{base_topic}_sensor.calories_target",
-                    "name": "Calories Target",
-                    "stat_t": f"{calories_topic}/target",
-                    "val_tpl": "{{ value_json.value }}",
-                    "json_attr_t": f"{calories_topic}/target/attributes",
-                    "avty_t": f"{base_topic}/availability",
-                    "unit_of_meas": "kcal",
-                    "stat_cla": "measurement",
-                    "icon": "mdi:flag-checkered"
-                }
-        
-        # Handle standard vitals
-        else:
-            broadcast_topic = config.get('broadcast_topic')
-            if broadcast_topic:
-                # Blood pressure gets three separate sensors
-                if vital_name == 'blood_pressure':
-                    bp_sensors = get_blood_pressure_sensors(broadcast_topic, base_topic)
-                    sensors.update(bp_sensors)
-                else:
-                    sensor_config = get_sensor_config(vital_name, broadcast_topic, base_topic)
-                    if sensor_config:
-                        sensors[vital_name] = sensor_config
-
-    
-    # Send discovery messages for all configured sensors
-    success_count = 0
-    for sensor_id, config in sensors.items():
-        config["dev"] = device_info
-        
-        # Determine if this is a binary sensor (alarms) or regular sensor
-        is_binary = 'alarm' in sensor_id
-        sensor_type = 'binary_sensor' if is_binary else 'sensor'
-        
-        discovery_topic = f"{discovery_prefix}/{sensor_type}/{sensor_id}/config"
-        json_payload = json.dumps(config)
-
-        try:
-            result = mqtt_client.publish(discovery_topic, json_payload, retain=True)
-            if result.rc == 0:
-                logger.info(f"Sent MQTT Discovery for {sensor_id} to {discovery_topic}")
-                success_count += 1
-            else:
-                logger.error(f"Failed to send discovery for {sensor_id}: rc={result.rc}")
-        except Exception as e:
-            logger.error(f"Error sending discovery for {sensor_id}: {e}")
-            
-    logger.info(f"Sent {success_count}/{len(sensors)} MQTT Discovery messages")
-    return success_count > 0
-
-def get_blood_pressure_sensors(broadcast_topic: str, base_topic: str) -> Dict[str, Dict[str, Any]]:
-    """
-    Get three separate sensor configurations for blood pressure (systolic, diastolic, MAP)
-    
-    Args:
-        broadcast_topic: MQTT topic where blood pressure data is published
-        base_topic: Base MQTT topic for the system
-        
-    Returns:
-        Dict containing three sensor configurations
-    """
-    return {
-        'blood_pressure_systolic': {
-            "uniq_id": f"{base_topic}_sensor.bp_systolic",
-            "name": "Blood Pressure Systolic",
-            "stat_t": broadcast_topic,
-            "val_tpl": "{{ value_json.systolic }}",
-            "json_attr_t": f"{broadcast_topic}/attributes",
-            "avty_t": f"{base_topic}/availability",
-            "unit_of_meas": "mmHg",
-            "stat_cla": "measurement",
-        },
-        'blood_pressure_diastolic': {
-            "uniq_id": f"{base_topic}_sensor.bp_diastolic",
-            "name": "Blood Pressure Diastolic",
-            "stat_t": broadcast_topic,
-            "val_tpl": "{{ value_json.diastolic }}",
-            "json_attr_t": f"{broadcast_topic}/attributes",
-            "avty_t": f"{base_topic}/availability",
-            "unit_of_meas": "mmHg",
-            "stat_cla": "measurement",
-        },
-        'blood_pressure_map': {
-            "uniq_id": f"{base_topic}_sensor.bp_map",
-            "name": "Blood Pressure MAP",
-            "stat_t": broadcast_topic,
-            "val_tpl": "{{ value_json.map }}",
-            "json_attr_t": f"{broadcast_topic}/attributes",
-            "avty_t": f"{base_topic}/availability",
-            "unit_of_meas": "mmHg",
-            "stat_cla": "measurement",
-        }
-    }
-
-def get_sensor_config(vital_name: str, broadcast_topic: str, base_topic: str) -> Optional[Dict[str, Any]]:
-    """
-    Get sensor configuration for a specific vital type
-    
-    Args:
-        vital_name: Name of the vital (e.g., 'spo2', 'temperature')
-        broadcast_topic: MQTT topic where the sensor publishes data
-        base_topic: Base MQTT topic for the system
-        
-    Returns:
-        Dict containing sensor configuration or None if not supported
-    """
-    vital_configs = {
-        'spo2': {
-            "uniq_id": f"{base_topic}_sensor.spo2",
-            "name": "SpO₂ Level",
-            "stat_t": broadcast_topic,
-            "val_tpl": "{{ value_json.value }}",
-            "json_attr_t": f"{broadcast_topic}/attributes",
-            "avty_t": f"{base_topic}/availability",
-            "unit_of_meas": "%",
-            "stat_cla": "measurement",
-        },
-        'bpm': {
-            "uniq_id": f"{base_topic}_sensor.bpm",
-            "name": "Heart Rate",
-            "stat_t": broadcast_topic,
-            "val_tpl": "{{ value_json.value }}",
-            "json_attr_t": f"{broadcast_topic}/attributes",
-            "avty_t": f"{base_topic}/availability",
-            "unit_of_meas": "BPM",
-            "stat_cla": "measurement",
-        },
-        'perfusion': {
-            "uniq_id": f"{base_topic}_sensor.perfusion",
-            "name": "Perfusion Index",
-            "stat_t": broadcast_topic,
-            "val_tpl": "{{ value_json.value }}",
-            "json_attr_t": f"{broadcast_topic}/attributes",
-            "avty_t": f"{base_topic}/availability",
-            "unit_of_meas": "PA",
-            "stat_cla": "measurement",
-        },
-        'temperature': {
-            "uniq_id": f"{base_topic}_sensor.temperature",
-            "name": "Body Temperature",
-            "stat_t": broadcast_topic,
-            "val_tpl": "{{ value_json.body_temp }}",
-            "json_attr_t": f"{broadcast_topic}/attributes",
-            "avty_t": f"{base_topic}/availability",
-            "unit_of_meas": "°F",
-            "stat_cla": "measurement",
-        },
-        'weight': {
-            "uniq_id": f"{base_topic}_sensor.weight",
-            "name": "Weight",
-            "stat_t": broadcast_topic,
-            "val_tpl": "{{ value_json.value }}",
-            "json_attr_t": f"{broadcast_topic}/attributes",
-            "avty_t": f"{base_topic}/availability",
-            "unit_of_meas": "lbs",
-            "stat_cla": "measurement",
-        },
-        'bathroom': {
-            "uniq_id": f"{base_topic}_sensor.bathroom",
-            "name": "Bathroom Activity",
-            "stat_t": broadcast_topic,
-            "val_tpl": "{{ value_json.value }}",
-            "json_attr_t": f"{broadcast_topic}/attributes",
-            "avty_t": f"{base_topic}/availability",
-        },
-        'spo2_alarm': {
-            "uniq_id": f"{base_topic}_sensor.spo2_alarm",
-            "name": "SpO₂ Alarm",
-            "stat_t": broadcast_topic,
-            "val_tpl": "{{ value_json.value }}",
-            "json_attr_t": f"{broadcast_topic}/attributes",
-            "avty_t": f"{base_topic}/availability",
-            "payload_on": "ON",
-            "payload_off": "OFF",
-            "device_class": "problem",
-        },
-        'bpm_alarm': {
-            "uniq_id": f"{base_topic}_sensor.bmp_alarm",
-            "name": "Heart Rate Alarm",
-            "stat_t": broadcast_topic,
-            "val_tpl": "{{ value_json.value }}",
-            "json_attr_t": f"{broadcast_topic}/attributes",
-            "avty_t": f"{base_topic}/availability",
-            "payload_on": "ON",
-            "payload_off": "OFF",
-            "device_class": "problem",
-        },
-        'alarm1': {
-            "uniq_id": f"{base_topic}_sensor.gpio_alarm1",
-            "name": "GPIO Alarm 1",
-            "stat_t": broadcast_topic,
-            "val_tpl": "{{ value_json.value }}",
-            "json_attr_t": f"{broadcast_topic}/attributes",
-            "avty_t": f"{base_topic}/availability",
-            "payload_on": "ON",
-            "payload_off": "OFF",
-            "device_class": "problem",
-        },
-        'alarm2': {
-            "uniq_id": f"{base_topic}_sensor.gpio_alarm2",
-            "name": "GPIO Alarm 2",
-            "stat_t": broadcast_topic,
-            "val_tpl": "{{ value_json.value }}",
-            "json_attr_t": f"{broadcast_topic}/attributes",
-            "avty_t": f"{base_topic}/availability",
-            "payload_on": "ON",
-            "payload_off": "OFF",
-            "device_class": "problem",
-        }
-    }
-    
-    return vital_configs.get(vital_name)

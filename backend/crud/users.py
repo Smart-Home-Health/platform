@@ -1,4 +1,4 @@
-# Smart Home Health Hub
+# Smart Home Health
 # Copyright (C) 2026 John Carty
 #
 # This program is free software: you can redistribute it and/or modify
@@ -23,7 +23,8 @@ from typing import Optional, List
 import bcrypt
 import logging
 
-from models.users import User, Role, Permission, AuditLog, user_roles, role_permissions, Organization, OrganizationMembership, OrganizationType
+from models.users import User, Role, Permission, AuditLog, user_roles, role_permissions, Organization, OrganizationMembership, OrganizationType, Account
+from security_config import LOGIN_LOCKOUT_THRESHOLD, LOGIN_LOCKOUT_MINUTES
 
 logger = logging.getLogger(__name__)
 
@@ -280,13 +281,13 @@ def update_activity_timestamp(db: Session, user_id: int):
         db.commit()
 
 
-def increment_failed_login(db: Session, user_id: int, lockout_threshold: int = 5):
+def increment_failed_login(db: Session, user_id: int, lockout_threshold: int = LOGIN_LOCKOUT_THRESHOLD):
     """Increment failed login attempts and lock account if needed"""
     user = get_user_by_id(db, user_id)
     if user:
         user.failed_login_attempts += 1
         if user.failed_login_attempts >= lockout_threshold:
-            user.locked_until = datetime.utcnow() + timedelta(minutes=15)
+            user.locked_until = datetime.utcnow() + timedelta(minutes=LOGIN_LOCKOUT_MINUTES)
             logger.warning(f"User {user.username} locked due to failed login attempts")
         db.commit()
 
@@ -298,6 +299,44 @@ def is_user_locked(user: User) -> bool:
     if datetime.utcnow() > user.locked_until:
         return False
     return True
+
+
+# ---- Account-level lockout (mirrors the per-user lockout above) --------------
+
+def is_account_locked(account: Account) -> bool:
+    """Check if an account is temporarily locked from login."""
+    if not account.locked_until:
+        return False
+    if datetime.utcnow() > account.locked_until:
+        return False
+    return True
+
+
+def account_lock_seconds_remaining(account: Account) -> int:
+    """Seconds until the account lock expires (>=1); 0 if not locked."""
+    if not is_account_locked(account):
+        return 0
+    return max(1, int((account.locked_until - datetime.utcnow()).total_seconds()) + 1)
+
+
+def increment_account_failed_login(db: Session, account_id: int, lockout_threshold: int = LOGIN_LOCKOUT_THRESHOLD):
+    """Increment an account's failed login attempts and lock it if over threshold."""
+    account = db.query(Account).filter(Account.id == account_id).first()
+    if account:
+        account.failed_login_attempts = (account.failed_login_attempts or 0) + 1
+        if account.failed_login_attempts >= lockout_threshold:
+            account.locked_until = datetime.utcnow() + timedelta(minutes=LOGIN_LOCKOUT_MINUTES)
+            logger.warning(f"Account {account.slug} locked due to failed login attempts")
+        db.commit()
+
+
+def reset_account_failed_login(db: Session, account_id: int):
+    """Clear an account's failed-login counter + lock (call on successful auth)."""
+    account = db.query(Account).filter(Account.id == account_id).first()
+    if account and (account.failed_login_attempts or account.locked_until):
+        account.failed_login_attempts = 0
+        account.locked_until = None
+        db.commit()
 
 
 def has_any_admin_user(db: Session) -> bool:

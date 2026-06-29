@@ -1,5 +1,5 @@
 /*
- * Smart Home Health Hub
+ * Smart Home Health
  * Copyright (C) 2026 John Carty
  *
  * This program is free software: you can redistribute it and/or modify
@@ -24,11 +24,12 @@ import './LoginPage.css';
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated, isAccountAuthenticated, accountAccess } = useAuth();
+  const { isAuthenticated, isAccountAuthenticated, accountAccess, skipAccountPassword } = useAuth();
 
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [autoSkipTried, setAutoSkipTried] = useState(false);
 
   const from = location.state?.from?.pathname || '/care';
 
@@ -39,6 +40,24 @@ export default function LoginPage() {
       navigate('/select-user', { state: { from: location.state?.from }, replace: true });
     }
   }, [isAuthenticated, isAccountAuthenticated, navigate, from, location.state]);
+
+  // Deployment opts to skip the account password: grab a monitoring-mode token
+  // once and let the redirect effect above move on to user selection. Covers
+  // landing here after a logout (the on-mount check in AuthContext covers the
+  // initial load).
+  useEffect(() => {
+    if (skipAccountPassword && !isAccountAuthenticated && !autoSkipTried) {
+      setAutoSkipTried(true);
+      accountAccess(null).then((result) => {
+        // On failure (backend starting up, network error, ...) surface an error
+        // so the guarded "Continuing…" screen falls through to the normal login
+        // form instead of hanging forever.
+        if (!result?.success) {
+          setError(result?.error || 'Could not continue automatically. Please try again.');
+        }
+      });
+    }
+  }, [skipAccountPassword, isAccountAuthenticated, autoSkipTried, accountAccess]);
 
   const handleUnlockAndContinue = async (e) => {
     e.preventDefault();
@@ -65,6 +84,21 @@ export default function LoginPage() {
       setError(result.error || 'Could not continue');
     }
   };
+
+  // While the account-password skip is resolving, don't flash the password form.
+  if (skipAccountPassword && !error) {
+    return (
+      <div className="login-page">
+        <div className="login-container">
+          <Link to="/" className="login-logo">
+            <img src={logoImage} alt="Smart Home Health Logo" />
+            <span>Smart Home Health</span>
+          </Link>
+          <p className="login-subtitle">Continuing…</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="login-page">

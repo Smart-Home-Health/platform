@@ -1,5 +1,5 @@
 /*
- * Smart Home Health Hub
+ * Smart Home Health
  * Copyright (C) 2026 John Carty
  *
  * This program is free software: you can redistribute it and/or modify
@@ -22,6 +22,7 @@ import {
 } from 'recharts';
 import config from '../../config';
 import { ChevronLeftIcon, ChevronRightIcon, ClockIcon } from '../../components/Icons';
+import { useChartColors } from '../../hooks/useChartColors';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
 import {
@@ -184,17 +185,17 @@ const AdminV2MonitoringVentilator = ({ patientId }) => {
   };
 
   if (daysLoading) {
-    return <div style={{ padding: 24, color: '#a0aec0' }}>Loading ventilator data…</div>;
+    return <div style={{ padding: 24, color: 'var(--muted-foreground)' }}>Loading ventilator data…</div>;
   }
   if (!hasIntegration) {
     return (
       <div style={{
-        padding: 30, color: '#a0aec0',
-        background: 'rgba(255,255,255,0.04)',
-        border: '1px dashed rgba(255,255,255,0.15)',
+        padding: 30, color: 'var(--muted-foreground)',
+        background: 'var(--secondary)',
+        border: '1px dashed var(--border)',
         borderRadius: 8, textAlign: 'center',
       }}>
-        <p style={{ margin: '0 0 8px 0', color: '#e6edf3', fontSize: 16, fontWeight: 600 }}>
+        <p style={{ margin: '0 0 8px 0', color: 'var(--foreground)', fontSize: 16, fontWeight: 600 }}>
           No ventilator integration
         </p>
         <p style={{ margin: 0 }}>
@@ -206,12 +207,12 @@ const AdminV2MonitoringVentilator = ({ patientId }) => {
   if (days.length === 0) {
     return (
       <div style={{
-        padding: 30, color: '#a0aec0',
-        background: 'rgba(255,255,255,0.04)',
-        border: '1px dashed rgba(255,255,255,0.15)',
+        padding: 30, color: 'var(--muted-foreground)',
+        background: 'var(--secondary)',
+        border: '1px dashed var(--border)',
         borderRadius: 8, textAlign: 'center',
       }}>
-        <p style={{ margin: '0 0 8px 0', color: '#e6edf3', fontSize: 16, fontWeight: 600 }}>
+        <p style={{ margin: '0 0 8px 0', color: 'var(--foreground)', fontSize: 16, fontWeight: 600 }}>
           No vent samples yet
         </p>
         <p style={{ margin: 0 }}>
@@ -229,8 +230,8 @@ const AdminV2MonitoringVentilator = ({ patientId }) => {
       <div className="tw" style={{
         display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
         padding: '12px 14px',
-        background: 'rgba(255,255,255,0.04)',
-        border: '1px solid rgba(255,255,255,0.08)',
+        background: 'var(--secondary)',
+        border: '1px solid var(--border)',
         borderRadius: 10,
       }}>
         <Button
@@ -265,7 +266,7 @@ const AdminV2MonitoringVentilator = ({ patientId }) => {
           disabled={dateIndex.idx === 0}
         >Newest</Button>
 
-        <span style={{ marginLeft: 'auto', color: '#a0aec0', fontSize: 12 }}>
+        <span style={{ marginLeft: 'auto', color: 'var(--muted-foreground)', fontSize: 12 }}>
           {dateIndex.idx + 1} of {dateIndex.total}
         </span>
       </div>
@@ -275,9 +276,9 @@ const AdminV2MonitoringVentilator = ({ patientId }) => {
         padding: '8px 12px', borderRadius: 6,
         background: 'rgba(96,165,250,0.08)',
         border: '1px solid rgba(96,165,250,0.25)',
-        color: '#a0aec0', fontSize: 12, lineHeight: 1.4,
+        color: 'var(--muted-foreground)', fontSize: 12, lineHeight: 1.4,
       }}>
-        <strong style={{ color: '#93c5fd' }}>Note:</strong> headline values use VOCSN's median (50th percentile) aggregate
+        <strong style={{ color: 'var(--ring)' }}>Note:</strong> headline values use VOCSN's median (50th percentile) aggregate
         to match the device's own report. Some parameters (e.g. PEEP, MAP, ambient pressure) may still
         display in raw vendor units — we apply parameter-specific scaling as it's identified.
       </div>
@@ -308,7 +309,7 @@ const AdminV2MonitoringVentilator = ({ patientId }) => {
       )}
 
       {dayLoading && (
-        <div style={{ padding: 24, color: '#a0aec0', textAlign: 'center' }}>
+        <div style={{ padding: 24, color: 'var(--muted-foreground)', textAlign: 'center' }}>
           Loading day…
         </div>
       )}
@@ -330,11 +331,11 @@ const AdminV2MonitoringVentilator = ({ patientId }) => {
               <span style={{
                 width: 12, height: 12, borderRadius: '50%', background: color,
               }} />
-              <h3 style={{ margin: 0, color: '#e6edf3', fontSize: 16, fontWeight: 700 }}>
+              <h3 style={{ margin: 0, color: 'var(--foreground)', fontSize: 16, fontWeight: 700 }}>
                 {group.name}
               </h3>
               <span style={{
-                color: '#a0aec0', fontSize: 12, marginLeft: 'auto',
+                color: 'var(--muted-foreground)', fontSize: 12, marginLeft: 'auto',
               }}>{group.parameters.length} parameter{group.parameters.length === 1 ? '' : 's'}</span>
             </div>
             <div style={{
@@ -373,15 +374,15 @@ const AdminV2MonitoringVentilator = ({ patientId }) => {
 
 const SummaryTile = ({ label, value }) => (
   <div style={{
-    background: '#1a2332', borderRadius: 10,
-    border: '1px solid rgba(255,255,255,0.08)',
+    background: 'var(--card)', borderRadius: 10,
+    border: '1px solid var(--border)',
     padding: '10px 14px',
   }}>
     <div style={{
-      color: '#a0aec0', fontSize: 11, fontWeight: 600,
+      color: 'var(--muted-foreground)', fontSize: 11, fontWeight: 600,
       textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4,
     }}>{label}</div>
-    <div style={{ color: '#e6edf3', fontSize: 16, fontWeight: 700 }}>{value}</div>
+    <div style={{ color: 'var(--foreground)', fontSize: 16, fontWeight: 700 }}>{value}</div>
   </div>
 );
 
@@ -412,26 +413,26 @@ const ParameterCard = ({ p, accent, onOpen }) => {
         // Reset native <button> styling so the card renders identically.
         font: 'inherit', color: 'inherit', cursor: 'pointer', textAlign: 'left',
         appearance: 'none',
-        background: '#1a2332',
-        border: '1px solid rgba(255,255,255,0.08)',
+        background: 'var(--card)',
+        border: '1px solid var(--border)',
         borderLeft: `4px solid ${accent}`,
         borderRadius: 10, padding: '10px 12px',
         display: 'flex', flexDirection: 'column', gap: 6,
         transition: 'border-color 0.15s, transform 0.05s',
       }}
       onMouseEnter={(e) => { e.currentTarget.style.borderColor = accent; }}
-      onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; }}
       onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.99)'; }}
       onMouseUp={(e) => { e.currentTarget.style.transform = ''; }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-        <span style={{ color: '#e6edf3', fontWeight: 600, fontSize: 14, lineHeight: 1.2 }}>
+        <span style={{ color: 'var(--foreground)', fontWeight: 600, fontSize: 14, lineHeight: 1.2 }}>
           {p.display_label}
         </span>
-        <span style={{ color: '#6b7280', fontSize: 11 }}>#{p.parameter_key}</span>
+        <span style={{ color: 'var(--muted-foreground)', fontSize: 11 }}>#{p.parameter_key}</span>
       </div>
       {p.display_units && (
-        <span style={{ color: '#a0aec0', fontSize: 11 }}>{p.display_units}</span>
+        <span style={{ color: 'var(--muted-foreground)', fontSize: 11 }}>{p.display_units}</span>
       )}
 
       {headline && (
@@ -451,22 +452,22 @@ const ParameterCard = ({ p, accent, onOpen }) => {
 
       {hasMedian && (lowBand != null || highBand != null) && (
         <div style={{
-          color: '#a0aec0', fontSize: 11,
+          color: 'var(--muted-foreground)', fontSize: 11,
           padding: '4px 6px', borderRadius: 4,
-          background: 'rgba(255,255,255,0.03)',
+          background: 'var(--secondary)',
         }}>
           5–95% typical:{' '}
-          <strong style={{ color: '#cbd5e0' }}>
+          <strong style={{ color: 'var(--foreground)' }}>
             {fmtNum(lowBand, p.precision)} – {fmtNum(highBand, p.precision)}
           </strong>
         </div>
       )}
 
-      <div style={{ color: '#6b7280', fontSize: 11, marginTop: 2, display: 'flex', justifyContent: 'space-between' }}>
+      <div style={{ color: 'var(--muted-foreground)', fontSize: 11, marginTop: 2, display: 'flex', justifyContent: 'space-between' }}>
         <span>
           {sampleCount.toLocaleString()} samples
           {!hasMedian && (
-            <span style={{ marginLeft: 6, color: '#f0b400' }}>
+            <span style={{ marginLeft: 6, color: 'var(--warning)' }}>
               (no median — showing raw _N)
             </span>
           )}
@@ -479,6 +480,7 @@ const ParameterCard = ({ p, accent, onOpen }) => {
 
 // Drill-down chart: line+band of one parameter over the selected day.
 const ParameterDetailModal = ({ detail, date, loading, data, error, onClose }) => {
+  const chart = useChartColors();
   const { parameter, accent } = detail;
   const chartData = useMemo(() => {
     if (!data?.points) return [];
@@ -511,18 +513,18 @@ const ParameterDetailModal = ({ detail, date, loading, data, error, onClose }) =
           <DialogTitle>
             {parameter.display_label}
             {parameter.display_units && (
-              <span style={{ color: '#a0aec0', fontWeight: 500, fontSize: 14, marginLeft: 8 }}>
+              <span style={{ color: 'var(--muted-foreground)', fontWeight: 500, fontSize: 14, marginLeft: 8 }}>
                 {parameter.display_units}
               </span>
             )}
           </DialogTitle>
-          <div style={{ color: '#a0aec0', fontSize: 12 }}>
+          <div style={{ color: 'var(--muted-foreground)', fontSize: 12 }}>
             {date} · #{parameter.parameter_key}
           </div>
         </DialogHeader>
 
         {loading && (
-          <div style={{ padding: 30, color: '#a0aec0', textAlign: 'center' }}>Loading…</div>
+          <div style={{ padding: 30, color: 'var(--muted-foreground)', textAlign: 'center' }}>Loading…</div>
         )}
         {error && (
           <Alert variant="destructive">{error}</Alert>
@@ -530,9 +532,9 @@ const ParameterDetailModal = ({ detail, date, loading, data, error, onClose }) =
 
         {!loading && data && chartData.length === 0 && (
           <div style={{
-            padding: 30, color: '#a0aec0', textAlign: 'center',
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px dashed rgba(255,255,255,0.15)',
+            padding: 30, color: 'var(--muted-foreground)', textAlign: 'center',
+            background: 'var(--secondary)',
+            border: '1px dashed var(--border)',
             borderRadius: 8, margin: '12px 0',
           }}>No points to plot for this parameter on this day.</div>
         )}
@@ -541,18 +543,18 @@ const ParameterDetailModal = ({ detail, date, loading, data, error, onClose }) =
           <div style={{ marginTop: 12, padding: '4px 0' }}>
             <ResponsiveContainer width="100%" height={320}>
               <ComposedChart data={chartData} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
                 <XAxis
                   dataKey="ts"
                   type="number"
                   domain={['dataMin', 'dataMax']}
                   tickFormatter={fmtTickTime}
-                  tick={{ fontSize: 10, fill: '#9ca3af' }}
+                  tick={{ fontSize: 10, fill: chart.axis }}
                   minTickGap={40}
                 />
-                <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} />
+                <YAxis tick={{ fontSize: 10, fill: chart.axis }} />
                 <Tooltip
-                  contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: 8 }}
+                  contentStyle={{ backgroundColor: chart.cutout, border: `1px solid ${chart.grid}`, borderRadius: 8, color: chart.foreground }}
                   labelFormatter={fmtTooltipTime}
                   formatter={(value, name) => {
                     if (Array.isArray(value)) return [`${value[0]} – ${value[1]}`, '5–95% band'];
@@ -565,7 +567,7 @@ const ParameterDetailModal = ({ detail, date, loading, data, error, onClose }) =
                       strokeWidth={2} dot={false} connectNulls />
               </ComposedChart>
             </ResponsiveContainer>
-            <div style={{ color: '#6b7280', fontSize: 11, marginTop: 6 }}>
+            <div style={{ color: 'var(--muted-foreground)', fontSize: 11, marginTop: 6 }}>
               Line = median ({parameter.stats_by_suffix?.['50']?.n || 0} samples).
               Shaded band = 5th–95th percentile.
             </div>
@@ -578,17 +580,17 @@ const ParameterDetailModal = ({ detail, date, loading, data, error, onClose }) =
 
 const MetricChip = ({ label, value, highlight }) => (
   <div style={{
-    background: highlight ? 'rgba(63,185,80,0.08)' : 'rgba(255,255,255,0.04)',
-    border: `1px solid ${highlight ? 'rgba(63,185,80,0.3)' : 'rgba(255,255,255,0.08)'}`,
+    background: highlight ? 'color-mix(in srgb, var(--success) 10%, transparent)' : 'var(--secondary)',
+    border: `1px solid ${highlight ? 'color-mix(in srgb, var(--success) 30%, transparent)' : 'var(--border)'}`,
     borderRadius: 6, padding: '4px 6px',
     textAlign: 'center',
   }}>
     <div style={{
-      color: '#6b7280', fontSize: 9, fontWeight: 600,
+      color: 'var(--muted-foreground)', fontSize: 9, fontWeight: 600,
       textTransform: 'uppercase', letterSpacing: 0.5,
     }}>{label}</div>
     <div style={{
-      color: highlight ? '#9ae6b4' : '#e6edf3',
+      color: highlight ? 'var(--success)' : 'var(--foreground)',
       fontSize: 13, fontWeight: 700,
     }}>{value}</div>
   </div>

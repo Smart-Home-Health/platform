@@ -1,4 +1,4 @@
-# Smart Home Health Hub
+# Smart Home Health
 # Copyright (C) 2026 John Carty
 #
 # This program is free software: you can redistribute it and/or modify
@@ -24,9 +24,13 @@ from typing import Optional, Dict, Any
 import logging
 
 from bus import EventBus
-from events import SensorUpdate, MQTTConnectionEvent, VitalSignRecorded, EventSource, NutritionSensorUpdate
+from events import SensorUpdate, MQTTConnectionEvent, VitalSignRecorded, EventSource, NutritionSensorUpdate, DueCountsChanged
 
 logger = logging.getLogger("mqtt_module")
+
+# Per-patient MQTT section ids whose combined-state values are due-now/late badge
+# counts. Each maps to two state keys (see crud helpers / mqtt.discovery).
+BADGE_SECTION_IDS = ("meds_counts", "nutrition_counts", "care_task_counts", "equipment_counts")
 
 class MQTTModule:
     """Manages MQTT message handling and publishes events from MQTT data."""
@@ -37,7 +41,10 @@ class MQTTModule:
         self.mqtt_publisher = None
         self.is_connected = False
         self._patient_state_cache: Dict[int, Dict[str, Any]] = {}
-        
+        # Cached alarm thresholds (min_spo2, max_spo2, min_bpm, max_bpm) + monotonic fetch time.
+        self._alarm_thresholds: Optional[tuple] = None
+        self._alarm_thresholds_ts: float = 0.0
+
     def set_mqtt_components(self, mqtt_manager, mqtt_publisher):
         """Set the MQTT manager and publisher components."""
         self.mqtt_manager = mqtt_manager
@@ -53,6 +60,10 @@ class MQTTModule:
         asyncio.create_task(self._subscribe_to_sensor_updates())
         # Subscribe to SensorUpdate for per-patient combined state publishing
         asyncio.create_task(self._subscribe_to_sensor_updates_patient_state())
+        # Subscribe to DueCountsChanged so badge-count sensors update instantly
+        asyncio.create_task(self._subscribe_to_due_counts_changed())
+        # Periodically recompute badge counts so they "age in" over time
+        asyncio.create_task(self._badge_counts_updater())
         logger.info("MQTT module event subscribers started")
     
     async def _subscribe_to_sensor_updates(self):
@@ -65,36 +76,36 @@ class MQTTModule:
                 logger.error(f"Error handling NutritionSensorUpdate event: {e}")
     
     async def _handle_sensor_update(self, event: NutritionSensorUpdate):
-        """Handle SensorUpdate events by publishing to MQTT."""
+        """Nutrition (manual OR scheduled feeds + target changes) and bathroom/output
+        changes flow through here from the dedicated nutrition module. Recompute the
+        patient's calorie/bathroom state and publish to the per-patient combined state
+        topic, which filters by the patient's MQTT `sections` config. Reacting to the
+        calorie intake/target events covers every intake change without publishing
+        redundantly for water/scheduled."""
         try:
             sensor_type = event.sensor_type
-            value = event.value
-            metadata = event.metadata or {}
-            
-            # Only publish nutrition-related sensor updates to MQTT
-            nutrition_types = [
-                'nutrition_water_intake', 'nutrition_water_scheduled', 'nutrition_water_target',
-                'nutrition_calories_intake', 'nutrition_calories_scheduled', 'nutrition_calories_target'
-            ]
-            
-            if sensor_type in nutrition_types:
-                logger.info(f"Publishing {sensor_type} to MQTT: {value}")
-                
-                if self.mqtt_publisher and self.mqtt_publisher.is_available():
-                    vital_data = {
-                        'value': value,
-                        'metadata': metadata
-                    }
-                    success = self.mqtt_publisher.publish_vital_data(sensor_type, vital_data)
-                    if success:
-                        logger.info(f"Successfully published {sensor_type} to MQTT")
-                    else:
-                        logger.warning(f"Failed to publish {sensor_type} to MQTT")
-                else:
-                    logger.debug(f"MQTT publisher not available for {sensor_type}")
-                    
+            if sensor_type == 'bathroom':
+                compute = self._bathroom_state
+            elif sensor_type in ('nutrition_calories_intake', 'nutrition_calories_target'):
+                compute = self._nutrition_state
+            else:
+                return
+
+            patient_id = (event.metadata or {}).get('patient_id')
+            if patient_id is None:
+                logger.debug(f"Event {sensor_type} has no patient_id; skipping")
+                return
+            if not (self.mqtt_publisher and self.mqtt_publisher.is_available()):
+                return
+
+            state_update = await compute(patient_id)
+            if not state_update:
+                return
+            self._patient_state_cache.setdefault(patient_id, {}).update(state_update)
+            if await self._publish_patient_state_with_alarms(patient_id):
+                logger.info(f"Published {sensor_type} state for patient {patient_id} to HA")
         except Exception as e:
-            logger.error(f"Error handling SensorUpdate event: {e}")
+            logger.error(f"Error handling NutritionSensorUpdate event: {e}")
 
     async def _subscribe_to_sensor_updates_patient_state(self):
         """Subscribe to SensorUpdate; when patient_id is set, merge into per-patient state and publish combined state to MQTT."""
@@ -105,14 +116,152 @@ class MQTTModule:
                 if patient_id is None:
                     continue
                 if patient_id not in self._patient_state_cache:
-                    self._patient_state_cache[patient_id] = {}
+                    # Fresh cache (e.g. after a restart): seed DB-derived keys
+                    # (bathroom kind, calorie state) so the frequent reader
+                    # publishes don't overwrite the retained combined state with
+                    # only live-reader keys and blank out bathroom/nutrition in HA.
+                    self._patient_state_cache[patient_id] = await self._seed_patient_state(patient_id)
                 self._patient_state_cache[patient_id].update(event.values)
-                if self.mqtt_publisher and self.mqtt_publisher.is_available():
-                    self.mqtt_publisher.publish_patient_combined_state(
-                        patient_id, self._patient_state_cache[patient_id]
-                    )
+                await self._publish_patient_state_with_alarms(patient_id)
             except Exception as e:
                 logger.error(f"Error publishing patient state to MQTT: {e}")
+
+    async def _subscribe_to_due_counts_changed(self):
+        """Refresh a patient's MQTT badge counts the moment a due item is logged /
+        completed / restocked (DueCountsChanged), so HA reflects it without waiting
+        for the periodic tick."""
+        logger.info("Starting subscription to DueCountsChanged for MQTT badge counts")
+        async for event in self.event_bus.subscribe_to_type(DueCountsChanged):
+            try:
+                patient_id = getattr(event, "patient_id", None)
+                if patient_id is None:
+                    continue
+                await self._refresh_and_publish_badge_counts(patient_id)
+            except Exception as e:
+                logger.error(f"Error handling DueCountsChanged for MQTT badge counts: {e}")
+
+    async def _badge_counts_updater(self):
+        """Recompute every MQTT-enabled patient's badge counts every 60s so the
+        due-now/late counts age in as scheduled times pass — there is no event when
+        an occurrence simply crosses the ±1h / >1h thresholds. Mirrors the live
+        dashboard's 60s badge poll. Patients without a badge section enabled are a
+        no-op (the counts are config-gated in _badge_counts)."""
+        from mqtt.settings import get_patients_with_mqtt_enabled
+        logger.info("Started MQTT badge-counts updater (60s)")
+        while True:
+            await asyncio.sleep(60)
+            try:
+                if not (self.mqtt_publisher and self.mqtt_publisher.is_available()):
+                    continue
+                patients = await asyncio.to_thread(get_patients_with_mqtt_enabled)
+                for entry in patients:
+                    await self._refresh_and_publish_badge_counts(entry["patient_id"])
+            except Exception as e:
+                logger.error(f"Error in MQTT badge-counts updater: {e}")
+
+    async def _badge_counts(self, patient_id: int) -> Dict[str, Any]:
+        """Combined-state badge keys for a patient: due-now/late counts for meds,
+        nutrition, care tasks, and equipment. Only the categories whose MQTT
+        section is enabled (get/both) are computed — so a patient not using badge
+        counts pays for no schedule queries and triggers no extra publishing."""
+        def _load():
+            from mqtt.settings import get_patient_mqtt_config
+            from state_manager import get_db_session
+            cfg = get_patient_mqtt_config(patient_id) or {}
+            sections = cfg.get("sections") or {}
+            wanted = {s for s in BADGE_SECTION_IDS if sections.get(s) in ("get", "both")}
+            if not wanted:
+                return {}
+            out: Dict[str, Any] = {}
+            with get_db_session() as db:
+                if "meds_counts" in wanted:
+                    from crud.medications import get_medication_due_now_late_counts
+                    c = get_medication_due_now_late_counts(db, patient_id=patient_id)
+                    out["meds_due_now"], out["meds_late"] = c["due_now"], c["late"]
+                if "nutrition_counts" in wanted:
+                    from crud.scheduling import get_nutrition_due_now_late_counts
+                    c = get_nutrition_due_now_late_counts(db, patient_id=patient_id)
+                    out["nutrition_due_now"], out["nutrition_late"] = c["due_now"], c["late"]
+                if "care_task_counts" in wanted:
+                    from crud.scheduling import get_care_task_due_now_late_counts
+                    c = get_care_task_due_now_late_counts(db, patient_id=patient_id)
+                    out["care_tasks_due_now"], out["care_tasks_late"] = c["due_now"], c["late"]
+                if "equipment_counts" in wanted:
+                    from crud.equipment import get_equipment_due_now_late_counts
+                    c = get_equipment_due_now_late_counts(db, patient_id=patient_id)
+                    out["equipment_due_now"], out["equipment_late"] = c["due_now"], c["late"]
+            return out
+        try:
+            return await asyncio.to_thread(_load)
+        except Exception as e:
+            logger.error(f"Error computing badge counts for patient {patient_id}: {e}")
+            return {}
+
+    async def _refresh_and_publish_badge_counts(self, patient_id: int) -> None:
+        """Recompute badge counts for a patient and republish the combined state.
+        No-op when no badge section is enabled (empty counts). Seeds a fresh cache
+        first so the republish doesn't blank out vitals/nutrition in HA."""
+        if not (self.mqtt_publisher and self.mqtt_publisher.is_available()):
+            return
+        counts = await self._badge_counts(patient_id)
+        if not counts:
+            return
+        if patient_id not in self._patient_state_cache:
+            self._patient_state_cache[patient_id] = await self._seed_patient_state(patient_id)
+        self._patient_state_cache[patient_id].update(counts)
+        await self._publish_patient_state_with_alarms(patient_id)
+
+    async def _get_alarm_thresholds(self) -> tuple:
+        """Return (min_spo2, max_spo2, min_bpm, max_bpm) from settings, cached for 60s."""
+        import time
+        now = time.monotonic()
+        if self._alarm_thresholds is None or now - self._alarm_thresholds_ts > 60:
+            def _load():
+                from crud.settings import get_setting
+                from state_manager import get_db_session
+                with get_db_session() as db:
+                    return (
+                        int(get_setting(db, 'min_spo2', 90)),
+                        int(get_setting(db, 'max_spo2', 100)),
+                        int(get_setting(db, 'min_bpm', 55)),
+                        int(get_setting(db, 'max_bpm', 155)),
+                    )
+            try:
+                self._alarm_thresholds = await asyncio.to_thread(_load)
+                self._alarm_thresholds_ts = now
+            except Exception as e:
+                logger.error(f"Error loading alarm thresholds, using defaults: {e}")
+                return self._alarm_thresholds or (90, 100, 55, 155)
+        return self._alarm_thresholds
+
+    @staticmethod
+    def _compute_alarm_flags(state: Dict[str, Any], thresholds: tuple) -> Dict[str, str]:
+        """Map SpO₂/BPM readings to HA binary-sensor payloads ("ON"/"OFF").
+
+        Returns the safe "OFF" whenever the reading is in range, missing, or
+        the sensor reports disconnected (-1), so Home Assistant never shows
+        "Unknown" for an alarm that is simply not firing.
+        """
+        min_spo2, max_spo2, min_bpm, max_bpm = thresholds
+
+        def _flag(value, lo, hi) -> str:
+            if isinstance(value, (int, float)) and not isinstance(value, bool) and value != -1:
+                return "ON" if (value < lo or value > hi) else "OFF"
+            return "OFF"
+
+        return {
+            "spo2_alarm": _flag(state.get("spo2"), min_spo2, max_spo2),
+            "bpm_alarm": _flag(state.get("bpm"), min_bpm, max_bpm),
+        }
+
+    async def _publish_patient_state_with_alarms(self, patient_id: int) -> bool:
+        """Publish a patient's cached state to MQTT with computed alarm flags included."""
+        if not (self.mqtt_publisher and self.mqtt_publisher.is_available()):
+            return False
+        state = self._patient_state_cache.get(patient_id, {})
+        thresholds = await self._get_alarm_thresholds()
+        payload = {**state, **self._compute_alarm_flags(state, thresholds)}
+        return self.mqtt_publisher.publish_patient_combined_state(patient_id, payload)
         
     async def _subscribe_to_vital_saved(self):
         """Subscribe to vital_saved events and publish them to MQTT."""
@@ -143,7 +292,63 @@ class MQTTModule:
                     'map_bp': vital_data.get('map_bp') or vital_data.get('map'),
                 }.items() if v is not None
             }
+        if vital_type == 'weight':
+            value = vital_data.get('value')
+            if value is None:
+                value = vital_data.get('weight')
+            return {'weight': value} if value is not None else {}
+        # Bathroom now flows through the dedicated output module (NutritionOutput),
+        # not the legacy manual-vitals 'bathroom' path.
         return {}
+
+    async def _nutrition_state(self, patient_id: int) -> Dict[str, Any]:
+        """Combined-state nutrition keys for a patient: last feed, today's total,
+        and daily goal (kcal). Sourced from the DB off the event loop."""
+        def _load():
+            from crud.nutrition import get_patient_nutrition_mqtt_state
+            from state_manager import get_db_session
+            with get_db_session() as db:
+                return get_patient_nutrition_mqtt_state(db, patient_id)
+        try:
+            return await asyncio.to_thread(_load)
+        except Exception as e:
+            logger.error(f"Error computing nutrition state for patient {patient_id}: {e}")
+            return {}
+
+    async def _seed_patient_state(self, patient_id: int) -> Dict[str, Any]:
+        """DB-derived combined-state keys used to seed a fresh cache so they
+        survive a restart and aren't dropped from the retained state by the next
+        live-reader publish. Covers manual vitals (weight, temperature, BP),
+        bathroom kind, and calorie/water state. Live-reader keys (spo2/bpm/
+        perfusion) self-heal on the next reading and need no seeding."""
+        def _load_vitals():
+            from crud.vitals import get_patient_vitals_mqtt_state
+            from state_manager import get_db_session
+            with get_db_session() as db:
+                return get_patient_vitals_mqtt_state(db, patient_id)
+        seed: Dict[str, Any] = {}
+        try:
+            seed.update(await asyncio.to_thread(_load_vitals))
+        except Exception as e:
+            logger.error(f"Error seeding vitals for patient {patient_id}: {e}")
+        seed.update(await self._bathroom_state(patient_id))
+        seed.update(await self._nutrition_state(patient_id))
+        seed.update(await self._badge_counts(patient_id))
+        return seed
+
+    async def _bathroom_state(self, patient_id: int) -> Dict[str, Any]:
+        """Combined-state bathroom key for a patient: the last output kind
+        (urine / bowel / both). Sourced from the DB off the event loop."""
+        def _load():
+            from crud.nutrition import get_patient_bathroom_mqtt_state
+            from state_manager import get_db_session
+            with get_db_session() as db:
+                return get_patient_bathroom_mqtt_state(db, patient_id)
+        try:
+            return await asyncio.to_thread(_load)
+        except Exception as e:
+            logger.error(f"Error computing bathroom state for patient {patient_id}: {e}")
+            return {}
 
     async def _handle_vital_saved(self, event: dict):
         """Handle vital_saved events by publishing to MQTT."""
@@ -157,39 +362,34 @@ class MQTTModule:
 
             logger.info(f"Extracted: vital_type={vital_type}, vital_data={vital_data}, from_manual={from_manual}, patient_id={patient_id}")
 
-            # Skip nutrition types - they're handled by NutritionSensorUpdate events
-            nutrition_vital_types = ['water', 'water_ml', 'calories']
-            if vital_type in nutrition_vital_types:
-                logger.info(f"Skipping {vital_type} - handled by NutritionSensorUpdate with daily totals")
+            if not (vital_type and from_manual and patient_id is not None):
+                logger.info(f"Skipping MQTT publish - vital_type={vital_type}, from_manual={from_manual}, patient_id={patient_id}")
                 return
 
-            if vital_type and vital_data and from_manual:
-                logger.info(f"Publishing manually saved {vital_type} to MQTT: {vital_data}")
+            # Build the per-patient combined-state update. Nutrition is sourced from
+            # the DB (last feed / today's total / daily goal); other vitals map from
+            # the event payload. publish_patient_combined_state() then filters by the
+            # patient's MQTT `sections` config, so what is actually sent is driven by
+            # configuration — no hardcoded global topics / enabled flags.
+            # Nutrition flows through NutritionSensorUpdate (covers manual + scheduled
+            # feeds and target changes); skip it here to avoid double-publishing.
+            if vital_type in ('calories', 'water', 'water_ml'):
+                return
+            state_update = self._vital_data_to_patient_state(vital_type, vital_data)
 
-                if self.mqtt_publisher and self.mqtt_publisher.is_available():
-                    success = self.mqtt_publisher.publish_vital_data(vital_type, vital_data)
-                    if success:
-                        logger.info(f"Successfully published {vital_type} to MQTT")
-                    else:
-                        logger.warning(f"Failed to publish {vital_type} to MQTT")
+            if not state_update:
+                logger.debug(f"No combined-state keys for {vital_type}; nothing to publish")
+                return
 
-                    # So HA sees it: publish to patient combined state topic (discovery uses shh/patient/{id}/state)
-                    if patient_id is not None:
-                        state_update = self._vital_data_to_patient_state(vital_type, vital_data)
-                        if state_update:
-                            if patient_id not in self._patient_state_cache:
-                                self._patient_state_cache[patient_id] = {}
-                            self._patient_state_cache[patient_id].update(state_update)
-                            if self.mqtt_publisher.publish_patient_combined_state(
-                                patient_id, self._patient_state_cache[patient_id]
-                            ):
-                                logger.info(f"Published {vital_type} to patient {patient_id} state topic for HA")
-                            else:
-                                logger.debug(f"Patient {patient_id} state topic not configured or filtered out")
-                else:
-                    logger.info(f"MQTT publisher not available for {vital_type} (MQTT disabled)")
+            if not (self.mqtt_publisher and self.mqtt_publisher.is_available()):
+                logger.info(f"MQTT publisher not available for {vital_type} (MQTT disabled)")
+                return
+
+            self._patient_state_cache.setdefault(patient_id, {}).update(state_update)
+            if await self._publish_patient_state_with_alarms(patient_id):
+                logger.info(f"Published {vital_type} to patient {patient_id} state topic for HA")
             else:
-                logger.info(f"Skipping MQTT publish - vital_type={vital_type}, has_data={bool(vital_data)}, from_manual={from_manual}")
+                logger.debug(f"Patient {patient_id} state topic not configured or filtered out")
 
         except Exception as e:
             logger.error(f"Error handling vital_saved event: {e}")

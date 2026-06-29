@@ -1,5 +1,5 @@
 /*
- * Smart Home Health Hub
+ * Smart Home Health
  * Copyright (C) 2026 John Carty
  *
  * This program is free software: you can redistribute it and/or modify
@@ -19,8 +19,9 @@ import React, { useState } from 'react';
 import { LineChart, Line, ResponsiveContainer, YAxis, XAxis, Tooltip } from "recharts";
 import NutritionGaugeCard from './dashboard/NutritionGaugeCard';
 import QuickAddVitalModal from './vitals/QuickAddVitalModal';
+import { CHART_CHROME } from '../contexts/DashboardThemeContext';
 
-const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved }) => {
+const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved, chrome = CHART_CHROME.blue }) => {
   const [isFlipped, setIsFlipped] = useState(false);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
 
@@ -78,18 +79,18 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved }) 
       
       return (
         <div style={{
-          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          backgroundColor: chrome.tooltipBg,
           padding: '8px 12px',
           borderRadius: '4px',
-          border: '1px solid #333',
-          color: '#fff',
+          border: `1px solid ${chrome.tooltipBorder}`,
+          color: chrome.tooltipText,
           fontSize: '12px',
           boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)'
         }}>
           <div style={{ marginBottom: '4px', fontWeight: '500' }}>
             {formatDisplayValue(data, vitalType)}
           </div>
-          <div style={{ color: '#ccc', fontSize: '10px' }}>
+          <div style={{ color: chrome.textMuted, fontSize: '10px' }}>
             {formatDateTime(data.datetime)}
           </div>
           {vitalType === 'bathroom' && data.vital_group && (
@@ -310,24 +311,8 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved }) 
         }}
         onClick={() => setIsFlipped(true)}
         >
-          {/* Quick-add button (skip if no patient context) */}
-          {patientId && (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); setQuickAddOpen(true); }}
-              title={`Add ${displayTitle}`}
-              aria-label={`Add ${displayTitle}`}
-              style={{
-                position: 'absolute', top: 6, right: 6, zIndex: 5,
-                width: 28, height: 28, borderRadius: '50%',
-                border: '1px solid rgba(255,255,255,0.18)',
-                background: 'rgba(0,0,0,0.45)',
-                color: '#fff', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 18, lineHeight: 1, fontWeight: 600,
-              }}
-            >+</button>
-          )}
+          {/* Quick-add lives on the flipped (details) side, not here — keeps the
+              chart view clean. See the back side below. */}
           <h3 style={{
             color: vitalType === 'bathroom' && primaryGroup ?
               getChartColor(vitalType, primaryGroup) :
@@ -350,7 +335,7 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved }) 
                     type="number"
                     domain={[0, Math.max(0, chartData.length - 1)]}
                     height={16}
-                    tick={{ fontSize: 9, fill: '#6b7280' }}
+                    tick={{ fontSize: 9, fill: chrome.axis }}
                     axisLine={false}
                     tickLine={false}
                     interval="preserveStartEnd"
@@ -365,7 +350,7 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved }) 
                   <YAxis
                     domain={calculateYDomain()}
                     width={30}
-                    tick={{ fontSize: 9, fill: '#6b7280' }}
+                    tick={{ fontSize: 9, fill: chrome.axis }}
                     axisLine={false}
                     tickLine={false}
                     tickCount={3}
@@ -384,7 +369,7 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved }) 
                       fill: vitalType === 'bathroom' && chartData[0]?.group ?
                         getChartColor(vitalType, chartData[0].group) :
                         getChartColor(vitalType),
-                      stroke: '#fff',
+                      stroke: chrome.bg,
                       strokeWidth: 2
                     }}
                     isAnimationActive={false}
@@ -397,7 +382,7 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved }) 
                 alignItems: 'center',
                 justifyContent: 'center',
                 height: '100%',
-                color: '#666',
+                color: chrome.textDim,
                 fontSize: '14px'
               }}>
                 No {vitalType} data available
@@ -410,7 +395,7 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved }) 
             textAlign: 'center',
             padding: '8px',
             fontSize: '11px',
-            color: '#888',
+            color: chrome.textDim,
             opacity: 0.7
           }}>
             Click to view details
@@ -457,9 +442,9 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved }) 
                 <tr>
                   <th style={{ 
                     padding: '4px 8px', 
-                    borderBottom: '1px solid #333',
+                    borderBottom: `1px solid ${chrome.border}`,
                     fontSize: '10px',
-                    color: '#ccc',
+                    color: chrome.textMuted,
                     textAlign: 'left'
                   }}>
                     Time
@@ -467,9 +452,9 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved }) 
                   {vitalType === 'bathroom' && (
                     <th style={{ 
                       padding: '4px 8px', 
-                      borderBottom: '1px solid #333',
+                      borderBottom: `1px solid ${chrome.border}`,
                       fontSize: '10px',
-                      color: '#ccc',
+                      color: chrome.textMuted,
                       textAlign: 'left'
                     }}>
                       Group
@@ -477,9 +462,9 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved }) 
                   )}
                   <th style={{ 
                     padding: '4px 8px', 
-                    borderBottom: '1px solid #333',
+                    borderBottom: `1px solid ${chrome.border}`,
                     fontSize: '10px',
-                    color: '#ccc',
+                    color: chrome.textMuted,
                     textAlign: 'right'
                   }}>
                     Value
@@ -492,16 +477,16 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved }) 
                     <tr key={index}>
                       <td style={{ 
                         padding: '4px 8px', 
-                        borderBottom: '1px solid #333',
+                        borderBottom: `1px solid ${chrome.border}`,
                         fontSize: '11px',
-                        color: '#ccc'
+                        color: chrome.textMuted
                       }}>
                         {formatDateTime(item.datetime)}
                       </td>
                       {vitalType === 'bathroom' && (
                         <td style={{ 
                           padding: '4px 8px', 
-                          borderBottom: '1px solid #333',
+                          borderBottom: `1px solid ${chrome.border}`,
                           fontSize: '11px',
                           color: getChartColor(vitalType, item.vital_group),
                           fontWeight: '500'
@@ -511,7 +496,7 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved }) 
                       )}
                       <td style={{ 
                         padding: '4px 8px', 
-                        borderBottom: '1px solid #333',
+                        borderBottom: `1px solid ${chrome.border}`,
                         fontSize: '11px',
                         color: '#fff',
                         textAlign: 'right',
@@ -526,7 +511,7 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved }) 
                     <td colSpan={vitalType === 'bathroom' ? 3 : 2} style={{ 
                       textAlign: "center", 
                       padding: '20px',
-                      color: '#666',
+                      color: chrome.textDim,
                       fontSize: '11px'
                     }}>
                       No data available
@@ -536,13 +521,35 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved }) 
               </tbody>
             </table>
           </div>
-          
+
+          {/* Quick-add button — only on the details side, at the bottom.
+              backfaceVisibility:hidden keeps it from bleeding onto the front. */}
+          {patientId && (
+            <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 4 }}>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setQuickAddOpen(true); }}
+                title={`Add ${displayTitle}`}
+                aria-label={`Add ${displayTitle}`}
+                style={{
+                  backfaceVisibility: 'hidden',
+                  width: 30, height: 30, borderRadius: '50%',
+                  border: '1px solid rgba(255,255,255,0.18)',
+                  background: 'rgba(0,0,0,0.45)',
+                  color: '#fff', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 18, lineHeight: 1, fontWeight: 600,
+                }}
+              >+</button>
+            </div>
+          )}
+
           {/* Click hint */}
           <div style={{
             textAlign: 'center',
             padding: '8px',
             fontSize: '11px',
-            color: '#888',
+            color: chrome.textDim,
             opacity: 0.7
           }}>
             Click to hide details

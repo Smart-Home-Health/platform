@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Smart Home Health Hub
+# Smart Home Health
 # Copyright (C) 2026 John Carty
 #
 # This program is free software: you can redistribute it and/or modify

@@ -1,5 +1,5 @@
 /*
- * Smart Home Health Hub
+ * Smart Home Health
  * Copyright (C) 2026 John Carty
  *
  * This program is free software: you can redistribute it and/or modify
@@ -63,8 +63,8 @@ export default function AlertsModal({ isOpen, onClose, alertsCount, onAlertAckno
             padding: '8px 16px',
             border: 'none',
             borderRadius: '6px',
-            backgroundColor: tab === 'list' ? '#007bff' : '#f8f9fa',
-            color: tab === 'list' ? '#fff' : '#333',
+            backgroundColor: tab === 'list' ? 'var(--primary)' : 'var(--secondary)',
+            color: tab === 'list' ? 'var(--primary-foreground)' : 'var(--secondary-foreground)',
             cursor: 'pointer',
             fontWeight: '500',
             fontSize: '14px',
@@ -76,8 +76,8 @@ export default function AlertsModal({ isOpen, onClose, alertsCount, onAlertAckno
           Alert List
           {alertsCount > 0 && (
             <span style={{
-              backgroundColor: '#dc3545',
-              color: '#fff',
+              backgroundColor: 'var(--destructive)',
+              color: 'var(--destructive-foreground)',
               borderRadius: '12px',
               padding: '2px 8px',
               fontSize: '12px',
@@ -93,8 +93,8 @@ export default function AlertsModal({ isOpen, onClose, alertsCount, onAlertAckno
             padding: '8px 16px',
             border: 'none',
             borderRadius: '6px',
-            backgroundColor: tab === 'history' ? '#007bff' : '#f8f9fa',
-            color: tab === 'history' ? '#fff' : '#333',
+            backgroundColor: tab === 'history' ? 'var(--primary)' : 'var(--secondary)',
+            color: tab === 'history' ? 'var(--primary-foreground)' : 'var(--secondary-foreground)',
             cursor: 'pointer',
             fontWeight: '500',
             fontSize: '14px'

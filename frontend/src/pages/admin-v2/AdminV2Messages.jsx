@@ -1,5 +1,5 @@
 /*
- * Smart Home Health Hub
+ * Smart Home Health
  * Copyright (C) 2026 John Carty
  *
  * This program is free software: you can redistribute it and/or modify
@@ -177,7 +177,7 @@ const AdminV2Messages = () => {
         </div>
 
         {loading ? (
-          <div style={{ textAlign: 'center', padding: 40, color: '#a0aec0' }}>Loading messages…</div>
+          <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted-foreground)' }}>Loading messages…</div>
         ) : messages.length === 0 ? (
           <div className="admin-v2-empty-state-small" style={{ textAlign: 'center', padding: 40 }}>
             No {statusFilter} messages.
@@ -210,7 +210,7 @@ const AdminV2Messages = () => {
                     <td>
                       <div style={{ fontWeight: 600 }}>{message.title}</div>
                       {message.body && (
-                        <div style={{ fontSize: 13, color: '#a0aec0', maxWidth: 420, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <div style={{ fontSize: 13, color: 'var(--muted-foreground)', maxWidth: 420, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {message.body}
                         </div>
                       )}
@@ -242,7 +242,7 @@ const AdminV2Messages = () => {
             <Button variant="secondary" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
               Previous
             </Button>
-            <span style={{ color: '#a0aec0', fontSize: 14 }}>
+            <span style={{ color: 'var(--muted-foreground)', fontSize: 14 }}>
               Page {page} of {totalPages} ({total} total)
             </span>
             <Button variant="secondary" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
