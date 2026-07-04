@@ -108,6 +108,27 @@ def resolve_tz_for_patient(db, patient_id) -> ZoneInfo:
         return ZoneInfo(DEFAULT_TZ)
 
 
+def local_day_range_utc(target_date, tz_offset_minutes=None, tz=None):
+    """Return (local_start_utc, local_end_utc) for ``target_date`` as aware UTC
+    datetimes, picking the day boundary by precedence: tz (IANA ZoneInfo, the
+    preferred DST-correct source) > tz_offset_minutes (legacy fixed offset) > UTC.
+
+    When tz is given, end is the *next local midnight* (not start+24h) so DST
+    transition days are 23h/25h, not a fixed 24h.
+    """
+    if tz is not None:
+        start = datetime.combine(target_date, datetime.min.time(), tzinfo=tz).astimezone(timezone.utc)
+        end = datetime.combine(target_date + timedelta(days=1), datetime.min.time(), tzinfo=tz).astimezone(timezone.utc)
+        return start, end
+    if tz_offset_minutes is None:
+        start = datetime.combine(target_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+        return start, start + timedelta(days=1)
+    offset = timedelta(minutes=tz_offset_minutes)
+    local_midnight_naive = datetime.combine(target_date, datetime.min.time())
+    start = (local_midnight_naive - offset).replace(tzinfo=timezone.utc)
+    return start, start + timedelta(days=1)
+
+
 def local_day_bounds(tz: ZoneInfo, now_utc: datetime = None) -> dict:
     """Local (account-timezone) "today" and "yesterday" expressed in UTC.
 
