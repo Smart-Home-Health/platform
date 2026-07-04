@@ -123,7 +123,7 @@ async def get_daily_schedule(
     ),
     include_prior_day: bool = Query(
         False,
-        description="If true, also include the prior day's nutrition items (marked is_yesterday=true). Used by the live dashboard so missed items remain visible; admin views leave it off to avoid duplicating yesterday's completions.",
+        description="If true, also include the prior day's medications, nutrition, and care tasks (marked is_yesterday=true). Used by the live dashboard so missed items remain visible; admin views leave it off to avoid duplicating yesterday's completions.",
     ),
     db: Session = Depends(get_db),
 ):
@@ -148,20 +148,33 @@ async def get_daily_schedule(
 
         # Get all scheduled items (now includes completion status from joined logs).
         medications = get_scheduled_medications(db, schedule_date, patient_id, tz_offset_minutes=tz_offset_minutes, tz=tz)
+        for item in medications:
+            item["is_yesterday"] = False
         today_nutrition = get_scheduled_nutrition(db, schedule_date, patient_id, tz_offset_minutes=tz_offset_minutes, tz=tz)
         for item in today_nutrition:
             item["is_yesterday"] = False
         nutrition_items = today_nutrition
+        care_tasks = get_scheduled_care_tasks(db, schedule_date, patient_id, tz_offset_minutes=tz_offset_minutes, tz=tz)
+        for item in care_tasks:
+            item["is_yesterday"] = False
         if include_prior_day:
             # Live dashboard opts in so missed items from yesterday stay
             # visible. Admin views skip this to avoid duplicating yesterday's
-            # completions onto the current-day view.
+            # completions onto the current-day view. Yesterday and today are
+            # disjoint local-day windows, so logs/PRN rows can't double-report.
             prior_date = schedule_date - timedelta(days=1)
+            prior_meds = get_scheduled_medications(db, prior_date, patient_id, tz_offset_minutes=tz_offset_minutes, tz=tz)
+            for item in prior_meds:
+                item["is_yesterday"] = True
+            medications = prior_meds + medications
             prior_nutrition = get_scheduled_nutrition(db, prior_date, patient_id, tz_offset_minutes=tz_offset_minutes, tz=tz)
             for item in prior_nutrition:
                 item["is_yesterday"] = True
             nutrition_items = prior_nutrition + nutrition_items
-        care_tasks = get_scheduled_care_tasks(db, schedule_date, patient_id, tz_offset_minutes=tz_offset_minutes, tz=tz)
+            prior_tasks = get_scheduled_care_tasks(db, prior_date, patient_id, tz_offset_minutes=tz_offset_minutes, tz=tz)
+            for item in prior_tasks:
+                item["is_yesterday"] = True
+            care_tasks = prior_tasks + care_tasks
         
         # Build response - completion status already included from get_scheduled_* functions
         result = {
@@ -189,6 +202,7 @@ async def get_daily_schedule(
                 "completed_by": med["completed_by"],
                 "is_prn": med.get("is_prn", False),
                 "log_id": med.get("log_id"),
+                "is_yesterday": med.get("is_yesterday", False),
                 "type": "medication",
             })
         
@@ -236,6 +250,7 @@ async def get_daily_schedule(
                 "category_color": task.get("category_color"),
                 "is_prn": task.get("is_prn", False),
                 "log_id": task.get("log_id"),
+                "is_yesterday": task.get("is_yesterday", False),
                 "type": "care_task"
             })
         

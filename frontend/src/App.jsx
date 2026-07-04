@@ -54,6 +54,7 @@ import AdminV2Symptoms from './pages/admin-v2/AdminV2Symptoms';
 import AdminV2Diagnoses from './pages/admin-v2/AdminV2Diagnoses';
 import AdminV2Implants from './pages/admin-v2/AdminV2Implants';
 import AdminV2Nutrition from './pages/admin-v2/AdminV2Nutrition';
+import AdminV2NutritionSchedule from './pages/admin-v2/AdminV2NutritionSchedule';
 import AdminV2ProfileSummary from './pages/admin-v2/AdminV2ProfileSummary';
 import AdminV2Monitoring from './pages/admin-v2/AdminV2Monitoring';
 import AdminV2Messages from './pages/admin-v2/AdminV2Messages';
@@ -155,6 +156,7 @@ function AppContent() {
             
           {/* Care Nutrition Routes */}
           <Route path="/care/nutrition" element={<ProtectedRoute><Layout><AdminV2Nutrition /></Layout></ProtectedRoute>} />
+          <Route path="/care/nutrition/schedule" element={<ProtectedRoute><Layout><AdminV2NutritionSchedule /></Layout></ProtectedRoute>} />
           <Route path="/care/nutrition/intake" element={<ProtectedRoute><Layout><AdminV2Nutrition /></Layout></ProtectedRoute>} />
           <Route path="/care/nutrition/output" element={<ProtectedRoute><Layout><AdminV2Nutrition /></Layout></ProtectedRoute>} />
           <Route path="/care/nutrition/schedules" element={<ProtectedRoute><Layout><AdminV2Nutrition /></Layout></ProtectedRoute>} />
