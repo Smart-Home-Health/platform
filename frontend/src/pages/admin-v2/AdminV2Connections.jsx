@@ -17,14 +17,14 @@
  */
 import React, { useState, useEffect, useRef } from 'react';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { API_BASE_URL, getApiBaseUrl } from '../../config';
 import AdminV2Layout from './AdminV2Layout';
+import { timeAgo } from '../../utils/timezone';
 import {
   PlusIcon,
   RefreshIcon,
   XIcon,
-  CheckIcon,
-  ClockIcon,
   LinkIcon,
   TrashIcon
 } from '../../components/Icons';
@@ -63,8 +63,9 @@ function CardRow({ label, value }) {
   );
 }
 
-export default function AdminV2Integrations() {
+export default function AdminV2Connections() {
   const { selectedPatient, loadingPatients } = useAdminPatient();
+  const { user } = useAuth() || {};
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -251,7 +252,7 @@ export default function AdminV2Integrations() {
         }
       }
 
-      setSuccess(`${selectedIntegration.name} integration added successfully`);
+      setSuccess(`${selectedIntegration.name} added`);
       await fetchIntegrations();
       closeAddModal();
     } catch (err) {
@@ -299,7 +300,7 @@ export default function AdminV2Integrations() {
   };
 
   const startOAuthFlow = async (integrationId) => {
-    const redirectUrl = `${window.location.origin}/care/integrations`;
+    const redirectUrl = `${window.location.origin}/care/profile/connections`;
     const res = await fetch(
       `${API_BASE_URL}/api/integrations/patient/${patientId}/${integrationId}/oauth/start?redirect_url=${encodeURIComponent(redirectUrl)}`,
       { credentials: 'include' }
@@ -528,17 +529,15 @@ export default function AdminV2Integrations() {
     }
   };
 
+  // Plain-English status wording — technical detail lives behind the error
+  // line, not the badge.
   const getStatusBadge = (integration) => {
-    if (!integration.is_enabled) return <Badge variant="muted">Disabled</Badge>;
-    if (integration.last_sync_status === 'failed') return <Badge variant="danger">Error</Badge>;
-    if (integration.last_sync_at) return <Badge variant="success">Connected</Badge>;
-    if (integration.auth_type === 'none') return <Badge variant="success">Active</Badge>;
-    return <Badge variant="warning">Pending Setup</Badge>;
-  };
-
-  const formatDate = (dateStr) => {
-    if (!dateStr) return 'Never';
-    return new Date(dateStr).toLocaleString();
+    if (!integration.is_enabled) return <Badge variant="muted">Paused</Badge>;
+    if (integration.last_sync_status === 'failed') return <Badge variant="danger">Needs attention</Badge>;
+    if (integration.last_sync_at) return <Badge variant="success">Working</Badge>;
+    if (integration.auth_type === 'none') return <Badge variant="success">Working</Badge>;
+    if (integration.auth_type === 'oauth2') return <Badge variant="warning">Waiting for sign-in</Badge>;
+    return <Badge variant="warning">Finishing setup</Badge>;
   };
 
   // Check URL params for OAuth callback
@@ -578,13 +577,7 @@ export default function AdminV2Integrations() {
   const patientReaders = readers.filter(r => r.patient_id === patientId || !r.patient_id);
   const hasConfiguredReaders = patientReaders.some(r => r.is_paired);
 
-  // Stats - include readers in counts
-  const stats = {
-    total: patientIntegrations.length + patientReaders.filter(r => r.is_paired).length,
-    connected: patientIntegrations.filter(i => i.is_enabled && i.last_sync_at).length + patientReaders.filter(r => r.is_paired && r.connected).length,
-    pending: patientIntegrations.filter(i => i.is_enabled && !i.last_sync_at).length + patientReaders.filter(r => r.is_paired && !r.connected).length,
-    available: allAvailableIntegrations.length
-  };
+  const pairedReaderCount = patientReaders.filter(r => r.is_paired).length;
 
   // Loading state
   if (loadingPatients) {
@@ -595,13 +588,26 @@ export default function AdminV2Integrations() {
     );
   }
 
+  // Profile is visible to every user, so gate this tab in-page (the API
+  // endpoints enforce the real security).
+  if (user && !user.is_system_admin) {
+    return (
+      <AdminV2Layout>
+        <div style={{ padding: '2rem', color: 'var(--muted-foreground)', textAlign: 'center' }}>
+          <h3 style={{ color: 'var(--foreground)' }}>Access Denied</h3>
+          <p>Connections are only available to system administrators.</p>
+        </div>
+      </AdminV2Layout>
+    );
+  }
+
   if (!selectedPatient) {
     return (
       <AdminV2Layout>
         <div className="admin-v2-empty-state">
           <LinkIcon size={48} />
           <h3>Select a Patient</h3>
-          <p className="admin-v2-text-muted">Please select a patient to manage integrations.</p>
+          <p className="admin-v2-text-muted">Please select a patient to manage their connections.</p>
         </div>
       </AdminV2Layout>
     );
@@ -634,59 +640,19 @@ export default function AdminV2Integrations() {
           </div>
         )}
 
-        {/* Stats Row */}
-        <div className="admin-v2-stats-row">
-          <div className="admin-v2-stat-card">
-            <div className="admin-v2-stat-icon" style={{ background: 'rgba(88, 166, 255, 0.15)' }}>
-              <LinkIcon size={20} />
-            </div>
-            <div className="admin-v2-stat-info">
-              <h4>{stats.total}</h4>
-              <p>Configured</p>
-            </div>
-          </div>
-          <div className="admin-v2-stat-card">
-            <div className="admin-v2-stat-icon" style={{ background: 'rgba(63, 185, 80, 0.15)' }}>
-              <CheckIcon size={20} />
-            </div>
-            <div className="admin-v2-stat-info">
-              <h4>{stats.connected}</h4>
-              <p>Connected</p>
-            </div>
-          </div>
-          <div className="admin-v2-stat-card">
-            <div className="admin-v2-stat-icon" style={{ background: 'rgba(210, 153, 34, 0.15)' }}>
-              <ClockIcon size={20} />
-            </div>
-            <div className="admin-v2-stat-info">
-              <h4>{stats.pending}</h4>
-              <p>Pending</p>
-            </div>
-          </div>
-          <div className="admin-v2-stat-card">
-            <div className="admin-v2-stat-icon" style={{ background: 'rgba(163, 113, 247, 0.15)' }}>
-              <PlusIcon size={20} />
-            </div>
-            <div className="admin-v2-stat-info">
-              <h4>{stats.available}</h4>
-              <p>Available</p>
-            </div>
-          </div>
-        </div>
-
         {loading ? (
-          <div className="admin-v2-loading">Loading integrations...</div>
+          <div className="admin-v2-loading">Loading connections...</div>
         ) : (
-          <div className="tw mt-4 flex flex-col gap-6">
+          <div className="tw flex flex-col gap-6">
             {/* Configured Integrations */}
             <section className="flex flex-col gap-3">
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-base font-semibold text-foreground">
-                  Connected Integrations ({patientIntegrations.length})
+                  Connected ({patientIntegrations.length + pairedReaderCount})
                 </h3>
                 {unconfiguredIntegrations.length > 0 && (
                   <Button onClick={() => setShowAddModal(true)}>
-                    <PlusIcon size={16} /> Add Integration
+                    <PlusIcon size={16} /> Add a connection
                   </Button>
                 )}
               </div>
@@ -694,10 +660,10 @@ export default function AdminV2Integrations() {
               {patientIntegrations.length === 0 && !hasConfiguredReaders ? (
                 <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border py-12 text-center text-muted-foreground">
                   <LinkIcon size={48} />
-                  <h3 className="text-base font-semibold text-foreground">No Integrations Configured</h3>
-                  <p className="text-sm">Connect your first integration to start syncing health data.</p>
+                  <h3 className="text-base font-semibold text-foreground">Nothing connected yet</h3>
+                  <p className="text-sm">Add a device or service to start collecting health data.</p>
                   <Button onClick={() => setShowAddModal(true)}>
-                    <PlusIcon size={16} /> Add Your First Integration
+                    <PlusIcon size={16} /> Add your first connection
                   </Button>
                 </div>
               ) : patientIntegrations.length === 0 ? null : (
@@ -711,12 +677,16 @@ export default function AdminV2Integrations() {
                         </div>
                       </CardHeader>
                       <CardContent className="flex flex-col gap-1.5 py-3 text-sm">
-                        {integration.last_sync_error && (
-                          <div className="text-xs text-[#ff7b72]">{integration.last_sync_error}</div>
+                        <p className="text-muted-foreground">
+                          {integration.last_sync_at
+                            ? `Synced ${timeAgo(integration.last_sync_at)}`
+                            : 'Not synced yet'}
+                        </p>
+                        {integration.last_sync_status === 'failed' && integration.last_sync_error && (
+                          <div className="text-xs text-[#ff7b72]">
+                            Something went wrong: {integration.last_sync_error}
+                          </div>
                         )}
-                        <CardRow label="Last Sync" value={formatDate(integration.last_sync_at)} />
-                        <CardRow label="Syncs" value={integration.sync_count || 0} />
-                        <CardRow label="Type" value={integration.integration_slug} />
                       </CardContent>
                       <CardFooter className="flex-wrap justify-start gap-2 py-3">
                         {integration.is_enabled && integration.auth_type === 'oauth2' && !integration.last_sync_at && (
@@ -736,7 +706,7 @@ export default function AdminV2Integrations() {
                           </Button>
                         )}
                         <Button size="sm" variant="outline" onClick={() => handleToggle(integration, !integration.is_enabled)}>
-                          {integration.is_enabled ? 'Disable' : 'Enable'}
+                          {integration.is_enabled ? 'Pause' : 'Resume'}
                         </Button>
                         <Button
                           size="sm"
@@ -774,9 +744,12 @@ export default function AdminV2Integrations() {
                       </div>
                     </CardHeader>
                     <CardContent className="flex flex-col gap-1.5 py-3 text-sm">
-                      <CardRow label="Type" value="SHH Pulse Oximeter" />
-                      <CardRow label="IP" value={<code className="text-xs text-muted-foreground">{reader.ip_address}</code>} />
-                      <CardRow label="Last Seen" value={formatDate(reader.last_seen)} />
+                      <p className="text-muted-foreground">
+                        {reader.last_seen ? `Last seen ${timeAgo(reader.last_seen)}` : 'Never seen'}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Pulse oximeter reader · {reader.ip_address}
+                      </p>
                     </CardContent>
                     <CardFooter className="justify-start py-3">
                       <Button size="sm" variant="ghost" className="text-[#ff7b72] hover:text-[#ff7b72]" onClick={() => handleUnpairReader(reader.id)}>
@@ -791,7 +764,7 @@ export default function AdminV2Integrations() {
             {/* Available Integrations */}
             <section className="flex flex-col gap-3">
               <h3 className="text-base font-semibold text-foreground">
-                Available Integrations ({allAvailableIntegrations.length})
+                Available to add ({allAvailableIntegrations.length})
               </h3>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {allAvailableIntegrations.map(integration => {
@@ -910,7 +883,7 @@ export default function AdminV2Integrations() {
         <Dialog open={showAddModal} onOpenChange={(o) => { if (!o) closeAddModal(); }}>
           <DialogContent className="sm:max-w-[560px]" aria-describedby={undefined}>
             <DialogHeader>
-              <DialogTitle>{addStep === 'select-camera' ? 'Select Camera' : 'Add Integration'}</DialogTitle>
+              <DialogTitle>{addStep === 'select-camera' ? 'Select Camera' : 'Add a connection'}</DialogTitle>
             </DialogHeader>
 
             {addStep === 'select-camera' ? (
@@ -964,7 +937,7 @@ export default function AdminV2Integrations() {
                 ))}
                 {unconfiguredIntegrations.length === 0 && (
                   <p className="py-8 text-center text-sm text-muted-foreground">
-                    All available integrations have been configured.
+                    Everything available is already connected.
                   </p>
                 )}
               </div>
@@ -1040,7 +1013,7 @@ export default function AdminV2Integrations() {
                   {addingIntegration ? 'Adding...' : (
                     selectedIntegration.auth_type === 'oauth2'
                       ? `Connect to ${selectedIntegration.name}`
-                      : 'Add Integration'
+                      : 'Add'
                   )}
                 </Button>
               )}

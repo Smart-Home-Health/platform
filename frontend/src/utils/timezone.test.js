@@ -31,6 +31,7 @@ import {
   checkAdministrationWindow,
   checkEarlyAdministration,
   formatDurationMinutes,
+  timeAgo,
 } from './timezone';
 
 describe('local <-> UTC time roundtrip', () => {
@@ -191,5 +192,32 @@ describe('formatDurationMinutes', () => {
     [-10, '0m'],
   ])('formats %i -> %s', (mins, expected) => {
     expect(formatDurationMinutes(mins)).toBe(expected);
+  });
+});
+
+describe('timeAgo', () => {
+  const minsAgo = (m) => new Date(Date.now() - m * 60000).toISOString();
+
+  it('handles null and invalid input', () => {
+    expect(timeAgo(null)).toBe('Never');
+    expect(timeAgo(undefined)).toBe('Never');
+    expect(timeAgo('not-a-date')).toBe('Never');
+  });
+
+  it.each([
+    [0, 'Just now'],
+    [1, '1 minute ago'],
+    [5, '5 minutes ago'],
+    [60, '1 hour ago'],
+    [130, '2 hours ago'],
+    [60 * 24, '1 day ago'],
+    [60 * 24 * 3, '3 days ago'],
+  ])('formats %i minutes back -> %s', (mins, expected) => {
+    expect(timeAgo(minsAgo(mins))).toBe(expected);
+  });
+
+  it('falls back to a plain date past 30 days', () => {
+    const old = minsAgo(60 * 24 * 45);
+    expect(timeAgo(old)).toBe(new Date(old).toLocaleDateString());
   });
 });

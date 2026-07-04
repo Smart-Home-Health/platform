@@ -149,13 +149,14 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
         ? [{ path: '/care/profile/implants', label: 'Implants' }] : []),
       ...(hasAnyPermission(['businesses.read', 'businesses.create', 'businesses.update', 'businesses.delete'])
         ? [{ path: '/care/profile/businesses', label: 'Businesses' }] : []),
+      ...(isSystemAdmin
+        ? [{ path: '/care/profile/connections', label: 'Connections' }] : []),
     ],
     configuration: [
       // System-wide configuration
       { path: '/care/configuration', label: 'General' },
       ...(isSystemAdmin
         ? [{ path: '/care/configuration/account', label: 'Account' }] : []),
-      { path: '/care/configuration/integrations', label: 'Integrations' },
       ...(hasAnyPermission(['patients.read', 'patients.create', 'patients.update', 'patients.delete'])
         ? [{ path: '/care/configuration/patients', label: 'Patients' }] : []),
       ...(hasAnyPermission(['users.read', 'users.create', 'users.update', 'users.delete'])

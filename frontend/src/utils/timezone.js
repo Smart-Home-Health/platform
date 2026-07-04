@@ -339,3 +339,24 @@ export const formatDurationMinutes = (mins) => {
   const m = n % 60;
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 };
+
+/**
+ * Friendly relative time for a past timestamp: "Just now", "5 minutes ago",
+ * "2 hours ago", "3 days ago". Falls back to a plain local date past ~30 days,
+ * and "Never" for null/invalid input.
+ * @param {string|null|undefined} isoStr
+ * @returns {string}
+ */
+export const timeAgo = (isoStr) => {
+  if (!isoStr) return 'Never';
+  const diffMs = Date.now() - new Date(isoStr).getTime();
+  if (Number.isNaN(diffMs)) return 'Never';
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins} minute${mins === 1 ? '' : 's'} ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days} day${days === 1 ? '' : 's'} ago`;
+  return new Date(isoStr).toLocaleDateString();
+};
