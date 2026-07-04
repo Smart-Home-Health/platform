@@ -22,8 +22,12 @@ import { PatientSelectorModal, IntakeModal, OutputModal } from './components';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
-import { NutritionIcon } from '../../components/Icons';
-import ScheduleList from '../../components/schedule/ScheduleList';
+import {
+  NutritionIcon,
+  ClockIcon,
+  CheckIcon,
+  XIcon
+} from '../../components/Icons';
 import { computeScheduleStatus } from '../../components/schedule/scheduleStatus';
 import {
   checkAdministrationWindow,
@@ -42,9 +46,10 @@ import { Alert } from '@/components/ui/alert';
 import './AdminV2.css';
 
 // Daily nutrition schedule view (today + yesterday), the admin counterpart of
-// the live-dashboard NutritionModal. Data comes from the unified
+// the live-dashboard NutritionModal, rendered with the same admin-v2 schedule
+// styling as the meds/care-tasks schedule pages. Data comes from the unified
 // /api/schedule/daily endpoint with include_prior_day=true so missed items
-// from yesterday stay visible, same as the meds/care-tasks schedule pages.
+// from yesterday stay visible.
 const AdminV2NutritionSchedule = () => {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -62,6 +67,14 @@ const AdminV2NutritionSchedule = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  // Status filter state (mirrors the meds schedule page)
+  const [statusFilters, setStatusFilters] = useState({
+    ready: true,
+    upcoming: true,
+    missed: true,
+    completed: false
+  });
+
   // Off-window confirm (mirrors the live nutrition modal)
   const [windowConfirm, setWindowConfirm] = useState({ open: false, item: null, check: null });
 
@@ -69,6 +82,13 @@ const AdminV2NutritionSchedule = () => {
   // the shared AdminV2 modal of the same name.
   const [prnMode, setPrnMode] = useState(null); // null | 'pick' | 'intake' | 'output'
   const [prnDefaultDateTime, setPrnDefaultDateTime] = useState('');
+
+  // Permission helper
+  const hasPermission = (permission) => {
+    if (!user) return false;
+    if (user.is_system_admin) return true;
+    return user.permissions?.includes(permission) || false;
+  };
 
   // Check URL params for patient ID or use context patient
   useEffect(() => {
@@ -128,29 +148,83 @@ const AdminV2NutritionSchedule = () => {
     setShowPatientModal(false);
   };
 
-  // Normalize the API rows into the shape ScheduleList expects.
-  const scheduledItems = useMemo(() => {
+  // Normalize rows: attach the shared time-based status and a coarse bucket
+  // matching the meds page's filters (ready / upcoming / missed / completed).
+  const items = useMemo(() => {
     return scheduled.map(item => {
+      const status = computeScheduleStatus(item);
+      let bucket;
+      if (status === 'completed' || status === 'skipped') bucket = 'completed';
+      else if (status === 'missed') bucket = 'missed';
+      else if (status === 'due_on_time' || status === 'due_warning') bucket = 'ready';
+      else bucket = 'upcoming'; // 'pending'
       const detail = [];
       if (item.default_item) detail.push(item.default_item);
       if (item.default_amount != null) {
         detail.push(`${item.default_amount}${item.default_amount_unit ? ' ' + item.default_amount_unit : ''}`);
       }
       if (item.default_calories != null) detail.push(`${item.default_calories} kcal`);
-      return {
-        id: `${item.schedule_id}-${item.scheduled_time}`,
-        scheduled_time: item.scheduled_time,
-        name: item.name,
-        description: item.description,
-        extra: detail.length ? detail.join(' · ') : null,
-        category: null,
-        status: computeScheduleStatus(item),
-        is_completed: !!item.completed,
-        is_yesterday: !!item.is_yesterday,
-        _raw: item,
-      };
+      return { ...item, _status: status, _bucket: bucket, _detail: detail.join(' · ') };
     });
   }, [scheduled]);
+
+  // Status display helpers (same palette as the meds schedule page)
+  const getStatusInfo = (bucket) => {
+    const statusMap = {
+      'completed': { label: 'Completed', color: '#238636', bg: 'rgba(35, 134, 54, 0.15)', border: '#238636' },
+      'missed': { label: 'Missed', color: '#f85149', bg: 'rgba(248, 81, 73, 0.15)', border: '#f85149' },
+      'upcoming': { label: 'Upcoming', color: '#1f6feb', bg: 'rgba(31, 111, 235, 0.15)', border: '#1f6feb' },
+      'ready': { label: 'Ready', color: '#58a6ff', bg: 'rgba(88, 166, 255, 0.15)', border: '#58a6ff' }
+    };
+    return statusMap[bucket] || statusMap.upcoming;
+  };
+
+  const getStatusText = (item) => {
+    if (item._bucket === 'completed') return item.is_prn ? 'PRN Logged' : 'Completed';
+    if (item._bucket === 'missed') return 'Missed';
+    if (item._bucket === 'ready') return 'Ready';
+    return 'Upcoming';
+  };
+
+  const filteredItems = items.filter(item => statusFilters[item._bucket]);
+
+  // Group by day and time (same shape as the meds schedule page)
+  const groupItems = (list) => {
+    const groups = {};
+    list.forEach(item => {
+      const dateObj = new Date(item.scheduled_time);
+      const dayKey = dateObj.toLocaleDateString(undefined, {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+      const timeStr = dateObj.toLocaleTimeString(undefined, {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+      if (!groups[dayKey]) groups[dayKey] = {};
+      if (!groups[dayKey][timeStr]) groups[dayKey][timeStr] = [];
+      groups[dayKey][timeStr].push(item);
+    });
+    return groups;
+  };
+
+  const sortTimeSlots = (times) => {
+    return times.sort((a, b) => {
+      const parseTime = (t) => {
+        const match = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
+        if (!match) return 0;
+        let [, h, m, ampm] = match;
+        let hour = parseInt(h, 10);
+        if (/pm/i.test(ampm) && hour !== 12) hour += 12;
+        if (/am/i.test(ampm) && hour === 12) hour = 0;
+        return hour * 60 + parseInt(m, 10);
+      };
+      return parseTime(a) - parseTime(b);
+    });
+  };
 
   // ===== Complete scheduled item =====
   const submitComplete = async (item, earlyOverride = false) => {
@@ -209,6 +283,14 @@ const AdminV2NutritionSchedule = () => {
     fetchSchedule();
   };
 
+  // Get stats
+  const stats = {
+    ready: items.filter(i => i._bucket === 'ready').length,
+    upcoming: items.filter(i => i._bucket === 'upcoming').length,
+    missed: items.filter(i => i._bucket === 'missed').length,
+    completed: items.filter(i => i._bucket === 'completed').length
+  };
+
   if (loadingPatients) {
     return (
       <AdminV2Layout>
@@ -217,37 +299,210 @@ const AdminV2NutritionSchedule = () => {
     );
   }
 
+  const grouped = groupItems(filteredItems);
+  const sortedDays = Object.keys(grouped).sort((a, b) => new Date(a) - new Date(b));
+
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
         {selectedPatient ? (
           <>
+            {/* Stats Row */}
+            <div className="admin-v2-summary-stats admin-v2-meds-schedule-summary">
+              <div
+                className={`admin-v2-stat-card ${statusFilters.ready ? 'selected' : ''}`}
+                onClick={() => setStatusFilters(f => ({ ...f, ready: !f.ready }))}
+                style={{ cursor: 'pointer' }}
+              >
+                <div className="admin-v2-stat-icon" style={{ background: 'rgba(88, 166, 255, 0.15)' }}>
+                  <ClockIcon size={20} />
+                </div>
+                <div className="admin-v2-stat-info">
+                  <h4>{stats.ready}</h4>
+                  <p>Ready</p>
+                </div>
+              </div>
+              <div
+                className={`admin-v2-stat-card ${statusFilters.upcoming ? 'selected' : ''}`}
+                onClick={() => setStatusFilters(f => ({ ...f, upcoming: !f.upcoming }))}
+                style={{ cursor: 'pointer' }}
+              >
+                <div className="admin-v2-stat-icon" style={{ background: 'rgba(31, 111, 235, 0.15)' }}>
+                  <ClockIcon size={20} />
+                </div>
+                <div className="admin-v2-stat-info">
+                  <h4>{stats.upcoming}</h4>
+                  <p>Upcoming</p>
+                </div>
+              </div>
+              <div
+                className={`admin-v2-stat-card ${statusFilters.missed ? 'selected' : ''}`}
+                onClick={() => setStatusFilters(f => ({ ...f, missed: !f.missed }))}
+                style={{ cursor: 'pointer' }}
+              >
+                <div className="admin-v2-stat-icon" style={{ background: 'rgba(248, 81, 73, 0.15)' }}>
+                  <XIcon size={20} />
+                </div>
+                <div className="admin-v2-stat-info">
+                  <h4>{stats.missed}</h4>
+                  <p>Missed</p>
+                </div>
+              </div>
+              <div
+                className={`admin-v2-stat-card ${statusFilters.completed ? 'selected' : ''}`}
+                onClick={() => setStatusFilters(f => ({ ...f, completed: !f.completed }))}
+                style={{ cursor: 'pointer' }}
+              >
+                <div className="admin-v2-stat-icon" style={{ background: 'rgba(35, 134, 54, 0.15)' }}>
+                  <CheckIcon size={20} />
+                </div>
+                <div className="admin-v2-stat-info">
+                  <h4>{stats.completed}</h4>
+                  <p>Completed</p>
+                </div>
+              </div>
+            </div>
+
+            {/* PRN + Refresh Buttons */}
             <div className="admin-v2-page-header tw">
               <h3 style={{ margin: 0, color: 'var(--foreground)' }}>
-                Today & Yesterday
+                Today & Yesterday ({filteredItems.length} of {items.length})
               </h3>
               <div className="tw flex items-center gap-2">
-                <Button
-                  onClick={openPrnPicker}
-                  className="bg-[#6f42c1] text-white hover:bg-[#6f42c1]/90"
-                >PRN</Button>
+                {hasPermission('nutrition.create') && (
+                  <Button
+                    onClick={openPrnPicker}
+                    className="bg-[#6f42c1] text-white hover:bg-[#6f42c1]/90"
+                  >PRN</Button>
+                )}
                 <Button onClick={fetchSchedule} disabled={loading}>
                   {loading ? 'Refreshing...' : 'Refresh'}
                 </Button>
               </div>
             </div>
 
-            {error ? (
+            {/* Schedule Content */}
+            {loading ? (
+              <div className="admin-v2-loading">Loading schedule...</div>
+            ) : error ? (
               <div className="tw"><Alert variant="destructive">{error}</Alert></div>
+            ) : filteredItems.length === 0 ? (
+              <div className="admin-v2-empty-state">
+                <NutritionIcon size={48} />
+                <h3>No Scheduled Nutrition</h3>
+                <p className="admin-v2-text-muted">
+                  {items.length === 0
+                    ? 'No nutrition scheduled for today or yesterday'
+                    : 'No items match the selected filters'}
+                </p>
+              </div>
             ) : (
-              <ScheduleList
-                items={scheduledItems}
-                loading={loading}
-                title="Scheduled Nutrition"
-                emptyText="No scheduled nutrition for today or yesterday"
-                onMarkComplete={(item) => handleMarkCompleted(item._raw)}
-              />
+              <div className="admin-v2-schedule-list">
+                {sortedDays.map(dayKey => (
+                  <div key={dayKey} className="admin-v2-schedule-day">
+                    <div className="admin-v2-schedule-day-header">
+                      <h3>{dayKey}</h3>
+                    </div>
+
+                    {sortTimeSlots(Object.keys(grouped[dayKey])).map(timeStr => (
+                      <div key={timeStr} className="admin-v2-schedule-time-group">
+                        <div className="admin-v2-schedule-time-header">
+                          <span className="admin-v2-schedule-time">{timeStr}</span>
+                          <span className="admin-v2-schedule-count-label">
+                            {grouped[dayKey][timeStr].length} item{grouped[dayKey][timeStr].length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+
+                        <div className="admin-v2-schedule-items">
+                          {grouped[dayKey][timeStr].map((item, idx) => {
+                            const statusInfo = getStatusInfo(item._bucket);
+                            const isCompleted = item._bucket === 'completed';
+
+                            return (
+                              <div
+                                key={`${item.schedule_id ?? 'prn'}-${item.scheduled_time}-${idx}`}
+                                className={`admin-v2-schedule-item ${isCompleted ? 'completed' : ''}`}
+                                style={{
+                                  borderLeftColor: statusInfo.border,
+                                  backgroundColor: statusInfo.bg
+                                }}
+                              >
+                                <div className="admin-v2-schedule-item-content">
+                                  <div className="admin-v2-schedule-item-main">
+                                    <span className="admin-v2-schedule-med-name">
+                                      {item.name}
+                                    </span>
+                                    {item._detail && (
+                                      <span className="admin-v2-schedule-dose">
+                                        {item._detail}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="admin-v2-schedule-item-status">
+                                    <span
+                                      className="admin-v2-schedule-status-badge"
+                                      style={{
+                                        backgroundColor: statusInfo.border,
+                                        color: '#fff'
+                                      }}
+                                    >
+                                      {getStatusText(item)}
+                                    </span>
+                                    {item.completed_at && (
+                                      <span className="admin-v2-schedule-actual-time">
+                                        Completed at {new Date(item.completed_at).toLocaleTimeString(undefined, {
+                                          hour: 'numeric',
+                                          minute: '2-digit',
+                                          hour12: true
+                                        })}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {!isCompleted && !item.is_prn && hasPermission('nutrition.update') && (
+                                  <div className="admin-v2-schedule-item-actions">
+                                    <button
+                                      className="admin-v2-btn admin-v2-btn-success admin-v2-btn-sm"
+                                      onClick={() => handleMarkCompleted(item)}
+                                    >
+                                      {item._bucket === 'missed' ? 'Complete Now' : 'Mark Complete'}
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
             )}
+
+            {/* Legend */}
+            <div className="admin-v2-schedule-legend">
+              <h4>Status Legend</h4>
+              <div className="admin-v2-legend-items">
+                <div className="admin-v2-legend-item">
+                  <span className="admin-v2-legend-dot" style={{ backgroundColor: '#58a6ff' }}></span>
+                  <span>Ready</span>
+                </div>
+                <div className="admin-v2-legend-item">
+                  <span className="admin-v2-legend-dot" style={{ backgroundColor: '#1f6feb' }}></span>
+                  <span>Upcoming</span>
+                </div>
+                <div className="admin-v2-legend-item">
+                  <span className="admin-v2-legend-dot" style={{ backgroundColor: '#f85149' }}></span>
+                  <span>Missed</span>
+                </div>
+                <div className="admin-v2-legend-item">
+                  <span className="admin-v2-legend-dot" style={{ backgroundColor: '#238636' }}></span>
+                  <span>Completed</span>
+                </div>
+              </div>
+            </div>
           </>
         ) : (
           <div className="admin-v2-no-patient">
