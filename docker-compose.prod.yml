@@ -25,9 +25,9 @@ services:
 
   app:
     # Pulls the published image by default; pin a version with
-    # APP_IMAGE=smarthomehealth/platform:0.1.0. Run with `--build`
+    # APP_IMAGE=ghcr.io/smart-home-health/platform:0.1.0. Run with `--build`
     # to build locally from ./Dockerfile instead (tags it as APP_IMAGE).
-    image: ${APP_IMAGE:-smarthomehealth/platform:latest}
+    image: ${APP_IMAGE:-ghcr.io/smart-home-health/platform:latest}
     build:
       context: .
       dockerfile: Dockerfile
