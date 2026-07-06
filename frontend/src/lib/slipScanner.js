@@ -209,6 +209,95 @@ export function parseSlipText(text) {
 }
 
 /**
+ * Merge barcodes + OCR rows into one scan line per item number, keeping the
+ * richest data we saw for each (barcode wins on number/UOM, OCR contributes
+ * qty + description). Unlike buildNewItems this does NOT drop lines that
+ * match existing items — resolution against the shipment happens next.
+ * Returns [{ itemNumber, uom, qty, description, source }]
+ */
+export function buildScanLines(barcodes, ocrItems) {
+  const lines = new Map();
+  const ocrByNumber = new Map(ocrItems.map((o) => [o.itemNumber, o]));
+
+  for (const raw of barcodes) {
+    const parsed = parseSlipBarcode(raw);
+    if (!parsed || lines.has(parsed.itemNumber)) continue;
+    const ocr = ocrByNumber.get(parsed.itemNumber);
+    lines.set(parsed.itemNumber, {
+      itemNumber: parsed.itemNumber,
+      uom: parsed.uom,
+      qty: ocr?.qtyShipped ?? ocr?.qtyOrdered ?? 1,
+      description: ocr?.description || null,
+      source: 'barcode',
+    });
+  }
+  for (const ocr of ocrItems) {
+    if (lines.has(ocr.itemNumber)) continue;
+    lines.set(ocr.itemNumber, {
+      itemNumber: ocr.itemNumber,
+      uom: null,
+      qty: ocr.qtyShipped ?? ocr.qtyOrdered ?? 1,
+      description: ocr.description || null,
+      source: 'ocr',
+    });
+  }
+  return [...lines.values()];
+}
+
+const _tokenize = (s) => (s || '')
+  .toUpperCase()
+  .replace(/[^A-Z0-9 ]+/g, ' ')
+  .split(/\s+/)
+  .filter((t) => t.length >= 2);
+
+/**
+ * Similarity between a scanned description and an item's label:
+ * shared-token overlap in [0, 1]. Deliberately simple — slip text is short,
+ * shouty, and abbreviated, so token overlap beats edit distance here.
+ */
+export function nameMatchScore(a, b) {
+  const ta = _tokenize(a);
+  const tb = new Set(_tokenize(b));
+  if (ta.length === 0 || tb.size === 0) return 0;
+  const shared = ta.filter((t) => tb.has(t)).length;
+  return shared / Math.min(ta.length, tb.size);
+}
+
+const NAME_MATCH_THRESHOLD = 0.5;
+
+/**
+ * Resolve scan lines against the shipment's items (the backend truth):
+ *   1. exact item-number match           -> matchType 'number'
+ *   2. best description/name similarity  -> matchType 'name'
+ *   3. neither                           -> matchType null (suggest add-new)
+ * Multiple lines may resolve to the same item (split shipments) — the caller
+ * sums quantities. Every resolution is a suggestion the user can override.
+ * Returns lines decorated with { matchType, shipment_item_id, score }.
+ */
+export function resolveScanLines(lines, shipmentItems) {
+  const byNumber = new Map(
+    shipmentItems.filter((i) => i.item_number).map((i) => [String(i.item_number).trim(), i])
+  );
+  return lines.map((line) => {
+    const numberHit = byNumber.get(line.itemNumber);
+    if (numberHit) {
+      return { ...line, matchType: 'number', shipment_item_id: numberHit.id, score: 1 };
+    }
+    let best = null;
+    let bestScore = 0;
+    for (const item of shipmentItems) {
+      const label = [item.item_description, item.equipment_name].filter(Boolean).join(' ');
+      const score = nameMatchScore(line.description, label);
+      if (score > bestScore) { best = item; bestScore = score; }
+    }
+    if (best && bestScore >= NAME_MATCH_THRESHOLD) {
+      return { ...line, matchType: 'name', shipment_item_id: best.id, score: bestScore };
+    }
+    return { ...line, matchType: null, shipment_item_id: null, score: 0 };
+  });
+}
+
+/**
  * Build NEW item drafts from a scan — for populating a shipment or standing
  * order from an invoice instead of typing each line.
  * Combines every barcode read (item number + UOM) with any OCR line data for

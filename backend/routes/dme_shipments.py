@@ -338,7 +338,27 @@ async def delete_shipment(
     shipment_id: int,
     db: Session = Depends(get_db)
 ):
-    """Delete a shipment"""
+    """
+    Delete a shipment. Guarded: once anything has been received (receipts
+    exist) or the shipment is finalized, deletion is blocked — those updated
+    Equipment.quantity, and deleting them would leave inventory inflated.
+    (Deleting finalized deliveries needs an inventory-recalc pass first.)
+    """
+    shipment = db.query(crud.DMEShipment).filter(crud.DMEShipment.id == shipment_id).first()
+    if not shipment:
+        raise HTTPException(status_code=404, detail="Shipment not found")
+
+    if shipment.finalized_at:
+        raise HTTPException(
+            status_code=409,
+            detail="Confirmed deliveries can't be deleted yet — their supplies are already counted in inventory."
+        )
+    if any(item.receipts for item in shipment.items):
+        raise HTTPException(
+            status_code=409,
+            detail="This delivery has already received items into inventory, so it can't be deleted."
+        )
+
     try:
         success = crud.delete_shipment(db, shipment_id)
         return {"success": success}

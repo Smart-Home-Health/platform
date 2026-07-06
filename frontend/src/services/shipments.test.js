@@ -79,6 +79,18 @@ describe('shipmentService', () => {
     expect(fd.get('title')).toBe('Page 2');
   });
 
+  it('deleteShipment DELETEs the shipment and surfaces guard errors', async () => {
+    await shipmentService.deleteShipment(4);
+    expect(calledUrl()).toContain('/api/shipments/4');
+    expect(calledOpts().method).toBe('DELETE');
+
+    fetch.mockResolvedValueOnce(res(
+      { detail: "Confirmed deliveries can't be deleted yet — their supplies are already counted in inventory." },
+      { ok: false, status: 409 }
+    ));
+    await expect(shipmentService.deleteShipment(4)).rejects.toThrow(/can't be deleted yet/);
+  });
+
   it('updateItem PUTs to the item path', async () => {
     await shipmentService.updateItem(5, 7, { qty_ordered: 3 });
     expect(calledUrl()).toContain('/api/shipments/5/items/7');

@@ -57,6 +57,13 @@ export const shipmentService = {
     return asJson(response, 'Failed to create shipment');
   },
 
+  async deleteShipment(shipmentId) {
+    const response = await apiFetch(`${config.apiUrl}/api/shipments/${shipmentId}`, {
+      method: 'DELETE',
+    });
+    return asJson(response, 'Failed to delete shipment');
+  },
+
   async patchShipment(shipmentId, data) {
     const response = await apiFetch(`${config.apiUrl}/api/shipments/${shipmentId}`, {
       method: 'PATCH',

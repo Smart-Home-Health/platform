@@ -128,6 +128,10 @@ const AdminV2ShipmentDetail = () => {
   const [confirmResult, setConfirmResult] = useState(null);
   const [showCapture, setShowCapture] = useState(false);
   const [reviewItems, setReviewItems] = useState(null); // editable grid after a scan / "adjust"
+  // Scanned lines that didn't match an item by number: suggestions the user
+  // maps (add as new / attach to an item / skip). Monthly orders arrive as
+  // 5-6 separate slips, so unmatched lines are normal, not noise.
+  const [scanExtras, setScanExtras] = useState(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [creatingDelivery, setCreatingDelivery] = useState(false);
 
@@ -540,38 +544,68 @@ const AdminV2ShipmentDetail = () => {
     }
   };
 
-  // Open the editable review grid, optionally seeded by a slip scan.
-  const openReview = (suggestions = null) => {
-    const byId = new Map((suggestions || []).map((s) => [s.shipment_item_id, s]));
+  // Open the editable review grid, optionally seeded by resolved scan lines.
+  // Lines matched by item number sum into that item's "arrived" count (the
+  // same supply often splits across several boxes/slips).
+  const openReview = (resolvedLines = null) => {
+    const arrivedById = new Map();
+    const sourceById = new Map();
+    for (const line of resolvedLines || []) {
+      if (line.matchType === 'number') {
+        arrivedById.set(line.shipment_item_id,
+          (arrivedById.get(line.shipment_item_id) || 0) + (line.qty || 0));
+        sourceById.set(line.shipment_item_id, line.source);
+      }
+    }
     setReviewItems(
       (shipment.items || []).map((item) => {
-        const s = byId.get(item.id);
-        const arrived = s?.qty_shipped ?? item.qty_shipped ?? item.qty_ordered ?? 0;
+        const scanned = arrivedById.has(item.id);
+        const arrived = scanned
+          ? arrivedById.get(item.id)
+          : (item.qty_shipped ?? item.qty_ordered ?? 0);
         return {
           shipment_item_id: item.id,
-          label: item.equipment_name || item.item_description || item.item_number || `Item ${item.id}`,
+          label: item.item_description || item.equipment_name || item.item_number || `Item ${item.id}`,
           item_number: item.item_number,
           qty_ordered: item.qty_ordered,
           qty_received: arrived,
           qty_backordered: Math.max(0, (item.qty_ordered || 0) - arrived),
           condition: 'good',
-          matched: s?.matched || null,
+          matched: scanned ? (sourceById.get(item.id) === 'barcode' ? 'barcode' : 'ocr') : null,
         };
       })
+    );
+    // Lines the number match didn't claim become mapping suggestions:
+    // best name match preselected, otherwise "add as new item".
+    setScanExtras(
+      (resolvedLines || [])
+        .filter((line) => line.matchType !== 'number')
+        .map((line, i) => ({
+          key: `${line.itemNumber}-${i}`,
+          line,
+          qty: line.qty || 1,
+          action: line.matchType === 'name' ? String(line.shipment_item_id) : 'new',
+        }))
     );
     setConfirmResult(null);
   };
 
-  const handleScanComplete = async ({ suggestions, barcodes, ocrItems }) => {
+  const handleScanComplete = async ({ barcodes, ocrItems }) => {
     setShowCapture(false);
     if (captureMode === 'import') {
       const { buildNewItems } = await import('../../lib/slipScanner');
       const drafts = buildNewItems(barcodes, ocrItems, shipment.items || [], equipment);
       setNewItemDrafts(drafts);
     } else {
-      openReview(suggestions);
+      const { buildScanLines, resolveScanLines } = await import('../../lib/slipScanner');
+      const lines = buildScanLines(barcodes, ocrItems);
+      openReview(resolveScanLines(lines, shipment.items || []));
     }
     fetchShipment(); // pick up the attached slip pages
+  };
+
+  const updateScanExtra = (key, patch) => {
+    setScanExtras((prev) => prev.map((e) => (e.key === key ? { ...e, ...patch } : e)));
   };
 
   const updateNewItemDraft = (index, field, value) => {
@@ -625,10 +659,40 @@ const AdminV2ShipmentDetail = () => {
         qty_shipped: Math.max(0, (r.qty_ordered || 0) - (parseInt(r.qty_backordered, 10) || 0)),
         condition: r.condition || 'good',
       }));
+
+      // Fold in the user's mapping decisions for unmatched scan lines.
+      const extras = scanExtras || [];
+      const newLines = extras.filter((e) => e.action === 'new');
+      for (const e of extras) {
+        if (e.action === 'skip' || e.action === 'new') continue;
+        const target = items.find((it) => it.shipment_item_id === parseInt(e.action, 10));
+        if (target) target.qty_received += parseInt(e.qty, 10) || 0;
+      }
+      if (newLines.length > 0) {
+        const res = await shipmentService.bulkAddItems(id, newLines.map((e) => ({
+          item_number: e.line.itemNumber || null,
+          item_description: e.line.description || null,
+          qty_ordered: parseInt(e.qty, 10) || 0,
+          qty_shipped: parseInt(e.qty, 10) || 0,
+          unit_of_measure: e.line.uom || null,
+        })));
+        (res.ids || []).forEach((newId, i) => {
+          const qty = parseInt(newLines[i].qty, 10) || 0;
+          items.push({
+            shipment_item_id: newId,
+            qty_received: qty,
+            qty_backordered: 0,
+            qty_shipped: qty,
+            condition: 'good',
+          });
+        });
+      }
+
       const result = await shipmentService.reconcileShipment(id, { mode: 'itemized', items });
       if (result.success) {
         setConfirmResult(result);
         setReviewItems(null);
+        setScanExtras(null);
         fetchShipment();
       } else {
         setConfirmResult({ success: false, error: result.error });
@@ -637,6 +701,23 @@ const AdminV2ShipmentDetail = () => {
       setConfirmResult({ success: false, error: err.message });
     } finally {
       setConfirming(false);
+    }
+  };
+
+  // Delete an unstarted shipment. The backend refuses once receipts exist or
+  // the delivery is finalized (inventory already counted those supplies).
+  const handleDeleteShipment = async () => {
+    const what = shipment.is_template ? 'this usual order' : 'this delivery';
+    if (!window.confirm(`Delete ${what}? This can't be undone.`)) return;
+    try {
+      const result = await shipmentService.deleteShipment(id);
+      if (result.success) {
+        navigate(`/care/equipment/shipments?patient=${selectedPatient?.id}`);
+      } else {
+        alert(result.error || 'Failed to delete');
+      }
+    } catch (err) {
+      alert(err.message);
     }
   };
 
@@ -745,13 +826,19 @@ const AdminV2ShipmentDetail = () => {
     <AdminV2Layout>
       <div className="admin-v2-page">
         {/* Back Button & Header */}
-        <div className="admin-v2-page-header tw">
+        <div className="admin-v2-page-header tw flex items-center justify-between">
           <Button
             variant="ghost"
             onClick={() => navigate(`/care/equipment/shipments?patient=${selectedPatient?.id}`)}
           >
             <ChevronLeftIcon size={16} /> Back
           </Button>
+          {hasPermission('equipment.delete') && !isFinalized
+            && !shipment.items?.some((i) => i.receipts?.length > 0) && (
+            <Button variant="ghost" onClick={handleDeleteShipment} title="Delete this shipment">
+              <TrashIcon size={16} /> Delete
+            </Button>
+          )}
         </div>
 
         {/* Shipment Header */}
@@ -993,6 +1080,56 @@ const AdminV2ShipmentDetail = () => {
                 </tbody>
               </table>
             </div>
+            {/* Lines from the slip that aren't on this list yet — you decide */}
+            {scanExtras?.length > 0 && (
+              <>
+                <h3 style={{ marginTop: 16 }}>Also on this slip</h3>
+                <p className="admin-v2-text-muted">
+                  These came off the scan but aren't on the list above (different box,
+                  substitution, or new supply). Tell us what to do with each one.
+                </p>
+                <div className="flex flex-col gap-2">
+                  {scanExtras.map((e) => (
+                    <div key={e.key} className="rounded-lg border border-border bg-card p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <strong>{e.line.description || `Item #${e.line.itemNumber}`}</strong>
+                          <div className="admin-v2-text-muted">
+                            #{e.line.itemNumber}{e.line.uom ? ` — ${e.line.uom}` : ''}
+                            {e.line.source === 'barcode' && (
+                              <span className="admin-v2-badge admin-v2-badge-success" style={{ marginLeft: 6 }}>
+                                <CheckIcon size={12} /> scanned
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <input
+                          type="number" min="0" inputMode="numeric"
+                          value={e.qty}
+                          onChange={(ev) => updateScanExtra(e.key, { qty: ev.target.value })}
+                          style={{ width: '70px', textAlign: 'center', padding: '8px' }}
+                          aria-label="Quantity"
+                        />
+                      </div>
+                      <select
+                        value={e.action}
+                        onChange={(ev) => updateScanExtra(e.key, { action: ev.target.value })}
+                        style={{ width: '100%', marginTop: 8, padding: '8px' }}
+                      >
+                        <option value="new">Add as a new item on this delivery</option>
+                        {(shipment.items || []).map((item) => (
+                          <option key={item.id} value={String(item.id)}>
+                            Count toward: {item.item_description || item.equipment_name || item.item_number || `Item ${item.id}`}
+                          </option>
+                        ))}
+                        <option value="skip">Don't add this one</option>
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
             <div className="tw flex gap-2" style={{ marginTop: 12 }}>
               <Button size="lg" onClick={handleSaveReview} disabled={confirming}>
                 <CheckIcon size={16} /> {confirming ? 'Saving…' : 'Confirm delivery'}
@@ -1000,7 +1137,7 @@ const AdminV2ShipmentDetail = () => {
               <Button variant="secondary" onClick={() => { setCaptureMode('confirm'); setShowCapture(true); }} disabled={confirming}>
                 <CameraIcon size={16} /> Scan more pages
               </Button>
-              <Button variant="ghost" onClick={() => setReviewItems(null)} disabled={confirming}>
+              <Button variant="ghost" onClick={() => { setReviewItems(null); setScanExtras(null); }} disabled={confirming}>
                 Cancel
               </Button>
             </div>

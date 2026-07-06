@@ -19,7 +19,7 @@
 // engines are exercised manually (WASM doesn't run in CI); these tests pin
 // the PHS/McKesson barcode format and the OCR line heuristics.
 import { describe, it, expect } from 'vitest';
-import { parseSlipBarcode, parseSlipText, matchScanToItems, buildNewItems } from './slipScanner';
+import { parseSlipBarcode, parseSlipText, matchScanToItems, buildNewItems, buildScanLines, resolveScanLines, nameMatchScore } from './slipScanner';
 
 describe('parseSlipBarcode', () => {
   // Real values photographed from PHS packing slips.
@@ -158,5 +158,67 @@ describe('buildNewItems', () => {
       [{ id: 9, item_number: '450020', name: 'Trach Tube 6.0MM' }]
     );
     expect(drafts[0]).toMatchObject({ equipment_id: 9, item_description: 'Trach Tube 6.0MM' });
+  });
+});
+
+describe('buildScanLines + resolveScanLines (multi-slip flow)', () => {
+  const shipmentItems = [
+    { id: 21, item_number: '450020', item_description: 'TUBE, TRACH TTS CUFF 6.0MM' },
+    { id: 22, item_number: '573717', item_description: 'CPAP HUMID CHAMB DISP', equipment_name: 'Humidifier chamber' },
+    { id: 23, item_number: null, item_description: 'BANDAGE, COBAN ELAS TAN' },
+  ];
+
+  it('merges barcodes and OCR into one line per item number', () => {
+    const lines = buildScanLines(
+      ['/IEA450020'],
+      [{ itemNumber: '450020', qtyOrdered: 2, qtyShipped: 2, description: 'TUBE, TRACH' },
+       { itemNumber: '853872', qtyOrdered: 2, qtyShipped: 2, description: 'TUBING, CPAP GRAY' }]
+    );
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatchObject({ itemNumber: '450020', uom: 'EA', qty: 2, source: 'barcode' });
+    expect(lines[1]).toMatchObject({ itemNumber: '853872', source: 'ocr' });
+  });
+
+  it('resolves by item number first', () => {
+    const [line] = resolveScanLines(
+      [{ itemNumber: '450020', qty: 2, description: null }], shipmentItems
+    );
+    expect(line).toMatchObject({ matchType: 'number', shipment_item_id: 21 });
+  });
+
+  it('falls back to name matching when the number is unknown', () => {
+    // Second slip uses a different SKU for the same humidifier chamber.
+    const [line] = resolveScanLines(
+      [{ itemNumber: '999111', qty: 3, description: 'CPAP HUMID CHAMB DISPOSABLE' }],
+      shipmentItems
+    );
+    expect(line.matchType).toBe('name');
+    expect(line.shipment_item_id).toBe(22);
+  });
+
+  it('suggests add-new when nothing matches', () => {
+    const [line] = resolveScanLines(
+      [{ itemNumber: '999222', qty: 1, description: 'PEPTAMEN, UNFLAV 250ML' }],
+      shipmentItems
+    );
+    expect(line).toMatchObject({ matchType: null, shipment_item_id: null });
+  });
+
+  it('lets multiple lines resolve to the same item (split boxes)', () => {
+    const lines = resolveScanLines(
+      [{ itemNumber: '450020', qty: 1, description: null },
+       { itemNumber: '450020X', qty: 1, description: 'TUBE TRACH TTS CUFF' }],
+      shipmentItems
+    );
+    expect(lines[0].shipment_item_id).toBe(21);
+    expect(lines[1].shipment_item_id).toBe(21); // name match onto the same item
+  });
+});
+
+describe('nameMatchScore', () => {
+  it('scores shouty abbreviated slip text against friendly names', () => {
+    expect(nameMatchScore('CPAP HUMID CHAMB DISP', 'CPAP HUMID CHAMB DISP FSHPAY')).toBeGreaterThan(0.9);
+    expect(nameMatchScore('TUBE, TRACH TTS CUFF 6.0MM', 'BANDAGE, COBAN ELAS TAN')).toBeLessThan(0.5);
+    expect(nameMatchScore('', 'anything')).toBe(0);
   });
 });

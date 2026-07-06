@@ -399,3 +399,36 @@ def test_bulk_add_items_unknown_shipment_404(admin_client):
 def test_bulk_add_items_requires_permission(limited_client):
     assert limited_client.post("/api/shipments/1/items/bulk",
                                json=[{"item_number": "x", "qty_ordered": 1}]).status_code == 403
+
+
+# --- Delete guards -----------------------------------------------------------
+def test_delete_draft_shipment_ok(admin_client, patient):
+    sid = _make_shipment(admin_client, patient).json()["id"]
+    _add_item(admin_client, sid)  # items alone don't block deletion
+    resp = admin_client.delete(f"/api/shipments/{sid}")
+    assert resp.status_code == 200
+    assert resp.json()["success"] is True
+    assert admin_client.get(f"/api/shipments/{sid}").status_code == 404
+
+
+def test_delete_blocked_after_receiving(admin_client, patient):
+    sid = _make_shipment(admin_client, patient).json()["id"]
+    item_id = _add_item(admin_client, sid, qty_ordered=2, qty_shipped=2).json()["id"]
+    admin_client.post(f"/api/shipments/{sid}/receive",
+                      json=[{"shipment_item_id": item_id, "qty_received": 1}])
+    resp = admin_client.delete(f"/api/shipments/{sid}")
+    assert resp.status_code == 409
+    assert "inventory" in resp.json()["detail"]
+
+
+def test_delete_blocked_after_finalize(admin_client, patient):
+    sid = _make_shipment(admin_client, patient).json()["id"]
+    _add_item(admin_client, sid, qty_ordered=1, qty_shipped=1)
+    assert admin_client.post(f"/api/shipments/{sid}/reconcile",
+                             json={"mode": "same_as_usual"}).json()["success"] is True
+    resp = admin_client.delete(f"/api/shipments/{sid}")
+    assert resp.status_code == 409
+
+
+def test_delete_unknown_shipment_404(admin_client):
+    assert admin_client.delete("/api/shipments/999999").status_code == 404

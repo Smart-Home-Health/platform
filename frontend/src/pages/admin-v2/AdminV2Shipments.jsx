@@ -28,7 +28,8 @@ import {
   ChevronRightIcon,
   AlertIcon,
   CopyIcon,
-  PackageIcon
+  PackageIcon,
+  TrashIcon
 } from '../../components/Icons';
 import {
   Dialog,
@@ -284,6 +285,21 @@ const AdminV2Shipments = () => {
     }
   };
 
+  const handleDeleteShipment = async (shipment) => {
+    const label = shipment.order_number || shipment.po_number || `#${shipment.id}`;
+    if (!window.confirm(`Delete draft ${label}? This can't be undone.`)) return;
+    try {
+      const result = await shipmentService.deleteShipment(shipment.id);
+      if (result.success) {
+        fetchShipments();
+      } else {
+        alert(result.error || 'Failed to delete');
+      }
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
   const handleCopyShipment = async (shipmentId) => {
     try {
       const response = await fetch(`${config.apiUrl}/api/shipments/${shipmentId}/copy`, {
@@ -532,6 +548,15 @@ const AdminV2Shipments = () => {
                           >
                             <CopyIcon size={14} />
                           </button>
+                          {shipment.status === 'draft' && hasPermission('equipment.delete') && (
+                            <button
+                              className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-secondary"
+                              onClick={(e) => { e.stopPropagation(); handleDeleteShipment(shipment); }}
+                              title="Delete this draft"
+                            >
+                              <TrashIcon size={14} />
+                            </button>
+                          )}
                           <ChevronRightIcon size={16} />
                         </td>
                       </tr>
