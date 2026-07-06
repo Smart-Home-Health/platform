@@ -20,6 +20,8 @@
     "@radix-ui/react-label": "^2.1.9",
     "@radix-ui/react-select": "^2.3.0",
     "@radix-ui/react-slot": "^1.2.5",
+    "@zxing/browser": "^0.2.0",
+    "@zxing/library": "^0.22.0",
     "chart.js": "^4.5.0",
     "chartjs-adapter-date-fns": "^3.0.0",
     "chartjs-plugin-annotation": "^3.1.0",
@@ -38,7 +40,8 @@
     "recharts": "^3.0.2",
     "scichart": "^3.5.762",
     "scichart-react": "^0.1.13",
-    "tailwind-merge": "^3.6.0"
+    "tailwind-merge": "^3.6.0",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.25.0",

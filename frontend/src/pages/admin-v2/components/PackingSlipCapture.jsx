@@ -1,0 +1,323 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+// Packing-slip capture: photograph each page of the slip, decode line-item
+// barcodes + OCR quantities on-device, and attach the photos to the delivery.
+//
+// Designed for a phone in one hand and a box of supplies in the other:
+// big buttons, plain language, and nothing is final here — the parent
+// confirm panel shows an editable review before anything is saved.
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { CameraIcon, CheckIcon } from '../../../components/Icons';
+import { shipmentService } from '../../../services/shipments';
+
+const SCAN_INTERVAL_MS = 600; // live barcode polling cadence
+
+// mode: 'confirm' checks arrivals off against expected items;
+//       'import' collects NEW line items from an invoice to add to the shipment.
+export default function PackingSlipCapture({ open, onClose, shipmentId, expectedItems = [], onComplete, mode = 'confirm' }) {
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const scanTimerRef = useRef(null);
+  const takePhotoInputRef = useRef(null); // capture="environment": opens the camera
+  const cameraRollInputRef = useRef(null); // no capture attr: opens the photo picker
+
+  const [cameraError, setCameraError] = useState(null);
+  const [barcodes, setBarcodes] = useState([]);       // raw barcode strings found so far
+  const [ocrItems, setOcrItems] = useState([]);       // parsed OCR line items across pages
+  const [pagesUploaded, setPagesUploaded] = useState(0);
+  const [busy, setBusy] = useState(null);             // null | 'reading' | 'uploading'
+  const [error, setError] = useState(null);
+
+  const foundItemNumbers = useCallback(async () => {
+    const { parseSlipBarcode } = await import('../../../lib/slipScanner');
+    return new Set(barcodes.map(parseSlipBarcode).filter(Boolean).map((b) => b.itemNumber));
+  }, [barcodes]);
+
+  const [matchedCount, setMatchedCount] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      let count;
+      if (mode === 'import') {
+        // Counting NEW items found (not already on the shipment).
+        const { buildNewItems } = await import('../../../lib/slipScanner');
+        count = buildNewItems(barcodes, ocrItems, expectedItems).length;
+      } else {
+        const found = await foundItemNumbers();
+        const ocrNumbers = new Set(ocrItems.map((o) => o.itemNumber));
+        count = expectedItems.filter((i) => {
+          const num = (i.item_number || '').trim();
+          return found.has(num) || ocrNumbers.has(num);
+        }).length;
+      }
+      if (!cancelled) setMatchedCount(count);
+    })();
+    return () => { cancelled = true; };
+  }, [barcodes, ocrItems, expectedItems, foundItemNumbers, mode]);
+
+  // --- Camera lifecycle ---
+  useEffect(() => {
+    if (!open) return undefined;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        // iOS/Safari only exposes the live camera on secure origins (HTTPS or
+        // localhost) — over plain LAN HTTP mediaDevices is undefined. Photos
+        // via the inputs below work everywhere and are read the same way.
+        if (!navigator.mediaDevices?.getUserMedia) {
+          throw new Error('camera-unavailable');
+        }
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment' },
+          audio: false,
+        });
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play().catch(() => {});
+        }
+        startLiveScan();
+      } catch {
+        setCameraError(
+          'The live camera view isn’t available here — no problem. ' +
+          'Take a photo of each page below and we’ll read it the same way.'
+        );
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      stopLiveScan();
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // Continuously look for line-item barcodes in the live picture, so slowly
+  // panning the phone down the slip collects every line without any typing.
+  const startLiveScan = () => {
+    stopLiveScan();
+    scanTimerRef.current = setInterval(async () => {
+      const video = videoRef.current;
+      if (!video || video.readyState < 2) return;
+      try {
+        const { detectBarcodes } = await import('../../../lib/slipScanner');
+        const found = await detectBarcodes(video);
+        if (found.length) {
+          setBarcodes((prev) => [...new Set([...prev, ...found])]);
+        }
+      } catch { /* keep scanning */ }
+    }, SCAN_INTERVAL_MS);
+  };
+
+  const stopLiveScan = () => {
+    if (scanTimerRef.current) {
+      clearInterval(scanTimerRef.current);
+      scanTimerRef.current = null;
+    }
+  };
+
+  // --- Page capture (still photo -> barcode + OCR + upload) ---
+  const processCanvas = async (canvas) => {
+    setError(null);
+    setBusy('reading');
+    try {
+      const { detectBarcodes, ocrImage, parseSlipText } = await import('../../../lib/slipScanner');
+
+      // Barcodes want full resolution; OCR gets a downscaled copy so a 12MP
+      // phone photo doesn't take ages in the WASM engine.
+      const found = await detectBarcodes(canvas);
+      if (found.length) setBarcodes((prev) => [...new Set([...prev, ...found])]);
+
+      let ocrCanvas = canvas;
+      const MAX_OCR_WIDTH = 2000;
+      if (canvas.width > MAX_OCR_WIDTH) {
+        const scale = MAX_OCR_WIDTH / canvas.width;
+        ocrCanvas = document.createElement('canvas');
+        ocrCanvas.width = MAX_OCR_WIDTH;
+        ocrCanvas.height = Math.round(canvas.height * scale);
+        ocrCanvas.getContext('2d').drawImage(canvas, 0, 0, ocrCanvas.width, ocrCanvas.height);
+      }
+      const text = await ocrImage(ocrCanvas);
+      const parsed = parseSlipText(text);
+      if (parsed.length) {
+        setOcrItems((prev) => {
+          const known = new Set(prev.map((p) => p.itemNumber));
+          return [...prev, ...parsed.filter((p) => !known.has(p.itemNumber))];
+        });
+      }
+
+      setBusy('uploading');
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+      const pageNumber = pagesUploaded + 1;
+      await shipmentService.uploadDocument(
+        shipmentId,
+        new File([blob], `packing-slip-page-${pageNumber}.jpg`, { type: 'image/jpeg' }),
+        { pageNumber, title: `Packing slip — page ${pageNumber}` }
+      );
+      setPagesUploaded(pageNumber);
+    } catch (err) {
+      setError(err.message || 'Something went wrong reading that page. Try again — good light helps.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const capturePage = async () => {
+    const video = videoRef.current;
+    if (!video || video.readyState < 2) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    await processCanvas(canvas);
+  };
+
+  const handleFileChosen = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    try {
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = url;
+      });
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      canvas.getContext('2d').drawImage(img, 0, 0);
+      await processCanvas(canvas);
+    } catch {
+      setError("We couldn't read that photo. Try another one.");
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  };
+
+  const handleDone = async () => {
+    const { matchScanToItems } = await import('../../../lib/slipScanner');
+    onComplete?.({
+      suggestions: matchScanToItems(expectedItems, barcodes, ocrItems),
+      barcodes,
+      ocrItems,
+      pagesUploaded,
+    });
+  };
+
+  if (!open) return null;
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose?.(); }}>
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-[560px]" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>{mode === 'import' ? 'Scan the invoice' : 'Scan the packing slip'}</DialogTitle>
+        </DialogHeader>
+
+        {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+
+        {cameraError ? (
+          <Alert><AlertDescription>{cameraError}</AlertDescription></Alert>
+        ) : (
+          <div className="relative overflow-hidden rounded-lg border border-border bg-black">
+            <video ref={videoRef} playsInline muted className="w-full" />
+            <div className="absolute inset-x-0 bottom-0 bg-black/60 p-2 text-center text-sm text-white">
+              {mode === 'import'
+                ? 'Hold the phone over the sheet — each little barcode adds that item for you.'
+                : 'Hold the phone over the slip — the little barcodes check items off automatically.'}
+            </div>
+          </div>
+        )}
+
+        {/* Progress: friendly, glanceable */}
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-3 py-1">
+            <CheckIcon size={13} />{' '}
+            {mode === 'import'
+              ? `${matchedCount} item${matchedCount === 1 ? '' : 's'} found`
+              : `${matchedCount} of ${expectedItems.length} items spotted`}
+          </span>
+          {pagesUploaded > 0 && (
+            <span className="rounded-full bg-secondary px-3 py-1">
+              {pagesUploaded} page{pagesUploaded > 1 ? 's' : ''} saved
+            </span>
+          )}
+          {busy && (
+            <span className="rounded-full bg-secondary px-3 py-1 animate-pulse">
+              {busy === 'reading' ? 'Reading the page…' : 'Saving the photo…'}
+            </span>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-2">
+          {!cameraError ? (
+            <Button size="lg" onClick={capturePage} disabled={!!busy}>
+              <CameraIcon size={16} /> Save this page
+            </Button>
+          ) : (
+            <Button size="lg" onClick={() => takePhotoInputRef.current?.click()} disabled={!!busy}>
+              <CameraIcon size={16} /> Take a photo of the page
+            </Button>
+          )}
+          <Button variant="secondary" onClick={() => cameraRollInputRef.current?.click()} disabled={!!busy}>
+            Choose from your camera roll
+          </Button>
+          {/* capture="environment" jumps straight to the camera (iOS) */}
+          <input
+            ref={takePhotoInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={handleFileChosen}
+          />
+          {/* no capture attr -> photo-library picker */}
+          <input
+            ref={cameraRollInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleFileChosen}
+          />
+          <Button size="lg" variant="default" onClick={handleDone} disabled={!!busy}>
+            {mode === 'import' ? 'Done — review the items' : 'Done — check the numbers'}
+          </Button>
+          <Button variant="ghost" onClick={() => onClose?.()}>Cancel</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

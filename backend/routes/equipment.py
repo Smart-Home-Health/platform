@@ -59,7 +59,16 @@ async def api_add_equipment(
     if data.scheduled_replacement and (not data.last_changed or not data.useful_days):
         return JSONResponse(status_code=400, content={"detail": "Last changed and useful days are required for scheduled replacements"})
 
-    eid = add_equipment_simple(db, data.name, data.quantity, data.scheduled_replacement, data.last_changed, data.useful_days, data.patient_id, account_id=account_id)
+    eid = add_equipment_simple(
+        db, data.name, data.quantity, data.scheduled_replacement, data.last_changed,
+        data.useful_days, data.patient_id, account_id=account_id,
+        item_number=data.item_number, description=data.description,
+        category=data.category, tracking_level=data.tracking_level,
+        default_manufacturer=data.default_manufacturer,
+        unit_of_measure=data.unit_of_measure, unit_size=data.unit_size,
+        unit_description=data.unit_description,
+        reorder_point=data.reorder_point, par_level=data.par_level,
+    )
     return {"id": eid, "status": "success"}
 
 
@@ -181,13 +190,23 @@ async def api_get_all_equipment_history(
 async def api_update_equipment(equipment_id: int, data: EquipmentUpdate, db: Session = Depends(get_db)):
     """Update an equipment item."""
     success = update_equipment(
-        db, 
-        equipment_id, 
+        db,
+        equipment_id,
         name=data.name,
         quantity=data.quantity,
         scheduled_replacement=data.scheduled_replacement,
         last_changed=data.last_changed,
-        useful_days=data.useful_days
+        useful_days=data.useful_days,
+        item_number=data.item_number,
+        description=data.description,
+        category=data.category,
+        tracking_level=data.tracking_level,
+        default_manufacturer=data.default_manufacturer,
+        unit_of_measure=data.unit_of_measure,
+        unit_size=data.unit_size,
+        unit_description=data.unit_description,
+        reorder_point=data.reorder_point,
+        par_level=data.par_level,
     )
     if not success:
         return JSONResponse(status_code=404, content={"detail": "Equipment not found"})

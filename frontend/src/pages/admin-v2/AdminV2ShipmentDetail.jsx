@@ -26,7 +26,15 @@ import {
   EquipmentIcon,
   CheckIcon,
   AlertIcon,
-  ChevronLeftIcon
+  ChevronLeftIcon,
+  CameraIcon,
+  PackageIcon,
+  FileTextIcon,
+  ChevronRightIcon,
+  ChevronDownIcon,
+  XIcon,
+  EditIcon,
+  TrashIcon
 } from '../../components/Icons';
 import {
   Dialog,
@@ -46,6 +54,9 @@ import {
   SelectContent,
   SelectItem,
 } from '@/components/ui/select';
+import { shipmentService } from '../../services/shipments';
+import PackingSlipCapture from './components/PackingSlipCapture';
+import CsvItemImport from './components/CsvItemImport';
 import './AdminV2.css';
 
 const CONDITION_OPTIONS = [
@@ -78,18 +89,21 @@ const AdminV2ShipmentDetail = () => {
   // Equipment list for adding items
   const [equipment, setEquipment] = useState([]);
   
-  // Add Item Modal
-  const [showAddItemModal, setShowAddItemModal] = useState(false);
-  const [itemFormData, setItemFormData] = useState({
+  // Add/Edit Item Modal (editingItemId null = adding)
+  const EMPTY_ITEM_FORM = {
     equipment_id: '',
     item_number: '',
+    item_description: '',
     manufacturer_name: '',
     qty_ordered: 1,
     qty_shipped: 0,
     qty_backordered: 0,
     unit_of_measure: '',
     unit_description: ''
-  });
+  };
+  const [showAddItemModal, setShowAddItemModal] = useState(false);
+  const [editingItemId, setEditingItemId] = useState(null);
+  const [itemFormData, setItemFormData] = useState(EMPTY_ITEM_FORM);
   const [itemFormError, setItemFormError] = useState(null);
   const [savingItem, setSavingItem] = useState(false);
   
@@ -108,6 +122,20 @@ const AdminV2ShipmentDetail = () => {
   
   // Finalize state
   const [finalizing, setFinalizing] = useState(false);
+
+  // Delivery-confirm flow (the common path: box arrived -> confirm)
+  const [confirming, setConfirming] = useState(false);
+  const [confirmResult, setConfirmResult] = useState(null);
+  const [showCapture, setShowCapture] = useState(false);
+  const [reviewItems, setReviewItems] = useState(null); // editable grid after a scan / "adjust"
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [creatingDelivery, setCreatingDelivery] = useState(false);
+
+  // Invoice import: scan an invoice to ADD line items instead of typing them
+  const [captureMode, setCaptureMode] = useState('confirm'); // 'confirm' | 'import'
+  const [newItemDrafts, setNewItemDrafts] = useState(null);  // editable rows pending bulk save
+  const [savingBulk, setSavingBulk] = useState(false);
+  const [showCsvImport, setShowCsvImport] = useState(false);
 
   const hasPermission = (permission) => {
     if (!user) return false;
@@ -198,7 +226,7 @@ const AdminV2ShipmentDetail = () => {
     e.preventDefault();
     setSavingItem(true);
     setItemFormError(null);
-    
+
     try {
       const payload = {
         ...itemFormData,
@@ -207,35 +235,63 @@ const AdminV2ShipmentDetail = () => {
         qty_shipped: parseInt(itemFormData.qty_shipped) || 0,
         qty_backordered: parseInt(itemFormData.qty_backordered) || 0
       };
-      
-      const response = await fetch(`${config.apiUrl}/api/shipments/${id}/items`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload)
-      });
-      
-      if (response.ok) {
-        setShowAddItemModal(false);
-        setItemFormData({
-          equipment_id: '',
-          item_number: '',
-          manufacturer_name: '',
-          qty_ordered: 1,
-          qty_shipped: 0,
-          qty_backordered: 0,
-          unit_of_measure: '',
-          unit_description: ''
-        });
-        fetchShipment();
+
+      if (editingItemId) {
+        await shipmentService.updateItem(id, editingItemId, payload);
       } else {
-        const errData = await response.json();
-        setItemFormError(errData.error || 'Failed to add item');
+        const response = await fetch(`${config.apiUrl}/api/shipments/${id}/items`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(payload)
+        });
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.error || 'Failed to add item');
+        }
       }
+
+      closeItemModal();
+      fetchShipment();
     } catch (err) {
-      setItemFormError('Error connecting to server');
+      setItemFormError(err.message || 'Error connecting to server');
     } finally {
       setSavingItem(false);
+    }
+  };
+
+  const closeItemModal = () => {
+    setShowAddItemModal(false);
+    setEditingItemId(null);
+    setItemFormData(EMPTY_ITEM_FORM);
+    setItemFormError(null);
+  };
+
+  const openEditItem = (item) => {
+    setEditingItemId(item.id);
+    setItemFormData({
+      equipment_id: item.equipment_id ? String(item.equipment_id) : '',
+      item_number: item.item_number || '',
+      item_description: item.item_description || '',
+      manufacturer_name: item.manufacturer_name || '',
+      qty_ordered: item.qty_ordered ?? 0,
+      qty_shipped: item.qty_shipped ?? 0,
+      qty_backordered: item.qty_backordered ?? 0,
+      unit_of_measure: item.unit_of_measure || '',
+      unit_description: item.unit_description || ''
+    });
+    setItemFormError(null);
+    setShowAddItemModal(true);
+  };
+
+  const handleDeleteItem = async (item) => {
+    const label = item.item_description || item.equipment_name || item.item_number || 'this item';
+    if (!window.confirm(`Remove ${label} from this list?`)) return;
+    try {
+      await shipmentService.deleteItem(id, item.id);
+      fetchShipment();
+    } catch (err) {
+      alert(err.message);
     }
   };
 
@@ -463,6 +519,144 @@ const AdminV2ShipmentDetail = () => {
     }
   };
 
+  // --- Delivery-confirm flow -------------------------------------------------
+  // "Everything came as usual" — one call, zero per-line entry.
+  const handleConfirmAsUsual = async () => {
+    setConfirming(true);
+    setError(null);
+    try {
+      const result = await shipmentService.reconcileShipment(id, { mode: 'same_as_usual' });
+      if (result.success) {
+        setConfirmResult(result);
+        setReviewItems(null);
+        fetchShipment();
+      } else {
+        setConfirmResult({ success: false, error: result.error });
+      }
+    } catch (err) {
+      setConfirmResult({ success: false, error: err.message });
+    } finally {
+      setConfirming(false);
+    }
+  };
+
+  // Open the editable review grid, optionally seeded by a slip scan.
+  const openReview = (suggestions = null) => {
+    const byId = new Map((suggestions || []).map((s) => [s.shipment_item_id, s]));
+    setReviewItems(
+      (shipment.items || []).map((item) => {
+        const s = byId.get(item.id);
+        const arrived = s?.qty_shipped ?? item.qty_shipped ?? item.qty_ordered ?? 0;
+        return {
+          shipment_item_id: item.id,
+          label: item.equipment_name || item.item_description || item.item_number || `Item ${item.id}`,
+          item_number: item.item_number,
+          qty_ordered: item.qty_ordered,
+          qty_received: arrived,
+          qty_backordered: Math.max(0, (item.qty_ordered || 0) - arrived),
+          condition: 'good',
+          matched: s?.matched || null,
+        };
+      })
+    );
+    setConfirmResult(null);
+  };
+
+  const handleScanComplete = async ({ suggestions, barcodes, ocrItems }) => {
+    setShowCapture(false);
+    if (captureMode === 'import') {
+      const { buildNewItems } = await import('../../lib/slipScanner');
+      const drafts = buildNewItems(barcodes, ocrItems, shipment.items || [], equipment);
+      setNewItemDrafts(drafts);
+    } else {
+      openReview(suggestions);
+    }
+    fetchShipment(); // pick up the attached slip pages
+  };
+
+  const updateNewItemDraft = (index, field, value) => {
+    setNewItemDrafts((prev) => prev.map((d, i) => (i === index ? { ...d, [field]: value } : d)));
+  };
+
+  const removeNewItemDraft = (index) => {
+    setNewItemDrafts((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSaveNewItems = async () => {
+    setSavingBulk(true);
+    try {
+      const items = newItemDrafts.map((d) => ({
+        item_number: d.item_number || null,
+        item_description: d.item_description || null,
+        qty_ordered: parseInt(d.qty_ordered, 10) || 0,
+        unit_of_measure: d.unit_of_measure || null,
+        equipment_id: d.equipment_id || null,
+      }));
+      const result = await shipmentService.bulkAddItems(id, items);
+      if (result.success || result.count > 0) {
+        setNewItemDrafts(null);
+        fetchShipment();
+      } else {
+        alert(result.error || 'Failed to add items');
+      }
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSavingBulk(false);
+    }
+  };
+
+  const updateReviewItem = (itemId, field, value) => {
+    setReviewItems((prev) => prev.map((r) => (
+      r.shipment_item_id === itemId ? { ...r, [field]: value } : r
+    )));
+  };
+
+  // Save the review grid: arrived + "coming later" per line, one reconcile call.
+  // qty_shipped is derived as ordered - coming-later, so anything arrived short
+  // of that is flagged as missing by the existing finalize logic.
+  const handleSaveReview = async () => {
+    setConfirming(true);
+    try {
+      const items = reviewItems.map((r) => ({
+        shipment_item_id: r.shipment_item_id,
+        qty_received: parseInt(r.qty_received, 10) || 0,
+        qty_backordered: parseInt(r.qty_backordered, 10) || 0,
+        qty_shipped: Math.max(0, (r.qty_ordered || 0) - (parseInt(r.qty_backordered, 10) || 0)),
+        condition: r.condition || 'good',
+      }));
+      const result = await shipmentService.reconcileShipment(id, { mode: 'itemized', items });
+      if (result.success) {
+        setConfirmResult(result);
+        setReviewItems(null);
+        fetchShipment();
+      } else {
+        setConfirmResult({ success: false, error: result.error });
+      }
+    } catch (err) {
+      setConfirmResult({ success: false, error: err.message });
+    } finally {
+      setConfirming(false);
+    }
+  };
+
+  // Template ("usual order") -> spawn this month's delivery.
+  const handleCreateDelivery = async () => {
+    setCreatingDelivery(true);
+    try {
+      const result = await shipmentService.createDeliveryFromTemplate(id);
+      if (result.success) {
+        navigate(`/care/equipment/shipments/${result.id}?patient=${selectedPatient?.id}`);
+      } else {
+        alert(result.error || 'Failed to create delivery');
+      }
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setCreatingDelivery(false);
+    }
+  };
+
   const formatDate = (dateString) => {
     if (!dateString) return '-';
     return new Date(dateString).toLocaleDateString();
@@ -537,9 +731,15 @@ const AdminV2ShipmentDetail = () => {
   const isOrdered = shipment.status === 'ordered';
   const canMarkOrdered = isDraft && shipment.items?.length > 0;
   const canBeginReceiving = isOrdered && shipment.items?.length > 0;
-  const canReceive = ['shipped', 'receiving'].includes(shipment.status);
+  const canReceive = ['shipped', 'receiving'].includes(shipment.status) && showAdvanced;
   const canFinalize = ['receiving'].includes(shipment.status) && shipment.items?.length > 0;
   const isFinalized = ['complete', 'partial', 'verified'].includes(shipment.status);
+  const isTemplate = !!shipment.is_template;
+  // The common path: a real (non-template) delivery that hasn't been confirmed yet.
+  const canConfirm = !isTemplate && !isFinalized && shipment.items?.length > 0
+    && hasPermission('equipment.update');
+  // Rows stay editable until the delivery is confirmed (and always on templates).
+  const canEditItems = hasPermission('equipment.update') && !isFinalized && !receivingMode;
 
   return (
     <AdminV2Layout>
@@ -657,8 +857,308 @@ const AdminV2ShipmentDetail = () => {
           </div>
         )}
 
+        {/* Standing order ("usual order") banner */}
+        {isTemplate && (
+          <div className="admin-v2-info-banner">
+            <div className="admin-v2-info-content">
+              <strong>This is the usual order</strong>
+              <p>These are the supplies that normally arrive. When a box shows up, start here.</p>
+            </div>
+            {hasPermission('equipment.create') && (
+              <div className="tw">
+                <Button size="lg" onClick={handleCreateDelivery} disabled={creatingDelivery}>
+                  <PackageIcon size={16} /> {creatingDelivery ? 'One moment…' : 'A delivery arrived — start here'}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Delivery-confirm panel — the common path */}
+        {canConfirm && !reviewItems && (
+          <div className="admin-v2-info-banner">
+            <div className="admin-v2-info-content">
+              <strong>Did a delivery arrive?</strong>
+              <p>
+                If everything on the slip matches what came in the box, one tap is all it takes.
+                Scanning the slip checks items off for you.
+              </p>
+            </div>
+            <div className="tw flex flex-wrap gap-2">
+              <Button size="lg" onClick={handleConfirmAsUsual} disabled={confirming}>
+                <CheckIcon size={16} /> {confirming ? 'Saving…' : 'Everything came as usual — Confirm'}
+              </Button>
+              <Button size="lg" variant="secondary" onClick={() => { setCaptureMode('confirm'); setShowCapture(true); }} disabled={confirming}>
+                <CameraIcon size={16} /> Scan the packing slip
+              </Button>
+              <Button variant="ghost" onClick={() => openReview()} disabled={confirming}>
+                Adjust by hand
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Post-confirm summary, in plain language */}
+        {confirmResult && (
+          <div className="admin-v2-info-banner tw">
+            {confirmResult.success ? (
+              <div className="admin-v2-info-content">
+                {confirmResult.status === 'complete' ? (
+                  <>
+                    <strong><CheckIcon size={14} /> All set!</strong>
+                    <p>The delivery is confirmed and your supplies on hand are up to date.</p>
+                  </>
+                ) : (
+                  <>
+                    <strong>Saved — a few things need attention</strong>
+                    <p>
+                      {(confirmResult.alerts || []).filter(a => !a.resolved && a.alert_type === 'short').length > 0 &&
+                        'Some items came up missing — we flagged them so you can follow up. '}
+                      {confirmResult.backorder_shipment_id &&
+                        "Items marked as coming later are being tracked as their own delivery — you'll confirm them when they show up."}
+                    </p>
+                  </>
+                )}
+              </div>
+            ) : (
+              <Alert variant="destructive">{confirmResult.error}</Alert>
+            )}
+          </div>
+        )}
+
+        {/* Review grid: check the numbers before confirming */}
+        {reviewItems && (
+          <div className="admin-v2-section tw">
+            <div className="admin-v2-section-header">
+              <h2>Check the numbers</h2>
+            </div>
+            <p className="admin-v2-text-muted">
+              For each item: how many arrived, and how many the slip says are coming later
+              (the “To Follow” column). Fix anything that looks off — nothing is saved until you confirm.
+            </p>
+            <div className="admin-v2-table-container admin-v2-table-cards-wrap">
+              <table className="admin-v2-table admin-v2-table-cards">
+                <thead>
+                  <tr>
+                    <th>Item</th>
+                    <th style={{ textAlign: 'center' }}>Expected</th>
+                    <th style={{ textAlign: 'center' }}>Arrived</th>
+                    <th style={{ textAlign: 'center' }}>Coming later</th>
+                    <th>Problem?</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reviewItems.map((r) => (
+                    <tr key={r.shipment_item_id}>
+                      <td className="admin-v2-cell-name">
+                        <div>
+                          <strong>{r.label}</strong>
+                          {r.matched && (
+                            <span className="admin-v2-badge admin-v2-badge-success" style={{ marginLeft: 8 }}>
+                              <CheckIcon size={12} /> {r.matched === 'barcode' ? 'scanned' : 'read from slip'}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td data-label="Expected" style={{ textAlign: 'center' }}>{r.qty_ordered}</td>
+                      <td data-label="Arrived" style={{ textAlign: 'center' }}>
+                        <input
+                          type="number" min="0" inputMode="numeric"
+                          value={r.qty_received}
+                          onChange={(e) => updateReviewItem(r.shipment_item_id, 'qty_received', e.target.value)}
+                          style={{ width: '70px', textAlign: 'center', padding: '8px' }}
+                        />
+                      </td>
+                      <td data-label="Coming later" style={{ textAlign: 'center' }}>
+                        <input
+                          type="number" min="0" inputMode="numeric"
+                          value={r.qty_backordered}
+                          onChange={(e) => updateReviewItem(r.shipment_item_id, 'qty_backordered', e.target.value)}
+                          style={{ width: '70px', textAlign: 'center', padding: '8px' }}
+                        />
+                      </td>
+                      <td data-label="Problem?">
+                        <select
+                          value={r.condition}
+                          onChange={(e) => updateReviewItem(r.shipment_item_id, 'condition', e.target.value)}
+                          style={{ padding: '8px' }}
+                        >
+                          <option value="good">No problem</option>
+                          <option value="damaged">Damaged</option>
+                          <option value="wrong_item">Wrong item</option>
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="tw flex gap-2" style={{ marginTop: 12 }}>
+              <Button size="lg" onClick={handleSaveReview} disabled={confirming}>
+                <CheckIcon size={16} /> {confirming ? 'Saving…' : 'Confirm delivery'}
+              </Button>
+              <Button variant="secondary" onClick={() => { setCaptureMode('confirm'); setShowCapture(true); }} disabled={confirming}>
+                <CameraIcon size={16} /> Scan more pages
+              </Button>
+              <Button variant="ghost" onClick={() => setReviewItems(null)} disabled={confirming}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* New items from a scanned invoice: review before adding */}
+        {newItemDrafts && (
+          <div className="admin-v2-section tw">
+            <div className="admin-v2-section-header">
+              <h2>Items from the invoice</h2>
+            </div>
+            {newItemDrafts.length === 0 ? (
+              <p className="admin-v2-text-muted">
+                No new items found on that scan — every barcode we read is already on this list.
+                Try scanning again with more light, or add items by hand.
+              </p>
+            ) : (
+              <>
+                <p className="admin-v2-text-muted">
+                  Here's what we read off the invoice. Fix anything that looks wrong,
+                  remove what you don't want, then add them all at once.
+                </p>
+                <div className="admin-v2-table-container admin-v2-table-cards-wrap">
+                  <table className="admin-v2-table admin-v2-table-cards">
+                    <thead>
+                      <tr>
+                        <th>Item #</th>
+                        <th>Description</th>
+                        <th style={{ textAlign: 'center' }}>Qty</th>
+                        <th style={{ textAlign: 'center' }}>Unit</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {newItemDrafts.map((d, i) => (
+                        <tr key={`${d.item_number}-${i}`}>
+                          <td className="admin-v2-cell-name">
+                            <div>
+                              <input
+                                type="text"
+                                value={d.item_number || ''}
+                                onChange={(e) => updateNewItemDraft(i, 'item_number', e.target.value)}
+                                style={{ width: '110px', padding: '8px' }}
+                              />
+                              {d.source === 'barcode' && (
+                                <span className="admin-v2-badge admin-v2-badge-success" style={{ marginLeft: 6 }}>
+                                  <CheckIcon size={12} /> scanned
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td data-label="Description">
+                            <input
+                              type="text"
+                              value={d.item_description || ''}
+                              placeholder="What is it? (e.g. Trach tube)"
+                              onChange={(e) => updateNewItemDraft(i, 'item_description', e.target.value)}
+                              style={{ width: '100%', minWidth: '140px', padding: '8px' }}
+                            />
+                          </td>
+                          <td data-label="Qty" style={{ textAlign: 'center' }}>
+                            <input
+                              type="number" min="0" inputMode="numeric"
+                              value={d.qty_ordered}
+                              onChange={(e) => updateNewItemDraft(i, 'qty_ordered', e.target.value)}
+                              style={{ width: '70px', textAlign: 'center', padding: '8px' }}
+                            />
+                          </td>
+                          <td data-label="Unit" style={{ textAlign: 'center' }}>
+                            <input
+                              type="text"
+                              value={d.unit_of_measure || ''}
+                              placeholder="EA"
+                              onChange={(e) => updateNewItemDraft(i, 'unit_of_measure', e.target.value)}
+                              style={{ width: '60px', textAlign: 'center', padding: '8px' }}
+                            />
+                          </td>
+                          <td className="admin-v2-cell-actions">
+                            <div className="admin-v2-action-buttons">
+                              <button
+                                className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-secondary"
+                                onClick={() => removeNewItemDraft(i)}
+                                title="Don't add this one"
+                              >
+                                <XIcon size={14} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+            <div className="tw flex flex-wrap gap-2" style={{ marginTop: 12 }}>
+              {newItemDrafts.length > 0 && (
+                <Button size="lg" onClick={handleSaveNewItems} disabled={savingBulk}>
+                  <PlusIcon size={16} /> {savingBulk ? 'Adding…' : `Add ${newItemDrafts.length} item${newItemDrafts.length === 1 ? '' : 's'}`}
+                </Button>
+              )}
+              <Button variant="secondary" onClick={() => { setCaptureMode('import'); setShowCapture(true); }} disabled={savingBulk}>
+                <CameraIcon size={16} /> Scan more pages
+              </Button>
+              <Button variant="ghost" onClick={() => setNewItemDrafts(null)} disabled={savingBulk}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Attached packing-slip pages */}
+        {shipment.documents?.length > 0 && (
+          <div className="admin-v2-section tw">
+            <div className="admin-v2-section-header">
+              <h2>Packing slip</h2>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {shipment.documents.map((doc) => (
+                <a
+                  key={doc.id}
+                  href={shipmentService.documentRawUrl(shipment.id, doc.id)}
+                  target="_blank" rel="noreferrer"
+                  className="block overflow-hidden rounded-lg border border-border"
+                  title={doc.title || `Page ${doc.page_number || ''}`}
+                >
+                  {(doc.content_type || '').startsWith('image/') ? (
+                    <img
+                      src={shipmentService.documentRawUrl(shipment.id, doc.id)}
+                      alt={doc.title || 'Packing slip page'}
+                      style={{ width: 110, height: 140, objectFit: 'cover' }}
+                      loading="lazy"
+                    />
+                  ) : (
+                    <span className="flex h-[140px] w-[110px] flex-col items-center justify-center gap-1 text-center text-sm">
+                      <FileTextIcon size={20} /> {doc.title || 'Document'}
+                    </span>
+                  )}
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Advanced (legacy) workflow, tucked away for the rare cases */}
+        {!isTemplate && !isFinalized && (
+          <div className="tw">
+            <Button variant="ghost" size="sm" onClick={() => setShowAdvanced(!showAdvanced)}>
+              {showAdvanced
+                ? <><ChevronDownIcon size={14} /> Hide advanced options</>
+                : <><ChevronRightIcon size={14} /> Advanced options</>}
+            </Button>
+          </div>
+        )}
+
         {/* Draft Status Notice */}
-        {isDraft && (
+        {showAdvanced && isDraft && (
           <div className="admin-v2-info-banner">
             <div className="admin-v2-info-content">
               <strong>Draft Shipment</strong>
@@ -675,7 +1175,7 @@ const AdminV2ShipmentDetail = () => {
         )}
 
         {/* Ordered Status Notice - Begin Receiving */}
-        {isOrdered && (
+        {showAdvanced && isOrdered && (
           <div className="admin-v2-info-banner">
             <div className="admin-v2-info-content">
               <strong>Order Placed</strong>
@@ -714,7 +1214,13 @@ const AdminV2ShipmentDetail = () => {
           <div className="admin-v2-section-header">
             <h2>Items</h2>
             {hasPermission('equipment.update') && !isFinalized && (
-              <div className="tw">
+              <div className="tw flex flex-wrap gap-2">
+                <Button variant="secondary" onClick={() => { setCaptureMode('import'); setShowCapture(true); }}>
+                  <CameraIcon size={16} /> Scan invoice to add items
+                </Button>
+                <Button variant="secondary" onClick={() => setShowCsvImport(true)}>
+                  <FileTextIcon size={16} /> Import CSV
+                </Button>
                 <Button onClick={() => setShowAddItemModal(true)}>
                   <PlusIcon size={16} /> Add Item
                 </Button>
@@ -723,8 +1229,8 @@ const AdminV2ShipmentDetail = () => {
           </div>
 
           {shipment.items && shipment.items.length > 0 ? (
-            <div className="admin-v2-table-container">
-              <table className="admin-v2-table">
+            <div className="admin-v2-table-container admin-v2-table-cards-wrap">
+              <table className="admin-v2-table admin-v2-table-cards">
                 <thead>
                   <tr>
                     <th>Item</th>
@@ -734,6 +1240,7 @@ const AdminV2ShipmentDetail = () => {
                     <th style={{ textAlign: 'center' }}>B/O</th>
                     <th style={{ textAlign: 'center' }}>Received</th>
                     {canReceive && !receivingMode && <th>Receive</th>}
+                    {canEditItems && <th></th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -743,15 +1250,26 @@ const AdminV2ShipmentDetail = () => {
                     const itemEdit = itemEdits[item.id] || {};
                     
                     return (
-                      <tr key={item.id}>
-                        <td>
-                          <strong>{item.item_number || '-'}</strong>
-                          {item.equipment_name && <div className="admin-v2-text-muted">{item.equipment_name}</div>}
-                          {item.unit_description && <div className="admin-v2-text-small">{item.unit_description}</div>}
+                      <tr
+                        key={item.id}
+                        className={canEditItems ? 'admin-v2-clickable-row' : undefined}
+                        onClick={canEditItems ? () => openEditItem(item) : undefined}
+                      >
+                        <td className="admin-v2-cell-name">
+                          <div>
+                            <strong>{item.item_description || item.equipment_name || item.item_number || '-'}</strong>
+                            {item.item_number && (item.item_description || item.equipment_name) && (
+                              <div className="admin-v2-text-muted">#{item.item_number}</div>
+                            )}
+                            {item.equipment_name && item.item_description && (
+                              <div className="admin-v2-text-muted">{item.equipment_name}</div>
+                            )}
+                            {item.unit_description && <div className="admin-v2-text-small">{item.unit_description}</div>}
+                          </div>
                         </td>
-                        <td>{item.manufacturer_name || '-'}</td>
-                        <td style={{ textAlign: 'center' }}>{item.qty_ordered}</td>
-                        <td style={{ textAlign: 'center' }}>
+                        <td data-label="Manufacturer">{item.manufacturer_name || '-'}</td>
+                        <td data-label="Ordered" style={{ textAlign: 'center' }}>{item.qty_ordered}</td>
+                        <td data-label="Shipped" style={{ textAlign: 'center' }}>
                           {receivingMode ? (
                             <input
                               type="number"
@@ -764,7 +1282,7 @@ const AdminV2ShipmentDetail = () => {
                             item.qty_shipped
                           )}
                         </td>
-                        <td style={{ textAlign: 'center' }}>
+                        <td data-label="Coming later" style={{ textAlign: 'center' }}>
                           {receivingMode ? (
                             <input
                               type="number"
@@ -779,7 +1297,7 @@ const AdminV2ShipmentDetail = () => {
                             ) : '-'
                           )}
                         </td>
-                        <td style={{ textAlign: 'center' }}>
+                        <td data-label="Received" style={{ textAlign: 'center' }}>
                           {receivingMode ? (
                             <input
                               type="number"
@@ -797,7 +1315,7 @@ const AdminV2ShipmentDetail = () => {
                           )}
                         </td>
                         {canReceive && !receivingMode && (
-                          <td>
+                          <td data-label="Receive">
                             {remaining > 0 && receiveEntry ? (
                               <div className="admin-v2-receive-form">
                                 <div className="admin-v2-receive-row">
@@ -843,6 +1361,26 @@ const AdminV2ShipmentDetail = () => {
                             ) : null}
                           </td>
                         )}
+                        {canEditItems && (
+                          <td className="admin-v2-cell-actions" onClick={(e) => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
+                            <div className="admin-v2-action-buttons">
+                              <button
+                                className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-secondary"
+                                onClick={() => openEditItem(item)}
+                                title="Edit this item"
+                              >
+                                <EditIcon size={14} />
+                              </button>
+                              <button
+                                className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-secondary"
+                                onClick={() => handleDeleteItem(item)}
+                                title="Remove this item"
+                              >
+                                <TrashIcon size={14} />
+                              </button>
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
@@ -852,11 +1390,14 @@ const AdminV2ShipmentDetail = () => {
           ) : (
             <div className="admin-v2-empty-state">
               <EquipmentIcon size={32} />
-              <p>No items in this shipment yet.</p>
+              <p>No items on this list yet. The fast way: scan the invoice and we'll read them off for you.</p>
               {hasPermission('equipment.update') && !isFinalized && (
-                <div className="tw">
-                  <Button onClick={() => setShowAddItemModal(true)}>
-                    <PlusIcon size={16} /> Add Item
+                <div className="tw flex flex-wrap justify-center gap-2">
+                  <Button onClick={() => { setCaptureMode('import'); setShowCapture(true); }}>
+                    <CameraIcon size={16} /> Scan invoice to add items
+                  </Button>
+                  <Button variant="secondary" onClick={() => setShowAddItemModal(true)}>
+                    <PlusIcon size={16} /> Add by hand
                   </Button>
                 </div>
               )}
@@ -868,8 +1409,8 @@ const AdminV2ShipmentDetail = () => {
         {shipment.items?.some(item => item.receipts?.length > 0) && (
           <div className="admin-v2-section">
             <h2>Receipt History</h2>
-            <div className="admin-v2-table-container">
-              <table className="admin-v2-table">
+            <div className="admin-v2-table-container admin-v2-table-cards-wrap">
+              <table className="admin-v2-table admin-v2-table-cards">
                 <thead>
                   <tr>
                     <th>Item</th>
@@ -882,20 +1423,22 @@ const AdminV2ShipmentDetail = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {shipment.items.flatMap(item => 
+                  {shipment.items.flatMap(item =>
                     (item.receipts || []).map(receipt => (
                       <tr key={receipt.id}>
-                        <td>{item.item_number || item.equipment_name || 'Item'}</td>
-                        <td>{receipt.qty_received}</td>
-                        <td>
+                        <td className="admin-v2-cell-name">
+                          <strong>{item.item_description || item.equipment_name || item.item_number || 'Item'}</strong>
+                        </td>
+                        <td data-label="Qty">{receipt.qty_received}</td>
+                        <td data-label="Condition">
                           <span className={`admin-v2-badge ${getConditionBadgeClass(receipt.condition)}`}>
                             {receipt.condition}
                           </span>
                         </td>
-                        <td>{receipt.lot_number || '-'}</td>
-                        <td>{formatDate(receipt.expiration_date)}</td>
-                        <td>{formatDate(receipt.received_at)}</td>
-                        <td>{receipt.discrepancy_notes || '-'}</td>
+                        <td data-label="Lot #">{receipt.lot_number || '-'}</td>
+                        <td data-label="Expiration">{formatDate(receipt.expiration_date)}</td>
+                        <td data-label="Received At">{formatDate(receipt.received_at)}</td>
+                        <td data-label="Notes">{receipt.discrepancy_notes || '-'}</td>
                       </tr>
                     ))
                   )}
@@ -905,8 +1448,8 @@ const AdminV2ShipmentDetail = () => {
           </div>
         )}
 
-        {/* Finalize Button */}
-        {canFinalize && hasPermission('equipment.update') && (
+        {/* Finalize Button (advanced path; the confirm panel handles the common case) */}
+        {showAdvanced && canFinalize && hasPermission('equipment.update') && (
           <div className="admin-v2-finalize-section tw">
             <Button size="lg" onClick={handleFinalizeShipment} disabled={finalizing}>
               {finalizing ? 'Finalizing...' : 'Finalize Shipment'}
@@ -925,11 +1468,29 @@ const AdminV2ShipmentDetail = () => {
           </div>
         )}
 
+        {/* CSV item import */}
+        <CsvItemImport
+          open={showCsvImport}
+          onClose={() => setShowCsvImport(false)}
+          shipmentId={shipment.id}
+          onDone={() => { setShowCsvImport(false); fetchShipment(); }}
+        />
+
+        {/* Packing-slip / invoice capture */}
+        <PackingSlipCapture
+          open={showCapture}
+          onClose={() => setShowCapture(false)}
+          shipmentId={shipment.id}
+          expectedItems={shipment.items || []}
+          onComplete={handleScanComplete}
+          mode={captureMode}
+        />
+
         {/* Add Item Dialog */}
-        <Dialog open={showAddItemModal} onOpenChange={(o) => { if (!o) setShowAddItemModal(false); }}>
+        <Dialog open={showAddItemModal} onOpenChange={(o) => { if (!o) closeItemModal(); }}>
           <DialogContent className="sm:max-w-[640px]" aria-describedby={undefined}>
             <DialogHeader>
-              <DialogTitle>Add Shipment Item</DialogTitle>
+              <DialogTitle>{editingItemId ? 'Edit Item' : 'Add Shipment Item'}</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleAddItem} className="flex flex-col gap-4">
               {itemFormError && <Alert variant="destructive">{itemFormError}</Alert>}
@@ -988,6 +1549,15 @@ const AdminV2ShipmentDetail = () => {
                 </Field>
               </FormRow>
 
+              <Field label="Description" htmlFor="item-desc">
+                <Input
+                  id="item-desc"
+                  value={itemFormData.item_description}
+                  onChange={e => setItemFormData({...itemFormData, item_description: e.target.value})}
+                  placeholder="What is it? (e.g. Trach tube 6.0mm)"
+                />
+              </Field>
+
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <Field label="Qty Ordered" htmlFor="item-qty-ordered">
                   <Input
@@ -1038,8 +1608,10 @@ const AdminV2ShipmentDetail = () => {
               </FormRow>
 
               <DialogFooter>
-                <Button type="button" variant="secondary" onClick={() => setShowAddItemModal(false)}>Cancel</Button>
-                <Button type="submit" disabled={savingItem}>{savingItem ? 'Adding...' : 'Add Item'}</Button>
+                <Button type="button" variant="secondary" onClick={closeItemModal}>Cancel</Button>
+                <Button type="submit" disabled={savingItem}>
+                  {savingItem ? 'Saving…' : (editingItemId ? 'Save Changes' : 'Add Item')}
+                </Button>
               </DialogFooter>
             </form>
           </DialogContent>

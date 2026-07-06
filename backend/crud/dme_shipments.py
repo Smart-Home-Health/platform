@@ -21,8 +21,9 @@ from datetime import datetime
 from typing import Optional, List
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
-from schemas.dme_shipment import DMEShipment, DMEShipmentItem, DMEReceiptItem, DMEShipmentAlert
+from schemas.dme_shipment import DMEShipment, DMEShipmentItem, DMEReceiptItem, DMEShipmentAlert, DMEShipmentDocument
 from schemas.equipment import Equipment
+import document_store
 
 logger = logging.getLogger('crud')
 
@@ -43,7 +44,10 @@ def create_shipment(
     is_backorder: bool = False,
     parent_shipment_id: Optional[int] = None,
     notes: Optional[str] = None,
-    created_by: Optional[int] = None
+    created_by: Optional[int] = None,
+    is_template: bool = False,
+    template_source_id: Optional[int] = None,
+    status: str = 'draft'
 ) -> Optional[DMEShipment]:
     """Create a new DME shipment"""
     try:
@@ -61,7 +65,9 @@ def create_shipment(
             parent_shipment_id=parent_shipment_id,
             notes=notes,
             created_by=created_by,
-            status='draft',
+            is_template=is_template,
+            template_source_id=template_source_id,
+            status=status,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()
         )
@@ -95,13 +101,14 @@ def list_shipments(
     supplier_id: Optional[int] = None,
     status: Optional[str] = None,
     is_backorder: Optional[bool] = None,
+    is_template: Optional[bool] = None,
     skip: int = 0,
     limit: int = 50
 ) -> List[dict]:
     """List shipments with optional filters"""
     try:
         query = db.query(DMEShipment)
-        
+
         if patient_id is not None:
             query = query.filter(DMEShipment.patient_id == patient_id)
         if supplier_id is not None:
@@ -110,6 +117,8 @@ def list_shipments(
             query = query.filter(DMEShipment.status == status)
         if is_backorder is not None:
             query = query.filter(DMEShipment.is_backorder == is_backorder)
+        if is_template is not None:
+            query = query.filter(DMEShipment.is_template == is_template)
         
         query = query.order_by(DMEShipment.created_at.desc())
         shipments = query.offset(skip).limit(limit).all()
@@ -134,7 +143,7 @@ def update_shipment(
         allowed_fields = [
             'supplier_id', 'po_number', 'order_number', 'ship_date', 'expected_delivery',
             'actual_delivery', 'status', 'tracking_number', 'ship_method', 'warehouse_loc',
-            'notes'
+            'notes', 'is_template'
         ]
         
         for field in allowed_fields:
@@ -311,10 +320,11 @@ def receive_item(
                 Equipment.id == shipment_item.equipment_id
             ).first()
             if equipment:
-                # Convert to base units if unit_size is set
+                # Convert to base units if unit_size is set (int() guards any
+                # legacy string values from before migration 033 typed the column)
                 qty_to_add = qty_received
                 if equipment.unit_size and shipment_item.unit_of_measure != 'EA':
-                    qty_to_add = qty_received * equipment.unit_size
+                    qty_to_add = qty_received * int(equipment.unit_size)
                 
                 equipment.quantity = (equipment.quantity or 0) + qty_to_add
                 equipment.updated_at = datetime.utcnow()
@@ -718,6 +728,278 @@ def get_pending_backorders(db: Session, patient_id: Optional[int] = None) -> Lis
         return []
 
 
+# --- Standing Orders (templates) ---
+
+def create_delivery_from_template(
+    db: Session,
+    template_id: int,
+    expected_delivery: Optional[datetime] = None,
+    created_by: Optional[int] = None
+) -> Optional[dict]:
+    """
+    Create a delivery from a standing-order template ("the usual monthly order").
+    Clones the template's line items with qty_shipped seeded to qty_ordered —
+    the expectation is everything arrives as usual; reconcile adjusts from there.
+    """
+    try:
+        template = db.query(DMEShipment).filter(
+            DMEShipment.id == template_id,
+            DMEShipment.is_template == True
+        ).first()
+        if not template:
+            return {'success': False, 'error': 'Standing order not found'}
+
+        delivery = create_shipment(
+            db,
+            patient_id=template.patient_id,
+            supplier_id=template.supplier_id,
+            po_number=template.po_number,
+            ship_method=template.ship_method,
+            expected_delivery=expected_delivery,
+            notes=None,
+            created_by=created_by,
+            template_source_id=template_id,
+            status='ordered'
+        )
+        if not delivery:
+            return {'success': False, 'error': 'Failed to create delivery'}
+
+        for t_item in template.items:
+            add_shipment_item(
+                db,
+                shipment_id=delivery.id,
+                equipment_id=t_item.equipment_id,
+                item_number=t_item.item_number,
+                item_description=t_item.item_description,
+                manufacturer_name=t_item.manufacturer_name,
+                qty_ordered=t_item.qty_ordered,
+                qty_shipped=t_item.qty_ordered,
+                qty_backordered=0,
+                unit_of_measure=t_item.unit_of_measure,
+                unit_description=t_item.unit_description,
+                unit_price=t_item.unit_price
+            )
+
+        logger.info(f"Created delivery {delivery.id} from template {template_id}")
+        return {'success': True, 'id': delivery.id}
+    except Exception as e:
+        logger.error(f"Error creating delivery from template {template_id}: {e}")
+        db.rollback()
+        return {'success': False, 'error': str(e)}
+
+
+# --- Reconcile (one-call confirm) ---
+
+def reconcile_shipment(
+    db: Session,
+    shipment_id: int,
+    mode: str = 'same_as_usual',
+    items: Optional[List[dict]] = None,
+    confirmed_delivery_date: Optional[datetime] = None,
+    user_id: Optional[int] = None
+) -> dict:
+    """
+    Confirm a delivery in one call, collapsing receive + finalize:
+    - 'same_as_usual': every line received in full (qty_shipped, falling back to
+      qty_ordered) in good condition — the zero-effort path.
+    - 'itemized': apply per-line receipts (qty_received/condition/backorder from
+      the packing slip or manual adjustment).
+    Then finalize_shipment() runs unchanged: shorts/damaged alerts, auto child
+    backorder shipment, status partial/complete.
+    """
+    try:
+        shipment = db.query(DMEShipment).filter(DMEShipment.id == shipment_id).first()
+        if not shipment:
+            return {'success': False, 'error': 'Shipment not found'}
+        if shipment.is_template:
+            return {'success': False, 'error': 'Standing orders cannot be reconciled'}
+        if shipment.finalized_at:
+            return {'success': False, 'error': 'Shipment already finalized'}
+
+        if mode == 'same_as_usual':
+            for item in shipment.items:
+                qty = item.qty_shipped or item.qty_ordered
+                if not item.qty_shipped and item.qty_ordered:
+                    # Keep the record honest: everything expected was shipped
+                    item.qty_shipped = item.qty_ordered
+                if qty > 0:
+                    receipt = receive_item(
+                        db, item.id, qty_received=qty,
+                        received_by=user_id, condition='good'
+                    )
+                    if receipt is None:
+                        return {'success': False, 'error': f'Failed to receive item {item.id}'}
+        elif mode == 'itemized':
+            for entry in (items or []):
+                item_id = entry.get('shipment_item_id')
+                item = db.query(DMEShipmentItem).filter(
+                    DMEShipmentItem.id == item_id,
+                    DMEShipmentItem.shipment_id == shipment_id
+                ).first()
+                if not item:
+                    return {'success': False, 'error': f'Item {item_id} not in shipment'}
+
+                # Per-line adjustments from the slip ("To Follow" -> backorder)
+                if entry.get('qty_shipped') is not None:
+                    item.qty_shipped = entry['qty_shipped']
+                if entry.get('qty_backordered') is not None:
+                    item.qty_backordered = entry['qty_backordered']
+
+                qty_received = entry.get('qty_received', 0)
+                if qty_received > 0:
+                    receipt = receive_item(
+                        db, item.id,
+                        qty_received=qty_received,
+                        received_by=user_id,
+                        condition=entry.get('condition', 'good'),
+                        discrepancy_notes=entry.get('discrepancy_notes'),
+                        lot_number=entry.get('lot_number'),
+                        expiration_date=entry.get('expiration_date')
+                    )
+                    if receipt is None:
+                        return {'success': False, 'error': f'Failed to receive item {item.id}'}
+        else:
+            return {'success': False, 'error': f'Unknown mode: {mode}'}
+
+        if confirmed_delivery_date:
+            shipment.actual_delivery = confirmed_delivery_date
+        db.commit()
+
+        result = finalize_shipment(db, shipment_id, finalized_by=user_id)
+        if result.get('success'):
+            result['alerts'] = get_shipment_alerts(db, shipment_id)
+        return result
+    except Exception as e:
+        logger.error(f"Error reconciling shipment {shipment_id}: {e}")
+        db.rollback()
+        return {'success': False, 'error': str(e)}
+
+
+# --- Packing-slip documents ---
+
+def add_shipment_document(
+    db: Session,
+    shipment_id: int,
+    content: bytes,
+    content_type: str,
+    title: Optional[str] = None,
+    page_number: Optional[int] = None,
+    uploaded_by: Optional[int] = None
+) -> Optional[dict]:
+    """Store a packing-slip image/PDF blob and attach its metadata row."""
+    try:
+        shipment = db.query(DMEShipment).filter(DMEShipment.id == shipment_id).first()
+        if not shipment:
+            return None
+
+        file_path, size = document_store.save_document(
+            shipment.account_id, shipment.patient_id, content, content_type
+        )
+        doc = DMEShipmentDocument(
+            shipment_id=shipment_id,
+            account_id=shipment.account_id,
+            patient_id=shipment.patient_id,
+            document_type='packing-slip',
+            title=title,
+            content_type=content_type,
+            storage='file',
+            file_path=file_path,
+            size_bytes=size,
+            page_number=page_number,
+            uploaded_by=uploaded_by,
+            created_at=datetime.utcnow()
+        )
+        db.add(doc)
+        db.commit()
+        db.refresh(doc)
+        logger.info(f"Attached document {doc.id} to shipment {shipment_id}")
+        return _document_to_dict(doc)
+    except Exception as e:
+        logger.error(f"Error attaching document to shipment {shipment_id}: {e}")
+        db.rollback()
+        return None
+
+
+def list_shipment_documents(db: Session, shipment_id: int) -> List[dict]:
+    """List document metadata for a shipment (ordered by page)"""
+    try:
+        docs = db.query(DMEShipmentDocument).filter(
+            DMEShipmentDocument.shipment_id == shipment_id
+        ).order_by(DMEShipmentDocument.page_number.nullslast(), DMEShipmentDocument.id).all()
+        return [_document_to_dict(d) for d in docs]
+    except Exception as e:
+        logger.error(f"Error listing documents for shipment {shipment_id}: {e}")
+        return []
+
+
+def get_shipment_document(db: Session, shipment_id: int, document_id: int) -> Optional[DMEShipmentDocument]:
+    """Fetch a single document row (scoped to the shipment)"""
+    return db.query(DMEShipmentDocument).filter(
+        DMEShipmentDocument.id == document_id,
+        DMEShipmentDocument.shipment_id == shipment_id
+    ).first()
+
+
+def delete_shipment_document(db: Session, shipment_id: int, document_id: int) -> bool:
+    """Delete a document row and its blob"""
+    try:
+        doc = get_shipment_document(db, shipment_id, document_id)
+        if not doc:
+            return False
+        if doc.file_path:
+            document_store.delete_document(doc.file_path)
+        db.delete(doc)
+        db.commit()
+        logger.info(f"Deleted document {document_id} from shipment {shipment_id}")
+        return True
+    except Exception as e:
+        logger.error(f"Error deleting document {document_id}: {e}")
+        db.rollback()
+        return False
+
+
+# --- Inventory summary ---
+
+def get_inventory_summary(db: Session, patient_id: Optional[int] = None) -> List[dict]:
+    """
+    Per-equipment on-hand view: quantity vs par_level / reorder_point with a
+    derived status (ok | low | reorder). Reconciled deliveries keep this live
+    via receive_item()'s Equipment.quantity updates.
+    """
+    try:
+        query = db.query(Equipment)
+        if patient_id is not None:
+            query = query.filter(Equipment.patient_id == patient_id)
+        rows = query.order_by(Equipment.name).all()
+
+        result = []
+        for eq in rows:
+            qty = eq.quantity or 0
+            if eq.reorder_point is not None and qty <= eq.reorder_point:
+                status = 'reorder'
+            elif eq.par_level is not None and qty < eq.par_level:
+                status = 'low'
+            else:
+                status = 'ok'
+            result.append({
+                'equipment_id': eq.id,
+                'name': eq.name,
+                'item_number': eq.item_number,
+                'category': eq.category,
+                'quantity': qty,
+                'unit_of_measure': eq.unit_of_measure,
+                'unit_size': eq.unit_size,
+                'unit_description': eq.unit_description,
+                'reorder_point': eq.reorder_point,
+                'par_level': eq.par_level,
+                'status': status
+            })
+        return result
+    except Exception as e:
+        logger.error(f"Error building inventory summary: {e}")
+        return []
+
+
 # --- Helper Functions ---
 
 def _shipment_to_dict(shipment: DMEShipment, include_items: bool = False, include_alerts: bool = False) -> dict:
@@ -738,6 +1020,8 @@ def _shipment_to_dict(shipment: DMEShipment, include_items: bool = False, includ
         'warehouse_loc': shipment.warehouse_loc,
         'is_backorder': shipment.is_backorder,
         'parent_shipment_id': shipment.parent_shipment_id,
+        'is_template': shipment.is_template,
+        'template_source_id': shipment.template_source_id,
         'notes': shipment.notes,
         'created_by': shipment.created_by,
         'created_at': shipment.created_at.isoformat() if shipment.created_at else None,
@@ -753,8 +1037,26 @@ def _shipment_to_dict(shipment: DMEShipment, include_items: bool = False, includ
     if include_alerts:
         result['alerts'] = [_alert_to_dict(alert) for alert in shipment.alerts]
         result['unresolved_alert_count'] = sum(1 for a in shipment.alerts if not a.resolved)
-    
+
+    if include_items:
+        result['documents'] = [_document_to_dict(d) for d in shipment.documents]
+
     return result
+
+
+def _document_to_dict(doc: DMEShipmentDocument) -> dict:
+    """Convert shipment document metadata to dictionary (no blob)"""
+    return {
+        'id': doc.id,
+        'shipment_id': doc.shipment_id,
+        'document_type': doc.document_type,
+        'title': doc.title,
+        'content_type': doc.content_type,
+        'size_bytes': doc.size_bytes,
+        'page_number': doc.page_number,
+        'uploaded_by': doc.uploaded_by,
+        'created_at': doc.created_at.isoformat() if doc.created_at else None
+    }
 
 
 def _item_to_dict(item: DMEShipmentItem) -> dict:

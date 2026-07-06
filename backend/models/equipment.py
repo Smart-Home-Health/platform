@@ -26,6 +26,17 @@ class EquipmentCreate(BaseModel):
     last_changed: Optional[date] = None
     useful_days: Optional[int] = Field(None, gt=0)
     patient_id: Optional[int] = None
+    # Supply/inventory tracking (drives the On Hand view's low/reorder statuses)
+    item_number: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = 'equipment'
+    tracking_level: Optional[str] = 'item'
+    default_manufacturer: Optional[str] = None
+    unit_of_measure: Optional[str] = None
+    unit_size: Optional[int] = Field(None, gt=0)
+    unit_description: Optional[str] = None
+    reorder_point: Optional[int] = Field(None, ge=0)
+    par_level: Optional[int] = Field(None, ge=0)
 
 
 class EquipmentUpdate(BaseModel):
@@ -34,6 +45,17 @@ class EquipmentUpdate(BaseModel):
     scheduled_replacement: Optional[bool] = None
     last_changed: Optional[date] = None
     useful_days: Optional[int] = Field(None, gt=0)
+    # Supply/inventory tracking
+    item_number: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    tracking_level: Optional[str] = None
+    default_manufacturer: Optional[str] = None
+    unit_of_measure: Optional[str] = None
+    unit_size: Optional[int] = Field(None, gt=0)
+    unit_description: Optional[str] = None
+    reorder_point: Optional[int] = Field(None, ge=0)
+    par_level: Optional[int] = Field(None, ge=0)
 
 
 class EquipmentResponse(BaseModel):

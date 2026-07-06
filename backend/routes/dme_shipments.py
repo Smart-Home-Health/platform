@@ -19,7 +19,8 @@ DME Shipment API routes for supplies and equipment deliveries
 import logging
 from datetime import datetime
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException, Body, UploadFile, File, Form
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
@@ -45,6 +46,7 @@ class ShipmentCreate(BaseModel):
     ship_method: Optional[str] = None
     warehouse_loc: Optional[str] = None
     notes: Optional[str] = None
+    is_template: bool = False
 
 
 class ShipmentUpdate(BaseModel):
@@ -59,6 +61,7 @@ class ShipmentUpdate(BaseModel):
     ship_method: Optional[str] = None
     warehouse_loc: Optional[str] = None
     notes: Optional[str] = None
+    is_template: Optional[bool] = None
 
 
 class ShipmentItemCreate(BaseModel):
@@ -108,6 +111,27 @@ class CreateFollowupOrder(BaseModel):
     alert_ids: List[int]
 
 
+class CreateDelivery(BaseModel):
+    expected_delivery: Optional[str] = None
+
+
+class ReconcileItemEntry(BaseModel):
+    shipment_item_id: int
+    qty_received: int = 0
+    qty_shipped: Optional[int] = None
+    qty_backordered: Optional[int] = None
+    condition: str = 'good'  # good, damaged, wrong_item, short, extra
+    discrepancy_notes: Optional[str] = None
+    lot_number: Optional[str] = None
+    expiration_date: Optional[str] = None
+
+
+class ReconcileRequest(BaseModel):
+    mode: str = 'same_as_usual'  # same_as_usual | itemized
+    items: Optional[List[ReconcileItemEntry]] = None
+    confirmed_delivery_date: Optional[str] = None
+
+
 # --- Helper Functions ---
 
 def parse_datetime(dt_str: Optional[str]) -> Optional[datetime]:
@@ -145,7 +169,8 @@ async def create_shipment(
             ship_method=data.ship_method,
             warehouse_loc=data.warehouse_loc,
             notes=data.notes,
-            created_by=current_user.id
+            created_by=current_user.id,
+            is_template=data.is_template
         )
         
         if shipment:
@@ -162,6 +187,7 @@ async def list_shipments(
     supplier_id: Optional[int] = None,
     status: Optional[str] = None,
     is_backorder: Optional[bool] = None,
+    is_template: Optional[bool] = None,
     skip: int = 0,
     limit: int = 50,
     db: Session = Depends(get_db)
@@ -174,6 +200,7 @@ async def list_shipments(
             supplier_id=supplier_id,
             status=status,
             is_backorder=is_backorder,
+            is_template=is_template,
             skip=skip,
             limit=limit
         )
@@ -216,6 +243,27 @@ async def get_alerts(
     except Exception as e:
         logger.error(f"Error fetching alerts: {e}")
         return {"alerts": [], "count": 0, "error": str(e)}
+
+
+@router.get("/inventory", dependencies=[Depends(require_permission("shipments.read"))])
+async def get_inventory(
+    patient_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    """Supplies-on-hand summary: per-equipment quantity vs par/reorder levels"""
+    try:
+        items = crud.get_inventory_summary(db, patient_id=patient_id)
+        return {
+            "inventory": items,
+            "counts": {
+                "reorder": sum(1 for i in items if i['status'] == 'reorder'),
+                "low": sum(1 for i in items if i['status'] == 'low'),
+                "ok": sum(1 for i in items if i['status'] == 'ok'),
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error fetching inventory summary: {e}")
+        return {"inventory": [], "counts": {}, "error": str(e)}
 
 
 @router.get("/{shipment_id}", dependencies=[Depends(require_permission("shipments.read"))])
@@ -381,6 +429,37 @@ async def add_shipment_item(
     except Exception as e:
         logger.error(f"Error adding item to shipment {shipment_id}: {e}")
         return {"success": False, "error": str(e)}
+
+
+@router.post("/{shipment_id}/items/bulk", dependencies=[Depends(require_permission("shipments.update"))])
+async def add_shipment_items_bulk(
+    shipment_id: int,
+    items: List[ShipmentItemCreate],
+    db: Session = Depends(get_db)
+):
+    """
+    Add many items in one call — used by the invoice/packing-slip scanner to
+    populate a shipment (or standing order) without typing each line.
+    """
+    shipment = db.query(crud.DMEShipment).filter(crud.DMEShipment.id == shipment_id).first()
+    if not shipment:
+        raise HTTPException(status_code=404, detail="Shipment not found")
+
+    created = []
+    errors = []
+    for entry in items:
+        item = crud.add_shipment_item(db, shipment_id=shipment_id, **entry.model_dump())
+        if item:
+            created.append(item.id)
+        else:
+            errors.append(entry.item_number or entry.item_description or '?')
+
+    return {
+        "success": len(errors) == 0,
+        "ids": created,
+        "count": len(created),
+        **({"errors": errors} if errors else {}),
+    }
 
 
 @router.put("/{shipment_id}/items/{item_id}", dependencies=[Depends(require_permission("shipments.update"))])
@@ -551,3 +630,138 @@ async def create_followup_order(
     except Exception as e:
         logger.error(f"Error creating follow-up order: {e}")
         return {"success": False, "error": str(e)}
+
+
+# --- Standing Orders (templates) ---
+
+@router.post("/{template_id}/create-delivery", dependencies=[Depends(require_permission("shipments.create"))])
+async def create_delivery(
+    template_id: int,
+    data: CreateDelivery = Body(default=CreateDelivery()),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Create a delivery from a standing-order template ("the usual order")"""
+    try:
+        result = crud.create_delivery_from_template(
+            db,
+            template_id=template_id,
+            expected_delivery=parse_datetime(data.expected_delivery),
+            created_by=current_user.id
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Error creating delivery from template {template_id}: {e}")
+        return {"success": False, "error": str(e)}
+
+
+# --- Reconcile (one-call delivery confirm) ---
+
+@router.post("/{shipment_id}/reconcile", dependencies=[Depends(require_permission("shipments.receive"))])
+async def reconcile_shipment(
+    shipment_id: int,
+    data: ReconcileRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Confirm a delivery in one call: record receipts ('same_as_usual' receives
+    every line in full; 'itemized' applies per-line quantities/conditions from
+    the packing slip) and finalize — creating discrepancy alerts and the child
+    backorder shipment as needed.
+    """
+    try:
+        items = None
+        if data.items is not None:
+            items = []
+            for entry in data.items:
+                d = entry.model_dump()
+                d['expiration_date'] = parse_datetime(d.get('expiration_date'))
+                items.append(d)
+
+        result = crud.reconcile_shipment(
+            db,
+            shipment_id=shipment_id,
+            mode=data.mode,
+            items=items,
+            confirmed_delivery_date=parse_datetime(data.confirmed_delivery_date),
+            user_id=current_user.id
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Error reconciling shipment {shipment_id}: {e}")
+        return {"success": False, "error": str(e)}
+
+
+# --- Packing-slip documents ---
+
+# Keep uploads sane for photos/PDFs of packing slips.
+MAX_DOCUMENT_BYTES = 20 * 1024 * 1024
+ALLOWED_DOCUMENT_TYPES = {"image/jpeg", "image/png", "application/pdf"}
+
+
+@router.post("/{shipment_id}/documents", dependencies=[Depends(require_permission("shipments.update"))])
+async def upload_shipment_document(
+    shipment_id: int,
+    file: UploadFile = File(...),
+    page_number: Optional[int] = Form(None),
+    title: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Attach a packing-slip image/PDF to a shipment (repeat for multi-page slips)"""
+    content_type = (file.content_type or "").split(";")[0].strip().lower()
+    if content_type not in ALLOWED_DOCUMENT_TYPES:
+        raise HTTPException(status_code=415, detail="Only JPEG, PNG, or PDF packing slips are supported")
+
+    content = await file.read()
+    if len(content) > MAX_DOCUMENT_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (20 MB max)")
+
+    doc = crud.add_shipment_document(
+        db,
+        shipment_id=shipment_id,
+        content=content,
+        content_type=content_type,
+        title=title or file.filename,
+        page_number=page_number,
+        uploaded_by=current_user.id
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Shipment not found")
+    return {"success": True, "document": doc}
+
+
+@router.get("/{shipment_id}/documents", dependencies=[Depends(require_permission("shipments.read"))])
+async def list_shipment_documents(
+    shipment_id: int,
+    db: Session = Depends(get_db)
+):
+    """List packing-slip documents attached to a shipment"""
+    return {"documents": crud.list_shipment_documents(db, shipment_id)}
+
+
+@router.get("/{shipment_id}/documents/{document_id}/raw", dependencies=[Depends(require_permission("shipments.read"))])
+async def get_shipment_document_raw(
+    shipment_id: int,
+    document_id: int,
+    db: Session = Depends(get_db)
+):
+    """Serve the stored packing-slip blob for inline viewing"""
+    doc = crud.get_shipment_document(db, shipment_id, document_id)
+    if not doc or not doc.file_path:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return FileResponse(doc.file_path, media_type=doc.content_type or "application/octet-stream")
+
+
+@router.delete("/{shipment_id}/documents/{document_id}", dependencies=[Depends(require_permission("shipments.delete"))])
+async def delete_shipment_document(
+    shipment_id: int,
+    document_id: int,
+    db: Session = Depends(get_db)
+):
+    """Delete a packing-slip document (blob + metadata)"""
+    success = crud.delete_shipment_document(db, shipment_id, document_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return {"success": True}
