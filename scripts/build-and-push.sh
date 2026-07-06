@@ -2,19 +2,19 @@
 # Build and push the unified Smart Home Health image to a registry as a
 # multi-arch (amd64 + arm64) manifest.
 #
-# Usage:
+# Usage (after `docker login ghcr.io` with a token that has packages:write):
 #   VERSION=0.1.0 scripts/build-and-push.sh
-#   (override the default repo with IMAGE=othernamespace/repo)
+#   (override the default repo with IMAGE=registry/namespace/repo)
 #
 # Env:
-#   IMAGE      registry/repo (default: smarthomehealth/platform)
+#   IMAGE      registry/repo (default: ghcr.io/smart-home-health/platform)
 #   VERSION    image tag (default: `git describe` or `latest`)
 #   PLATFORMS  default linux/amd64,linux/arm64
 #   PUSH       set to 0 to build without pushing (loads amd64 locally instead)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-IMAGE="${IMAGE:-smarthomehealth/platform}"
+IMAGE="${IMAGE:-ghcr.io/smart-home-health/platform}"
 VERSION="${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo latest)}"
 PLATFORMS="${PLATFORMS:-linux/amd64,linux/arm64}"
 PUSH="${PUSH:-1}"

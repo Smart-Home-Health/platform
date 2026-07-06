@@ -64,7 +64,7 @@ import AdminV2ReportsWeekly from './pages/admin-v2/AdminV2ReportsWeekly';
 import AdminV2AccountSettings from './pages/admin-v2/AdminV2AccountSettings';
 import AdminV2Backup from './pages/admin-v2/AdminV2Backup';
 import AdminV2SystemHealth from './pages/admin-v2/AdminV2SystemHealth';
-import AdminV2Integrations from './pages/admin-v2/AdminV2Integrations';
+import AdminV2Connections from './pages/admin-v2/AdminV2Connections';
 import AdminV2Mqtt from './pages/admin-v2/AdminV2Mqtt';
 import { AdminV2SettingsGeneral } from './pages/admin-v2/settings';
 import FirstRunSetup from './components/FirstRunSetup';
@@ -169,6 +169,7 @@ function AppContent() {
           <Route path="/care/profile/implants" element={<ProtectedRoute><Layout><AdminV2Implants /></Layout></ProtectedRoute>} />
           <Route path="/care/profile/businesses" element={<ProtectedRoute><Layout><AdminV2Businesses /></Layout></ProtectedRoute>} />
           {/* Per-patient MQTT consolidated onto the patient settings page */}
+          <Route path="/care/profile/connections" element={<ProtectedRoute><Layout><AdminV2Connections /></Layout></ProtectedRoute>} />
           <Route path="/care/profile/mqtt" element={<Navigate to="/care/configuration/patients" replace />} />
             
           {/* Care Monitoring Routes */}
@@ -190,7 +191,8 @@ function AppContent() {
           {/* Care Configuration Routes (System-wide) */}
           <Route path="/care/configuration" element={<ProtectedRoute><Layout><AdminV2SettingsGeneral /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/account" element={<ProtectedRoute><Layout><AdminV2AccountSettings /></Layout></ProtectedRoute>} />
-          <Route path="/care/configuration/integrations" element={<ProtectedRoute><Layout><AdminV2Integrations /></Layout></ProtectedRoute>} />
+          {/* Integrations moved under Profile as "Connections"; keep old URL working */}
+          <Route path="/care/configuration/integrations" element={<Navigate to="/care/profile/connections" replace />} />
           <Route path="/care/configuration/patients" element={<ProtectedRoute><Layout><AdminV2Patients /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/patients/:patientId" element={<ProtectedRoute><Layout><AdminV2PatientDetail /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/mqtt" element={<ProtectedRoute><Layout><AdminV2Mqtt /></Layout></ProtectedRoute>} />

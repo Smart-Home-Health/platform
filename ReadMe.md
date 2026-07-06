@@ -78,8 +78,8 @@ you; the database always runs separately from the app.
 
 Runs the published **single image** — the backend API and the built web UI served
 together on one port — alongside a TimescaleDB container. It pulls
-[`smarthomehealth/platform`](https://hub.docker.com/r/smarthomehealth/platform)
-from Docker Hub (multi‑arch: amd64 + arm64), so there's nothing to build.
+[`ghcr.io/smart-home-health/platform`](https://github.com/Smart-Home-Health/platform/pkgs/container/platform)
+from GitHub Container Registry (multi‑arch: amd64 + arm64), so there's nothing to build.
 
 ```bash
 git clone https://github.com/Smart-Home-Health/platform.git
@@ -90,7 +90,7 @@ docker compose -f docker-compose.prod.yml up -d
 ```
 
 `JWT_SECRET_KEY` is **required** (`openssl rand -hex 32`) — the app refuses to start
-on an insecure default. Pin a version with `APP_IMAGE=smarthomehealth/platform:<tag>`.
+on an insecure default. Pin a version with `APP_IMAGE=ghcr.io/smart-home-health/platform:<tag>`.
 
 **Access the application:**
 - **Web app + API**: http://localhost:8000
