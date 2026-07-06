@@ -32,8 +32,13 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CameraIcon, CheckIcon } from '../../../components/Icons';
 import { shipmentService } from '../../../services/shipments';
+import { sessionGet, sessionSet } from '../../../lib/sessionState';
 
 const SCAN_INTERVAL_MS = 600; // live barcode polling cadence
+
+// Session key for scan accumulation — survives the tab being discarded while
+// the user hops to Photos and back (which reloads the SPA on mobile).
+const scanKey = (shipmentId) => `scan:${shipmentId}`;
 
 // mode: 'confirm' checks arrivals off against expected items;
 //       'import' collects NEW line items from an invoice to add to the shipment.
@@ -45,11 +50,19 @@ export default function PackingSlipCapture({ open, onClose, shipmentId, expected
   const cameraRollInputRef = useRef(null); // no capture attr: opens the photo picker
 
   const [cameraError, setCameraError] = useState(null);
-  const [barcodes, setBarcodes] = useState([]);       // raw barcode strings found so far
-  const [ocrItems, setOcrItems] = useState([]);       // parsed OCR line items across pages
-  const [pagesUploaded, setPagesUploaded] = useState(0);
+  // Scan accumulation is checkpointed to sessionStorage so a mid-import trip
+  // to Photos (which can reload the whole SPA) doesn't lose collected pages.
+  const [barcodes, setBarcodes] = useState(() => sessionGet(scanKey(shipmentId))?.barcodes || []);
+  const [ocrItems, setOcrItems] = useState(() => sessionGet(scanKey(shipmentId))?.ocrItems || []);
+  const [pagesUploaded, setPagesUploaded] = useState(() => sessionGet(scanKey(shipmentId))?.pagesUploaded || 0);
   const [busy, setBusy] = useState(null);             // null | 'reading' | 'uploading'
   const [error, setError] = useState(null);
+
+  useEffect(() => {
+    sessionSet(scanKey(shipmentId), (barcodes.length || ocrItems.length || pagesUploaded)
+      ? { barcodes, ocrItems, pagesUploaded }
+      : null);
+  }, [shipmentId, barcodes, ocrItems, pagesUploaded]);
 
   const foundItemNumbers = useCallback(async () => {
     const { parseSlipBarcode } = await import('../../../lib/slipScanner');
@@ -57,23 +70,27 @@ export default function PackingSlipCapture({ open, onClose, shipmentId, expected
   }, [barcodes]);
 
   const [matchedCount, setMatchedCount] = useState(0);
+  const [newCount, setNewCount] = useState(0);
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      let count;
-      if (mode === 'import') {
-        // Counting NEW items found (not already on the shipment).
-        const { buildNewItems } = await import('../../../lib/slipScanner');
-        count = buildNewItems(barcodes, ocrItems, expectedItems).length;
-      } else {
+      // NEW lines (not on the shipment yet) matter in both modes — a later
+      // box often carries backordered items the original slip didn't have.
+      const { buildNewItems } = await import('../../../lib/slipScanner');
+      const fresh = buildNewItems(barcodes, ocrItems, expectedItems).length;
+      let matched = 0;
+      if (mode !== 'import') {
         const found = await foundItemNumbers();
         const ocrNumbers = new Set(ocrItems.map((o) => o.itemNumber));
-        count = expectedItems.filter((i) => {
+        matched = expectedItems.filter((i) => {
           const num = (i.item_number || '').trim();
           return found.has(num) || ocrNumbers.has(num);
         }).length;
       }
-      if (!cancelled) setMatchedCount(count);
+      if (!cancelled) {
+        setNewCount(fresh);
+        setMatchedCount(mode === 'import' ? fresh : matched);
+      }
     })();
     return () => { cancelled = true; };
   }, [barcodes, ocrItems, expectedItems, foundItemNumbers, mode]);
@@ -268,7 +285,7 @@ export default function PackingSlipCapture({ open, onClose, shipmentId, expected
             <CheckIcon size={13} />{' '}
             {mode === 'import'
               ? `${matchedCount} item${matchedCount === 1 ? '' : 's'} found`
-              : `${matchedCount} of ${expectedItems.length} items spotted`}
+              : `${matchedCount} of ${expectedItems.length} checked off${newCount > 0 ? ` · ${newCount} new` : ''}`}
           </span>
           {pagesUploaded > 0 && (
             <span className="rounded-full bg-secondary px-3 py-1">

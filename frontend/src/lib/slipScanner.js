@@ -250,6 +250,9 @@ export function buildScanLines(barcodes, ocrItems) {
       itemNumber: parsed.itemNumber,
       uom: parsed.uom,
       qty: ocr?.qtyShipped ?? ocr?.qtyOrdered ?? 1,
+      qtyOrdered: ocr?.qtyOrdered ?? null,
+      qtyShipped: ocr?.qtyShipped ?? null,
+      qtyToFollow: ocr?.qtyToFollow ?? null,
       description: ocr?.description || null,
       source: 'barcode',
     });
@@ -260,6 +263,9 @@ export function buildScanLines(barcodes, ocrItems) {
       itemNumber: ocr.itemNumber,
       uom: null,
       qty: ocr.qtyShipped ?? ocr.qtyOrdered ?? 1,
+      qtyOrdered: ocr.qtyOrdered ?? null,
+      qtyShipped: ocr.qtyShipped ?? null,
+      qtyToFollow: ocr.qtyToFollow ?? null,
       description: ocr.description || null,
       source: 'ocr',
     });
@@ -273,17 +279,27 @@ const _tokenize = (s) => (s || '')
   .split(/\s+/)
   .filter((t) => t.length >= 2);
 
+// Slip text drops vowels aggressively (BRTHNG=breathing, HTD=heated,
+// SNGL=single). Comparing vowel-stripped forms lets those line up.
+const _canon = (t) => {
+  const stripped = t.replace(/[AEIOU]/g, '');
+  return stripped.length >= 2 ? stripped : t;
+};
+
 /**
  * Similarity between a scanned description and an item's label:
- * shared-token overlap in [0, 1]. Deliberately simple — slip text is short,
- * shouty, and abbreviated, so token overlap beats edit distance here.
+ * shared-token overlap in [0, 1], with abbreviation tolerance via
+ * vowel-stripping. Deliberately simple — slip text is short, shouty, and
+ * abbreviated, so this beats edit distance here.
  */
 export function nameMatchScore(a, b) {
   const ta = _tokenize(a);
-  const tb = new Set(_tokenize(b));
-  if (ta.length === 0 || tb.size === 0) return 0;
-  const shared = ta.filter((t) => tb.has(t)).length;
-  return shared / Math.min(ta.length, tb.size);
+  const tbRaw = _tokenize(b);
+  if (ta.length === 0 || tbRaw.length === 0) return 0;
+  const tb = new Set(tbRaw);
+  const tbCanon = new Set(tbRaw.map(_canon));
+  const shared = ta.filter((t) => tb.has(t) || tbCanon.has(_canon(t))).length;
+  return shared / Math.min(ta.length, tbRaw.length);
 }
 
 const NAME_MATCH_THRESHOLD = 0.5;
@@ -337,36 +353,59 @@ export function buildNewItems(barcodes, ocrItems, existingItems = [], equipmentL
   );
   const ocrByNumber = new Map(ocrItems.map((o) => [o.itemNumber, o]));
 
+  // Reconcile against tracked supplies: supplier item number first (stable
+  // even when brands swap), then name similarity between the slip's
+  // description and "what we call it" (Equipment.name).
+  const findEquipment = (itemNumber, description) => {
+    const byNumber = equipmentByNumber.get(itemNumber);
+    if (byNumber) return { equipment: byNumber, how: 'number' };
+    let best = null;
+    let bestScore = 0;
+    for (const e of equipmentList) {
+      const score = Math.max(
+        nameMatchScore(description, e.name),
+        nameMatchScore(description, e.description)
+      );
+      if (score > bestScore) { best = e; bestScore = score; }
+    }
+    if (best && bestScore >= 0.5) return { equipment: best, how: 'name' };
+    return { equipment: null, how: null };
+  };
+
   const drafts = new Map(); // item_number -> draft
 
   for (const raw of barcodes) {
     const parsed = parseSlipBarcode(raw);
     if (!parsed || existing.has(parsed.itemNumber) || drafts.has(parsed.itemNumber)) continue;
     const ocr = ocrByNumber.get(parsed.itemNumber);
-    const equipment = equipmentByNumber.get(parsed.itemNumber);
+    const { equipment, how } = findEquipment(parsed.itemNumber, ocr?.description);
     drafts.set(parsed.itemNumber, {
       item_number: parsed.itemNumber,
       unit_of_measure: parsed.uom,
-      item_description: equipment?.name || ocr?.description || null,
+      // Keep the distributor's wording — the friendly name lives on the
+      // linked Equipment ("what we call it") and both are shown.
+      item_description: ocr?.description || equipment?.name || null,
       qty_ordered: ocr?.qtyOrdered ?? 1,
       qty_shipped: ocr?.qtyShipped ?? ocr?.qtyOrdered ?? 1,
       qty_backordered: ocr?.qtyToFollow ?? 0,
       equipment_id: equipment?.id ?? null,
+      equipment_match: how,
       source: 'barcode',
     });
   }
 
   for (const ocr of ocrItems) {
     if (existing.has(ocr.itemNumber) || drafts.has(ocr.itemNumber)) continue;
-    const equipment = equipmentByNumber.get(ocr.itemNumber);
+    const { equipment, how } = findEquipment(ocr.itemNumber, ocr.description);
     drafts.set(ocr.itemNumber, {
       item_number: ocr.itemNumber,
       unit_of_measure: null,
-      item_description: equipment?.name || ocr.description || null,
+      item_description: ocr.description || equipment?.name || null,
       qty_ordered: ocr.qtyOrdered ?? 1,
       qty_shipped: ocr.qtyShipped ?? ocr.qtyOrdered ?? 1,
       qty_backordered: ocr.qtyToFollow ?? 0,
       equipment_id: equipment?.id ?? null,
+      equipment_match: how,
       source: 'ocr',
     });
   }

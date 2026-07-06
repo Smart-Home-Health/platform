@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
 import config from '../../config';
@@ -45,6 +45,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Alert } from '@/components/ui/alert';
 import { Field, FormRow } from '@/components/ui/field';
 import {
@@ -55,6 +56,7 @@ import {
   SelectItem,
 } from '@/components/ui/select';
 import { shipmentService } from '../../services/shipments';
+import { sessionGet, sessionSet, sessionClear } from '../../lib/sessionState';
 import PackingSlipCapture from './components/PackingSlipCapture';
 import CsvItemImport from './components/CsvItemImport';
 import './AdminV2.css';
@@ -66,6 +68,20 @@ const CONDITION_OPTIONS = [
   { value: 'short', label: 'Short (Missing)' },
   { value: 'extra', label: 'Extra (Unexpected)' },
 ];
+
+// Mini labeled field for compact side-by-side quantity inputs (module scope
+// so re-renders don't remount inputs and steal focus mid-typing).
+const QtyField = ({ label, children }) => (
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+    <span
+      className="admin-v2-text-muted"
+      style={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}
+    >
+      {label}
+    </span>
+    {children}
+  </div>
+);
 
 const AdminV2ShipmentDetail = () => {
   const { id } = useParams();
@@ -140,6 +156,49 @@ const AdminV2ShipmentDetail = () => {
   const [newItemDrafts, setNewItemDrafts] = useState(null);  // editable rows pending bulk save
   const [savingBulk, setSavingBulk] = useState(false);
   const [showCsvImport, setShowCsvImport] = useState(false);
+
+  // --- Import-session persistence -------------------------------------------
+  // Mobile browsers discard background tabs (hopping to Photos mid-import),
+  // reloading the SPA and wiping React state. Checkpoint the in-progress
+  // import to sessionStorage and restore it once the shipment loads.
+  const sessionRestoredRef = useRef(false);
+  const importSessionKeys = () => [`drafts:${id}`, `review:${id}`, `extras:${id}`, `capture:${id}`, `scan:${id}`];
+
+  useEffect(() => {
+    if (!shipment || sessionRestoredRef.current) return;
+    sessionRestoredRef.current = true;
+    if (shipment.finalized_at) {
+      sessionClear(...importSessionKeys());
+      return;
+    }
+    const drafts = sessionGet(`drafts:${id}`);
+    if (drafts) setNewItemDrafts(drafts);
+    const review = sessionGet(`review:${id}`);
+    if (review) setReviewItems(review);
+    const extras = sessionGet(`extras:${id}`);
+    if (extras) setScanExtras(extras);
+    const capture = sessionGet(`capture:${id}`);
+    if (capture?.open) {
+      setCaptureMode(capture.mode || 'confirm');
+      setShowCapture(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shipment]);
+
+  useEffect(() => {
+    if (sessionRestoredRef.current) sessionSet(`drafts:${id}`, newItemDrafts);
+  }, [id, newItemDrafts]);
+  useEffect(() => {
+    if (sessionRestoredRef.current) sessionSet(`review:${id}`, reviewItems);
+  }, [id, reviewItems]);
+  useEffect(() => {
+    if (sessionRestoredRef.current) sessionSet(`extras:${id}`, scanExtras);
+  }, [id, scanExtras]);
+  useEffect(() => {
+    if (sessionRestoredRef.current) {
+      sessionSet(`capture:${id}`, showCapture ? { open: true, mode: captureMode } : null);
+    }
+  }, [id, showCapture, captureMode]);
 
   const hasPermission = (permission) => {
     if (!user) return false;
@@ -533,6 +592,7 @@ const AdminV2ShipmentDetail = () => {
       if (result.success) {
         setConfirmResult(result);
         setReviewItems(null);
+        sessionClear(...importSessionKeys());
         fetchShipment();
       } else {
         setConfirmResult({ success: false, error: result.error });
@@ -583,7 +643,11 @@ const AdminV2ShipmentDetail = () => {
         .map((line, i) => ({
           key: `${line.itemNumber}-${i}`,
           line,
-          qty: line.qty || 1,
+          item_number: line.itemNumber || '',
+          item_description: line.description || '',
+          qty_ordered: line.qtyOrdered ?? line.qty ?? 1,
+          qty_shipped: line.qtyShipped ?? line.qty ?? 1,
+          qty_backordered: line.qtyToFollow ?? 0,
           action: line.matchType === 'name' ? String(line.shipment_item_id) : 'new',
         }))
     );
@@ -608,6 +672,11 @@ const AdminV2ShipmentDetail = () => {
     setScanExtras((prev) => prev.map((e) => (e.key === key ? { ...e, ...patch } : e)));
   };
 
+  // OCR occasionally invents rows (mangled line fragments) — let them die fast.
+  const removeScanExtra = (key) => {
+    setScanExtras((prev) => prev.filter((e) => e.key !== key));
+  };
+
   const updateNewItemDraft = (index, field, value) => {
     setNewItemDrafts((prev) => prev.map((d, i) => (i === index ? { ...d, [field]: value } : d)));
   };
@@ -630,8 +699,28 @@ const AdminV2ShipmentDetail = () => {
       }));
       const result = await shipmentService.bulkAddItems(id, items);
       if (result.success || result.count > 0) {
+        // Make the reconciliation stick: when a line was linked to one of our
+        // supplies that doesn't know its supplier item number yet, save the
+        // number onto the equipment — next month's scan auto-links by number,
+        // even if the distributor swaps brands and the printed name changes.
+        for (const d of newItemDrafts) {
+          if (!d.equipment_id || !d.item_number) continue;
+          const eq = equipment.find((e) => e.id === d.equipment_id);
+          if (eq && !eq.item_number) {
+            try {
+              await fetch(`${config.apiUrl}/api/equipment/${eq.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ item_number: d.item_number }),
+              });
+            } catch { /* non-fatal: linking still worked for this delivery */ }
+          }
+        }
         setNewItemDrafts(null);
+        sessionClear(...importSessionKeys());
         fetchShipment();
+        fetchEquipment();
       } else {
         alert(result.error || 'Failed to add items');
       }
@@ -663,28 +752,31 @@ const AdminV2ShipmentDetail = () => {
       }));
 
       // Fold in the user's mapping decisions for unmatched scan lines.
+      // (?? e.qty covers sessions checkpointed before the three-field shape.)
       const extras = scanExtras || [];
+      const extraShipped = (e) => parseInt(e.qty_shipped ?? e.qty, 10) || 0;
       const newLines = extras.filter((e) => e.action === 'new');
       for (const e of extras) {
         if (e.action === 'skip' || e.action === 'new') continue;
         const target = items.find((it) => it.shipment_item_id === parseInt(e.action, 10));
-        if (target) target.qty_received += parseInt(e.qty, 10) || 0;
+        if (target) target.qty_received += extraShipped(e); // what arrived in this box
       }
       if (newLines.length > 0) {
         const res = await shipmentService.bulkAddItems(id, newLines.map((e) => ({
-          item_number: e.line.itemNumber || null,
-          item_description: e.line.description || null,
-          qty_ordered: parseInt(e.qty, 10) || 0,
-          qty_shipped: parseInt(e.qty, 10) || 0,
+          item_number: (e.item_number ?? e.line.itemNumber) || null,
+          item_description: (e.item_description ?? e.line.description) || null,
+          qty_ordered: parseInt(e.qty_ordered ?? e.qty, 10) || 0,
+          qty_shipped: extraShipped(e),
+          qty_backordered: parseInt(e.qty_backordered, 10) || 0,
           unit_of_measure: e.line.uom || null,
         })));
         (res.ids || []).forEach((newId, i) => {
-          const qty = parseInt(newLines[i].qty, 10) || 0;
+          const e = newLines[i];
           items.push({
             shipment_item_id: newId,
-            qty_received: qty,
-            qty_backordered: 0,
-            qty_shipped: qty,
+            qty_received: extraShipped(e),
+            qty_backordered: parseInt(e.qty_backordered, 10) || 0,
+            qty_shipped: extraShipped(e),
             condition: 'good',
           });
         });
@@ -695,6 +787,7 @@ const AdminV2ShipmentDetail = () => {
         setConfirmResult(result);
         setReviewItems(null);
         setScanExtras(null);
+        sessionClear(...importSessionKeys());
         fetchShipment();
       } else {
         setConfirmResult({ success: false, error: result.error });
@@ -1040,93 +1133,79 @@ const AdminV2ShipmentDetail = () => {
               For each item: how many arrived, and how many the slip says are coming later
               (the “To Follow” column). Fix anything that looks off — nothing is saved until you confirm.
             </p>
-            <div className="admin-v2-table-container admin-v2-table-cards-wrap">
-              <table className="admin-v2-table admin-v2-table-cards">
-                <thead>
-                  <tr>
-                    <th>Item</th>
-                    <th style={{ textAlign: 'center' }}>Expected</th>
-                    <th style={{ textAlign: 'center' }}>Arrived</th>
-                    <th style={{ textAlign: 'center' }}>Coming later</th>
-                    <th>Problem?</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {reviewItems.map((r) => (
-                    <tr key={r.shipment_item_id}>
-                      <td className="admin-v2-cell-name">
-                        <div>
-                          <strong>{r.label}</strong>
-                          {r.matched && (
-                            <span className="admin-v2-badge admin-v2-badge-success" style={{ marginLeft: 8 }}>
-                              <CheckIcon size={12} /> {r.matched === 'barcode' ? 'scanned' : 'read from slip'}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td data-label="Expected" style={{ textAlign: 'center' }}>{r.qty_ordered}</td>
-                      <td data-label="Arrived" style={{ textAlign: 'center' }}>
-                        <input
-                          type="number" min="0" inputMode="numeric"
-                          value={r.qty_received}
-                          onChange={(e) => updateReviewItem(r.shipment_item_id, 'qty_received', e.target.value)}
-                          style={{ width: '70px', textAlign: 'center', padding: '8px' }}
-                        />
-                      </td>
-                      <td data-label="Coming later" style={{ textAlign: 'center' }}>
-                        <input
-                          type="number" min="0" inputMode="numeric"
-                          value={r.qty_backordered}
-                          onChange={(e) => updateReviewItem(r.shipment_item_id, 'qty_backordered', e.target.value)}
-                          style={{ width: '70px', textAlign: 'center', padding: '8px' }}
-                        />
-                      </td>
-                      <td data-label="Problem?">
-                        <select
-                          value={r.condition}
-                          onChange={(e) => updateReviewItem(r.shipment_item_id, 'condition', e.target.value)}
-                          style={{ padding: '8px' }}
-                        >
-                          <option value="good">No problem</option>
-                          <option value="damaged">Damaged</option>
-                          <option value="wrong_item">Wrong item</option>
-                        </select>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {/* Lines from the slip that aren't on this list yet — you decide */}
+            {/* NEW lines first — a backorder box often carries items that
+                aren't on this delivery's list yet, and they shouldn't hide
+                below a page of already-known cards. */}
             {scanExtras?.length > 0 && (
               <>
-                <h3 style={{ marginTop: 16 }}>Also on this slip</h3>
+                <h3>New on this slip ({scanExtras.length})</h3>
                 <p className="admin-v2-text-muted">
-                  These came off the scan but aren't on the list above (different box,
+                  These came off the scan but aren't on the list below (backorder box,
                   substitution, or new supply). Tell us what to do with each one.
                 </p>
                 <div className="flex flex-col gap-2">
                   {scanExtras.map((e) => (
                     <div key={e.key} className="rounded-lg border border-border bg-card p-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div>
-                          <strong>{e.line.description || `Item #${e.line.itemNumber}`}</strong>
-                          <div className="admin-v2-text-muted">
-                            #{e.line.itemNumber}{e.line.uom ? ` — ${e.line.uom}` : ''}
+                      <div className="flex items-start justify-between gap-2">
+                        <div style={{ flex: 1 }}>
+                          <textarea
+                            rows={2}
+                            value={e.item_description ?? e.line.description ?? ''}
+                            placeholder="What is it? (fix OCR mistakes here)"
+                            onChange={(ev) => updateScanExtra(e.key, { item_description: ev.target.value })}
+                            style={{ width: '100%', padding: '8px', resize: 'vertical' }}
+                          />
+                          <div className="flex flex-wrap items-center gap-2" style={{ marginTop: 6 }}>
+                            <input
+                              type="text"
+                              value={e.item_number ?? e.line.itemNumber ?? ''}
+                              placeholder="Item #"
+                              onChange={(ev) => updateScanExtra(e.key, { item_number: ev.target.value })}
+                              style={{ width: '120px', padding: '8px' }}
+                              aria-label="Item number"
+                            />
+                            {e.line.uom && <span className="admin-v2-text-muted">{e.line.uom}</span>}
                             {e.line.source === 'barcode' && (
-                              <span className="admin-v2-badge admin-v2-badge-success" style={{ marginLeft: 6 }}>
+                              <span className="admin-v2-badge admin-v2-badge-success">
                                 <CheckIcon size={12} /> scanned
                               </span>
                             )}
                           </div>
                         </div>
-                        <input
-                          type="number" min="0" inputMode="numeric"
-                          value={e.qty}
-                          onChange={(ev) => updateScanExtra(e.key, { qty: ev.target.value })}
-                          style={{ width: '70px', textAlign: 'center', padding: '8px' }}
-                          aria-label="Quantity"
-                        />
+                        <button
+                          className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-secondary"
+                          onClick={() => removeScanExtra(e.key)}
+                          title="Remove this row (OCR mistake)"
+                          aria-label="Remove this row"
+                        >
+                          <XIcon size={14} />
+                        </button>
+                      </div>
+                      <div style={{ display: 'flex', gap: 14, alignItems: 'flex-end', marginTop: 8 }}>
+                        <QtyField label="Ordered">
+                          <input
+                            type="number" min="0" inputMode="numeric"
+                            value={e.qty_ordered ?? e.qty ?? 1}
+                            onChange={(ev) => updateScanExtra(e.key, { qty_ordered: ev.target.value })}
+                            style={{ width: '64px', textAlign: 'center', padding: '8px' }}
+                          />
+                        </QtyField>
+                        <QtyField label="Shipped">
+                          <input
+                            type="number" min="0" inputMode="numeric"
+                            value={e.qty_shipped ?? e.qty ?? 1}
+                            onChange={(ev) => updateScanExtra(e.key, { qty_shipped: ev.target.value })}
+                            style={{ width: '64px', textAlign: 'center', padding: '8px' }}
+                          />
+                        </QtyField>
+                        <QtyField label="B/O">
+                          <input
+                            type="number" min="0" inputMode="numeric"
+                            value={e.qty_backordered ?? 0}
+                            onChange={(ev) => updateScanExtra(e.key, { qty_backordered: ev.target.value })}
+                            style={{ width: '64px', textAlign: 'center', padding: '8px' }}
+                          />
+                        </QtyField>
                       </div>
                       <select
                         value={e.action}
@@ -1144,8 +1223,70 @@ const AdminV2ShipmentDetail = () => {
                     </div>
                   ))}
                 </div>
+                <h3 style={{ marginTop: 16 }}>Already on this delivery</h3>
               </>
             )}
+            <div className="admin-v2-table-container admin-v2-table-cards-wrap">
+              <table className="admin-v2-table admin-v2-table-cards">
+                <thead>
+                  <tr>
+                    <th>Item</th>
+                    <th>Quantities</th>
+                    <th>Problem?</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reviewItems.map((r) => (
+                    <tr key={r.shipment_item_id}>
+                      <td className="admin-v2-cell-name">
+                        <div>
+                          <strong>{r.label}</strong>
+                          {r.matched && (
+                            <span className="admin-v2-badge admin-v2-badge-success" style={{ marginLeft: 8 }}>
+                              <CheckIcon size={12} /> {r.matched === 'barcode' ? 'scanned' : 'read from slip'}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td data-label="Quantities" className="admin-v2-cell-stack">
+                        <div style={{ display: 'flex', gap: 14, alignItems: 'flex-end' }}>
+                          <QtyField label="Expected">
+                            <div style={{ padding: '8px 4px', fontWeight: 600 }}>{r.qty_ordered}</div>
+                          </QtyField>
+                          <QtyField label="Arrived">
+                            <input
+                              type="number" min="0" inputMode="numeric"
+                              value={r.qty_received}
+                              onChange={(e) => updateReviewItem(r.shipment_item_id, 'qty_received', e.target.value)}
+                              style={{ width: '64px', textAlign: 'center', padding: '8px' }}
+                            />
+                          </QtyField>
+                          <QtyField label="Coming later">
+                            <input
+                              type="number" min="0" inputMode="numeric"
+                              value={r.qty_backordered}
+                              onChange={(e) => updateReviewItem(r.shipment_item_id, 'qty_backordered', e.target.value)}
+                              style={{ width: '64px', textAlign: 'center', padding: '8px' }}
+                            />
+                          </QtyField>
+                        </div>
+                      </td>
+                      <td data-label="Problem?">
+                        <select
+                          value={r.condition}
+                          onChange={(e) => updateReviewItem(r.shipment_item_id, 'condition', e.target.value)}
+                          style={{ padding: '8px' }}
+                        >
+                          <option value="good">No problem</option>
+                          <option value="damaged">Damaged</option>
+                          <option value="wrong_item">Wrong item</option>
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
             <div className="tw flex gap-2" style={{ marginTop: 12 }}>
               <Button size="lg" onClick={handleSaveReview} disabled={confirming}>
@@ -1154,7 +1295,11 @@ const AdminV2ShipmentDetail = () => {
               <Button variant="secondary" onClick={() => { setCaptureMode('confirm'); setShowCapture(true); }} disabled={confirming}>
                 <CameraIcon size={16} /> Scan more pages
               </Button>
-              <Button variant="ghost" onClick={() => { setReviewItems(null); setScanExtras(null); }} disabled={confirming}>
+              <Button
+                variant="ghost"
+                onClick={() => { setReviewItems(null); setScanExtras(null); sessionClear(...importSessionKeys()); }}
+                disabled={confirming}
+              >
                 Cancel
               </Button>
             </div>
@@ -1183,10 +1328,9 @@ const AdminV2ShipmentDetail = () => {
                     <thead>
                       <tr>
                         <th>Item #</th>
-                        <th>Description</th>
-                        <th style={{ textAlign: 'center' }}>Ordered</th>
-                        <th style={{ textAlign: 'center' }}>Shipped</th>
-                        <th style={{ textAlign: 'center' }}>To Follow</th>
+                        <th>Their name</th>
+                        <th>Our supply</th>
+                        <th>Quantities</th>
                         <th style={{ textAlign: 'center' }}>Unit</th>
                         <th></th>
                       </tr>
@@ -1209,38 +1353,59 @@ const AdminV2ShipmentDetail = () => {
                               )}
                             </div>
                           </td>
-                          <td data-label="Description">
-                            <input
-                              type="text"
+                          <td data-label="Their name" className="admin-v2-cell-stack">
+                            <textarea
+                              rows={2}
                               value={d.item_description || ''}
-                              placeholder="What is it? (e.g. Trach tube)"
+                              placeholder="How the distributor lists it"
                               onChange={(e) => updateNewItemDraft(i, 'item_description', e.target.value)}
-                              style={{ width: '100%', minWidth: '140px', padding: '8px' }}
+                              style={{ width: '100%', minWidth: '140px', padding: '8px', resize: 'vertical' }}
                             />
                           </td>
-                          <td data-label="Ordered" style={{ textAlign: 'center' }}>
-                            <input
-                              type="number" min="0" inputMode="numeric"
-                              value={d.qty_ordered}
-                              onChange={(e) => updateNewItemDraft(i, 'qty_ordered', e.target.value)}
-                              style={{ width: '70px', textAlign: 'center', padding: '8px' }}
-                            />
+                          <td data-label="Our supply" className="admin-v2-cell-stack">
+                            <select
+                              value={d.equipment_id ? String(d.equipment_id) : ''}
+                              onChange={(e) => updateNewItemDraft(i, 'equipment_id', e.target.value ? parseInt(e.target.value, 10) : null)}
+                              style={{ width: '100%', padding: '8px' }}
+                            >
+                              <option value="">Not one of our tracked supplies</option>
+                              {equipment.map((eq) => (
+                                <option key={eq.id} value={String(eq.id)}>{eq.name}</option>
+                              ))}
+                            </select>
+                            {d.equipment_match === 'name' && d.equipment_id && (
+                              <span className="admin-v2-badge admin-v2-badge-info" style={{ marginTop: 4 }}>
+                                our best guess — check it
+                              </span>
+                            )}
                           </td>
-                          <td data-label="Shipped" style={{ textAlign: 'center' }}>
-                            <input
-                              type="number" min="0" inputMode="numeric"
-                              value={d.qty_shipped ?? d.qty_ordered}
-                              onChange={(e) => updateNewItemDraft(i, 'qty_shipped', e.target.value)}
-                              style={{ width: '70px', textAlign: 'center', padding: '8px' }}
-                            />
-                          </td>
-                          <td data-label="Coming later" style={{ textAlign: 'center' }}>
-                            <input
-                              type="number" min="0" inputMode="numeric"
-                              value={d.qty_backordered ?? 0}
-                              onChange={(e) => updateNewItemDraft(i, 'qty_backordered', e.target.value)}
-                              style={{ width: '70px', textAlign: 'center', padding: '8px' }}
-                            />
+                          <td data-label="Quantities" className="admin-v2-cell-stack">
+                            <div style={{ display: 'flex', gap: 14, alignItems: 'flex-end' }}>
+                              <QtyField label="Ordered">
+                                <input
+                                  type="number" min="0" inputMode="numeric"
+                                  value={d.qty_ordered}
+                                  onChange={(e) => updateNewItemDraft(i, 'qty_ordered', e.target.value)}
+                                  style={{ width: '64px', textAlign: 'center', padding: '8px' }}
+                                />
+                              </QtyField>
+                              <QtyField label="Shipped">
+                                <input
+                                  type="number" min="0" inputMode="numeric"
+                                  value={d.qty_shipped ?? d.qty_ordered}
+                                  onChange={(e) => updateNewItemDraft(i, 'qty_shipped', e.target.value)}
+                                  style={{ width: '64px', textAlign: 'center', padding: '8px' }}
+                                />
+                              </QtyField>
+                              <QtyField label="B/O">
+                                <input
+                                  type="number" min="0" inputMode="numeric"
+                                  value={d.qty_backordered ?? 0}
+                                  onChange={(e) => updateNewItemDraft(i, 'qty_backordered', e.target.value)}
+                                  style={{ width: '64px', textAlign: 'center', padding: '8px' }}
+                                />
+                              </QtyField>
+                            </div>
                           </td>
                           <td data-label="Unit" style={{ textAlign: 'center' }}>
                             <input
@@ -1278,7 +1443,11 @@ const AdminV2ShipmentDetail = () => {
               <Button variant="secondary" onClick={() => { setCaptureMode('import'); setShowCapture(true); }} disabled={savingBulk}>
                 <CameraIcon size={16} /> Scan more pages
               </Button>
-              <Button variant="ghost" onClick={() => setNewItemDrafts(null)} disabled={savingBulk}>
+              <Button
+                variant="ghost"
+                onClick={() => { setNewItemDrafts(null); sessionClear(...importSessionKeys()); }}
+                disabled={savingBulk}
+              >
                 Cancel
               </Button>
             </div>
@@ -1441,12 +1610,13 @@ const AdminV2ShipmentDetail = () => {
                       >
                         <td className="admin-v2-cell-name">
                           <div>
-                            <strong>{item.item_description || item.equipment_name || item.item_number || '-'}</strong>
+                            {/* Our name leads; the distributor's wording sits under it */}
+                            <strong>{item.equipment_name || item.item_description || item.item_number || '-'}</strong>
+                            {item.equipment_name && item.item_description && (
+                              <div className="admin-v2-text-muted">{item.item_description}</div>
+                            )}
                             {item.item_number && (item.item_description || item.equipment_name) && (
                               <div className="admin-v2-text-muted">#{item.item_number}</div>
-                            )}
-                            {item.equipment_name && item.item_description && (
-                              <div className="admin-v2-text-muted">{item.equipment_name}</div>
                             )}
                             {item.unit_description && <div className="admin-v2-text-small">{item.unit_description}</div>}
                           </div>
@@ -1733,12 +1903,13 @@ const AdminV2ShipmentDetail = () => {
                 </Field>
               </FormRow>
 
-              <Field label="Description" htmlFor="item-desc">
-                <Input
+              <Field label="Description (how the distributor lists it)" htmlFor="item-desc">
+                <Textarea
                   id="item-desc"
+                  rows={2}
                   value={itemFormData.item_description}
                   onChange={e => setItemFormData({...itemFormData, item_description: e.target.value})}
-                  placeholder="What is it? (e.g. Trach tube 6.0mm)"
+                  placeholder="e.g. CIRCUIT, BRTHNG HTD SNGL LIMB — your own name comes from the linked supply above"
                 />
               </Field>
 

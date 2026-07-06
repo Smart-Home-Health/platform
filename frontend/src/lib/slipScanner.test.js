@@ -125,14 +125,38 @@ describe('buildNewItems', () => {
     expect(byNum['1227006']).toMatchObject({ unit_of_measure: 'CS', qty_ordered: 1, item_description: null });
   });
 
-  it('prefers the tracked equipment name over the OCR description', () => {
+  it('keeps the distributor wording and links our equipment by number', () => {
     const drafts = buildNewItems(
       ['/IEA450020'],
       [{ itemNumber: '450020', qtyOrdered: 2, description: 'TUBE, TRACH TTS CUFF 6.0MM' }],
       [],
       [{ id: 9, item_number: '450020', name: 'Trach Tube 6.0MM' }]
     );
-    expect(drafts[0].item_description).toBe('Trach Tube 6.0MM');
+    // Two names: theirs stays on the item, ours comes via the equipment link.
+    expect(drafts[0].item_description).toBe('TUBE, TRACH TTS CUFF 6.0MM');
+    expect(drafts[0]).toMatchObject({ equipment_id: 9, equipment_match: 'number' });
+  });
+
+  it('reconciles by name when our equipment has no supplier number yet', () => {
+    // "Vent Tube" in our DB; PHS ships it as a breathing circuit.
+    const drafts = buildNewItems(
+      [],
+      [{ itemNumber: '1051368', qtyOrdered: 4, description: 'CIRCUIT, BRTHNG HTD SNGL LIMB ADLT' }],
+      [],
+      [
+        { id: 5, item_number: null, name: 'Vent Tube', description: 'Heated single limb breathing circuit' },
+        { id: 6, item_number: null, name: 'Trach Tube', description: null },
+      ]
+    );
+    expect(drafts[0]).toMatchObject({ equipment_id: 5, equipment_match: 'name' });
+  });
+
+  it('leaves unmatched lines unlinked', () => {
+    const drafts = buildNewItems(
+      [], [{ itemNumber: '999000', qtyOrdered: 1, description: 'PEPTAMEN, UNFLAV 250ML' }],
+      [], [{ id: 6, item_number: null, name: 'Trach Tube' }]
+    );
+    expect(drafts[0]).toMatchObject({ equipment_id: null, equipment_match: null });
   });
 
   it('includes OCR-only rows the camera missed', () => {
