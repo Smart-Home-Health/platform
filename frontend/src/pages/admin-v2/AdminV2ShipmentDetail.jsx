@@ -623,6 +623,8 @@ const AdminV2ShipmentDetail = () => {
         item_number: d.item_number || null,
         item_description: d.item_description || null,
         qty_ordered: parseInt(d.qty_ordered, 10) || 0,
+        qty_shipped: parseInt(d.qty_shipped ?? d.qty_ordered, 10) || 0,
+        qty_backordered: parseInt(d.qty_backordered, 10) || 0,
         unit_of_measure: d.unit_of_measure || null,
         equipment_id: d.equipment_id || null,
       }));
@@ -701,6 +703,21 @@ const AdminV2ShipmentDetail = () => {
       setConfirmResult({ success: false, error: err.message });
     } finally {
       setConfirming(false);
+    }
+  };
+
+  // Remove a packing-slip photo (e.g. duplicate or abandoned scan attempts).
+  const handleDeleteDocument = async (doc) => {
+    if (!window.confirm(`Remove ${doc.title || 'this slip photo'}?`)) return;
+    try {
+      const result = await shipmentService.deleteDocument(id, doc.id);
+      if (result.success) {
+        fetchShipment();
+      } else {
+        alert(result.error || 'Failed to remove the photo');
+      }
+    } catch (err) {
+      alert(err.message);
     }
   };
 
@@ -1167,7 +1184,9 @@ const AdminV2ShipmentDetail = () => {
                       <tr>
                         <th>Item #</th>
                         <th>Description</th>
-                        <th style={{ textAlign: 'center' }}>Qty</th>
+                        <th style={{ textAlign: 'center' }}>Ordered</th>
+                        <th style={{ textAlign: 'center' }}>Shipped</th>
+                        <th style={{ textAlign: 'center' }}>To Follow</th>
                         <th style={{ textAlign: 'center' }}>Unit</th>
                         <th></th>
                       </tr>
@@ -1199,11 +1218,27 @@ const AdminV2ShipmentDetail = () => {
                               style={{ width: '100%', minWidth: '140px', padding: '8px' }}
                             />
                           </td>
-                          <td data-label="Qty" style={{ textAlign: 'center' }}>
+                          <td data-label="Ordered" style={{ textAlign: 'center' }}>
                             <input
                               type="number" min="0" inputMode="numeric"
                               value={d.qty_ordered}
                               onChange={(e) => updateNewItemDraft(i, 'qty_ordered', e.target.value)}
+                              style={{ width: '70px', textAlign: 'center', padding: '8px' }}
+                            />
+                          </td>
+                          <td data-label="Shipped" style={{ textAlign: 'center' }}>
+                            <input
+                              type="number" min="0" inputMode="numeric"
+                              value={d.qty_shipped ?? d.qty_ordered}
+                              onChange={(e) => updateNewItemDraft(i, 'qty_shipped', e.target.value)}
+                              style={{ width: '70px', textAlign: 'center', padding: '8px' }}
+                            />
+                          </td>
+                          <td data-label="Coming later" style={{ textAlign: 'center' }}>
+                            <input
+                              type="number" min="0" inputMode="numeric"
+                              value={d.qty_backordered ?? 0}
+                              onChange={(e) => updateNewItemDraft(i, 'qty_backordered', e.target.value)}
                               style={{ width: '70px', textAlign: 'center', padding: '8px' }}
                             />
                           </td>
@@ -1258,26 +1293,38 @@ const AdminV2ShipmentDetail = () => {
             </div>
             <div className="flex flex-wrap gap-3">
               {shipment.documents.map((doc) => (
-                <a
-                  key={doc.id}
-                  href={shipmentService.documentRawUrl(shipment.id, doc.id)}
-                  target="_blank" rel="noreferrer"
-                  className="block overflow-hidden rounded-lg border border-border"
-                  title={doc.title || `Page ${doc.page_number || ''}`}
-                >
-                  {(doc.content_type || '').startsWith('image/') ? (
-                    <img
-                      src={shipmentService.documentRawUrl(shipment.id, doc.id)}
-                      alt={doc.title || 'Packing slip page'}
-                      style={{ width: 110, height: 140, objectFit: 'cover' }}
-                      loading="lazy"
-                    />
-                  ) : (
-                    <span className="flex h-[140px] w-[110px] flex-col items-center justify-center gap-1 text-center text-sm">
-                      <FileTextIcon size={20} /> {doc.title || 'Document'}
-                    </span>
+                <div key={doc.id} className="relative">
+                  <a
+                    href={shipmentService.documentRawUrl(shipment.id, doc.id)}
+                    target="_blank" rel="noreferrer"
+                    className="block overflow-hidden rounded-lg border border-border"
+                    title={doc.title || `Page ${doc.page_number || ''}`}
+                  >
+                    {(doc.content_type || '').startsWith('image/') ? (
+                      <img
+                        src={shipmentService.documentRawUrl(shipment.id, doc.id)}
+                        alt={doc.title || 'Packing slip page'}
+                        style={{ width: 110, height: 140, objectFit: 'cover' }}
+                        loading="lazy"
+                      />
+                    ) : (
+                      <span className="flex h-[140px] w-[110px] flex-col items-center justify-center gap-1 text-center text-sm">
+                        <FileTextIcon size={20} /> {doc.title || 'Document'}
+                      </span>
+                    )}
+                  </a>
+                  {hasPermission('equipment.delete') && !isFinalized && (
+                    <button
+                      onClick={(e) => { e.preventDefault(); handleDeleteDocument(doc); }}
+                      title="Remove this photo"
+                      aria-label="Remove this photo"
+                      className="absolute flex items-center justify-center rounded-full border border-border bg-card"
+                      style={{ top: -8, right: -8, width: 32, height: 32 }}
+                    >
+                      <XIcon size={14} />
+                    </button>
                   )}
-                </a>
+                </div>
               ))}
             </div>
           </div>

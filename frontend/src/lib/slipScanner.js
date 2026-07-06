@@ -161,25 +161,39 @@ export function parseSlipBarcode(raw) {
 
 const UOM_TOKEN = /^(EA|CS|BX|PK|RL|CT|KT|PR|DZ)$/i;
 
+// Slip header/address noise that OCR happily serves up as "items":
+// ZIP+4s ("45342-3658"), the Cust P.O. number, invoice/order/license numbers.
+const HEADER_LINE_RE = /(NUMBER|LICENSE|INVOICE|P\.?O\.?\s|PAGE\s|DATE:|PHONE|DISTRIBUTION\s+CENTER|SHIP\s+TO|BILL\s+TO)/i;
+const STATE_ZIP_RE = /\b[A-Z]{2},?\s+\d{5}(-\d{4})?\b/;
+const ZIP4_RE = /^\d{5}-\d{4}$/;
+
 /**
  * Pull probable line items out of OCR'd packing-slip text.
- * Slip line shape (columns): LN# ItemNumber QtyOrdered Shipped UOM Description Vendor
+ * Slip line shape (columns):
+ *   LN# ItemNumber QtyOrdered Shipped UOM [ToFollow] Description Vendor
  * OCR is noisy, so this is deliberately loose: find a plausible item number,
- * read leading small integers as the qty columns, skip a UOM token, and keep
- * whatever text remains as the description.
- * Returns [{ itemNumber, qtyOrdered, qtyShipped, description }] — any field
- * except itemNumber may be null.
+ * read leading small integers as the qty columns, skip a UOM token, read a
+ * trailing int as the "To Follow" (backorder) column, keep the rest as the
+ * description. Header/address lines are rejected outright.
+ * Returns [{ itemNumber, qtyOrdered, qtyShipped, qtyToFollow, description }]
+ * — any field except itemNumber may be null.
  */
 export function parseSlipText(text) {
   const items = [];
   const seen = new Set();
   for (const line of (text || '').split('\n')) {
+    // Skip header/address territory before even looking for numbers.
+    if (HEADER_LINE_RE.test(line) || STATE_ZIP_RE.test(line)) continue;
+
     // Item numbers on PHS slips: 5+ alphanumerics starting with a digit
     // (450020, 1227006, 8900-7-50, HC325S appears as mfg number instead).
     const m = /\b(\d[\d-]{4,}[A-Z]?)\b(.*)$/.exec(line);
     if (!m) continue;
     const itemNumber = m[1];
     if (seen.has(itemNumber)) continue;
+    // ZIP+4s and long digit runs (barcode text, license numbers) are not items.
+    if (ZIP4_RE.test(itemNumber)) continue;
+    if (/^\d+$/.test(itemNumber.replace(/-/g, '')) && itemNumber.replace(/-/g, '').length > 8) continue;
 
     // Walk the tail: qty columns come BEFORE any word, so only ints seen
     // ahead of the first alphabetic token count (keeps "6.0MM" out of qtys).
@@ -192,6 +206,14 @@ export function parseSlipText(text) {
     }
     if (i < tokens.length && UOM_TOKEN.test(tokens[i])) i += 1;
 
+    // The "To Follow" column sits right after UOM/Bin Loc: a small int before
+    // the description text = quantity still coming from the warehouse.
+    let qtyToFollow = null;
+    if (i < tokens.length && /^\d{1,3}$/.test(tokens[i])) {
+      qtyToFollow = Number(tokens[i]);
+      i += 1;
+    }
+
     // Whatever's left is the printed description (may include the vendor
     // name — easy to trim in the review grid). Cut at a stray barcode text.
     let description = tokens.slice(i).join(' ').replace(/\s*\/I[A-Z]{2}[0-9A-Z-]*.*$/, '').trim();
@@ -201,6 +223,7 @@ export function parseSlipText(text) {
       itemNumber,
       qtyOrdered: qtys.length > 0 ? qtys[0] : null,
       qtyShipped: qtys.length > 1 ? qtys[1] : null,
+      qtyToFollow,
       description,
     });
     seen.add(itemNumber);
@@ -326,6 +349,8 @@ export function buildNewItems(barcodes, ocrItems, existingItems = [], equipmentL
       unit_of_measure: parsed.uom,
       item_description: equipment?.name || ocr?.description || null,
       qty_ordered: ocr?.qtyOrdered ?? 1,
+      qty_shipped: ocr?.qtyShipped ?? ocr?.qtyOrdered ?? 1,
+      qty_backordered: ocr?.qtyToFollow ?? 0,
       equipment_id: equipment?.id ?? null,
       source: 'barcode',
     });
@@ -339,6 +364,8 @@ export function buildNewItems(barcodes, ocrItems, existingItems = [], equipmentL
       unit_of_measure: null,
       item_description: equipment?.name || ocr.description || null,
       qty_ordered: ocr.qtyOrdered ?? 1,
+      qty_shipped: ocr.qtyShipped ?? ocr.qtyOrdered ?? 1,
+      qty_backordered: ocr.qtyToFollow ?? 0,
       equipment_id: equipment?.id ?? null,
       source: 'ocr',
     });

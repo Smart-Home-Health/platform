@@ -432,3 +432,22 @@ def test_delete_blocked_after_finalize(admin_client, patient):
 
 def test_delete_unknown_shipment_404(admin_client):
     assert admin_client.delete("/api/shipments/999999").status_code == 404
+
+
+def test_delete_shipment_cleans_document_blobs(admin_client, patient, monkeypatch, tmp_path):
+    import os
+    import document_store
+    monkeypatch.setattr(document_store, "EPIC_DOCS_DIR", str(tmp_path))
+
+    sid = _make_shipment(admin_client, patient).json()["id"]
+    doc = admin_client.post(
+        f"/api/shipments/{sid}/documents",
+        files={"file": ("slip.png", _PNG, "image/png")},
+    ).json()["document"]
+
+    # Exactly one blob on disk, then gone with the shipment.
+    blobs = [p for p in tmp_path.rglob("*") if p.is_file()]
+    assert len(blobs) == 1
+    assert admin_client.delete(f"/api/shipments/{sid}").json()["success"] is True
+    assert not any(p.is_file() for p in tmp_path.rglob("*")), "blob leaked after shipment delete"
+    assert doc["id"] > 0

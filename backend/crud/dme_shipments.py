@@ -161,12 +161,18 @@ def update_shipment(
 
 
 def delete_shipment(db: Session, shipment_id: int) -> bool:
-    """Delete a shipment and all related items"""
+    """Delete a shipment and all related items (and packing-slip blobs)"""
     try:
         shipment = db.query(DMEShipment).filter(DMEShipment.id == shipment_id).first()
         if not shipment:
             return False
-        
+
+        # The DB cascade removes document rows; the blobs on the ./data
+        # volume need explicit cleanup or they leak.
+        for doc in shipment.documents:
+            if doc.file_path:
+                document_store.delete_document(doc.file_path)
+
         db.delete(shipment)
         db.commit()
         logger.info(f"Deleted shipment {shipment_id}")

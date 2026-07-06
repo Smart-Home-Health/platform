@@ -222,3 +222,50 @@ describe('nameMatchScore', () => {
     expect(nameMatchScore('', 'anything')).toBe(0);
   });
 });
+
+describe('parseSlipText — To Follow column and header rejection', () => {
+  it('reads the To Follow qty after the UOM (real line 7 shape)', () => {
+    const items = parseSlipText('7 * 573717 3 0 EA 3 CPAP HUMID CHAMB DISP FSHPAY');
+    expect(items[0]).toMatchObject({
+      itemNumber: '573717', qtyOrdered: 3, qtyShipped: 0, qtyToFollow: 3,
+      description: 'CPAP HUMID CHAMB DISP FSHPAY',
+    });
+  });
+
+  it('leaves qtyToFollow null when the column is absent', () => {
+    const items = parseSlipText('1 450020 2 2 EA TUBE, TRACH TTS CUFF 6.0MM');
+    expect(items[0].qtyToFollow).toBeNull();
+  });
+
+  it('rejects address and header lines (the garbage rows from the field)', () => {
+    const text = [
+      'MIAMISBURG, OH 45342-3658',            // ZIP+4 became "item 45342-3658"
+      'COLUMBUS, OH 43217',
+      'CUST P.O. NUMBER: 100372',             // PO number became "item 100372"
+      'INVOICE NUMBER: 10527731',
+      'ORDER NUMBER: 78711852',
+      'SHIPPED FROM LICENSE: 0132000178',
+      '78711852261540828',                    // stray barcode digit run
+      '1 450020 2 2 EA TUBE, TRACH TTS CUFF 6.0MM', // the one real line
+    ].join('\n');
+    const items = parseSlipText(text);
+    expect(items).toHaveLength(1);
+    expect(items[0].itemNumber).toBe('450020');
+  });
+});
+
+describe('buildNewItems — shipped and to-follow flow through', () => {
+  it('carries qty_shipped and qty_backordered from OCR', () => {
+    const drafts = buildNewItems(
+      ['/IEA573717'],
+      [{ itemNumber: '573717', qtyOrdered: 3, qtyShipped: 0, qtyToFollow: 3, description: 'CPAP HUMID CHAMB DISP' }],
+      [], []
+    );
+    expect(drafts[0]).toMatchObject({ qty_ordered: 3, qty_shipped: 0, qty_backordered: 3 });
+  });
+
+  it('defaults shipped to ordered and backorder to 0 without OCR data', () => {
+    const drafts = buildNewItems(['/IEA450020'], [], [], []);
+    expect(drafts[0]).toMatchObject({ qty_ordered: 1, qty_shipped: 1, qty_backordered: 0 });
+  });
+});
