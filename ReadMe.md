@@ -42,7 +42,11 @@ browser over WebSockets and bridges to MQTT / home‑automation systems.
 - **Role‑based access control** — users, roles, and fine‑grained permissions
 - **Backup & restore** of application data
 - **Modern responsive web UI**, accessible from a phone or other LAN device
-- **Home Assistant friendly** — works embedded in an iframe and publishes state to MQTT
+- **Home Assistant friendly** — runs behind HA ingress, works embedded in an iframe,
+  and publishes state to MQTT. **Accessing the app through HA ingress is the
+  preferred setup**: HA's own HTTPS gives the app a real trusted certificate, so
+  camera features (barcode scanning, packing-slip capture) work on phones with no
+  certificate warnings
 
 ## Integrations
 
@@ -100,6 +104,14 @@ On first launch you'll be guided through admin **first‑run setup**. It also wo
 from a phone or other LAN device (e.g. `http://192.168.1.184:8000`). For publishing
 and deployment details, see [`docs/unified-image.md`](docs/unified-image.md).
 
+> **Preferred: put it behind Home Assistant ingress.** If you run Home Assistant,
+> proxying the app through HA ingress is the recommended way to access it: the app
+> rides HA's real HTTPS certificate, so phone camera features (live barcode
+> scanning, packing‑slip capture) work everywhere with no certificate warnings —
+> iOS only exposes the camera to pages served over HTTPS. Direct LAN access over
+> plain HTTP still works for everything except the live camera (photo capture is
+> the automatic fallback). Packaging as a proper HA add‑on is planned.
+
 ## Develop it (hot reload)
 
 The development stack runs the frontend (Vite) and backend (uvicorn `--reload`) as
@@ -113,14 +125,24 @@ On startup the stack creates the database, runs Alembic migrations
 (`alembic upgrade head`), and starts both dev servers.
 
 **Access the application:**
-- **Web interface**: http://localhost:5173
+- **Web interface**: https://localhost:5173
 - **API**: http://localhost:8000
 - **API docs (Swagger)**: http://localhost:8000/docs
 
+> **The dev server uses a self‑signed HTTPS certificate — your browser WILL
+> complain. That's expected; it's fine.** Click through the warning
+> ("Advanced → Proceed" / on iOS "Show Details → visit this website") once per
+> device and move on. HTTPS is required because iOS only exposes the live camera
+> (barcode scanning, slip capture) to secure origins, and a self‑signed cert is
+> the zero‑setup way to get there on a LAN. Cleaner certificate handling is
+> planned; for warning‑free HTTPS today, access the app through Home Assistant
+> ingress instead.
+
 The web UI works from a phone or other LAN device too (e.g.
-`http://192.168.1.184:5173`); it reaches the backend on the same origin via the Vite
-dev proxy. Integration credentials and other optional settings go in `backend/.env`
-for dev — see [`.env.example`](.env.example) for the recognized variables.
+`https://192.168.1.184:5173` — note **https**); it reaches the backend on the same
+origin via the Vite dev proxy. Integration credentials and other optional settings
+go in `backend/.env` for dev — see [`.env.example`](.env.example) for the
+recognized variables.
 
 ### Useful commands
 
@@ -139,7 +161,7 @@ docker compose exec backend alembic upgrade head
 ### Initial setup
 
 1. Open the web app (http://localhost:8000 for the single‑image run, or
-   http://localhost:5173 in dev) and sign in (or create the first user).
+   https://localhost:5173 in dev) and sign in (or create the first user).
 2. Add a patient and configure alert thresholds under Settings.
 3. Start recording vitals manually, or connect a device/integration.
 

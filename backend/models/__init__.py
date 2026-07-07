@@ -38,6 +38,8 @@ from schemas.medication_schedule import MedicationSchedule
 from schemas.medication_log import MedicationLog
 from schemas.equipment import Equipment
 from schemas.equipment_change_log import EquipmentChangeLog
+from schemas.equipment_provider_alias import EquipmentProviderAlias
+from schemas.equipment_count_log import EquipmentCountLog
 from schemas.monitoring_alert import MonitoringAlert
 from schemas.ventilator_alert import VentilatorAlert
 from schemas.external_alarm import ExternalAlarm
@@ -66,7 +68,8 @@ from models.schedule import CompleteItemRequest, BulkCompleteRequest
 __all__ = [
     'Business', 'Provider', 'NutritionIntake', 'CareTaskCategory', 'CareTask',
     'CareTaskSchedule', 'CareTaskLog', 'Medication', 'MedicationSchedule',
-    'MedicationLog', 'Equipment', 'EquipmentChangeLog', 'MonitoringAlert',
+    'MedicationLog', 'Equipment', 'EquipmentChangeLog', 'EquipmentProviderAlias',
+    'EquipmentCountLog', 'MonitoringAlert',
     'VentilatorAlert', 'ExternalAlarm', 'PulseOxData', 'Setting',
     'Vital', 'Symptom', 'Patient', 'User', 'Role',
     'Permission', 'AuditLog', 'Diagnosis', 'DiagnosisNote', 'AllergyIntolerance',

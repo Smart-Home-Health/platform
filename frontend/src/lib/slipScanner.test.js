@@ -19,7 +19,7 @@
 // engines are exercised manually (WASM doesn't run in CI); these tests pin
 // the PHS/McKesson barcode format and the OCR line heuristics.
 import { describe, it, expect } from 'vitest';
-import { parseSlipBarcode, parseSlipText, matchScanToItems, buildNewItems, buildScanLines, resolveScanLines, nameMatchScore } from './slipScanner';
+import { parseSlipBarcode, parseSlipText, matchScanToItems, buildNewItems, buildScanLines, resolveScanLines, nameMatchScore, equipmentNumberIndex } from './slipScanner';
 
 describe('parseSlipBarcode', () => {
   // Real values photographed from PHS packing slips.
@@ -291,5 +291,48 @@ describe('buildNewItems — shipped and to-follow flow through', () => {
   it('defaults shipped to ordered and backorder to 0 without OCR data', () => {
     const drafts = buildNewItems(['/IEA450020'], [], [], []);
     expect(drafts[0]).toMatchObject({ qty_ordered: 1, qty_shipped: 1, qty_backordered: 0 });
+  });
+});
+
+describe('equipmentNumberIndex + alias-aware buildNewItems', () => {
+  const equipment = [
+    { id: 1, name: 'Trach tube', item_number: '450020', aliases: [{ item_number: '999001' }] },
+    { id: 2, name: 'Breathing circuit', item_number: null, aliases: [{ item_number: '4412007' }] },
+    { id: 3, name: 'Old style rows', item_number: '111000' }, // no aliases key at all
+  ];
+
+  it('indexes primary numbers, alias numbers, and alias-less rows', () => {
+    const index = equipmentNumberIndex(equipment);
+    expect(index.get('450020').id).toBe(1);
+    expect(index.get('999001').id).toBe(1);
+    expect(index.get('4412007').id).toBe(2);
+    expect(index.get('111000').id).toBe(3);
+  });
+
+  it('primary numbers win over alias collisions', () => {
+    const index = equipmentNumberIndex([
+      { id: 1, name: 'A', item_number: '450020', aliases: [] },
+      { id: 2, name: 'B', item_number: null, aliases: [{ item_number: '450020' }] },
+    ]);
+    expect(index.get('450020').id).toBe(1);
+  });
+
+  it('buildNewItems links a scan by alias number (equipment_match: number)', () => {
+    const drafts = buildNewItems(['/IEA4412007'], [], [], equipment);
+    expect(drafts[0].equipment_id).toBe(2);
+    expect(drafts[0].equipment_match).toBe('number');
+  });
+
+  it('buildNewItems still links by primary number', () => {
+    const drafts = buildNewItems(['/IEA450020'], [], [], equipment);
+    expect(drafts[0].equipment_id).toBe(1);
+    expect(drafts[0].equipment_match).toBe('number');
+  });
+});
+
+describe('parseSlipText — raw source line', () => {
+  it('keeps the OCR line each item was parsed from', () => {
+    const items = parseSlipText('  1 450020 2 2 EA TUBE TRACH TTS CUFF 4.0MM  ');
+    expect(items[0].raw).toBe('1 450020 2 2 EA TUBE TRACH TTS CUFF 4.0MM');
   });
 });

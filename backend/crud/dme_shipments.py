@@ -998,6 +998,7 @@ def get_inventory_summary(db: Session, patient_id: Optional[int] = None) -> List
                 'unit_description': eq.unit_description,
                 'reorder_point': eq.reorder_point,
                 'par_level': eq.par_level,
+                'storage_location': eq.storage_location,
                 'status': status
             })
         return result

@@ -39,7 +39,18 @@ import {
 
 const PREVIEW_ROWS = 4;
 
-export default function CsvItemImport({ open, onClose, shipmentId, onDone }) {
+// Pluggable target: by default this imports SHIPMENT ITEMS straight into the
+// bulk-add endpoint. The Initial Inventory Setup wizard reuses the same
+// mapping UI with equipment-shaped fields and its own onImport (rows land in
+// the wizard's review step instead of the database).
+export default function CsvItemImport({
+  open, onClose, shipmentId, onDone,
+  targetFields = CSV_TARGET_FIELDS,
+  buildRows = buildItemsFromCsv,
+  guessOpts = undefined,
+  onImport = undefined,
+  title = 'Import items from a CSV',
+}) {
   const fileInputRef = useRef(null);
   const [rows, setRows] = useState(null);
   const [mapping, setMapping] = useState([]);
@@ -64,10 +75,10 @@ export default function CsvItemImport({ open, onClose, shipmentId, onDone }) {
         setError("That file looks empty — nothing to import.");
         return;
       }
-      const header = looksLikeHeader(parsed[0]);
+      const header = looksLikeHeader(parsed[0], guessOpts?.patterns);
       setRows(parsed);
       setHasHeader(header);
-      setMapping(guessMapping(parsed, header));
+      setMapping(guessMapping(parsed, header, guessOpts));
       setFileName(file.name);
     } catch {
       setError("We couldn't read that file. Is it a CSV export?");
@@ -85,10 +96,10 @@ export default function CsvItemImport({ open, onClose, shipmentId, onDone }) {
   const toggleHeader = () => {
     const next = !hasHeader;
     setHasHeader(next);
-    setMapping(guessMapping(rows, next));
+    setMapping(guessMapping(rows, next, guessOpts));
   };
 
-  const items = rows ? buildItemsFromCsv(rows, mapping, hasHeader) : [];
+  const items = rows ? buildRows(rows, mapping, hasHeader) : [];
   const previewData = rows ? rows.slice(hasHeader ? 1 : 0, (hasHeader ? 1 : 0) + PREVIEW_ROWS) : [];
   const width = rows ? Math.max(0, ...rows.map((r) => r.length)) : 0;
 
@@ -96,7 +107,9 @@ export default function CsvItemImport({ open, onClose, shipmentId, onDone }) {
     setSaving(true);
     setError(null);
     try {
-      const result = await shipmentService.bulkAddItems(shipmentId, items);
+      const result = onImport
+        ? await onImport(items)
+        : await shipmentService.bulkAddItems(shipmentId, items);
       if (result.success || result.count > 0) {
         reset();
         onDone?.(result.count);
@@ -116,7 +129,7 @@ export default function CsvItemImport({ open, onClose, shipmentId, onDone }) {
     <Dialog open onOpenChange={(o) => { if (!o) { reset(); onClose?.(); } }}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-[720px]" aria-describedby={undefined}>
         <DialogHeader>
-          <DialogTitle>Import items from a CSV</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
 
         {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
@@ -167,7 +180,7 @@ export default function CsvItemImport({ open, onClose, shipmentId, onDone }) {
                           onChange={(e) => updateMapping(col, e.target.value)}
                           style={{ width: '100%', padding: '6px' }}
                         >
-                          {CSV_TARGET_FIELDS.map((f) => (
+                          {targetFields.map((f) => (
                             <option key={f.value || 'ignore'} value={f.value}>{f.label}</option>
                           ))}
                         </select>

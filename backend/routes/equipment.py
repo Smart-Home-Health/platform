@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 
 from db import get_db
-from dependencies import get_optional_account_id
+from dependencies import get_optional_account_id, get_optional_user
 from models.equipment import (
     EquipmentCreate,
     EquipmentUpdate,
@@ -35,13 +35,18 @@ from models.equipment import (
     EquipmentCategoryCreate,
     EquipmentCategoryUpdate,
     EquipmentCategoryResponse,
+    CatalogImportRequest,
+    EquipmentCountSet,
+    EquipmentAliasCreate,
 )
 from crud.equipment import (
-    get_equipment_list, log_equipment_change, receive_equipment, 
+    get_equipment_list, log_equipment_change, receive_equipment,
     open_equipment, get_equipment_change_history, get_equipment,
     get_equipment_categories, add_equipment, add_equipment_simple, add_equipment_category,
     update_equipment, update_equipment_category, delete_equipment,
-    delete_equipment_category, search_equipment, get_equipment_due_count
+    delete_equipment_category, search_equipment, get_equipment_due_count,
+    catalog_import, set_equipment_count, get_equipment_count_history,
+    add_equipment_alias, delete_equipment_alias
 )
 
 logger = logging.getLogger("app")
@@ -68,6 +73,7 @@ async def api_add_equipment(
         unit_of_measure=data.unit_of_measure, unit_size=data.unit_size,
         unit_description=data.unit_description,
         reorder_point=data.reorder_point, par_level=data.par_level,
+        storage_location=data.storage_location,
     )
     return {"id": eid, "status": "success"}
 
@@ -76,6 +82,31 @@ async def api_add_equipment(
 async def api_get_equipment(patient_id: int = None, db: Session = Depends(get_db)):
     """Get equipment list sorted by due next. Optionally filter by patient_id."""
     return get_equipment_list(db, patient_id=patient_id)
+
+
+# NOTE: declared before the /{equipment_id} routes so the literal path
+# "catalog-import" is never parsed as an equipment id.
+@router.post("/catalog-import")
+async def api_catalog_import(
+    data: CatalogImportRequest,
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id),
+    current_user=Depends(get_optional_user),
+):
+    """Bulk catalog creation for the Initial Inventory Setup wizard.
+
+    Creates new supplies and/or attaches provider aliases to existing ones.
+    Idempotent on item numbers already in the catalog (re-runs match instead
+    of duplicating).
+    """
+    return catalog_import(
+        db,
+        data.items,
+        account_id=account_id,
+        patient_id=data.patient_id,
+        supplier_id=data.supplier_id,
+        created_by=current_user.id if current_user else None,
+    )
 
 
 @router.post("/{equipment_id}/change")
@@ -131,6 +162,56 @@ async def api_open_equipment(equipment_id: int, data: EquipmentQuantityChange, d
     """Decrease equipment quantity (open/use equipment)."""
     success = open_equipment(db, equipment_id, data.amount)
     return {"success": success}
+
+
+@router.post("/{equipment_id}/count")
+async def api_set_equipment_count(
+    equipment_id: int,
+    data: EquipmentCountSet,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_optional_user),
+):
+    """Physical stocktake: set the absolute on-hand quantity (audited)."""
+    result = set_equipment_count(
+        db, equipment_id, data.quantity, note=data.note,
+        counted_by=current_user.id if current_user else None,
+    )
+    if result is None:
+        return JSONResponse(status_code=404, content={"detail": "Equipment not found"})
+    return result
+
+
+@router.get("/{equipment_id}/counts")
+async def api_get_equipment_count_history(equipment_id: int, db: Session = Depends(get_db)):
+    """Stocktake history for one supply, newest first."""
+    return {"counts": get_equipment_count_history(db, equipment_id)}
+
+
+@router.post("/{equipment_id}/aliases")
+async def api_add_equipment_alias(
+    equipment_id: int,
+    data: EquipmentAliasCreate,
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id),
+):
+    """Attach a provider item number to a supply."""
+    alias_id = add_equipment_alias(
+        db, equipment_id, data.item_number,
+        supplier_id=data.supplier_id, raw_description=data.raw_description,
+        account_id=account_id,
+    )
+    if alias_id is None:
+        return JSONResponse(status_code=409, content={"detail": "Alias already exists or equipment not found"})
+    return {"id": alias_id, "status": "success"}
+
+
+@router.delete("/{equipment_id}/aliases/{alias_id}")
+async def api_delete_equipment_alias(equipment_id: int, alias_id: int, db: Session = Depends(get_db)):
+    """Remove a provider alias from a supply."""
+    success = delete_equipment_alias(db, equipment_id, alias_id)
+    if not success:
+        return JSONResponse(status_code=404, content={"detail": "Alias not found"})
+    return {"status": "success"}
 
 
 @router.get("/history")
@@ -207,6 +288,7 @@ async def api_update_equipment(equipment_id: int, data: EquipmentUpdate, db: Ses
         unit_description=data.unit_description,
         reorder_point=data.reorder_point,
         par_level=data.par_level,
+        storage_location=data.storage_location,
     )
     if not success:
         return JSONResponse(status_code=404, content={"detail": "Equipment not found"})

@@ -17,7 +17,7 @@
  */
 // CSV -> shipment items: parser, header detection, mapping guess, row build.
 import { describe, it, expect } from 'vitest';
-import { parseCsv, looksLikeHeader, guessMapping, buildItemsFromCsv } from './csvImport';
+import { parseCsv, looksLikeHeader, guessMapping, buildItemsFromCsv, buildEquipmentFromCsv, EQUIPMENT_HEADER_PATTERNS } from './csvImport';
 
 describe('parseCsv', () => {
   it('parses plain rows and drops blank lines', () => {
@@ -105,5 +105,56 @@ describe('buildItemsFromCsv', () => {
     const swapped = ['item_description', 'item_number', 'qty_ordered', '', ''];
     const items = buildItemsFromCsv([['Trach Tube', '450020', '2', 'EA', '']], swapped, false);
     expect(items[0]).toMatchObject({ item_number: '450020', item_description: 'Trach Tube' });
+  });
+});
+
+describe('equipment-shaped CSV import (Initial Inventory Setup)', () => {
+  it('guesses supply-catalog headers with the equipment pattern set', () => {
+    const rows = [
+      ['Name', 'Item #', 'On hand', 'Per box', 'Where it lives'],
+      ['Trach ties', '573717', '64', '30', 'Trach cart'],
+    ];
+    const mapping = guessMapping(rows, true, { patterns: EQUIPMENT_HEADER_PATTERNS, qtyField: 'quantity', descField: 'name' });
+    expect(mapping[0]).toBe('name');
+    expect(mapping[1]).toBe('item_number');
+    expect(mapping[2]).toBe('quantity');
+    expect(mapping[3]).toBe('unit_size');
+    expect(mapping[4]).toBe('storage_location');
+  });
+
+  it('shipment guessing is unchanged by the new options parameter', () => {
+    const rows = [
+      ['Item #', 'Description', 'Qty', 'UOM'],
+      ['450020', 'TUBE, TRACH', '2', 'EA'],
+    ];
+    const mapping = guessMapping(rows, true);
+    expect(mapping).toEqual(['item_number', 'item_description', 'qty_ordered', 'unit_of_measure']);
+  });
+
+  it('buildEquipmentFromCsv parses ints and keeps text fields', () => {
+    const mapping = ['name', 'item_number', 'quantity', 'unit_size', 'storage_location'];
+    const items = buildEquipmentFromCsv(
+      [['Trach ties', '573717', '64', '30', 'Trach cart']],
+      mapping, false
+    );
+    expect(items[0]).toEqual({
+      name: 'Trach ties',
+      item_number: '573717',
+      quantity: 64,
+      unit_size: 30,
+      storage_location: 'Trach cart',
+    });
+  });
+
+  it('buildEquipmentFromCsv falls back to raw_description for a missing name', () => {
+    const mapping = ['raw_description', 'item_number'];
+    const items = buildEquipmentFromCsv([['TIE TRACH 1IN', '573717']], mapping, false);
+    expect(items[0].name).toBe('TIE TRACH 1IN');
+    expect(items[0].raw_description).toBe('TIE TRACH 1IN');
+  });
+
+  it('buildEquipmentFromCsv drops rows with neither name nor item number', () => {
+    const mapping = ['name', 'item_number', 'quantity'];
+    expect(buildEquipmentFromCsv([['', '', '5']], mapping, false)).toHaveLength(0);
   });
 });

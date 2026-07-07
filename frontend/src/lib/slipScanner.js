@@ -70,6 +70,64 @@ export async function ocrImage(source) {
   return data?.text || '';
 }
 
+/**
+ * OCR with per-line geometry: returns { text, lines: [{ text, bbox }] } where
+ * bbox is { x0, y0, x1, y1 } in source pixels. Review UIs use the boxes to
+ * show the actual strip of the photo a parsed line came from.
+ */
+export async function ocrImageWithLines(source) {
+  const worker = await getOcrWorker();
+  const { data } = await worker.recognize(source, {}, { text: true, blocks: true });
+  const lines = [];
+  for (const block of data?.blocks || []) {
+    for (const paragraph of block.paragraphs || []) {
+      for (const line of paragraph.lines || []) {
+        lines.push({ text: (line.text || '').trim(), bbox: line.bbox });
+      }
+    }
+  }
+  return { text: data?.text || '', lines };
+}
+
+/**
+ * Crop a full-width strip around one OCR line and return a small JPEG data
+ * URL (or null). Full width on purpose — the qty/UOM columns around the
+ * match are exactly the context a human needs to judge a bogus line.
+ */
+export function cropLineStrip(canvas, bbox, { pad = 8, maxWidth = 1400, quality = 0.6 } = {}) {
+  if (!canvas || !bbox) return null;
+  const y0 = Math.max(0, (bbox.y0 ?? 0) - pad);
+  const y1 = Math.min(canvas.height, (bbox.y1 ?? 0) + pad);
+  const height = y1 - y0;
+  if (height <= 4) return null;
+  const scale = Math.min(1, maxWidth / canvas.width);
+  const out = document.createElement('canvas');
+  out.width = Math.max(1, Math.round(canvas.width * scale));
+  out.height = Math.max(1, Math.round(height * scale));
+  out.getContext('2d').drawImage(canvas, 0, y0, canvas.width, height, 0, 0, out.width, out.height);
+  return out.toDataURL('image/jpeg', quality);
+}
+
+/**
+ * Attach a cropped line-strip image to each parsed slip item. Matches an
+ * item back to its OCR line by the raw text it was parsed from, falling
+ * back to "line mentions the item number". Mutates nothing; returns new
+ * items with an `image` data URL (or null).
+ */
+export function attachLineImages(items, ocrLines, canvas) {
+  const byText = new Map();
+  for (const line of ocrLines || []) {
+    if (line.text && !byText.has(line.text)) byText.set(line.text, line);
+  }
+  return (items || []).map((item) => {
+    let line = item.raw ? byText.get(item.raw) : null;
+    if (!line) {
+      line = (ocrLines || []).find((l) => item.itemNumber && l.text.includes(item.itemNumber)) || null;
+    }
+    return { ...item, image: line ? cropLineStrip(canvas, line.bbox) : null };
+  });
+}
+
 // --- Barcode decoding ---------------------------------------------------------
 
 function toCanvas(source) {
@@ -83,17 +141,25 @@ function toCanvas(source) {
   return canvas;
 }
 
+// Packing slips carry Code 128 line barcodes; the FORMATS on a product's own
+// box are retail UPC/EAN — the "scan the item itself" flow needs those too.
+export const SLIP_BARCODE_FORMATS = ['code_128'];
+export const PRODUCT_BARCODE_FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128'];
+
 /**
  * ZXing reads ONE barcode per image, but a slip page stacks one barcode per
  * line item. Strip-scan: decode the full frame, then overlapping horizontal
  * bands, collecting every distinct read. This is the iOS path (no native
  * BarcodeDetector there) so photo-based scanning still catches every line.
  */
-async function zxingDecodeAll(canvas) {
+async function zxingDecodeAll(canvas, formats = SLIP_BARCODE_FORMATS) {
   const { BrowserMultiFormatReader } = await import('@zxing/browser');
   const { DecodeHintType, BarcodeFormat } = await import('@zxing/library');
   const hints = new Map();
-  hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.CODE_128]);
+  hints.set(
+    DecodeHintType.POSSIBLE_FORMATS,
+    formats.map((f) => BarcodeFormat[f.toUpperCase()]).filter((f) => f !== undefined)
+  );
   hints.set(DecodeHintType.TRY_HARDER, true);
   const reader = new BrowserMultiFormatReader(hints);
 
@@ -129,10 +195,10 @@ async function zxingDecodeAll(canvas) {
  * falls back to ZXing strip-scanning elsewhere (iOS Safari).
  * Returns an array of raw barcode strings (deduped).
  */
-export async function detectBarcodes(source) {
+export async function detectBarcodes(source, formats = SLIP_BARCODE_FORMATS) {
   if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
     try {
-      const detector = new window.BarcodeDetector({ formats: ['code_128'] });
+      const detector = new window.BarcodeDetector({ formats });
       const found = await detector.detect(source);
       return [...new Set(found.map((b) => b.rawValue).filter(Boolean))];
     } catch {
@@ -140,7 +206,7 @@ export async function detectBarcodes(source) {
     }
   }
   try {
-    return await zxingDecodeAll(toCanvas(source));
+    return await zxingDecodeAll(toCanvas(source), formats);
   } catch {
     return [];
   }
@@ -175,8 +241,9 @@ const ZIP4_RE = /^\d{5}-\d{4}$/;
  * read leading small integers as the qty columns, skip a UOM token, read a
  * trailing int as the "To Follow" (backorder) column, keep the rest as the
  * description. Header/address lines are rejected outright.
- * Returns [{ itemNumber, qtyOrdered, qtyShipped, qtyToFollow, description }]
- * — any field except itemNumber may be null.
+ * Returns [{ itemNumber, qtyOrdered, qtyShipped, qtyToFollow, description, raw }]
+ * — any field except itemNumber may be null. `raw` is the source line as OCR
+ * read it, kept so review UIs can show exactly what the parse was based on.
  */
 export function parseSlipText(text) {
   const items = [];
@@ -225,6 +292,7 @@ export function parseSlipText(text) {
       qtyShipped: qtys.length > 1 ? qtys[1] : null,
       qtyToFollow,
       description,
+      raw: line.trim(),
     });
     seen.add(itemNumber);
   }
@@ -254,6 +322,8 @@ export function buildScanLines(barcodes, ocrItems) {
       qtyShipped: ocr?.qtyShipped ?? null,
       qtyToFollow: ocr?.qtyToFollow ?? null,
       description: ocr?.description || null,
+      raw: ocr?.raw || null,
+      image: ocr?.image || null,
       source: 'barcode',
     });
   }
@@ -267,6 +337,8 @@ export function buildScanLines(barcodes, ocrItems) {
       qtyShipped: ocr.qtyShipped ?? null,
       qtyToFollow: ocr.qtyToFollow ?? null,
       description: ocr.description || null,
+      raw: ocr.raw || null,
+      image: ocr.image || null,
       source: 'ocr',
     });
   }
@@ -337,20 +409,39 @@ export function resolveScanLines(lines, shipmentItems) {
 }
 
 /**
+ * Item-number -> equipment lookup covering both the primary item_number and
+ * every provider alias (the same supply arrives from different DME providers
+ * under different numbers). Primary numbers win over aliases on collision.
+ * equipmentList rows without an `aliases` array behave exactly as before.
+ */
+export function equipmentNumberIndex(equipmentList) {
+  const map = new Map();
+  for (const e of equipmentList) {
+    const primary = (e.item_number || '').trim();
+    if (primary && !map.has(primary)) map.set(primary, e);
+  }
+  for (const e of equipmentList) {
+    for (const alias of e.aliases || []) {
+      const num = (alias.item_number || '').trim();
+      if (num && !map.has(num)) map.set(num, e);
+    }
+  }
+  return map;
+}
+
+/**
  * Build NEW item drafts from a scan — for populating a shipment or standing
  * order from an invoice instead of typing each line.
  * Combines every barcode read (item number + UOM) with any OCR line data for
  * the same item number (description, qty), plus OCR-only rows the camera
  * didn't catch a barcode for. Items already on the shipment are skipped.
- * equipmentList (optional): [{ id, item_number, ... }] to auto-link.
+ * equipmentList (optional): [{ id, item_number, aliases?, ... }] to auto-link.
  * Returns [{ item_number, unit_of_measure, item_description, qty_ordered,
  *            equipment_id, source: 'barcode'|'ocr' }]
  */
 export function buildNewItems(barcodes, ocrItems, existingItems = [], equipmentList = []) {
   const existing = new Set(existingItems.map((i) => (i.item_number || '').trim()).filter(Boolean));
-  const equipmentByNumber = new Map(
-    equipmentList.filter((e) => e.item_number).map((e) => [String(e.item_number).trim(), e])
-  );
+  const equipmentByNumber = equipmentNumberIndex(equipmentList);
   const ocrByNumber = new Map(ocrItems.map((o) => [o.itemNumber, o]));
 
   // Reconcile against tracked supplies: supplier item number first (stable

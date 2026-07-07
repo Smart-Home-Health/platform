@@ -18,12 +18,14 @@
 // Supplies on hand: a plain-language view of what's in the house, driven by
 // Equipment quantities that confirmed deliveries keep up to date.
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import { EquipmentIcon, AlertIcon, CheckIcon } from '../../components/Icons';
 import { Alert } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import { shipmentService } from '../../services/shipments';
+import SupplyCountModal from './components/SupplyCountModal';
 import './AdminV2.css';
 
 const STATUS_META = {
@@ -47,6 +49,7 @@ const AdminV2Inventory = () => {
   const [counts, setCounts] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [countItem, setCountItem] = useState(null); // row being shelf-counted
 
   // Patient context <-> URL sync (standard admin-v2 pattern)
   useEffect(() => {
@@ -65,21 +68,24 @@ const AdminV2Inventory = () => {
     }
   }, [contextPatient]);
 
-  useEffect(() => {
+  const fetchInventory = async () => {
     if (!selectedPatient) return;
-    (async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const data = await shipmentService.getInventory(selectedPatient.id);
-        setInventory(data.inventory || []);
-        setCounts(data.counts || {});
-      } catch (err) {
-        setError(err.message || 'Failed to load supplies');
-      } finally {
-        setLoading(false);
-      }
-    })();
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await shipmentService.getInventory(selectedPatient.id);
+      setInventory(data.inventory || []);
+      setCounts(data.counts || {});
+    } catch (err) {
+      setError(err.message || 'Failed to load supplies');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchInventory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPatient]);
 
   const sorted = [...inventory].sort(
@@ -100,6 +106,18 @@ const AdminV2Inventory = () => {
       <div className="admin-v2-page">
         {selectedPatient ? (
           <>
+            {/* Setup / count entry points */}
+            <div className="tw flex flex-wrap gap-2" style={{ marginBottom: 12 }}>
+              <Link to={`/care/equipment/inventory/setup?patient=${selectedPatient.id}`}>
+                <Button variant="secondary">Set up my supply list</Button>
+              </Link>
+              {inventory.length > 0 && (
+                <Link to={`/care/equipment/inventory/setup?patient=${selectedPatient.id}&step=count`}>
+                  <Button variant="secondary">Count my supplies</Button>
+                </Link>
+              )}
+            </div>
+
             {/* Stats Row */}
             <div className="admin-v2-summary-stats">
               <div className="admin-v2-stat-card">
@@ -140,8 +158,14 @@ const AdminV2Inventory = () => {
                 <EquipmentIcon size={48} />
                 <h3>No supplies tracked yet</h3>
                 <p className="admin-v2-text-muted">
-                  Supplies show up here once equipment items are set up and deliveries are confirmed.
+                  Got a stack of old packing slips? That's all it takes — we'll read
+                  them and build your supply list for you.
                 </p>
+                <div className="tw">
+                  <Link to={`/care/equipment/inventory/setup?patient=${selectedPatient.id}`}>
+                    <Button size="lg">Set up my supply list</Button>
+                  </Link>
+                </div>
               </div>
             ) : (
               <div className="admin-v2-table-container admin-v2-table-cards-wrap">
@@ -152,6 +176,7 @@ const AdminV2Inventory = () => {
                       <th style={{ textAlign: 'center' }}>On hand</th>
                       <th style={{ textAlign: 'center' }}>Target</th>
                       <th>Status</th>
+                      <th></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -163,6 +188,9 @@ const AdminV2Inventory = () => {
                             <strong>{item.name}</strong>
                             {item.item_number && (
                               <div className="admin-v2-text-muted">#{item.item_number}</div>
+                            )}
+                            {item.storage_location && (
+                              <div className="admin-v2-text-muted">{item.storage_location}</div>
                             )}
                           </td>
                           <td data-label="On hand" style={{ textAlign: 'center' }}>
@@ -177,6 +205,17 @@ const AdminV2Inventory = () => {
                           <td data-label="Status">
                             <span className={`admin-v2-badge ${meta.badge}`}>{meta.label}</span>
                           </td>
+                          <td className="admin-v2-cell-actions">
+                            <div className="admin-v2-action-buttons">
+                              <button
+                                className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-secondary"
+                                onClick={() => setCountItem(item)}
+                                title="Count what's actually on the shelf"
+                              >
+                                Count
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       );
                     })}
@@ -188,6 +227,13 @@ const AdminV2Inventory = () => {
         ) : (
           <div className="admin-v2-loading">Select a patient from the sidebar</div>
         )}
+
+        <SupplyCountModal
+          open={!!countItem}
+          item={countItem}
+          onClose={() => setCountItem(null)}
+          onSaved={fetchInventory}
+        />
       </div>
     </AdminV2Layout>
   );
