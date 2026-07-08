@@ -127,3 +127,101 @@ class TestModeTransitions:
         assert r.json()["public_port"] == 443
         r = admin_client.post("/api/security/public-port", json={"port": 0})
         assert r.status_code == 422
+
+
+# --- DuckDNS guided setup routes ----------------------------------------------
+import tls_acme
+from routes import security as security_mod
+
+
+@pytest.fixture()
+def worker_session(db_session, monkeypatch):
+    """The issuance worker opens its own SessionLocal; point it at the test's
+    transactional session (same pattern as test_integration_imports)."""
+    monkeypatch.setattr(security_mod, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(db_session, "close", lambda: None)
+    return db_session
+
+
+class _FakeIssuer:
+    """Stands in for DuckDnsIssuer: walks the progress steps, returns a real
+    self-signed pair so write_cert_atomic's validation passes."""
+    fail_with = None
+
+    def __init__(self, subdomain, token, staging=False):
+        self.domain = f"{tls_acme.normalize_subdomain(subdomain)}.duckdns.org"
+        self.staging = staging
+
+    def issue(self, progress_cb=None):
+        for step in ("validating_token", "setting_dns", "waiting_dns",
+                     "requesting_cert", "finalizing"):
+            if progress_cb:
+                progress_cb(step)
+        if self.fail_with is not None:
+            raise self.fail_with
+        return _make_cert(domains=(self.domain,))
+
+
+class TestDuckdnsSetup:
+    def _start(self, client, **over):
+        payload = {"subdomain": "myhub", "token": "tok-123", **over}
+        return client.post("/api/security/duckdns/setup", json=payload)
+
+    def test_happy_path(self, admin_client, tls_dir, worker_session, monkeypatch):
+        monkeypatch.setattr(tls_acme, "DuckDnsIssuer", _FakeIssuer)
+        r = self._start(admin_client)
+        assert r.status_code == 200, r.text
+        # TestClient runs BackgroundTasks synchronously, so the job is done.
+        poll = admin_client.get("/api/security/duckdns/setup").json()["setup_state"]
+        assert poll["status"] == "issued"
+        assert poll["error"] is None
+        status = admin_client.get("/api/security/status").json()
+        assert status["mode"] == "duckdns"
+        assert status["domain"] == "myhub.duckdns.org"
+        assert status["cert_installed"] is True
+        assert status["days_until_expiry"] > 80
+        assert tls_manager.read_duckdns_token() == "tok-123"
+        tls_manager.restart_event.clear()
+
+    def test_failure_records_error_code(self, admin_client, tls_dir, worker_session, monkeypatch):
+        class _Failing(_FakeIssuer):
+            fail_with = tls_acme.BadTokenError("DuckDNS rejected the token")
+
+        monkeypatch.setattr(tls_acme, "DuckDnsIssuer", _Failing)
+        r = self._start(admin_client)
+        assert r.status_code == 200
+        poll = admin_client.get("/api/security/duckdns/setup").json()["setup_state"]
+        assert poll["status"] == "failed"
+        assert poll["error_code"] == "bad_token"
+        assert "rejected" in poll["error"]
+        status = admin_client.get("/api/security/status").json()
+        assert status["mode"] == "off"
+        assert status["cert_installed"] is False
+
+    def test_conflict_while_running(self, admin_client, tls_dir, db_session):
+        security_mod.write_setup_state(db_session, {"status": "waiting_dns"})
+        r = self._start(admin_client)
+        assert r.status_code == 409
+
+    def test_invalid_subdomain(self, admin_client, tls_dir):
+        r = self._start(admin_client, subdomain="not a domain!")
+        assert r.status_code == 422
+
+    def test_empty_token(self, admin_client, tls_dir):
+        r = self._start(admin_client, token="   ")
+        assert r.status_code == 422
+
+    def test_renew_requires_duckdns_mode(self, admin_client, tls_dir):
+        r = admin_client.post("/api/security/duckdns/renew")
+        assert r.status_code == 409
+
+    def test_renew_happy_path(self, admin_client, tls_dir, worker_session, monkeypatch):
+        monkeypatch.setattr(tls_acme, "DuckDnsIssuer", _FakeIssuer)
+        self._start(admin_client)
+        tls_manager.restart_event.clear()
+        r = admin_client.post("/api/security/duckdns/renew")
+        assert r.status_code == 200, r.text
+        poll = admin_client.get("/api/security/duckdns/setup").json()["setup_state"]
+        assert poll["status"] == "issued"
+        assert tls_manager.restart_event.is_set()
+        tls_manager.restart_event.clear()

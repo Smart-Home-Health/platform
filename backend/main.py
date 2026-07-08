@@ -342,6 +342,11 @@ async def startup_event():
     asyncio.create_task(start_reader_activity_subscriber(event_bus))
     logger.info("[main] Reader activity subscriber started")
 
+    # 6. Automatic HTTPS cert renewal (no-ops unless https_mode=duckdns;
+    #    returns immediately under HA ingress).
+    from tls_renewal import tls_renewal_loop
+    asyncio.create_task(tls_renewal_loop())
+
     logger.info("[main] Event-driven system startup complete")
 
 

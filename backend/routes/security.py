@@ -21,6 +21,9 @@ POST /api/security/byo-cert  -> upload fullchain.pem + privkey.pem
 POST /api/security/proxy     -> declare a TLS-terminating reverse proxy
 POST /api/security/public-port -> published HTTPS port (for the shown URL)
 POST /api/security/disable   -> turn built-in HTTPS off (cert files kept)
+POST /api/security/duckdns/setup -> start guided DuckDNS + Let's Encrypt job
+GET  /api/security/duckdns/setup -> poll the job's step/state
+POST /api/security/duckdns/renew -> force a renewal now
 
 Restricted to system admins. Secret material lives on disk via tls_manager;
 only non-secret state (mode, domain, expiry cache) is in the settings table.
@@ -31,13 +34,16 @@ import os
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import (
+    APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, UploadFile,
+)
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+import tls_acme
 import tls_manager
 from crud.settings import get_setting, save_setting
-from db import get_db
+from db import SessionLocal, get_db
 from dependencies import get_current_user
 from models.users import User
 
@@ -207,6 +213,133 @@ def set_public_port(
     render the canonical https:// URL — the container can't know the mapping."""
     save_setting(db, KEY_PUBLIC_PORT, str(body.port), data_type="integer",
                  description="Published HTTPS port")
+    return _status_payload(request, db)
+
+
+# --- DuckDNS + Let's Encrypt guided setup ------------------------------------
+
+IN_PROGRESS_STATUSES = (
+    "queued", "validating_token", "setting_dns", "waiting_dns",
+    "requesting_cert", "finalizing",
+)
+
+
+class DuckdnsSetupRequest(BaseModel):
+    subdomain: str
+    token: str
+    staging: bool = False
+
+
+def _setup_in_progress(db: Session) -> bool:
+    state = read_setup_state(db)
+    return bool(state and state.get("status") in IN_PROGRESS_STATUSES)
+
+
+def _run_duckdns_issuance(subdomain: str, staging: bool) -> None:
+    """Background worker (threadpool): runs the full issuance, writing each
+    step into the https_setup_state setting for the wizard to poll. Own DB
+    session — the request's session is gone by the time this runs."""
+    db = SessionLocal()
+
+    def update(status, **extra):
+        state = read_setup_state(db) or {}
+        state.update({"status": status, **extra})
+        write_setup_state(db, state)
+
+    try:
+        token = tls_manager.read_duckdns_token() or ""
+        issuer = tls_acme.DuckDnsIssuer(subdomain, token, staging=staging)
+        fullchain, privkey = issuer.issue(progress_cb=lambda step: update(step))
+        tls_manager.write_cert_atomic(fullchain, privkey)
+
+        save_setting(db, KEY_MODE, "duckdns", description="HTTPS mode")
+        save_setting(db, KEY_DOMAIN, issuer.domain, description="HTTPS domain")
+        expiry = tls_manager.read_cert_expiry()
+        if expiry:
+            save_setting(db, KEY_CERT_EXPIRES, expiry.isoformat(),
+                         description="Installed cert expiry (cache)")
+        save_setting(db, KEY_LAST_RENEWAL,
+                     datetime.now(timezone.utc).isoformat(),
+                     description="Last successful cert renewal")
+        save_setting(db, KEY_LAST_RENEWAL_ERROR, "",
+                     description="Last cert renewal error")
+        update("issued", error=None, error_code=None)
+        tls_manager.request_https_restart()
+        logger.info("DuckDNS setup issued a certificate for %s", issuer.domain)
+    except tls_acme.AcmeSetupError as e:
+        logger.error("DuckDNS setup failed: %s", e)
+        update("failed", error=str(e), error_code=e.error_code)
+    except Exception as e:  # noqa: BLE001 - anything else is "internal"
+        logger.exception("DuckDNS setup crashed")
+        update("failed", error=str(e), error_code="internal")
+    finally:
+        db.close()
+
+
+@router.post("/duckdns/setup", response_model=SecurityStatus)
+def start_duckdns_setup(
+    body: DuckdnsSetupRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    _: User = Depends(_require_system_admin),
+):
+    """Kick off the guided DuckDNS + Let's Encrypt issuance job."""
+    if _setup_in_progress(db):
+        raise HTTPException(status_code=409, detail="A certificate setup is already running")
+    try:
+        subdomain = tls_acme.normalize_subdomain(body.subdomain)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    if not body.token.strip():
+        raise HTTPException(status_code=422, detail="DuckDNS token is required")
+
+    tls_manager.write_duckdns_token(body.token)
+    write_setup_state(db, {
+        "status": "queued",
+        "staging": body.staging,
+        "domain": f"{subdomain}.duckdns.org",
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "error": None,
+        "error_code": None,
+    })
+    background_tasks.add_task(_run_duckdns_issuance, subdomain, body.staging)
+    return _status_payload(request, db)
+
+
+@router.get("/duckdns/setup")
+def get_duckdns_setup(
+    db: Session = Depends(get_db),
+    _: User = Depends(_require_system_admin),
+):
+    """Poll target for the wizard's progress view."""
+    return {"setup_state": read_setup_state(db)}
+
+
+@router.post("/duckdns/renew", response_model=SecurityStatus)
+def renew_duckdns_cert(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    _: User = Depends(_require_system_admin),
+):
+    """Force a renewal with the stored domain + token (manual 'Renew now')."""
+    if _setup_in_progress(db):
+        raise HTTPException(status_code=409, detail="A certificate setup is already running")
+    if (get_setting(db, KEY_MODE, "off") or "off") != "duckdns":
+        raise HTTPException(status_code=409, detail="DuckDNS mode is not active")
+    domain = get_setting(db, KEY_DOMAIN) or ""
+    if not domain or not tls_manager.read_duckdns_token():
+        raise HTTPException(status_code=409, detail="DuckDNS domain or token missing — run setup again")
+    write_setup_state(db, {
+        "status": "queued",
+        "staging": False,
+        "domain": domain,
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "error": None,
+        "error_code": None,
+    })
+    background_tasks.add_task(_run_duckdns_issuance, domain, False)
     return _status_payload(request, db)
 
 
