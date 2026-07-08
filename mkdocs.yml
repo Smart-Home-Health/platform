@@ -64,6 +64,7 @@ nav:
       - installation/index.md
       - Configuration: installation/configuration.md
       - First-run setup: installation/first-run.md
+      - HTTPS / secure access: installation/https-setup.md
   - Using the app:
       - Dashboard: using/dashboard.md
       - Schedule: using/schedule.md

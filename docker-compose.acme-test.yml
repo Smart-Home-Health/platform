@@ -1,0 +1,61 @@
+# ACME integration stack: pebble (a small Let's Encrypt test server) +
+# pebble-challtestsrv (programmable DNS for DNS-01). Runs ONLY the
+# @acme_integration-marked tests, which exercise the real ACME protocol flow
+# in backend/tls_acme.py. Not part of the default gate (scripts/run_tests.sh);
+# CI runs it as a separate non-blocking job:
+#
+#   docker compose -p shh_acme_test -f docker-compose.acme-test.yml \
+#     up --build --abort-on-container-exit --exit-code-from tests
+services:
+  challtestsrv:
+    image: ghcr.io/letsencrypt/pebble-challtestsrv:latest
+    # No default A/AAAA answers — only the TXT records the tests set.
+    # (The image entrypoint is the binary itself; command = args only.)
+    command: ["-defaultIPv4", "", "-defaultIPv6", ""]
+    networks: [shh-acme-net]
+
+  pebble:
+    image: ghcr.io/letsencrypt/pebble:latest
+    command: ["-dnsserver", "challtestsrv:8053"]
+    environment:
+      # Skip the artificial validation delays; keep tests fast.
+      PEBBLE_VA_NOSLEEP: 1
+    depends_on: [challtestsrv]
+    networks: [shh-acme-net]
+
+  db-test:
+    image: timescale/timescaledb:latest-pg15
+    environment:
+      POSTGRES_USER: shh_user
+      POSTGRES_PASSWORD: shh_dev_pass
+      POSTGRES_DB: shh_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shh_user -d shh_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks: [shh-acme-net]
+
+  tests:
+    build: ./backend
+    depends_on:
+      db-test:
+        condition: service_healthy
+      pebble:
+        condition: service_started
+    environment:
+      TEST_DATABASE_URL: postgresql://shh_user:shh_dev_pass@db-test:5432/shh_test
+      JWT_SECRET_KEY: test-secret-not-for-production
+      SHH_ACME_DIRECTORY: https://pebble:14000/dir
+      SHH_CHALLTESTSRV_URL: http://challtestsrv:8055
+      SHH_ACME_INSECURE: "1"  # pebble's directory cert is self-signed
+    volumes:
+      - ./backend:/app
+    working_dir: /app
+    command: sh -c "pip install --no-cache-dir -r requirements-dev.txt && pytest -m acme_integration tests/test_acme_pebble.py"
+    networks: [shh-acme-net]
+
+networks:
+  shh-acme-net:

@@ -15,9 +15,11 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import config, { apiFetch } from '../config';
+import SecuritySetupWizard from './SecuritySetupWizard';
 import logoImage from '../assets/logo2.png';
 import './FirstRunSetup.css';
 
@@ -40,6 +42,20 @@ export default function FirstRunSetup() {
   const [loading, setLoading] = useState(false);
   const [setupComplete, setSetupComplete] = useState(false);
   const [accountSlug, setAccountSlug] = useState('');
+  // Optional "Secure this install" step, offered on the success screen.
+  // Hidden under HA ingress (TLS already handled) or if status can't load.
+  const [offerHttps, setOfferHttps] = useState(false);
+  const [showHttpsWizard, setShowHttpsWizard] = useState(false);
+
+  useEffect(() => {
+    if (!setupComplete) return;
+    apiFetch(`${config.apiUrl}/api/security/status`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && !data.ingress && data.mode === 'off') setOfferHttps(true);
+      })
+      .catch(() => {});
+  }, [setupComplete]);
 
   const handleChange = (e) => {
     setFormData({
@@ -113,6 +129,32 @@ export default function FirstRunSetup() {
 
   // Show success screen with account slug
   if (setupComplete) {
+    if (showHttpsWizard) {
+      return (
+        <div className="first-run-page">
+          <div className="first-run-logo">
+            <img src={logoImage} alt="Smart Home Health Logo" />
+            <span>Smart Home Health</span>
+          </div>
+          <div className="first-run-card">
+            <div className="first-run-header">
+              <h1>Secure this install</h1>
+              <p>Optional — enables camera scanning on phones and tablets</p>
+            </div>
+            <SecuritySetupWizard onFinished={handleContinue} />
+            <button
+              type="button"
+              className="link-button"
+              style={{ marginTop: '1rem', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', color: 'inherit' }}
+              onClick={handleContinue}
+            >
+              Skip for now — you can do this later in Configuration → Security
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="first-run-page">
         <div className="first-run-logo">
@@ -132,6 +174,14 @@ export default function FirstRunSetup() {
               <small>Use this to log into your account in the future</small>
             </div>
 
+            {offerHttps && (
+              <button
+                className="submit-button"
+                onClick={() => setShowHttpsWizard(true)}
+              >
+                Secure this install (recommended)
+              </button>
+            )}
             <button
               className="submit-button"
               onClick={handleContinue}

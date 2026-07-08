@@ -34,6 +34,10 @@ services:
     container_name: shh_app
     ports:
       - "${APP_PORT:-8000}:8000"
+      # HTTPS — served only after a certificate is installed via the guided
+      # Security setup (Configuration → Security). Set APP_HTTPS_PORT=443 for
+      # a portless https:// URL.
+      - "${APP_HTTPS_PORT:-8443}:8443"
     environment:
       TZ: UTC
       DATABASE_URL: postgresql://shh_user:${POSTGRES_PASSWORD:-shh_dev_pass}@db:5432/shh
@@ -45,6 +49,11 @@ services:
       MIN_BPM: ${MIN_BPM:-}
       MAX_BPM: ${MAX_BPM:-}
       RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-}
+      # Set SHH_BEHIND_PROXY=1 when a reverse proxy (Traefik/nginx/Caddy)
+      # terminates TLS in front of the app: enables trust of X-Forwarded-*
+      # headers (scheme for secure cookies, client IP for rate limiting).
+      SHH_BEHIND_PROXY: ${SHH_BEHIND_PROXY:-}
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-}
       WITHINGS_CLIENT_ID: ${WITHINGS_CLIENT_ID:-}
       WITHINGS_CLIENT_SECRET: ${WITHINGS_CLIENT_SECRET:-}
     volumes:

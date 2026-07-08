@@ -106,7 +106,17 @@ def create_access_token(
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def _set_account_cookie(response: Response, account: Account, read_restricted: bool = False):
+def _cookie_secure(request: Request) -> bool:
+    """Mark auth cookies Secure when the request arrived over HTTPS — either
+    directly via the TLS listener or via a reverse proxy whose
+    X-Forwarded-Proto is trusted (SHH_BEHIND_PROXY enables uvicorn's
+    proxy-header handling). Plain-HTTP LAN access keeps the flag off so
+    login there still works. Note cookies are port-agnostic: a Secure
+    session cookie set on the HTTPS port will not flow to the HTTP port."""
+    return request.url.scheme == "https"
+
+
+def _set_account_cookie(request: Request, response: Response, account: Account, read_restricted: bool = False):
     """Set a long-lived account_token cookie (24h) so the browser stays at account-level
     auth even after the shorter session_token expires."""
     expire = datetime.utcnow() + timedelta(hours=ACCOUNT_SESSION_HOURS)
@@ -123,7 +133,7 @@ def _set_account_cookie(response: Response, account: Account, read_restricted: b
         httponly=True,
         max_age=ACCOUNT_SESSION_HOURS * 3600,
         samesite="lax",
-        secure=False,
+        secure=_cookie_secure(request),
     )
 
 
@@ -281,7 +291,7 @@ def first_run_setup(
         httponly=True,
         max_age=SESSION_TIMEOUT_MINUTES * 60,
         samesite="lax",
-        secure=False  # Set to True in production with HTTPS
+        secure=_cookie_secure(request),
     )
     
     logger.info(f"First-run setup completed: account '{account.name}' (slug='{account.slug}', id={account.id}), admin user '{user.username}'")
@@ -370,10 +380,10 @@ def account_login(
         httponly=True,
         max_age=SESSION_TIMEOUT_MINUTES * 60,
         samesite="lax",
-        secure=False  # Set to True in production with HTTPS
+        secure=_cookie_secure(request),
     )
     # Set long-lived account cookie (24h) so password isn't re-prompted
-    _set_account_cookie(response, account, read_restricted=False)
+    _set_account_cookie(request, response, account, read_restricted=False)
 
     # Create audit log
     create_audit_log(
@@ -455,9 +465,9 @@ def account_access(
         httponly=True,
         max_age=SESSION_TIMEOUT_MINUTES * 60,
         samesite="lax",
-        secure=False,
+        secure=_cookie_secure(request),
     )
-    _set_account_cookie(response, account, read_restricted=read_restricted)
+    _set_account_cookie(request, response, account, read_restricted=read_restricted)
     create_audit_log(
         db,
         user_id=None,
@@ -564,10 +574,10 @@ def account_unlock(
         httponly=True,
         max_age=SESSION_TIMEOUT_MINUTES * 60,
         samesite="lax",
-        secure=False,
+        secure=_cookie_secure(request),
     )
     # Refresh account cookie with unrestricted access
-    _set_account_cookie(response, account, read_restricted=False)
+    _set_account_cookie(request, response, account, read_restricted=False)
     create_audit_log(
         db,
         user_id=user_id,
@@ -732,7 +742,7 @@ def select_user(
         httponly=True,
         max_age=SESSION_TIMEOUT_MINUTES * 60,
         samesite="lax",
-        secure=False  # Set to True in production with HTTPS
+        secure=_cookie_secure(request),
     )
     
     # Create audit log
@@ -853,7 +863,7 @@ def reset_user_password(
         httponly=True,
         max_age=SESSION_TIMEOUT_MINUTES * 60,
         samesite="lax",
-        secure=False
+        secure=_cookie_secure(request),
     )
 
     create_audit_log(
@@ -974,7 +984,7 @@ def login(
         httponly=True,
         max_age=SESSION_TIMEOUT_MINUTES * 60,
         samesite="lax",
-        secure=False  # Set to True in production with HTTPS
+        secure=_cookie_secure(request),
     )
     
     logger.info(f"User logged in with password: {user.username}")
@@ -1084,7 +1094,7 @@ def verify_user_pin(
         httponly=True,
         max_age=SESSION_TIMEOUT_MINUTES * 60,
         samesite="lax",
-        secure=False  # Set to True in production with HTTPS
+        secure=_cookie_secure(request),
     )
     
     logger.info(f"User authenticated with PIN: {user.username}")
@@ -1106,7 +1116,7 @@ def verify_user_pin(
 
 
 @router.post("/logout")
-def logout(response: Response, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def logout(request: Request, response: Response, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Logout current user by clearing session cookie"""
     
     # Create audit log
@@ -1117,9 +1127,9 @@ def logout(response: Response, current_user: User = Depends(get_current_user), d
         details=json.dumps({"username": current_user.username})
     )
     
-    # Clear both session and account cookies
-    response.delete_cookie(key="session_token")
-    response.delete_cookie(key="account_token")
+    # Clear both session and account cookies (attributes mirror set_cookie)
+    response.delete_cookie(key="session_token", httponly=True, samesite="lax", secure=_cookie_secure(request))
+    response.delete_cookie(key="account_token", httponly=True, samesite="lax", secure=_cookie_secure(request))
     
     logger.info(f"User logged out: {current_user.username}")
     
@@ -1127,7 +1137,7 @@ def logout(response: Response, current_user: User = Depends(get_current_user), d
 
 
 @router.post("/lock")
-def lock(response: Response):
+def lock(request: Request, response: Response):
     """
     Idle lock: drop full auth to account level by clearing ONLY the
     session_token cookie. The 24h account_token is preserved so the user
@@ -1135,7 +1145,7 @@ def lock(response: Response):
     password re-prompt is needed. Has no auth dependency so it still works
     if the session_token is already gone.
     """
-    response.delete_cookie(key="session_token")
+    response.delete_cookie(key="session_token", httponly=True, samesite="lax", secure=_cookie_secure(request))
     return {"message": "Locked to account level"}
 
 

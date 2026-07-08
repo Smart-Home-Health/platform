@@ -54,7 +54,9 @@ RUN useradd --uid 10001 --create-home --home-dir /home/app --shell /usr/sbin/nol
     && chown -R app:app /app/data
 USER app
 
-EXPOSE 8000
+# 8000 = HTTP (always); 8443 = HTTPS, served only once a certificate is
+# installed via the Security setup flow (serve.py supervisor).
+EXPOSE 8000 8443
 
 # Public liveness endpoint; start-period covers DB wait + `alembic upgrade head`.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \

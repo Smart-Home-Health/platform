@@ -168,6 +168,8 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
       ...(isSystemAdmin
         ? [{ path: '/care/configuration/backup', label: 'Backup' }] : []),
       ...(isSystemAdmin
+        ? [{ path: '/care/configuration/security', label: 'Security' }] : []),
+      ...(isSystemAdmin
         ? [{ path: '/care/configuration/system-health', label: 'System' }] : []),
     ],
   };
