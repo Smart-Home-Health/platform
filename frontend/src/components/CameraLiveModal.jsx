@@ -67,14 +67,17 @@ export default function CameraLiveModal({ patientId, patientName, onClose }) {
   useEffect(() => {
     if (!info?.live_url || !videoRef.current) return;
     const video = videoRef.current;
+    // HLS live_url comes back RELATIVE (the backend can't know the
+    // browser-facing scheme/host); resolve it against the same base the
+    // /live info fetch used. Absolute URLs (webrtc/go2rtc) pass through.
+    const streamUrl = new URL(info.live_url, API_BASE_URL).toString();
 
     if (Hls.isSupported()) {
       const hls = new Hls({
         liveDurationInfinity: true,
         lowLatencyMode: true,
-        // The playlist/segments are served by our backend (a different origin
-        // than the app), so hls.js's own XHRs must carry the session cookie —
-        // and the Bearer token when embedded cross-origin (Home Assistant).
+        // hls.js's own XHRs must carry the session cookie — and the Bearer
+        // token when embedded cross-origin (Home Assistant iframe).
         xhrSetup: (xhr) => {
           xhr.withCredentials = true;
           const token = sessionStorage.getItem('auth_token');
@@ -82,7 +85,7 @@ export default function CameraLiveModal({ patientId, patientName, onClose }) {
         },
       });
       hlsRef.current = hls;
-      hls.loadSource(info.live_url);
+      hls.loadSource(streamUrl);
       hls.attachMedia(video);
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (data.fatal) setError(`Stream error: ${data.type} / ${data.details}`);
@@ -90,7 +93,7 @@ export default function CameraLiveModal({ patientId, patientName, onClose }) {
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
       // Safari plays HLS natively; ask it to send credentials to our proxy.
       video.crossOrigin = 'use-credentials';
-      video.src = info.live_url;
+      video.src = streamUrl;
     } else {
       setError('This browser cannot play HLS streams');
     }
