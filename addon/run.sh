@@ -39,6 +39,9 @@ export MAX_BPM="$(opt max_bpm)"
 
 export STATIC_DIR="/app/static"
 export DATABASE_URL="postgresql://shh@127.0.0.1:5432/shh"
+# Home Assistant ingress terminates TLS for us: hide the built-in HTTPS
+# setup (Security page shows an ingress notice) and skip cert renewal.
+export SHH_INGRESS=1
 
 # Persist uploaded artifacts (vent tarballs, epic docs, clips) under /data too.
 mkdir -p "${APPDATA}"
