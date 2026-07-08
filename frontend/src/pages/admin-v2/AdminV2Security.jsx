@@ -140,7 +140,7 @@ const AdminV2Security = () => {
 
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
                   <span className="text-muted-foreground" aria-hidden><ShieldIcon size={22} /></span>
                   <div className="flex flex-col gap-0.5">
