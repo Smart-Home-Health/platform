@@ -180,11 +180,11 @@ def _write_private(path: str, data: bytes) -> None:
     ensure_tls_dir()
     fd, tmp = tempfile.mkstemp(dir=TLS_DIR, prefix=".tmp-")
     try:
-        try:
-            os.write(fd, data)
-            os.fsync(fd)
-        finally:
-            os.close(fd)
+        # fdopen's buffered write loops over partial os.write results.
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
         os.chmod(tmp, 0o600)
         os.replace(tmp, path)
     except BaseException:

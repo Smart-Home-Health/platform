@@ -26,11 +26,17 @@ export function canonicalHttpsUrl(domain, publicPort) {
 // characters are left out so the name survives being read off a screen.
 export function generateSubdomain() {
   const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
-  let suffix = '';
   const rand = new Uint32Array(6);
-  (globalThis.crypto || {}).getRandomValues?.(rand);
+  if (globalThis.crypto?.getRandomValues) {
+    globalThis.crypto.getRandomValues(rand);
+  } else {
+    for (let i = 0; i < rand.length; i += 1) {
+      rand[i] = Math.floor(Math.random() * 0x100000000);
+    }
+  }
+  let suffix = '';
   for (let i = 0; i < 6; i += 1) {
-    suffix += chars[(rand[i] ?? Math.floor(Math.random() * chars.length)) % chars.length];
+    suffix += chars[rand[i] % chars.length];
   }
   return `shh-${suffix}`;
 }
