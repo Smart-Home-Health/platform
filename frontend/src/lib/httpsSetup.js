@@ -21,3 +21,16 @@ export function canonicalHttpsUrl(domain, publicPort) {
   const port = Number(publicPort) === 443 ? '' : `:${publicPort}`;
   return `https://${domain}${port}`;
 }
+
+// A ready-to-use DuckDNS name (their rule: A-Z, 0-9, '-'). Ambiguous
+// characters are left out so the name survives being read off a screen.
+export function generateSubdomain() {
+  const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
+  let suffix = '';
+  const rand = new Uint32Array(6);
+  (globalThis.crypto || {}).getRandomValues?.(rand);
+  for (let i = 0; i < 6; i += 1) {
+    suffix += chars[(rand[i] ?? Math.floor(Math.random() * chars.length)) % chars.length];
+  }
+  return `shh-${suffix}`;
+}

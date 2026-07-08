@@ -21,7 +21,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import SecuritySetupWizard from './SecuritySetupWizard';
-import { canonicalHttpsUrl } from '../lib/httpsSetup';
+import { canonicalHttpsUrl, generateSubdomain } from '../lib/httpsSetup';
 
 const baseStatus = {
   mode: 'off', ingress: false, behind_proxy: false, request_scheme: 'http',
@@ -58,6 +58,14 @@ describe('canonicalHttpsUrl', () => {
     expect(canonicalHttpsUrl('x.duckdns.org', 8443)).toBe('https://x.duckdns.org:8443');
     expect(canonicalHttpsUrl('x.duckdns.org', 443)).toBe('https://x.duckdns.org');
     expect(canonicalHttpsUrl(null, 8443)).toBeNull();
+  });
+});
+
+describe('generateSubdomain', () => {
+  it('produces a valid DuckDNS name', () => {
+    for (let i = 0; i < 20; i += 1) {
+      expect(generateSubdomain()).toMatch(/^shh-[a-z2-9]{6}$/);
+    }
   });
 });
 
@@ -155,6 +163,20 @@ describe('SecuritySetupWizard', () => {
     await act(async () => { fireEvent.click(screen.getByText('Install certificate')); });
     expect(screen.getByText(/Choose both the certificate chain and the private key/)).toBeInTheDocument();
     expect(fetch).toHaveBeenCalledTimes(1); // only the initial status load
+  });
+
+  it('prefills a random subdomain and copies it via the Copy button', async () => {
+    mockApi({ 'GET /api/security/status': baseStatus });
+    document.execCommand = vi.fn(() => true);
+    await act(async () => { render(<SecuritySetupWizard />); });
+    fireEvent.click(screen.getByText(/Free secure address with DuckDNS/));
+
+    const input = document.getElementById('duckdns-subdomain');
+    expect(input.value).toMatch(/^shh-[a-z2-9]{6}$/);
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Copy subdomain' })); });
+    expect(document.execCommand).toHaveBeenCalledWith('copy');
+    expect(screen.getByText('Copied')).toBeInTheDocument();
   });
 
   it('resumes a running job straight into the progress view', async () => {

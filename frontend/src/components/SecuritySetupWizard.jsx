@@ -21,7 +21,7 @@
 // (.tw root) so it renders correctly outside the admin-v2 shell too.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import config, { apiFetch } from '../config';
-import { canonicalHttpsUrl } from '../lib/httpsSetup';
+import { canonicalHttpsUrl, generateSubdomain } from '../lib/httpsSetup';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,6 +29,7 @@ import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import {
   ShieldIcon, KeyIcon, WifiIcon, CheckIcon, InfoIcon, RefreshIcon, BackArrowIcon,
+  CopyIcon,
 } from './Icons';
 
 const PROGRESS_STATUSES = [
@@ -54,6 +55,32 @@ const ERROR_HELP = {
 };
 
 const api = (path) => `${config.apiUrl}/api/security${path}`;
+
+// navigator.clipboard needs a secure context — which this wizard, by its very
+// purpose, usually doesn't have yet. Fall back to the textarea trick.
+async function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch { /* fall through */ }
+  }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
+}
 
 const PathCard = ({ icon: Icon, title, badge, description, onClick }) => (
   <button
@@ -110,9 +137,12 @@ const SecuritySetupWizard = ({ onFinished }) => {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  // DuckDNS form
-  const [subdomain, setSubdomain] = useState('');
+  // DuckDNS form — prefilled with a valid random name the user can copy
+  // into duckdns.org instead of typing one (phone keyboards mangle these).
+  const [subdomain, setSubdomain] = useState(generateSubdomain);
   const [token, setToken] = useState('');
+  const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [staging, setStaging] = useState(false);
   const [publicPort, setPublicPort] = useState('8443');
@@ -241,6 +271,16 @@ const SecuritySetupWizard = ({ onFinished }) => {
 
   const backToChoose = () => { setError(null); setStep('choose'); };
 
+  const copySubdomain = async () => {
+    if (await copyText(subdomain.trim())) {
+      setCopied(true);
+      clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  useEffect(() => () => clearTimeout(copyTimerRef.current), []);
+
   const httpsUrl = status ? canonicalHttpsUrl(status.domain, status.public_port) : null;
 
   if (status?.ingress) {
@@ -301,7 +341,10 @@ const SecuritySetupWizard = ({ onFinished }) => {
             <p className="font-medium text-foreground">Before you start (2 minutes):</p>
             <ol className="list-decimal space-y-1 pl-5">
               <li>Go to <a className="text-primary" href="https://www.duckdns.org" target="_blank" rel="noreferrer">duckdns.org</a> and sign in (Google/GitHub works).</li>
-              <li>Create a subdomain — this becomes your secure address.</li>
+              <li>
+                Add a subdomain — use the suggested name below (tap Copy, then
+                paste it there) or pick your own. It becomes your secure address.
+              </li>
               <li>Copy the <strong>token</strong> shown at the top of the page.</li>
             </ol>
           </div>
@@ -313,9 +356,22 @@ const SecuritySetupWizard = ({ onFinished }) => {
                 value={subdomain}
                 onChange={(e) => setSubdomain(e.target.value)}
                 placeholder="myhome"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 required
               />
               <span className="whitespace-nowrap text-sm text-muted-foreground">.duckdns.org</span>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={copySubdomain}
+                className="gap-1.5 whitespace-nowrap"
+                aria-label="Copy subdomain"
+              >
+                {copied ? <CheckIcon size={16} /> : <CopyIcon size={16} />}
+                {copied ? 'Copied' : 'Copy'}
+              </Button>
             </div>
           </div>
           <div className="space-y-1.5">
@@ -325,6 +381,9 @@ const SecuritySetupWizard = ({ onFinished }) => {
               value={token}
               onChange={(e) => setToken(e.target.value)}
               placeholder="e.g. 6a7b8c9d-1234-5678-9abc-def012345678"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               required
             />
           </div>
