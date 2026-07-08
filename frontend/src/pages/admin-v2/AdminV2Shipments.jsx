@@ -27,7 +27,9 @@ import {
   ClockIcon,
   ChevronRightIcon,
   AlertIcon,
-  CopyIcon
+  CopyIcon,
+  PackageIcon,
+  TrashIcon
 } from '../../components/Icons';
 import {
   Dialog,
@@ -48,6 +50,7 @@ import {
   SelectContent,
   SelectItem,
 } from '@/components/ui/select';
+import { shipmentService } from '../../services/shipments';
 import './AdminV2.css';
 
 const STATUS_OPTIONS = [
@@ -78,6 +81,10 @@ const AdminV2Shipments = () => {
   const [shipments, setShipments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  // Standing orders ("usual order") state
+  const [templates, setTemplates] = useState([]);
+  const [creatingDelivery, setCreatingDelivery] = useState(false);
   
   // Filter state
   const [statusFilter, setStatusFilter] = useState('');
@@ -132,6 +139,7 @@ const AdminV2Shipments = () => {
     if (selectedPatient) {
       fetchShipments();
       fetchSuppliers();
+      fetchTemplates();
     }
   }, [selectedPatient, statusFilter, backorderFilter]);
 
@@ -144,6 +152,7 @@ const AdminV2Shipments = () => {
       
       const params = new URLSearchParams();
       params.append('patient_id', selectedPatient.id.toString());
+      params.append('is_template', 'false'); // standing orders live in their own card
       if (statusFilter) params.append('status', statusFilter);
       if (backorderFilter === 'true') params.append('is_backorder', 'true');
       if (backorderFilter === 'false') params.append('is_backorder', 'false');
@@ -231,6 +240,66 @@ const AdminV2Shipments = () => {
     }
   };
 
+  // --- Standing orders ("usual order") ---
+  const fetchTemplates = async () => {
+    if (!selectedPatient) return;
+    try {
+      const data = await shipmentService.listTemplates(selectedPatient.id);
+      setTemplates(data.shipments || []);
+    } catch (err) {
+      console.error('Error fetching standing orders:', err);
+    }
+  };
+
+  const handleDeliveryArrived = async (templateId) => {
+    setCreatingDelivery(true);
+    try {
+      const result = await shipmentService.createDeliveryFromTemplate(templateId);
+      if (result.success) {
+        navigate(`/care/equipment/shipments/${result.id}?patient=${selectedPatient.id}`);
+      } else {
+        alert(result.error || 'Failed to create delivery');
+      }
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setCreatingDelivery(false);
+    }
+  };
+
+  // Turn a past delivery into the standing order: clone it (clears receipts,
+  // order numbers, quantities-received), then flag the clone as the template.
+  const handleSaveAsUsualOrder = async (shipmentId) => {
+    try {
+      const response = await fetch(`${config.apiUrl}/api/shipments/${shipmentId}/copy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+      });
+      if (!response.ok) throw new Error('Failed to copy shipment');
+      const data = await response.json();
+      await shipmentService.patchShipment(data.id, { is_template: true });
+      fetchTemplates();
+    } catch (err) {
+      alert(err.message || 'Failed to save as usual order');
+    }
+  };
+
+  const handleDeleteShipment = async (shipment) => {
+    const label = shipment.order_number || shipment.po_number || `#${shipment.id}`;
+    if (!window.confirm(`Delete draft ${label}? This can't be undone.`)) return;
+    try {
+      const result = await shipmentService.deleteShipment(shipment.id);
+      if (result.success) {
+        fetchShipments();
+      } else {
+        alert(result.error || 'Failed to delete');
+      }
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
   const handleCopyShipment = async (shipmentId) => {
     try {
       const response = await fetch(`${config.apiUrl}/api/shipments/${shipmentId}/copy`, {
@@ -294,6 +363,37 @@ const AdminV2Shipments = () => {
       <div className="admin-v2-page">
         {selectedPatient ? (
           <>
+            {/* Usual order — the zero-effort path when the monthly box shows up */}
+            {templates.length > 0 && (
+              <div className="admin-v2-info-banner">
+                <div className="admin-v2-info-content">
+                  <strong>Usual order{templates.length > 1 ? 's' : ''}</strong>
+                  <p>
+                    {templates.length === 1 && templates[0].supplier_name
+                      ? `Supplies from ${templates[0].supplier_name} arrive on a schedule. When the box shows up, start here.`
+                      : 'When the recurring box shows up, start here.'}
+                  </p>
+                </div>
+                <div className="tw flex flex-wrap gap-2">
+                  {templates.map((t) => (
+                    <React.Fragment key={t.id}>
+                      {hasPermission('equipment.create') && (
+                        <Button size="lg" onClick={() => handleDeliveryArrived(t.id)} disabled={creatingDelivery}>
+                          <PackageIcon size={16} /> {creatingDelivery ? 'One moment…' : `A delivery arrived${templates.length > 1 ? ` — ${t.supplier_name || t.order_number || `#${t.id}`}` : ' — start here'}`}
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        onClick={() => navigate(`/care/equipment/shipments/${t.id}?patient=${selectedPatient.id}`)}
+                      >
+                        View usual order
+                      </Button>
+                    </React.Fragment>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Stats Row */}
             <div className="admin-v2-summary-stats admin-v2-shipments-summary">
               <div className="admin-v2-stat-card">
@@ -431,6 +531,16 @@ const AdminV2Shipments = () => {
                           )}
                         </td>
                         <td className="admin-v2-cell-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          {templates.length === 0 && ['complete', 'verified'].includes(shipment.status)
+                            && hasPermission('equipment.create') && (
+                            <button
+                              className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-secondary"
+                              onClick={(e) => { e.stopPropagation(); handleSaveAsUsualOrder(shipment.id); }}
+                              title="Save this as the usual order, so next month is one tap"
+                            >
+                              Save as usual order
+                            </button>
+                          )}
                           <button
                             className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-secondary"
                             onClick={(e) => { e.stopPropagation(); handleCopyShipment(shipment.id); }}
@@ -438,6 +548,15 @@ const AdminV2Shipments = () => {
                           >
                             <CopyIcon size={14} />
                           </button>
+                          {shipment.status === 'draft' && hasPermission('equipment.delete') && (
+                            <button
+                              className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-secondary"
+                              onClick={(e) => { e.stopPropagation(); handleDeleteShipment(shipment); }}
+                              title="Delete this draft"
+                            >
+                              <TrashIcon size={14} />
+                            </button>
+                          )}
                           <ChevronRightIcon size={16} />
                         </td>
                       </tr>

@@ -43,6 +43,8 @@ import AdminV2EquipmentHistory from './pages/admin-v2/AdminV2EquipmentHistory';
 import AdminV2Shipments from './pages/admin-v2/AdminV2Shipments';
 import AdminV2ShipmentDetail from './pages/admin-v2/AdminV2ShipmentDetail';
 import AdminV2ShipmentAlerts from './pages/admin-v2/AdminV2ShipmentAlerts';
+import AdminV2Inventory from './pages/admin-v2/AdminV2Inventory';
+import AdminV2InventorySetup from './pages/admin-v2/AdminV2InventorySetup';
 import AdminV2Patients from './pages/admin-v2/AdminV2Patients';
 import AdminV2PatientDetail from './pages/admin-v2/AdminV2PatientDetail';
 import AdminV2Providers from './pages/admin-v2/AdminV2Providers';
@@ -138,6 +140,8 @@ function AppContent() {
           <Route path="/care/equipment/history" element={<ProtectedRoute><Layout><AdminV2EquipmentHistory /></Layout></ProtectedRoute>} />
           <Route path="/care/equipment/shipments" element={<ProtectedRoute><Layout><AdminV2Shipments /></Layout></ProtectedRoute>} />
           <Route path="/care/equipment/shipments/:id" element={<ProtectedRoute><Layout><AdminV2ShipmentDetail /></Layout></ProtectedRoute>} />
+          <Route path="/care/equipment/inventory" element={<ProtectedRoute><Layout><AdminV2Inventory /></Layout></ProtectedRoute>} />
+          <Route path="/care/equipment/inventory/setup" element={<ProtectedRoute><Layout><AdminV2InventorySetup /></Layout></ProtectedRoute>} />
           <Route path="/care/equipment/alerts" element={<ProtectedRoute><Layout><AdminV2ShipmentAlerts /></Layout></ProtectedRoute>} />
           <Route path="/care/patients" element={<ProtectedRoute><Layout><AdminV2Patients /></Layout></ProtectedRoute>} />
           <Route path="/care/providers" element={<ProtectedRoute><Layout><AdminV2Providers /></Layout></ProtectedRoute>} />

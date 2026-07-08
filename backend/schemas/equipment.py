@@ -42,8 +42,11 @@ class Equipment(Base):
     unit_description = Column(String, nullable=True)  # e.g., "BX = 100 EA", "PK = 10 EA"
     reorder_point = Column(Integer, nullable=True)  # Low stock alert threshold
     par_level = Column(Integer, nullable=True)  # Target stock level
-    
+    storage_location = Column(String, nullable=True)  # "Where it lives" label (Vent shelf, Trach cart, ...)
+
     # Relationships
     patient = relationship('Patient', foreign_keys=[patient_id])
     change_logs = relationship('EquipmentChangeLog', back_populates='equipment')
     shipment_items = relationship('DMEShipmentItem', back_populates='equipment')
+    provider_aliases = relationship('EquipmentProviderAlias', back_populates='equipment', cascade='all, delete-orphan')
+    count_logs = relationship('EquipmentCountLog', back_populates='equipment', cascade='all, delete-orphan')

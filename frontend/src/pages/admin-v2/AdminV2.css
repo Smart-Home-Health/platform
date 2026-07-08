@@ -9914,6 +9914,31 @@ body.printing-schedule .admin-v2-schedule-prn-add {
   font-size: 0.875rem;
 }
 
+/* Mobile: stack the banner text above its actions and let buttons go
+   full-width — otherwise the side-by-side flex squeezes the text into a
+   one-word-per-line column and pushes buttons off-screen. */
+@media (max-width: 768px) {
+  .admin-v2-info-banner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .admin-v2-info-banner .tw {
+    width: 100%;
+  }
+  .admin-v2-info-banner .tw,
+  .admin-v2-info-banner .tw.flex {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .admin-v2-info-banner .tw button {
+    width: 100%;
+    justify-content: center;
+    white-space: normal; /* long friendly labels wrap instead of clipping */
+    height: auto;
+    min-height: 44px;
+  }
+}
+
 .admin-v2-finalize-section {
   text-align: center;
   padding: 2rem;

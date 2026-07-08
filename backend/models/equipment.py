@@ -13,7 +13,7 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from typing import Optional
+from typing import List, Literal, Optional
 from datetime import datetime, date
 from pydantic import BaseModel, Field
 
@@ -26,6 +26,18 @@ class EquipmentCreate(BaseModel):
     last_changed: Optional[date] = None
     useful_days: Optional[int] = Field(None, gt=0)
     patient_id: Optional[int] = None
+    # Supply/inventory tracking (drives the On Hand view's low/reorder statuses)
+    item_number: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = 'equipment'
+    tracking_level: Optional[str] = 'item'
+    default_manufacturer: Optional[str] = None
+    unit_of_measure: Optional[str] = None
+    unit_size: Optional[int] = Field(None, gt=0)
+    unit_description: Optional[str] = None
+    reorder_point: Optional[int] = Field(None, ge=0)
+    par_level: Optional[int] = Field(None, ge=0)
+    storage_location: Optional[str] = None
 
 
 class EquipmentUpdate(BaseModel):
@@ -34,6 +46,18 @@ class EquipmentUpdate(BaseModel):
     scheduled_replacement: Optional[bool] = None
     last_changed: Optional[date] = None
     useful_days: Optional[int] = Field(None, gt=0)
+    # Supply/inventory tracking
+    item_number: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    tracking_level: Optional[str] = None
+    default_manufacturer: Optional[str] = None
+    unit_of_measure: Optional[str] = None
+    unit_size: Optional[int] = Field(None, gt=0)
+    unit_description: Optional[str] = None
+    reorder_point: Optional[int] = Field(None, ge=0)
+    par_level: Optional[int] = Field(None, ge=0)
+    storage_location: Optional[str] = None
 
 
 class EquipmentResponse(BaseModel):
@@ -51,6 +75,48 @@ class EquipmentResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+
+class CatalogImportItem(BaseModel):
+    """One line of an Initial Inventory Setup import.
+
+    action='create' adds a new supply to the catalog; action='match' attaches
+    the slip's item number as a provider alias on an existing supply.
+    """
+    action: Literal['create', 'match'] = 'create'
+    equipment_id: Optional[int] = None          # required when action='match'
+    name: Optional[str] = Field(None, max_length=200)  # "what we call it"; required when action='create'
+    item_number: Optional[str] = None
+    raw_description: Optional[str] = None       # distributor's slip wording -> alias + description
+    # UPC/EAN scanned off the physical box during review — stored as a
+    # provider-independent alias so scanning the item itself identifies it.
+    product_barcode: Optional[str] = None
+    category: Optional[str] = 'supply'
+    unit_of_measure: Optional[str] = None
+    unit_size: Optional[int] = Field(None, gt=0)
+    unit_description: Optional[str] = None
+    storage_location: Optional[str] = None
+    reorder_point: Optional[int] = Field(None, ge=0)
+    par_level: Optional[int] = Field(None, ge=0)
+    quantity: int = Field(default=0, ge=0)      # initial on-hand; the count step usually sets this later
+
+
+class CatalogImportRequest(BaseModel):
+    patient_id: Optional[int] = None
+    supplier_id: Optional[int] = None           # one provider per import batch
+    items: List[CatalogImportItem]
+
+
+class EquipmentCountSet(BaseModel):
+    """Physical stocktake: set the absolute on-hand quantity."""
+    quantity: int = Field(..., ge=0)
+    note: Optional[str] = None
+
+
+class EquipmentAliasCreate(BaseModel):
+    item_number: str = Field(..., min_length=1)
+    supplier_id: Optional[int] = None
+    raw_description: Optional[str] = None
 
 
 class EquipmentChangeLog(BaseModel):

@@ -38,6 +38,8 @@ from schemas.medication_schedule import MedicationSchedule
 from schemas.medication_log import MedicationLog
 from schemas.equipment import Equipment
 from schemas.equipment_change_log import EquipmentChangeLog
+from schemas.equipment_provider_alias import EquipmentProviderAlias
+from schemas.equipment_count_log import EquipmentCountLog
 from schemas.monitoring_alert import MonitoringAlert
 from schemas.ventilator_alert import VentilatorAlert
 from schemas.external_alarm import ExternalAlarm
@@ -54,6 +56,7 @@ from schemas.vent_import import VentImport
 from schemas.vent_parameter_dictionary import VentParameterDictionary
 from schemas.vent_sample import VentSample
 from schemas.vent_device_info import VentDeviceInfo
+from schemas.dme_shipment import DMEShipment, DMEShipmentItem, DMEReceiptItem, DMEShipmentAlert, DMEShipmentDocument
 from models.readers import Reader
 from models.custom_vital_definition import CustomVitalDefinition
 from models.user_messages import UserMessage, UserMessageAcknowledgement
@@ -65,7 +68,8 @@ from models.schedule import CompleteItemRequest, BulkCompleteRequest
 __all__ = [
     'Business', 'Provider', 'NutritionIntake', 'CareTaskCategory', 'CareTask',
     'CareTaskSchedule', 'CareTaskLog', 'Medication', 'MedicationSchedule',
-    'MedicationLog', 'Equipment', 'EquipmentChangeLog', 'MonitoringAlert',
+    'MedicationLog', 'Equipment', 'EquipmentChangeLog', 'EquipmentProviderAlias',
+    'EquipmentCountLog', 'MonitoringAlert',
     'VentilatorAlert', 'ExternalAlarm', 'PulseOxData', 'Setting',
     'Vital', 'Symptom', 'Patient', 'User', 'Role',
     'Permission', 'AuditLog', 'Diagnosis', 'DiagnosisNote', 'AllergyIntolerance',
@@ -73,5 +77,6 @@ __all__ = [
     'VentImport', 'VentParameterDictionary', 'VentSample', 'VentDeviceInfo',
     'CompleteItemRequest', 'BulkCompleteRequest', 'Organization', 'OrganizationMembership',
     'OrganizationType', 'PatientAccess', 'AccessLevel', 'Reader', 'CustomVitalDefinition',
-    'UserMessage', 'UserMessageAcknowledgement', 'VentIngestedFile'
+    'UserMessage', 'UserMessageAcknowledgement', 'VentIngestedFile',
+    'DMEShipment', 'DMEShipmentItem', 'DMEReceiptItem', 'DMEShipmentAlert', 'DMEShipmentDocument'
 ]

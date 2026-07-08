@@ -19,9 +19,12 @@ Equipment management CRUD operations
 import logging
 from datetime import datetime, timedelta
 from utils.datetime_utils import utc_now, utc_today
-from sqlalchemy.orm import Session
+from sqlalchemy import or_
+from sqlalchemy.orm import Session, selectinload
 from schemas.equipment import Equipment
 from schemas.equipment_change_log import EquipmentChangeLog
+from schemas.equipment_provider_alias import EquipmentProviderAlias
+from schemas.equipment_count_log import EquipmentCountLog
 from crud.patients import get_or_create_default_patient
 
 logger = logging.getLogger('crud')
@@ -31,7 +34,7 @@ logger = logging.getLogger('crud')
 def add_equipment_simple(db: Session, name, quantity=1, scheduled_replacement=True, last_changed=None, useful_days=None, patient_id=None,
                          account_id=None, item_number=None, description=None, category='equipment', tracking_level='item',
                          default_manufacturer=None, unit_of_measure=None, unit_size=None, unit_description=None,
-                         reorder_point=None, par_level=None):
+                         reorder_point=None, par_level=None, storage_location=None):
     """
     Simple add equipment function matching the original signature for routes compatibility.
     account_id scopes the equipment to an account (post-revision).
@@ -56,6 +59,7 @@ def add_equipment_simple(db: Session, name, quantity=1, scheduled_replacement=Tr
             unit_description=unit_description,
             reorder_point=reorder_point,
             par_level=par_level,
+            storage_location=storage_location,
             created_at=utc_now(),
             updated_at=utc_now()
         )
@@ -97,6 +101,11 @@ def get_equipment(db: Session, equipment_id):
                 'unit_description': equipment.unit_description,
                 'reorder_point': equipment.reorder_point,
                 'par_level': equipment.par_level,
+                'storage_location': equipment.storage_location,
+                'aliases': [
+                    {'id': a.id, 'supplier_id': a.supplier_id, 'item_number': a.item_number, 'raw_description': a.raw_description}
+                    for a in equipment.provider_aliases
+                ],
                 'created_at': equipment.created_at.isoformat() if equipment.created_at else None,
                 'updated_at': equipment.updated_at.isoformat() if equipment.updated_at else None
             }
@@ -109,7 +118,7 @@ def get_equipment(db: Session, equipment_id):
 def update_equipment(db: Session, equipment_id, name=None, quantity=None, scheduled_replacement=None, last_changed=None, useful_days=None, patient_id=None,
                       item_number=None, description=None, category=None, tracking_level=None,
                       default_manufacturer=None, unit_of_measure=None, unit_size=None, unit_description=None,
-                      reorder_point=None, par_level=None):
+                      reorder_point=None, par_level=None, storage_location=None):
     """
     Update an equipment item
     """
@@ -151,7 +160,9 @@ def update_equipment(db: Session, equipment_id, name=None, quantity=None, schedu
             equipment.reorder_point = reorder_point
         if par_level is not None:
             equipment.par_level = par_level
-            
+        if storage_location is not None:
+            equipment.storage_location = storage_location
+
         equipment.updated_at = utc_now()
         db.commit()
         logger.info(f"Equipment updated: {equipment.name}")
@@ -202,6 +213,7 @@ def list_equipment(db: Session, patient_id=None, shared_only=False, skip=0, limi
                 'unit_description': eq.unit_description,
                 'reorder_point': eq.reorder_point,
                 'par_level': eq.par_level,
+                'storage_location': eq.storage_location,
                 'created_at': eq.created_at.isoformat() if eq.created_at else None,
                 'updated_at': eq.updated_at.isoformat() if eq.updated_at else None
             }
@@ -263,11 +275,10 @@ def get_equipment_list(db: Session, patient_id: int = None, account_id: int = No
     Optionally filter by patient_id and/or account_id (post-revision: scope to account).
     """
     try:
-        query = db.query(Equipment)
+        query = db.query(Equipment).options(selectinload(Equipment.provider_aliases))
         if patient_id is not None:
             query = query.filter(Equipment.patient_id == patient_id)
         if account_id is not None:
-            from sqlalchemy import or_
             query = query.filter(or_(Equipment.account_id == account_id, Equipment.account_id.is_(None)))
         equipment = query.all()
         result = []
@@ -291,7 +302,14 @@ def get_equipment_list(db: Session, patient_id: int = None, account_id: int = No
                 'unit_size': item.unit_size,
                 'unit_description': item.unit_description,
                 'reorder_point': item.reorder_point,
-                'par_level': item.par_level
+                'par_level': item.par_level,
+                'storage_location': item.storage_location,
+                # Provider aliases: alternate item numbers this supply is known
+                # by (per DME provider) — scan matching checks these too.
+                'aliases': [
+                    {'id': a.id, 'supplier_id': a.supplier_id, 'item_number': a.item_number, 'raw_description': a.raw_description}
+                    for a in item.provider_aliases
+                ]
             }
             
             # Only calculate due date if scheduled replacement is enabled
@@ -530,6 +548,260 @@ def get_equipment_due_now_late_counts(db: Session, account_id: int = None, patie
     except Exception as e:
         logger.error(f"Error calculating equipment due_now/late counts: {e}")
         return {'due_now': 0, 'late': 0}
+
+
+# --- Initial inventory setup: catalog import, stocktakes, provider aliases ---
+
+def _alias_exists(db: Session, equipment_id, supplier_id, item_number):
+    """True when the (equipment, supplier, number) alias triple already exists.
+
+    Checked in code rather than relying on uq_equipment_alias alone because
+    Postgres treats NULL supplier_id values as distinct in the constraint.
+    """
+    query = db.query(EquipmentProviderAlias).filter(
+        EquipmentProviderAlias.equipment_id == equipment_id,
+        EquipmentProviderAlias.item_number == item_number,
+    )
+    if supplier_id is None:
+        query = query.filter(EquipmentProviderAlias.supplier_id.is_(None))
+    else:
+        query = query.filter(EquipmentProviderAlias.supplier_id == supplier_id)
+    return db.query(query.exists()).scalar()
+
+
+def catalog_import(db: Session, items, account_id=None, patient_id=None, supplier_id=None, created_by=None):
+    """Bulk catalog creation for the Initial Inventory Setup wizard.
+
+    Each item either creates a new supply ('create') or attaches a provider
+    alias to an existing one ('match'). A 'create' whose item number is
+    already known — as an Equipment.item_number or an alias — is silently
+    treated as a match (dedup=True), so replaying a wizard save after an iOS
+    reload never duplicates supplies.
+
+    One transaction, one commit. Returns {'created': [...], 'matched': [...],
+    'errors': [...]} with equipment_ids so the wizard can drive the count step.
+    """
+    created, matched, errors = [], [], []
+    try:
+        # Account-scoped item-number -> Equipment lookup (primary numbers + aliases)
+        eq_query = db.query(Equipment)
+        alias_query = db.query(EquipmentProviderAlias).join(
+            Equipment, EquipmentProviderAlias.equipment_id == Equipment.id
+        )
+        if account_id is not None:
+            scope = or_(Equipment.account_id == account_id, Equipment.account_id.is_(None))
+            eq_query = eq_query.filter(scope)
+            alias_query = alias_query.filter(scope)
+        number_to_eq = {}
+        for eq in eq_query.all():
+            if eq.item_number and str(eq.item_number).strip():
+                number_to_eq.setdefault(str(eq.item_number).strip(), eq)
+        for alias in alias_query.all():
+            key = str(alias.item_number).strip()
+            if key:
+                number_to_eq.setdefault(key, alias.equipment)
+
+        def ensure_alias(equipment, item_number, raw_description, alias_supplier_id=supplier_id):
+            if not item_number:
+                return
+            if _alias_exists(db, equipment.id, alias_supplier_id, item_number):
+                return
+            db.add(EquipmentProviderAlias(
+                account_id=account_id if account_id is not None else equipment.account_id,
+                equipment_id=equipment.id,
+                supplier_id=alias_supplier_id,
+                item_number=item_number,
+                raw_description=raw_description,
+                created_at=utc_now(),
+            ))
+
+        for index, item in enumerate(items):
+            number = (item.item_number or '').strip() or None
+            # UPC/EAN scanned off the physical box: provider-independent, so
+            # its alias never carries the batch's supplier_id.
+            barcode = (getattr(item, 'product_barcode', None) or '').strip() or None
+            target = None
+            dedup = False
+
+            if item.action == 'match':
+                if not item.equipment_id:
+                    errors.append({'index': index, 'reason': 'match requires equipment_id'})
+                    continue
+                target = db.query(Equipment).filter(Equipment.id == item.equipment_id).first()
+                if not target:
+                    errors.append({'index': index, 'reason': f'equipment {item.equipment_id} not found'})
+                    continue
+            elif number and number in number_to_eq:
+                # Already in the catalog under this number — treat as a match
+                target = number_to_eq[number]
+                dedup = True
+            elif barcode and barcode in number_to_eq:
+                # Known by its physical-box barcode from an earlier scan
+                target = number_to_eq[barcode]
+                dedup = True
+
+            if target is not None:
+                ensure_alias(target, number, item.raw_description)
+                ensure_alias(target, barcode, 'Product barcode', alias_supplier_id=None)
+                # Backfill: a supply linked by name may predate knowing its
+                # number/location — future scans then auto-link by number.
+                if number and not (target.item_number or '').strip():
+                    target.item_number = number
+                if item.storage_location and not (target.storage_location or '').strip():
+                    target.storage_location = item.storage_location
+                target.updated_at = utc_now()
+                matched.append({'index': index, 'equipment_id': target.id, 'item_number': number, 'dedup': dedup})
+                continue
+
+            # Create a new catalog entry
+            if not (item.name or '').strip():
+                errors.append({'index': index, 'reason': 'create requires a name'})
+                continue
+            equipment = Equipment(
+                name=item.name.strip(),
+                patient_id=patient_id,
+                account_id=account_id,
+                quantity=item.quantity or 0,
+                # Supplies are counted, not date-rotated — no replacement schedule.
+                scheduled_replacement=False,
+                item_number=number,
+                description=item.raw_description,
+                category=item.category or 'supply',
+                tracking_level='item',
+                unit_of_measure=item.unit_of_measure,
+                unit_size=item.unit_size,
+                unit_description=item.unit_description,
+                storage_location=item.storage_location,
+                reorder_point=item.reorder_point,
+                par_level=item.par_level,
+                created_at=utc_now(),
+                updated_at=utc_now(),
+            )
+            db.add(equipment)
+            db.flush()  # assign id for the alias row + response
+            ensure_alias(equipment, number, item.raw_description)
+            ensure_alias(equipment, barcode, 'Product barcode', alias_supplier_id=None)
+            if number:
+                number_to_eq[number] = equipment  # dedupe within the batch too
+            if barcode:
+                number_to_eq[barcode] = equipment
+            created.append({'index': index, 'equipment_id': equipment.id, 'item_number': number})
+
+        db.commit()
+        logger.info(f"Catalog import: {len(created)} created, {len(matched)} matched, {len(errors)} errors")
+        try:
+            from event_publisher import publish_due_counts_changed
+            publish_due_counts_changed("equipment", patient_id)
+        except Exception as e:
+            logger.error(f"Failed to publish equipment due-count change: {e}")
+        return {'created': created, 'matched': matched, 'errors': errors}
+    except Exception as e:
+        logger.error(f"Error importing catalog items: {e}")
+        db.rollback()
+        return {'created': [], 'matched': [], 'errors': [{'index': None, 'reason': 'import failed'}]}
+
+
+def set_equipment_count(db: Session, equipment_id: int, quantity: int, note=None, counted_by=None):
+    """Physical stocktake: set the absolute on-hand quantity with an audit row.
+
+    Unlike log_equipment_change this never touches last_changed — counting a
+    shelf is not replacing an item.
+    """
+    try:
+        equipment = db.query(Equipment).filter(Equipment.id == equipment_id).first()
+        if not equipment:
+            return None
+        before = equipment.quantity or 0
+        equipment.quantity = quantity
+        equipment.updated_at = utc_now()
+        db.add(EquipmentCountLog(
+            equipment_id=equipment_id,
+            quantity_before=before,
+            quantity_after=quantity,
+            note=note,
+            counted_by=counted_by,
+            counted_at=utc_now(),
+        ))
+        db.commit()
+        logger.info(f"Equipment {equipment.name} counted: {before} -> {quantity}")
+        try:
+            from event_publisher import publish_due_counts_changed
+            publish_due_counts_changed("equipment", equipment.patient_id)
+        except Exception as e:
+            logger.error(f"Failed to publish equipment due-count change: {e}")
+        return {'success': True, 'quantity_before': before, 'quantity_after': quantity}
+    except Exception as e:
+        logger.error(f"Error counting equipment {equipment_id}: {e}")
+        db.rollback()
+        return None
+
+
+def get_equipment_count_history(db: Session, equipment_id: int, limit: int = 50):
+    """Stocktake history for one supply, newest first."""
+    try:
+        counts = db.query(EquipmentCountLog).filter(
+            EquipmentCountLog.equipment_id == equipment_id
+        ).order_by(EquipmentCountLog.counted_at.desc()).limit(limit).all()
+        return [
+            {
+                'id': c.id,
+                'equipment_id': c.equipment_id,
+                'quantity_before': c.quantity_before,
+                'quantity_after': c.quantity_after,
+                'note': c.note,
+                'counted_by': c.counted_by,
+                'counted_at': c.counted_at.isoformat() if c.counted_at else None,
+            }
+            for c in counts
+        ]
+    except Exception as e:
+        logger.error(f"Error fetching count history for equipment {equipment_id}: {e}")
+        return []
+
+
+def add_equipment_alias(db: Session, equipment_id: int, item_number: str, supplier_id=None, raw_description=None, account_id=None):
+    """Attach a provider item number to a supply. Returns the alias id, or None."""
+    try:
+        equipment = db.query(Equipment).filter(Equipment.id == equipment_id).first()
+        if not equipment:
+            return None
+        item_number = (item_number or '').strip()
+        if not item_number or _alias_exists(db, equipment_id, supplier_id, item_number):
+            return None
+        alias = EquipmentProviderAlias(
+            account_id=account_id if account_id is not None else equipment.account_id,
+            equipment_id=equipment_id,
+            supplier_id=supplier_id,
+            item_number=item_number,
+            raw_description=raw_description,
+            created_at=utc_now(),
+        )
+        db.add(alias)
+        db.commit()
+        db.refresh(alias)
+        return alias.id
+    except Exception as e:
+        logger.error(f"Error adding alias to equipment {equipment_id}: {e}")
+        db.rollback()
+        return None
+
+
+def delete_equipment_alias(db: Session, equipment_id: int, alias_id: int):
+    """Remove a provider alias from a supply."""
+    try:
+        alias = db.query(EquipmentProviderAlias).filter(
+            EquipmentProviderAlias.id == alias_id,
+            EquipmentProviderAlias.equipment_id == equipment_id,
+        ).first()
+        if not alias:
+            return False
+        db.delete(alias)
+        db.commit()
+        return True
+    except Exception as e:
+        logger.error(f"Error deleting alias {alias_id}: {e}")
+        db.rollback()
+        return False
 
 
 def get_equipment_due_soon(db: Session, days_ahead=7):
