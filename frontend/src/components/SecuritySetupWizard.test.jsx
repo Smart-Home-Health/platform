@@ -20,7 +20,8 @@
 // validation, and the HA-ingress variant.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
-import SecuritySetupWizard, { canonicalHttpsUrl } from './SecuritySetupWizard';
+import SecuritySetupWizard from './SecuritySetupWizard';
+import { canonicalHttpsUrl } from '../lib/httpsSetup';
 
 const baseStatus = {
   mode: 'off', ingress: false, behind_proxy: false, request_scheme: 'http',

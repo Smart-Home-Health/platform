@@ -21,6 +21,7 @@
 // (.tw root) so it renders correctly outside the admin-v2 shell too.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import config, { apiFetch } from '../config';
+import { canonicalHttpsUrl } from '../lib/httpsSetup';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -52,12 +53,6 @@ const ERROR_HELP = {
   internal: 'Something unexpected went wrong. The full message below may help.',
 };
 
-export function canonicalHttpsUrl(domain, publicPort) {
-  if (!domain) return null;
-  const port = Number(publicPort) === 443 ? '' : `:${publicPort}`;
-  return `https://${domain}${port}`;
-}
-
 const api = (path) => `${config.apiUrl}/api/security${path}`;
 
 const PathCard = ({ icon: Icon, title, badge, description, onClick }) => (
@@ -66,7 +61,7 @@ const PathCard = ({ icon: Icon, title, badge, description, onClick }) => (
     onClick={onClick}
     className="flex w-full items-start gap-3 rounded-lg border border-border bg-secondary/40 p-4 text-left transition-colors hover:border-primary hover:bg-secondary"
   >
-    <span className="mt-0.5 text-muted-foreground" aria-hidden><Icon size={22} /></span>
+    <span className="mt-0.5 text-muted-foreground" aria-hidden>{Icon && <Icon size={22} />}</span>
     <span className="flex flex-col gap-1">
       <span className="flex items-center gap-2 font-medium text-foreground">
         {title}

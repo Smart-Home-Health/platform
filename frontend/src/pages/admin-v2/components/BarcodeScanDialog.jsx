@@ -84,8 +84,12 @@ export default function BarcodeScanDialog({ open, onClose, onFound, title = 'Sca
         }, SCAN_INTERVAL_MS);
       } catch {
         setCameraError(
-          'The live camera view isn’t available here — no problem. ' +
-          'Take a photo of the barcode below and we’ll read it the same way.'
+          window.isSecureContext
+            ? 'The live camera view isn’t available here — no problem. ' +
+              'Take a photo of the barcode below and we’ll read it the same way.'
+            : 'The live camera needs the secure (HTTPS) address — an administrator ' +
+              'can set one up under Configuration → Security. Meanwhile, take a ' +
+              'photo of the barcode below and we’ll read it the same way.'
         );
       }
     })();

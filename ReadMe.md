@@ -104,13 +104,16 @@ On first launch you'll be guided through admin **first‑run setup**. It also wo
 from a phone or other LAN device (e.g. `http://192.168.1.184:8000`). For publishing
 and deployment details, see [`docs/unified-image.md`](docs/unified-image.md).
 
-> **Preferred: put it behind Home Assistant ingress.** If you run Home Assistant,
-> proxying the app through HA ingress is the recommended way to access it: the app
-> rides HA's real HTTPS certificate, so phone camera features (live barcode
-> scanning, packing‑slip capture) work everywhere with no certificate warnings —
-> iOS only exposes the camera to pages served over HTTPS. Direct LAN access over
-> plain HTTP still works for everything except the live camera (photo capture is
-> the automatic fallback). Packaging as a proper HA add‑on is planned.
+> **Want phone camera features (barcode / packing‑slip scanning)? Set up HTTPS.**
+> iOS only exposes the live camera to pages served over HTTPS, so the app ships
+> with a guided setup under **Configuration → Security** (also offered at the end
+> of first‑run). The recommended path gets you a free `*.duckdns.org` name and an
+> auto‑renewing Let's Encrypt certificate in ~5 minutes, with no port forwarding;
+> there are also paths for an existing reverse proxy (Traefik/nginx/Caddy) or your
+> own certificate. See [`docs/installation/https-setup.md`](docs/installation/https-setup.md).
+> Home Assistant ingress works too and needs no setup at all. Plain‑HTTP LAN
+> access keeps working for everything except the live camera (photo capture is
+> the automatic fallback).
 
 ## Develop it (hot reload)
 
@@ -134,9 +137,9 @@ On startup the stack creates the database, runs Alembic migrations
 > ("Advanced → Proceed" / on iOS "Show Details → visit this website") once per
 > device and move on. HTTPS is required because iOS only exposes the live camera
 > (barcode scanning, slip capture) to secure origins, and a self‑signed cert is
-> the zero‑setup way to get there on a LAN. Cleaner certificate handling is
-> planned; for warning‑free HTTPS today, access the app through Home Assistant
-> ingress instead.
+> the zero‑setup way to get there on a LAN. Production installs get warning‑free
+> HTTPS via **Configuration → Security** (DuckDNS + Let's Encrypt, reverse proxy,
+> or your own certificate) — see [`docs/installation/https-setup.md`](docs/installation/https-setup.md).
 
 The web UI works from a phone or other LAN device too (e.g.
 `https://192.168.1.184:5173` — note **https**); it reaches the backend on the same
