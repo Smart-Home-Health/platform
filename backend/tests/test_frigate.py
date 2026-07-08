@@ -60,6 +60,47 @@ def test_base_url_prefix_spoof_refused(admin_client, patient, frigate_integratio
     assert resp.status_code == 403
 
 
+def test_live_url_is_relative(admin_client, patient, frigate_integration, db_session):
+    """HLS live_url must be RELATIVE: the backend can't know the
+    browser-facing scheme/host (behind the Vite proxy request.base_url is the
+    Docker-internal backend:8000; behind TLS it reports http://), so an
+    absolute URL breaks playback as mixed content or an unreachable host."""
+    frigate_integration.settings = {"camera": "vent", "live_mode": "hls"}
+    db_session.flush()
+    resp = admin_client.get(f"/api/integrations/frigate/patient/{frigate_integration.patient_id}/live")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["live_url"].startswith("/api/integrations/frigate/"), body["live_url"]
+    assert body["live_url"].endswith("/live.m3u8")
+    assert body["live_mode"] == "hls"
+    # The snapshot is still a direct-to-Frigate absolute URL (link navigation).
+    assert body["snapshot_url"].startswith(BASE)
+
+
+def test_rewritten_playlist_uris_are_relative():
+    """Segment/nested-playlist URIs in the proxied playlist must be
+    root-relative so the browser resolves them against the page origin —
+    request.base_url-derived absolute URLs broke playback over TLS/proxies."""
+    from routes.frigate import _rewrite_hls_playlist
+    upstream = f"{BASE}/api/go2rtc/api/stream.m3u8?src=Vent"
+    playlist = "\n".join([
+        "#EXTM3U",
+        '#EXT-X-MAP:URI="init.mp4"',
+        "#EXTINF:2.000,",
+        "segment0.m4s",
+        "nested/child.m3u8",
+    ])
+    out = _rewrite_hls_playlist(playlist, upstream, "/api/integrations/frigate/patient/9/live-seg")
+    for line in out.splitlines():
+        uri = None
+        if line.startswith("#EXT-X-MAP"):
+            uri = line.split('URI="')[1].rstrip('"')
+        elif line and not line.startswith("#"):
+            uri = line
+        if uri:
+            assert uri.startswith("/api/integrations/frigate/patient/9/live-seg?u=http%3A%2F%2Ffrigate.local"), uri
+
+
 def test_404_when_no_frigate_configured(admin_client, patient):
     """No Frigate integration for this patient -> 404 (guard never reached)."""
     resp = admin_client.get(SEG.format(pid=patient.id),

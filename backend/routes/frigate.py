@@ -32,7 +32,7 @@ from typing import Optional, List
 from urllib.parse import urljoin, urlencode
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse, FileResponse, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
@@ -240,7 +240,6 @@ async def select_camera(
 @router.get("/patient/{patient_id}/live", response_model=FrigateLiveResponse)
 async def get_live(
     patient_id: int,
-    request: Request,
     db: Session = Depends(get_db),
     current_user=Depends(require_full_auth),
     account_id: int = Depends(get_current_account_id),
@@ -250,8 +249,13 @@ async def get_live(
 
     For HLS mode the `live_url` points at our same-site proxy
     (`/live.m3u8`) rather than directly at Frigate — the browser can't reliably
-    fetch go2rtc cross-origin (CORS / cold-start). WebRTC mode still returns the
-    direct go2rtc URL since it isn't a simple playlist fetch.
+    fetch go2rtc cross-origin (CORS / cold-start). It is returned RELATIVE and
+    resolved against the page origin by the frontend: the backend cannot know
+    the browser-facing scheme/host (behind the Vite dev proxy request.base_url
+    is the Docker-internal http://backend:8000, and behind TLS it reports
+    http://), so an absolute URL built here breaks as mixed content or an
+    unreachable host. WebRTC mode still returns the direct go2rtc URL since it
+    isn't a simple playlist fetch.
     """
     pi = _get_active_frigate(db, patient_id, account_id)
     client = _make_client(pi)
@@ -262,8 +266,7 @@ async def get_live(
 
     mode = (pi.settings or {}).get("live_mode", "hls")
     if mode == "hls":
-        base = str(request.base_url).rstrip("/")
-        live_url = f"{base}/api/integrations/frigate/patient/{patient_id}/live.m3u8"
+        live_url = f"/api/integrations/frigate/patient/{patient_id}/live.m3u8"
     else:
         live_url = client.get_live_url(camera)
 
@@ -278,7 +281,6 @@ async def get_live(
 @router.get("/patient/{patient_id}/live.m3u8")
 async def live_playlist(
     patient_id: int,
-    request: Request,
     db: Session = Depends(get_db),
     current_user=Depends(require_full_auth),
     account_id: int = Depends(get_current_account_id),
@@ -298,8 +300,11 @@ async def live_playlist(
 
     upstream = client.get_live_upstream_m3u8(camera)
     headers = client._headers()
-    base = str(request.base_url).rstrip("/")
-    proxy_seg_base = f"{base}/api/integrations/frigate/patient/{patient_id}/live-seg"
+    # Root-relative: the browser resolves it against the playlist's own
+    # same-origin URL. request.base_url must not be used here — behind the
+    # Vite proxy it is the Docker-internal backend:8000, and behind TLS it
+    # reports http://, so absolute URLs break segment fetches.
+    proxy_seg_base = f"/api/integrations/frigate/patient/{patient_id}/live-seg"
 
     last = None
     async with httpx.AsyncClient(timeout=10.0) as http:
@@ -332,7 +337,6 @@ async def live_playlist(
 @router.get("/patient/{patient_id}/live-seg")
 async def live_segment(
     patient_id: int,
-    request: Request,
     u: str = Query(..., description="Absolute upstream Frigate segment/playlist URL"),
     db: Session = Depends(get_db),
     current_user=Depends(require_full_auth),
@@ -364,8 +368,7 @@ async def live_segment(
 
     # A nested playlist needs its URIs rewritten too; a segment is passed through.
     if u.split("?", 1)[0].endswith(".m3u8"):
-        base = str(request.base_url).rstrip("/")
-        proxy_seg_base = f"{base}/api/integrations/frigate/patient/{patient_id}/live-seg"
+        proxy_seg_base = f"/api/integrations/frigate/patient/{patient_id}/live-seg"
         rewritten = _rewrite_hls_playlist(resp.text, u, proxy_seg_base)
         return Response(
             content=rewritten,
