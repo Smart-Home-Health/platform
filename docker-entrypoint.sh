@@ -28,6 +28,7 @@ PY
 echo "[entrypoint] running migrations (alembic upgrade head)..."
 alembic upgrade head
 
-echo "[entrypoint] starting uvicorn..."
-# exec so uvicorn becomes PID 1 and receives stop signals directly.
-exec uvicorn main:app --host 0.0.0.0 --port "${PORT:-8000}"
+echo "[entrypoint] starting server (serve.py supervisor)..."
+# serve.py runs HTTP :8000 plus, when a certificate is installed, HTTPS :8443
+# in the same process. exec so it becomes PID 1 and receives stop signals.
+exec python serve.py
