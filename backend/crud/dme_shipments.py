@@ -195,6 +195,7 @@ def add_shipment_item(
     qty_ordered: int = 0,
     qty_shipped: int = 0,
     qty_backordered: int = 0,
+    flagged_missing: bool = False,
     unit_of_measure: Optional[str] = None,
     unit_description: Optional[str] = None,
     unit_price: Optional[float] = None,
@@ -212,6 +213,7 @@ def add_shipment_item(
             qty_ordered=qty_ordered,
             qty_shipped=qty_shipped,
             qty_backordered=qty_backordered,
+            flagged_missing=flagged_missing,
             unit_of_measure=unit_of_measure,
             unit_description=unit_description,
             unit_price=unit_price,
@@ -247,8 +249,8 @@ def update_shipment_item(db: Session, item_id: int, **kwargs) -> bool:
         
         allowed_fields = [
             'equipment_id', 'item_number', 'item_description', 'manufacturer_name',
-            'qty_ordered', 'qty_shipped', 'qty_backordered', 'unit_of_measure',
-            'unit_description', 'unit_price', 'lot_number', 'notes'
+            'qty_ordered', 'qty_shipped', 'qty_backordered', 'flagged_missing',
+            'unit_of_measure', 'unit_description', 'unit_price', 'lot_number', 'notes'
         ]
         
         for field in allowed_fields:
@@ -1082,6 +1084,7 @@ def _item_to_dict(item: DMEShipmentItem) -> dict:
         'qty_ordered': item.qty_ordered,
         'qty_shipped': item.qty_shipped,
         'qty_backordered': item.qty_backordered,
+        'flagged_missing': bool(item.flagged_missing),
         'qty_received': total_received,
         'unit_of_measure': item.unit_of_measure,
         'unit_description': item.unit_description,

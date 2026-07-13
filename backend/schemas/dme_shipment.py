@@ -101,6 +101,11 @@ class DMEShipmentItem(Base):
     qty_ordered = Column(Integer, nullable=False, default=0)
     qty_shipped = Column(Integer, nullable=False, default=0)
     qty_backordered = Column(Integer, nullable=False, default=0)
+
+    # The invoice says it shipped, but it never showed up in the box. Distinct
+    # from backordered (supplier admits it's coming later) — this is a claim
+    # we're disputing, flagged so it can be chased with the supplier.
+    flagged_missing = Column(Boolean, nullable=False, default=False)
     
     # Unit info (text to handle variations like "BX = 100 EA" vs "BX = 100 OP")
     unit_of_measure = Column(String, nullable=True)  # EA, BX, PK, etc.

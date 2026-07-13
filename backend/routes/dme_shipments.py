@@ -72,6 +72,7 @@ class ShipmentItemCreate(BaseModel):
     qty_ordered: int = 0
     qty_shipped: int = 0
     qty_backordered: int = 0
+    flagged_missing: bool = False
     unit_of_measure: Optional[str] = None
     unit_description: Optional[str] = None
     unit_price: Optional[float] = None
@@ -87,6 +88,7 @@ class ShipmentItemUpdate(BaseModel):
     qty_ordered: Optional[int] = None
     qty_shipped: Optional[int] = None
     qty_backordered: Optional[int] = None
+    flagged_missing: Optional[bool] = None
     unit_of_measure: Optional[str] = None
     unit_description: Optional[str] = None
     unit_price: Optional[float] = None

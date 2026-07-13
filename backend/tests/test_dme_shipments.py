@@ -75,6 +75,31 @@ def test_add_item_to_shipment(admin_client, patient):
     assert resp.json()["id"] > 0
 
 
+def test_item_flagged_missing_round_trip(admin_client, patient):
+    # "Invoice says shipped, never arrived": the flag persists through create,
+    # shows up in the serialized item, and can be toggled via update.
+    sid = _make_shipment(admin_client, patient).json()["id"]
+    item_id = _add_item(admin_client, sid, flagged_missing=True).json()["id"]
+
+    items = admin_client.get(f"/api/shipments/{sid}").json()["items"]
+    item = next(i for i in items if i["id"] == item_id)
+    assert item["flagged_missing"] is True
+
+    resp = admin_client.put(f"/api/shipments/{sid}/items/{item_id}",
+                            json={"flagged_missing": False})
+    assert resp.status_code == 200
+    assert resp.json()["success"] is True
+    items = admin_client.get(f"/api/shipments/{sid}").json()["items"]
+    assert next(i for i in items if i["id"] == item_id)["flagged_missing"] is False
+
+
+def test_item_flagged_missing_defaults_false(admin_client, patient):
+    sid = _make_shipment(admin_client, patient).json()["id"]
+    item_id = _add_item(admin_client, sid).json()["id"]
+    items = admin_client.get(f"/api/shipments/{sid}").json()["items"]
+    assert next(i for i in items if i["id"] == item_id)["flagged_missing"] is False
+
+
 def test_receive_items_records_receipt(admin_client, patient):
     sid = _make_shipment(admin_client, patient).json()["id"]
     item_id = _add_item(admin_client, sid, qty_ordered=5, qty_shipped=5).json()["id"]
