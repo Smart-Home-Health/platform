@@ -14,12 +14,16 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import logging
-from fastapi import APIRouter, Depends, Query
+from datetime import datetime, timedelta
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from dependencies import get_db, require_read_access
 from routes.auth import require_full_auth
 from analysis.med_vital_correlation import analyze_med_effects, get_patient_medications_for_analysis
+from analysis.env_correlation import analyze_env_correlations, get_clinical_events
 
 logger = logging.getLogger("analysis")
 
@@ -50,3 +54,49 @@ async def get_med_effects(
 ):
     return analyze_med_effects(db, patient_id, medication_id,
                                pre_start, pre_end, post_start, post_end)
+
+
+@router.get("/patients/{patient_id}/env-correlations")
+async def get_env_correlations(
+    patient_id: int,
+    days: int = Query(90, ge=7, le=365),
+    window_hours: Optional[int] = Query(None, ge=1, le=48),
+    pressure_drop_6h_threshold: Optional[float] = Query(None, ge=-20, le=-1),
+    pressure_drop_24h_threshold: Optional[float] = Query(None, ge=-30, le=-2),
+    pressure_rise_6h_threshold: Optional[float] = Query(None, ge=1, le=20),
+    low_humidity_threshold: Optional[float] = Query(None, ge=10, le=45),
+    high_pm25_threshold: Optional[float] = Query(None, ge=10, le=150),
+    db: Session = Depends(get_db),
+    _auth=Depends(require_full_auth),
+    _read=Depends(require_read_access),
+):
+    """Personal environmental correlation cards (descriptive, non-causal)."""
+    thresholds = {
+        key: value for key, value in {
+            "pressure_drop_6h": pressure_drop_6h_threshold,
+            "pressure_drop_24h": pressure_drop_24h_threshold,
+            "pressure_rise_6h": pressure_rise_6h_threshold,
+            "low_humidity": low_humidity_threshold,
+            "high_pm25": high_pm25_threshold,
+        }.items() if value is not None
+    }
+    return analyze_env_correlations(db, patient_id, days=days,
+                                    window_hours=window_hours,
+                                    thresholds=thresholds)
+
+
+@router.get("/patients/{patient_id}/clinical-events")
+async def list_clinical_events(
+    patient_id: int,
+    from_: datetime = Query(..., alias="from"),
+    to: datetime = Query(...),
+    db: Session = Depends(get_db),
+    _auth=Depends(require_full_auth),
+    _read=Depends(require_read_access),
+):
+    """Curated clinical event streams for the environment overlay chart."""
+    if from_ >= to:
+        raise HTTPException(status_code=422, detail="'from' must be before 'to'")
+    if to - from_ > timedelta(days=366):
+        raise HTTPException(status_code=422, detail="Range cannot exceed 366 days")
+    return get_clinical_events(db, patient_id, from_, to)
