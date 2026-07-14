@@ -77,13 +77,21 @@ const renderPage = async () => {
   });
 };
 
+// Environmental observations (bucketed, newest-first like the real API)
+const envRows = [
+  { ts: '2026-07-14T10:15:00+00:00', metric: 'pressure_delta_6h', avg: -2.4, min: -2.6, max: -2.1, unit: 'hPa' },
+  { ts: '2026-07-14T10:00:00+00:00', metric: 'pressure_delta_6h', avg: -1.8, min: -2.0, max: -1.6, unit: 'hPa' },
+];
+
 beforeEach(() => {
   chartInstances.length = 0;
   HTMLCanvasElement.prototype.getContext = vi.fn(() => ({}));
-  vi.stubGlobal('fetch', vi.fn(async () => ({
+  vi.stubGlobal('fetch', vi.fn(async (url) => ({
     ok: true,
     status: 200,
-    json: async () => timelinePayload,
+    json: async () => (String(url).includes('/api/environment/observations')
+      ? [...envRows]
+      : timelinePayload),
   })));
 });
 
@@ -129,5 +137,50 @@ describe('AdminV2MonitoringTimeline vital series picker', () => {
     const perfusion = latestChart().config.data.datasets.find(d => d.label === 'Perfusion (PI)');
     expect(perfusion.data.map(p => p.y)).toEqual([1.4, 1.1]);
     expect(perfusion.yAxisID).toBe('y_perfusion');
+  });
+});
+
+describe('AdminV2MonitoringTimeline environmental overlays', () => {
+  it('renders env chips alongside the vitals chips', async () => {
+    await renderPage();
+    expect(screen.getByRole('button', { name: /Pressure Δ6h/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Humidity/ })).toBeInTheDocument();
+    expect(screen.getByText('Env:')).toBeInTheDocument();
+  });
+
+  it('activating an env metric fetches it and plots a dashed series', async () => {
+    await renderPage();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Pressure Δ6h/ }));
+    });
+
+    // Swap-oldest still applies: SpO2 (oldest) dropped, BPM + delta active
+    expect(datasetLabels()).toEqual(['BPM', 'Pressure change 6h (hPa)']);
+    const delta = latestChart().config.data.datasets
+      .find(d => d.label === 'Pressure change 6h (hPa)');
+    expect(delta.borderDash).toEqual([6, 4]);
+    // Ascending after the newest-first reverse, values intact
+    expect(delta.data.map(p => p.y)).toEqual([-1.8, -2.4]);
+    // Negative delta axis must not be clamped to zero
+    expect(latestChart().config.options.scales.y_pressure_delta_6h.min).toBeLessThan(0);
+    const envCall = fetch.mock.calls
+      .map(c => String(c[0])).find(u => u.includes('/api/environment/observations'));
+    expect(envCall).toContain('metric=pressure_delta_6h');
+    expect(envCall).toContain('bucket=15m');
+  });
+
+  it('an empty env day still renders and marks the chip (no data)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url) => ({
+      ok: true,
+      status: 200,
+      json: async () => (String(url).includes('/api/environment/observations')
+        ? [] : timelinePayload),
+    })));
+    await renderPage();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Humidity/ }));
+    });
+    expect(screen.getByText('(no data)')).toBeInTheDocument();
+    expect(datasetLabels()).toContain('Humidity (%)');
   });
 });

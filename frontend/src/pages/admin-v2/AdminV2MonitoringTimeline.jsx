@@ -53,6 +53,27 @@ const VITAL_SERIES = {
     defaultMin: 0, defaultMax: 5, minPad: 0.2, clampMax: null,
   },
 };
+// Environmental series (home-level, from /api/environment/observations).
+// `dashed: true` marks estimated/derived metrics — rendered with a dashed
+// line to distinguish them from measured readings.
+const ENV_SERIES = {
+  barometric_pressure: {
+    label: 'Pressure', axisLabel: 'Pressure (hPa)', color: '#8d6e63',
+    fill: 'rgba(141, 110, 99, 0.1)', gridTint: 'rgba(141, 110, 99, 0.08)',
+    defaultMin: 990, defaultMax: 1030, minPad: 1, clampMax: null, dashed: false,
+  },
+  pressure_delta_6h: {
+    label: 'Pressure Δ6h', axisLabel: 'Pressure change 6h (hPa)', color: '#a1887f',
+    fill: 'rgba(161, 136, 127, 0.1)', gridTint: 'rgba(161, 136, 127, 0.08)',
+    defaultMin: -5, defaultMax: 5, minPad: 0.5, clampMax: null, dashed: true,
+  },
+  relative_humidity: {
+    label: 'Humidity', axisLabel: 'Humidity (%)', color: '#26a69a',
+    fill: 'rgba(38, 166, 154, 0.1)', gridTint: 'rgba(38, 166, 154, 0.08)',
+    defaultMin: 20, defaultMax: 80, minPad: 2, clampMax: 100, dashed: false,
+  },
+};
+const SERIES = { ...VITAL_SERIES, ...ENV_SERIES };
 const MAX_ACTIVE_VITALS = 2;
 
 const EVENT_TYPES = {
@@ -138,6 +159,48 @@ const AdminV2MonitoringTimeline = () => {
   }, [selectedPatient, selectedDate]);
 
   useEffect(() => { fetchTimeline(); }, [fetchTimeline]);
+
+  // Environmental overlay data for the selected day, keyed by metric.
+  // Home-level (not patient-scoped); failure degrades to an empty series and
+  // never blocks the vitals chart.
+  const [envData, setEnvData] = useState({});
+  const activeEnvKeys = activeVitals.filter((k) => ENV_SERIES[k]);
+  const activeEnvKeysStr = activeEnvKeys.join(',');
+  useEffect(() => {
+    let cancelled = false;
+    const keys = activeEnvKeysStr ? activeEnvKeysStr.split(',') : [];
+    if (keys.length === 0) {
+      setEnvData({});
+      return undefined;
+    }
+    const dateStr = formatDateForApi(selectedDate);
+    const dayStart = new Date(`${dateStr}T00:00:00`);
+    const dayEnd = new Date(`${dateStr}T23:59:59`);
+    (async () => {
+      const next = {};
+      await Promise.all(keys.map(async (key) => {
+        try {
+          const params = new URLSearchParams({
+            metric: key, scope: 'outdoor', bucket: '15m', limit: '500',
+            from: dayStart.toISOString(), to: dayEnd.toISOString(),
+          });
+          const res = await fetch(
+            `${config.apiUrl}/api/environment/observations?${params}`,
+            { credentials: 'include' }
+          );
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const rows = await res.json();
+          // Newest-first from the API; chart wants ascending
+          next[key] = rows.reverse().map((r) => ({ x: new Date(r.ts), y: r.avg }));
+        } catch (err) {
+          console.error(`Environment fetch failed for ${key}:`, err);
+          next[key] = [];
+        }
+      }));
+      if (!cancelled) setEnvData(next);
+    })();
+    return () => { cancelled = true; };
+  }, [selectedDate, activeEnvKeysStr]);
 
   // Build event marker label
   const getMarkerLabel = (type, item) => {
@@ -238,21 +301,28 @@ const AdminV2MonitoringTimeline = () => {
     const dayStart = new Date(`${dateStr}T00:00:00`);
     const dayEnd = new Date(`${dateStr}T23:59:59`);
 
-    // Active pulse-ox series — filter out -1 (invalid/disconnected reads).
-    // First active series takes the left y-axis, second the right.
+    // Active series — pulse-ox metrics come from the timeline payload
+    // (filtering out -1 invalid/disconnected reads), environmental metrics
+    // from the per-day envData fetch. First active series takes the left
+    // y-axis, second the right. Estimated env metrics render dashed.
     const vitalDatasets = [];
     const vitalScales = {};
     activeVitals.forEach((key, i) => {
-      const cfg = VITAL_SERIES[key];
-      const data = timelineData.pulse_ox
-        .filter(p => p[key] != null && p[key] !== -1)
-        .map(p => ({ x: new Date(p.ts), y: p[key] }));
+      const cfg = SERIES[key];
+      const data = ENV_SERIES[key]
+        ? (envData[key] || [])
+        : timelineData.pulse_ox
+            .filter(p => p[key] != null && p[key] !== -1)
+            .map(p => ({ x: new Date(p.ts), y: p[key] }));
 
-      // Static y-axis range from all data with small padding
+      // Static y-axis range from all data with small padding. Vitals never go
+      // below 0; pressure deltas legitimately do, so only clamp when the
+      // series can't be negative.
       const min = data.length > 0 ? Math.min(...data.map(p => p.y)) : cfg.defaultMin;
       const max = data.length > 0 ? Math.max(...data.map(p => p.y)) : cfg.defaultMax;
       const pad = Math.max((max - min) * 0.05, cfg.minPad);
       const axisId = `y_${key}`;
+      const allowNegative = key === 'pressure_delta_6h';
 
       vitalDatasets.push({
         label: cfg.axisLabel,
@@ -260,16 +330,18 @@ const AdminV2MonitoringTimeline = () => {
         borderColor: cfg.color,
         backgroundColor: cfg.fill,
         borderWidth: 1.5,
+        borderDash: cfg.dashed ? [6, 4] : [],
         pointRadius: 0,
         pointHitRadius: 5,
         fill: false,
+        spanGaps: true,
         yAxisID: axisId,
         tension: 0.2,
       });
       vitalScales[axisId] = {
         type: 'linear',
         position: i === 0 ? 'left' : 'right',
-        min: Math.max(0, min - pad),
+        min: allowNegative ? min - pad : Math.max(0, min - pad),
         max: cfg.clampMax != null ? Math.min(cfg.clampMax, max + pad) : max + pad,
         title: { display: true, text: cfg.axisLabel, color: cfg.color, font: { size: 12 } },
         ticks: { color: cfg.color },
@@ -418,7 +490,7 @@ const AdminV2MonitoringTimeline = () => {
         chartInstance.current = null;
       }
     };
-  }, [timelineData, visibleLayers, selectedDate, activeVitals, chart.grid, chart.axis, chart.foreground]);
+  }, [timelineData, envData, visibleLayers, selectedDate, activeVitals, chart.grid, chart.axis, chart.foreground]);
 
   const toggleLayer = (key) => {
     setVisibleLayers(prev => ({ ...prev, [key]: !prev[key] }));
@@ -479,28 +551,19 @@ const AdminV2MonitoringTimeline = () => {
         alignItems: 'center', justifyContent: 'space-between',
       }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-          {/* Dataset toggles (max 2 active — one per y-axis) */}
-          {Object.entries(VITAL_SERIES).map(([key, cfg]) => {
-            const active = activeVitals.includes(key);
-            return (
-              <button
-                key={key}
-                onClick={() => toggleVital(key)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  padding: '5px 12px', borderRadius: 16, fontSize: 12, fontWeight: 600,
-                  border: `2px solid ${cfg.color}`,
-                  background: active ? cfg.color : 'transparent',
-                  color: active ? '#fff' : cfg.color,
-                  cursor: 'pointer', transition: 'all 0.15s',
-                  opacity: active ? 1 : 0.6,
-                }}
-              >
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: active ? '#fff' : cfg.color, display: 'inline-block' }} />
-                {cfg.label}
-              </button>
-            );
-          })}
+          {/* Dataset toggles (max 2 active — one per y-axis). Dashed borders
+              mark estimated/derived environmental metrics. */}
+          {Object.entries(VITAL_SERIES).map(([key, cfg]) => (
+            <SeriesChip key={key} seriesKey={key} cfg={cfg}
+                        active={activeVitals.includes(key)} onToggle={toggleVital} />
+          ))}
+          <span style={{ width: 1, height: 20, background: 'var(--border)', display: 'inline-block' }} />
+          <span style={{ fontSize: 11, color: 'var(--muted-foreground)' }}>Env:</span>
+          {Object.entries(ENV_SERIES).map(([key, cfg]) => (
+            <SeriesChip key={key} seriesKey={key} cfg={cfg}
+                        active={activeVitals.includes(key)} onToggle={toggleVital}
+                        noData={activeVitals.includes(key) && (envData[key] || []).length === 0} />
+          ))}
 
           <span style={{ width: 1, height: 20, background: 'var(--border)', display: 'inline-block' }} />
 
@@ -630,6 +693,27 @@ const AdminV2MonitoringTimeline = () => {
     </div>
   );
 };
+
+// Toggle pill for a plottable series. Dashed border = estimated/derived
+// metric (matches the dashed chart line).
+const SeriesChip = ({ seriesKey, cfg, active, onToggle, noData = false }) => (
+  <button
+    onClick={() => onToggle(seriesKey)}
+    style={{
+      display: 'flex', alignItems: 'center', gap: 6,
+      padding: '5px 12px', borderRadius: 16, fontSize: 12, fontWeight: 600,
+      border: `2px ${cfg.dashed ? 'dashed' : 'solid'} ${cfg.color}`,
+      background: active ? cfg.color : 'transparent',
+      color: active ? '#fff' : cfg.color,
+      cursor: 'pointer', transition: 'all 0.15s',
+      opacity: active ? 1 : 0.6,
+    }}
+  >
+    <span style={{ width: 8, height: 8, borderRadius: '50%', background: active ? '#fff' : cfg.color, display: 'inline-block' }} />
+    {cfg.label}
+    {noData && <span style={{ opacity: 0.8, marginLeft: 2 }}>(no data)</span>}
+  </button>
+);
 
 // Compact card showing event list - dark theme
 const EventSummaryCard = ({ title, color, items }) => (

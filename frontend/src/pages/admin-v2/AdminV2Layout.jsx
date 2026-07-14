@@ -133,6 +133,7 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
       { path: '/care/monitoring/timeline', label: 'Timeline' },
       { path: '/care/monitoring/ventilator', label: 'Ventilator' },
       { path: '/care/monitoring/interactions', label: 'Interactions' },
+      { path: '/care/monitoring/environment', label: 'Environment' },
     ],
     reports: [
       { path: '/care/reports', label: 'Day over Day' },
