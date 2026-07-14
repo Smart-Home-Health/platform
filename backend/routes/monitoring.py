@@ -270,7 +270,7 @@ async def get_timeline_data(
         for ts in sorted(minute_buckets.keys()):
             bucket = minute_buckets[ts]
             # Skip minutes with no valid readings
-            if not bucket['spo2'] and not bucket['bpm']:
+            if not bucket['spo2'] and not bucket['bpm'] and not bucket['perfusion']:
                 continue
             pulse_ox_data.append({
                 'ts': ts.isoformat(),

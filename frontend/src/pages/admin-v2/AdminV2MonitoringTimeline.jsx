@@ -34,6 +34,27 @@ import { useChartColors } from '../../hooks/useChartColors';
 
 Chart.register(annotationPlugin, zoomPlugin);
 
+// Pulse-ox series that can be plotted. The chart has two y-axes, so at most
+// two may be active at once (first active = left axis, second = right).
+const VITAL_SERIES = {
+  spo2: {
+    label: 'SpO2', axisLabel: 'SpO2 (%)', color: '#e91e63',
+    fill: 'rgba(233, 30, 99, 0.1)', gridTint: 'rgba(233, 30, 99, 0.08)',
+    defaultMin: 90, defaultMax: 100, minPad: 1, clampMax: 100,
+  },
+  bpm: {
+    label: 'BPM', axisLabel: 'BPM', color: '#3f51b5',
+    fill: 'rgba(63, 81, 181, 0.1)', gridTint: 'rgba(63, 81, 181, 0.08)',
+    defaultMin: 60, defaultMax: 120, minPad: 2, clampMax: null,
+  },
+  perfusion: {
+    label: 'Perfusion', axisLabel: 'Perfusion (PI)', color: '#00bcd4',
+    fill: 'rgba(0, 188, 212, 0.1)', gridTint: 'rgba(0, 188, 212, 0.08)',
+    defaultMin: 0, defaultMax: 5, minPad: 0.2, clampMax: null,
+  },
+};
+const MAX_ACTIVE_VITALS = 2;
+
 const EVENT_TYPES = {
   medications: { label: 'Medications', color: '#2196F3', borderDash: [] },
   care_tasks: { label: 'Care Tasks', color: '#4CAF50', borderDash: [] },
@@ -60,8 +81,8 @@ const AdminV2MonitoringTimeline = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [activePreset, setActivePreset] = useState('24h');
-  const [showSpo2, setShowSpo2] = useState(true);
-  const [showBpm, setShowBpm] = useState(true);
+  // Ordered list of active pulse-ox series (max 2 — one per y-axis).
+  const [activeVitals, setActiveVitals] = useState(['spo2', 'bpm']);
   const [visibleLayers, setVisibleLayers] = useState({
     medications: true,
     care_tasks: true,
@@ -187,6 +208,16 @@ const AdminV2MonitoringTimeline = () => {
     setActivePreset(preset ? preset.label : null);
   }, [timelineData, selectedDate]);
 
+  // Toggle a pulse-ox series. Tapping an inactive one when two are already
+  // active replaces the oldest selection, so a tap always takes effect.
+  const toggleVital = (key) => {
+    setActiveVitals(prev => {
+      if (prev.includes(key)) return prev.filter(k => k !== key);
+      if (prev.length < MAX_ACTIVE_VITALS) return [...prev, key];
+      return [...prev.slice(1), key];
+    });
+  };
+
   const handleResetZoom = useCallback(() => {
     if (chartInstance.current) {
       chartInstance.current.resetZoom();
@@ -207,13 +238,44 @@ const AdminV2MonitoringTimeline = () => {
     const dayStart = new Date(`${dateStr}T00:00:00`);
     const dayEnd = new Date(`${dateStr}T23:59:59`);
 
-    // SpO2 and BPM datasets — filter out -1 (invalid/disconnected reads)
-    const spo2Data = timelineData.pulse_ox
-      .filter(p => p.spo2 != null && p.spo2 !== -1)
-      .map(p => ({ x: new Date(p.ts), y: p.spo2 }));
-    const bpmData = timelineData.pulse_ox
-      .filter(p => p.bpm != null && p.bpm !== -1)
-      .map(p => ({ x: new Date(p.ts), y: p.bpm }));
+    // Active pulse-ox series — filter out -1 (invalid/disconnected reads).
+    // First active series takes the left y-axis, second the right.
+    const vitalDatasets = [];
+    const vitalScales = {};
+    activeVitals.forEach((key, i) => {
+      const cfg = VITAL_SERIES[key];
+      const data = timelineData.pulse_ox
+        .filter(p => p[key] != null && p[key] !== -1)
+        .map(p => ({ x: new Date(p.ts), y: p[key] }));
+
+      // Static y-axis range from all data with small padding
+      const min = data.length > 0 ? Math.min(...data.map(p => p.y)) : cfg.defaultMin;
+      const max = data.length > 0 ? Math.max(...data.map(p => p.y)) : cfg.defaultMax;
+      const pad = Math.max((max - min) * 0.05, cfg.minPad);
+      const axisId = `y_${key}`;
+
+      vitalDatasets.push({
+        label: cfg.axisLabel,
+        data,
+        borderColor: cfg.color,
+        backgroundColor: cfg.fill,
+        borderWidth: 1.5,
+        pointRadius: 0,
+        pointHitRadius: 5,
+        fill: false,
+        yAxisID: axisId,
+        tension: 0.2,
+      });
+      vitalScales[axisId] = {
+        type: 'linear',
+        position: i === 0 ? 'left' : 'right',
+        min: Math.max(0, min - pad),
+        max: cfg.clampMax != null ? Math.min(cfg.clampMax, max + pad) : max + pad,
+        title: { display: true, text: cfg.axisLabel, color: cfg.color, font: { size: 12 } },
+        ticks: { color: cfg.color },
+        grid: i === 0 ? { color: cfg.gridTint } : { drawOnChartArea: false },
+      };
+    });
 
     // Build annotation lines for events
     const annotations = {};
@@ -280,45 +342,11 @@ const AdminV2MonitoringTimeline = () => {
       });
     }
 
-    // Compute static y-axis ranges from all data with small padding
-    const spo2Min = spo2Data.length > 0 ? Math.min(...spo2Data.map(p => p.y)) : 90;
-    const spo2Max = spo2Data.length > 0 ? Math.max(...spo2Data.map(p => p.y)) : 100;
-    const bpmMin = bpmData.length > 0 ? Math.min(...bpmData.map(p => p.y)) : 60;
-    const bpmMax = bpmData.length > 0 ? Math.max(...bpmData.map(p => p.y)) : 120;
-
-    const spo2Padding = Math.max(Math.round((spo2Max - spo2Min) * 0.05), 1);
-    const bpmPadding = Math.max(Math.round((bpmMax - bpmMin) * 0.05), 2);
-
     const ctx = chartRef.current.getContext('2d');
     chartInstance.current = new Chart(ctx, {
       type: 'line',
       data: {
-        datasets: [
-          ...(showSpo2 ? [{
-            label: 'SpO2 (%)',
-            data: spo2Data,
-            borderColor: '#e91e63',
-            backgroundColor: 'rgba(233, 30, 99, 0.1)',
-            borderWidth: 1.5,
-            pointRadius: 0,
-            pointHitRadius: 5,
-            fill: false,
-            yAxisID: 'ySpO2',
-            tension: 0.2,
-          }] : []),
-          ...(showBpm ? [{
-            label: 'BPM',
-            data: bpmData,
-            borderColor: '#3f51b5',
-            backgroundColor: 'rgba(63, 81, 181, 0.1)',
-            borderWidth: 1.5,
-            pointRadius: 0,
-            pointHitRadius: 5,
-            fill: false,
-            yAxisID: 'yBPM',
-            tension: 0.2,
-          }] : []),
-        ],
+        datasets: vitalDatasets,
       },
       options: {
         responsive: true,
@@ -343,26 +371,7 @@ const AdminV2MonitoringTimeline = () => {
             grid: { color: chart.grid },
             ticks: { maxRotation: 0, font: { size: 11 }, color: chart.axis, autoSkip: true, maxTicksLimit: 24 },
           },
-          ySpO2: {
-            type: 'linear',
-            display: showSpo2,
-            position: 'left',
-            min: Math.max(0, spo2Min - spo2Padding),
-            max: Math.min(100, spo2Max + spo2Padding),
-            title: { display: true, text: 'SpO2 (%)', color: '#e91e63', font: { size: 12 } },
-            ticks: { color: '#e91e63' },
-            grid: { color: 'rgba(233, 30, 99, 0.08)' },
-          },
-          yBPM: {
-            type: 'linear',
-            display: showBpm,
-            position: 'right',
-            min: Math.max(0, bpmMin - bpmPadding),
-            max: bpmMax + bpmPadding,
-            title: { display: true, text: 'BPM', color: '#3f51b5', font: { size: 12 } },
-            ticks: { color: '#3f51b5' },
-            grid: { drawOnChartArea: false },
-          },
+          ...vitalScales,
         },
         plugins: {
           legend: {
@@ -409,7 +418,7 @@ const AdminV2MonitoringTimeline = () => {
         chartInstance.current = null;
       }
     };
-  }, [timelineData, visibleLayers, selectedDate, showSpo2, showBpm, chart.grid, chart.axis, chart.foreground]);
+  }, [timelineData, visibleLayers, selectedDate, activeVitals, chart.grid, chart.axis, chart.foreground]);
 
   const toggleLayer = (key) => {
     setVisibleLayers(prev => ({ ...prev, [key]: !prev[key] }));
@@ -470,37 +479,28 @@ const AdminV2MonitoringTimeline = () => {
         alignItems: 'center', justifyContent: 'space-between',
       }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-          {/* Dataset toggles */}
-          <button
-            onClick={() => setShowSpo2(prev => !prev)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '5px 12px', borderRadius: 16, fontSize: 12, fontWeight: 600,
-              border: '2px solid #e91e63',
-              background: showSpo2 ? '#e91e63' : 'transparent',
-              color: showSpo2 ? '#fff' : '#e91e63',
-              cursor: 'pointer', transition: 'all 0.15s',
-              opacity: showSpo2 ? 1 : 0.6,
-            }}
-          >
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: showSpo2 ? '#fff' : '#e91e63', display: 'inline-block' }} />
-            SpO2
-          </button>
-          <button
-            onClick={() => setShowBpm(prev => !prev)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '5px 12px', borderRadius: 16, fontSize: 12, fontWeight: 600,
-              border: '2px solid #3f51b5',
-              background: showBpm ? '#3f51b5' : 'transparent',
-              color: showBpm ? '#fff' : '#3f51b5',
-              cursor: 'pointer', transition: 'all 0.15s',
-              opacity: showBpm ? 1 : 0.6,
-            }}
-          >
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: showBpm ? '#fff' : '#3f51b5', display: 'inline-block' }} />
-            BPM
-          </button>
+          {/* Dataset toggles (max 2 active — one per y-axis) */}
+          {Object.entries(VITAL_SERIES).map(([key, cfg]) => {
+            const active = activeVitals.includes(key);
+            return (
+              <button
+                key={key}
+                onClick={() => toggleVital(key)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '5px 12px', borderRadius: 16, fontSize: 12, fontWeight: 600,
+                  border: `2px solid ${cfg.color}`,
+                  background: active ? cfg.color : 'transparent',
+                  color: active ? '#fff' : cfg.color,
+                  cursor: 'pointer', transition: 'all 0.15s',
+                  opacity: active ? 1 : 0.6,
+                }}
+              >
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: active ? '#fff' : cfg.color, display: 'inline-block' }} />
+                {cfg.label}
+              </button>
+            );
+          })}
 
           <span style={{ width: 1, height: 20, background: 'var(--border)', display: 'inline-block' }} />
 

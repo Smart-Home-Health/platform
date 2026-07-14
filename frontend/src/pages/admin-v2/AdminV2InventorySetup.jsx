@@ -29,11 +29,13 @@ import AdminV2Layout from './AdminV2Layout';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { CameraIcon, CheckIcon, PlusIcon, XIcon, EquipmentIcon } from '../../components/Icons';
+import { BarcodeIcon, CheckIcon, PlusIcon, XIcon, EquipmentIcon } from '../../components/Icons';
 import PackingSlipCapture from './components/PackingSlipCapture';
 import CsvItemImport from './components/CsvItemImport';
 import SupplyCountFields from './components/SupplyCountFields';
 import BarcodeScanDialog from './components/BarcodeScanDialog';
+import ScannerChoiceDialog from './components/ScannerChoiceDialog';
+import ExternalScanDialog from './components/ExternalScanDialog';
 import { equipmentService } from '../../services/equipment';
 import { sessionGet, sessionSet, sessionClear } from '../../lib/sessionState';
 import {
@@ -87,6 +89,12 @@ const AdminV2InventorySetup = () => {
   const [error, setError] = useState(null);
   const [reviewIndex, setReviewIndex] = useState(0); // which card is in view
   const [showItemScan, setShowItemScan] = useState(false); // barcode-the-box dialog
+  const [scanChooser, setScanChooser] = useState(null); // null | 'slip' | 'item' | 'review' — which scan asked camera-vs-external
+  const [showExternalSlip, setShowExternalSlip] = useState(false); // wedge-scan slip line barcodes
+  const [showExternalItem, setShowExternalItem] = useState(false); // wedge-scan the box barcode
+  // Camera-vs-external for review is confirmed ONCE on the way in (16 cards =
+  // 16 scans; asking per item was miserable) and sticks for the whole session.
+  const [reviewScanMode, setReviewScanMode] = useState(null); // null | 'camera' | 'external'
 
   // --- Session persistence ----------------------------------------------------
   const keyBase = `invsetup:${patientId}`;
@@ -94,6 +102,7 @@ const AdminV2InventorySetup = () => {
     `${keyBase}:step`, `${keyBase}:slips`, `${keyBase}:extras`, `${keyBase}:cards`,
     `${keyBase}:import`, `${keyBase}:counts`, `${keyBase}:supplier`,
     `${keyBase}:capture`, `${keyBase}:scan`, `${keyBase}:reviewIdx`,
+    `${keyBase}:scanmode`,
   ];
   const sessionRestoredRef = useRef(false);
 
@@ -114,6 +123,8 @@ const AdminV2InventorySetup = () => {
     if (savedSupplier) setSupplierId(savedSupplier);
     const savedIdx = sessionGet(`${keyBase}:reviewIdx`);
     if (savedIdx != null && savedCards) setReviewIndex(Math.min(savedIdx, savedCards.length - 1));
+    const savedScanMode = sessionGet(`${keyBase}:scanmode`);
+    if (savedScanMode) setReviewScanMode(savedScanMode);
     if (sessionGet(`${keyBase}:capture`)?.open) setShowCapture(true);
     // Where to land:
     // - ?step=count is the "Count my supplies" deep link — the URL itself
@@ -163,6 +174,7 @@ const AdminV2InventorySetup = () => {
   useEffect(() => { persist('supplier', supplierId || null); }, [supplierId]);
   useEffect(() => { persist('capture', showCapture ? { open: true } : null); }, [showCapture]);
   useEffect(() => { persist('reviewIdx', cards ? reviewIndex : null); }, [reviewIndex, cards]);
+  useEffect(() => { persist('scanmode', reviewScanMode); }, [reviewScanMode]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
   // --- Patient context <-> URL sync (standard admin-v2 pattern) --------------
@@ -577,8 +589,8 @@ const AdminV2InventorySetup = () => {
                 </select>
               </div>
 
-              <Button size="lg" onClick={() => setShowCapture(true)}>
-                <CameraIcon size={16} /> {slips.length ? 'Scan another slip' : 'Scan a packing slip'}
+              <Button size="lg" onClick={() => setScanChooser('slip')}>
+                <BarcodeIcon size={16} /> {slips.length ? 'Scan another slip' : 'Scan a packing slip'}
               </Button>
               <Button variant="secondary" size="lg" onClick={() => setShowCsv(true)}>
                 Upload a spreadsheet (CSV)
@@ -635,7 +647,7 @@ const AdminV2InventorySetup = () => {
 
               <Button
                 size="lg"
-                onClick={buildReviewCards}
+                onClick={() => setScanChooser('review')}
                 disabled={slips.length === 0 && extraDrafts.length === 0}
               >
                 Done — show me what you found
@@ -707,11 +719,24 @@ const AdminV2InventorySetup = () => {
                   {/* Interpretation: what we made of it */}
                   {renderCard(c)}
 
-                  {/* Barcode the physical box */}
+                  {/* Barcode the physical box — straight into the scanner
+                      confirmed on the way in, so a bad read is one tap to redo. */}
                   <div className="tw flex flex-wrap items-center gap-2">
-                    <Button variant="secondary" onClick={() => setShowItemScan(true)}>
-                      <CameraIcon size={16} /> Scan the item's barcode
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        if (reviewScanMode === 'camera') setShowItemScan(true);
+                        else if (reviewScanMode === 'external') setShowExternalItem(true);
+                        else setScanChooser('item');
+                      }}
+                    >
+                      <BarcodeIcon size={16} /> {c.productBarcode ? "Rescan the item's barcode" : "Scan the item's barcode"}
                     </Button>
+                    {reviewScanMode && (
+                      <Button variant="ghost" size="sm" onClick={() => setScanChooser('item')}>
+                        Switch scanner
+                      </Button>
+                    )}
                     {c.productBarcode && (
                       <span className="admin-v2-badge admin-v2-badge-success">
                         <CheckIcon size={12} /> box barcode saved · {c.productBarcode}
@@ -735,6 +760,12 @@ const AdminV2InventorySetup = () => {
                   <BarcodeScanDialog
                     open={showItemScan}
                     onClose={() => setShowItemScan(false)}
+                    onFound={handleItemBarcode(c.key)}
+                  />
+                  <ExternalScanDialog
+                    open={showExternalItem}
+                    onClose={() => setShowExternalItem(false)}
+                    title="Scan the item's barcode"
                     onFound={handleItemBarcode(c.key)}
                   />
                 </div>
@@ -850,6 +881,41 @@ const AdminV2InventorySetup = () => {
           sessionKey={`${keyBase}:scan`}
           title="Scan a packing slip"
           onComplete={handleScanComplete}
+        />
+        <ScannerChoiceDialog
+          open={scanChooser !== null}
+          onClose={() => setScanChooser(null)}
+          title={scanChooser === 'review'
+            ? 'How will you scan the item boxes?'
+            : 'How do you want to scan?'}
+          onChoose={(mode) => {
+            const target = scanChooser;
+            setScanChooser(null);
+            if (target === 'slip') {
+              if (mode === 'camera') setShowCapture(true); else setShowExternalSlip(true);
+              return;
+            }
+            // Review flows: the answer sticks for every card this session.
+            setReviewScanMode(mode);
+            if (target === 'review') {
+              buildReviewCards();
+            } else if (mode === 'camera') {
+              setShowItemScan(true);
+            } else {
+              setShowExternalItem(true);
+            }
+          }}
+        />
+        <ExternalScanDialog
+          multi
+          open={showExternalSlip}
+          onClose={() => setShowExternalSlip(false)}
+          title="Scan the slip's line barcodes"
+          hint="Point your scanner at each little barcode on the packing slip, one line at a time."
+          onComplete={(barcodes) => {
+            setShowExternalSlip(false);
+            handleScanComplete({ barcodes, ocrItems: [] });
+          }}
         />
         <CsvItemImport
           open={showCsv}

@@ -34,7 +34,8 @@ import {
   ChevronDownIcon,
   XIcon,
   EditIcon,
-  TrashIcon
+  TrashIcon,
+  BarcodeIcon
 } from '../../components/Icons';
 import {
   Dialog,
@@ -59,6 +60,9 @@ import { shipmentService } from '../../services/shipments';
 import { sessionGet, sessionSet, sessionClear } from '../../lib/sessionState';
 import PackingSlipCapture from './components/PackingSlipCapture';
 import CsvItemImport from './components/CsvItemImport';
+import ScannerChoiceDialog from './components/ScannerChoiceDialog';
+import ExternalScanDialog from './components/ExternalScanDialog';
+import { parseSlipBarcode } from '../../lib/slipScanner';
 import './AdminV2.css';
 
 const CONDITION_OPTIONS = [
@@ -114,6 +118,7 @@ const AdminV2ShipmentDetail = () => {
     qty_ordered: 1,
     qty_shipped: 0,
     qty_backordered: 0,
+    flagged_missing: false,
     unit_of_measure: '',
     unit_description: ''
   };
@@ -156,6 +161,8 @@ const AdminV2ShipmentDetail = () => {
   const [newItemDrafts, setNewItemDrafts] = useState(null);  // editable rows pending bulk save
   const [savingBulk, setSavingBulk] = useState(false);
   const [showCsvImport, setShowCsvImport] = useState(false);
+  const [importChooserOpen, setImportChooserOpen] = useState(false); // camera-vs-external before an import scan
+  const [showExternalImport, setShowExternalImport] = useState(false); // wedge-scan invoice line barcodes
 
   // --- Import-session persistence -------------------------------------------
   // Mobile browsers discard background tabs (hopping to Photos mid-import),
@@ -296,7 +303,8 @@ const AdminV2ShipmentDetail = () => {
         equipment_id: itemFormData.equipment_id ? parseInt(itemFormData.equipment_id) : null,
         qty_ordered: parseInt(itemFormData.qty_ordered) || 0,
         qty_shipped: parseInt(itemFormData.qty_shipped) || 0,
-        qty_backordered: parseInt(itemFormData.qty_backordered) || 0
+        qty_backordered: parseInt(itemFormData.qty_backordered) || 0,
+        flagged_missing: !!itemFormData.flagged_missing
       };
 
       if (editingItemId) {
@@ -340,6 +348,7 @@ const AdminV2ShipmentDetail = () => {
       qty_ordered: item.qty_ordered ?? 0,
       qty_shipped: item.qty_shipped ?? 0,
       qty_backordered: item.qty_backordered ?? 0,
+      flagged_missing: !!item.flagged_missing,
       unit_of_measure: item.unit_of_measure || '',
       unit_description: item.unit_description || ''
     });
@@ -488,7 +497,7 @@ const AdminV2ShipmentDetail = () => {
       ...prev,
       [itemId]: {
         ...prev[itemId],
-        [field]: parseInt(value) || 0
+        [field]: field === 'flagged_missing' ? !!value : (parseInt(value) || 0)
       }
     }));
   };
@@ -505,7 +514,8 @@ const AdminV2ShipmentDetail = () => {
           credentials: 'include',
           body: JSON.stringify({
             qty_shipped: edits.qty_shipped,
-            qty_backordered: edits.qty_backordered
+            qty_backordered: edits.qty_backordered,
+            ...(edits.flagged_missing !== undefined ? { flagged_missing: edits.flagged_missing } : {})
           })
         });
         
@@ -666,6 +676,21 @@ const AdminV2ShipmentDetail = () => {
       openReview(resolveScanLines(lines, shipment.items || []));
     }
     fetchShipment(); // pick up the attached slip pages
+  };
+
+  // External-scanner import: raw line barcodes only (no photos, no OCR).
+  // Unlike the camera dialog — which accumulates pages internally — each
+  // wedge session hands over a fresh list, so merge into any drafts already
+  // on screen instead of replacing them.
+  const handleExternalImport = async (barcodes) => {
+    setShowExternalImport(false);
+    const { buildNewItems } = await import('../../lib/slipScanner');
+    const drafts = buildNewItems(barcodes, [], shipment.items || [], equipment);
+    setNewItemDrafts((prev) => {
+      if (!prev) return drafts;
+      const known = new Set(prev.map((d) => (d.item_number || '').trim()).filter(Boolean));
+      return [...prev, ...drafts.filter((d) => !known.has((d.item_number || '').trim()))];
+    });
   };
 
   const updateScanExtra = (key, patch) => {
@@ -1440,8 +1465,8 @@ const AdminV2ShipmentDetail = () => {
                   <PlusIcon size={16} /> {savingBulk ? 'Adding…' : `Add ${newItemDrafts.length} item${newItemDrafts.length === 1 ? '' : 's'}`}
                 </Button>
               )}
-              <Button variant="secondary" onClick={() => { setCaptureMode('import'); setShowCapture(true); }} disabled={savingBulk}>
-                <CameraIcon size={16} /> Scan more pages
+              <Button variant="secondary" onClick={() => setImportChooserOpen(true)} disabled={savingBulk}>
+                <BarcodeIcon size={16} /> Scan more pages
               </Button>
               <Button
                 variant="ghost"
@@ -1568,8 +1593,8 @@ const AdminV2ShipmentDetail = () => {
             <h2>Items</h2>
             {hasPermission('equipment.update') && !isFinalized && (
               <div className="tw flex flex-wrap gap-2">
-                <Button variant="secondary" onClick={() => { setCaptureMode('import'); setShowCapture(true); }}>
-                  <CameraIcon size={16} /> Scan invoice to add items
+                <Button variant="secondary" onClick={() => setImportChooserOpen(true)}>
+                  <BarcodeIcon size={16} /> Scan invoice to add items
                 </Button>
                 <Button variant="secondary" onClick={() => setShowCsvImport(true)}>
                   <FileTextIcon size={16} /> Import CSV
@@ -1653,19 +1678,39 @@ const AdminV2ShipmentDetail = () => {
                         </td>
                         <td data-label="Received" style={{ textAlign: 'center' }}>
                           {receivingMode ? (
-                            <input
-                              type="number"
-                              min="0"
-                              value={itemEdit.qty_received ?? totalReceived ?? 0}
-                              onChange={e => updateItemEdit(item.id, 'qty_received', parseInt(e.target.value) || 0)}
-                              style={{ width: '60px', textAlign: 'center' }}
-                            />
+                            <div style={{ display: 'inline-flex', flexDirection: 'column', gap: 4, alignItems: 'center' }}>
+                              <input
+                                type="number"
+                                min="0"
+                                value={itemEdit.qty_received ?? totalReceived ?? 0}
+                                onChange={e => updateItemEdit(item.id, 'qty_received', parseInt(e.target.value) || 0)}
+                                style={{ width: '60px', textAlign: 'center' }}
+                              />
+                              {/* Invoice says shipped, box says otherwise — flag it to chase the supplier */}
+                              <label style={{ display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', fontSize: '0.75rem', cursor: 'pointer' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={itemEdit.flagged_missing ?? !!item.flagged_missing}
+                                  onChange={e => updateItemEdit(item.id, 'flagged_missing', e.target.checked)}
+                                />
+                                never arrived
+                              </label>
+                            </div>
                           ) : (
-                            totalReceived > 0 ? (
-                              <span className={totalReceived >= item.qty_shipped ? 'admin-v2-text-success' : ''}>
-                                {totalReceived} / {item.qty_shipped}
-                              </span>
-                            ) : '-'
+                            <>
+                              {totalReceived > 0 ? (
+                                <span className={totalReceived >= item.qty_shipped ? 'admin-v2-text-success' : ''}>
+                                  {totalReceived} / {item.qty_shipped}
+                                </span>
+                              ) : (item.flagged_missing ? null : '-')}
+                              {item.flagged_missing && (
+                                <div>
+                                  <span className="admin-v2-badge admin-v2-badge-danger">
+                                    <AlertIcon size={12} /> never arrived
+                                  </span>
+                                </div>
+                              )}
+                            </>
                           )}
                         </td>
                         {canReceive && !receivingMode && (
@@ -1747,8 +1792,8 @@ const AdminV2ShipmentDetail = () => {
               <p>No items on this list yet. The fast way: scan the invoice and we'll read them off for you.</p>
               {hasPermission('equipment.update') && !isFinalized && (
                 <div className="tw flex flex-wrap justify-center gap-2">
-                  <Button onClick={() => { setCaptureMode('import'); setShowCapture(true); }}>
-                    <CameraIcon size={16} /> Scan invoice to add items
+                  <Button onClick={() => setImportChooserOpen(true)}>
+                    <BarcodeIcon size={16} /> Scan invoice to add items
                   </Button>
                   <Button variant="secondary" onClick={() => setShowAddItemModal(true)}>
                     <PlusIcon size={16} /> Add by hand
@@ -1838,6 +1883,30 @@ const AdminV2ShipmentDetail = () => {
           expectedItems={shipment.items || []}
           onComplete={handleScanComplete}
           mode={captureMode}
+        />
+        <ScannerChoiceDialog
+          open={importChooserOpen}
+          onClose={() => setImportChooserOpen(false)}
+          title="How will you scan the invoice?"
+          onChoose={(mode) => {
+            setImportChooserOpen(false);
+            if (mode === 'camera') {
+              setCaptureMode('import');
+              setShowCapture(true);
+            } else {
+              setShowExternalImport(true);
+            }
+          }}
+        />
+        <ExternalScanDialog
+          multi
+          askExpected
+          open={showExternalImport}
+          onClose={() => setShowExternalImport(false)}
+          title="Scan the invoice barcodes"
+          hint="Point your scanner at each line's little barcode — one scan per item on the invoice."
+          warnFor={(code) => (parseSlipBarcode(code) ? null : "doesn't look like an item barcode")}
+          onComplete={handleExternalImport}
         />
 
         {/* Add Item Dialog */}
@@ -1942,6 +2011,15 @@ const AdminV2ShipmentDetail = () => {
                   />
                 </Field>
               </div>
+
+              <label className="flex items-center gap-2 text-sm" style={{ cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={!!itemFormData.flagged_missing}
+                  onChange={e => setItemFormData({...itemFormData, flagged_missing: e.target.checked})}
+                />
+                Flag as missing — the invoice says it shipped, but it never arrived
+              </label>
 
               <FormRow>
                 <Field label="Unit of Measure" htmlFor="item-uom">
