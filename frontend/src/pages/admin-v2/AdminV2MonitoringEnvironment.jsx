@@ -24,7 +24,7 @@ import Chart from 'chart.js/auto';
 import 'chartjs-adapter-date-fns';
 import annotationPlugin from 'chartjs-plugin-annotation';
 import zoomPlugin from 'chartjs-plugin-zoom';
-import config from '../../config';
+import config, { apiFetch } from '../../config';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import { useChartColors } from '../../hooks/useChartColors';
 import { Alert } from '@/components/ui/alert';
@@ -81,7 +81,6 @@ const AdminV2MonitoringEnvironment = () => {
   const [rangeDays, setRangeDays] = useState(30);
   const [metricsCatalog, setMetricsCatalog] = useState({});
   const [activeMetrics, setActiveMetrics] = useState(['barometric_pressure', 'pressure_delta_6h']);
-  const [hasRoomData, setHasRoomData] = useState(false);
   const [envSeries, setEnvSeries] = useState({});
   const [clinicalEvents, setClinicalEvents] = useState(null);
   const [visibleStreams, setVisibleStreams] = useState({
@@ -101,15 +100,10 @@ const AdminV2MonitoringEnvironment = () => {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`${config.apiUrl}/api/environment/metrics`, { credentials: 'include' });
+        const res = await apiFetch(`${config.apiUrl}/api/environment/metrics`);
         if (res.ok) {
           const list = await res.json();
           setMetricsCatalog(Object.fromEntries(list.map((m) => [m.name, m])));
-        }
-        const locRes = await fetch(`${config.apiUrl}/api/environment/locations`, { credentials: 'include' });
-        if (locRes.ok) {
-          const locs = await locRes.json();
-          setHasRoomData(locs.some((l) => l.scope === 'room'));
         }
       } catch (err) {
         console.error('Environment catalog fetch failed:', err);
@@ -134,16 +128,14 @@ const AdminV2MonitoringEnvironment = () => {
             metric: key, scope: 'outdoor', bucket: '1h', limit: '2500',
             from: from.toISOString(), to: to.toISOString(),
           });
-          const res = await fetch(`${config.apiUrl}/api/environment/observations?${params}`,
-                                  { credentials: 'include' });
+          const res = await apiFetch(`${config.apiUrl}/api/environment/observations?${params}`);
           if (!res.ok) throw new Error(`observations HTTP ${res.status}`);
           series[key] = (await res.json()).reverse();
         }));
 
         const evParams = new URLSearchParams({ from: from.toISOString(), to: to.toISOString() });
-        const evRes = await fetch(
-          `${config.apiUrl}/api/analysis/patients/${selectedPatient.id}/clinical-events?${evParams}`,
-          { credentials: 'include' });
+        const evRes = await apiFetch(
+          `${config.apiUrl}/api/analysis/patients/${selectedPatient.id}/clinical-events?${evParams}`);
         if (!evRes.ok) throw new Error(`clinical-events HTTP ${evRes.status}`);
         const events = await evRes.json();
 
@@ -169,9 +161,8 @@ const AdminV2MonitoringEnvironment = () => {
       try {
         const params = new URLSearchParams({ days: String(Math.max(rangeDays, 7)) });
         if (correlationWindow) params.set('window_hours', String(correlationWindow));
-        const res = await fetch(
-          `${config.apiUrl}/api/analysis/patients/${selectedPatient.id}/env-correlations?${params}`,
-          { credentials: 'include' });
+        const res = await apiFetch(
+          `${config.apiUrl}/api/analysis/patients/${selectedPatient.id}/env-correlations?${params}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const body = await res.json();
         if (!cancelled) setCorrelations(body);
@@ -414,10 +405,11 @@ const AdminV2MonitoringEnvironment = () => {
         </div>
 
         <div className="tw" style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-          {/* Room picker: enabled once room-scope data exists (GH #48) */}
+          {/* Location placeholder: room selection ships with room-level
+              ingestion (GH #48); until then everything is outdoor scope. */}
           <select
-            disabled={!hasRoomData}
-            title={hasRoomData ? 'Choose location' : 'Room sensors not set up yet'}
+            disabled
+            title="Room sensors not set up yet"
             style={{
               padding: '5px 8px', borderRadius: 6, fontSize: 12,
               background: 'var(--secondary)', color: 'var(--muted-foreground)',

@@ -239,14 +239,14 @@ def _rate_ratio_ci(a: int, b: int, exposed_hours: int, baseline_hours: int):
     return rr, ci_low, ci_high, corrected
 
 
-def _build_message(card: Dict, days: int) -> str:
+def _build_message(card: Dict, days: int, rr: float, lo: float, hi: float) -> str:
     """Guardrailed wording: descriptive proximity in time, never causation,
-    never advice."""
+    never advice. Takes the unrounded statistics — the payload's rounded
+    rate_ratio can hit 0.0 for tiny ratios, which must not reach the
+    1/rr "less common" arithmetic."""
     outcome_label = card["outcome"]["label"]
     exposure_label = card["exposure"]["label"]
     w = card["window_hours"]
-    rr = card["rate_ratio"]
-    lo, hi = card["ci_low"], card["ci_high"]
     if lo > 1.0 or hi < 1.0:
         if rr >= 1.0:
             return (f"{outcome_label} were {rr:.1f}× more common within {w} hours "
@@ -280,15 +280,17 @@ def _analyze_pair(
                     message=f"No {exp['metric'].replace('_', ' ')} data yet.")
         return card
 
-    # Coverage clamp: only judge hours where the metric was actually observed,
-    # so a partially backfilled series can't inflate the baseline.
+    # Only hours where the metric was actually observed count — a gap
+    # (connector outage, partial backfill) is neither exposed nor baseline
+    # time, and events falling inside a gap are excluded entirely because
+    # their exposure state is unknown.
+    observed = {ts for ts, _ in series}
     first_obs = series[0][0]
     last_obs = series[-1][0]
-    total_hours = int((last_obs - first_obs).total_seconds() // 3600) + 1
     card["coverage"] = {
         "first_obs": first_obs.isoformat(),
         "last_obs": last_obs.isoformat(),
-        "total_hours": total_hours,
+        "observed_hours": len(observed),
     }
 
     exposed_source_hours = [ts for ts, v in series
@@ -297,11 +299,11 @@ def _analyze_pair(
     for e in exposed_source_hours:
         for h in range(1, window_hours + 1):
             t = e + timedelta(hours=h)
-            if t <= last_obs:
+            if t in observed:
                 mask.add(t)
 
     exposed_hours = len(mask)
-    baseline_hours = total_hours - exposed_hours
+    baseline_hours = len(observed) - exposed_hours
     card["exposed_hours"] = exposed_hours
     card["baseline_hours"] = baseline_hours
 
@@ -326,8 +328,9 @@ def _analyze_pair(
         hour = _hour_floor(datetime.fromisoformat(e["ts"]))
         if hour in mask:
             a += 1
-        else:
+        elif hour in observed:
             b += 1
+        # else: unobserved hour — exposure state unknown, event excluded
     card["exposed_events"] = a
     card["baseline_events"] = b
 
@@ -347,7 +350,7 @@ def _analyze_pair(
         rate_ratio=round(rr, 2), ci_low=round(lo, 2), ci_high=round(hi, 2),
         continuity_corrected=corrected,
     )
-    card["message"] = _build_message(card, days)
+    card["message"] = _build_message(card, days, rr, lo, hi)
     return card
 
 

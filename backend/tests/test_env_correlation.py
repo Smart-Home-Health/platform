@@ -293,3 +293,101 @@ def test_env_correlation_requires_auth(client, patient):
         f"/api/analysis/patients/{patient.id}/clinical-events",
         params={"from": "2026-01-01T00:00:00", "to": "2026-01-02T00:00:00"},
     ).status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Review fixes: gap hours, tiny rate ratios, patient access
+# ---------------------------------------------------------------------------
+
+def test_gap_hours_are_neither_baseline_nor_exposed(admin_client, db_session,
+                                                    patient, account):
+    """Unobserved hours (outage/partial backfill) must not pad the baseline,
+    and events inside a gap are excluded — their exposure state is unknown."""
+    end = _now_hour()
+    start = end - timedelta(days=30)
+    obs, h = [], start
+    while h <= end:
+        hours_in = int((h - start).total_seconds() // 3600)
+        day = hours_in // 24
+        hour_of_day = hours_in % 24
+        # Same drop pattern as _seed_pressure_pattern, but with a 5-day hole
+        # (days 12-16) in the middle of the series
+        in_gap = 12 <= day <= 16
+        in_drop = (day % 3 == 0) and (10 <= hour_of_day < 14)
+        if not in_gap:
+            obs.append(EnvObservation(
+                timestamp=h, metric="pressure_delta_6h",
+                value=-6.0 if in_drop else 0.5, unit="hPa",
+                scope="outdoor", location="", source_id="test",
+                quality="estimated",
+            ))
+        h += timedelta(hours=1)
+    from environment.service import emit_observations
+    emit_observations(db_session, "open_meteo", obs, publish_events=False)
+    db_session.commit()
+
+    # Alarms at 02:00 (never inside an exposure window, which spans
+    # 11:00-20:00 on drop days): 6 on observed days, 3 inside the gap
+    _plant_spo2_alarms(db_session, patient, account,
+                       [start + timedelta(days=d, hours=2) for d in (1, 2, 4, 5, 7, 8)])
+    _plant_spo2_alarms(db_session, patient, account,
+                       [start + timedelta(days=14, hours=hh) for hh in (2, 3, 4)])
+
+    resp = admin_client.get(
+        f"/api/analysis/patients/{patient.id}/env-correlations?days=30")
+    card = _get_card(resp.json(), "pressure_drop_6h", "spo2_alarms")
+    # Observed hours only — the 120-hour gap is neither exposed nor baseline.
+    # (Range end is the current hour, exclusive, so allow one hour of slack.)
+    assert len(obs) - 1 <= card["coverage"]["observed_hours"] <= len(obs)
+    assert card["exposed_hours"] + card["baseline_hours"] == card["coverage"]["observed_hours"]
+    assert card["coverage"]["observed_hours"] <= 30 * 24 - 100
+    # Gap events excluded: 6 baseline alarms, not 9
+    assert card["exposed_events"] == 0
+    assert card["baseline_events"] == 6
+
+
+def test_tiny_rate_ratio_keeps_card(db_session):
+    """A rate ratio that rounds to 0.00 must still produce a message
+    (regression: 1/rounded-rr used to divide by zero and drop the card)."""
+    from analysis.env_correlation import _build_message
+
+    card = {
+        "exposure": {"label": "a pressure drop of 4 hPa or more over 6 hours"},
+        "outcome": {"label": "SpO2 alarms"},
+        "window_hours": 6,
+    }
+    msg = _build_message(card, 90, rr=0.004, lo=0.001, hi=0.9)
+    assert "less common" in msg
+    assert "×" in msg
+
+
+def test_patient_access_scoping_enforced(client, db_session, account, patient):
+    """A non-admin user with no PatientAccess grant gets 404, not data."""
+    from crud.users import create_user
+    from routes.auth import create_access_token
+
+    outsider = create_user(
+        db_session, username="outsider_env", password="password123",
+        full_name="No Access", is_system_admin=False, force_password_reset=False,
+    )
+    outsider.account_id = account.id
+    db_session.commit()
+    token = create_access_token(user=outsider, account=account, auth_level="full")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    resp = client.get(
+        f"/api/analysis/patients/{patient.id}/env-correlations", headers=headers)
+    assert resp.status_code == 404
+
+    now = _now_hour()
+    resp = client.get(
+        f"/api/analysis/patients/{patient.id}/clinical-events",
+        params={"from": (now - timedelta(days=7)).isoformat(), "to": now.isoformat()},
+        headers=headers)
+    assert resp.status_code == 404
+
+
+def test_admin_retains_access_after_scoping(admin_client, patient):
+    resp = admin_client.get(
+        f"/api/analysis/patients/{patient.id}/env-correlations?days=30")
+    assert resp.status_code == 200

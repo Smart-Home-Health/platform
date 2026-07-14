@@ -20,7 +20,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from dependencies import get_db, require_read_access
+from dependencies import get_db, get_current_user, require_read_access
+from models.users import User
 from routes.auth import require_full_auth
 from analysis.med_vital_correlation import analyze_med_effects, get_patient_medications_for_analysis
 from analysis.env_correlation import analyze_env_correlations, get_clinical_events
@@ -30,13 +31,28 @@ logger = logging.getLogger("analysis")
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
 
 
+def _ensure_patient_visible(db: Session, user: User, patient_id: int) -> None:
+    """Enforce PatientAccess scoping (same source of truth as /api/patients).
+
+    404 rather than 403 so an unauthorized caller can't probe which patient
+    ids exist.
+    """
+    from crud.patients import get_visible_patient_ids
+    allowed = get_visible_patient_ids(db, user)
+    if allowed is not None and patient_id not in allowed:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+
 @router.get("/patients/{patient_id}/medications")
 async def list_medications_for_analysis(
     patient_id: int,
     db: Session = Depends(get_db),
     _auth=Depends(require_full_auth),
     _read=Depends(require_read_access),
+    current_user: User = Depends(get_current_user),
 ):
+    _ensure_patient_visible(db, current_user, patient_id)
     return get_patient_medications_for_analysis(db, patient_id)
 
 
@@ -51,7 +67,9 @@ async def get_med_effects(
     db: Session = Depends(get_db),
     _auth=Depends(require_full_auth),
     _read=Depends(require_read_access),
+    current_user: User = Depends(get_current_user),
 ):
+    _ensure_patient_visible(db, current_user, patient_id)
     return analyze_med_effects(db, patient_id, medication_id,
                                pre_start, pre_end, post_start, post_end)
 
@@ -69,8 +87,10 @@ async def get_env_correlations(
     db: Session = Depends(get_db),
     _auth=Depends(require_full_auth),
     _read=Depends(require_read_access),
+    current_user: User = Depends(get_current_user),
 ):
     """Personal environmental correlation cards (descriptive, non-causal)."""
+    _ensure_patient_visible(db, current_user, patient_id)
     thresholds = {
         key: value for key, value in {
             "pressure_drop_6h": pressure_drop_6h_threshold,
@@ -93,8 +113,10 @@ async def list_clinical_events(
     db: Session = Depends(get_db),
     _auth=Depends(require_full_auth),
     _read=Depends(require_read_access),
+    current_user: User = Depends(get_current_user),
 ):
     """Curated clinical event streams for the environment overlay chart."""
+    _ensure_patient_visible(db, current_user, patient_id)
     if from_ >= to:
         raise HTTPException(status_code=422, detail="'from' must be before 'to'")
     if to - from_ > timedelta(days=366):

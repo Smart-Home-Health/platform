@@ -21,7 +21,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act, fireEvent, waitFor } from '@testing-library/react';
 
-const { chartInstances } = vi.hoisted(() => ({ chartInstances: [] }));
+const { chartInstances, apiFetchMock } = vi.hoisted(() => ({
+  chartInstances: [],
+  apiFetchMock: vi.fn(),
+}));
 
 vi.mock('chart.js/auto', () => {
   class MockChart {
@@ -39,7 +42,7 @@ vi.mock('chart.js/auto', () => {
 vi.mock('chartjs-adapter-date-fns', () => ({}));
 vi.mock('chartjs-plugin-annotation', () => ({ default: {} }));
 vi.mock('chartjs-plugin-zoom', () => ({ default: {} }));
-vi.mock('../../config', () => ({ default: { apiUrl: '' }, apiFetch: vi.fn() }));
+vi.mock('../../config', () => ({ default: { apiUrl: '' }, apiFetch: apiFetchMock }));
 vi.mock('../../contexts/AdminPatientContext', () => {
   const selectedPatient = { id: 2, first_name: 'Test' };
   return { useAdminPatient: () => ({ selectedPatient }) };
@@ -122,9 +125,15 @@ const renderPage = async () => {
 beforeEach(() => {
   chartInstances.length = 0;
   HTMLCanvasElement.prototype.getContext = vi.fn(() => ({}));
-  vi.stubGlobal('fetch', vi.fn(async (url) => ({
+  // The page must use apiFetch (iframe bearer-token support), never raw
+  // fetch — the global fetch stub throws so any regression fails loudly.
+  apiFetchMock.mockReset();
+  apiFetchMock.mockImplementation(async (url) => ({
     ok: true, status: 200, json: async () => route(url),
-  })));
+  }));
+  vi.stubGlobal('fetch', vi.fn(async (url) => {
+    throw new Error(`raw fetch used instead of apiFetch: ${url}`);
+  }));
 });
 
 const latestChart = () => chartInstances[chartInstances.length - 1];
@@ -165,13 +174,13 @@ describe('AdminV2MonitoringEnvironment', () => {
 
   it('changing the range preset refetches with the new days', async () => {
     await renderPage();
-    fetch.mockClear();
+    apiFetchMock.mockClear();
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: '90d' }));
       await new Promise((r) => setTimeout(r, 350));
     });
     await waitFor(() => {
-      const corrCall = fetch.mock.calls
+      const corrCall = apiFetchMock.mock.calls
         .map((c) => String(c[0])).find((u) => u.includes('/env-correlations'));
       expect(corrCall).toContain('days=90');
     });
