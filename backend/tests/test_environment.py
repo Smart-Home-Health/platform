@@ -668,3 +668,76 @@ def test_account_level_auth_cannot_write(account_client):
     resp = account_client.put("/api/environment/connectors/open_meteo/config",
                               json={"enabled": False})
     assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# PR #76 review fixes: source_id identity + no duplicate events
+# ---------------------------------------------------------------------------
+
+def test_changed_source_id_starts_parallel_series(db_session):
+    """Changing a connector's identity (e.g. new coordinates) must not have
+    its readings silently swallowed by the old series' dedup rows."""
+    from environment.service import emit_observations
+
+    ts = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    old = _obs(ts=ts, value=1000.0, source_id="40.0,-75.0")
+    assert emit_observations(db_session, "open_meteo", [old],
+                             publish_events=False) == 1
+    db_session.commit()
+
+    # Same metric/timestamp, new coordinates: must insert, not dedup
+    new = _obs(ts=ts, value=990.0, source_id="39.9,-84.3")
+    assert emit_observations(db_session, "open_meteo", [new],
+                             publish_events=False) == 1
+    db_session.commit()
+    assert _count(db_session, metric="barometric_pressure",
+                  source_type="open_meteo") == 2
+
+
+def test_pressure_deltas_do_not_mix_source_ids(db_session):
+    """Deltas are computed within one source_id series — never across a
+    coordinate change."""
+    from environment.service import compute_pressure_deltas, emit_observations
+
+    now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    emit_observations(db_session, "open_meteo", [
+        # Old location provides the t-1h reading...
+        _obs(ts=now - timedelta(hours=1), value=1000.0, source_id="old"),
+        # ...new location has only the current reading
+        _obs(ts=now, value=950.0, source_id="new"),
+    ], publish_events=False)
+    db_session.commit()
+
+    # No delta: "new" has no 1h-ago base of its own, and it must not borrow
+    # "old"'s reading (which would yield a bogus -50 hPa crash)
+    assert compute_pressure_deltas(db_session, "open_meteo") == []
+
+    # A same-source base does produce a delta
+    emit_observations(db_session, "open_meteo", [
+        _obs(ts=now - timedelta(hours=1), value=949.0, source_id="new"),
+    ], publish_events=False)
+    db_session.commit()
+    deltas = compute_pressure_deltas(db_session, "open_meteo")
+    one_hour = [d for d in deltas if d.metric == "pressure_delta_1h"
+                and d.timestamp == now]
+    assert len(one_hour) == 1
+    assert one_hour[0].value == 1.0
+    assert one_hour[0].source_id == "new"
+
+
+def test_deduped_observations_do_not_republish_events(db_session, monkeypatch):
+    """An hourly re-poll re-submits the same fresh readings; events must fire
+    only for rows that actually inserted."""
+    import environment.service as svc
+
+    published = []
+    monkeypatch.setattr(svc, "publish_event", published.append)
+
+    fresh = _obs(ts=datetime.now(timezone.utc).replace(minute=0, second=0,
+                                                       microsecond=0))
+    assert svc.emit_observations(db_session, "test_src", [fresh]) == 1
+    assert len(published) == 1
+
+    # Same reading again (simulates the next poll's 24h-lookback overlap)
+    assert svc.emit_observations(db_session, "test_src", [fresh]) == 0
+    assert len(published) == 1  # no duplicate event

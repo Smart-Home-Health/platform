@@ -56,15 +56,21 @@ class EnvironmentalObservation(Base):
     location = Column(String(100), nullable=False, server_default='')
 
     source_type = Column(String(50), nullable=False)  # connector slug
-    source_id = Column(String(100), nullable=True)    # station/device id
+    # Station/device/coordinate identity within a connector (e.g. "lat,lon").
+    # Empty string when the connector has no sub-identity. NOT NULL so it can
+    # participate in the dedup constraint (NULLs are distinct in PG uniques).
+    source_id = Column(String(100), nullable=False, server_default='')
     quality = Column(String(10), nullable=False, server_default='measured')
 
     __table_args__ = (
         # Dedup backbone: one reading per source per metric per place per
         # instant. Ingest uses INSERT .. ON CONFLICT DO NOTHING against this,
-        # which is what makes re-polls and backfill idempotent.
+        # which is what makes re-polls and backfill idempotent. source_id is
+        # included so changing a connector's identity (e.g. new coordinates)
+        # starts a parallel series instead of silently dropping overlapping
+        # readings against the old one.
         UniqueConstraint(
-            'source_type', 'metric', 'scope', 'location', 'timestamp',
+            'source_type', 'source_id', 'metric', 'scope', 'location', 'timestamp',
             name='uq_env_obs_source_metric_place_ts',
         ),
         Index('ix_env_obs_metric_time', 'metric', 'timestamp'),

@@ -26,9 +26,12 @@ the partition column, which create_hypertable() requires (see migrations
 030-032 for the precedent). The extension itself was installed by 030, and the
 table is new/empty, so no migrate_data is needed.
 
-The unique constraint (source_type, metric, scope, location, timestamp) is the
-idempotency backbone: ingest inserts with ON CONFLICT DO NOTHING, so connector
-re-polls and repeated historical backfills are no-ops.
+The unique constraint (source_type, source_id, metric, scope, location,
+timestamp) is the idempotency backbone: ingest inserts with ON CONFLICT DO
+NOTHING, so connector re-polls and repeated historical backfills are no-ops.
+source_id (e.g. Open-Meteo's "lat,lon") is part of the key so changing a
+connector's coordinates starts a new series rather than silently discarding
+readings that overlap the old one.
 
 Unlike 031/032 this migration has a real downgrade: dropping a hypertable is
 an ordinary DROP TABLE; only converting one back to a plain table is not.
@@ -56,12 +59,12 @@ def upgrade() -> None:
         sa.Column('scope', sa.String(length=10), nullable=False),
         sa.Column('location', sa.String(length=100), nullable=False, server_default=''),
         sa.Column('source_type', sa.String(length=50), nullable=False),
-        sa.Column('source_id', sa.String(length=100), nullable=True),
+        sa.Column('source_id', sa.String(length=100), nullable=False, server_default=''),
         sa.Column('quality', sa.String(length=10), nullable=False, server_default='measured'),
         sa.ForeignKeyConstraint(['account_id'], ['accounts.id'], ondelete='CASCADE'),
         sa.PrimaryKeyConstraint('id', 'timestamp'),
         sa.UniqueConstraint(
-            'source_type', 'metric', 'scope', 'location', 'timestamp',
+            'source_type', 'source_id', 'metric', 'scope', 'location', 'timestamp',
             name='uq_env_obs_source_metric_place_ts',
         ),
     )

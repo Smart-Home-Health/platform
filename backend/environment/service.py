@@ -80,34 +80,40 @@ def emit_observations(
             "scope": obs.scope,
             "location": obs.location or "",
             "source_type": source_type,
-            "source_id": obs.source_id,
+            "source_id": obs.source_id or "",
             "quality": obs.quality,
         })
 
-    inserted = 0
     table = EnvironmentalObservation.__table__
+    inserted_rows = []
     for start in range(0, len(rows), _INSERT_CHUNK):
         chunk = rows[start:start + _INSERT_CHUNK]
-        stmt = pg_insert(table).values(chunk).on_conflict_do_nothing(
-            constraint="uq_env_obs_source_metric_place_ts"
+        # RETURNING identifies which rows actually landed, so re-polled
+        # duplicates (deduped by the unique constraint) never re-publish
+        # bus events.
+        stmt = (
+            pg_insert(table).values(chunk)
+            .on_conflict_do_nothing(constraint="uq_env_obs_source_metric_place_ts")
+            .returning(table.c.timestamp, table.c.metric, table.c.value,
+                       table.c.unit, table.c.scope, table.c.location,
+                       table.c.quality)
         )
-        result = db.execute(stmt)
-        inserted += result.rowcount or 0
+        inserted_rows.extend(db.execute(stmt).fetchall())
 
     if publish_events:
-        for obs in observations:
-            ts = obs.timestamp
+        for row in inserted_rows:
+            ts = row.timestamp
             if ts.tzinfo is None:
                 ts = ts.replace(tzinfo=timezone.utc)
             if now - ts <= FRESHNESS_WINDOW:
                 publish_event(EnvironmentalObservationRecorded(
-                    ts=obs.timestamp, metric=obs.metric, value=obs.value,
-                    unit=obs.unit, scope=obs.scope, location=obs.location or "",
-                    source_type=source_type, quality=obs.quality,
+                    ts=row.timestamp, metric=row.metric, value=row.value,
+                    unit=row.unit, scope=row.scope, location=row.location,
+                    source_type=source_type, quality=row.quality,
                     source=EventSource.SYSTEM,
                 ))
 
-    return inserted
+    return len(inserted_rows)
 
 
 def compute_pressure_deltas(
@@ -124,9 +130,11 @@ def compute_pressure_deltas(
     and each window ``w``, emits ``pressure_delta_<w>h = v(t) - v(t-w)`` when a
     reading exists at exactly ``t - w hours`` (Open-Meteo and other hourly
     sources sit on an exact hourly grid; irregular sources simply produce
-    fewer deltas). Base metric is surface pressure — the locally felt value —
-    rather than MSL. Results go back through ``emit_observations``, so
-    re-computation is idempotent.
+    fewer deltas). The series is partitioned by ``source_id``, so after e.g. a
+    coordinate change a delta is never computed across two different
+    locations' readings. Base metric is surface pressure — the locally felt
+    value — rather than MSL. Results go back through ``emit_observations``,
+    so re-computation is idempotent.
     """
     max_window = max(env_metrics.PRESSURE_DELTA_WINDOWS)
     query = (
@@ -147,25 +155,29 @@ def compute_pressure_deltas(
     if not rows:
         return []
 
-    by_ts = {r.timestamp: r for r in rows}
+    by_source: Dict[str, Dict] = {}
+    for r in rows:
+        by_source.setdefault(r.source_id, {})[r.timestamp] = r
+
     deltas: List[EnvObservation] = []
-    for ts, row in by_ts.items():
-        if since is not None and ts < since:
-            continue  # lead-in rows are only delta bases, not delta targets
-        for w in env_metrics.PRESSURE_DELTA_WINDOWS:
-            base = by_ts.get(ts - timedelta(hours=w))
-            if base is None:
-                continue
-            deltas.append(EnvObservation(
-                timestamp=ts,
-                metric=f"pressure_delta_{w}h",
-                value=round(row.value - base.value, 2),
-                unit="hPa",
-                scope=scope,
-                location=location or "",
-                source_id=row.source_id,
-                quality="estimated",
-            ))
+    for source_id, by_ts in by_source.items():
+        for ts, row in by_ts.items():
+            if since is not None and ts < since:
+                continue  # lead-in rows are only delta bases, not delta targets
+            for w in env_metrics.PRESSURE_DELTA_WINDOWS:
+                base = by_ts.get(ts - timedelta(hours=w))
+                if base is None:
+                    continue
+                deltas.append(EnvObservation(
+                    timestamp=ts,
+                    metric=f"pressure_delta_{w}h",
+                    value=round(row.value - base.value, 2),
+                    unit="hPa",
+                    scope=scope,
+                    location=location or "",
+                    source_id=source_id,
+                    quality="estimated",
+                ))
     return deltas
 
 
