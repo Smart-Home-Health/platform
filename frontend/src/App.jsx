@@ -67,6 +67,7 @@ import AdminV2AccountSettings from './pages/admin-v2/AdminV2AccountSettings';
 import AdminV2Backup from './pages/admin-v2/AdminV2Backup';
 import AdminV2SystemHealth from './pages/admin-v2/AdminV2SystemHealth';
 import AdminV2Security from './pages/admin-v2/AdminV2Security';
+import AdminV2Environment from './pages/admin-v2/AdminV2Environment';
 import AdminV2Connections from './pages/admin-v2/AdminV2Connections';
 import AdminV2Mqtt from './pages/admin-v2/AdminV2Mqtt';
 import { AdminV2SettingsGeneral } from './pages/admin-v2/settings';
@@ -204,6 +205,7 @@ function AppContent() {
           <Route path="/care/configuration/backup" element={<ProtectedRoute><Layout><AdminV2Backup /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/system-health" element={<ProtectedRoute><Layout><AdminV2SystemHealth /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/security" element={<ProtectedRoute><Layout><AdminV2Security /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/environment" element={<ProtectedRoute><Layout><AdminV2Environment /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/users" element={<ProtectedRoute><Layout><AdminV2Users /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/users/roles" element={<ProtectedRoute><Layout><AdminV2Roles /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/users/roles/:roleId" element={<ProtectedRoute><Layout><AdminV2RoleDetail /></Layout></ProtectedRoute>} />
