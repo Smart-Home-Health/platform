@@ -57,6 +57,7 @@ from schemas.vent_parameter_dictionary import VentParameterDictionary
 from schemas.vent_sample import VentSample
 from schemas.vent_device_info import VentDeviceInfo
 from schemas.dme_shipment import DMEShipment, DMEShipmentItem, DMEReceiptItem, DMEShipmentAlert, DMEShipmentDocument
+from schemas.environmental_observation import EnvironmentalObservation
 from models.readers import Reader
 from models.custom_vital_definition import CustomVitalDefinition
 from models.user_messages import UserMessage, UserMessageAcknowledgement
@@ -78,5 +79,6 @@ __all__ = [
     'CompleteItemRequest', 'BulkCompleteRequest', 'Organization', 'OrganizationMembership',
     'OrganizationType', 'PatientAccess', 'AccessLevel', 'Reader', 'CustomVitalDefinition',
     'UserMessage', 'UserMessageAcknowledgement', 'VentIngestedFile',
-    'DMEShipment', 'DMEShipmentItem', 'DMEReceiptItem', 'DMEShipmentAlert', 'DMEShipmentDocument'
+    'DMEShipment', 'DMEShipmentItem', 'DMEReceiptItem', 'DMEShipmentAlert', 'DMEShipmentDocument',
+    'EnvironmentalObservation'
 ]

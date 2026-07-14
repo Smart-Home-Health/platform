@@ -186,3 +186,22 @@ class DueCountsChanged:
     category: str                    # "medications" | "care_tasks" | "equipment" | "nutrition"
     patient_id: Optional[int] = None
     source: EventSource = EventSource.API
+
+
+@dataclass(frozen=True)
+class EnvironmentalObservationRecorded:
+    """A new environmental observation was persisted (home-level, no patient).
+
+    Published for fresh readings only (backfill is suppressed) so future
+    consumers — alerting on pressure drops, live dashboard tiles — can react
+    without polling. ~10 events/hour at the default connector cadence.
+    """
+    ts: datetime                     # observation timestamp (not ingest time)
+    metric: str                      # catalog name, e.g. "barometric_pressure"
+    value: float
+    unit: str
+    scope: str                       # "outdoor" | "indoor" | "room"
+    location: str                    # "" = whole-scope
+    source_type: str                 # connector slug, e.g. "open_meteo"
+    quality: str = "measured"
+    source: EventSource = EventSource.SYSTEM
