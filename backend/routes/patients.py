@@ -78,6 +78,22 @@ def get_current_or_default_patient(db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="No patients found")
     return patient
 
+def _validate_patient_ha_user_id(db: Session, ha_user_id, exclude_patient_id: int = None):
+    """One patient per HA login: valid 32-hex id, not already used."""
+    if not ha_user_id:
+        return
+    from utils.ha_ingress import is_valid_ha_user_id
+    if not is_valid_ha_user_id(ha_user_id):
+        raise HTTPException(status_code=400, detail="Invalid HA user id")
+    from schemas.patient import Patient as PatientORM
+    existing = db.query(PatientORM).filter(PatientORM.ha_user_id == ha_user_id).first()
+    if existing and existing.id != exclude_patient_id:
+        raise HTTPException(
+            status_code=409,
+            detail=f"That Home Assistant user is already the patient {existing.first_name} {existing.last_name}.",
+        )
+
+
 @router.post("", response_model=PatientResponse)
 def create_new_patient(
     patient: PatientCreate,
@@ -94,6 +110,8 @@ def create_new_patient(
                 status_code=400,
                 detail="Medical record number already exists"
             )
+
+    _validate_patient_ha_user_id(db, patient.ha_user_id)
 
     patient_data = patient.model_dump()
     patient_data["account_id"] = account_id
@@ -129,9 +147,11 @@ def update_patient_by_id(
                 detail="Medical record number already exists"
             )
     
+    _validate_patient_ha_user_id(db, patient_update.ha_user_id, exclude_patient_id=patient_id)
+
     # Filter out None values
     update_data = {k: v for k, v in patient_update.model_dump().items() if v is not None}
-    
+
     updated_patient = update_patient(db, patient_id, update_data)
     if not updated_patient:
         raise HTTPException(status_code=404, detail="Patient not found")

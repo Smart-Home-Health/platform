@@ -45,6 +45,9 @@ else
 fi
 export SHH_INGRESS_TRUSTED_PEERS="${SHH_INGRESS_TRUSTED_PEERS:-172.30.32.2}"
 
+# The app reads SUPERVISOR_TOKEN straight from the container env (injected by
+# the Supervisor; used for the HA user directory). Never unset or override it.
+
 export MIN_SPO2="$(opt min_spo2)"
 export MAX_SPO2="$(opt max_spo2)"
 export MIN_BPM="$(opt min_bpm)"

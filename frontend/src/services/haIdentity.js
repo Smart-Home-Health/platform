@@ -36,6 +36,24 @@ export async function listHaIdentities() {
   return asJsonOrThrow(await apiFetch(`${base()}/identities`), 'Failed to load Home Assistant identities');
 }
 
+// Merged directory: everyone in HA (when running as the add-on) plus
+// identities seen on ingress and mapped users. {available, users: [...]}.
+export async function getHaDirectory() {
+  return asJsonOrThrow(await apiFetch(`${base()}/directory`), 'Failed to load the Home Assistant user directory');
+}
+
+// Create a passwordless app user pre-linked to an HA identity.
+export async function importHaUser({ ha_user_id, username, full_name, role_ids = [] }) {
+  return asJsonOrThrow(
+    await apiFetch(`${base()}/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ha_user_id, username, full_name, role_ids }),
+    }),
+    'Failed to import Home Assistant user',
+  );
+}
+
 export async function linkHaIdentity(haUserId, userId) {
   return asJsonOrThrow(
     await apiFetch(`${base()}/identities/${haUserId}/link`, {

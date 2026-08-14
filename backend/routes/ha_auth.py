@@ -46,14 +46,18 @@ from routes.auth import (
     create_access_token,
 )
 from schemas.ha_auth import (
+    HADirectoryResponse,
+    HADirectoryUserItem,
     HAIdentityInfo,
     HAIdentityItem,
+    HAImportRequest,
     HALinkRequest,
     HALoginResponse,
     HAStatusResponse,
 )
+from utils import ha_core
 from utils.client_ip import get_client_ip
-from utils.ha_ingress import ingress_identity, is_valid_ha_user_id, trusted_ingress_peer
+from utils.ha_ingress import HAIdentity, ingress_identity, is_valid_ha_user_id, trusted_ingress_peer
 
 logger = logging.getLogger(__name__)
 
@@ -233,6 +237,150 @@ def list_identities(
         )
         for row in rows
     ]
+
+
+@router.get("/directory", response_model=HADirectoryResponse)
+async def ha_directory(
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_system_admin),
+):
+    """The merged HA user directory: everyone in Home Assistant (when running
+    as the add-on with Supervisor access) ∪ identities seen on ingress ∪
+    mapped app users. Always 200 — outside the add-on `available` is False and
+    the list degrades to seen/mapped rows only."""
+    try:
+        directory = await ha_core.list_ha_users()
+        available = True
+    except ha_core.HACoreError as e:
+        if ha_core.ha_core_available():
+            logger.warning(f"HA user directory unavailable: {e}")
+        directory, available = [], False
+
+    from schemas.patient import Patient
+    seen_by_id = {row.ha_user_id: row for row in db.query(HASeenIdentity).all()}
+    users_by_ha_id = {
+        u.ha_user_id: u
+        for u in db.query(User).filter(User.ha_user_id.isnot(None)).all()
+    }
+    patients_by_ha_id = {
+        p.ha_user_id: p
+        for p in db.query(Patient).filter(Patient.ha_user_id.isnot(None)).all()
+    }
+
+    items = []
+    all_ids = (
+        {d.ha_user_id for d in directory}
+        | set(seen_by_id) | set(users_by_ha_id) | set(patients_by_ha_id)
+    )
+    dir_by_id = {d.ha_user_id: d for d in directory}
+    for ha_user_id in all_ids:
+        d = dir_by_id.get(ha_user_id)
+        seen = seen_by_id.get(ha_user_id)
+        mapped = users_by_ha_id.get(ha_user_id)
+        patient = patients_by_ha_id.get(ha_user_id)
+        items.append(HADirectoryUserItem(
+            ha_user_id=ha_user_id,
+            name=(d.name if d else None) or (seen.display_name if seen else None),
+            username=(d.username if d else None) or (seen.username if seen else None),
+            status="linked" if mapped else ("seen" if seen else "never_opened"),
+            # Only meaningful when the directory loaded; treat everything as
+            # in-directory in fallback mode so the UI doesn't flag stale rows.
+            in_directory=bool(d) or not available,
+            ha_is_owner=bool(d and d.is_owner),
+            ha_is_admin=bool(d and d.is_admin),
+            ha_is_active=d.is_active if d else True,
+            first_seen=seen.first_seen if seen else None,
+            last_seen=seen.last_seen if seen else None,
+            mapped_user=(
+                {"id": mapped.id, "username": mapped.username, "full_name": mapped.full_name}
+                if mapped else None
+            ),
+            patient=(
+                {"id": patient.id, "first_name": patient.first_name, "last_name": patient.last_name}
+                if patient else None
+            ),
+        ))
+
+    status_rank = {"linked": 0, "seen": 1, "never_opened": 2}
+    items.sort(key=lambda i: (
+        status_rank[i.status],
+        -(i.last_seen.timestamp() if i.last_seen else 0),
+        (i.name or i.username or i.ha_user_id).lower(),
+    ))
+    return HADirectoryResponse(available=available, users=items)
+
+
+@router.post("/import", status_code=status.HTTP_201_CREATED)
+def import_ha_user(
+    body: HAImportRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_system_admin),
+):
+    """Create an app user pre-linked to an HA identity. Passwordless by
+    design: a random throwaway hash is stored (the HA login IS the credential;
+    a password/PIN can be set later for non-HA access) and no forced reset —
+    that screen would trap a user who has no password to type."""
+    if not is_valid_ha_user_id(body.ha_user_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid HA user id")
+
+    existing = db.query(User).filter(User.ha_user_id == body.ha_user_id).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"This Home Assistant user is already linked to {existing.full_name}. Unlink it first.",
+        )
+
+    from crud.users import create_user, get_user_by_username
+    if get_user_by_username(db, body.username):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already taken")
+
+    from models.users import Role
+    if body.role_ids:
+        found = {r.id for r in db.query(Role.id).filter(Role.id.in_(body.role_ids)).all()}
+        missing = set(body.role_ids) - found
+        if missing:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown role id")
+
+    import secrets as _secrets
+    user = create_user(
+        db,
+        username=body.username,
+        password=_secrets.token_urlsafe(24),
+        full_name=body.full_name,
+        role_ids=body.role_ids or None,
+        force_password_reset=False,
+    )
+    user.ha_user_id = body.ha_user_id
+    if not user.account_id:
+        user.account_id = admin.account_id
+    _upsert_seen_identity(db, HAIdentity(
+        ha_user_id=body.ha_user_id,
+        username=body.username,
+        display_name=body.full_name,
+    ))
+    create_audit_log(
+        db,
+        user_id=admin.id,
+        action="ha.identity.import",
+        details=json.dumps({
+            "ha_user_id": body.ha_user_id,
+            "created_user_id": user.id,
+            "role_ids": body.role_ids,
+        }),
+        ip_address=get_client_ip(request),
+        user_agent=request.headers.get("User-Agent"),
+    )
+    db.commit()
+    db.refresh(user)
+    logger.info(f"Imported HA user as app profile: {user.username}")
+    return {
+        "id": user.id,
+        "username": user.username,
+        "full_name": user.full_name,
+        "ha_user_id": user.ha_user_id,
+        "roles": [{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles],
+    }
 
 
 @router.put("/identities/{ha_user_id}/link")

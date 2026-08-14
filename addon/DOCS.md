@@ -66,6 +66,24 @@ the Supervisor's ingress proxy (`172.30.32.2`). Requests on the LAN port that
 carry forged identity headers are rejected. Requires Home Assistant Core
 ≥ 2023.9 (older versions simply fall back to the picker flow).
 
+### Home Assistant user directory
+
+**Configuration → Users → Home Assistant users** lists everyone with an HA
+login (fetched through the Supervisor API), each marked *Linked*, *Opened the
+app*, or *Never opened the app*. For anyone not yet linked you can:
+
+- **Link** them to an existing app profile,
+- **Create profile** — a one-step import: pick roles (and patients); no
+  password is set because their HA login signs them in. A password or PIN can
+  be added later for shared devices.
+- **Add as patient** — creates a patient record with the name prefilled.
+
+Running outside Home Assistant (Docker Compose), the Supervisor API isn't
+available; the list falls back to HA users who have opened the app at least
+once. The directory needs the `hassio_api`/`homeassistant_api` permissions in
+this add-on's manifest — on upgrades from 0.1.0 they only take effect after a
+full uninstall + reinstall (back up `/data` first).
+
 ### `skip_account_password`
 
 When enabled, the app skips the account-password screen and goes straight to user
