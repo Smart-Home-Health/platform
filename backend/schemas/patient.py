@@ -37,6 +37,9 @@ class Patient(Base):
     medical_record_number = Column(String, nullable=True, unique=True)
     is_active = Column(Boolean, default=True, nullable=False)
     notes = Column(Text, nullable=True)
+    # HA user this patient record was created from (uuid4().hex) — provenance
+    # so the HA-user directory offers "Add as patient" at most once per login.
+    ha_user_id = Column(String(32), unique=True, nullable=True, index=True)
     created_at = Column(TIMESTAMP(timezone=True), nullable=False)
     updated_at = Column(TIMESTAMP(timezone=True), nullable=False)
     

@@ -206,3 +206,43 @@ def test_created_patient_gets_account_id(admin_client, account, db_session):
     from schemas.patient import Patient
     row = db_session.query(Patient).filter_by(first_name="Nancy", last_name="Ward").one()
     assert row.account_id == account.id
+
+
+# ---------------------------------------------------------------- patient <- HA login provenance
+
+def test_add_patient_from_ha_login_is_once_only(admin_client, account, db_session, fake_directory):
+    fake_directory["error"] = HACoreError("fallback is fine here")
+    r = admin_client.post("/api/patients", json={
+        "first_name": "Eli", "last_name": "Carty", "ha_user_id": HA_NEW,
+    })
+    assert r.status_code in (200, 201), r.text
+    from schemas.patient import Patient
+    row = db_session.query(Patient).filter_by(ha_user_id=HA_NEW).one()
+    assert row.first_name == "Eli"
+
+    # Same HA login again -> 409, whether creating or retargeting another patient.
+    r = admin_client.post("/api/patients", json={
+        "first_name": "Eli", "last_name": "Again", "ha_user_id": HA_NEW,
+    })
+    assert r.status_code == 409
+
+    # The directory surfaces the patient so the UI can hide the button.
+    body = admin_client.get("/api/auth/ha/directory").json()
+    by_id = {u["ha_user_id"]: u for u in body["users"]}
+    assert by_id[HA_NEW]["patient"] == {"id": row.id, "first_name": "Eli", "last_name": "Carty"}
+
+
+def test_patient_ha_user_id_must_be_valid(admin_client, account):
+    r = admin_client.post("/api/patients", json={
+        "first_name": "Bad", "last_name": "Id", "ha_user_id": "Z" * 32,
+    })
+    assert r.status_code == 400
+
+
+def test_existing_patient_can_be_retro_linked(admin_client, account, db_session):
+    r = admin_client.post("/api/patients", json={"first_name": "Old", "last_name": "Record"})
+    pid = r.json()["id"]
+    r = admin_client.put(f"/api/patients/{pid}", json={"ha_user_id": HA_NEW})
+    assert r.status_code == 200, r.text
+    from schemas.patient import Patient
+    assert db_session.query(Patient).get(pid).ha_user_id == HA_NEW

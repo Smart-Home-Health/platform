@@ -158,7 +158,7 @@ export default function HAIdentitiesCard({
   const openAddPatient = (item) => {
     setPatientError(null);
     const { first, last } = splitName(item.name || item.username);
-    setPatientForm({ first_name: first, last_name: last });
+    setPatientForm({ first_name: first, last_name: last, existing_id: '' });
     setPatientTarget(item);
   };
 
@@ -167,16 +167,30 @@ export default function HAIdentitiesCard({
     setPatientError(null);
     setSavingPatient(true);
     try {
-      const res = await apiFetch(`${API_BASE_URL}/api/patients`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(patientForm),
-      });
+      // ha_user_id records the provenance so this HA login can only be turned
+      // into a patient once (the button disappears afterward). Either stamp it
+      // onto an existing patient or create a new one carrying it.
+      const res = patientForm.existing_id
+        ? await apiFetch(`${API_BASE_URL}/api/patients/${patientForm.existing_id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ha_user_id: patientTarget.ha_user_id }),
+          })
+        : await apiFetch(`${API_BASE_URL}/api/patients`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              first_name: patientForm.first_name,
+              last_name: patientForm.last_name,
+              ha_user_id: patientTarget.ha_user_id,
+            }),
+          });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(typeof body.detail === 'string' ? body.detail : 'Failed to create patient');
+        throw new Error(typeof body.detail === 'string' ? body.detail : 'Failed to save patient');
       }
       setPatientTarget(null);
+      await load();
       onPatientsChanged?.();
     } catch (err) {
       setPatientError(err.message);
@@ -237,6 +251,11 @@ export default function HAIdentitiesCard({
                   : item.ha_is_admin ? <Badge variant="outline">HA admin</Badge> : null}
                 {!item.in_directory && <Badge variant="outline">Not in Home Assistant</Badge>}
                 {statusBadge(item)}
+                {item.patient && (
+                  <Badge variant="secondary">
+                    Patient: {item.patient.first_name} {item.patient.last_name}
+                  </Badge>
+                )}
               </div>
               {item.status === 'linked' ? (
                 <div className="flex items-center gap-2">
@@ -272,9 +291,11 @@ export default function HAIdentitiesCard({
                   <Button variant="secondary" size="sm" onClick={() => openImport(item)}>
                     Create profile
                   </Button>
-                  <Button variant="secondary" size="sm" onClick={() => openAddPatient(item)}>
-                    Add as patient
-                  </Button>
+                  {!item.patient && (
+                    <Button variant="secondary" size="sm" onClick={() => openAddPatient(item)}>
+                      Add as patient
+                    </Button>
+                  )}
                   {!item.in_directory && item.status === 'seen' && (
                     <Button
                       variant="ghost" size="sm"
@@ -373,29 +394,48 @@ export default function HAIdentitiesCard({
           </DialogHeader>
           <form onSubmit={handleAddPatient} className="flex flex-col gap-4">
             {patientError && <Alert variant="destructive">{patientError}</Alert>}
-            <Field label="First Name" required htmlFor="ha-patient-first">
-              <Input
-                id="ha-patient-first"
-                value={patientForm.first_name}
-                onChange={(e) => setPatientForm({ ...patientForm, first_name: e.target.value })}
-                required
-              />
-            </Field>
-            <Field label="Last Name" required htmlFor="ha-patient-last">
-              <Input
-                id="ha-patient-last"
-                value={patientForm.last_name}
-                onChange={(e) => setPatientForm({ ...patientForm, last_name: e.target.value })}
-                required
-              />
-            </Field>
-            <p className="text-sm text-muted-foreground">
-              Date of birth and other details can be filled in afterward on the Patients page.
-            </p>
+            {patients.length > 0 && (
+              <Field label="Link an existing patient (optional)">
+                <Select
+                  value={patientForm.existing_id}
+                  onValueChange={(v) => setPatientForm({ ...patientForm, existing_id: v })}
+                >
+                  <SelectTrigger><SelectValue placeholder="No — create a new patient" /></SelectTrigger>
+                  <SelectContent>
+                    {patients.map((p) => (
+                      <SelectItem key={p.id} value={String(p.id)}>{p.first_name} {p.last_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            )}
+            {!patientForm.existing_id && (
+              <>
+                <Field label="First Name" required htmlFor="ha-patient-first">
+                  <Input
+                    id="ha-patient-first"
+                    value={patientForm.first_name}
+                    onChange={(e) => setPatientForm({ ...patientForm, first_name: e.target.value })}
+                    required
+                  />
+                </Field>
+                <Field label="Last Name" required htmlFor="ha-patient-last">
+                  <Input
+                    id="ha-patient-last"
+                    value={patientForm.last_name}
+                    onChange={(e) => setPatientForm({ ...patientForm, last_name: e.target.value })}
+                    required
+                  />
+                </Field>
+                <p className="text-sm text-muted-foreground">
+                  Date of birth and other details can be filled in afterward on the Patients page.
+                </p>
+              </>
+            )}
             <DialogFooter>
               <Button type="button" variant="secondary" onClick={() => setPatientTarget(null)}>Cancel</Button>
               <Button type="submit" disabled={savingPatient}>
-                {savingPatient ? 'Adding…' : 'Add patient'}
+                {savingPatient ? 'Saving…' : (patientForm.existing_id ? 'Link patient' : 'Add patient')}
               </Button>
             </DialogFooter>
           </form>

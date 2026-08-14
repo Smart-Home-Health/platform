@@ -256,19 +256,28 @@ async def ha_directory(
             logger.warning(f"HA user directory unavailable: {e}")
         directory, available = [], False
 
+    from schemas.patient import Patient
     seen_by_id = {row.ha_user_id: row for row in db.query(HASeenIdentity).all()}
     users_by_ha_id = {
         u.ha_user_id: u
         for u in db.query(User).filter(User.ha_user_id.isnot(None)).all()
     }
+    patients_by_ha_id = {
+        p.ha_user_id: p
+        for p in db.query(Patient).filter(Patient.ha_user_id.isnot(None)).all()
+    }
 
     items = []
-    all_ids = {d.ha_user_id for d in directory} | set(seen_by_id) | set(users_by_ha_id)
+    all_ids = (
+        {d.ha_user_id for d in directory}
+        | set(seen_by_id) | set(users_by_ha_id) | set(patients_by_ha_id)
+    )
     dir_by_id = {d.ha_user_id: d for d in directory}
     for ha_user_id in all_ids:
         d = dir_by_id.get(ha_user_id)
         seen = seen_by_id.get(ha_user_id)
         mapped = users_by_ha_id.get(ha_user_id)
+        patient = patients_by_ha_id.get(ha_user_id)
         items.append(HADirectoryUserItem(
             ha_user_id=ha_user_id,
             name=(d.name if d else None) or (seen.display_name if seen else None),
@@ -285,6 +294,10 @@ async def ha_directory(
             mapped_user=(
                 {"id": mapped.id, "username": mapped.username, "full_name": mapped.full_name}
                 if mapped else None
+            ),
+            patient=(
+                {"id": patient.id, "first_name": patient.first_name, "last_name": patient.last_name}
+                if patient else None
             ),
         ))
 

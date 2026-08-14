@@ -78,6 +78,7 @@ class HADirectoryUserItem(BaseModel):
     first_seen: Optional[datetime] = None
     last_seen: Optional[datetime] = None
     mapped_user: Optional[dict] = None  # {id, username, full_name} | None
+    patient: Optional[dict] = None      # {id, first_name, last_name} | None — created from this HA login
 
 
 class HADirectoryResponse(BaseModel):

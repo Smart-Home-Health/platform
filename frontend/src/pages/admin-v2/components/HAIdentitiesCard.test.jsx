@@ -112,6 +112,21 @@ describe('HAIdentitiesCard directory mode', () => {
     expect(screen.getAllByRole('button', { name: 'Remove' }).length).toBe(1);
   });
 
+  it('hides "Add as patient" once the HA login produced a patient', async () => {
+    getHaDirectory.mockResolvedValue({
+      available: true,
+      users: [{
+        ha_user_id: HA_B, name: 'Elijah', status: 'never_opened', in_directory: true,
+        patient: { id: 7, first_name: 'Elijah', last_name: 'Carty' },
+      }],
+    });
+    await renderCard();
+    expect(await screen.findByText('Patient: Elijah Carty')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add as patient' })).not.toBeInTheDocument();
+    // The other actions stay available.
+    expect(screen.getByRole('button', { name: 'Create profile' })).toBeInTheDocument();
+  });
+
   it('imports an HA user with chosen roles, then assigns patients and refreshes', async () => {
     getHaDirectory.mockResolvedValue(DIRECTORY);
     importHaUser.mockResolvedValue({ id: 42, username: 'nurse_nancy' });
@@ -152,7 +167,10 @@ describe('HAIdentitiesCard directory mode', () => {
 
     await waitFor(() => expect(apiFetch).toHaveBeenCalledWith(
       'http://api/api/patients',
-      expect.objectContaining({ method: 'POST', body: JSON.stringify({ first_name: 'Nurse', last_name: 'Nancy' }) }),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ first_name: 'Nurse', last_name: 'Nancy', ha_user_id: HA_B }),
+      }),
     ));
     await waitFor(() => expect(onPatientsChanged).toHaveBeenCalled());
   });

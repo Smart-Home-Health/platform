@@ -77,6 +77,7 @@ def create_patient(db: Session, patient_data: dict) -> Patient:
         # invisible to every account-filtered consumer (backup, MQTT, integrations).
         account_id=patient_data.get("account_id"),
         owner_user_id=patient_data.get("owner_user_id"),
+        ha_user_id=patient_data.get("ha_user_id"),
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
     )
