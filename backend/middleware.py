@@ -157,10 +157,13 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
     def _decode_token(token: str) -> dict | None:
         """Decode and validate a JWT token.  Returns the payload dict or None."""
         try:
+            # jwt.decode already verifies exp (in real UTC). A manual
+            # utcnow().timestamp() re-check here is WRONG in any non-UTC
+            # container: naive utcnow() gets interpreted as local time, which
+            # made every token look expired in the HA add-on (host TZ = the HA
+            # timezone) and 401'd all authenticated requests.
             payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
             if not isinstance(payload, dict):
-                return None
-            if datetime.utcnow().timestamp() > payload.get("exp", 0):
                 return None
             return payload
         except jwt.InvalidTokenError:

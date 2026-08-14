@@ -194,6 +194,23 @@ def test_status_untrusted_peer_shows_nothing(admin_client, account):
     assert r.json() == {"ingress_trusted": False, "identity": None, "mapped_user_id": None}
 
 
+def test_tokens_valid_in_non_utc_container(client, admin_user, account, monkeypatch):
+    """Regression: the HA add-on container runs in the HA timezone (not UTC).
+    A naive utcnow().timestamp() exp re-check in the middleware read naive UTC
+    as local time and 401'd every authenticated request there."""
+    import time
+    monkeypatch.setenv("TZ", "America/New_York")
+    time.tzset()
+    try:
+        from routes.auth import create_access_token
+        token = create_access_token(user=admin_user, account=account, auth_level="full")
+        r = client.get("/api/auth/ha/identities", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200
+    finally:
+        monkeypatch.delenv("TZ", raising=False)
+        time.tzset()
+
+
 # ---------------------------------------------------------------- admin mapping API
 
 def test_identities_require_auth(client, account):
