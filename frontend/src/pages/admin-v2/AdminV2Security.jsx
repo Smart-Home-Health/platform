@@ -146,7 +146,7 @@ const AdminV2Security = () => {
                   <div className="flex flex-col gap-0.5">
                     <CardTitle>HTTPS / Secure access</CardTitle>
                     <p className="text-sm text-muted-foreground">
-                      A secure address enables camera scanning on phones and encrypts your connection.
+                      A secure address encrypts your connection so health data never crosses the network in the clear.
                     </p>
                   </div>
                 </div>
@@ -178,7 +178,7 @@ const AdminV2Security = () => {
                       <Stat
                         label="Secure address"
                         value={httpsUrl || '—'}
-                        hint={status.https_error ? undefined : 'Use this on phones/tablets for camera features'}
+                        hint={status.https_error ? undefined : 'Use this anywhere you want the connection encrypted'}
                       />
                     )}
                     {certActive && (

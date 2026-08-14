@@ -121,8 +121,8 @@ const SuccessCard = ({ url, onDone, doneLabel }) => (
         <div className="text-xs uppercase tracking-wide text-muted-foreground">Secure address</div>
         <a href={url} target="_blank" rel="noreferrer" className="text-lg font-semibold text-primary break-all">{url}</a>
         <p className="mt-2 text-sm text-muted-foreground">
-          Use this address on phones and tablets — the camera features need it.
-          You can keep using the regular address for everything else.
+          Use this address anywhere you want the connection encrypted — phones,
+          tablets, or away from home. The regular address keeps working too.
         </p>
       </div>
     )}
@@ -308,9 +308,9 @@ const SecuritySetupWizard = ({ onFinished }) => {
       {step === 'choose' && (
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            A secure (HTTPS) address lets phones and tablets use the camera for
-            barcode and document scanning, and keeps your connection encrypted.
-            Pick the option that fits:
+            A secure (HTTPS) address keeps your connection encrypted, so health
+            data never crosses the network in the clear. Pick the option that
+            fits:
           </p>
           <PathCard
             icon={ShieldIcon}

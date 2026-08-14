@@ -132,11 +132,10 @@ export function attachLineImages(items, ocrLines, canvas) {
 
 function toCanvas(source) {
   if (source instanceof HTMLCanvasElement) return source;
-  // Video frame or image element -> draw onto a canvas so every decoder
-  // gets the same input (ZXing has no one-shot video API).
+  // Image element -> draw onto a canvas so every decoder gets the same input.
   const canvas = document.createElement('canvas');
-  canvas.width = source.videoWidth || source.naturalWidth || source.width;
-  canvas.height = source.videoHeight || source.naturalHeight || source.height;
+  canvas.width = source.naturalWidth || source.width;
+  canvas.height = source.naturalHeight || source.height;
   canvas.getContext('2d').drawImage(source, 0, 0, canvas.width, canvas.height);
   return canvas;
 }
@@ -190,7 +189,7 @@ async function zxingDecodeAll(canvas, formats = SLIP_BARCODE_FORMATS) {
 }
 
 /**
- * Decode all barcodes visible in a canvas / video frame / image element.
+ * Decode all barcodes visible in a canvas / image element.
  * Prefers the native BarcodeDetector API (multi-barcode, fast, Android/Chrome);
  * falls back to ZXing strip-scanning elsewhere (iOS Safari).
  * Returns an array of raw barcode strings (deduped).

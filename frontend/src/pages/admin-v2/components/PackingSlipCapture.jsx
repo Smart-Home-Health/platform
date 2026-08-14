@@ -34,8 +34,6 @@ import { CameraIcon, CheckIcon } from '../../../components/Icons';
 import { shipmentService } from '../../../services/shipments';
 import { sessionGet, sessionSet } from '../../../lib/sessionState';
 
-const SCAN_INTERVAL_MS = 600; // live barcode polling cadence
-
 // Session key for scan accumulation — survives the tab being discarded while
 // the user hops to Photos and back (which reloads the SPA on mobile).
 const scanKey = (shipmentId) => `scan:${shipmentId}`;
@@ -49,15 +47,11 @@ export default function PackingSlipCapture({
   open, onClose, shipmentId = null, expectedItems = [], onComplete, mode = 'confirm',
   sessionKey = null, title = null,
 }) {
-  const videoRef = useRef(null);
-  const streamRef = useRef(null);
-  const scanTimerRef = useRef(null);
   const takePhotoInputRef = useRef(null); // capture="environment": opens the camera
   const cameraRollInputRef = useRef(null); // no capture attr: opens the photo picker
 
   const storageKey = sessionKey || scanKey(shipmentId);
 
-  const [cameraError, setCameraError] = useState(null);
   // Scan accumulation is checkpointed to sessionStorage so a mid-import trip
   // to Photos (which can reload the whole SPA) doesn't lose collected pages.
   const [barcodes, setBarcodes] = useState(() => sessionGet(storageKey)?.barcodes || []);
@@ -111,80 +105,6 @@ export default function PackingSlipCapture({
     })();
     return () => { cancelled = true; };
   }, [barcodes, ocrItems, expectedItems, foundItemNumbers, mode]);
-
-  // --- Camera lifecycle ---
-  useEffect(() => {
-    if (!open) return undefined;
-    let cancelled = false;
-
-    (async () => {
-      try {
-        // iOS/Safari only exposes the live camera on secure origins (HTTPS or
-        // localhost) — over plain LAN HTTP mediaDevices is undefined. Photos
-        // via the inputs below work everywhere and are read the same way.
-        if (!navigator.mediaDevices?.getUserMedia) {
-          throw new Error('camera-unavailable');
-        }
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment' },
-          audio: false,
-        });
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play().catch(() => {});
-        }
-        startLiveScan();
-      } catch {
-        setCameraError(
-          window.isSecureContext
-            ? 'The live camera view isn’t available here — no problem. ' +
-              'Take a photo of each page below and we’ll read it the same way.'
-            : 'The live camera needs the secure (HTTPS) address — an administrator ' +
-              'can set one up under Configuration → Security. Meanwhile, take a ' +
-              'photo of each page below and we’ll read it the same way.'
-        );
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      stopLiveScan();
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
-
-  // Continuously look for line-item barcodes in the live picture, so slowly
-  // panning the phone down the slip collects every line without any typing.
-  const startLiveScan = () => {
-    stopLiveScan();
-    scanTimerRef.current = setInterval(async () => {
-      const video = videoRef.current;
-      if (!video || video.readyState < 2) return;
-      try {
-        const { detectBarcodes } = await import('../../../lib/slipScanner');
-        const found = await detectBarcodes(video);
-        if (found.length) {
-          setBarcodes((prev) => [...new Set([...prev, ...found])]);
-        }
-      } catch { /* keep scanning */ }
-    }, SCAN_INTERVAL_MS);
-  };
-
-  const stopLiveScan = () => {
-    if (scanTimerRef.current) {
-      clearInterval(scanTimerRef.current);
-      scanTimerRef.current = null;
-    }
-  };
 
   // --- Page capture (still photo -> barcode + OCR + upload) ---
   // Page numbers via a ref: a multi-photo batch runs inside one closure, so
@@ -243,17 +163,6 @@ export default function PackingSlipCapture({
     } finally {
       setBusy(null);
     }
-  };
-
-  const capturePage = async () => {
-    const video = videoRef.current;
-    if (!video || video.readyState < 2) return;
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video, 0, 0);
-    setError(null);
-    await processCanvas(canvas);
   };
 
   const fileToCanvas = async (file) => {
@@ -324,18 +233,11 @@ export default function PackingSlipCapture({
 
         {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
 
-        {cameraError ? (
-          <Alert><AlertDescription>{cameraError}</AlertDescription></Alert>
-        ) : (
-          <div className="relative overflow-hidden rounded-lg border border-border bg-black">
-            <video ref={videoRef} playsInline muted className="w-full" />
-            <div className="absolute inset-x-0 bottom-0 bg-black/60 p-2 text-center text-sm text-white">
-              {mode === 'import'
-                ? 'Hold the phone over the sheet — each little barcode adds that item for you.'
-                : 'Hold the phone over the slip — the little barcodes check items off automatically.'}
-            </div>
-          </div>
-        )}
+        <p className="text-sm text-muted-foreground">
+          {mode === 'import'
+            ? 'Take a photo of each page of the sheet — each little barcode adds that item for you.'
+            : 'Take a photo of each page of the slip — the little barcodes check items off automatically.'}
+        </p>
 
         {/* Progress: friendly, glanceable */}
         <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -360,15 +262,9 @@ export default function PackingSlipCapture({
         </div>
 
         <div className="flex flex-col gap-2">
-          {!cameraError ? (
-            <Button size="lg" onClick={capturePage} disabled={!!busy || !!batch}>
-              <CameraIcon size={16} /> Save this page
-            </Button>
-          ) : (
-            <Button size="lg" onClick={() => takePhotoInputRef.current?.click()} disabled={!!busy || !!batch}>
-              <CameraIcon size={16} /> Take a photo of the page
-            </Button>
-          )}
+          <Button size="lg" onClick={() => takePhotoInputRef.current?.click()} disabled={!!busy || !!batch}>
+            <CameraIcon size={16} /> Take a photo of the page
+          </Button>
           <Button variant="secondary" onClick={() => cameraRollInputRef.current?.click()} disabled={!!busy || !!batch}>
             Choose from your camera roll
           </Button>
