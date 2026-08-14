@@ -76,6 +76,10 @@ class AccountUserItem(BaseModel):
     full_name: str
     has_pin: bool
     requires_full_password: bool
+    # Linked to a Home Assistant login — signs in automatically via ingress.
+    # The picker uses this to explain (rather than dead-end) profiles that may
+    # have no human-known password.
+    ha_linked: bool = False
     roles: List[dict] = []
 
 

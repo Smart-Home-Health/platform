@@ -131,7 +131,7 @@ export default function AdminV2AccountSettings() {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          current_password: currentPassword,
+          current_password: currentPassword || null,
           new_password: newPassword
         })
       });
@@ -146,6 +146,7 @@ export default function AdminV2AccountSettings() {
       setNewPassword('');
       setConfirmPassword('');
       setShowPasswordForm(false);
+      fetchAccountDetails(); // refresh password_unset so the notice clears
     } catch (err) {
       setPasswordError(err.message);
     } finally {
@@ -279,11 +280,19 @@ export default function AdminV2AccountSettings() {
             <CardContent>
               {!showPasswordForm ? (
                 <div className="flex flex-col items-start gap-4">
+                  {accountData?.password_unset && (
+                    <Alert>
+                      No account password has been set yet (setup was completed
+                      through Home Assistant). Shared and LAN devices stay in
+                      add-only mode until one is set — you can set it now without
+                      a current password.
+                    </Alert>
+                  )}
                   <p className="text-sm text-muted-foreground">
                     The account password is used to log in at the account level before selecting a user profile.
                   </p>
                   <Button variant="secondary" onClick={() => setShowPasswordForm(true)}>
-                    Change Password
+                    {accountData?.password_unset ? 'Set Password' : 'Change Password'}
                   </Button>
                 </div>
               ) : (
@@ -291,15 +300,19 @@ export default function AdminV2AccountSettings() {
                   {passwordError && <Alert variant="destructive">{passwordError}</Alert>}
                   {passwordSuccess && <Alert variant="success">{passwordSuccess}</Alert>}
 
-                  <Field label="Current Password" htmlFor="currentPassword">
-                    <Input
-                      type="password"
-                      id="currentPassword"
-                      value={currentPassword}
-                      onChange={(e) => setCurrentPassword(e.target.value)}
-                      required
-                    />
-                  </Field>
+                  {/* First human-set password after an HA-ingress setup: the
+                      stored password is random, so there's nothing to verify. */}
+                  {!accountData?.password_unset && (
+                    <Field label="Current Password" htmlFor="currentPassword">
+                      <Input
+                        type="password"
+                        id="currentPassword"
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                        required
+                      />
+                    </Field>
+                  )}
 
                   <Field label="New Password" htmlFor="newPassword" hint="Minimum 8 characters">
                     <Input
