@@ -32,6 +32,19 @@ if opt_true skip_account_password; then
     export SHH_SKIP_ACCOUNT_PASSWORD=1
 fi
 
+# HA identity auto-login (ingress only). Defaults on; the option is a kill
+# switch. The app trusts the X-Remote-User-* headers only when the TCP peer is
+# the Supervisor's ingress proxy — SHH_BEHIND_PROXY must NEVER be set here, or
+# uvicorn would rewrite the peer from X-Forwarded-For and LAN clients could
+# forge it (it would also poison rate-limit identity).
+# Default ON when the key is absent (options.json predating this option).
+if [ "$(jq -r '.ha_identity_login // true' "${OPTIONS}" 2>/dev/null)" = "false" ]; then
+    export SHH_HA_IDENTITY_LOGIN=0
+else
+    export SHH_HA_IDENTITY_LOGIN=1
+fi
+export SHH_INGRESS_TRUSTED_PEERS="${SHH_INGRESS_TRUSTED_PEERS:-172.30.32.2}"
+
 export MIN_SPO2="$(opt min_spo2)"
 export MAX_SPO2="$(opt max_spo2)"
 export MIN_BPM="$(opt min_bpm)"

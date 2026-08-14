@@ -35,6 +35,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '@/components/ui/select';
 import { ToggleList } from './components/ToggleList';
+import HAIdentitiesCard from './components/HAIdentitiesCard';
 import './AdminV2.css';
 
 const getUserInitials = (name) =>
@@ -356,6 +357,9 @@ const AdminV2Users = () => {
               ))}
             </div>
           )}
+
+          {/* HA identity mapping (system admins; hides itself otherwise) */}
+          <HAIdentitiesCard users={users} />
         </div>
 
         {/* Create User Dialog */}

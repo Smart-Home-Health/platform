@@ -103,6 +103,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         ip = get_client_ip(request)
+        # Behind HA ingress every browser shares the proxy's IP (172.30.32.2),
+        # which would pool the whole household into one auth bucket. Key trusted
+        # ingress traffic by the Supervisor-forwarded HA user instead. LAN-port
+        # and Compose traffic is unaffected (ingress_identity returns None).
+        from utils.ha_ingress import ingress_identity
+        ha_ident = ingress_identity(request)
+        if ha_ident:
+            ip = f"ingress:{ha_ident.ha_user_id}"
         now = time.monotonic()
 
         # Check the coarse per-IP auth-prefix cap and the specific endpoint cap.

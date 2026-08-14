@@ -18,7 +18,7 @@
 // Wave 3 — AuthContext: the pure errorMessage formatter plus the two-layer auth
 // state machine (null -> account -> full -> logout). The global fetch is mocked
 // with a tiny URL router; the interceptor + throttle imports are no-oped.
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 
 vi.mock('../utils/authInterceptor', () => ({ installAuthInterceptor: () => {} }));
@@ -72,6 +72,7 @@ function Probe() {
       <span data-testid="isAcct">{String(a.isAccountAuthenticated)}</span>
       <span data-testid="firstrun">{String(a.isFirstRun)}</span>
       <span data-testid="user">{a.user?.username || ''}</span>
+      <span data-testid="haid">{a.haIdentity ? `${a.haIdentity.display_name || ''}:${String(a.haIdentity.mapped)}` : ''}</span>
       <button onClick={() => a.accountLogin('fam', 'pw')}>login</button>
       <button onClick={() => a.selectUser(1, '1234')}>select</button>
       <button onClick={() => a.logout()}>logout</button>
@@ -167,5 +168,95 @@ describe('AuthProvider state machine', () => {
     await click('logout');
     await waitFor(() => expect(screen.getByTestId('level').textContent).toBe('null'));
     expect(screen.getByTestId('isAuth').textContent).toBe('false');
+  });
+});
+
+// ---- HA ingress auto-login --------------------------------------------------
+// isIngress() keys off window.__BASE_PATH__, which the backend injects only for
+// pages served through Home Assistant ingress.
+describe('HA ingress auto-login', () => {
+  const INGRESS_BASE = '/api/hassio_ingress/tok123';
+  const HA_MAPPED = ok({
+    access_token: 'ha-token', auth_level: 'full', mapped: true,
+    identity: { ha_user_id: 'a'.repeat(32), username: 'eli_dad', display_name: "Eli's Dad" },
+    account: { id: 1, name: 'Fam' },
+    user: { id: 2, username: 'eli_dad_app', full_name: "Eli's Dad" },
+    read_restricted: false,
+  });
+  const HA_UNMAPPED = ok({
+    access_token: 'ha-token', auth_level: 'account', mapped: false,
+    identity: { ha_user_id: 'b'.repeat(32), username: 'tablet', display_name: 'Tablet' },
+    account: { id: 1, name: 'Fam' }, user: null, read_restricted: false,
+  });
+
+  beforeEach(() => { window.__BASE_PATH__ = INGRESS_BASE; });
+  afterEach(() => { window.__BASE_PATH__ = ''; });
+
+  it('signs a mapped HA user straight into a full session', async () => {
+    setFetch([...NO_SESSION, { path: '/api/auth/ha/login', method: 'POST', res: HA_MAPPED }]);
+    await renderAuth();
+    expect(screen.getByTestId('level').textContent).toBe('full');
+    expect(screen.getByTestId('user').textContent).toBe('eli_dad_app');
+    expect(sessionStorage.getItem('auth_token')).toBe('ha-token');
+  });
+
+  it('lands an unmapped HA identity at account level (picker) with the identity exposed', async () => {
+    setFetch([...NO_SESSION, { path: '/api/auth/ha/login', method: 'POST', res: HA_UNMAPPED }]);
+    await renderAuth();
+    expect(screen.getByTestId('level').textContent).toBe('account');
+    expect(screen.getByTestId('isAuth').textContent).toBe('false');
+    expect(screen.getByTestId('haid').textContent).toBe('Tablet:false');
+  });
+
+  it('promotes an account-only session to full via the HA identity', async () => {
+    // e.g. the 24h account cookie outlived the 30m session token.
+    setFetch([
+      { path: '/api/auth/first-run', res: ok({ is_first_run: false }) },
+      { path: '/api/auth/session', res: ok({ account_id: 1 }) },
+      { path: '/api/auth/ha/login', method: 'POST', res: HA_MAPPED },
+    ]);
+    await renderAuth();
+    expect(screen.getByTestId('level').textContent).toBe('full');
+  });
+
+  it('does not auto-login when the tab is suppressed (lock/switch/logout)', async () => {
+    sessionStorage.setItem('shh_ha_no_auto', '1');
+    const fetchMock = router(NO_SESSION);
+    vi.stubGlobal('fetch', fetchMock);
+    await renderAuth();
+    expect(screen.getByTestId('level').textContent).toBe('null');
+    const urls = fetchMock.mock.calls.map((c) => String(c[0]));
+    expect(urls.some((u) => u.includes('/api/auth/ha/login'))).toBe(false);
+  });
+
+  it('does not attempt HA login without an ingress base path', async () => {
+    window.__BASE_PATH__ = '';
+    const fetchMock = router(NO_SESSION);
+    vi.stubGlobal('fetch', fetchMock);
+    await renderAuth();
+    const urls = fetchMock.mock.calls.map((c) => String(c[0]));
+    expect(urls.some((u) => u.includes('/api/auth/ha/login'))).toBe(false);
+    expect(screen.getByTestId('level').textContent).toBe('null');
+  });
+
+  it('falls back to the normal flow when /ha/login is rejected (LAN port)', async () => {
+    setFetch([
+      ...NO_SESSION,
+      { path: '/api/auth/ha/login', method: 'POST', res: fail(403, { detail: 'Not a trusted ingress request' }) },
+    ]);
+    await renderAuth();
+    expect(screen.getByTestId('level').textContent).toBe('null');
+  });
+
+  it('logout suppresses HA auto-login for this tab', async () => {
+    setFetch([
+      { path: '/api/auth/first-run', res: ok({ is_first_run: false }) },
+      { path: '/api/auth/session', res: ok({ user_id: 2, username: 'eli_dad_app', account_id: 1 }) },
+      { path: '/api/auth/logout', method: 'POST', res: ok({}) },
+    ]);
+    await renderAuth();
+    await click('logout');
+    await waitFor(() => expect(screen.getByTestId('level').textContent).toBe('null'));
+    expect(sessionStorage.getItem('shh_ha_no_auto')).toBe('1');
   });
 });

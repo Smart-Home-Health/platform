@@ -2,7 +2,8 @@
 
 A self-contained appliance: this add-on bundles **PostgreSQL + TimescaleDB** and
 the unified FastAPI/SPA app in one container, and is reached through the Home
-Assistant sidebar via **ingress** (no exposed port required).
+Assistant sidebar via **ingress**. A direct LAN port (8000) is also published
+for shared-device iframes — see "Sign in with Home Assistant" below.
 
 ## What's inside / how data is stored
 
@@ -33,9 +34,37 @@ Open it from the sidebar once started (the "Health Hub" panel).
 | --- | --- | --- |
 | `jwt_secret` | _(blank)_ | Token signing secret. Leave blank to auto-generate one (persisted to `/data/jwt_secret`). |
 | `skip_account_password` | `false` | Skip the account-password login and drop straight into user selection (monitoring mode). See below. |
+| `ha_identity_login` | `true` | Sign users in from their Home Assistant login when the app is opened through ingress. See below. |
 | `min_spo2` / `max_spo2` | `90` / `100` | SpO₂ alarm thresholds. |
 | `min_bpm` / `max_bpm` | `55` / `155` | Heart-rate alarm thresholds. |
 | `log_level` | `info` | Add-on log verbosity. |
+
+### Sign in with Home Assistant (`ha_identity_login`)
+
+When the app is opened from the HA sidebar (ingress), Home Assistant forwards
+who is logged in. The app uses that two ways:
+
+- **Linked HA user** → signed in as their app profile immediately: no account
+  password, no user picker, and no daily password re-prompt (the HA login
+  counts as a full login). Link users under **Configuration → Users → Home
+  Assistant users** — anyone who has opened the panel once appears there.
+- **Unlinked HA user** → the account password is skipped (HA already
+  authenticated them) and the normal user picker is shown.
+
+Locking the app or choosing **Switch user** brings the picker back and it stays
+until a profile is chosen — reopening from the sidebar in a *new* tab signs the
+linked user in again.
+
+**Shared devices (wall tablet, med-station Pi):** use the direct LAN address
+(port `8000`, e.g. `http://<ha-host>:8000`) in a dashboard iframe card instead
+of ingress. That path always shows the user picker, so a shared screen never
+inherits anyone's identity. Ingress URLs also rotate on reinstall — never
+hardcode an ingress URL in an iframe card.
+
+**Security:** identity headers are only trusted when the request's TCP peer is
+the Supervisor's ingress proxy (`172.30.32.2`). Requests on the LAN port that
+carry forged identity headers are rejected. Requires Home Assistant Core
+≥ 2023.9 (older versions simply fall back to the picker flow).
 
 ### `skip_account_password`
 
@@ -56,7 +85,7 @@ The image is **not** built by the add-on folder alone — it needs both `backend
 and `frontend/`, so it's built from the repo root with buildx:
 
 ```bash
-REGISTRY=ghcr.io/smart-home-health VERSION=0.1.0 bash scripts/build-addon.sh
+REGISTRY=ghcr.io/smart-home-health VERSION=0.2.0 bash scripts/build-addon.sh
 ```
 
 This publishes per-arch images (`amd64-addon`, `aarch64-addon`) that

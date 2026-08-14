@@ -59,6 +59,7 @@ from schemas.vent_device_info import VentDeviceInfo
 from schemas.dme_shipment import DMEShipment, DMEShipmentItem, DMEReceiptItem, DMEShipmentAlert, DMEShipmentDocument
 from schemas.environmental_observation import EnvironmentalObservation
 from models.readers import Reader
+from models.ha_identity import HASeenIdentity
 from models.custom_vital_definition import CustomVitalDefinition
 from models.user_messages import UserMessage, UserMessageAcknowledgement
 from models.vent_ingested_files import VentIngestedFile
@@ -80,5 +81,5 @@ __all__ = [
     'OrganizationType', 'PatientAccess', 'AccessLevel', 'Reader', 'CustomVitalDefinition',
     'UserMessage', 'UserMessageAcknowledgement', 'VentIngestedFile',
     'DMEShipment', 'DMEShipmentItem', 'DMEReceiptItem', 'DMEShipmentAlert', 'DMEShipmentDocument',
-    'EnvironmentalObservation'
+    'EnvironmentalObservation', 'HASeenIdentity'
 ]

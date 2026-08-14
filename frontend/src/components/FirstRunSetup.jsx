@@ -42,6 +42,26 @@ export default function FirstRunSetup() {
   const [loading, setLoading] = useState(false);
   const [setupComplete, setSetupComplete] = useState(false);
   const [accountSlug, setAccountSlug] = useState('');
+  // Under HA ingress the backend reports who is signed in to Home Assistant.
+  // Their identity is auto-linked by the setup endpoint, so passwords become
+  // optional fallbacks and we can prefill the profile.
+  const [haIdentity, setHaIdentity] = useState(null);
+
+  useEffect(() => {
+    apiFetch(`${config.apiUrl}/api/auth/first-run`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data?.ha_identity) return;
+        setHaIdentity(data.ha_identity);
+        setFormData((prev) => ({
+          ...prev,
+          username: prev.username || data.ha_identity.username
+            || (data.ha_identity.display_name || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''),
+          full_name: prev.full_name || data.ha_identity.display_name || data.ha_identity.username || '',
+        }));
+      })
+      .catch(() => {});
+  }, []);
   // Optional "Secure this install" step, offered on the success screen.
   // Hidden under HA ingress (TLS already handled) or if status can't load.
   const [offerHttps, setOfferHttps] = useState(false);
@@ -68,25 +88,32 @@ export default function FirstRunSetup() {
     e.preventDefault();
     setError('');
 
-    // Validation
-    if (formData.account_password !== formData.confirmAccountPassword) {
-      setError('Account passwords do not match');
-      return;
+    // Validation. Under HA ingress passwords are optional (the HA login is
+    // auto-linked and becomes the sign-in); when a field IS filled, it still
+    // has to be valid.
+    const accountPwSkipped = haIdentity && !formData.account_password && !formData.confirmAccountPassword;
+    const userPwSkipped = haIdentity && !formData.password && !formData.confirmPassword;
+
+    if (!accountPwSkipped) {
+      if (formData.account_password !== formData.confirmAccountPassword) {
+        setError('Account passwords do not match');
+        return;
+      }
+      if (formData.account_password.length < 8) {
+        setError('Account password must be at least 8 characters');
+        return;
+      }
     }
 
-    if (formData.account_password.length < 8) {
-      setError('Account password must be at least 8 characters');
-      return;
-    }
-
-    if (formData.password !== formData.confirmPassword) {
-      setError('User passwords do not match');
-      return;
-    }
-
-    if (formData.password.length < 8) {
-      setError('User password must be at least 8 characters');
-      return;
+    if (!userPwSkipped) {
+      if (formData.password !== formData.confirmPassword) {
+        setError('User passwords do not match');
+        return;
+      }
+      if (formData.password.length < 8) {
+        setError('User password must be at least 8 characters');
+        return;
+      }
     }
 
     if (formData.pin && (formData.pin.length < 4 || formData.pin.length > 8)) {
@@ -103,12 +130,12 @@ export default function FirstRunSetup() {
 
     const setupData = {
       username: formData.username,
-      password: formData.password,
+      password: formData.password || null,
       full_name: formData.full_name,
       email: formData.email || null,
       pin: formData.pin || null,
       account_name: formData.account_name || null,
-      account_password: formData.account_password
+      account_password: formData.account_password || null
     };
 
     const result = await completeFirstRunSetup(setupData);
@@ -206,6 +233,16 @@ export default function FirstRunSetup() {
           <p>Let's set up your account and administrator profile</p>
         </div>
 
+        {haIdentity && (
+          <div className="info-message" style={{ margin: '0 0 1rem', padding: '0.75rem 1rem', borderRadius: '8px', background: 'rgba(35,134,54,0.12)', border: '1px solid rgba(35,134,54,0.4)' }}>
+            Setting up as <strong>{haIdentity.display_name || haIdentity.username}</strong> from
+            Home Assistant — this profile will be linked to your HA login, so opening the app
+            from the sidebar signs you in automatically. Passwords are optional here: they're
+            only needed for access outside Home Assistant (like a shared wall tablet), and an
+            administrator can set them later.
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="first-run-form">
           {error && (
             <div className="error-message">
@@ -231,7 +268,7 @@ export default function FirstRunSetup() {
 
             <div className="form-group">
               <label htmlFor="account_password">
-                Account Password *
+                {haIdentity ? 'Account Password (Optional)' : 'Account Password *'}
                 <span
                   className="info-icon-wrap"
                   onMouseEnter={() => setShowAccountPwTip(true)}
@@ -252,25 +289,27 @@ export default function FirstRunSetup() {
                 name="account_password"
                 value={formData.account_password}
                 onChange={handleChange}
-                required
-                minLength={8}
-                placeholder="Minimum 8 characters"
+                required={!haIdentity}
+                minLength={formData.account_password ? 8 : undefined}
+                placeholder={haIdentity ? 'Optional — for access outside Home Assistant' : 'Minimum 8 characters'}
               />
               <small className="form-hint">
-                Encryption key for your account data — store this securely
+                {haIdentity
+                  ? 'Unlocks full viewing on shared/LAN devices — skip it and set it later under Configuration → Account'
+                  : 'Encryption key for your account data — store this securely'}
               </small>
             </div>
 
             <div className="form-group">
-              <label htmlFor="confirmAccountPassword">Confirm Account Password *</label>
+              <label htmlFor="confirmAccountPassword">{haIdentity ? 'Confirm Account Password' : 'Confirm Account Password *'}</label>
               <input
                 type="password"
                 id="confirmAccountPassword"
                 name="confirmAccountPassword"
                 value={formData.confirmAccountPassword}
                 onChange={handleChange}
-                required
-                minLength={8}
+                required={!haIdentity || !!formData.account_password}
+                minLength={formData.account_password ? 8 : undefined}
                 placeholder="Re-enter account password"
               />
             </div>
@@ -333,32 +372,34 @@ export default function FirstRunSetup() {
             </div>
 
             <div className="form-group">
-              <label htmlFor="password">User Password *</label>
+              <label htmlFor="password">{haIdentity ? 'User Password (Optional)' : 'User Password *'}</label>
               <input
                 type="password"
                 id="password"
                 name="password"
                 value={formData.password}
                 onChange={handleChange}
-                required
-                minLength={8}
-                placeholder="Minimum 8 characters"
+                required={!haIdentity}
+                minLength={formData.password ? 8 : undefined}
+                placeholder={haIdentity ? 'Optional — you sign in with Home Assistant' : 'Minimum 8 characters'}
               />
               <small className="form-hint">
-                Password for your user profile
+                {haIdentity
+                  ? 'Only needed to sign in outside Home Assistant — can be set later from user management'
+                  : 'Password for your user profile'}
               </small>
             </div>
 
             <div className="form-group">
-              <label htmlFor="confirmPassword">Confirm User Password *</label>
+              <label htmlFor="confirmPassword">{haIdentity ? 'Confirm User Password' : 'Confirm User Password *'}</label>
               <input
                 type="password"
                 id="confirmPassword"
                 name="confirmPassword"
                 value={formData.confirmPassword}
                 onChange={handleChange}
-                required
-                minLength={8}
+                required={!haIdentity || !!formData.password}
+                minLength={formData.password ? 8 : undefined}
                 placeholder="Re-enter user password"
               />
             </div>

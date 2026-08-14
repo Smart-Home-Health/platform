@@ -34,6 +34,16 @@ export function getBasePath() {
   return '';
 }
 
+// True when the page was served through Home Assistant ingress: the backend
+// injects the ingress prefix into __BASE_PATH__ only when Supervisor's
+// X-Ingress-Path header is present. This is the client-side half of the
+// ingress/LAN split (HA auto-login is attempted only under ingress); the
+// server independently verifies the ingress peer, so a spoofed base path
+// buys nothing.
+export function isIngress() {
+  return Boolean(getBasePath());
+}
+
 export function getApiBaseUrl() {
   const envUrl = import.meta.env.VITE_API_URL;
   if (envUrl && !String(envUrl).includes('localhost')) return envUrl;

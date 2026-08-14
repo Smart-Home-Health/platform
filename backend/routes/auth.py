@@ -141,18 +141,29 @@ from utils.client_ip import get_client_ip  # shared with rate-limit middleware
 
 
 @router.get("/first-run", response_model=FirstRunStatus)
-def check_first_run(db: Session = Depends(get_db)):
+def check_first_run(request: Request, db: Session = Depends(get_db)):
     """
     Check if this is the first run (no admin users exist).
     This endpoint is public and used to determine if setup is needed.
     """
     has_admin = has_any_admin_user(db)
 
+    from utils.ha_ingress import ingress_identity
+    identity = ingress_identity(request)
+
     return FirstRunStatus(
         is_first_run=not has_admin,
         has_admin=has_admin,
         message="Admin user exists" if has_admin else "First run - admin setup required",
         skip_account_password=skip_account_password_enabled(),
+        ha_identity=(
+            {
+                "ha_user_id": identity.ha_user_id,
+                "username": identity.username,
+                "display_name": identity.display_name,
+            }
+            if identity else None
+        ),
     )
 
 
@@ -185,6 +196,21 @@ def first_run_setup(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Username already taken"
         )
+
+    # HA-ingress founders don't have to invent app passwords: their HA login is
+    # auto-linked below and IS their sign-in. Random fallbacks are generated so
+    # the NOT NULL hashes hold; real ones can be set later (needed only for
+    # non-HA access, e.g. the LAN shared-device path).
+    from utils.ha_ingress import ingress_identity
+    ha_identity = ingress_identity(request)
+    if not ha_identity and not (setup.password and setup.account_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password and account password are required outside Home Assistant"
+        )
+    import secrets as _secrets
+    user_password = setup.password or _secrets.token_urlsafe(24)
+    account_password = setup.account_password or _secrets.token_urlsafe(24)
     
     # Get system_admin role
     admin_role = get_role_by_name(db, "system_admin")
@@ -201,22 +227,25 @@ def first_run_setup(
     account_slug = re.sub(r'[^a-z0-9]+', '-', account_name.lower()).strip('-')
     
     # Hash password for account (separate from user password)
-    account_password_hash = bcrypt.hashpw(setup.account_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    account_password_hash = bcrypt.hashpw(account_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
     
-    # Create account first
+    # Create account first. A generated (never-human-set) account password is
+    # flagged so a system admin can later set a real one without knowing the
+    # random value (routes/account.py change_account_password).
     account = Account(
         name=account_name,
         slug=account_slug,
         password_hash=account_password_hash,
         is_default=True,
         is_active=True,
-        contact_email=setup.email
+        contact_email=setup.email,
+        settings={"account_password_unset": True} if not setup.account_password else None
     )
     db.add(account)
     db.flush()  # Get account ID without committing
     
     # Hash user password and PIN
-    user_password_hash = bcrypt.hashpw(setup.password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    user_password_hash = bcrypt.hashpw(user_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
     pin_hash = bcrypt.hashpw(setup.pin.encode('utf-8'), bcrypt.gensalt()).decode('utf-8') if setup.pin else None
     
     # Create admin user directly (not via create_user to control transaction)
@@ -239,6 +268,26 @@ def first_run_setup(
     db.execute(
         user_roles.insert().values(user_id=user.id, role_id=admin_role.id)
     )
+
+    # Founder arrived through HA ingress: link their HA identity now so every
+    # later sidebar visit signs them straight in — no manual mapping step.
+    if ha_identity:
+        from models.ha_identity import HASeenIdentity
+        user.ha_user_id = ha_identity.ha_user_id
+        from datetime import datetime as _dt
+        seen = db.query(HASeenIdentity).filter(
+            HASeenIdentity.ha_user_id == ha_identity.ha_user_id
+        ).first()
+        if seen:
+            seen.username = ha_identity.username
+            seen.display_name = ha_identity.display_name
+            seen.last_seen = _dt.utcnow()
+        else:
+            db.add(HASeenIdentity(
+                ha_user_id=ha_identity.ha_user_id,
+                username=ha_identity.username,
+                display_name=ha_identity.display_name,
+            ))
     
     # Create default patient using the username
     from datetime import datetime as dt
@@ -273,7 +322,8 @@ def first_run_setup(
             "username": user.username,
             "full_name": user.full_name,
             "account_name": account.name,
-            "account_id": account.id
+            "account_id": account.id,
+            "ha_linked": bool(ha_identity),
         }),
         ip_address=get_client_ip(request),
         user_agent=request.headers.get("User-Agent")

@@ -24,8 +24,8 @@ from zoneinfo import available_timezones
 import bcrypt
 
 from db import get_db
-from dependencies import get_current_account_id, get_current_account, require_full_auth, require_read_access
-from models.users import Account
+from dependencies import get_current_account_id, get_current_account, require_full_auth, require_read_access, get_current_user
+from models.users import Account, User
 
 router = APIRouter(prefix="/api/account", tags=["account"])
 
@@ -41,7 +41,10 @@ class AccountResponse(BaseModel):
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
     organization: Optional[dict] = None
-    
+    # True while the account password was never set by a human (HA-ingress
+    # first-run skipped it) — the UI nudges an admin to set one.
+    password_unset: bool = False
+
     class Config:
         from_attributes = True
 
@@ -67,9 +70,15 @@ class AccountUpdateRequest(BaseModel):
 
 
 class PasswordChangeRequest(BaseModel):
-    """Request to change account password"""
-    current_password: str
+    """Request to change account password. current_password may be omitted
+    only while the account password was never set by a human (HA-ingress
+    first-run skipped it) — see change_account_password."""
+    current_password: Optional[str] = None
     new_password: str = Field(..., min_length=8)
+
+
+def _password_unset(account: Account) -> bool:
+    return bool((account.settings or {}).get("account_password_unset"))
 
 
 @router.get("", response_model=AccountResponse)
@@ -99,7 +108,8 @@ def get_account(
         is_default=account.is_default,
         created_at=account.created_at.isoformat() if account.created_at else None,
         updated_at=account.updated_at.isoformat() if account.updated_at else None,
-        organization=org_data
+        organization=org_data,
+        password_unset=_password_unset(account)
     )
 
 
@@ -161,24 +171,34 @@ def update_account(
 def change_account_password(
     request: PasswordChangeRequest,
     account: Account = Depends(get_current_account),
-    _: bool = Depends(require_full_auth),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
-    Change account password.
-    Requires full authentication (user must be selected).
+    Change account password. Requires full authentication.
+
+    Normally the current password must be verified. The one exception: an
+    HA-ingress first-run that skipped the account password stored a random
+    hash and flagged it account_password_unset — while that flag is set, a
+    system admin may set the password without knowing the random one.
     """
-    # Verify current password
-    if not bcrypt.checkpw(request.current_password.encode('utf-8'), account.password_hash.encode('utf-8')):
+    if _password_unset(account) and current_user.is_superuser:
+        pass  # first human-set password; nothing real to verify against
+    elif not request.current_password or not bcrypt.checkpw(
+        request.current_password.encode('utf-8'), account.password_hash.encode('utf-8')
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Current password is incorrect"
         )
-    
-    # Hash and set new password
+
+    # Hash and set new password; the account now has a human-set password.
     new_hash = bcrypt.hashpw(request.new_password.encode('utf-8'), bcrypt.gensalt())
     account.password_hash = new_hash.decode('utf-8')
-    
+    settings = dict(account.settings or {})
+    settings.pop("account_password_unset", None)
+    account.settings = settings
+
     db.commit()
-    
+
     return {"message": "Password changed successfully"}
