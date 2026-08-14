@@ -280,3 +280,78 @@ def test_link_unseen_identity_creates_seen_row(admin_client, limited_user, accou
     assert r.status_code == 200
     from models.ha_identity import HASeenIdentity
     assert db_session.query(HASeenIdentity).filter_by(ha_user_id=HA_ID_2).count() == 1
+
+
+# ---------------------------------------------------------------- first-run under ingress
+
+def test_first_run_reports_ha_identity(client, ingress_env):
+    r = client.get("/api/auth/first-run", headers=HEADERS)
+    assert r.status_code == 200
+    assert r.json()["ha_identity"] == {
+        "ha_user_id": HA_ID, "username": "eli_dad", "display_name": "Eli's Dad",
+    }
+
+
+def test_first_run_hides_identity_outside_ingress(client, monkeypatch):
+    monkeypatch.delenv("SHH_INGRESS", raising=False)
+    r = client.get("/api/auth/first-run", headers=HEADERS)
+    assert r.json()["ha_identity"] is None
+
+
+def test_first_run_passwordless_under_ingress_links_founder(client, ingress_env, db_session):
+    """Ingress founder: no passwords needed; their HA identity is auto-linked
+    and the very next sidebar visit signs them in with zero prompts."""
+    r = client.post("/api/auth/first-run/setup", headers=HEADERS, json={
+        "username": "eli_dad", "full_name": "Eli's Dad",
+    })
+    assert r.status_code == 200, r.text
+
+    from models.users import User, Account
+    user = db_session.query(User).filter_by(username="eli_dad").one()
+    assert user.ha_user_id == HA_ID
+    assert user.is_system_admin
+    account = db_session.query(Account).one()
+    assert (account.settings or {}).get("account_password_unset") is True
+
+    from models.ha_identity import HASeenIdentity
+    assert db_session.query(HASeenIdentity).filter_by(ha_user_id=HA_ID).count() == 1
+
+    # The follow-up ingress login is a full session as the founder.
+    client.cookies.clear()
+    r = client.post("/api/auth/ha/login", headers=HEADERS)
+    assert r.json()["mapped"] is True
+    assert r.json()["user"]["username"] == "eli_dad"
+
+
+def test_first_run_passwords_still_required_outside_ingress(client, monkeypatch):
+    monkeypatch.delenv("SHH_INGRESS", raising=False)
+    r = client.post("/api/auth/first-run/setup", headers=HEADERS, json={
+        "username": "someone", "full_name": "Some One",
+    })
+    assert r.status_code == 400
+    assert "required" in r.json()["detail"].lower()
+
+
+def test_unset_account_password_can_be_set_by_admin(client, ingress_env, db_session):
+    """After a passwordless ingress first-run, a system admin sets the account
+    password WITHOUT the (random, unknowable) current one — exactly once."""
+    setup = client.post("/api/auth/first-run/setup", headers=HEADERS, json={
+        "username": "eli_dad", "full_name": "Eli's Dad",
+    })
+    token = setup.json()["access_token"]
+    client.cookies.clear()
+    auth = {"Authorization": f"Bearer {token}"}
+
+    assert client.get("/api/account", headers=auth).json()["password_unset"] is True
+
+    r = client.put("/api/account/password", headers=auth, json={"new_password": "RealAcct1234!"})
+    assert r.status_code == 200
+    assert client.get("/api/account", headers=auth).json()["password_unset"] is False
+
+    # From now on the current password is enforced again.
+    r = client.put("/api/account/password", headers=auth, json={"new_password": "Another1234!"})
+    assert r.status_code == 400
+    r = client.put("/api/account/password", headers=auth, json={
+        "current_password": "RealAcct1234!", "new_password": "Another1234!",
+    })
+    assert r.status_code == 200
