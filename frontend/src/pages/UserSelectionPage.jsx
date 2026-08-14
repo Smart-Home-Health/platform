@@ -179,6 +179,7 @@ export default function UserSelectionPage() {
                       <div className="user-name">{user.full_name || user.username}</div>
                       <div className="user-roles">
                         {user.roles?.map(r => r.display_name || r.name).join(', ') || 'User'}
+                        {user.ha_linked ? ' · Signs in with Home Assistant' : ''}
                       </div>
                     </div>
                   </button>
@@ -215,6 +216,14 @@ export default function UserSelectionPage() {
                     autoFocus
                     required
                   />
+                  {selectedUser.ha_linked && !selectedUser.has_pin && (
+                    <small className="form-hint">
+                      This profile normally signs in automatically from the Home
+                      Assistant sidebar. To use it here, enter its app password —
+                      if it was never given one, an administrator can set one (or
+                      a PIN) under Configuration → Users.
+                    </small>
+                  )}
                 </div>
               ) : (
                 <div className="form-group">

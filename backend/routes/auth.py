@@ -561,6 +561,7 @@ def get_account_users(
             full_name=user.full_name,
             has_pin=bool(user.pin_hash),
             requires_full_password=user.needs_full_password(),
+            ha_linked=bool(user.ha_user_id),
             roles=[{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles]
         )
         for user in users
