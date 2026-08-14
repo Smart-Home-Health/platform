@@ -198,6 +198,14 @@ def test_import_requires_admin(limited_client, account):
     assert _import(limited_client).status_code == 403
 
 
+def test_import_rejects_out_of_bounds_lengths(admin_client, account):
+    """Bounds mirror the users table so bad input never reaches the DB."""
+    assert _import(admin_client, username="ab").status_code == 422
+    assert _import(admin_client, username="x" * 51).status_code == 422
+    assert _import(admin_client, full_name="").status_code == 422
+    assert _import(admin_client, full_name="y" * 101).status_code == 422
+
+
 # ---------------------------------------------------------------- patients account_id fix
 
 def test_created_patient_gets_account_id(admin_client, account, db_session):

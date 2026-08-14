@@ -114,7 +114,9 @@ export default function HAIdentitiesCard({
   const openImport = (item) => {
     setImportError(null);
     setImportForm({
-      username: item.username || slugify(item.name),
+      // slugify can come up empty (all-non-ASCII names); fall back to a stable
+      // handle from the HA user id so the dialog always opens submittable.
+      username: item.username || slugify(item.name) || `ha_${item.ha_user_id.slice(0, 8)}`,
       full_name: item.name || item.username || '',
       role_ids: [],
       patient_ids: [],

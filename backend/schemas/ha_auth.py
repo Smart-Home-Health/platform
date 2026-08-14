@@ -17,7 +17,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class HAIdentityInfo(BaseModel):
@@ -88,8 +88,11 @@ class HADirectoryResponse(BaseModel):
 
 
 class HAImportRequest(BaseModel):
-    """Create a passwordless app user pre-linked to an HA identity."""
+    """Create a passwordless app user pre-linked to an HA identity.
+
+    Length bounds mirror the users table (username 50, full_name 100) so bad
+    input fails validation instead of surfacing as a DB error."""
     ha_user_id: str
-    username: str
-    full_name: str
+    username: str = Field(..., min_length=3, max_length=50)
+    full_name: str = Field(..., min_length=1, max_length=100)
     role_ids: list[int] = []

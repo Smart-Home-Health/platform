@@ -112,6 +112,16 @@ describe('HAIdentitiesCard directory mode', () => {
     expect(screen.getAllByRole('button', { name: 'Remove' }).length).toBe(1);
   });
 
+  it('falls back to an id-derived username when the HA user has no usable name', async () => {
+    getHaDirectory.mockResolvedValue({
+      available: true,
+      users: [{ ha_user_id: HA_C, name: '日本語', username: null, status: 'never_opened', in_directory: true }],
+    });
+    await renderCard();
+    fireEvent.click(screen.getByRole('button', { name: 'Create profile' }));
+    expect(screen.getByDisplayValue(`ha_${HA_C.slice(0, 8)}`)).toBeInTheDocument();
+  });
+
   it('hides "Add as patient" once the HA login produced a patient', async () => {
     getHaDirectory.mockResolvedValue({
       available: true,
