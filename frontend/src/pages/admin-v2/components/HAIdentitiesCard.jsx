@@ -50,15 +50,21 @@ export default function HAIdentitiesCard({ users = [] }) {
       setItems(await listHaIdentities());
       setError(null);
     } catch (err) {
-      // 403 = not a system admin: this card simply isn't for them.
-      if (err.status === 403 || err.status === 401) setItems(null);
-      else setError(err.message);
+      if (err.status === 403 || err.status === 401) {
+        // Not a system admin: this card simply isn't for them.
+        setItems(null);
+      } else {
+        // Real failure: keep (or create) the card so the error is visible.
+        setError(err.message);
+        setItems((prev) => prev ?? []);
+      }
     }
   };
 
   useEffect(() => { load(); }, []);
 
-  if (!items || (items.length === 0 && !isIngress())) return null;
+  if (!items) return null; // loading, or not permitted
+  if (items.length === 0 && !isIngress() && !error) return null;
 
   const unmapped = items.filter((i) => !i.mapped_user).length;
 

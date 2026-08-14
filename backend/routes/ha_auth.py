@@ -53,7 +53,7 @@ from schemas.ha_auth import (
     HAStatusResponse,
 )
 from utils.client_ip import get_client_ip
-from utils.ha_ingress import ingress_identity, trusted_ingress_peer
+from utils.ha_ingress import ingress_identity, is_valid_ha_user_id, trusted_ingress_peer
 
 logger = logging.getLogger(__name__)
 
@@ -245,8 +245,7 @@ def link_identity(
 ):
     """Link an HA identity to an app user. 409 if the identity is already
     linked to a different user (unlink first — no silent identity moves)."""
-    from utils.ha_ingress import _HA_USER_ID_RE
-    if not _HA_USER_ID_RE.match(ha_user_id):
+    if not is_valid_ha_user_id(ha_user_id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid HA user id")
 
     target = db.query(User).filter(User.id == body.user_id).first()

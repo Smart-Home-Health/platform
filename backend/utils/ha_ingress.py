@@ -40,6 +40,11 @@ logger = logging.getLogger(__name__)
 # HA Core user ids are uuid4().hex — exactly 32 lowercase hex chars.
 _HA_USER_ID_RE = re.compile(r"\A[0-9a-f]{32}\Z")
 
+
+def is_valid_ha_user_id(value: str) -> bool:
+    """Public validator for HA user ids (32 lowercase hex chars)."""
+    return bool(_HA_USER_ID_RE.match(value or ""))
+
 # The Supervisor's ingress proxy address on the internal hassio network.
 DEFAULT_TRUSTED_PEERS = "172.30.32.2"
 

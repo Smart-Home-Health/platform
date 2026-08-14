@@ -85,8 +85,8 @@ appliance (database included) with a sidebar panel for every household member
 and **automatic sign-in from the HA login** (link HA users to app profiles under
 Configuration → Users). Add this repo as an add-on repository
 (`https://github.com/Smart-Home-Health/platform`) in **Settings → Add-ons →
-Add-on Store → ⋮ → Repositories** and install "Smart Home Health" — see
-[`docs/installation/home-assistant.md`](docs/installation/home-assistant.md).
+Add-on Store → ⋮ → Repositories** and install "Smart Home Health" — see the
+[add-on documentation](addon/DOCS.md).
 
 ## Run it standalone
 
