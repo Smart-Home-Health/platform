@@ -24,13 +24,14 @@ import './LoginPage.css';
 export default function UserSelectionPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { 
-    account, 
-    isAuthenticated, 
-    isAccountAuthenticated, 
-    getAccountUsers, 
+  const {
+    account,
+    isAuthenticated,
+    isAccountAuthenticated,
+    getAccountUsers,
     selectUser,
-    logout 
+    logout,
+    haIdentity
   } = useAuth();
   
   const [users, setUsers] = useState([]);
@@ -152,7 +153,9 @@ export default function UserSelectionPage() {
           <div className="login-header">
             <h2>Select User</h2>
             <p>
-              {account?.name ? `Account: ${account.name}` : 'Choose your profile to continue'}
+              {haIdentity && !haIdentity.mapped
+                ? `Signed in with Home Assistant as ${haIdentity.display_name || haIdentity.username || 'an unlinked user'} — choose your profile`
+                : account?.name ? `Account: ${account.name}` : 'Choose your profile to continue'}
             </p>
           </div>
 

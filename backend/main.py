@@ -56,7 +56,7 @@ from modules.mqtt_module import MQTTModule
 from modules.state_module import StateModule
 
 # Import route modules
-from routes import core, settings, vitals, medications, care_tasks, equipment, monitoring, mqtt, status, patients, nutrition, businesses, providers, auth, users, schedule, dashboard, symptoms, diagnoses, implants, dme_shipments, account, integrations, integration_imports, frigate as frigate_routes, readers, backup, analysis, reports, messages, system, security, environment
+from routes import core, settings, vitals, medications, care_tasks, equipment, monitoring, mqtt, status, patients, nutrition, businesses, providers, auth, users, schedule, dashboard, symptoms, diagnoses, implants, dme_shipments, account, integrations, integration_imports, frigate as frigate_routes, readers, backup, analysis, reports, messages, system, security, environment, ha_auth
 
 # Import legacy components
 from mqtt import initialize_mqtt_service, shutdown_mqtt_service
@@ -105,6 +105,7 @@ app.add_middleware(
 
 # Register route modules
 app.include_router(auth.router)  # Auth routes first (public)
+app.include_router(ha_auth.router)  # HA ingress identity login + mapping
 app.include_router(account.router)  # Account management
 app.include_router(core.router)
 app.include_router(settings.router)

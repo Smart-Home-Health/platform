@@ -17,7 +17,7 @@
  */
 import { useCallback, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useAuth } from './AuthContext';
+import { useAuth, suppressHaAutoLogin } from './AuthContext';
 import { getSetting } from '../services/settings';
 import { apiFetch, API_BASE_URL } from '../config';
 
@@ -69,6 +69,9 @@ export function IdleLockProvider({ children }) {
     if (lockingRef.current) return;
     lockingRef.current = true;
     try {
+      // Under HA ingress the checkSession below would otherwise auto-login the
+      // mapped HA user right back in — a lock must stick for this tab.
+      suppressHaAutoLogin();
       await apiFetch(`${API_BASE_URL}/api/auth/lock`, { method: 'POST' });
       await checkSession();
       navigate(lockTargetRef.current === 'live' ? '/live' : '/select-user', { replace: true });

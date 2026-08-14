@@ -34,6 +34,7 @@ import { Field, FormRow } from '@/components/ui/field';
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '@/components/ui/select';
+import { listHaIdentities, unlinkHaIdentity } from '../../services/haIdentity';
 import './AdminV2.css';
 
 const emptyForm = {
@@ -63,6 +64,27 @@ export default function AdminV2UserDetail() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [requireChange, setRequireChange] = useState(false);
   const [resettingPw, setResettingPw] = useState(false);
+  // The HA identity linked to this user (system admins only; silent otherwise).
+  const [haLink, setHaLink] = useState(null);
+
+  const loadHaLink = useCallback(async () => {
+    try {
+      const identities = await listHaIdentities();
+      setHaLink(identities.find((i) => i.mapped_user?.id === parseInt(userId, 10)) || null);
+    } catch { setHaLink(null); }
+  }, [userId]);
+
+  useEffect(() => { if (currentUser?.is_system_admin) loadHaLink(); }, [currentUser, loadHaLink]);
+
+  const handleHaUnlink = async () => {
+    try {
+      await unlinkHaIdentity(haLink.ha_user_id);
+      setHaLink(null);
+      setSuccess('Home Assistant login unlinked.');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
 
   const hasPermission = (permission) => {
     if (!currentUser) return false;
@@ -312,6 +334,14 @@ export default function AdminV2UserDetail() {
             <CardHeader>
               <CardTitle>{target ? target.full_name : 'User'}</CardTitle>
               <p className="text-sm text-muted-foreground">@{target?.username} · Basic details</p>
+              {haLink && (
+                <div className="flex items-center gap-2 pt-1">
+                  <Badge variant="secondary">
+                    Signs in automatically as {haLink.display_name || haLink.username || 'a Home Assistant user'}
+                  </Badge>
+                  <Button variant="ghost" size="sm" onClick={handleHaUnlink}>Unlink</Button>
+                </div>
+              )}
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <FormRow>

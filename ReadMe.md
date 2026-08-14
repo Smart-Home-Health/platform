@@ -78,7 +78,17 @@ The app requires a **TimescaleDB** database (it uses hypertables — plain Postg
 will fail migrations). Both methods below provision the right database container for
 you; the database always runs separately from the app.
 
-## Run it (recommended)
+## Run it in Home Assistant (recommended)
+
+The **Home Assistant add-on** is the primary way to install: a one-container
+appliance (database included) with a sidebar panel for every household member
+and **automatic sign-in from the HA login** (link HA users to app profiles under
+Configuration → Users). Add this repo as an add-on repository
+(`https://github.com/Smart-Home-Health/platform`) in **Settings → Add-ons →
+Add-on Store → ⋮ → Repositories** and install "Smart Home Health" — see
+[`docs/installation/home-assistant.md`](docs/installation/home-assistant.md).
+
+## Run it standalone
 
 Runs the published **single image** — the backend API and the built web UI served
 together on one port — alongside a TimescaleDB container. It pulls

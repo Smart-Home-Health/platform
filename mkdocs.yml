@@ -2,8 +2,8 @@ site_name: Smart Home Health
 site_description: >-
   Documentation for the Smart Home Health — a home-care monitoring system for
   families and caregivers.
-repo_url: https://github.com/Smart-Home-Health/smart-home-health-hub
-repo_name: Smart-Home-Health/smart-home-health-hub
+repo_url: https://github.com/Smart-Home-Health/platform
+repo_name: Smart-Home-Health/platform
 docs_dir: docs
 edit_uri: edit/main/docs/
 
@@ -62,6 +62,7 @@ nav:
   - Home: index.md
   - Installation:
       - installation/index.md
+      - Home Assistant add-on: installation/home-assistant.md
       - Configuration: installation/configuration.md
       - First-run setup: installation/first-run.md
       - HTTPS / secure access: installation/https-setup.md

@@ -5,7 +5,7 @@
 # Postgres data + uploaded artifacts live under the add-on's auto-persistent
 # /data, so they survive restarts and updates.
 name: Smart Home Health
-version: "0.1.0"
+version: "0.2.0"
 slug: smart_home_health
 description: Caregiving vitals monitor + medication / care-task scheduling hub
 url: https://github.com/Smart-Home-Health/platform
@@ -22,11 +22,24 @@ boot: auto
 
 # Ingress: served same-origin through HA's proxy under a per-token path prefix.
 # The app is base-path aware (backend injects the X-Ingress-Path into the SPA).
+# panel_admin false: every HA user (not just admins) gets the sidebar entry —
+# the app enforces its own roles/permissions, and HA core allows any
+# authenticated user through ingress regardless of this flag.
 ingress: true
 ingress_port: 8000
 panel_icon: mdi:heart-pulse
 panel_title: Health Hub
-panel_admin: true
+panel_admin: false
+
+# Direct LAN port for shared-device iframes (wall tablets, med station).
+# This path ALWAYS shows the user picker — HA identity auto-login only works
+# through ingress (the app verifies the ingress peer before trusting identity
+# headers). NOTE: adding/changing ports requires a full add-on
+# uninstall + reinstall to take effect.
+ports:
+  8000/tcp: 8000
+ports_description:
+  8000/tcp: "Direct LAN access for shared-device iframes — always shows the user picker; HA auto-login is ingress-only"
 
 # Auto-discover HA's Mosquitto broker (optional; the app's MQTT settings still
 # live in its own DB, but this lets us seed the broker host on first run).
@@ -36,6 +49,7 @@ services:
 options:
   jwt_secret: ""
   skip_account_password: false
+  ha_identity_login: true
   min_spo2: 90
   max_spo2: 100
   min_bpm: 55
@@ -44,6 +58,7 @@ options:
 schema:
   jwt_secret: "password?"
   skip_account_password: bool
+  ha_identity_login: bool
   min_spo2: int(50,100)
   max_spo2: int(50,110)
   min_bpm: int(20,120)
