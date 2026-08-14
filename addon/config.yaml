@@ -41,6 +41,15 @@ ports:
 ports_description:
   8000/tcp: "Direct LAN access for shared-device iframes — always shows the user picker; HA auto-login is ingress-only"
 
+# Supervisor/Core API access: hassio_api makes the Supervisor inject
+# SUPERVISOR_TOKEN into the container env; homeassistant_api opens the
+# ws://supervisor/core/websocket proxy the HA user directory uses
+# (config/auth/list — so admins can link/import household members before
+# they ever open the panel). NOTE: like ports, API-permission changes only
+# apply on a full uninstall + reinstall of the add-on.
+hassio_api: true
+homeassistant_api: true
+
 # Auto-discover HA's Mosquitto broker (optional; the app's MQTT settings still
 # live in its own DB, but this lets us seed the broker host on first run).
 services:

@@ -63,3 +63,32 @@ class HAIdentityItem(BaseModel):
 class HALinkRequest(BaseModel):
     """Link an HA identity to an app user."""
     user_id: int
+
+
+class HADirectoryUserItem(BaseModel):
+    """One HA user in the merged directory view."""
+    ha_user_id: str
+    name: Optional[str] = None       # HA display name (directory wins over seen)
+    username: Optional[str] = None
+    status: str                      # "linked" | "seen" | "never_opened"
+    in_directory: bool               # False = seen/mapped row no longer in HA (or fallback mode)
+    ha_is_owner: bool = False
+    ha_is_admin: bool = False
+    ha_is_active: bool = True
+    first_seen: Optional[datetime] = None
+    last_seen: Optional[datetime] = None
+    mapped_user: Optional[dict] = None  # {id, username, full_name} | None
+
+
+class HADirectoryResponse(BaseModel):
+    """GET /api/auth/ha/directory. available=False → seen-only fallback data."""
+    available: bool
+    users: list[HADirectoryUserItem] = []
+
+
+class HAImportRequest(BaseModel):
+    """Create a passwordless app user pre-linked to an HA identity."""
+    ha_user_id: str
+    username: str
+    full_name: str
+    role_ids: list[int] = []

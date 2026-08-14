@@ -359,7 +359,13 @@ const AdminV2Users = () => {
           )}
 
           {/* HA identity mapping (system admins; hides itself otherwise) */}
-          <HAIdentitiesCard users={users} />
+          <HAIdentitiesCard
+            users={users}
+            roles={roles}
+            patients={patients}
+            onUsersChanged={fetchUsers}
+            onPatientsChanged={fetchPatients}
+          />
         </div>
 
         {/* Create User Dialog */}
