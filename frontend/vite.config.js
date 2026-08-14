@@ -3,7 +3,6 @@ import { fileURLToPath, URL } from 'node:url';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
-import basicSsl from '@vitejs/plugin-basic-ssl';
 
 export default defineConfig(({ command }) => ({
   // Production build uses relative asset URLs ('./assets/...') so the injected
@@ -13,12 +12,6 @@ export default defineConfig(({ command }) => ({
   plugins: [
     react(),
     tailwindcss(),
-    // Dev HTTPS (self-signed) when VITE_HTTPS is set — iOS Safari only
-    // exposes the live camera (getUserMedia) on secure origins, so barcode
-    // viewfinders and live slip scanning over LAN need https://. All API/WS
-    // traffic rides the same-origin Vite proxy, so nothing else changes.
-    // Accept the certificate warning once per device.
-    ...(process.env.VITE_HTTPS ? [basicSsl()] : []),
     viteStaticCopy({
       targets: [
         {

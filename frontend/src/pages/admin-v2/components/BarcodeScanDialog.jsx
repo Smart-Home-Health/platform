@@ -15,10 +15,8 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-// Single-barcode scanner: point the camera at the barcode on the item's own
-// box (retail UPC/EAN or Code 128) and hand the first read back to the
-// caller. Live camera where available; photo fallback everywhere (iOS over
-// LAN HTTP has no camera API — same constraint as PackingSlipCapture).
+// Single-barcode scanner: photograph the barcode on the item's own box
+// (retail UPC/EAN or Code 128) and hand the first read back to the caller.
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Dialog,
@@ -30,17 +28,11 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CameraIcon } from '../../../components/Icons';
 
-const SCAN_INTERVAL_MS = 500;
-
 export default function BarcodeScanDialog({ open, onClose, onFound, title = 'Scan the item barcode' }) {
-  const videoRef = useRef(null);
-  const streamRef = useRef(null);
-  const timerRef = useRef(null);
   const foundRef = useRef(false); // stop after the first read
   const takePhotoInputRef = useRef(null);
   const cameraRollInputRef = useRef(null);
 
-  const [cameraError, setCameraError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -52,60 +44,9 @@ export default function BarcodeScanDialog({ open, onClose, onFound, title = 'Sca
   };
 
   useEffect(() => {
-    if (!open) return undefined;
+    if (!open) return;
     foundRef.current = false;
     setError(null);
-    let cancelled = false;
-
-    (async () => {
-      try {
-        if (!navigator.mediaDevices?.getUserMedia) throw new Error('camera-unavailable');
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment' },
-          audio: false,
-        });
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play().catch(() => {});
-        }
-        timerRef.current = setInterval(async () => {
-          const video = videoRef.current;
-          if (!video || video.readyState < 2 || foundRef.current) return;
-          try {
-            const { detectBarcodes, PRODUCT_BARCODE_FORMATS } = await import('../../../lib/slipScanner');
-            const found = await detectBarcodes(video, PRODUCT_BARCODE_FORMATS);
-            if (found.length) report(found[0]);
-          } catch { /* keep scanning */ }
-        }, SCAN_INTERVAL_MS);
-      } catch {
-        setCameraError(
-          window.isSecureContext
-            ? 'The live camera view isn’t available here — no problem. ' +
-              'Take a photo of the barcode below and we’ll read it the same way.'
-            : 'The live camera needs the secure (HTTPS) address — an administrator ' +
-              'can set one up under Configuration → Security. Meanwhile, take a ' +
-              'photo of the barcode below and we’ll read it the same way.'
-        );
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const handleFileChosen = async (e) => {
@@ -152,23 +93,14 @@ export default function BarcodeScanDialog({ open, onClose, onFound, title = 'Sca
 
         {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
 
-        {cameraError ? (
-          <Alert><AlertDescription>{cameraError}</AlertDescription></Alert>
-        ) : (
-          <div className="relative overflow-hidden rounded-lg border border-border bg-black">
-            <video ref={videoRef} playsInline muted className="w-full" />
-            <div className="absolute inset-x-0 bottom-0 bg-black/60 p-2 text-center text-sm text-white">
-              Hold the barcode on the box in view — it reads on its own.
-            </div>
-          </div>
-        )}
+        <p className="text-sm text-muted-foreground">
+          Take a photo of the barcode on the box — get close and keep it flat.
+        </p>
 
         <div className="flex flex-col gap-2">
-          {cameraError && (
-            <Button size="lg" onClick={() => takePhotoInputRef.current?.click()} disabled={busy}>
-              <CameraIcon size={16} /> {busy ? 'Reading…' : 'Take a photo of the barcode'}
-            </Button>
-          )}
+          <Button size="lg" onClick={() => takePhotoInputRef.current?.click()} disabled={busy}>
+            <CameraIcon size={16} /> {busy ? 'Reading…' : 'Take a photo of the barcode'}
+          </Button>
           <Button variant="secondary" onClick={() => cameraRollInputRef.current?.click()} disabled={busy}>
             Choose from your camera roll
           </Button>

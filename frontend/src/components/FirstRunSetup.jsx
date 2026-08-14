@@ -139,7 +139,7 @@ export default function FirstRunSetup() {
           <div className="first-run-card">
             <div className="first-run-header">
               <h1>Secure this install</h1>
-              <p>Optional — enables camera scanning on phones and tablets</p>
+              <p>Optional — encrypts connections from phones, tablets, and other devices</p>
             </div>
             <SecuritySetupWizard onFinished={handleContinue} />
             <button

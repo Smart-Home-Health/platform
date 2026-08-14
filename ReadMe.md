@@ -44,9 +44,8 @@ browser over WebSockets and bridges to MQTT / home‑automation systems.
 - **Modern responsive web UI**, accessible from a phone or other LAN device
 - **Home Assistant friendly** — runs behind HA ingress, works embedded in an iframe,
   and publishes state to MQTT. **Accessing the app through HA ingress is the
-  preferred setup**: HA's own HTTPS gives the app a real trusted certificate, so
-  camera features (barcode scanning, packing-slip capture) work on phones with no
-  certificate warnings
+  preferred setup**: HA's own HTTPS gives the app a real trusted certificate with
+  no certificate warnings
 
 ## Integrations
 
@@ -104,16 +103,14 @@ On first launch you'll be guided through admin **first‑run setup**. It also wo
 from a phone or other LAN device (e.g. `http://192.168.1.184:8000`). For publishing
 and deployment details, see [`docs/unified-image.md`](docs/unified-image.md).
 
-> **Want phone camera features (barcode / packing‑slip scanning)? Set up HTTPS.**
-> iOS only exposes the live camera to pages served over HTTPS, so the app ships
-> with a guided setup under **Configuration → Security** (also offered at the end
-> of first‑run). The recommended path gets you a free `*.duckdns.org` name and an
+> **Want an encrypted connection? Set up HTTPS.** The app ships with a guided
+> setup under **Configuration → Security** (also offered at the end of
+> first‑run). The recommended path gets you a free `*.duckdns.org` name and an
 > auto‑renewing Let's Encrypt certificate in ~5 minutes, with no port forwarding;
 > there are also paths for an existing reverse proxy (Traefik/nginx/Caddy) or your
 > own certificate. See [`docs/installation/https-setup.md`](docs/installation/https-setup.md).
 > Home Assistant ingress works too and needs no setup at all. Plain‑HTTP LAN
-> access keeps working for everything except the live camera (photo capture is
-> the automatic fallback).
+> access keeps working either way.
 
 ## Develop it (hot reload)
 
@@ -128,18 +125,9 @@ On startup the stack creates the database, runs Alembic migrations
 (`alembic upgrade head`), and starts both dev servers.
 
 **Access the application:**
-- **Web interface**: https://localhost:5173
+- **Web interface**: http://localhost:5173
 - **API**: http://localhost:8000
 - **API docs (Swagger)**: http://localhost:8000/docs
-
-> **The dev server uses a self‑signed HTTPS certificate — your browser WILL
-> complain. That's expected; it's fine.** Click through the warning
-> ("Advanced → Proceed" / on iOS "Show Details → visit this website") once per
-> device and move on. HTTPS is required because iOS only exposes the live camera
-> (barcode scanning, slip capture) to secure origins, and a self‑signed cert is
-> the zero‑setup way to get there on a LAN. Production installs get warning‑free
-> HTTPS via **Configuration → Security** (DuckDNS + Let's Encrypt, reverse proxy,
-> or your own certificate) — see [`docs/installation/https-setup.md`](docs/installation/https-setup.md).
 
 The web UI works from a phone or other LAN device too (e.g.
 `https://192.168.1.184:5173` — note **https**); it reaches the backend on the same
@@ -164,7 +152,7 @@ docker compose exec backend alembic upgrade head
 ### Initial setup
 
 1. Open the web app (http://localhost:8000 for the single‑image run, or
-   https://localhost:5173 in dev) and sign in (or create the first user).
+   http://localhost:5173 in dev) and sign in (or create the first user).
 2. Add a patient and configure alert thresholds under Settings.
 3. Start recording vitals manually, or connect a device/integration.
 
