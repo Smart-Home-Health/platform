@@ -17,7 +17,11 @@
 (outbound call to the device mocked; we assert an ephemeral key is generated
 and a pending pairing is stored)."""
 
+import json
+
 import pytest
+from cryptography.fernet import Fernet
+from starlette.websockets import WebSocketDisconnect
 
 import routes.readers as readers_mod
 
@@ -148,10 +152,6 @@ def test_pairing_rejects_ingress_host_url(admin_client, monkeypatch):
 # The endpoint is LAN-reachable (the add-on publishes port 8000): a live
 # reader's slot may only be taken over by a connection that proves it holds
 # the pairing key with one valid encrypted frame.
-import json as _json
-
-from cryptography.fernet import Fernet as _Fernet
-
 
 @pytest.fixture
 def paired_reader():
@@ -159,7 +159,7 @@ def paired_reader():
     SessionLocal, so the transaction-rollback fixtures can't reach it."""
     from db import SessionLocal
     from models.readers import Reader
-    key = _Fernet.generate_key().decode()
+    key = Fernet.generate_key().decode()
     s = SessionLocal()
     try:
         r = Reader(name="WS Reader", ip_address="192.168.1.200", port=8080,
@@ -176,11 +176,11 @@ def paired_reader():
 
 
 def _enc(key, payload):
-    return _Fernet(key.encode()).encrypt(_json.dumps(payload).encode())
+    return Fernet(key.encode()).encrypt(json.dumps(payload).encode())
 
 
 def _dec(key, data):
-    return _json.loads(_Fernet(key.encode()).decrypt(data).decode())
+    return json.loads(Fernet(key.encode()).decrypt(data).decode())
 
 
 def test_ws_fresh_connect_and_handshake(client, paired_reader):
@@ -198,8 +198,9 @@ def test_ws_unverified_connection_cannot_evict_live_reader(client, paired_reader
 
         with client.websocket_connect(f"/api/readers/ws/{rid}") as ws2:
             ws2.send_bytes(b"not-the-key")
-            with pytest.raises(Exception):
-                ws2.receive_bytes()  # server closes 4003 without evicting
+            with pytest.raises(WebSocketDisconnect) as exc:
+                ws2.receive_bytes()  # server closes without evicting
+            assert exc.value.code == 4003
 
         # The incumbent still owns the slot.
         ws1.send_bytes(_enc(key, {"type": "ping"}))
