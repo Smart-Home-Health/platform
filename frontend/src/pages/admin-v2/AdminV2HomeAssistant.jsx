@@ -643,7 +643,8 @@ const AdminV2HomeAssistant = () => {
                         ))}
                       </datalist>
                       <p className="text-xs text-muted-foreground">
-                        Suggestions come from your Home Assistant areas.
+                        Suggestions come from your Home Assistant areas and
+                        rooms already in use here.
                       </p>
                     </div>
                   </div>

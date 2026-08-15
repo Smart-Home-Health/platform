@@ -20,7 +20,7 @@ import Chart from 'chart.js/auto';
 import 'chartjs-adapter-date-fns';
 import annotationPlugin from 'chartjs-plugin-annotation';
 import zoomPlugin from 'chartjs-plugin-zoom';
-import config from '../../config';
+import config, { apiFetch } from '../../config';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import {
   ChevronLeftIcon,
@@ -175,9 +175,8 @@ const AdminV2MonitoringTimeline = () => {
     setError(null);
     try {
       const dateParam = formatDateForApi(selectedDate);
-      const response = await fetch(
-        `${config.apiUrl}/api/monitoring/timeline?patient_id=${selectedPatient.id}&target_date=${dateParam}`,
-        { credentials: 'include' }
+      const response = await apiFetch(
+        `${config.apiUrl}/api/monitoring/timeline?patient_id=${selectedPatient.id}&target_date=${dateParam}`
       );
       if (!response.ok) throw new Error('Failed to fetch timeline data');
       const data = await response.json();
@@ -200,8 +199,7 @@ const AdminV2MonitoringTimeline = () => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`${config.apiUrl}/api/environment/locations`,
-                                { credentials: 'include' });
+        const res = await apiFetch(`${config.apiUrl}/api/environment/locations`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const rows = await res.json();
         const rooms = [...new Set(rows.filter((r) => r.scope === 'room')
@@ -248,9 +246,8 @@ const AdminV2MonitoringTimeline = () => {
             if (roomLocation === null) { next[key] = []; return; }
             params.set('location', roomLocation);
           }
-          const res = await fetch(
-            `${config.apiUrl}/api/environment/observations?${params}`,
-            { credentials: 'include' }
+          const res = await apiFetch(
+            `${config.apiUrl}/api/environment/observations?${params}`
           );
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const rows = await res.json();

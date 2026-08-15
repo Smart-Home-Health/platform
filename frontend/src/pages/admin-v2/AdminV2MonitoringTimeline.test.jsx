@@ -39,7 +39,10 @@ vi.mock('chart.js/auto', () => {
 vi.mock('chartjs-adapter-date-fns', () => ({}));
 vi.mock('chartjs-plugin-annotation', () => ({ default: {} }));
 vi.mock('chartjs-plugin-zoom', () => ({ default: {} }));
-vi.mock('../../config', () => ({ default: { apiUrl: '' } }));
+vi.mock('../../config', () => ({
+  default: { apiUrl: '' },
+  apiFetch: (...args) => fetch(...args),
+}));
 vi.mock('../../contexts/AdminPatientContext', () => {
   // Stable identity: a fresh object per render would retrigger the fetch
   // effect (selectedPatient is a useCallback dep) and loop forever.
