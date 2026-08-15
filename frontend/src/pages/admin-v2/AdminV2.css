@@ -567,6 +567,9 @@
 .admin-v2-topnav-links {
   display: flex;
   gap: 0.25rem;
+  /* One-line scrollable strip at every width; the layout auto-centers the
+     active link on navigation. */
+  overflow-x: auto;
 }
 
 .admin-v2-topnav-link {
@@ -578,6 +581,9 @@
   border-bottom: 2px solid transparent;
   transition: all 0.2s ease;
   margin-bottom: -1px;
+  /* Multi-word sections ("Home Assistant") must not wrap and stretch the bar. */
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .admin-v2-topnav-link:hover {
@@ -1278,6 +1284,11 @@
   .admin-v2-topnav-links {
     overflow-x: auto;
     padding-bottom: 0.25rem;
+    /* Edge fade as a "more tabs this way" scroll hint. */
+    mask-image: linear-gradient(to right,
+      transparent, black 16px, black calc(100% - 16px), transparent);
+    -webkit-mask-image: linear-gradient(to right,
+      transparent, black 16px, black calc(100% - 16px), transparent);
   }
 
   /* Section header: wrap so "Add Patient" is full width on small screens */
