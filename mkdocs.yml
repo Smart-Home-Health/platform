@@ -85,5 +85,6 @@ nav:
       - Epic / FHIR: integrations/epic-fhir.md
       - Withings: integrations/withings.md
       - MQTT: integrations/mqtt.md
+      - Home Assistant (inbound): integrations/home-assistant.md
       - Frigate: integrations/frigate.md
       - Manual entry: integrations/manual-entry.md

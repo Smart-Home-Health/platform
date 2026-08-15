@@ -14,11 +14,10 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
-Environment connector implementations.
+Inbound Home Assistant integration: read selected HA entities and record them
+as patient vitals or environmental observations.
 
-Importing a connector module triggers its ``@register`` decorator, which is
-how the registry gets populated — add new connectors to the import list below
-(same convention as ``integrations/__init__.py``).
+- ``client``: HA REST/WebSocket API client (supervisor-proxy or external).
+- ``service``: config/state accessors, entity-state -> vital/observation routing.
+- ``listener``: the background WS subscription loop started from main.py.
 """
-from . import open_meteo  # noqa: F401
-from . import home_assistant  # noqa: F401
