@@ -131,6 +131,19 @@ def test_initiate_pairing_generates_ephemeral_key(admin_client, monkeypatch):
         readers_mod.pending_pairings.pop(reader_id, None)
 
 
+def test_pairing_rejects_ingress_host_url(admin_client, monkeypatch):
+    """A browser on the HA sidebar reports its ingress origin — a headless
+    reader can never dial that (session token, cookie-gated). Fail fast with a
+    clear 400 instead of letting a doomed pairing 'succeed'."""
+    monkeypatch.setattr(readers_mod.httpx, "AsyncClient", _FakeAsyncClient)
+    resp = admin_client.post("/api/readers/pair", json={
+        "ip_address": "192.168.1.91", "port": 8080,
+        "host_url": "https://ha.local:8123/api/hassio_ingress/Abc123Token",
+    })
+    assert resp.status_code == 400
+    assert "ingress" in resp.json()["detail"].lower()
+
+
 def test_pairing_unreachable_reader_502(admin_client, monkeypatch):
     """A device that can't be reached surfaces as 502, not a 500."""
     import httpx

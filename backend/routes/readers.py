@@ -292,6 +292,16 @@ def _reader_facing_ws_url(reader_id: int, request_host_url: Optional[str]) -> st
     READER_FACING_BASE_URL override is no longer needed and has been removed.)
     """
     base = (request_host_url or "").strip()
+    if "/api/hassio_ingress/" in base:
+        # A browser on the HA sidebar reports its ingress origin, which a
+        # headless device can never reach (session-scoped token, cookie-gated,
+        # rotates on reinstall). The frontend substitutes the LAN port itself;
+        # this guard catches any other caller before a doomed pairing succeeds.
+        raise HTTPException(
+            status_code=400,
+            detail="host_url is a Home Assistant ingress URL, which reader devices "
+                   "cannot reach. Use the hub's LAN address instead (e.g. http://<host>:8000).",
+        )
     if base:
         ws = base.replace("http://", "ws://").replace("https://", "wss://").rstrip("/")
         return f"{ws}/api/readers/ws/{reader_id}"
