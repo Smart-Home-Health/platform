@@ -126,9 +126,12 @@ describe('AdminV2HomeAssistant', () => {
     routeFetches({ mappings: [sampleMapping] });
     await renderPage();
 
-    expect(screen.getByText('SpO2 Ring')).toBeInTheDocument();
-    expect(screen.getByText('Vital: spo2')).toBeInTheDocument();
-    expect(screen.getByText('97 %')).toBeInTheDocument();
+    // Both the desktop table and the phone card list render (CSS decides
+    // which is visible), so mapping details appear twice.
+    expect(screen.getAllByText('SpO2 Ring')).toHaveLength(2);
+    expect(screen.getAllByText('Vital: spo2')).toHaveLength(2);
+    expect(screen.getByText('97 %')).toBeInTheDocument();        // table cell
+    expect(screen.getByText(/Last seen .* · 97 %/)).toBeInTheDocument(); // card
   });
 
   it('opens the add-mapping dialog and lists pickable entities', async () => {
@@ -177,7 +180,8 @@ describe('AdminV2HomeAssistant', () => {
     await renderPage();
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Edit sensor.bedroom_co2' }));
+      // Two edit buttons exist (table + phone card); either opens the dialog.
+      fireEvent.click(screen.getAllByRole('button', { name: 'Edit sensor.bedroom_co2' })[0]);
     });
 
     expect(screen.getByLabelText('Location')).toHaveValue('Bedroom');

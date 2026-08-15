@@ -60,14 +60,32 @@ def get_patients_with_mqtt_enabled() -> List[Dict[str, Any]]:
             )
             .all()
         )
+        from models.readers import Reader
+        enabled = [pi for pi in rows if (pi.settings or {}).get("enabled", True)]
+        patient_ids = [pi.patient_id for pi in enabled]
+        # Batch lookups (one query each), not per-patient — this runs on every
+        # discovery emission.
+        patients_by_id = {
+            p.id: p for p in db.query(Patient).filter(Patient.id.in_(patient_ids)).all()
+        } if patient_ids else {}
+        readers_by_patient: Dict[int, List[Dict[str, Any]]] = {}
+        if patient_ids:
+            for r in db.query(Reader).filter(Reader.patient_id.in_(patient_ids),
+                                             Reader.is_active == True).all():  # noqa: E712
+                readers_by_patient.setdefault(r.patient_id, []).append(
+                    {"id": r.id, "name": r.name})
+
         out = []
-        for pi in rows:
-            settings = pi.settings or {}
-            if not settings.get("enabled", True):
-                continue
-            patient = db.query(Patient).filter(Patient.id == pi.patient_id).first()
+        for pi in enabled:
+            patient = patients_by_id.get(pi.patient_id)
             patient_name = (f"{patient.first_name} {patient.last_name}".strip() if patient else "") or f"Patient {pi.patient_id}"
-            out.append({"patient_id": pi.patient_id, "patient_name": patient_name, "settings": settings})
+            out.append({
+                "patient_id": pi.patient_id,
+                "patient_name": patient_name,
+                "care_area": getattr(patient, "care_area", None) if patient else None,
+                "settings": pi.settings or {},
+                "readers": readers_by_patient.get(pi.patient_id, []),
+            })
         return out
     finally:
         db.close()

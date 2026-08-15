@@ -564,6 +564,20 @@ async def start_reader_activity_subscriber(event_bus) -> None:
             logger.error(f"Error updating reader activity from MQTT: {e}")
 
 
+def _publish_reader_availability(reader_id: int, online: bool) -> None:
+    """Best-effort retained online/offline flag for the reader's HA
+    connectivity sensor. Never raises — MQTT being down must not affect the
+    reader WebSocket."""
+    try:
+        from main import get_modules
+        mqtt_module = get_modules().get("mqtt")
+        publisher = getattr(mqtt_module, "mqtt_publisher", None)
+        if publisher:
+            publisher.publish_reader_availability(reader_id, online)
+    except Exception as e:
+        logger.debug(f"Reader {reader_id} availability publish skipped: {e}")
+
+
 @router.websocket("/ws/{reader_id}")
 async def reader_websocket(websocket: WebSocket, reader_id: int):
     """
@@ -626,6 +640,7 @@ async def reader_websocket(websocket: WebSocket, reader_id: int):
     else:
         await connection_manager.connect(reader_id, websocket, encryption_key)
     _update_reader_activity(reader_id)
+    _publish_reader_availability(reader_id, online=True)
 
     try:
         while True:
@@ -712,3 +727,7 @@ async def reader_websocket(websocket: WebSocket, reader_id: int):
     finally:
         # Socket-aware: an evicted handler must not deregister its successor.
         connection_manager.disconnect(reader_id, websocket)
+        # Only flag offline if the slot is actually empty now (an evicted
+        # handler's cleanup must not mark its live successor offline).
+        if not connection_manager.is_connected(reader_id):
+            _publish_reader_availability(reader_id, online=False)

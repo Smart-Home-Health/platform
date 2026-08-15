@@ -206,15 +206,23 @@ const AdminV2MonitoringTimeline = () => {
                                       .map((r) => r.location ?? ''))];
         if (cancelled) return;
         setRoomLocations(rooms);
-        // Default to the care area: prefer a bedroom-ish name, else first.
-        setRoomLocation((prev) => (prev !== null && rooms.includes(prev)) ? prev
-          : rooms.find((l) => /bed|care/i.test(l)) ?? rooms[0] ?? null);
+        // Default to the patient's configured care area when it has data,
+        // else keep a valid manual choice, else prefer a bedroom-ish name.
+        const careArea = selectedPatient?.care_area;
+        setRoomLocation((prev) => {
+          if (careArea && rooms.includes(careArea)) return careArea;
+          if (prev !== null && rooms.includes(prev)) return prev;
+          return rooms.find((l) => /bed|care/i.test(l)) ?? rooms[0] ?? null;
+        });
       } catch (err) {
         console.error('Environment locations fetch failed:', err);
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+    // Re-run on patient switch (id, not just care_area — two patients can
+    // share a room name or both have none) so the default follows the
+    // newly selected patient instead of the previous one's manual choice.
+  }, [selectedPatient?.id, selectedPatient?.care_area]);
 
   // Environmental overlay data for the selected day, keyed by series key.
   // Home-level (not patient-scoped); failure degrades to an empty series and

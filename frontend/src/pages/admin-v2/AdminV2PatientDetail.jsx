@@ -43,7 +43,7 @@ const PATIENT_MODULES = [
 
 const emptyForm = {
   first_name: '', last_name: '', date_of_birth: '',
-  medical_record_number: '', notes: '', is_active: true,
+  medical_record_number: '', notes: '', is_active: true, care_area: '',
 };
 
 export default function AdminV2PatientDetail() {
@@ -91,6 +91,7 @@ export default function AdminV2PatientDetail() {
         medical_record_number: p.medical_record_number || '',
         notes: p.notes || '',
         is_active: p.is_active,
+        care_area: p.care_area || '',
       });
 
       if (sRes.ok) {
@@ -131,6 +132,7 @@ export default function AdminV2PatientDetail() {
         last_name: formData.last_name,
         is_active: formData.is_active,
         notes: formData.notes || null,
+        care_area: formData.care_area || null,
       };
       if (formData.date_of_birth) payload.date_of_birth = formData.date_of_birth;
       if (formData.medical_record_number) payload.medical_record_number = formData.medical_record_number;
