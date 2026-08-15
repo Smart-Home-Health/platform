@@ -90,6 +90,9 @@ const AdminV2HomeAssistant = () => {
   const [patients, setPatients] = useState([]);
   const [vitalTypes, setVitalTypes] = useState([]);
   const [metrics, setMetrics] = useState([]);
+  // Location suggestions: the user's HA areas (rooms) + locations already
+  // seen in the data, so room names stay consistent across both platforms.
+  const [locationOptions, setLocationOptions] = useState([]);
 
   const statusTimer = useRef(null);
 
@@ -214,6 +217,15 @@ const AdminV2HomeAssistant = () => {
     apiFetch(`${config.apiUrl}/api/environment/metrics`).then(async (res) => {
       if (res.ok) setMetrics((await res.json()).filter((m) => !m.derived));
     }).catch(() => {});
+    Promise.all([
+      apiFetch(`${API()}/areas`).then((res) => (res.ok ? res.json() : [])),
+      apiFetch(`${config.apiUrl}/api/environment/locations`)
+        .then((res) => (res.ok ? res.json() : [])),
+    ]).then(([areas, locations]) => {
+      const seen = locations.filter((l) => l.scope !== 'outdoor' && l.location)
+                            .map((l) => l.location);
+      setLocationOptions([...new Set([...areas, ...seen])]);
+    }).catch(() => {});
   };
 
   // Vital-type options depend on the selected patient (custom vitals).
@@ -232,6 +244,9 @@ const AdminV2HomeAssistant = () => {
       friendly_name: entity.friendly_name || '',
       device_class: entity.device_class || '',
       source_unit: entity.unit_of_measurement || '',
+      // Piggyback the entity's HA area as the location so rooms stay
+      // consistent between HA and SHH; still editable below.
+      location: f.location || entity.area || '',
     }));
   };
 
@@ -619,8 +634,17 @@ const AdminV2HomeAssistant = () => {
                     <div className="space-y-2">
                       <Label htmlFor="ha-map-location">Location</Label>
                       <Input id="ha-map-location" placeholder="e.g. bedroom"
+                             list="ha-location-suggestions"
                              value={form.location}
                              onChange={(e) => setField('location', e.target.value)} />
+                      <datalist id="ha-location-suggestions">
+                        {locationOptions.map((loc) => (
+                          <option key={loc} value={loc} />
+                        ))}
+                      </datalist>
+                      <p className="text-xs text-muted-foreground">
+                        Suggestions come from your Home Assistant areas.
+                      </p>
                     </div>
                   </div>
                 )}

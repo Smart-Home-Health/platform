@@ -451,6 +451,37 @@ def test_entities_annotated_and_shh_excluded(admin_client, patient, monkeypatch)
     assert len(resp.json()) == 2
 
 
+def test_areas_from_ha_registry(admin_client, monkeypatch):
+    from routes import home_assistant as ha_routes
+
+    class FakeClient:
+        @classmethod
+        def from_config(cls, config):
+            return cls()
+
+        async def list_areas(self):
+            return ["Bedroom", "Living Room"]
+
+    monkeypatch.setattr(ha_routes, "HAClient", FakeClient)
+    resp = admin_client.get("/api/integrations/home_assistant/areas")
+    assert resp.status_code == 200
+    assert resp.json() == ["Bedroom", "Living Room"]
+
+
+def test_areas_degrade_to_empty_when_unavailable(admin_client, monkeypatch):
+    from routes import home_assistant as ha_routes
+
+    class DeadClient:
+        @classmethod
+        def from_config(cls, config):
+            raise HAClientError("not configured")
+
+    monkeypatch.setattr(ha_routes, "HAClient", DeadClient)
+    resp = admin_client.get("/api/integrations/home_assistant/areas")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
 def test_entities_unreachable_returns_502(admin_client, monkeypatch):
     from routes import home_assistant as ha_routes
 

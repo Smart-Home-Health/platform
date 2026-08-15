@@ -30,6 +30,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
+import {
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+} from '@/components/ui/select';
 import { useChartColors } from '../../hooks/useChartColors';
 
 Chart.register(annotationPlugin, zoomPlugin);
@@ -56,21 +59,50 @@ const VITAL_SERIES = {
 // Environmental series (home-level, from /api/environment/observations).
 // `dashed: true` marks estimated/derived metrics — rendered with a dashed
 // line to distinguish them from measured readings.
+// `metric`/`scope` select the observation stream; room-scoped series also
+// filter by the picked room (see roomLocation below).
 const ENV_SERIES = {
   barometric_pressure: {
     label: 'Pressure', axisLabel: 'Pressure (hPa)', color: '#8d6e63',
     fill: 'rgba(141, 110, 99, 0.1)', gridTint: 'rgba(141, 110, 99, 0.08)',
     defaultMin: 990, defaultMax: 1030, minPad: 1, clampMax: null, dashed: false,
+    metric: 'barometric_pressure', scope: 'outdoor',
   },
   pressure_delta_6h: {
     label: 'Pressure Δ6h', axisLabel: 'Pressure change 6h (hPa)', color: '#a1887f',
     fill: 'rgba(161, 136, 127, 0.1)', gridTint: 'rgba(161, 136, 127, 0.08)',
     defaultMin: -5, defaultMax: 5, minPad: 0.5, clampMax: null, dashed: true,
+    metric: 'pressure_delta_6h', scope: 'outdoor',
   },
   relative_humidity: {
-    label: 'Humidity', axisLabel: 'Humidity (%)', color: '#26a69a',
+    label: 'Humidity (out)', axisLabel: 'Outdoor humidity (%)', color: '#26a69a',
     fill: 'rgba(38, 166, 154, 0.1)', gridTint: 'rgba(38, 166, 154, 0.08)',
     defaultMin: 20, defaultMax: 80, minPad: 2, clampMax: 100, dashed: false,
+    metric: 'relative_humidity', scope: 'outdoor',
+  },
+  room_temperature: {
+    label: 'Room temp', axisLabel: 'Room temp (°C)', color: '#ef6c00',
+    fill: 'rgba(239, 108, 0, 0.1)', gridTint: 'rgba(239, 108, 0, 0.08)',
+    defaultMin: 15, defaultMax: 30, minPad: 0.5, clampMax: null, dashed: false,
+    metric: 'temperature', scope: 'room',
+  },
+  room_humidity: {
+    label: 'Room humidity', axisLabel: 'Room humidity (%)', color: '#00897b',
+    fill: 'rgba(0, 137, 123, 0.1)', gridTint: 'rgba(0, 137, 123, 0.08)',
+    defaultMin: 20, defaultMax: 80, minPad: 2, clampMax: 100, dashed: false,
+    metric: 'relative_humidity', scope: 'room',
+  },
+  co2: {
+    label: 'CO2', axisLabel: 'CO2 (ppm)', color: '#7e57c2',
+    fill: 'rgba(126, 87, 194, 0.1)', gridTint: 'rgba(126, 87, 194, 0.08)',
+    defaultMin: 400, defaultMax: 1200, minPad: 25, clampMax: null, dashed: false,
+    metric: 'co2', scope: 'room',
+  },
+  pm25: {
+    label: 'PM2.5', axisLabel: 'PM2.5 (µg/m³)', color: '#78909c',
+    fill: 'rgba(120, 144, 156, 0.1)', gridTint: 'rgba(120, 144, 156, 0.08)',
+    defaultMin: 0, defaultMax: 35, minPad: 1, clampMax: null, dashed: false,
+    metric: 'pm25', scope: 'room',
   },
 };
 const SERIES = { ...VITAL_SERIES, ...ENV_SERIES };
@@ -160,12 +192,39 @@ const AdminV2MonitoringTimeline = () => {
 
   useEffect(() => { fetchTimeline(); }, [fetchTimeline]);
 
-  // Environmental overlay data for the selected day, keyed by metric.
+  // Rooms seen in the data (scope=room locations), for the room picker.
+  // "" is a legitimate location (unspecified room) and renders as such.
+  const [roomLocations, setRoomLocations] = useState([]);
+  const [roomLocation, setRoomLocation] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${config.apiUrl}/api/environment/locations`,
+                                { credentials: 'include' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const rows = await res.json();
+        const rooms = [...new Set(rows.filter((r) => r.scope === 'room')
+                                      .map((r) => r.location ?? ''))];
+        if (cancelled) return;
+        setRoomLocations(rooms);
+        // Default to the care area: prefer a bedroom-ish name, else first.
+        setRoomLocation((prev) => (prev !== null && rooms.includes(prev)) ? prev
+          : rooms.find((l) => /bed|care/i.test(l)) ?? rooms[0] ?? null);
+      } catch (err) {
+        console.error('Environment locations fetch failed:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Environmental overlay data for the selected day, keyed by series key.
   // Home-level (not patient-scoped); failure degrades to an empty series and
   // never blocks the vitals chart.
   const [envData, setEnvData] = useState({});
   const activeEnvKeys = activeVitals.filter((k) => ENV_SERIES[k]);
   const activeEnvKeysStr = activeEnvKeys.join(',');
+  const roomSeriesActive = activeEnvKeys.some((k) => ENV_SERIES[k].scope === 'room');
   useEffect(() => {
     let cancelled = false;
     const keys = activeEnvKeysStr ? activeEnvKeysStr.split(',') : [];
@@ -180,10 +239,15 @@ const AdminV2MonitoringTimeline = () => {
       const next = {};
       await Promise.all(keys.map(async (key) => {
         try {
+          const cfg = ENV_SERIES[key];
           const params = new URLSearchParams({
-            metric: key, scope: 'outdoor', bucket: '15m', limit: '500',
+            metric: cfg.metric, scope: cfg.scope, bucket: '15m', limit: '500',
             from: dayStart.toISOString(), to: dayEnd.toISOString(),
           });
+          if (cfg.scope === 'room') {
+            if (roomLocation === null) { next[key] = []; return; }
+            params.set('location', roomLocation);
+          }
           const res = await fetch(
             `${config.apiUrl}/api/environment/observations?${params}`,
             { credentials: 'include' }
@@ -200,7 +264,7 @@ const AdminV2MonitoringTimeline = () => {
       if (!cancelled) setEnvData(next);
     })();
     return () => { cancelled = true; };
-  }, [selectedDate, activeEnvKeysStr]);
+  }, [selectedDate, activeEnvKeysStr, roomLocation]);
 
   // Build event marker label
   const getMarkerLabel = (type, item) => {
@@ -323,9 +387,11 @@ const AdminV2MonitoringTimeline = () => {
       const pad = Math.max((max - min) * 0.05, cfg.minPad);
       const axisId = `y_${key}`;
       const allowNegative = key === 'pressure_delta_6h';
+      const roomSuffix = ENV_SERIES[key]?.scope === 'room' && roomLocation
+        ? ` — ${roomLocation}` : '';
 
       vitalDatasets.push({
-        label: cfg.axisLabel,
+        label: cfg.axisLabel + roomSuffix,
         data,
         borderColor: cfg.color,
         backgroundColor: cfg.fill,
@@ -490,7 +556,7 @@ const AdminV2MonitoringTimeline = () => {
         chartInstance.current = null;
       }
     };
-  }, [timelineData, envData, visibleLayers, selectedDate, activeVitals, chart.grid, chart.axis, chart.foreground]);
+  }, [timelineData, envData, visibleLayers, selectedDate, activeVitals, roomLocation, chart.grid, chart.axis, chart.foreground]);
 
   const toggleLayer = (key) => {
     setVisibleLayers(prev => ({ ...prev, [key]: !prev[key] }));
@@ -564,6 +630,24 @@ const AdminV2MonitoringTimeline = () => {
                         active={activeVitals.includes(key)} onToggle={toggleVital}
                         noData={activeVitals.includes(key) && (envData[key] || []).length === 0} />
           ))}
+          {/* Room picker for room-scoped series; rooms come from observed data */}
+          {roomSeriesActive && roomLocations.length > 0 && (
+            <span className="tw">
+              <Select value={roomLocation === '' ? '__unspecified__' : (roomLocation ?? undefined)}
+                      onValueChange={(v) => setRoomLocation(v === '__unspecified__' ? '' : v)}>
+                <SelectTrigger className="h-7 w-auto min-w-[110px] text-xs">
+                  <SelectValue placeholder="Room…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {roomLocations.map((loc) => (
+                    <SelectItem key={loc || '__unspecified__'} value={loc || '__unspecified__'}>
+                      {loc || '(unspecified)'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </span>
+          )}
 
           <span style={{ width: 1, height: 20, background: 'var(--border)', display: 'inline-block' }} />
 

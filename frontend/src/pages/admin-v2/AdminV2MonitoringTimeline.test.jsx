@@ -83,16 +83,23 @@ const envRows = [
   { ts: '2026-07-14T10:00:00+00:00', metric: 'pressure_delta_6h', avg: -1.8, min: -2.0, max: -1.6, unit: 'hPa' },
 ];
 
-beforeEach(() => {
-  chartInstances.length = 0;
-  HTMLCanvasElement.prototype.getContext = vi.fn(() => ({}));
+const stubFetch = ({ observations = [...envRows], locations = [] } = {}) => {
   vi.stubGlobal('fetch', vi.fn(async (url) => ({
     ok: true,
     status: 200,
-    json: async () => (String(url).includes('/api/environment/observations')
-      ? [...envRows]
-      : timelinePayload),
+    json: async () => {
+      const u = String(url);
+      if (u.includes('/api/environment/observations')) return observations;
+      if (u.includes('/api/environment/locations')) return locations;
+      return timelinePayload;
+    },
   })));
+};
+
+beforeEach(() => {
+  chartInstances.length = 0;
+  HTMLCanvasElement.prototype.getContext = vi.fn(() => ({}));
+  stubFetch();
 });
 
 describe('AdminV2MonitoringTimeline vital series picker', () => {
@@ -144,7 +151,12 @@ describe('AdminV2MonitoringTimeline environmental overlays', () => {
   it('renders env chips alongside the vitals chips', async () => {
     await renderPage();
     expect(screen.getByRole('button', { name: /Pressure Δ6h/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Humidity/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Humidity \(out\)/ })).toBeInTheDocument();
+    // Room-scoped series chips
+    expect(screen.getByRole('button', { name: /Room temp/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Room humidity/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /CO2/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /PM2\.5/ })).toBeInTheDocument();
     expect(screen.getByText('Env:')).toBeInTheDocument();
   });
 
@@ -170,17 +182,47 @@ describe('AdminV2MonitoringTimeline environmental overlays', () => {
   });
 
   it('an empty env day still renders and marks the chip (no data)', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (url) => ({
-      ok: true,
-      status: 200,
-      json: async () => (String(url).includes('/api/environment/observations')
-        ? [] : timelinePayload),
-    })));
+    stubFetch({ observations: [] });
     await renderPage();
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /Humidity/ }));
+      fireEvent.click(screen.getByRole('button', { name: /Humidity \(out\)/ }));
     });
     expect(screen.getByText('(no data)')).toBeInTheDocument();
-    expect(datasetLabels()).toContain('Humidity (%)');
+    expect(datasetLabels()).toContain('Outdoor humidity (%)');
+  });
+
+  it('room series fetch scope=room with the default room and show the picker', async () => {
+    stubFetch({
+      observations: [
+        { ts: '2026-07-14T10:00:00+00:00', metric: 'co2', avg: 640, min: 620, max: 660, unit: 'ppm' },
+      ],
+      locations: [
+        { scope: 'room', location: 'Living Room', last_seen: null, metric_count: 2 },
+        { scope: 'room', location: 'Bedroom', last_seen: null, metric_count: 3 },
+        { scope: 'outdoor', location: '', last_seen: null, metric_count: 9 },
+      ],
+    });
+    await renderPage();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /CO2/ }));
+    });
+
+    // Default room prefers the bedroom-ish name; fetch is room-scoped.
+    const envCall = fetch.mock.calls
+      .map(c => String(c[0])).find(u => u.includes('metric=co2'));
+    expect(envCall).toContain('scope=room');
+    expect(envCall).toContain('location=Bedroom');
+    // Series label carries the room; the room picker combobox is rendered.
+    expect(datasetLabels()).toContain('CO2 (ppm) — Bedroom');
+    expect(screen.getByRole('combobox')).toHaveTextContent('Bedroom');
+  });
+
+  it('no room picker is shown when no room-scoped data exists', async () => {
+    await renderPage();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Room temp/ }));
+    });
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    expect(screen.getByText('(no data)')).toBeInTheDocument();
   });
 });
