@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.1
+
+- **Reader devices work correctly under ingress.** Pairing a pulse-ox reader
+  while browsing from the HA sidebar now hands the device the hub's LAN
+  address (`http://<host>:8000`) instead of an unreachable ingress URL; the
+  backend also rejects ingress URLs outright as a backstop.
+- **Reader connection protection.** A live reader's connection slot can no
+  longer be taken over by an unauthenticated LAN peer — a reconnecting device
+  must prove it holds the pairing key with its first encrypted message before
+  the existing connection is replaced (replay-protected). Normal reconnects
+  are unaffected.
+- The reader data channel itself was audited and is untouched by the ingress
+  work — already-paired readers keep streaming as before.
+
 ## 0.2.0
 
 - **Home Assistant user directory.** Configuration → Users now lists *every*
