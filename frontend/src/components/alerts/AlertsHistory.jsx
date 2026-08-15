@@ -38,6 +38,7 @@ const AlertsHistory = ({ patientId }) => {
   useEffect(() => {
     setAnalysis(null);
     fetchAvailableDates();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchAvailableDates is recreated each render; effect is intentionally keyed on the patient only
   }, [patientId]);
 
   const fetchAvailableDates = async () => {
@@ -95,6 +96,7 @@ const AlertsHistory = ({ patientId }) => {
     if (selectedDate) {
       fetchAnalysis(selectedDate);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchAnalysis is recreated each render; effect is intentionally keyed on selected date/patient only
   }, [selectedDate, patientId]);
 
   const formatDate = (dateString) => {

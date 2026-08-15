@@ -125,6 +125,7 @@ const AdminV2Shipments = () => {
         setContextPatient(patient);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-way URL→context sync; adding contextPatient would re-run on selection change and revert it to the stale URL param
   }, [searchParams, patients, loadingPatients]);
 
   // Update URL when context patient changes
@@ -132,6 +133,7 @@ const AdminV2Shipments = () => {
     if (contextPatient && searchParams.get('patient') !== String(contextPatient.id)) {
       setSearchParams({ patient: contextPatient.id });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-way context→URL sync; runs only when the selection changes
   }, [contextPatient]);
 
   // Fetch data when patient is selected
@@ -141,6 +143,7 @@ const AdminV2Shipments = () => {
       fetchSuppliers();
       fetchTemplates();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helpers are recreated each render; effect is keyed on patient change only
   }, [selectedPatient, statusFilter, backorderFilter]);
 
   const fetchShipments = async () => {
@@ -233,7 +236,7 @@ const AdminV2Shipments = () => {
         const errorData = await response.json();
         setFormError(errorData.error || 'Failed to create shipment');
       }
-    } catch (err) {
+    } catch {
       setFormError('Error connecting to server');
     } finally {
       setSaving(false);

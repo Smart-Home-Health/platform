@@ -72,7 +72,7 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved, ch
   const chartData = formatChartData(data, vitalType);
   
   // Custom tooltip for chart hover
-  const CustomTooltip = ({ active, payload, label }) => {
+  const CustomTooltip = ({ active, payload }) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload.originalItem;
       if (!data) return null;
@@ -216,7 +216,7 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved, ch
       } else {
         return `${diffDays}d ago`;
       }
-    } catch (error) {
+    } catch {
       return "Time error";
     }
   };

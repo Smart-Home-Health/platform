@@ -35,6 +35,7 @@ const MedicationHistory = ({ onBack }) => {
   useEffect(() => {
     fetchHistory();
     fetchMedicationNames();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount; fetch helpers are recreated each render
   }, []);
 
   const fetchMedicationNames = async () => {

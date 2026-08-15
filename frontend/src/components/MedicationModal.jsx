@@ -70,6 +70,7 @@ const MedicationModal = ({ onClose }) => {
     if (!selectedPatient) return;
     fetchActiveMedications();
     if (tab === 'scheduled') fetchSchedule();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helpers are recreated each render and selectedPatient is tracked via its id; effect is intentionally keyed on tab/patient id only
   }, [tab, selectedPatient?.id]);
 
   const fetchSchedule = async () => {

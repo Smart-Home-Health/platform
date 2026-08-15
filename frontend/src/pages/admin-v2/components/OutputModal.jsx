@@ -123,6 +123,7 @@ const OutputModal = ({ open, onClose, onSaved, patient, editing, defaultDateTime
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d) setOutputTypes(d); })
       .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- outputTypes is read only as a fetch-once guard; effect is keyed on modal open only
   }, [open]);
 
   useEffect(() => {

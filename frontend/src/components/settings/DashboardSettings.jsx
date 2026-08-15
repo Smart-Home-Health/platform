@@ -153,8 +153,8 @@ const DashboardSettings = () => {
         dashboard_chart_2_vital: formData.dashboard_chart_2_vital,
       };
 
-      const result = await updateSettings(settingsToUpdate);
-      
+      await updateSettings(settingsToUpdate);
+
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
     } catch (err) {

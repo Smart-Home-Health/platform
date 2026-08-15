@@ -15,12 +15,11 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
 import { PatientSelectorModal } from './components';
 import config from '../../config';
-import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import {
   MedicationsIcon,
@@ -43,7 +42,6 @@ import {
 import './AdminV2.css';
 
 const AdminV2MedicationsHistory = () => {
-  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const { 
     patients, 
@@ -101,6 +99,7 @@ const AdminV2MedicationsHistory = () => {
     } else if (!patientId && !contextPatient && patients.length > 0 && !loadingPatients) {
       setShowPatientModal(true);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- one-way URL→context sync; adding contextPatient would re-run on selection change and revert it to the stale URL param
   }, [searchParams, patients, loadingPatients]);
 
   // Update URL when context patient changes
@@ -108,6 +107,7 @@ const AdminV2MedicationsHistory = () => {
     if (contextPatient && searchParams.get('patient') !== String(contextPatient.id)) {
       setSearchParams({ patient: contextPatient.id });
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- one-way context→URL sync; runs only when the selection changes
   }, [contextPatient]);
 
   // Fetch history when patient or filters change
@@ -115,6 +115,7 @@ const AdminV2MedicationsHistory = () => {
     if (selectedPatient) {
       fetchHistory();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on patient/filter changes only
   }, [selectedPatient, debouncedSearch, startDate, endDate, statusFilter, limit]);
 
   const fetchHistory = async () => {
@@ -166,10 +167,6 @@ const AdminV2MedicationsHistory = () => {
     setShowPatientModal(false);
   };
 
-  const handleChangePatient = () => {
-    setShowPatientModal(true);
-  };
-
   const handleClearFilters = () => {
     setSearchText('');
     setStartDate('');
@@ -196,16 +193,6 @@ const AdminV2MedicationsHistory = () => {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    });
-  };
-
-  const formatTime = (isoString) => {
-    if (!isoString) return '-';
-    const date = new Date(isoString);
-    return date.toLocaleTimeString('en-US', {
       hour: 'numeric',
       minute: '2-digit',
       hour12: true

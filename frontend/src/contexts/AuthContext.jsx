@@ -102,6 +102,7 @@ export const AuthProvider = ({ children }) => {
   // Check first-run status and session on mount
   useEffect(() => {
     checkFirstRunAndSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount; checkFirstRunAndSession is recreated each render
   }, []);
 
   // Install the global stale-JWT handler once. On a 401 (both tokens expired)
@@ -112,6 +113,7 @@ export const AuthProvider = ({ children }) => {
       getAuthLevel: () => authLevelRef.current,
       onStale: () => checkFirstRunAndSession(),
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- auth-critical: interceptor is intentionally installed once on mount; checkFirstRunAndSession is recreated each render, so listing it would re-install per render
   }, []);
 
   // Sign in from the Home Assistant identity riding the ingress connection.

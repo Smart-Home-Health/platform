@@ -31,12 +31,12 @@ const AlertsList = ({ onAlertAcknowledge, patientId }) => {
   const [error, setError] = useState(null);
   const [showAcknowledged, setShowAcknowledged] = useState(false);
   const [selectedAlert, setSelectedAlert] = useState(null);
-  const [showDetailModal, setShowDetailModal] = useState(false);
   const [showAcknowledgeForm, setShowAcknowledgeForm] = useState(false);
   const [acknowledgeAllLoading, setAcknowledgeAllLoading] = useState(false);
 
   useEffect(() => {
     fetchAlerts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchAlerts is recreated each render; effect is intentionally keyed on the showAcknowledged filter and patient only
   }, [showAcknowledged, patientId]);
 
   const fetchAlerts = async () => {
@@ -105,12 +105,6 @@ const AlertsList = ({ onAlertAcknowledge, patientId }) => {
 
   const handleViewDetails = (alert) => {
     setSelectedAlert(alert);
-    setShowDetailModal(true);
-  };
-
-  const closeDetailModal = () => {
-    setShowDetailModal(false);
-    setSelectedAlert(null);
   };
 
   const handleAcknowledge = async (alertId) => {

@@ -21,7 +21,7 @@ import { API_BASE_URL } from '../config';
 import './LoginModal.css';
 
 export default function LoginModal() {
-  const { showAuthModal, login, verifyPin, setShowAuthModal } = useAuth();
+  const { showAuthModal, login, verifyPin } = useAuth();
   const [users, setUsers] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
   const [password, setPassword] = useState('');

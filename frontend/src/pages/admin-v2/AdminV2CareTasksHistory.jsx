@@ -20,7 +20,6 @@ import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
 import { PatientHeader, PatientSelectorModal } from './components';
 import config from '../../config';
-import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import {
   TasksIcon,
@@ -42,7 +41,6 @@ import {
 import './AdminV2.css';
 
 const AdminV2CareTasksHistory = () => {
-  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const { 
     patients, 
@@ -98,6 +96,7 @@ const AdminV2CareTasksHistory = () => {
     } else if (!patientId && !contextPatient && patients.length > 0 && !loadingPatients) {
       setShowPatientModal(true);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-way URL→context sync; adding contextPatient would re-run on selection change and revert it to the stale URL param
   }, [patients, searchParams, loadingPatients]);
 
   // Update URL when context patient changes
@@ -105,6 +104,7 @@ const AdminV2CareTasksHistory = () => {
     if (contextPatient && searchParams.get('patient') !== String(contextPatient.id)) {
       setSearchParams({ patient: contextPatient.id });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-way context→URL sync; runs only when the selection changes
   }, [contextPatient]);
 
   // Fetch history when patient or filters change
@@ -112,6 +112,7 @@ const AdminV2CareTasksHistory = () => {
     if (selectedPatient) {
       fetchHistory();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on patient/filter change only
   }, [selectedPatient, debouncedSearch, startDate, endDate, statusFilter, categoryFilter, limit]);
 
   const fetchCategories = async () => {
@@ -180,10 +181,6 @@ const AdminV2CareTasksHistory = () => {
     setShowPatientModal(false);
   };
 
-  const handleChangePatient = () => {
-    setShowPatientModal(true);
-  };
-
   const handleClearFilters = () => {
     setSearchText('');
     setStartDate('');
@@ -232,8 +229,6 @@ const AdminV2CareTasksHistory = () => {
     skipped: history.filter(h => h.completion_status === 'skipped').length
   };
 
-  // Get unique categories from history for filter display
-  const historyCategories = [...new Set(history.map(h => h.task_category).filter(Boolean))];
 
   return (
     <AdminV2Layout>

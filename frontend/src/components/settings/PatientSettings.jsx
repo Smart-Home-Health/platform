@@ -133,17 +133,6 @@ const PatientSettings = () => {
     }
   };
 
-  const handleSetCurrent = async (patientId) => {
-    try {
-      await patientService.setCurrentPatient(patientId);
-      setSuccess('Current patient updated successfully');
-      loadCurrentPatient(); // Reload current patient info
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (err) {
-      setError(err.message);
-    }
-  };
-
   const handleCurrentPatientChange = (patientId) => {
     console.log('Patient selection changed to:', patientId);
     setSelectedPatientId(patientId);

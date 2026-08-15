@@ -116,6 +116,7 @@ export default function AdminV2Connections() {
       fetchIntegrations();
       fetchReaders();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on patient change only
   }, [patientId]);
 
   const fetchReaders = async () => {

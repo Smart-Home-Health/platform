@@ -14,10 +14,6 @@ export default defineConfig(({ command }) => ({
     tailwindcss(),
     viteStaticCopy({
       targets: [
-        {
-          src: 'node_modules/scichart/_wasm/*',
-          dest: ''
-        },
         // Tesseract.js OCR assets, vendored so packing-slip scanning works
         // fully offline / same-origin (HA add-on + LAN installs; no CDN).
         // The worker picks a core variant via SIMD feature detection, so all

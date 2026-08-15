@@ -75,6 +75,7 @@ const NutritionModal = ({ onClose }) => {
   useEffect(() => {
     if (!selectedPatient) return;
     if (tab === 'scheduled') fetchSchedule();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchSchedule is recreated each render and selectedPatient is tracked via its id; effect is intentionally keyed on tab/patient id only
   }, [tab, selectedPatient?.id]);
 
   const fetchSchedule = async () => {

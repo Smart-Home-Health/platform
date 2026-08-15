@@ -101,7 +101,7 @@ const TemperatureCard = ({ tempHistory = [] }) => {
                 <Tooltip 
                   contentStyle={{ backgroundColor: '#161e2e', border: '1px solid #333', borderRadius: '4px' }}
                   itemStyle={{ color: '#fff' }}
-                  content={({ active, payload, label }) => {
+                  content={({ active, payload }) => {
                     if (active && payload && payload.length) {
                       const data = payload[0].payload;
                       return (
