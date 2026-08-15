@@ -144,6 +144,81 @@ def test_pairing_rejects_ingress_host_url(admin_client, monkeypatch):
     assert "ingress" in resp.json()["detail"].lower()
 
 
+# --- WebSocket slot protection -----------------------------------------------
+# The endpoint is LAN-reachable (the add-on publishes port 8000): a live
+# reader's slot may only be taken over by a connection that proves it holds
+# the pairing key with one valid encrypted frame.
+import json as _json
+
+from cryptography.fernet import Fernet as _Fernet
+
+
+@pytest.fixture
+def paired_reader():
+    """A really-committed paired reader: the WS handler opens its own
+    SessionLocal, so the transaction-rollback fixtures can't reach it."""
+    from db import SessionLocal
+    from models.readers import Reader
+    key = _Fernet.generate_key().decode()
+    s = SessionLocal()
+    try:
+        r = Reader(name="WS Reader", ip_address="192.168.1.200", port=8080,
+                   encryption_key=key, is_active=True, is_paired=True)
+        s.add(r)
+        s.commit()
+        s.refresh(r)
+        rid = r.id
+        yield rid, key
+        s.query(Reader).filter(Reader.id == rid).delete()
+        s.commit()
+    finally:
+        s.close()
+
+
+def _enc(key, payload):
+    return _Fernet(key.encode()).encrypt(_json.dumps(payload).encode())
+
+
+def _dec(key, data):
+    return _json.loads(_Fernet(key.encode()).decrypt(data).decode())
+
+
+def test_ws_fresh_connect_and_handshake(client, paired_reader):
+    rid, key = paired_reader
+    with client.websocket_connect(f"/api/readers/ws/{rid}") as ws:
+        ws.send_bytes(_enc(key, {"type": "handshake", "device_name": "t"}))
+        assert _dec(key, ws.receive_bytes())["type"] == "pong"
+
+
+def test_ws_unverified_connection_cannot_evict_live_reader(client, paired_reader):
+    rid, key = paired_reader
+    with client.websocket_connect(f"/api/readers/ws/{rid}") as ws1:
+        ws1.send_bytes(_enc(key, {"type": "handshake"}))
+        assert _dec(key, ws1.receive_bytes())["type"] == "pong"
+
+        with client.websocket_connect(f"/api/readers/ws/{rid}") as ws2:
+            ws2.send_bytes(b"not-the-key")
+            with pytest.raises(Exception):
+                ws2.receive_bytes()  # server closes 4003 without evicting
+
+        # The incumbent still owns the slot.
+        ws1.send_bytes(_enc(key, {"type": "ping"}))
+        assert _dec(key, ws1.receive_bytes())["type"] == "pong"
+
+
+def test_ws_verified_takeover_replaces_incumbent(client, paired_reader):
+    rid, key = paired_reader
+    with client.websocket_connect(f"/api/readers/ws/{rid}") as ws1:
+        ws1.send_bytes(_enc(key, {"type": "handshake"}))
+        assert _dec(key, ws1.receive_bytes())["type"] == "pong"
+
+        # A reconnecting real device proves the key with its first frame and
+        # takes the slot; that frame is not lost (it gets a normal reply).
+        with client.websocket_connect(f"/api/readers/ws/{rid}") as ws2:
+            ws2.send_bytes(_enc(key, {"type": "handshake", "device_name": "new"}))
+            assert _dec(key, ws2.receive_bytes())["type"] == "pong"
+
+
 def test_pairing_unreachable_reader_502(admin_client, monkeypatch):
     """A device that can't be reached surfaces as 502, not a 500."""
     import httpx
