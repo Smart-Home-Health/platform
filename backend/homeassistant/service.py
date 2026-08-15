@@ -199,9 +199,9 @@ def handle_state_event(db: Session, mapping: HAEntityMapping,
 
     try:
         if mapping.target_kind == "vital":
-            _record_vital(db, mapping, value, unit, ts, new_state)
+            recorded = _record_vital(db, mapping, value, unit, ts, new_state)
         elif mapping.target_kind == "environment":
-            _record_environment(db, mapping, value, unit, ts)
+            recorded = _record_environment(db, mapping, value, unit, ts)
         else:
             mapping.last_error = f"Unknown target_kind: {mapping.target_kind!r}"
             return False
@@ -210,10 +210,13 @@ def handle_state_event(db: Session, mapping: HAEntityMapping,
         mapping.last_error = str(e)[:500]
         return False
 
+    # Staleness reflects the last successfully routed state either way; the
+    # return value reports whether a NEW row landed (a dedup hit means this
+    # exact reading is already stored, so it's a no-op, not a record).
     mapping.last_seen_at = ts
     mapping.last_value = value
     mapping.last_error = None
-    return True
+    return recorded
 
 
 def _external_id(entity_id: str, ts: datetime) -> str:
@@ -223,12 +226,13 @@ def _external_id(entity_id: str, ts: datetime) -> str:
 
 
 def _record_vital(db: Session, mapping: HAEntityMapping, value: float,
-                  unit: Optional[str], ts: datetime, new_state: Dict[str, Any]) -> None:
+                  unit: Optional[str], ts: datetime, new_state: Dict[str, Any]) -> bool:
+    """Insert a Vital row; returns False when the reading is already stored."""
     from terminology import loinc_for, ucum_for
 
     external_id = _external_id(mapping.entity_id, ts)
     if db.query(Vital.id).filter(Vital.external_id == external_id).first():
-        return
+        return False
 
     # BP components are stored as vital_type="blood_pressure" + vital_group,
     # but LOINC codes are per-component.
@@ -256,6 +260,7 @@ def _record_vital(db: Session, mapping: HAEntityMapping, value: float,
         created_at=now,
     ))
     _publish_vital_saved(mapping, value)
+    return True
 
 
 def _publish_vital_saved(mapping: HAEntityMapping, value: float) -> None:
@@ -299,9 +304,10 @@ def _publish_vital_saved(mapping: HAEntityMapping, value: float) -> None:
 
 
 def _record_environment(db: Session, mapping: HAEntityMapping, value: float,
-                        unit: Optional[str], ts: datetime) -> None:
+                        unit: Optional[str], ts: datetime) -> bool:
+    """Emit one observation; returns False when deduped as already stored."""
     canonical_value = convert_to_canonical(value, unit, mapping.metric)
-    env_service.emit_observations(db, SOURCE_TYPE, [EnvObservation(
+    return 0 < env_service.emit_observations(db, SOURCE_TYPE, [EnvObservation(
         timestamp=ts,
         metric=mapping.metric,
         value=round(canonical_value, 2),

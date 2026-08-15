@@ -206,7 +206,9 @@ const AdminV2HomeAssistant = () => {
         else setError(`Couldn't list Home Assistant entities: ${await readError(res)}`);
       }).catch((err) => setError(`Couldn't list Home Assistant entities: ${err.message}`));
     }
-    apiFetch(`${config.apiUrl}/api/patients/`).then(async (res) => {
+    // No trailing slash: the collection route is declared @router.get("") and
+    // the slash variant 307s (see the trailing-slash pitfall in CLAUDE.md).
+    apiFetch(`${config.apiUrl}/api/patients`).then(async (res) => {
       if (res.ok) setPatients(await res.json());
     }).catch(() => {});
     apiFetch(`${config.apiUrl}/api/environment/metrics`).then(async (res) => {

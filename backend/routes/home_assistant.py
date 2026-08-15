@@ -138,11 +138,13 @@ async def test_connection(
 async def get_status(
     db: Session = Depends(get_db),
     _: bool = Depends(require_read_access),
+    account_id: int = Depends(get_current_account_id),
 ):
     return {
         **service.get_state(db),
         **listener.runtime_status(),
-        "mapping_count": db.query(HAEntityMapping).count(),
+        "mapping_count": db.query(HAEntityMapping).filter(
+            HAEntityMapping.account_id == account_id).count(),
     }
 
 
@@ -151,6 +153,7 @@ async def list_entities(
     exclude_shh: bool = True,
     db: Session = Depends(get_db),
     _: bool = Depends(require_read_access),
+    account_id: int = Depends(get_current_account_id),
 ):
     """HA entities for the mapping picker, annotated with mapped state."""
     config = service.get_config(db)
@@ -159,7 +162,8 @@ async def list_entities(
     except HAClientError as e:
         raise HTTPException(status_code=502, detail=str(e))
     mapped = {
-        row.entity_id for row in db.query(HAEntityMapping.entity_id).all()
+        row.entity_id for row in db.query(HAEntityMapping.entity_id).filter(
+            HAEntityMapping.account_id == account_id).all()
     }
     result = []
     for entity in entities:
@@ -267,8 +271,11 @@ def _validate_target(db: Session, account_id: int, data: dict) -> None:
 async def list_mappings(
     db: Session = Depends(get_db),
     _: bool = Depends(require_read_access),
+    account_id: int = Depends(get_current_account_id),
 ):
-    rows = db.query(HAEntityMapping).order_by(HAEntityMapping.entity_id).all()
+    rows = db.query(HAEntityMapping).filter(
+        HAEntityMapping.account_id == account_id,
+    ).order_by(HAEntityMapping.entity_id).all()
     return [_mapping_to_dict(m) for m in rows]
 
 
@@ -303,7 +310,10 @@ async def update_mapping(
     _: bool = Depends(require_full_auth),
     account_id: int = Depends(get_current_account_id),
 ):
-    mapping = db.query(HAEntityMapping).filter(HAEntityMapping.id == mapping_id).first()
+    mapping = db.query(HAEntityMapping).filter(
+        HAEntityMapping.id == mapping_id,
+        HAEntityMapping.account_id == account_id,
+    ).first()
     if mapping is None:
         raise HTTPException(status_code=404, detail="Mapping not found")
     updates = body.model_dump(exclude_unset=True)
@@ -323,8 +333,12 @@ async def delete_mapping(
     mapping_id: int,
     db: Session = Depends(get_db),
     _: bool = Depends(require_full_auth),
+    account_id: int = Depends(get_current_account_id),
 ):
-    mapping = db.query(HAEntityMapping).filter(HAEntityMapping.id == mapping_id).first()
+    mapping = db.query(HAEntityMapping).filter(
+        HAEntityMapping.id == mapping_id,
+        HAEntityMapping.account_id == account_id,
+    ).first()
     if mapping is None:
         raise HTTPException(status_code=404, detail="Mapping not found")
     db.delete(mapping)

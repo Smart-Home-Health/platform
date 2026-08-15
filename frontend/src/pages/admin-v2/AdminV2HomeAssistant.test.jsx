@@ -17,7 +17,7 @@
  */
 // AdminV2HomeAssistant: connection card (supervisor banner vs token form),
 // mappings table, and the add-mapping dialog's entity picker.
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act, fireEvent } from '@testing-library/react';
 
 vi.mock('./AdminV2Layout', () => ({ default: ({ children }) => <div>{children}</div> }));
@@ -91,6 +91,10 @@ const renderPage = async () => {
 beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   apiFetchMock.mockReset();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('AdminV2HomeAssistant', () => {

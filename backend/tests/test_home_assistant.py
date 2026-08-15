@@ -166,6 +166,14 @@ def test_vital_recording_and_dedup(db_session, patient):
     assert not ha_service.handle_state_event(db_session, mapping, _state("72"))
     assert db_session.query(Vital).filter(Vital.patient_id == patient.id).count() == 1
 
+    # Dedup hit with no last_seen (e.g. mapping re-created): the existing row
+    # is found via external_id -> no-op result, but staleness still refreshes.
+    mapping.last_seen_at = None
+    mapping.last_value = None
+    assert not ha_service.handle_state_event(db_session, mapping, _state("72"))
+    assert db_session.query(Vital).filter(Vital.patient_id == patient.id).count() == 1
+    assert mapping.last_value == 72.0
+
 
 def test_bp_component_gets_component_loinc(db_session, patient):
     from terminology import loinc_for
@@ -348,6 +356,25 @@ def test_vital_mapping_foreign_patient_rejected(admin_client, db_session):
     resp = admin_client.post("/api/integrations/home_assistant/mappings",
                              json=_vital_mapping_body(foreign))
     assert resp.status_code == 404
+
+
+def test_mappings_scoped_to_account(admin_client, db_session):
+    """Another account's mappings are invisible to list/update/delete."""
+    from models.users import Account
+    other = Account(name="Other House 2", slug="other-house-2", password_hash="x")
+    db_session.add(other)
+    db_session.flush()
+    foreign = _mapping(db_session, entity_id="sensor.foreign_co2",
+                       account_id=other.id, target_kind="environment",
+                       metric="co2", scope="room", location="")
+
+    assert admin_client.get("/api/integrations/home_assistant/mappings").json() == []
+    assert admin_client.get("/api/integrations/home_assistant/status").json()["mapping_count"] == 0
+    assert admin_client.put(
+        f"/api/integrations/home_assistant/mappings/{foreign.id}",
+        json={"enabled": False}).status_code == 404
+    assert admin_client.delete(
+        f"/api/integrations/home_assistant/mappings/{foreign.id}").status_code == 404
 
 
 def test_environment_mapping_validation(admin_client):
