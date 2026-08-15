@@ -432,7 +432,49 @@ const AdminV2HomeAssistant = () => {
                   No entities mapped yet. Add a mapping to start ingesting data.
                 </p>
               ) : (
-                <div className="overflow-x-auto">
+                <>
+                {/* Phone layout: stacked cards (the table needs sideways
+                    scrolling on narrow screens). */}
+                <div className="space-y-3 md:hidden">
+                  {mappings.map((m) => (
+                    <div key={m.id} className="space-y-2 rounded-lg border border-border p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 overflow-hidden">
+                          <div className="truncate font-medium text-foreground">
+                            {m.friendly_name || m.entity_id}
+                          </div>
+                          <div className="break-all text-xs text-muted-foreground">{m.entity_id}</div>
+                        </div>
+                        <Checkbox checked={m.enabled} className="mt-1 shrink-0"
+                                  aria-label={`Toggle ${m.entity_id}`}
+                                  onCheckedChange={() => toggleMapping(m)} />
+                      </div>
+                      <div className="text-sm">{describeTarget(m)}</div>
+                      <div className="text-xs text-muted-foreground">
+                        Last seen {formatWhen(m.last_seen_at)}
+                        {m.last_value != null
+                          ? ` · ${m.last_value}${m.source_unit ? ` ${m.source_unit}` : ''}`
+                          : ''}
+                      </div>
+                      {m.last_error && (
+                        <div className="text-xs text-destructive">{m.last_error}</div>
+                      )}
+                      <div className="flex justify-end gap-2">
+                        <Button variant="secondary" size="sm" className="gap-1.5"
+                                aria-label={`Edit ${m.entity_id}`}
+                                onClick={() => openDialog(m)}>
+                          <EditIcon size={14} /> Edit
+                        </Button>
+                        <Button variant="secondary" size="sm" className="gap-1.5"
+                                aria-label={`Delete ${m.entity_id}`}
+                                onClick={() => deleteMapping(m)}>
+                          <TrashIcon size={14} /> Delete
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="hidden overflow-x-auto md:block">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -485,6 +527,7 @@ const AdminV2HomeAssistant = () => {
                     </tbody>
                   </table>
                 </div>
+                </>
               )}
             </CardContent>
           </Card>
