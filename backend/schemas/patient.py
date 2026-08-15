@@ -35,6 +35,9 @@ class Patient(Base):
     last_name = Column(String, nullable=False)
     date_of_birth = Column(DateTime, nullable=True)
     medical_record_number = Column(String, nullable=True, unique=True)
+    # The room this patient is cared for in — matches an HA area / environment
+    # location so room-scoped environmental data can be associated per patient.
+    care_area = Column(String(100), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     notes = Column(Text, nullable=True)
     # HA user this patient record was created from (uuid4().hex) — provenance

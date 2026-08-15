@@ -35,7 +35,7 @@ import './AdminV2.css';
 
 const emptyForm = {
   first_name: '', last_name: '', date_of_birth: '',
-  medical_record_number: '', notes: '', is_active: true,
+  medical_record_number: '', notes: '', is_active: true, care_area: '',
 };
 
 const getInitials = (f, l) => `${f?.[0] || ''}${l?.[0] || ''}`.toUpperCase();
@@ -107,6 +107,7 @@ const AdminV2Patients = () => {
       if (formData.date_of_birth) payload.date_of_birth = formData.date_of_birth;
       if (formData.medical_record_number) payload.medical_record_number = formData.medical_record_number;
       if (formData.notes) payload.notes = formData.notes;
+      if (formData.care_area) payload.care_area = formData.care_area;
       const res = await fetch(`${config.apiUrl}/api/patients`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

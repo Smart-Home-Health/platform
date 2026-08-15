@@ -50,6 +50,24 @@ class MQTTPublisher:
         except Exception:
             return False
             
+    def publish_reader_availability(self, reader_id: int, online: bool) -> bool:
+        """
+        Retained per-reader connectivity flag on {base}/reader/{id}/availability,
+        consumed by the HA discovery connectivity binary sensor. Called from the
+        reader WebSocket connect/disconnect path and the startup snapshot.
+        """
+        if not self.is_available():
+            return False
+        base = get_mqtt_settings().get('base_topic', 'shh')
+        try:
+            result = self.mqtt_client.publish(
+                f"{base}/reader/{reader_id}/availability",
+                "online" if online else "offline", retain=True)
+            return result.rc == 0
+        except Exception as e:
+            logger.error(f"Error publishing reader {reader_id} availability: {e}")
+            return False
+
     def publish_sensor_state(self, sensor_state: Dict[str, Any]) -> bool:
         """
         Publish current sensor state to configured MQTT topics based on database settings.

@@ -26,6 +26,8 @@ class PatientBase(BaseModel):
     medical_record_number: Optional[str] = Field(None, max_length=50)
     is_active: bool = True
     notes: Optional[str] = None
+    # Room the patient is cared for in (HA area / environment location name).
+    care_area: Optional[str] = Field(None, max_length=100)
     # HA login this record represents (32-hex HA user id). Set when creating
     # a patient from the HA user directory; one patient per HA login.
     ha_user_id: Optional[str] = Field(None, min_length=32, max_length=32)
@@ -42,6 +44,7 @@ class PatientUpdate(BaseModel):
     medical_record_number: Optional[str] = Field(None, max_length=50)
     is_active: Optional[bool] = None
     notes: Optional[str] = None
+    care_area: Optional[str] = Field(None, max_length=100)
     ha_user_id: Optional[str] = Field(None, min_length=32, max_length=32)
 
 

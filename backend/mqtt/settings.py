@@ -60,6 +60,7 @@ def get_patients_with_mqtt_enabled() -> List[Dict[str, Any]]:
             )
             .all()
         )
+        from models.readers import Reader
         out = []
         for pi in rows:
             settings = pi.settings or {}
@@ -67,7 +68,15 @@ def get_patients_with_mqtt_enabled() -> List[Dict[str, Any]]:
                 continue
             patient = db.query(Patient).filter(Patient.id == pi.patient_id).first()
             patient_name = (f"{patient.first_name} {patient.last_name}".strip() if patient else "") or f"Patient {pi.patient_id}"
-            out.append({"patient_id": pi.patient_id, "patient_name": patient_name, "settings": settings})
+            readers = db.query(Reader).filter(Reader.patient_id == pi.patient_id,
+                                              Reader.is_active == True).all()  # noqa: E712
+            out.append({
+                "patient_id": pi.patient_id,
+                "patient_name": patient_name,
+                "care_area": getattr(patient, "care_area", None) if patient else None,
+                "settings": settings,
+                "readers": [{"id": r.id, "name": r.name} for r in readers],
+            })
         return out
     finally:
         db.close()
