@@ -562,11 +562,45 @@
   background: var(--card);
   border-bottom: 1px solid var(--border);
   padding: 0 1.5rem;
+  position: relative; /* anchors the scroll-hint chevrons */
+}
+
+/* Chevron shown at an edge with more tabs off-screen; tap scrolls the strip. */
+.admin-v2-topnav-scroll-hint {
+  position: absolute;
+  top: 0;
+  bottom: 1px; /* keep the header's bottom border visible */
+  width: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  padding: 0;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  z-index: 1;
+}
+
+.admin-v2-topnav-scroll-hint.left {
+  left: 0;
+  background: linear-gradient(to right, var(--card) 60%, transparent);
+}
+
+.admin-v2-topnav-scroll-hint.right {
+  right: 0;
+  background: linear-gradient(to left, var(--card) 60%, transparent);
+}
+
+.admin-v2-topnav-scroll-hint:hover {
+  color: var(--foreground);
 }
 
 .admin-v2-topnav-links {
   display: flex;
   gap: 0.25rem;
+  /* One-line scrollable strip at every width; the layout auto-centers the
+     active link on navigation. */
+  overflow-x: auto;
 }
 
 .admin-v2-topnav-link {
@@ -578,6 +612,9 @@
   border-bottom: 2px solid transparent;
   transition: all 0.2s ease;
   margin-bottom: -1px;
+  /* Multi-word sections ("Home Assistant") must not wrap and stretch the bar. */
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .admin-v2-topnav-link:hover {
@@ -1278,6 +1315,11 @@
   .admin-v2-topnav-links {
     overflow-x: auto;
     padding-bottom: 0.25rem;
+    /* Edge fade as a "more tabs this way" scroll hint. */
+    mask-image: linear-gradient(to right,
+      transparent, black 16px, black calc(100% - 16px), transparent);
+    -webkit-mask-image: linear-gradient(to right,
+      transparent, black 16px, black calc(100% - 16px), transparent);
   }
 
   /* Section header: wrap so "Add Patient" is full width on small screens */

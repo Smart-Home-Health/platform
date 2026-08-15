@@ -15,16 +15,36 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Field, FormRow } from '@/components/ui/field';
+import config, { apiFetch } from '../config';
 
 // Shared create/edit fields for a patient. Used by the Patients list (create
 // dialog) and the patient detail page (edit). `idPrefix` keeps field ids unique
 // when more than one instance could mount.
 export default function PatientFormFields({ formData, setFormData, idPrefix = 'pf' }) {
+  // Care-area suggestions: the user's HA areas (rooms) + rooms already seen
+  // in environmental data. Best-effort; the field stays free text.
+  const [careAreaOptions, setCareAreaOptions] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      apiFetch(`${config.apiUrl}/api/integrations/home_assistant/areas`)
+        .then((res) => (res.ok ? res.json() : [])),
+      apiFetch(`${config.apiUrl}/api/environment/locations`)
+        .then((res) => (res.ok ? res.json() : [])),
+    ]).then(([areas, locations]) => {
+      if (cancelled) return;
+      const seen = locations.filter((l) => l.scope !== 'outdoor' && l.location)
+                            .map((l) => l.location);
+      setCareAreaOptions([...new Set([...areas, ...seen])]);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
   return (
     <>
       <FormRow>
@@ -66,6 +86,25 @@ export default function PatientFormFields({ formData, setFormData, idPrefix = 'p
           />
         </Field>
       </FormRow>
+
+      <Field label="Care area (room)" htmlFor={`${idPrefix}-care-area`}>
+        <Input
+          id={`${idPrefix}-care-area`}
+          list={`${idPrefix}-care-area-options`}
+          value={formData.care_area || ''}
+          onChange={(e) => setFormData({ ...formData, care_area: e.target.value })}
+          placeholder="e.g. Bedroom"
+        />
+        <datalist id={`${idPrefix}-care-area-options`}>
+          {careAreaOptions.map((area) => (
+            <option key={area} value={area} />
+          ))}
+        </datalist>
+        <p className="text-xs text-muted-foreground">
+          The room this patient is cared for in — used to match room sensors
+          and Home Assistant areas.
+        </p>
+      </Field>
 
       <Field label="Notes" htmlFor={`${idPrefix}-notes`}>
         <Textarea

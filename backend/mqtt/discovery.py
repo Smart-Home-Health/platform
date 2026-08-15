@@ -39,7 +39,9 @@ SECTION_DISCOVERY: Dict[str, Tuple[str, str, str, str]] = {
     "perfusion": ("{{ value_json.perfusion }}", "PI", "Perfusion", "sensor"),
     "temperature": ("{{ value_json.body_temp | default(value_json.skin_temp) }}", "°F", "Temperature", "sensor"),
     "blood_pressure": ("{{ value_json.map_bp | default(value_json.systolic_bp) }}", "mmHg", "Blood Pressure", "sensor"),
-    "weight": ("{{ value_json.weight }}", "lbs", "Weight", "sensor"),
+    # "lb" (not "lbs"): the HA weight device_class only accepts lb, and gets
+    # us unit conversion + long-term statistics.
+    "weight": ("{{ value_json.weight }}", "lb", "Weight", "sensor"),
     "bathroom": ("{{ value_json.bathroom }}", "", "Bathroom Activity", "sensor"),
     "spo2_alarm": ("{{ value_json.spo2_alarm }}", "", "SpO₂ Alarm", "binary_sensor"),
     "bpm_alarm": ("{{ value_json.bpm_alarm }}", "", "Heart Rate Alarm", "binary_sensor"),
@@ -50,6 +52,20 @@ SECTION_DISCOVERY: Dict[str, Tuple[str, str, str, str]] = {
 # Sections whose value is categorical text, not a numeric measurement — these
 # must NOT get state_class=measurement (HA would mark them Unavailable).
 TEXT_SECTIONS = {"bathroom"}
+
+# HA device_class per section, only where the section's published unit is one
+# the class accepts (a mismatched unit makes HA reject the entity). SpO₂/BPM/
+# perfusion have no fitting HA class and stay classless on purpose.
+SECTION_DEVICE_CLASS = {
+    "temperature": "temperature",  # °F accepted
+    "weight": "weight",            # lb accepted
+    "blood_pressure": "pressure",  # mmHg accepted
+}
+# Water nutrition sensors publish mL, which the volume class accepts. The
+# calorie sensors stay classless (kcal support for the energy class varies
+# with HA version).
+NUTRITION_DEVICE_CLASS = {"water_last": "volume", "water_intake": "volume",
+                          "water_target": "volume"}
 
 # Blood pressure: three sensors per patient (systolic, diastolic, MAP) on same state_topic
 BLOOD_PRESSURE_SENSORS: List[Tuple[str, str, str]] = [
@@ -93,6 +109,56 @@ BADGE_SENSORS: Dict[str, List[Tuple[str, str, str]]] = {
 }
 
 
+def _all_section_entities() -> List[Tuple[str, str, str]]:
+    """
+    Every (section_key, sensor_type, entity_suffix) this module can ever
+    publish for a patient — the inventory un-discovery prunes against.
+    """
+    entities: List[Tuple[str, str, str]] = []
+    for section_key, (_tpl, _unit, _name, sensor_type) in SECTION_DISCOVERY.items():
+        entities.append((section_key, sensor_type, section_key))
+    for component in ("systolic", "diastolic", "map"):
+        entities.append(("blood_pressure", "sensor", f"blood_pressure_{component}"))
+    for _tpl, _unit, _name, suffix in NUTRITION_SENSORS:
+        entities.append(("nutrition", "sensor", f"nutrition_{suffix}"))
+    for section_key, sensors in BADGE_SENSORS.items():
+        for _tpl, _name, suffix in sensors:
+            entities.append((section_key, "sensor", suffix))
+    return entities
+
+
+def _remove_entity(mqtt_client, discovery_prefix: str, sensor_type: str,
+                   sensor_id: str) -> None:
+    """Publish an empty retained config — HA deletes the entity on receipt."""
+    try:
+        mqtt_client.publish(f"{discovery_prefix}/{sensor_type}/{sensor_id}/config",
+                            "", retain=True)
+    except Exception as e:
+        logger.error(f"Error removing discovery for {sensor_id}: {e}")
+
+
+def remove_mqtt_discovery_for_patient(mqtt_client, patient_id: int,
+                                      patient_name: str,
+                                      reader_ids: Optional[List[int]] = None) -> None:
+    """
+    Delete every HA entity this module could have published for a patient
+    (all sections + reader availability). Used when the patient's MQTT is
+    disabled so entities don't linger as stuck "Unknown".
+    """
+    if not mqtt_client or not mqtt_client.is_connected():
+        logger.warning("MQTT client not available for discovery removal")
+        return
+    discovery_prefix = "homeassistant"
+    device_ident = _safe_device_id(patient_name, patient_id)
+    for _section, sensor_type, suffix in _all_section_entities():
+        _remove_entity(mqtt_client, discovery_prefix, sensor_type,
+                       f"{device_ident}_{suffix}")
+    for reader_id in reader_ids or []:
+        _remove_entity(mqtt_client, discovery_prefix, "binary_sensor",
+                       f"{device_ident}_reader_{reader_id}")
+    logger.info(f"Removed MQTT discovery entities for patient {patient_id}")
+
+
 def _safe_device_id(name: str, patient_id: int) -> str:
     """HA-friendly device identifier: lowercase alphanumeric + underscores, fallback to patient id."""
     if not name:
@@ -118,6 +184,9 @@ def _publish_discovery(
         "dev": device_info,
         **extra,
     }
+    # A None in extra deletes the default (e.g. reader sensors publish a bare
+    # string, not the patient JSON, so json_attr_t must go).
+    config = {k: v for k, v in config.items() if v is not None}
     if unit:
         config["unit_of_meas"] = unit
     discovery_topic = f"{discovery_prefix}/{sensor_type}/{sensor_id}/config"
@@ -184,6 +253,9 @@ def send_mqtt_discovery(mqtt_client, patient_id: Optional[int] = None) -> bool:
             "mf": "Smart Home Health",
             "mdl": "Smart Healthcare Hub",
         }
+        # Land the device in the patient's HA room automatically.
+        if entry.get("care_area"):
+            device_info["sa"] = entry["care_area"]
 
         # One sensor per section that allows get or both.
         # blood_pressure → three sensors (systolic, diastolic, MAP).
@@ -202,7 +274,7 @@ def send_mqtt_discovery(mqtt_client, patient_id: Optional[int] = None) -> bool:
                         f"{base_topic}_patient_{pid}_{safe_section}",
                         f"{patient_name} {display_name}",
                         state_topic, val_tpl, unit, device_info,
-                        stat_cla="measurement",
+                        stat_cla="measurement", dev_cla="pressure",
                     )
                 continue
 
@@ -210,13 +282,16 @@ def send_mqtt_discovery(mqtt_client, patient_id: Optional[int] = None) -> bool:
             if section_key == "nutrition":
                 for val_tpl, unit, display_name, suffix in NUTRITION_SENSORS:
                     safe_section = f"nutrition_{suffix}"
+                    extra = {"stat_cla": "measurement"}
+                    if suffix in NUTRITION_DEVICE_CLASS:
+                        extra["dev_cla"] = NUTRITION_DEVICE_CLASS[suffix]
                     success_count += _publish_discovery(
                         mqtt_client, discovery_prefix, "sensor",
                         f"{device_ident}_{safe_section}",
                         f"{base_topic}_patient_{pid}_{safe_section}",
                         f"{patient_name} {display_name}",
                         state_topic, val_tpl, unit, device_info,
-                        stat_cla="measurement",
+                        **extra,
                     )
                 continue
 
@@ -251,6 +326,8 @@ def send_mqtt_discovery(mqtt_client, patient_id: Optional[int] = None) -> bool:
                 # text sensors (e.g. bathroom: urine/bowel/both) must omit it or
                 # HA marks them Unavailable on a non-numeric value.
                 extra["stat_cla"] = "measurement"
+                if section_key in SECTION_DEVICE_CLASS:
+                    extra["dev_cla"] = SECTION_DEVICE_CLASS[section_key]
 
             success_count += _publish_discovery(
                 mqtt_client, discovery_prefix, sensor_type,
@@ -259,6 +336,31 @@ def send_mqtt_discovery(mqtt_client, patient_id: Optional[int] = None) -> bool:
                 f"{patient_name} {display_name}",
                 state_topic, val_tpl, unit, device_info,
                 **extra,
+            )
+
+        # --- Un-discovery: delete entities for sections that are off, so a
+        # toggled-off section doesn't linger in HA as a stuck "Unknown" entity
+        # (its discovery config is retained on the broker otherwise). ---
+        for section_key, sensor_type, suffix in _all_section_entities():
+            if sections.get(section_key) in ("get", "both"):
+                continue
+            _remove_entity(mqtt_client, discovery_prefix, sensor_type,
+                           f"{device_ident}_{suffix}")
+
+        # --- Reader connectivity: one binary sensor per active reader, on its
+        # own retained availability topic (published by the reader WS path) so
+        # HA can tell "device offline" from "value stale". ---
+        for reader in entry.get("readers") or []:
+            reader_label = reader.get("name") or f"Reader {reader['id']}"
+            success_count += _publish_discovery(
+                mqtt_client, discovery_prefix, "binary_sensor",
+                f"{device_ident}_reader_{reader['id']}",
+                f"{base_topic}_reader_{reader['id']}_online",
+                f"{patient_name} {reader_label} Online",
+                f"{base_topic}/reader/{reader['id']}/availability",
+                "{{ value }}", "", device_info,
+                pl_on="online", pl_off="offline", dev_cla="connectivity",
+                avty_t=f"{base_topic}/availability", json_attr_t=None,
             )
 
     logger.info(f"Sent {success_count} MQTT Discovery messages (per-vital per patient)")

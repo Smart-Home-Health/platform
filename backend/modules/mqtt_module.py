@@ -24,7 +24,7 @@ from typing import Optional, Dict, Any
 import logging
 
 from bus import EventBus
-from events import SensorUpdate, MQTTConnectionEvent, VitalSignRecorded, EventSource, NutritionSensorUpdate, DueCountsChanged
+from events import SensorUpdate, MQTTConnectionEvent, VitalSignRecorded, EventSource, NutritionSensorUpdate, DueCountsChanged, AlarmPanelState
 
 logger = logging.getLogger("mqtt_module")
 
@@ -60,6 +60,8 @@ class MQTTModule:
         asyncio.create_task(self._subscribe_to_sensor_updates())
         # Subscribe to SensorUpdate for per-patient combined state publishing
         asyncio.create_task(self._subscribe_to_sensor_updates_patient_state())
+
+        asyncio.create_task(self._subscribe_to_alarm_panel_state())
         # Subscribe to DueCountsChanged so badge-count sensors update instantly
         asyncio.create_task(self._subscribe_to_due_counts_changed())
         # Periodically recompute badge counts so they "age in" over time
@@ -125,6 +127,26 @@ class MQTTModule:
                 await self._publish_patient_state_with_alarms(patient_id)
             except Exception as e:
                 logger.error(f"Error publishing patient state to MQTT: {e}")
+
+    async def _subscribe_to_alarm_panel_state(self):
+        """AlarmPanelState (reader GPIO alarm lines) → alarm1/alarm2 keys in the
+        per-patient combined state, so the discovery-created 'GPIO Alarm 1/2'
+        binary sensors stop sitting at Unknown (mqtt-known-gaps §1)."""
+        logger.info("Starting subscription to AlarmPanelState for per-patient MQTT state")
+        async for event in self.event_bus.subscribe_to_type(AlarmPanelState):
+            try:
+                patient_id = getattr(event, "patient_id", None)
+                if patient_id is None:
+                    continue
+                if patient_id not in self._patient_state_cache:
+                    self._patient_state_cache[patient_id] = await self._seed_patient_state(patient_id)
+                self._patient_state_cache[patient_id].update({
+                    "alarm1": "ON" if event.alarm1 else "OFF",
+                    "alarm2": "ON" if event.alarm2 else "OFF",
+                })
+                await self._publish_patient_state_with_alarms(patient_id)
+            except Exception as e:
+                logger.error(f"Error publishing alarm panel state to MQTT: {e}")
 
     async def _subscribe_to_due_counts_changed(self):
         """Refresh a patient's MQTT badge counts the moment a due item is logged /
