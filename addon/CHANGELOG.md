@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.2.2
+
+- **Home Assistant sensors as data sources.** Map any HA entity to a patient
+  vital (SpO2, blood pressure, temperature, …) or an environmental metric
+  under **Configuration → Home Assistant**. Zero-config when running as the
+  add-on (Supervisor connection); standalone installs use a long-lived access
+  token. Units are converted automatically (°F, inHg, mg/m³, …), and the
+  app's own MQTT-published entities are excluded so nothing loops back.
+- **Room sensors on the monitoring timeline.** Room-scoped series
+  (temperature, humidity, CO2, PM2.5) with a room picker; location
+  suggestions come straight from your Home Assistant areas, so rooms stay
+  consistent between the two platforms.
+- **Patient care area.** Set the room a patient occupies; MQTT discovery now
+  publishes it as the suggested area, so the patient's entities land in the
+  right HA area automatically.
+- **MQTT discovery polish.** Alarm-panel states are included in the combined
+  state; disabling MQTT for a patient (or single sections) now deletes the
+  retained discovery entities instead of leaving orphans; temperature,
+  weight, and pressure entities carry proper device classes; each paired
+  reader gets a connectivity sensor in HA.
+- **Better on phones.** Dialogs fit small screens, the Home Assistant mapping
+  list becomes cards, and section navigation is a scrollable strip with
+  scroll hints.
+- Smaller image: removed 9 MB of dead vendored chart bundles.
+
 ## 0.2.1
 
 - **Reader devices work correctly under ingress.** Pairing a pulse-ox reader
