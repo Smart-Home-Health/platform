@@ -185,9 +185,12 @@
 /* ---- Animations (replaces tw-animate-css for the few we use) ------------ */
 @keyframes tw-fade-in { from { opacity: 0 } to { opacity: 1 } }
 @keyframes tw-fade-out { from { opacity: 1 } to { opacity: 0 } }
-/* Dialog content is centered via translate(-50%,-50%); keep it during scale. */
-@keyframes tw-dialog-in { from { opacity: 0; transform: translate(-50%, -50%) scale(.96) } to { opacity: 1; transform: translate(-50%, -50%) scale(1) } }
-@keyframes tw-dialog-out { from { opacity: 1; transform: translate(-50%, -50%) scale(1) } to { opacity: 0; transform: translate(-50%, -50%) scale(.96) } }
+/* Dialog content centers via Tailwind v4's independent `translate` property
+   (-translate-x/y-1/2). The keyframes must NOT translate too — a v3-era
+   translate(-50%,-50%) here stacks on top of `translate` and shoves the
+   dialog off-screen for the whole animation (worst on phone widths). */
+@keyframes tw-dialog-in { from { opacity: 0; transform: scale(.96) } to { opacity: 1; transform: scale(1) } }
+@keyframes tw-dialog-out { from { opacity: 1; transform: scale(1) } to { opacity: 0; transform: scale(.96) } }
 /* Select popover is popper-positioned (no translate) — scale only. */
 @keyframes tw-pop-in { from { opacity: 0; transform: scale(.96) } to { opacity: 1; transform: scale(1) } }
 

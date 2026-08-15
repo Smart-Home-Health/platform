@@ -476,7 +476,7 @@ const AdminV2HomeAssistant = () => {
 
           {/* Add/edit mapping dialog */}
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogContent className="max-w-2xl">
+            <DialogContent className="sm:max-w-2xl" aria-describedby={undefined}>
               <DialogHeader>
                 <DialogTitle>{editingId ? 'Edit mapping' : 'Add mapping'}</DialogTitle>
               </DialogHeader>
@@ -486,15 +486,19 @@ const AdminV2HomeAssistant = () => {
                   <div className="space-y-2">
                     <Label htmlFor="ha-entity-search">Home Assistant entity</Label>
                     {form.entity_id ? (
-                      <div className="flex items-center justify-between rounded-lg border border-border p-3 text-sm">
-                        <div>
-                          <div className="font-medium">{form.friendly_name || form.entity_id}</div>
-                          <div className="text-xs text-muted-foreground">
+                      <div className="flex items-center justify-between gap-3 overflow-hidden rounded-lg border border-border p-3 text-sm">
+                        {/* overflow-hidden (not just min-w-0): without it the
+                            nowrap entity text sets the grid column's min-content
+                            and widens the whole dialog past the phone viewport */}
+                        <div className="min-w-0 overflow-hidden">
+                          <div className="truncate font-medium">{form.friendly_name || form.entity_id}</div>
+                          <div className="break-all text-xs text-muted-foreground">
                             {form.entity_id}
                             {form.source_unit ? ` · ${form.source_unit}` : ''}
                           </div>
                         </div>
-                        <Button variant="secondary" onClick={() => setField('entity_id', '')}>
+                        <Button variant="secondary" className="shrink-0"
+                                onClick={() => setField('entity_id', '')}>
                           Change
                         </Button>
                       </div>
@@ -513,12 +517,14 @@ const AdminV2HomeAssistant = () => {
                           {filteredEntities.slice(0, 50).map((e) => (
                             <button key={e.entity_id} type="button" onClick={() => pickEntity(e)}
                                     disabled={e.mapped}
-                                    className="flex w-full items-center justify-between p-3 text-left text-sm hover:bg-secondary/60 disabled:opacity-50">
-                              <span>
-                                <span className="font-medium">{e.friendly_name || e.entity_id}</span>
-                                <span className="ml-2 text-xs text-muted-foreground">{e.entity_id}</span>
+                                    className="flex w-full items-center justify-between gap-3 p-3 text-left text-sm hover:bg-secondary/60 disabled:opacity-50">
+                              {/* overflow-hidden + truncate: long entity ids must
+                                  never widen the dialog past the viewport on mobile */}
+                              <span className="min-w-0 overflow-hidden">
+                                <span className="block truncate font-medium">{e.friendly_name || e.entity_id}</span>
+                                <span className="block truncate text-xs text-muted-foreground">{e.entity_id}</span>
                               </span>
-                              <span className="text-xs text-muted-foreground">
+                              <span className="shrink-0 text-xs text-muted-foreground">
                                 {e.mapped ? 'Mapped' : [e.state, e.unit_of_measurement].filter(Boolean).join(' ')}
                               </span>
                             </button>
