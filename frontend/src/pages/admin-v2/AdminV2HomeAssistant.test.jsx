@@ -69,15 +69,18 @@ const sampleMapping = {
 
 // Route the page's parallel fetches by URL.
 const routeFetches = ({ config = baseConfig, status = baseStatus, mappings = [],
-                        entities = [], patients = [], vitalTypes = [], metrics = [] } = {}) => {
+                        entities = [], patients = [], vitalTypes = [], metrics = [],
+                        areas = [], locations = [] } = {}) => {
   apiFetchMock.mockImplementation(async (url) => {
     if (url.includes('/home_assistant/config')) return jsonResponse(config);
     if (url.includes('/home_assistant/status')) return jsonResponse(status);
     if (url.includes('/home_assistant/mappings')) return jsonResponse(mappings);
     if (url.includes('/home_assistant/entities')) return jsonResponse(entities);
     if (url.includes('/home_assistant/vital-types')) return jsonResponse(vitalTypes);
+    if (url.includes('/home_assistant/areas')) return jsonResponse(areas);
     if (url.includes('/api/patients')) return jsonResponse(patients);
     if (url.includes('/api/environment/metrics')) return jsonResponse(metrics);
+    if (url.includes('/api/environment/locations')) return jsonResponse(locations);
     return jsonResponse({}, 404);
   });
 };
@@ -156,6 +159,32 @@ describe('AdminV2HomeAssistant', () => {
       fireEvent.click(screen.getByText('Bedroom Temp').closest('button'));
     });
     expect(screen.getByText(/sensor\.bedroom_temp\s*·\s*°F/)).toBeInTheDocument();
+  });
+
+  it('offers HA areas + seen locations as location suggestions when editing', async () => {
+    routeFetches({
+      mappings: [{ ...sampleMapping, id: 3, entity_id: 'sensor.bedroom_co2',
+                   friendly_name: 'Bedroom CO2', target_kind: 'environment',
+                   patient_id: null, vital_type: null, metric: 'co2',
+                   scope: 'room', location: 'Bedroom' }],
+      areas: ['Bedroom', 'Living Room'],
+      locations: [
+        { scope: 'room', location: 'Office', last_seen: null, metric_count: 1 },
+        { scope: 'outdoor', location: '', last_seen: null, metric_count: 9 },
+      ],
+      metrics: [{ name: 'co2', label: 'CO2', unit: 'ppm', derived: false }],
+    });
+    await renderPage();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Edit sensor.bedroom_co2' }));
+    });
+
+    expect(screen.getByLabelText('Location')).toHaveValue('Bedroom');
+    const options = [...document.querySelectorAll('#ha-location-suggestions option')]
+      .map((o) => o.value);
+    expect(options).toEqual(expect.arrayContaining(['Bedroom', 'Living Room', 'Office']));
+    expect(options).not.toContain('');  // outdoor "" never suggested
   });
 
   it('filters entities by search text', async () => {

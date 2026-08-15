@@ -237,6 +237,20 @@ class HAClient:
         finally:
             await ws.close()
 
+    async def list_areas(self) -> List[str]:
+        """
+        HA area (room) names, for reusing the user's HA rooms as SHH
+        locations. Registry access needs an admin token — raises HAClientError
+        when unavailable so callers can degrade to free-text locations.
+        """
+        ws = await self._ws_connect()
+        try:
+            area_reg = await self._ws_command(ws, 1, {"type": "config/area_registry/list"})
+            names = [a.get("name") for a in area_reg or [] if a.get("name")]
+            return sorted(names, key=str.lower)
+        finally:
+            await ws.close()
+
     async def listen(
         self,
         entity_ids: Set[str],

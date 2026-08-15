@@ -174,6 +174,25 @@ async def list_entities(
     return result
 
 
+@router.get("/areas")
+async def list_areas(
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access),
+):
+    """
+    HA area (room) names, offered as location suggestions so SHH locations
+    stay consistent with the user's Home Assistant rooms. Empty list when HA
+    is unreachable or the token can't read the registry (non-admin) — the
+    location field then falls back to free text.
+    """
+    config = service.get_config(db)
+    try:
+        return await HAClient.from_config(config).list_areas()
+    except HAClientError as e:
+        logger.info(f"HA area listing unavailable: {e}")
+        return []
+
+
 @router.get("/vital-types")
 async def list_vital_types(
     patient_id: Optional[int] = None,
