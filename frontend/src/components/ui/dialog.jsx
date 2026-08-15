@@ -43,7 +43,11 @@ const DialogContent = React.forwardRef(function DialogContent({ className, child
         ref={ref}
         data-slot="dialog-content"
         className={cn(
-          "tw fixed left-1/2 top-1/2 z-[1001] grid w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4",
+          // grid-cols-1 = minmax(0,1fr): without the minmax(0,...) the implicit
+          // auto column sizes to the widest child's min-content, so long
+          // unbreakable content (entity ids, urls) widens the dialog past the
+          // viewport on phones instead of truncating.
+          "tw fixed left-1/2 top-1/2 z-[1001] grid grid-cols-1 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4",
           "max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-xl border border-border bg-card p-6 text-card-foreground shadow-lg",
           className
         )}
