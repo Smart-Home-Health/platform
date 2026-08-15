@@ -126,7 +126,7 @@ const AlertDetailInline = ({ alert, onClose, onAcknowledge, initiateAcknowledge 
       const response = await fetch(`${config.apiUrl}/api/monitoring/alerts/${alert.id}/data`, { credentials: 'include' });
       if (!response.ok) throw new Error(`Error fetching alert data: ${response.statusText}`);
       setEventData(await response.json());
-    } catch (err) {
+    } catch {
       setError('Failed to load event data.');
     } finally {
       setLoading(false);
@@ -169,20 +169,6 @@ const AlertDetailInline = ({ alert, onClose, onAcknowledge, initiateAcknowledge 
   const adjustedEnd = (end) => {
     if (!end) return null;
     return new Date(new Date(end).getTime() - 30000);
-  };
-
-  const formatDuration = (start, end) => {
-    if (!start) return '—';
-    const endTime = end ? adjustedEnd(end) : new Date();
-    const ms = endTime - new Date(start);
-    if (ms < 0) return 'Ongoing';
-    const total = Math.floor(ms / 1000);
-    const h = Math.floor(total / 3600);
-    const m = Math.floor((total % 3600) / 60);
-    const s = total % 60;
-    if (h > 0) return `${h}h ${m}m`;
-    if (m > 0) return `${m}m ${s}s`;
-    return `${s}s`;
   };
 
   const spo2ChartData = useMemo(() => {

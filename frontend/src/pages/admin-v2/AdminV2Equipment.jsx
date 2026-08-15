@@ -425,7 +425,7 @@ const AdminV2Equipment = () => {
         const errorData = await response.json();
         setFormError(formatErrorDetail(errorData.detail, 'Failed to create equipment'));
       }
-    } catch (err) {
+    } catch {
       setFormError('Error connecting to server');
     } finally {
       setSaving(false);
@@ -475,7 +475,7 @@ const AdminV2Equipment = () => {
         const errorData = await response.json();
         setFormError(formatErrorDetail(errorData.detail, 'Failed to update equipment'));
       }
-    } catch (err) {
+    } catch {
       setFormError('Error connecting to server');
     } finally {
       setSaving(false);
@@ -497,7 +497,7 @@ const AdminV2Equipment = () => {
       } else {
         alert('Failed to delete equipment');
       }
-    } catch (err) {
+    } catch {
       alert('Error connecting to server');
     } finally {
       setSaving(false);
@@ -532,7 +532,7 @@ const AdminV2Equipment = () => {
           alert(formatErrorDetail(errorData.detail, 'Failed to mark as changed'));
         }
       }
-    } catch (err) {
+    } catch {
       alert('Error connecting to server');
     } finally {
       setSaving(false);
@@ -558,7 +558,7 @@ const AdminV2Equipment = () => {
       } else {
         alert('Failed to receive equipment');
       }
-    } catch (err) {
+    } catch {
       alert('Error connecting to server');
     } finally {
       setSaving(false);
@@ -589,7 +589,7 @@ const AdminV2Equipment = () => {
       } else {
         alert('Failed to open equipment');
       }
-    } catch (err) {
+    } catch {
       alert('Error connecting to server');
     } finally {
       setSaving(false);

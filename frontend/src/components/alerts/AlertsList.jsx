@@ -31,7 +31,6 @@ const AlertsList = ({ onAlertAcknowledge, patientId }) => {
   const [error, setError] = useState(null);
   const [showAcknowledged, setShowAcknowledged] = useState(false);
   const [selectedAlert, setSelectedAlert] = useState(null);
-  const [showDetailModal, setShowDetailModal] = useState(false);
   const [showAcknowledgeForm, setShowAcknowledgeForm] = useState(false);
   const [acknowledgeAllLoading, setAcknowledgeAllLoading] = useState(false);
 
@@ -105,12 +104,6 @@ const AlertsList = ({ onAlertAcknowledge, patientId }) => {
 
   const handleViewDetails = (alert) => {
     setSelectedAlert(alert);
-    setShowDetailModal(true);
-  };
-
-  const closeDetailModal = () => {
-    setShowDetailModal(false);
-    setSelectedAlert(null);
   };
 
   const handleAcknowledge = async (alertId) => {

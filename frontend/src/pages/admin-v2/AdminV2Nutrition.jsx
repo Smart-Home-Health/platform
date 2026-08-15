@@ -86,7 +86,7 @@ import {
   SelectContent,
   SelectItem,
 } from '@/components/ui/select';
-import { localTimeToUTC, localTimeAndDaysToUTC, utcCronToLocalDaysAndTime, formatCronExpression, getCurrentLocalDateTime, localDateTimeToUTC, getLocalDateTimeString } from '../../utils/timezone';
+import { localTimeToUTC, localTimeAndDaysToUTC, utcCronToLocalDaysAndTime, formatCronExpression } from '../../utils/timezone';
 import './AdminV2.css';
 
 // Module-scope so the inputs don't lose focus on each keystroke (a component
@@ -384,7 +384,7 @@ const AdminV2Nutrition = () => {
   
   // Reference data
   const [outputTypes, setOutputTypes] = useState({});
-  const [scheduleTypes, setScheduleTypes] = useState([]);
+  const [, setScheduleTypes] = useState([]);
   
   // Modal states
   const [showIntakeModal, setShowIntakeModal] = useState(false);
@@ -693,7 +693,7 @@ const AdminV2Nutrition = () => {
     const parts = cronExpr.split(' ');
     if (parts.length < 5) return;
 
-    const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
+    const [minute, hour, dayOfMonth, , dayOfWeek] = parts;
 
     if (dayOfMonth !== '*') {
       // Cron times are stored in UTC; convert hour/minute to local for display.
@@ -1034,8 +1034,8 @@ const AdminV2Nutrition = () => {
     const parts = cronExpr.split(' ');
     if (parts.length < 5) return 0;
     
-    const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
-    
+    const [, , dayOfMonth, , dayOfWeek] = parts;
+
     // Daily schedule (* * * * *) = 1 per day
     if (dayOfMonth === '*' && dayOfWeek === '*') {
       return 1;

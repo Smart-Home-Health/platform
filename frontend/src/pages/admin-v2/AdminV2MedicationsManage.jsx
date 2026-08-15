@@ -29,7 +29,7 @@ import {
   MedicationsIcon,
   ClockIcon
 } from '../../components/Icons';
-import { localTimeToUTC, localTimeAndDaysToUTC, utcTimeToLocal, parseCronExpression } from '../../utils/timezone';
+import { localTimeToUTC, localTimeAndDaysToUTC, parseCronExpression } from '../../utils/timezone';
 import {
   Dialog,
   DialogContent,
@@ -427,10 +427,6 @@ const AdminV2MedicationsManage = () => {
     setShowPatientModal(false);
   };
 
-  const handleChangePatient = () => {
-    setShowPatientModal(true);
-  };
-
   const handleCreateMedication = async (e) => {
     e.preventDefault();
     setFormError(null);
@@ -464,7 +460,7 @@ const AdminV2MedicationsManage = () => {
           setFormError(data.detail || 'Failed to create medication');
         }
       }
-    } catch (err) {
+    } catch {
       setFormError('Error connecting to server');
     } finally {
       setSaving(false);
@@ -498,7 +494,7 @@ const AdminV2MedicationsManage = () => {
         const data = await response.json();
         setFormError(data.detail || 'Failed to update medication');
       }
-    } catch (err) {
+    } catch {
       setFormError('Error connecting to server');
     } finally {
       setSaving(false);
@@ -521,7 +517,7 @@ const AdminV2MedicationsManage = () => {
         const data = await response.json();
         setFormError(data.detail || 'Failed to delete medication');
       }
-    } catch (err) {
+    } catch {
       setFormError('Error connecting to server');
     } finally {
       setSaving(false);
@@ -593,15 +589,6 @@ const AdminV2MedicationsManage = () => {
     setSchedulePatientId(medication.is_global && selectedPatient ? String(selectedPatient.id) : '');
     setFormError(null);
     setShowScheduleModal(true);
-  };
-
-  // Get schedules relevant to current patient
-  const getRelevantSchedules = (schedules) => {
-    if (!schedules || schedules.length === 0) return [];
-    if (!selectedMedication?.is_global && selectedPatient) {
-      return schedules.filter(s => s.patient_id === selectedPatient.id);
-    }
-    return schedules;
   };
 
   const handleAddSchedule = async () => {
@@ -703,7 +690,7 @@ const AdminV2MedicationsManage = () => {
       if (refreshedMed) {
         setSelectedMedication(refreshedMed);
       }
-    } catch (err) {
+    } catch {
       setFormError('Error deleting schedule');
     } finally {
       setScheduleSaving(false);
@@ -727,7 +714,7 @@ const AdminV2MedicationsManage = () => {
       if (refreshedMed) {
         setSelectedMedication(refreshedMed);
       }
-    } catch (err) {
+    } catch {
       setFormError('Error updating schedule');
     } finally {
       setScheduleSaving(false);

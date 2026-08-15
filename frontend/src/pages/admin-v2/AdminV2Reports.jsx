@@ -16,14 +16,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 import React from 'react';
-import { useLocation } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import AdminV2ReportsDayOverDay from './AdminV2ReportsDayOverDay';
 import './AdminV2.css';
 
 const AdminV2Reports = () => {
-  const location = useLocation();
   const { selectedPatient } = useAdminPatient();
 
   const renderContent = () => {

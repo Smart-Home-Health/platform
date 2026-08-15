@@ -40,7 +40,7 @@ import {
   SelectItem,
 } from '@/components/ui/select';
 
-export default function EquipmentModal({ isOpen, onClose, noModal, equipmentDueCount }) {
+export default function EquipmentModal({ isOpen, onClose, noModal }) {
   const { selectedPatient } = useAdminPatient();
   const [tab, setTab] = useState('list');
   const [equipment, setEquipment] = useState([]);
@@ -70,7 +70,7 @@ export default function EquipmentModal({ isOpen, onClose, noModal, equipmentDueC
       });
       const data = await res.json();
       setEquipment(data);
-    } catch (err) {
+    } catch {
       setEquipment([]);
     } finally {
       setLoading(false);

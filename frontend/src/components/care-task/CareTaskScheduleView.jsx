@@ -20,7 +20,7 @@ import config from '../../config';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import { localTimeToUTC, localTimeAndDaysToUTC, parseCronExpression } from '../../utils/timezone';
 
-const CareTaskScheduleView = ({ taskId, taskName, onClose }) => {
+const CareTaskScheduleView = ({ taskId }) => {
   const { selectedPatient } = useAdminPatient();
   const [schedules, setSchedules] = useState([]);
   const [scheduleMode, setScheduleMode] = useState('weekly'); // 'weekly' or 'monthly'
@@ -28,7 +28,6 @@ const CareTaskScheduleView = ({ taskId, taskName, onClose }) => {
   const [selectedDayOfMonth, setSelectedDayOfMonth] = useState(1); // for monthly
   const [time, setTime] = useState('08:00');
   const [loading, setLoading] = useState(false);
-  const [taskDetails, setTaskDetails] = useState(null);
   const [isNutritionTask, setIsNutritionTask] = useState(false);
   
   // Nutrition-specific fields
@@ -54,8 +53,7 @@ const CareTaskScheduleView = ({ taskId, taskName, onClose }) => {
       if (response.ok) {
         const data = await response.json();
         const task = data.care_task; // Extract the actual task from the nested response
-        setTaskDetails(task);
-        
+
         // Check if this is a nutrition-related task
         if (task.category_name) {
           const nutritionKeywords = ['nutrition', 'feeding', 'meal', 'food', 'drink', 'supplement'];

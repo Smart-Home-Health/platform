@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import config, { apiFetch } from '../config';
+import config from '../config';
 
 const PatientContext = createContext();
 

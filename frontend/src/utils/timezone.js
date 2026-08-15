@@ -137,7 +137,7 @@ export const parseCronExpression = (cronExpression) => {
   const parts = cronExpression.split(' ');
   if (parts.length !== 5) return null;
   
-  const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
+  const [minute, hour, dayOfMonth, , dayOfWeek] = parts;
 
   // Check if it's weekly (dayOfWeek is not *)
   if (dayOfWeek !== '*') {

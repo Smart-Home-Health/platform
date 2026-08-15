@@ -222,8 +222,6 @@ const AdminV2MonitoringVentilator = ({ patientId }) => {
     );
   }
 
-  const selectedCount = days.find(d => d.date === selectedDate)?.sample_count || 0;
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Date controls */}

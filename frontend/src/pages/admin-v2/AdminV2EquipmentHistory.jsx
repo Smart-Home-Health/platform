@@ -19,7 +19,6 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
 import config from '../../config';
-import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import {
   EquipmentIcon,
@@ -31,7 +30,6 @@ import { Alert } from '@/components/ui/alert';
 import './AdminV2.css';
 
 const AdminV2EquipmentHistory = () => {
-  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const { 
     patients, 
@@ -150,24 +148,6 @@ const AdminV2EquipmentHistory = () => {
     setStartDate('');
     setEndDate('');
     setLimit(50);
-  };
-
-  const formatDateTime = (dateString) => {
-    if (!dateString) return '-';
-    const date = new Date(dateString);
-    return date.toLocaleString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    });
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return '-';
-    return new Date(dateString).toLocaleDateString();
   };
 
   // Group history by day

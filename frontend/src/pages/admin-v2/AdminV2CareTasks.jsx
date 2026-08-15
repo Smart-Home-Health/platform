@@ -352,10 +352,6 @@ const AdminV2CareTasks = () => {
     setShowPatientModal(false);
   };
 
-  const handleChangePatient = () => {
-    setShowPatientModal(true);
-  };
-
   const handleCreateTask = async (e) => {
     e.preventDefault();
     setFormError(null);
@@ -387,7 +383,7 @@ const AdminV2CareTasks = () => {
           setFormError(data.detail || 'Failed to create care task');
         }
       }
-    } catch (err) {
+    } catch {
       setFormError('Error connecting to server');
     } finally {
       setSaving(false);
@@ -420,7 +416,7 @@ const AdminV2CareTasks = () => {
         const data = await response.json();
         setFormError(data.detail || 'Failed to update care task');
       }
-    } catch (err) {
+    } catch {
       setFormError('Error connecting to server');
     } finally {
       setSaving(false);
@@ -443,7 +439,7 @@ const AdminV2CareTasks = () => {
         const data = await response.json();
         setFormError(data.detail || 'Failed to delete care task');
       }
-    } catch (err) {
+    } catch {
       setFormError('Error connecting to server');
     } finally {
       setSaving(false);
@@ -572,7 +568,7 @@ const AdminV2CareTasks = () => {
         const data = await response.json();
         setCategoryError(data.detail || 'Failed to create category');
       }
-    } catch (err) {
+    } catch {
       setCategoryError('Error creating category');
     } finally {
       setCategorySaving(false);
@@ -603,7 +599,7 @@ const AdminV2CareTasks = () => {
         const data = await response.json();
         setCategoryError(data.detail || 'Failed to update category');
       }
-    } catch (err) {
+    } catch {
       setCategoryError('Error updating category');
     } finally {
       setCategorySaving(false);
@@ -630,7 +626,7 @@ const AdminV2CareTasks = () => {
         const data = await response.json();
         alert(data.detail || 'Failed to delete category');
       }
-    } catch (err) {
+    } catch {
       alert('Error deleting category');
     } finally {
       setCategorySaving(false);
@@ -714,7 +710,7 @@ const AdminV2CareTasks = () => {
         const data = await response.json();
         alert(data.detail || 'Failed to add schedule');
       }
-    } catch (err) {
+    } catch {
       alert('Error adding schedule');
     } finally {
       setScheduleSaving(false);

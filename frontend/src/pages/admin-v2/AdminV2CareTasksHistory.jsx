@@ -20,7 +20,6 @@ import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
 import { PatientHeader, PatientSelectorModal } from './components';
 import config from '../../config';
-import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import {
   TasksIcon,
@@ -42,7 +41,6 @@ import {
 import './AdminV2.css';
 
 const AdminV2CareTasksHistory = () => {
-  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const { 
     patients, 
@@ -180,10 +178,6 @@ const AdminV2CareTasksHistory = () => {
     setShowPatientModal(false);
   };
 
-  const handleChangePatient = () => {
-    setShowPatientModal(true);
-  };
-
   const handleClearFilters = () => {
     setSearchText('');
     setStartDate('');
@@ -232,8 +226,6 @@ const AdminV2CareTasksHistory = () => {
     skipped: history.filter(h => h.completion_status === 'skipped').length
   };
 
-  // Get unique categories from history for filter display
-  const historyCategories = [...new Set(history.map(h => h.task_category).filter(Boolean))];
 
   return (
     <AdminV2Layout>

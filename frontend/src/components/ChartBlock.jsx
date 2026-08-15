@@ -18,7 +18,7 @@
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { CHART_CHROME } from "../contexts/DashboardThemeContext";
 
-export default function ChartBlock({ title, yLabel, color, dataset, showXaxis = true, showYaxis = true, chrome = CHART_CHROME.blue }) {
+export default function ChartBlock({ yLabel, color, dataset, showXaxis = true, showYaxis = true, chrome = CHART_CHROME.blue }) {
   // Map colors to match value displays
   const getColor = (colorName) => {
     switch (colorName.toLowerCase()) {

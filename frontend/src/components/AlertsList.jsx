@@ -19,13 +19,12 @@ import { useState, useEffect } from 'react';
 import config from '../config';
 import AlertDetailModal from './AlertDetailModal';
 
-const AlertsList = ({ onClose }) => {
+const AlertsList = () => {
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showAcknowledged, setShowAcknowledged] = useState(false);
   const [selectedAlert, setSelectedAlert] = useState(null);
-  const [showDetailModal, setShowDetailModal] = useState(false);
   const [showAcknowledgeForm, setShowAcknowledgeForm] = useState(false);
   const [acknowledgeAllLoading, setAcknowledgeAllLoading] = useState(false);
 
@@ -87,12 +86,6 @@ const AlertsList = ({ onClose }) => {
 
   const handleViewDetails = (alert) => {
     setSelectedAlert(alert);
-    setShowDetailModal(true);
-  };
-
-  const closeDetailModal = () => {
-    setShowDetailModal(false);
-    setSelectedAlert(null);
   };
 
   const handleAcknowledge = async (alertId) => {

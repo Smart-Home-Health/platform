@@ -137,10 +137,6 @@ const AdminV2MedicationsSchedule = () => {
     setShowPatientModal(false);
   };
 
-  const handleChangePatient = () => {
-    setShowPatientModal(true);
-  };
-
   // Status helpers
   const getStatusInfo = (status) => {
     const statusMap = {

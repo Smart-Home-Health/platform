@@ -233,7 +233,7 @@ const AdminV2Shipments = () => {
         const errorData = await response.json();
         setFormError(errorData.error || 'Failed to create shipment');
       }
-    } catch (err) {
+    } catch {
       setFormError('Error connecting to server');
     } finally {
       setSaving(false);

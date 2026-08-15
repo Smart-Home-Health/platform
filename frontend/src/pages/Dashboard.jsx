@@ -90,8 +90,6 @@ export default function Dashboard() {
   const [pendingOpenModal, setPendingOpenModal] = useState(null);
   
   // Add state for notification counts
-  const [ventNotifications, setVentNotifications] = useState(2);
-  const [pulseOxNotifications, setPulseOxNotifications] = useState(3);
   const [pulseOxAlerts, setPulseOxAlerts] = useState(0);
   const [equipmentDueCount, setEquipmentDueCount] = useState(0);
   const [medicationDueCount, setMedicationDueCount] = useState(0);
@@ -120,7 +118,6 @@ export default function Dashboard() {
   const [dashboardChart1, setDashboardChart1] = useState({ vital_type: 'blood_pressure', data: [] });
   const [dashboardChart2, setDashboardChart2] = useState({ vital_type: 'temperature', data: [] });
 
-  const initialDataReceived = useRef(false);
   const prevAlarmActive = useRef(false);
 
   // Mobile detection effect
@@ -506,7 +503,7 @@ export default function Dashboard() {
           i => i.integration_slug === 'frigate' && i.is_enabled && i.settings?.camera
         );
         setHasCamera(!!frigate);
-      } catch (_) {
+      } catch {
         // ignore - camera detection is non-critical
       }
     })();
@@ -546,22 +543,18 @@ export default function Dashboard() {
 
         setDatasets(prev => {
           const newState = { ...prev };
-          let hasValidUpdate = false;
           const maxDataPoints = getMaxDataPoints();
 
           if (msg.state.spo2 !== null && msg.state.spo2 !== undefined) {
             newState.spo2 = [...prev.spo2, { x: now, y: msg.state.spo2 }].slice(-maxDataPoints);
-            hasValidUpdate = true;
           }
 
           if (msg.state.bpm !== null && msg.state.bpm !== undefined) {
             newState.bpm = [...prev.bpm, { x: now, y: msg.state.bpm }].slice(-maxDataPoints);
-            hasValidUpdate = true;
           }
 
           if (msg.state.perfusion !== null && msg.state.perfusion !== undefined) {
             newState.perfusion = [...prev.perfusion, { x: now, y: msg.state.perfusion }].slice(-maxDataPoints);
-            hasValidUpdate = true;
           }
 
           return newState;
@@ -569,10 +562,6 @@ export default function Dashboard() {
 
         if (msg.state.alerts_count !== undefined) {
           setPulseOxAlerts(msg.state.alerts_count);
-        }
-        
-        if (msg.state.vent_notifications !== undefined) {
-          setVentNotifications(msg.state.vent_notifications);
         }
         
         if (msg.state.dashboard_chart_1) {
@@ -809,7 +798,7 @@ export default function Dashboard() {
   };
 
   // Add this function to handle alert acknowledgment
-  const handleAlertAcknowledged = (alertId) => {
+  const handleAlertAcknowledged = () => {
     fetch(`${config.apiUrl}/api/monitoring/alerts/count`, { credentials: 'include' })
       .then(response => response.json())
       .then(data => {

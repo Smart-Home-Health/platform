@@ -92,11 +92,10 @@ const AdminV2ShipmentDetail = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
-  const { 
-    patients, 
-    selectedPatient: contextPatient, 
-    selectPatient: setContextPatient,
-    loadingPatients 
+  const {
+    patients,
+    selectedPatient: contextPatient,
+    selectPatient: setContextPatient
   } = useAdminPatient();
   
   const selectedPatient = contextPatient;
@@ -139,7 +138,6 @@ const AdminV2ShipmentDetail = () => {
   
   // Draft editing state
   const [draftEdits, setDraftEdits] = useState({});
-  const [savingDraft, setSavingDraft] = useState(false);
   
   // Finalize state
   const [finalizing, setFinalizing] = useState(false);
@@ -436,8 +434,7 @@ const AdminV2ShipmentDetail = () => {
   const saveDraftField = async (field) => {
     const value = draftEdits[field];
     if (value === undefined) return;
-    
-    setSavingDraft(true);
+
     try {
       const response = await fetch(`${config.apiUrl}/api/shipments/${id}`, {
         method: 'PATCH',
@@ -460,8 +457,6 @@ const AdminV2ShipmentDetail = () => {
     } catch (err) {
       console.error('Error saving field:', err);
       alert('Error connecting to server');
-    } finally {
-      setSavingDraft(false);
     }
   };
 
