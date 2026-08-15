@@ -48,3 +48,4 @@ from . import epic
 from . import mqtt
 from . import ventilator
 from . import frigate
+from . import home_assistant

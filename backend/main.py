@@ -56,7 +56,7 @@ from modules.mqtt_module import MQTTModule
 from modules.state_module import StateModule
 
 # Import route modules
-from routes import core, settings, vitals, medications, care_tasks, equipment, monitoring, mqtt, status, patients, nutrition, businesses, providers, auth, users, schedule, dashboard, symptoms, diagnoses, implants, dme_shipments, account, integrations, integration_imports, frigate as frigate_routes, readers, backup, analysis, reports, messages, system, security, environment, ha_auth
+from routes import core, settings, vitals, medications, care_tasks, equipment, monitoring, mqtt, status, patients, nutrition, businesses, providers, auth, users, schedule, dashboard, symptoms, diagnoses, implants, dme_shipments, account, integrations, integration_imports, frigate as frigate_routes, readers, backup, analysis, reports, messages, system, security, environment, ha_auth, home_assistant as home_assistant_routes
 
 # Import legacy components
 from mqtt import initialize_mqtt_service, shutdown_mqtt_service
@@ -138,6 +138,7 @@ app.include_router(messages.router)
 app.include_router(system.router)
 app.include_router(security.router)  # HTTPS / certificate management (system admin)
 app.include_router(environment.router)  # Environmental observations + connectors
+app.include_router(home_assistant_routes.router)  # Inbound HA entity ingestion
 
 # --- Static frontend (unified single-image deploy) --------------------------
 # In the unified production image the built SPA is copied in and STATIC_DIR
@@ -353,6 +354,11 @@ async def startup_event():
     from environment.poller import environment_poll_loop
     asyncio.create_task(environment_poll_loop())
     logger.info("[main] Environment poll loop started")
+
+    # 8. Inbound Home Assistant listener (idles until enabled + mapped).
+    from homeassistant.listener import ha_listener_loop
+    asyncio.create_task(ha_listener_loop())
+    logger.info("[main] Home Assistant listener started")
 
     logger.info("[main] Event-driven system startup complete")
 

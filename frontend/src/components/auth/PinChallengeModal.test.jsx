@@ -18,7 +18,7 @@
 // Wave 4 — PIN challenge modal: user picker -> PIN/password -> selectUser. The
 // auth context is mocked; ModalBase renders for real.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import PinChallengeModal from './PinChallengeModal';
 
 const getAccountUsers = vi.fn();

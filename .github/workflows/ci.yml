@@ -53,12 +53,10 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
-      - name: Lint (report-only)
-        # The repo carries a large pre-existing ESLint backlog, so lint is
-        # surfaced but does not fail the build. Flip continue-on-error to false
-        # once the backlog is cleared to make it a hard gate.
+      - name: Lint
+        # Backlog cleared (issue #39) — lint is a hard gate, and the npm
+        # script runs eslint with --max-warnings 0.
         run: npm run lint
-        continue-on-error: true
       - name: Unit tests (Vitest)
         # TZ is pinned in the npm script; keep it deterministic here too.
         run: npm test

@@ -34,6 +34,7 @@ import {
   BackArrowIcon,
   UsersIcon,
   CalendarIcon,
+  ChevronLeftIcon,
   ChevronRightIcon,
   XIcon,
   ClipboardListIcon,
@@ -166,6 +167,7 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
       ...(hasAnyPermission(['roles.read', 'roles.create', 'roles.update', 'roles.delete', 'users.read'])
         ? [{ path: '/care/configuration/users/roles', label: 'Roles' }] : []),
       { path: '/care/configuration/mqtt', label: 'MQTT' },
+      { path: '/care/configuration/home-assistant', label: 'Home Assistant' },
       { path: '/care/configuration/environment', label: 'Environment' },
       ...(isSystemAdmin
         ? [{ path: '/care/configuration/backup', label: 'Backup' }] : []),
@@ -315,6 +317,30 @@ const AdminV2Layout = ({ children }) => {
     const delta = (activeRect.left - navRect.left) - (nav.clientWidth - active.clientWidth) / 2;
     nav.scrollBy({ left: delta, behavior: 'smooth' });
   }, [location.pathname, topNavItems.length]);
+
+  // Chevron scroll hints: shown at whichever edge has more tabs off-screen.
+  const [navScroll, setNavScroll] = useState({ left: false, right: false });
+  useEffect(() => {
+    const nav = topNavRef.current;
+    if (!nav) return undefined;
+    const update = () => setNavScroll({
+      left: nav.scrollLeft > 2,
+      right: nav.scrollLeft + nav.clientWidth < nav.scrollWidth - 2,
+    });
+    update();
+    nav.addEventListener('scroll', update, { passive: true });
+    const resizeObserver = new ResizeObserver(update);
+    resizeObserver.observe(nav);
+    return () => {
+      nav.removeEventListener('scroll', update);
+      resizeObserver.disconnect();
+    };
+  }, [topNavItems.length]);
+
+  const nudgeTopNav = (direction) => {
+    const nav = topNavRef.current;
+    if (nav) nav.scrollBy({ left: direction * nav.clientWidth * 0.6, behavior: 'smooth' });
+  };
 
   // Get URL with preserved query params for certain sections
   const getNavUrl = (path) => {
@@ -566,6 +592,12 @@ const AdminV2Layout = ({ children }) => {
           {/* Top Navigation - only show if section has sub-navigation */}
           {topNavItems.length > 0 && (
             <header className="admin-v2-topnav">
+              {navScroll.left && (
+                <button type="button" className="admin-v2-topnav-scroll-hint left"
+                        aria-label="Scroll sections left" onClick={() => nudgeTopNav(-1)}>
+                  <ChevronLeftIcon size={16} />
+                </button>
+              )}
               <nav className="admin-v2-topnav-links" ref={topNavRef}>
                 {topNavItems.map((item) => (
                   <Link
@@ -577,6 +609,12 @@ const AdminV2Layout = ({ children }) => {
                   </Link>
                 ))}
               </nav>
+              {navScroll.right && (
+                <button type="button" className="admin-v2-topnav-scroll-hint right"
+                        aria-label="Scroll sections right" onClick={() => nudgeTopNav(1)}>
+                  <ChevronRightIcon size={16} />
+                </button>
+              )}
             </header>
           )}
         </div>

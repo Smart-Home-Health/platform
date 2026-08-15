@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 // Patient API service
-import config, { apiFetch } from '../config';
+import config from '../config';
 
 const API_BASE_URL = config.apiUrl;
 

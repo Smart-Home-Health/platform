@@ -140,6 +140,7 @@ const AdminV2Symptoms = () => {
         loadSymptoms();
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helpers are recreated each render; effect is keyed on patient/view change only
   }, [selectedPatient, isHistoryView, isActiveView]);
 
   const loadSymptomTypes = async () => {
@@ -247,6 +248,7 @@ const AdminV2Symptoms = () => {
     if (isHistoryView && selectedPatient) {
       loadHistorySymptoms();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect re-runs on filter change only, view/patient changes are handled by the effect above
   }, [filterType, filterStatus, filterDateFrom, filterDateTo, searchTerm]);
 
   const handleSymptomSubmit = async (e) => {

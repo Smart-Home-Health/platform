@@ -92,11 +92,10 @@ const AdminV2ShipmentDetail = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
-  const { 
-    patients, 
-    selectedPatient: contextPatient, 
-    selectPatient: setContextPatient,
-    loadingPatients 
+  const {
+    patients,
+    selectedPatient: contextPatient,
+    selectPatient: setContextPatient
   } = useAdminPatient();
   
   const selectedPatient = contextPatient;
@@ -139,7 +138,6 @@ const AdminV2ShipmentDetail = () => {
   
   // Draft editing state
   const [draftEdits, setDraftEdits] = useState({});
-  const [savingDraft, setSavingDraft] = useState(false);
   
   // Finalize state
   const [finalizing, setFinalizing] = useState(false);
@@ -222,6 +220,7 @@ const AdminV2ShipmentDetail = () => {
         setContextPatient(patient);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-way URL→context sync; adding contextPatient would re-run on selection change and revert it to the stale URL param
   }, [searchParams, patients]);
 
   // Fetch shipment details
@@ -230,6 +229,7 @@ const AdminV2ShipmentDetail = () => {
       fetchShipment();
       fetchEquipment();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helpers are recreated each render; effect is keyed on shipment id change only
   }, [id]);
 
   const fetchShipment = async () => {
@@ -290,6 +290,7 @@ const AdminV2ShipmentDetail = () => {
     if (selectedPatient) {
       fetchEquipment();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on patient change only
   }, [selectedPatient]);
 
   const handleAddItem = async (e) => {
@@ -436,8 +437,7 @@ const AdminV2ShipmentDetail = () => {
   const saveDraftField = async (field) => {
     const value = draftEdits[field];
     if (value === undefined) return;
-    
-    setSavingDraft(true);
+
     try {
       const response = await fetch(`${config.apiUrl}/api/shipments/${id}`, {
         method: 'PATCH',
@@ -460,8 +460,6 @@ const AdminV2ShipmentDetail = () => {
     } catch (err) {
       console.error('Error saving field:', err);
       alert('Error connecting to server');
-    } finally {
-      setSavingDraft(false);
     }
   };
 

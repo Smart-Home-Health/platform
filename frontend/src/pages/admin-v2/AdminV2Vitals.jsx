@@ -34,6 +34,15 @@ import {
 import { Field } from '@/components/ui/field';
 import './AdminV2.css';
 
+const builtInVitalTypes = [
+  { value: 'blood_pressure', label: 'Blood Pressure', unit: 'mmHg' },
+  { value: 'heart_rate', label: 'Heart Rate', unit: 'bpm' },
+  { value: 'spo2', label: 'SpO2', unit: '%' },
+  { value: 'temperature', label: 'Temperature', unit: '°F' },
+  { value: 'respiratory_rate', label: 'Respiratory Rate', unit: '/min' },
+  { value: 'weight', label: 'Weight', unit: 'lbs' },
+];
+
 const AdminV2Vitals = () => {
   const location = useLocation();
   const { selectedPatient: contextPatient } = useAdminPatient();
@@ -54,15 +63,6 @@ const AdminV2Vitals = () => {
   // the record form has never been opened.
   const [customDefinitions, setCustomDefinitions] = useState([]);
 
-  const builtInVitalTypes = [
-    { value: 'blood_pressure', label: 'Blood Pressure', unit: 'mmHg' },
-    { value: 'heart_rate', label: 'Heart Rate', unit: 'bpm' },
-    { value: 'spo2', label: 'SpO2', unit: '%' },
-    { value: 'temperature', label: 'Temperature', unit: '°F' },
-    { value: 'respiratory_rate', label: 'Respiratory Rate', unit: '/min' },
-    { value: 'weight', label: 'Weight', unit: 'lbs' },
-  ];
-
   const allVitalTypes = useMemo(() => [
     ...builtInVitalTypes,
     ...customDefinitions.map(d => ({
@@ -81,18 +81,21 @@ const AdminV2Vitals = () => {
     } else {
       setCustomDefinitions([]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on patient change only
   }, [selectedPatient]);
 
   useEffect(() => {
     if (selectedPatient && isHistoryView) {
       loadVitalsHistory();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on patient/view change only
   }, [selectedPatient, isHistoryView]);
 
   useEffect(() => {
     if (isHistoryView && selectedPatient) {
       loadVitalsHistory();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect re-runs on filter change only, view/patient changes are handled by the effect above
   }, [filterType, filterDateFrom, filterDateTo, searchTerm]);
 
   const loadCustomDefinitions = async () => {

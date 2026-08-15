@@ -752,7 +752,7 @@ html, body, #root {
 .placeholder {
   width: 100%;
   height: 100%;
-  background: var(--dash-surface, #1a2b42); /* Match the dark blue from SciChart */
+  background: var(--dash-surface, #1a2b42);
   color: var(--dash-text, #fff);
   display: flex;
   justify-content: center;

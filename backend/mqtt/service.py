@@ -75,7 +75,11 @@ class MQTTService:
                     
                     # Set availability to online
                     self._publish_availability_status("online")
-                    
+
+                    # Seed per-reader connectivity flags (retained values from
+                    # before a restart may claim online for a dead socket).
+                    self._publish_reader_availability_snapshot()
+
                     return self.mqtt_manager, self.mqtt_publisher
                 else:
                     logger.error("[mqtt.service] Failed to connect to MQTT broker")
@@ -118,6 +122,29 @@ class MQTTService:
         finally:
             db.close()
             
+    def _publish_reader_availability_snapshot(self):
+        """Publish each active reader's current connectivity, retained."""
+        try:
+            # Late imports: routes.readers owns the live-connection registry.
+            from routes.readers import connection_manager
+            from models.readers import Reader
+            base_topic = get_mqtt_settings().get('base_topic', 'shh')
+            # Close the generator (not just the session) so get_db()'s own
+            # finally-block cleanup runs.
+            db_gen = get_db()
+            db = next(db_gen)
+            try:
+                reader_ids = [r.id for r in db.query(Reader).filter(
+                    Reader.is_active == True).all()]  # noqa: E712
+            finally:
+                db_gen.close()
+            for reader_id in reader_ids:
+                status = "online" if connection_manager.is_connected(reader_id) else "offline"
+                self.mqtt_client.publish(f"{base_topic}/reader/{reader_id}/availability",
+                                         status, retain=True)
+        except Exception as e:
+            logger.error(f"[mqtt.service] Failed to publish reader availability snapshot: {e}")
+
     def _publish_availability_status(self, status: str):
         """Publish availability status (online/offline) to MQTT"""
         try:

@@ -77,6 +77,7 @@ const AdminV2Dashboard = () => {
 
   useEffect(() => {
     fetchDashboardData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on read-access change only
   }, [hasReadAccess]);
 
   // Per-patient readings: poll on mount and subscribe to WebSocket for live updates

@@ -321,6 +321,7 @@ const AdminV2Equipment = () => {
         setContextPatient(patient);
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- one-way URL→context sync; adding contextPatient would re-run on selection change and revert it to the stale URL param
   }, [searchParams, patients, loadingPatients]);
 
   // Update URL when context patient changes
@@ -328,6 +329,7 @@ const AdminV2Equipment = () => {
     if (contextPatient && searchParams.get('patient') !== String(contextPatient.id)) {
       setSearchParams({ patient: contextPatient.id });
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- one-way context→URL sync; runs only when the selection changes
   }, [contextPatient]);
 
   // Fetch equipment when patient is selected
@@ -335,6 +337,7 @@ const AdminV2Equipment = () => {
     if (selectedPatient) {
       fetchEquipment();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on patient change only
   }, [selectedPatient]);
 
   const fetchEquipment = async () => {
@@ -425,7 +428,7 @@ const AdminV2Equipment = () => {
         const errorData = await response.json();
         setFormError(formatErrorDetail(errorData.detail, 'Failed to create equipment'));
       }
-    } catch (err) {
+    } catch {
       setFormError('Error connecting to server');
     } finally {
       setSaving(false);
@@ -475,7 +478,7 @@ const AdminV2Equipment = () => {
         const errorData = await response.json();
         setFormError(formatErrorDetail(errorData.detail, 'Failed to update equipment'));
       }
-    } catch (err) {
+    } catch {
       setFormError('Error connecting to server');
     } finally {
       setSaving(false);
@@ -497,7 +500,7 @@ const AdminV2Equipment = () => {
       } else {
         alert('Failed to delete equipment');
       }
-    } catch (err) {
+    } catch {
       alert('Error connecting to server');
     } finally {
       setSaving(false);
@@ -532,7 +535,7 @@ const AdminV2Equipment = () => {
           alert(formatErrorDetail(errorData.detail, 'Failed to mark as changed'));
         }
       }
-    } catch (err) {
+    } catch {
       alert('Error connecting to server');
     } finally {
       setSaving(false);
@@ -558,7 +561,7 @@ const AdminV2Equipment = () => {
       } else {
         alert('Failed to receive equipment');
       }
-    } catch (err) {
+    } catch {
       alert('Error connecting to server');
     } finally {
       setSaving(false);
@@ -589,7 +592,7 @@ const AdminV2Equipment = () => {
       } else {
         alert('Failed to open equipment');
       }
-    } catch (err) {
+    } catch {
       alert('Error connecting to server');
     } finally {
       setSaving(false);

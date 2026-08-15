@@ -270,6 +270,7 @@ const AdminV2CareTasks = () => {
     } else if (!patientId && !contextPatient && patients.length > 0 && !loadingPatients) {
       setShowPatientModal(true);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-way URL→context sync; adding contextPatient would re-run on selection change and revert it to the stale URL param
   }, [searchParams, patients, loadingPatients]);
 
   // Update URL when context patient changes
@@ -277,6 +278,7 @@ const AdminV2CareTasks = () => {
     if (contextPatient && searchParams.get('patient') !== String(contextPatient.id)) {
       setSearchParams({ patient: contextPatient.id });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-way context→URL sync; runs only when the selection changes
   }, [contextPatient]);
 
   // Fetch care tasks when patient is selected
@@ -284,6 +286,7 @@ const AdminV2CareTasks = () => {
     if (selectedPatient) {
       fetchCareTasks();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on patient change only
   }, [selectedPatient]);
 
   const fetchCategories = async () => {
@@ -352,10 +355,6 @@ const AdminV2CareTasks = () => {
     setShowPatientModal(false);
   };
 
-  const handleChangePatient = () => {
-    setShowPatientModal(true);
-  };
-
   const handleCreateTask = async (e) => {
     e.preventDefault();
     setFormError(null);
@@ -387,7 +386,7 @@ const AdminV2CareTasks = () => {
           setFormError(data.detail || 'Failed to create care task');
         }
       }
-    } catch (err) {
+    } catch {
       setFormError('Error connecting to server');
     } finally {
       setSaving(false);
@@ -420,7 +419,7 @@ const AdminV2CareTasks = () => {
         const data = await response.json();
         setFormError(data.detail || 'Failed to update care task');
       }
-    } catch (err) {
+    } catch {
       setFormError('Error connecting to server');
     } finally {
       setSaving(false);
@@ -443,7 +442,7 @@ const AdminV2CareTasks = () => {
         const data = await response.json();
         setFormError(data.detail || 'Failed to delete care task');
       }
-    } catch (err) {
+    } catch {
       setFormError('Error connecting to server');
     } finally {
       setSaving(false);
@@ -572,7 +571,7 @@ const AdminV2CareTasks = () => {
         const data = await response.json();
         setCategoryError(data.detail || 'Failed to create category');
       }
-    } catch (err) {
+    } catch {
       setCategoryError('Error creating category');
     } finally {
       setCategorySaving(false);
@@ -603,7 +602,7 @@ const AdminV2CareTasks = () => {
         const data = await response.json();
         setCategoryError(data.detail || 'Failed to update category');
       }
-    } catch (err) {
+    } catch {
       setCategoryError('Error updating category');
     } finally {
       setCategorySaving(false);
@@ -630,7 +629,7 @@ const AdminV2CareTasks = () => {
         const data = await response.json();
         alert(data.detail || 'Failed to delete category');
       }
-    } catch (err) {
+    } catch {
       alert('Error deleting category');
     } finally {
       setCategorySaving(false);
@@ -714,7 +713,7 @@ const AdminV2CareTasks = () => {
         const data = await response.json();
         alert(data.detail || 'Failed to add schedule');
       }
-    } catch (err) {
+    } catch {
       alert('Error adding schedule');
     } finally {
       setScheduleSaving(false);

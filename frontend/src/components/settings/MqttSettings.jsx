@@ -101,21 +101,6 @@ const MqttSettings = () => {
   const [success, setSuccess] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
 
-  const vitalNames = {
-    spo2: 'SpO₂ Level',
-    bpm: 'Heart Rate (BPM)',
-    perfusion: 'Perfusion Index',
-    blood_pressure: 'Blood Pressure',
-    temperature: 'Temperature',
-    nutrition: 'Nutrition (Water & Calories)',
-    weight: 'Weight',
-    bathroom: 'Bathroom',
-    spo2_alarm: 'SpO₂ Alarm',
-    bpm_alarm: 'Heart Rate Alarm',
-    alarm1: 'GPIO Alarm 1',
-    alarm2: 'GPIO Alarm 2'
-  };
-
   // Load MQTT settings on component mount
   useEffect(() => {
     loadMqttSettings();
@@ -210,7 +195,7 @@ const MqttSettings = () => {
         setConnectionStatus('failed');
         setTimeout(() => setConnectionStatus('disconnected'), 3000);
       }
-    } catch (err) {
+    } catch {
       setConnectionStatus('failed');
       setTimeout(() => setConnectionStatus('disconnected'), 3000);
     }

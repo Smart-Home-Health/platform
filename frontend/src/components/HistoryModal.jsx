@@ -204,6 +204,7 @@ const HistoryModal = ({ onClose }) => {
           setLoading(false);
         });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- selectedPatient is tracked via its id; effect is intentionally keyed on type/paging/patient id only
   }, [selectedType, page, pageSize, selectedPatient?.id]);
 
   const handleTypeSelect = (type) => {

@@ -21,3 +21,4 @@ how the registry gets populated — add new connectors to the import list below
 (same convention as ``integrations/__init__.py``).
 """
 from . import open_meteo  # noqa: F401
+from . import home_assistant  # noqa: F401

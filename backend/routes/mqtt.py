@@ -16,6 +16,7 @@
 """
 MQTT configuration and management routes
 """
+import asyncio
 import logging
 import time
 import os
@@ -414,6 +415,29 @@ async def update_mqtt_patient_config(
         pi.updated_at = now
     db.commit()
     db.refresh(pi)
+    # Keep HA in sync without the manual "send discovery" step: re-announce
+    # enabled sections and delete entities for sections that were turned off
+    # (or the whole device when the patient's MQTT is disabled). Best-effort —
+    # a broker hiccup must not fail the save. The discovery helpers do their
+    # own DB reads plus a burst of retained publishes, so run them in a worker
+    # thread instead of blocking the event loop.
+    try:
+        from main import get_modules
+        from mqtt.discovery import remove_mqtt_discovery_for_patient
+        mqtt_module = get_modules().get("mqtt")
+        if mqtt_module and mqtt_module.mqtt_manager and mqtt_module.mqtt_manager.is_connected():
+            client = mqtt_module.mqtt_manager.client
+            if body.enabled:
+                await asyncio.to_thread(send_mqtt_discovery, client, patient_id=patient_id)
+            else:
+                from models.readers import Reader
+                reader_ids = [r.id for r in db.query(Reader).filter(
+                    Reader.patient_id == patient_id).all()]
+                patient_name = f"{patient.first_name} {patient.last_name}".strip() or f"Patient {patient_id}"
+                await asyncio.to_thread(remove_mqtt_discovery_for_patient,
+                                        client, patient_id, patient_name, reader_ids)
+    except Exception as e:
+        logger.warning(f"Post-save MQTT discovery sync skipped: {e}")
     return MQTTPatientConfigResponse(
         patient_id=patient_id,
         patient_name=f"{patient.first_name} {patient.last_name}".strip() or None,

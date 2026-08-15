@@ -237,7 +237,7 @@ const MedicationScheduleView = ({
     
     medications.forEach(med => {
       const status = getMedicationStatus(med);
-      if (counts.hasOwnProperty(status)) {
+      if (Object.prototype.hasOwnProperty.call(counts, status)) {
         counts[status]++;
       }
     });
@@ -1129,101 +1129,6 @@ const MedicationScheduleView = ({
       </div>
     </div>
   );
-};
-
-// Export utility functions for use in other components
-export const medicationStatusUtils = {
-  getMedicationStatus: (medication) => {
-    if (!medication.scheduled_time) return 'unknown';
-    
-    // If already taken
-    if (medication.actual_dose !== null && medication.actual_dose !== undefined) {
-      if (medication.actual_dose === 0) return 'skipped';
-      
-      if (medication.actual_time) {
-        const scheduledTime = new Date(medication.scheduled_time);
-        const actualTime = new Date(medication.actual_time);
-        const diffHours = Math.abs(actualTime - scheduledTime) / (1000 * 60 * 60);
-        
-        if (diffHours <= 1) return 'on_time';
-        if (diffHours <= 2) return 'warning';
-        return 'late_early';
-      }
-      return 'on_time'; // taken but no actual time recorded
-    }
-    
-    // Not taken yet - check timing
-    const now = new Date();
-    const scheduledTime = new Date(medication.scheduled_time);
-    const diffHours = (now - scheduledTime) / (1000 * 60 * 60);
-    
-    if (diffHours < -1) return 'upcoming';     // More than 1 hour before
-    if (diffHours <= 1) return 'ready_to_take'; // Within 1 hour window
-    return 'missed';                           // More than 1 hour past
-  },
-  
-  getStatusInfo: (status) => {
-    const statusMap = {
-      on_time: { label: 'On Time', color: '#28a745' },
-      warning: { label: 'Warning', color: '#ffc107' },
-      late_early: { label: 'Late/Early', color: '#fd7e14' },
-      upcoming: { label: 'Upcoming', color: '#6f42c1' },
-      missed: { label: 'Missed', color: '#dc3545' },
-      skipped: { label: 'Skipped', color: '#6c757d' },
-      ready_to_take: { label: 'Ready to Take', color: '#007bff' },
-      unknown: { label: 'Unknown', color: '#6c757d' }
-    };
-    return statusMap[status] || statusMap.unknown;
-  },
-  
-  filterMedicationsByStatus: (medications, statusFilters) => {
-    if (!medications || !Array.isArray(medications)) return [];
-    
-    return medications.filter(med => {
-      const status = medicationStatusUtils.getMedicationStatus(med);
-      return statusFilters[status];
-    });
-  },
-  
-  getDefaultFilters: () => ({
-    on_time: false,
-    warning: false,
-    late_early: false,
-    upcoming: true,
-    missed: true,
-    skipped: false,
-    ready_to_take: true
-  }),
-
-  // NEW: Check if medication has relevant schedules for patient
-  hasRelevantSchedules: (medication, currentPatientId) => {
-    if (!medication.schedules || medication.schedules.length === 0) return false;
-    
-    // For patient-specific medications, only check schedules for current patient
-    if (!medication.is_global && currentPatientId) {
-      return medication.schedules.some(schedule => 
-        schedule.patient_id === parseInt(currentPatientId)
-      );
-    }
-    
-    // For global medications, any schedule counts
-    return medication.schedules.length > 0;
-  },
-
-  // NEW: Get schedule count for current patient
-  getRelevantScheduleCount: (medication, currentPatientId) => {
-    if (!medication.schedules || medication.schedules.length === 0) return 0;
-    
-    // For patient-specific medications, count schedules for current patient only
-    if (!medication.is_global && currentPatientId) {
-      return medication.schedules.filter(schedule => 
-        schedule.patient_id === parseInt(currentPatientId)
-      ).length;
-    }
-    
-    // For global medications, count all schedules
-    return medication.schedules.length;
-  }
 };
 
 export default MedicationScheduleView;

@@ -1,0 +1,216 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+// AdminV2HomeAssistant: connection card (supervisor banner vs token form),
+// mappings table, and the add-mapping dialog's entity picker.
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, act, fireEvent } from '@testing-library/react';
+
+vi.mock('./AdminV2Layout', () => ({ default: ({ children }) => <div>{children}</div> }));
+
+const { apiFetchMock } = vi.hoisted(() => ({ apiFetchMock: vi.fn() }));
+vi.mock('../../config', () => ({
+  default: { apiUrl: '' },
+  apiFetch: apiFetchMock,
+}));
+
+import AdminV2HomeAssistant from './AdminV2HomeAssistant';
+
+const jsonResponse = (body, status = 200) => ({
+  ok: status < 400,
+  status,
+  json: async () => body,
+});
+
+const baseConfig = {
+  enabled: false,
+  mode: 'auto',
+  base_url: '',
+  token_set: false,
+  supervisor_available: false,
+  connection_available: false,
+};
+
+const baseStatus = { connected: false, mapping_count: 0 };
+
+const sampleMapping = {
+  id: 1,
+  entity_id: 'sensor.spo2_ring',
+  friendly_name: 'SpO2 Ring',
+  device_class: null,
+  source_unit: '%',
+  target_kind: 'vital',
+  patient_id: 5,
+  vital_type: 'spo2',
+  vital_group: null,
+  metric: null,
+  scope: null,
+  location: null,
+  enabled: true,
+  min_interval_seconds: 0,
+  last_seen_at: '2026-08-15T10:00:00+00:00',
+  last_value: 97,
+  last_error: null,
+};
+
+// Route the page's parallel fetches by URL.
+const routeFetches = ({ config = baseConfig, status = baseStatus, mappings = [],
+                        entities = [], patients = [], vitalTypes = [], metrics = [],
+                        areas = [], locations = [] } = {}) => {
+  apiFetchMock.mockImplementation(async (url) => {
+    if (url.includes('/home_assistant/config')) return jsonResponse(config);
+    if (url.includes('/home_assistant/status')) return jsonResponse(status);
+    if (url.includes('/home_assistant/mappings')) return jsonResponse(mappings);
+    if (url.includes('/home_assistant/entities')) return jsonResponse(entities);
+    if (url.includes('/home_assistant/vital-types')) return jsonResponse(vitalTypes);
+    if (url.includes('/home_assistant/areas')) return jsonResponse(areas);
+    if (url.includes('/api/patients')) return jsonResponse(patients);
+    if (url.includes('/api/environment/metrics')) return jsonResponse(metrics);
+    if (url.includes('/api/environment/locations')) return jsonResponse(locations);
+    return jsonResponse({}, 404);
+  });
+};
+
+const renderPage = async () => {
+  await act(async () => {
+    render(<AdminV2HomeAssistant />);
+  });
+};
+
+beforeEach(() => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  apiFetchMock.mockReset();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+describe('AdminV2HomeAssistant', () => {
+  it('shows the token form when not running as the add-on', async () => {
+    routeFetches();
+    await renderPage();
+
+    expect(screen.getByLabelText('Home Assistant URL')).toBeInTheDocument();
+    expect(screen.getByLabelText('Long-lived access token')).toBeInTheDocument();
+    expect(screen.getByText('Not connected')).toBeInTheDocument();
+  });
+
+  it('shows the add-on banner instead of the token form under the Supervisor', async () => {
+    routeFetches({
+      config: { ...baseConfig, supervisor_available: true, connection_available: true },
+      status: { ...baseStatus, connected: true },
+    });
+    await renderPage();
+
+    expect(screen.getByText(/Running as the Home Assistant add-on/)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Home Assistant URL')).not.toBeInTheDocument();
+    expect(screen.getByText('Connected')).toBeInTheDocument();
+  });
+
+  it('renders existing mappings with target and last value', async () => {
+    routeFetches({ mappings: [sampleMapping] });
+    await renderPage();
+
+    // Both the desktop table and the phone card list render (CSS decides
+    // which is visible), so mapping details appear twice.
+    expect(screen.getAllByText('SpO2 Ring')).toHaveLength(2);
+    expect(screen.getAllByText('Vital: spo2')).toHaveLength(2);
+    expect(screen.getByText('97 %')).toBeInTheDocument();        // table cell
+    expect(screen.getByText(/Last seen .* · 97 %/)).toBeInTheDocument(); // card
+  });
+
+  it('opens the add-mapping dialog and lists pickable entities', async () => {
+    routeFetches({
+      entities: [
+        { entity_id: 'sensor.bedroom_temp', friendly_name: 'Bedroom Temp',
+          state: '71', unit_of_measurement: '°F', device_class: 'temperature',
+          domain: 'sensor', mapped: false },
+        { entity_id: 'sensor.already', friendly_name: 'Already Mapped',
+          state: '1', unit_of_measurement: null, device_class: null,
+          domain: 'sensor', mapped: true },
+      ],
+      vitalTypes: [{ value: 'spo2', label: 'SpO2', groups: [] }],
+      metrics: [{ name: 'temperature', label: 'Temperature', unit: '°C', derived: false }],
+    });
+    await renderPage();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Add mapping/ }));
+    });
+
+    expect(screen.getByText('Bedroom Temp')).toBeInTheDocument();
+    const mappedRow = screen.getByText('Already Mapped').closest('button');
+    expect(mappedRow).toBeDisabled();
+
+    // Picking an entity captures its metadata into the form.
+    await act(async () => {
+      fireEvent.click(screen.getByText('Bedroom Temp').closest('button'));
+    });
+    expect(screen.getByText(/sensor\.bedroom_temp\s*·\s*°F/)).toBeInTheDocument();
+  });
+
+  it('offers HA areas + seen locations as location suggestions when editing', async () => {
+    routeFetches({
+      mappings: [{ ...sampleMapping, id: 3, entity_id: 'sensor.bedroom_co2',
+                   friendly_name: 'Bedroom CO2', target_kind: 'environment',
+                   patient_id: null, vital_type: null, metric: 'co2',
+                   scope: 'room', location: 'Bedroom' }],
+      areas: ['Bedroom', 'Living Room'],
+      locations: [
+        { scope: 'room', location: 'Office', last_seen: null, metric_count: 1 },
+        { scope: 'outdoor', location: '', last_seen: null, metric_count: 9 },
+      ],
+      metrics: [{ name: 'co2', label: 'CO2', unit: 'ppm', derived: false }],
+    });
+    await renderPage();
+
+    await act(async () => {
+      // Two edit buttons exist (table + phone card); either opens the dialog.
+      fireEvent.click(screen.getAllByRole('button', { name: 'Edit sensor.bedroom_co2' })[0]);
+    });
+
+    expect(screen.getByLabelText('Location')).toHaveValue('Bedroom');
+    const options = [...document.querySelectorAll('#ha-location-suggestions option')]
+      .map((o) => o.value);
+    expect(options).toEqual(expect.arrayContaining(['Bedroom', 'Living Room', 'Office']));
+    expect(options).not.toContain('');  // outdoor "" never suggested
+  });
+
+  it('filters entities by search text', async () => {
+    routeFetches({
+      entities: [
+        { entity_id: 'sensor.bedroom_temp', friendly_name: 'Bedroom Temp',
+          state: '71', unit_of_measurement: '°F', device_class: 'temperature',
+          domain: 'sensor', mapped: false },
+        { entity_id: 'sensor.pulse_ox', friendly_name: 'Pulse Ox',
+          state: '97', unit_of_measurement: '%', device_class: null,
+          domain: 'sensor', mapped: false },
+      ],
+    });
+    await renderPage();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Add mapping/ }));
+    });
+    fireEvent.change(screen.getByPlaceholderText('Search entities…'),
+                     { target: { value: 'pulse' } });
+
+    expect(screen.getByText('Pulse Ox')).toBeInTheDocument();
+    expect(screen.queryByText('Bedroom Temp')).not.toBeInTheDocument();
+  });
+});

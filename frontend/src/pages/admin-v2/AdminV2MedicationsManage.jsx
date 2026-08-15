@@ -29,7 +29,7 @@ import {
   MedicationsIcon,
   ClockIcon
 } from '../../components/Icons';
-import { localTimeToUTC, localTimeAndDaysToUTC, utcTimeToLocal, parseCronExpression } from '../../utils/timezone';
+import { localTimeToUTC, localTimeAndDaysToUTC, parseCronExpression } from '../../utils/timezone';
 import {
   Dialog,
   DialogContent,
@@ -330,6 +330,7 @@ const AdminV2MedicationsManage = () => {
     } else if (!patientId && !contextPatient && patients.length > 0 && !loadingPatients) {
       setShowPatientModal(true);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- one-way URL→context sync; adding contextPatient would re-run on selection change and revert it to the stale URL param
   }, [searchParams, patients, loadingPatients]);
 
   // Update URL when context patient changes
@@ -337,6 +338,7 @@ const AdminV2MedicationsManage = () => {
     if (contextPatient && searchParams.get('patient') !== String(contextPatient.id)) {
       setSearchParams({ patient: contextPatient.id });
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- one-way context→URL sync; runs only when the selection changes
   }, [contextPatient]);
 
   // Fetch medications and providers when patient is selected
@@ -346,6 +348,7 @@ const AdminV2MedicationsManage = () => {
       fetchProviders();
       fetchPharmacies();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helpers are recreated each render; effect is keyed on patient change only
   }, [selectedPatient]);
 
   const fetchMedications = async () => {
@@ -427,10 +430,6 @@ const AdminV2MedicationsManage = () => {
     setShowPatientModal(false);
   };
 
-  const handleChangePatient = () => {
-    setShowPatientModal(true);
-  };
-
   const handleCreateMedication = async (e) => {
     e.preventDefault();
     setFormError(null);
@@ -464,7 +463,7 @@ const AdminV2MedicationsManage = () => {
           setFormError(data.detail || 'Failed to create medication');
         }
       }
-    } catch (err) {
+    } catch {
       setFormError('Error connecting to server');
     } finally {
       setSaving(false);
@@ -498,7 +497,7 @@ const AdminV2MedicationsManage = () => {
         const data = await response.json();
         setFormError(data.detail || 'Failed to update medication');
       }
-    } catch (err) {
+    } catch {
       setFormError('Error connecting to server');
     } finally {
       setSaving(false);
@@ -521,7 +520,7 @@ const AdminV2MedicationsManage = () => {
         const data = await response.json();
         setFormError(data.detail || 'Failed to delete medication');
       }
-    } catch (err) {
+    } catch {
       setFormError('Error connecting to server');
     } finally {
       setSaving(false);
@@ -593,15 +592,6 @@ const AdminV2MedicationsManage = () => {
     setSchedulePatientId(medication.is_global && selectedPatient ? String(selectedPatient.id) : '');
     setFormError(null);
     setShowScheduleModal(true);
-  };
-
-  // Get schedules relevant to current patient
-  const getRelevantSchedules = (schedules) => {
-    if (!schedules || schedules.length === 0) return [];
-    if (!selectedMedication?.is_global && selectedPatient) {
-      return schedules.filter(s => s.patient_id === selectedPatient.id);
-    }
-    return schedules;
   };
 
   const handleAddSchedule = async () => {
@@ -703,7 +693,7 @@ const AdminV2MedicationsManage = () => {
       if (refreshedMed) {
         setSelectedMedication(refreshedMed);
       }
-    } catch (err) {
+    } catch {
       setFormError('Error deleting schedule');
     } finally {
       setScheduleSaving(false);
@@ -727,7 +717,7 @@ const AdminV2MedicationsManage = () => {
       if (refreshedMed) {
         setSelectedMedication(refreshedMed);
       }
-    } catch (err) {
+    } catch {
       setFormError('Error updating schedule');
     } finally {
       setScheduleSaving(false);

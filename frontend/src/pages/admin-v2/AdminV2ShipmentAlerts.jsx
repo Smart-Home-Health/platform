@@ -103,6 +103,7 @@ const AdminV2ShipmentAlerts = () => {
         setContextPatient(patient);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-way URL→context sync; adding contextPatient would re-run on selection change and revert it to the stale URL param
   }, [searchParams, patients]);
 
   // Update URL when patient changes
@@ -110,6 +111,7 @@ const AdminV2ShipmentAlerts = () => {
     if (contextPatient && searchParams.get('patient') !== String(contextPatient.id)) {
       setSearchParams({ patient: contextPatient.id });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-way context→URL sync; runs only when the selection changes
   }, [contextPatient]);
 
   // Fetch data
@@ -118,6 +120,7 @@ const AdminV2ShipmentAlerts = () => {
       fetchAlerts();
       fetchSuppliers();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on patient change only
   }, [selectedPatient, typeFilter, resolvedFilter]);
 
   const fetchAlerts = async () => {

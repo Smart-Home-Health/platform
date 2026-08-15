@@ -85,6 +85,7 @@ export default function AdminV2MonitoringInteractions() {
       })
       .catch(e => setError(String(e)))
       .finally(() => setMedsLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- selectedMedId is read only to seed a default without clobbering an existing selection; the analysis effect below handles selectedMedId changes, and adding it here would refetch the med list on every selection change
   }, [patientId]);
 
   useEffect(() => {

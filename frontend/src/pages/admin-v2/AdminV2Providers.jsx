@@ -134,6 +134,7 @@ const AdminV2Providers = () => {
     if (selectedPatient) {
       fetchProviders();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on patient change only
   }, [selectedPatient, activeTab, filterType]);
 
   const fetchProviders = async () => {
