@@ -38,8 +38,6 @@
     "react-simple-keyboard": "^3.8.203",
     "react-zoom-pan-pinch": "^4.0.3",
     "recharts": "^3.0.2",
-    "scichart": "^3.5.762",
-    "scichart-react": "^0.1.13",
     "tailwind-merge": "^3.6.0",
     "tesseract.js": "^7.0.0"
   },

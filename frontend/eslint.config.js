@@ -4,7 +4,8 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 
 export default [
-  { ignores: ['dist'] },
+  // public/ holds vendored assets (tesseract worker etc.), not our code.
+  { ignores: ['dist', 'public'] },
   {
     files: ['**/*.{js,jsx}'],
     languageOptions: {
