@@ -17,7 +17,11 @@
 (outbound call to the device mocked; we assert an ephemeral key is generated
 and a pending pairing is stored)."""
 
+import json
+
 import pytest
+from cryptography.fernet import Fernet
+from starlette.websockets import WebSocketDisconnect
 
 import routes.readers as readers_mod
 
@@ -129,6 +133,91 @@ def test_initiate_pairing_generates_ephemeral_key(admin_client, monkeypatch):
         assert pending.host_ws_url.endswith(f"/api/readers/ws/{reader_id}")
     finally:
         readers_mod.pending_pairings.pop(reader_id, None)
+
+
+def test_pairing_rejects_ingress_host_url(admin_client, monkeypatch):
+    """A browser on the HA sidebar reports its ingress origin — a headless
+    reader can never dial that (session token, cookie-gated). Fail fast with a
+    clear 400 instead of letting a doomed pairing 'succeed'."""
+    monkeypatch.setattr(readers_mod.httpx, "AsyncClient", _FakeAsyncClient)
+    resp = admin_client.post("/api/readers/pair", json={
+        "ip_address": "192.168.1.91", "port": 8080,
+        "host_url": "https://ha.local:8123/api/hassio_ingress/Abc123Token",
+    })
+    assert resp.status_code == 400
+    assert "ingress" in resp.json()["detail"].lower()
+
+
+# --- WebSocket slot protection -----------------------------------------------
+# The endpoint is LAN-reachable (the add-on publishes port 8000): a live
+# reader's slot may only be taken over by a connection that proves it holds
+# the pairing key with one valid encrypted frame.
+
+@pytest.fixture
+def paired_reader():
+    """A really-committed paired reader: the WS handler opens its own
+    SessionLocal, so the transaction-rollback fixtures can't reach it."""
+    from db import SessionLocal
+    from models.readers import Reader
+    key = Fernet.generate_key().decode()
+    s = SessionLocal()
+    try:
+        r = Reader(name="WS Reader", ip_address="192.168.1.200", port=8080,
+                   encryption_key=key, is_active=True, is_paired=True)
+        s.add(r)
+        s.commit()
+        s.refresh(r)
+        rid = r.id
+        yield rid, key
+        s.query(Reader).filter(Reader.id == rid).delete()
+        s.commit()
+    finally:
+        s.close()
+
+
+def _enc(key, payload):
+    return Fernet(key.encode()).encrypt(json.dumps(payload).encode())
+
+
+def _dec(key, data):
+    return json.loads(Fernet(key.encode()).decrypt(data).decode())
+
+
+def test_ws_fresh_connect_and_handshake(client, paired_reader):
+    rid, key = paired_reader
+    with client.websocket_connect(f"/api/readers/ws/{rid}") as ws:
+        ws.send_bytes(_enc(key, {"type": "handshake", "device_name": "t"}))
+        assert _dec(key, ws.receive_bytes())["type"] == "pong"
+
+
+def test_ws_unverified_connection_cannot_evict_live_reader(client, paired_reader):
+    rid, key = paired_reader
+    with client.websocket_connect(f"/api/readers/ws/{rid}") as ws1:
+        ws1.send_bytes(_enc(key, {"type": "handshake"}))
+        assert _dec(key, ws1.receive_bytes())["type"] == "pong"
+
+        with client.websocket_connect(f"/api/readers/ws/{rid}") as ws2:
+            ws2.send_bytes(b"not-the-key")
+            with pytest.raises(WebSocketDisconnect) as exc:
+                ws2.receive_bytes()  # server closes without evicting
+            assert exc.value.code == 4003
+
+        # The incumbent still owns the slot.
+        ws1.send_bytes(_enc(key, {"type": "ping"}))
+        assert _dec(key, ws1.receive_bytes())["type"] == "pong"
+
+
+def test_ws_verified_takeover_replaces_incumbent(client, paired_reader):
+    rid, key = paired_reader
+    with client.websocket_connect(f"/api/readers/ws/{rid}") as ws1:
+        ws1.send_bytes(_enc(key, {"type": "handshake"}))
+        assert _dec(key, ws1.receive_bytes())["type"] == "pong"
+
+        # A reconnecting real device proves the key with its first frame and
+        # takes the slot; that frame is not lost (it gets a normal reply).
+        with client.websocket_connect(f"/api/readers/ws/{rid}") as ws2:
+            ws2.send_bytes(_enc(key, {"type": "handshake", "device_name": "new"}))
+            assert _dec(key, ws2.receive_bytes())["type"] == "pong"
 
 
 def test_pairing_unreachable_reader_502(admin_client, monkeypatch):

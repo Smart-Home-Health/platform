@@ -18,7 +18,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { API_BASE_URL, getApiBaseUrl } from '../../config';
+import { API_BASE_URL, getApiBaseUrl, isIngress } from '../../config';
 import AdminV2Layout from './AdminV2Layout';
 import { timeAgo } from '../../utils/timezone';
 import {
@@ -474,7 +474,12 @@ export default function AdminV2Connections() {
           ip_address: readerIp.trim(),
           port: parseInt(readerPort, 10) || 8080,
           patient_id: patientId,
-          host_url: getApiBaseUrl()
+          // Headless readers can't dial an ingress URL (session-scoped token,
+          // cookie-gated). Behind HA ingress, hand them the add-on's LAN port
+          // on the same host instead (plain HTTP by design there).
+          host_url: isIngress()
+            ? `http://${window.location.hostname}:8000`
+            : getApiBaseUrl()
         })
       });
 

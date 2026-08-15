@@ -55,6 +55,11 @@ Locking the app or choosing **Switch user** brings the picker back and it stays
 until a profile is chosen — reopening from the sidebar in a *new* tab signs the
 linked user in again.
 
+**Reader devices (shh-reader pulse-ox bridges):** these also use the LAN port —
+pair them from the app and they connect back to `ws://<ha-host>:8000/api/readers/ws/…`
+automatically (the pairing flow handles this even when you're browsing via the
+sidebar). Ingress URLs are never usable by headless devices.
+
 **Shared devices (wall tablet, med-station Pi):** use the direct LAN address
 (port `8000`, e.g. `http://<ha-host>:8000`) in a dashboard iframe card instead
 of ingress. That path always shows the user picker, so a shared screen never
