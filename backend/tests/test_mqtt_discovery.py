@@ -183,6 +183,10 @@ def test_alarm_panel_state_reaches_patient_state(monkeypatch):
                                           patient_id=None))
         await asyncio.sleep(0.05)
         task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
     asyncio.run(run())
     assert published == [(5, {"alarm1": "ON", "alarm2": "OFF"})]

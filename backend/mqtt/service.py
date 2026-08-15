@@ -129,12 +129,15 @@ class MQTTService:
             from routes.readers import connection_manager
             from models.readers import Reader
             base_topic = get_mqtt_settings().get('base_topic', 'shh')
-            db = next(get_db())
+            # Close the generator (not just the session) so get_db()'s own
+            # finally-block cleanup runs.
+            db_gen = get_db()
+            db = next(db_gen)
             try:
                 reader_ids = [r.id for r in db.query(Reader).filter(
                     Reader.is_active == True).all()]  # noqa: E712
             finally:
-                db.close()
+                db_gen.close()
             for reader_id in reader_ids:
                 status = "online" if connection_manager.is_connected(reader_id) else "offline"
                 self.mqtt_client.publish(f"{base_topic}/reader/{reader_id}/availability",
