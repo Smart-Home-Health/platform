@@ -166,6 +166,7 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
       ...(hasAnyPermission(['roles.read', 'roles.create', 'roles.update', 'roles.delete', 'users.read'])
         ? [{ path: '/care/configuration/users/roles', label: 'Roles' }] : []),
       { path: '/care/configuration/mqtt', label: 'MQTT' },
+      { path: '/care/configuration/home-assistant', label: 'Home Assistant' },
       { path: '/care/configuration/environment', label: 'Environment' },
       ...(isSystemAdmin
         ? [{ path: '/care/configuration/backup', label: 'Backup' }] : []),
