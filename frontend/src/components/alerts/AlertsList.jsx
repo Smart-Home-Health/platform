@@ -36,6 +36,7 @@ const AlertsList = ({ onAlertAcknowledge, patientId }) => {
 
   useEffect(() => {
     fetchAlerts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchAlerts is recreated each render; effect is intentionally keyed on the showAcknowledged filter and patient only
   }, [showAcknowledged, patientId]);
 
   const fetchAlerts = async () => {

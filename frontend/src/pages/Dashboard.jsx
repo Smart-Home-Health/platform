@@ -372,6 +372,7 @@ export default function Dashboard() {
       }
     };
     loadSettings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on unlock/patient change only
   }, [needsUnlock, selectedPatient?.id]);
 
   // Reload settings when settings modal is closed
@@ -427,6 +428,7 @@ export default function Dashboard() {
       };
       reloadSettings();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on modal close/unlock/patient change only
   }, [isSettingsModalOpen, needsUnlock, selectedPatient?.id]);
 
   // Convert time range to data points
@@ -482,6 +484,7 @@ export default function Dashboard() {
     // logged / item marked done) still apply on top for instant updates.
     const interval = setInterval(() => refreshDueCounts(), 60000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on patient change only
   }, [selectedPatient?.id]);
 
   // Detect Frigate integration for the current patient so we can swap the
@@ -613,6 +616,7 @@ export default function Dashboard() {
         wsRef.current = null;
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only WebSocket connection; adding the render-recreated helpers would tear down and reopen the live socket every render
   }, []);
 
   const calculateAvg = (data) => {

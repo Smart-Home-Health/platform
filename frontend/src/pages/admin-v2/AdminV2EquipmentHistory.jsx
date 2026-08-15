@@ -64,6 +64,7 @@ const AdminV2EquipmentHistory = () => {
         setContextPatient(patient);
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- one-way URL→context sync; adding contextPatient would re-run on selection change and revert it to the stale URL param
   }, [searchParams, patients, loadingPatients]);
 
   // Update URL when context patient changes
@@ -71,6 +72,7 @@ const AdminV2EquipmentHistory = () => {
     if (contextPatient && searchParams.get('patient') !== String(contextPatient.id)) {
       setSearchParams({ patient: contextPatient.id });
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- one-way context→URL sync; runs only when the selection changes
   }, [contextPatient]);
 
   // Fetch equipment and history when patient is selected
@@ -78,6 +80,7 @@ const AdminV2EquipmentHistory = () => {
     if (selectedPatient) {
       fetchEquipment();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on patient change only
   }, [selectedPatient]);
 
   // Fetch history when filters change
@@ -85,6 +88,7 @@ const AdminV2EquipmentHistory = () => {
     if (selectedPatient) {
       fetchHistory();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on patient/filter changes only
   }, [selectedPatient, equipmentFilter, startDate, endDate, limit]);
 
   const fetchEquipment = async () => {

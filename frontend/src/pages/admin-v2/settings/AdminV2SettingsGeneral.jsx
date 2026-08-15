@@ -104,6 +104,7 @@ const AdminV2SettingsGeneral = () => {
   // Load settings on mount
   useEffect(() => {
     loadSettings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect runs once on mount
   }, []);
 
   const loadSettings = async () => {

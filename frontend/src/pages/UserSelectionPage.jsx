@@ -57,6 +57,7 @@ export default function UserSelectionPage() {
       // No account logged in - redirect to login
       navigate('/login', { state: { from: location.state?.from }, replace: true });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- openLiveModal is derived from location.state, which is already a dependency
   }, [isAuthenticated, isAccountAuthenticated, navigate, from, location.state]);
 
   // Fetch users for the account
@@ -64,6 +65,7 @@ export default function UserSelectionPage() {
     if (isAccountAuthenticated && !isAuthenticated) {
       fetchAccountUsers();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on auth state change only
   }, [isAccountAuthenticated, isAuthenticated]);
 
   const fetchAccountUsers = async () => {

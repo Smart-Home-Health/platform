@@ -48,6 +48,7 @@ const AlertDetailInline = ({ alert, onClose, onAcknowledge, initiateAcknowledge 
   const [clipError, setClipError] = useState(null);
   const [savingClip, setSavingClip] = useState(false);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchEventData is recreated each render; effect is intentionally keyed on the alert id only
   useEffect(() => { fetchEventData(); }, [alert.id]);
 
   const clipWindow = useMemo(() => {

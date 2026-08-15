@@ -462,6 +462,7 @@ const AdminV2Nutrition = () => {
         setContextPatient(patient);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-way URL→context sync; adding contextPatient would re-run on selection change and revert it to the stale URL param
   }, [searchParams, patients, loadingPatients]);
 
   // Update URL when context patient changes
@@ -469,6 +470,7 @@ const AdminV2Nutrition = () => {
     if (contextPatient) {
       setSearchParams({ patient: contextPatient.id.toString() });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-way context→URL sync; runs only when the selection changes
   }, [contextPatient]);
 
   // Fetch reference data on mount
@@ -482,6 +484,7 @@ const AdminV2Nutrition = () => {
     if (selectedPatient) {
       fetchData();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on patient change only
   }, [selectedPatient, activeTab, overviewDate, intakeStart, intakeEnd, outputStart, outputEnd]);
 
   // The Overview page needs the current goal to compute % targets — but

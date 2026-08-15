@@ -192,6 +192,7 @@ const NutritionTrackingModal = ({
 
   useEffect(() => {
     calculateCaloriesFromPreset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- calculateCaloriesFromPreset is recreated each render; effect intentionally recalculates only when amount or preset changes
   }, [formData.amount, selectedPreset]);
 
   const handleSubmit = async (e) => {

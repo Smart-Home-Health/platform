@@ -30,6 +30,7 @@ const AlertsList = () => {
 
   useEffect(() => {
     fetchAlerts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchAlerts is recreated each render; effect is intentionally keyed on the showAcknowledged filter only
   }, [showAcknowledged]);
 
   const fetchAlerts = async () => {

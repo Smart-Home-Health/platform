@@ -120,6 +120,7 @@ const AdminV2Businesses = () => {
   useEffect(() => {
     fetchBusinesses();
     fetchBusinessTypes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on tab/filter change only
   }, [activeTab, filterType]);
 
   const fetchBusinesses = async () => {

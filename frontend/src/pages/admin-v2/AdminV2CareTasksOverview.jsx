@@ -60,18 +60,21 @@ const AdminV2CareTasksOverview = () => {
     } else if (!patientId && !selectedPatient && patients.length > 0 && !loadingPatients) {
       setShowPatientModal(true);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-way URL→context sync; adding selectedPatient would re-run on selection change and revert it to the stale URL param
   }, [patients, searchParams, loadingPatients]);
 
   useEffect(() => {
     if (selectedPatient && searchParams.get('patient') !== String(selectedPatient.id)) {
       setSearchParams({ patient: selectedPatient.id });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-way context→URL sync; runs only when the selection changes
   }, [selectedPatient]);
 
   useEffect(() => {
     if (selectedPatient) {
       fetchAll();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on patient/window change only
   }, [selectedPatient, windowDays]);
 
   const fetchAll = async () => {

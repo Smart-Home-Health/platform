@@ -59,6 +59,7 @@ export default function EquipmentModal({ isOpen, onClose, noModal }) {
 
   useEffect(() => {
     if (isOpen && selectedPatient) fetchEquipment();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchEquipment is recreated each render and selectedPatient is tracked via its id; effect is intentionally keyed on modal open/patient id only
   }, [isOpen, selectedPatient?.id]);
 
   const fetchEquipment = async () => {

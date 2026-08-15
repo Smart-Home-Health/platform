@@ -220,6 +220,7 @@ const AdminV2ShipmentDetail = () => {
         setContextPatient(patient);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-way URL→context sync; adding contextPatient would re-run on selection change and revert it to the stale URL param
   }, [searchParams, patients]);
 
   // Fetch shipment details
@@ -228,6 +229,7 @@ const AdminV2ShipmentDetail = () => {
       fetchShipment();
       fetchEquipment();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helpers are recreated each render; effect is keyed on shipment id change only
   }, [id]);
 
   const fetchShipment = async () => {
@@ -288,6 +290,7 @@ const AdminV2ShipmentDetail = () => {
     if (selectedPatient) {
       fetchEquipment();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on patient change only
   }, [selectedPatient]);
 
   const handleAddItem = async (e) => {

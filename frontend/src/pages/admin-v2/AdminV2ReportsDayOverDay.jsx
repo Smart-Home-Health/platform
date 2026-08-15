@@ -98,6 +98,7 @@ const AdminV2ReportsDayOverDay = ({ patientId }) => {
   const [endHour, setEndHour] = useState(23);
   const [aggregation, setAggregation] = useState('hour');
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- 'now' is also read in render (todayStr) and initial calendar state; memoizing it would pin the clock at mount
   const now = new Date();
   const [calYear, setCalYear] = useState(now.getFullYear());
   const [calMonth, setCalMonth] = useState(now.getMonth());

@@ -45,6 +45,7 @@ const CareTaskScheduleView = ({ taskId }) => {
   useEffect(() => {
     fetchSchedules();
     fetchTaskDetails();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helpers are recreated each render; effect is intentionally keyed on the task id only
   }, [taskId]);
 
   const fetchTaskDetails = async () => {
