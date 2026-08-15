@@ -56,7 +56,7 @@ from modules.mqtt_module import MQTTModule
 from modules.state_module import StateModule
 
 # Import route modules
-from routes import core, settings, vitals, medications, care_tasks, equipment, monitoring, mqtt, status, patients, nutrition, businesses, providers, auth, users, schedule, dashboard, symptoms, diagnoses, implants, dme_shipments, account, integrations, integration_imports, frigate as frigate_routes, readers, backup, analysis, reports, messages, system
+from routes import core, settings, vitals, medications, care_tasks, equipment, monitoring, mqtt, status, patients, nutrition, businesses, providers, auth, users, schedule, dashboard, symptoms, diagnoses, implants, dme_shipments, account, integrations, integration_imports, frigate as frigate_routes, readers, backup, analysis, reports, messages, system, security, environment, ha_auth
 
 # Import legacy components
 from mqtt import initialize_mqtt_service, shutdown_mqtt_service
@@ -92,7 +92,11 @@ app.add_middleware(RateLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[],  # No wildcard when credentials=True
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3})(:\d+)?$",
+    # localhost + all three RFC1918 ranges. Public hostnames are deliberately
+    # absent: the unified image is same-origin (SPA served by this process),
+    # so CORS never applies there, and allowlisting e.g. *.duckdns.org with
+    # credentials would trust every other DuckDNS user's origin.
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -101,6 +105,7 @@ app.add_middleware(
 
 # Register route modules
 app.include_router(auth.router)  # Auth routes first (public)
+app.include_router(ha_auth.router)  # HA ingress identity login + mapping
 app.include_router(account.router)  # Account management
 app.include_router(core.router)
 app.include_router(settings.router)
@@ -131,6 +136,8 @@ app.include_router(analysis.router)
 app.include_router(reports.router)
 app.include_router(messages.router)
 app.include_router(system.router)
+app.include_router(security.router)  # HTTPS / certificate management (system admin)
+app.include_router(environment.router)  # Environmental observations + connectors
 
 # --- Static frontend (unified single-image deploy) --------------------------
 # In the unified production image the built SPA is copied in and STATIC_DIR
@@ -336,6 +343,16 @@ async def startup_event():
     from routes.readers import start_reader_activity_subscriber
     asyncio.create_task(start_reader_activity_subscriber(event_bus))
     logger.info("[main] Reader activity subscriber started")
+
+    # 6. Automatic HTTPS cert renewal (no-ops unless https_mode=duckdns;
+    #    returns immediately under HA ingress).
+    from tls_renewal import tls_renewal_loop
+    asyncio.create_task(tls_renewal_loop())
+
+    # 7. Environmental data polling (no-ops until a connector is enabled).
+    from environment.poller import environment_poll_loop
+    asyncio.create_task(environment_poll_loop())
+    logger.info("[main] Environment poll loop started")
 
     logger.info("[main] Event-driven system startup complete")
 

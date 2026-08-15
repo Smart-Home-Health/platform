@@ -82,11 +82,20 @@ class ReaderConnectionManager:
     
     async def connect(self, reader_id: int, websocket: WebSocket, encryption_key: str):
         await websocket.accept()
+        self.register(reader_id, websocket, encryption_key)
+
+    def register(self, reader_id: int, websocket: WebSocket, encryption_key: str):
+        """Bind an already-accepted socket to the reader's slot."""
         self.connections[reader_id] = websocket
         self.encryption_keys[reader_id] = Fernet(encryption_key.encode())
         logger.info(f"Reader {reader_id} connected")
-    
-    def disconnect(self, reader_id: int):
+
+    def disconnect(self, reader_id: int, websocket: Optional[WebSocket] = None):
+        """Release the reader's slot. When `websocket` is given, only release
+        if that socket still owns the slot — a replaced (evicted) handler's
+        cleanup must not deregister its verified successor."""
+        if websocket is not None and self.connections.get(reader_id) is not websocket:
+            return
         self.connections.pop(reader_id, None)
         self.encryption_keys.pop(reader_id, None)
         logger.info(f"Reader {reader_id} disconnected")
@@ -292,6 +301,16 @@ def _reader_facing_ws_url(reader_id: int, request_host_url: Optional[str]) -> st
     READER_FACING_BASE_URL override is no longer needed and has been removed.)
     """
     base = (request_host_url or "").strip()
+    if "/api/hassio_ingress/" in base:
+        # A browser on the HA sidebar reports its ingress origin, which a
+        # headless device can never reach (session-scoped token, cookie-gated,
+        # rotates on reinstall). The frontend substitutes the LAN port itself;
+        # this guard catches any other caller before a doomed pairing succeeds.
+        raise HTTPException(
+            status_code=400,
+            detail="host_url is a Home Assistant ingress URL, which reader devices "
+                   "cannot reach. Use the hub's LAN address instead (e.g. http://<host>:8000).",
+        )
     if base:
         ws = base.replace("http://", "ws://").replace("https://", "wss://").rstrip("/")
         return f"{ws}/api/readers/ws/{reader_id}"
@@ -571,12 +590,49 @@ async def reader_websocket(websocket: WebSocket, reader_id: int):
     finally:
         db.close()
 
-    await connection_manager.connect(reader_id, websocket, encryption_key)
+    # This endpoint is reachable by anything on the LAN (the add-on publishes
+    # port 8000), so a newcomer may not evict a live connection just by dialing
+    # the reader's id: it must first prove key possession with one valid
+    # encrypted frame. Fresh connects (empty slot) register immediately, so a
+    # silent reader reconnecting after a restart is unaffected.
+    pending_first = None
+    if connection_manager.is_connected(reader_id):
+        await websocket.accept()
+        try:
+            first = await asyncio.wait_for(websocket.receive_bytes(), timeout=10.0)
+            # ttl blocks replaying an old captured frame to squat the slot;
+            # generous enough for reader clock skew. A reader that fails here
+            # simply retries and wins the slot once the incumbent times out.
+            Fernet(encryption_key.encode()).decrypt(first, ttl=300)
+        except WebSocketDisconnect:
+            return
+        except Exception:
+            logger.warning(
+                f"Reader {reader_id}: rejected unverified connection while the slot is in use"
+            )
+            try:
+                await websocket.close(code=4003, reason="Key verification required")
+            except Exception:
+                pass
+            return
+        incumbent = connection_manager.connections.get(reader_id)
+        if incumbent is not None and incumbent is not websocket:
+            try:
+                await incumbent.close(code=4000, reason="Replaced by a new connection")
+            except Exception:
+                pass
+        connection_manager.register(reader_id, websocket, encryption_key)
+        pending_first = first  # don't drop the frame that proved the key
+    else:
+        await connection_manager.connect(reader_id, websocket, encryption_key)
     _update_reader_activity(reader_id)
 
     try:
         while True:
-            data = await websocket.receive_bytes()
+            if pending_first is not None:
+                data, pending_first = pending_first, None
+            else:
+                data = await websocket.receive_bytes()
             try:
                 message = connection_manager.decrypt(reader_id, data)
             except Exception as e:
@@ -654,4 +710,5 @@ async def reader_websocket(websocket: WebSocket, reader_id: int):
     except Exception as e:
         logger.error(f"Reader {reader_id} error: {e}")
     finally:
-        connection_manager.disconnect(reader_id)
+        # Socket-aware: an evicted handler must not deregister its successor.
+        connection_manager.disconnect(reader_id, websocket)

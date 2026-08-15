@@ -105,7 +105,10 @@ class EventBus:
                 yield evt
                 self._q.task_done()
             except asyncio.CancelledError:
-                break
+                # Task cancellation (shutdown) must propagate to the consumer;
+                # swallowing it here made cancelled subscriber tasks look
+                # "finished", which stalled asyncio.run()'s final teardown.
+                raise
             except Exception as e:
                 logger.error(f"Error in global subscription: {e}")
 
@@ -121,7 +124,7 @@ class EventBus:
                     yield evt
                     sub_queue.task_done()
                 except asyncio.CancelledError:
-                    break
+                    raise  # propagate cancellation to the consumer (shutdown)
                 except Exception as e:
                     logger.error(f"Error in topic subscription for {topic}: {e}")
         finally:
@@ -139,7 +142,7 @@ class EventBus:
                     yield evt
                     sub_queue.task_done()
                 except asyncio.CancelledError:
-                    break
+                    raise  # propagate cancellation to the consumer (shutdown)
                 except Exception as e:
                     logger.error(f"Error in type subscription for {event_type}: {e}")
         finally:

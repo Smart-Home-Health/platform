@@ -73,6 +73,11 @@ def create_patient(db: Session, patient_data: dict) -> Patient:
         medical_record_number=patient_data.get("medical_record_number"),
         is_active=patient_data.get("is_active", True),
         notes=patient_data.get("notes"),
+        # The route supplies account_id; dropping it here made new patients
+        # invisible to every account-filtered consumer (backup, MQTT, integrations).
+        account_id=patient_data.get("account_id"),
+        owner_user_id=patient_data.get("owner_user_id"),
+        ha_user_id=patient_data.get("ha_user_id"),
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
     )

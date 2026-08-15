@@ -106,7 +106,17 @@ def create_access_token(
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def _set_account_cookie(response: Response, account: Account, read_restricted: bool = False):
+def _cookie_secure(request: Request) -> bool:
+    """Mark auth cookies Secure when the request arrived over HTTPS — either
+    directly via the TLS listener or via a reverse proxy whose
+    X-Forwarded-Proto is trusted (SHH_BEHIND_PROXY enables uvicorn's
+    proxy-header handling). Plain-HTTP LAN access keeps the flag off so
+    login there still works. Note cookies are port-agnostic: a Secure
+    session cookie set on the HTTPS port will not flow to the HTTP port."""
+    return request.url.scheme == "https"
+
+
+def _set_account_cookie(request: Request, response: Response, account: Account, read_restricted: bool = False):
     """Set a long-lived account_token cookie (24h) so the browser stays at account-level
     auth even after the shorter session_token expires."""
     expire = datetime.utcnow() + timedelta(hours=ACCOUNT_SESSION_HOURS)
@@ -123,7 +133,7 @@ def _set_account_cookie(response: Response, account: Account, read_restricted: b
         httponly=True,
         max_age=ACCOUNT_SESSION_HOURS * 3600,
         samesite="lax",
-        secure=False,
+        secure=_cookie_secure(request),
     )
 
 
@@ -131,18 +141,29 @@ from utils.client_ip import get_client_ip  # shared with rate-limit middleware
 
 
 @router.get("/first-run", response_model=FirstRunStatus)
-def check_first_run(db: Session = Depends(get_db)):
+def check_first_run(request: Request, db: Session = Depends(get_db)):
     """
     Check if this is the first run (no admin users exist).
     This endpoint is public and used to determine if setup is needed.
     """
     has_admin = has_any_admin_user(db)
 
+    from utils.ha_ingress import ingress_identity
+    identity = ingress_identity(request)
+
     return FirstRunStatus(
         is_first_run=not has_admin,
         has_admin=has_admin,
         message="Admin user exists" if has_admin else "First run - admin setup required",
         skip_account_password=skip_account_password_enabled(),
+        ha_identity=(
+            {
+                "ha_user_id": identity.ha_user_id,
+                "username": identity.username,
+                "display_name": identity.display_name,
+            }
+            if identity else None
+        ),
     )
 
 
@@ -175,6 +196,21 @@ def first_run_setup(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Username already taken"
         )
+
+    # HA-ingress founders don't have to invent app passwords: their HA login is
+    # auto-linked below and IS their sign-in. Random fallbacks are generated so
+    # the NOT NULL hashes hold; real ones can be set later (needed only for
+    # non-HA access, e.g. the LAN shared-device path).
+    from utils.ha_ingress import ingress_identity
+    ha_identity = ingress_identity(request)
+    if not ha_identity and not (setup.password and setup.account_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password and account password are required outside Home Assistant"
+        )
+    import secrets as _secrets
+    user_password = setup.password or _secrets.token_urlsafe(24)
+    account_password = setup.account_password or _secrets.token_urlsafe(24)
     
     # Get system_admin role
     admin_role = get_role_by_name(db, "system_admin")
@@ -191,22 +227,25 @@ def first_run_setup(
     account_slug = re.sub(r'[^a-z0-9]+', '-', account_name.lower()).strip('-')
     
     # Hash password for account (separate from user password)
-    account_password_hash = bcrypt.hashpw(setup.account_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    account_password_hash = bcrypt.hashpw(account_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
     
-    # Create account first
+    # Create account first. A generated (never-human-set) account password is
+    # flagged so a system admin can later set a real one without knowing the
+    # random value (routes/account.py change_account_password).
     account = Account(
         name=account_name,
         slug=account_slug,
         password_hash=account_password_hash,
         is_default=True,
         is_active=True,
-        contact_email=setup.email
+        contact_email=setup.email,
+        settings={"account_password_unset": True} if not setup.account_password else None
     )
     db.add(account)
     db.flush()  # Get account ID without committing
     
     # Hash user password and PIN
-    user_password_hash = bcrypt.hashpw(setup.password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    user_password_hash = bcrypt.hashpw(user_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
     pin_hash = bcrypt.hashpw(setup.pin.encode('utf-8'), bcrypt.gensalt()).decode('utf-8') if setup.pin else None
     
     # Create admin user directly (not via create_user to control transaction)
@@ -229,6 +268,26 @@ def first_run_setup(
     db.execute(
         user_roles.insert().values(user_id=user.id, role_id=admin_role.id)
     )
+
+    # Founder arrived through HA ingress: link their HA identity now so every
+    # later sidebar visit signs them straight in — no manual mapping step.
+    if ha_identity:
+        from models.ha_identity import HASeenIdentity
+        user.ha_user_id = ha_identity.ha_user_id
+        from datetime import datetime as _dt
+        seen = db.query(HASeenIdentity).filter(
+            HASeenIdentity.ha_user_id == ha_identity.ha_user_id
+        ).first()
+        if seen:
+            seen.username = ha_identity.username
+            seen.display_name = ha_identity.display_name
+            seen.last_seen = _dt.utcnow()
+        else:
+            db.add(HASeenIdentity(
+                ha_user_id=ha_identity.ha_user_id,
+                username=ha_identity.username,
+                display_name=ha_identity.display_name,
+            ))
     
     # Create default patient using the username
     from datetime import datetime as dt
@@ -263,7 +322,8 @@ def first_run_setup(
             "username": user.username,
             "full_name": user.full_name,
             "account_name": account.name,
-            "account_id": account.id
+            "account_id": account.id,
+            "ha_linked": bool(ha_identity),
         }),
         ip_address=get_client_ip(request),
         user_agent=request.headers.get("User-Agent")
@@ -281,7 +341,7 @@ def first_run_setup(
         httponly=True,
         max_age=SESSION_TIMEOUT_MINUTES * 60,
         samesite="lax",
-        secure=False  # Set to True in production with HTTPS
+        secure=_cookie_secure(request),
     )
     
     logger.info(f"First-run setup completed: account '{account.name}' (slug='{account.slug}', id={account.id}), admin user '{user.username}'")
@@ -370,10 +430,10 @@ def account_login(
         httponly=True,
         max_age=SESSION_TIMEOUT_MINUTES * 60,
         samesite="lax",
-        secure=False  # Set to True in production with HTTPS
+        secure=_cookie_secure(request),
     )
     # Set long-lived account cookie (24h) so password isn't re-prompted
-    _set_account_cookie(response, account, read_restricted=False)
+    _set_account_cookie(request, response, account, read_restricted=False)
 
     # Create audit log
     create_audit_log(
@@ -455,9 +515,9 @@ def account_access(
         httponly=True,
         max_age=SESSION_TIMEOUT_MINUTES * 60,
         samesite="lax",
-        secure=False,
+        secure=_cookie_secure(request),
     )
-    _set_account_cookie(response, account, read_restricted=read_restricted)
+    _set_account_cookie(request, response, account, read_restricted=read_restricted)
     create_audit_log(
         db,
         user_id=None,
@@ -501,6 +561,7 @@ def get_account_users(
             full_name=user.full_name,
             has_pin=bool(user.pin_hash),
             requires_full_password=user.needs_full_password(),
+            ha_linked=bool(user.ha_user_id),
             roles=[{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles]
         )
         for user in users
@@ -564,10 +625,10 @@ def account_unlock(
         httponly=True,
         max_age=SESSION_TIMEOUT_MINUTES * 60,
         samesite="lax",
-        secure=False,
+        secure=_cookie_secure(request),
     )
     # Refresh account cookie with unrestricted access
-    _set_account_cookie(response, account, read_restricted=False)
+    _set_account_cookie(request, response, account, read_restricted=False)
     create_audit_log(
         db,
         user_id=user_id,
@@ -732,7 +793,7 @@ def select_user(
         httponly=True,
         max_age=SESSION_TIMEOUT_MINUTES * 60,
         samesite="lax",
-        secure=False  # Set to True in production with HTTPS
+        secure=_cookie_secure(request),
     )
     
     # Create audit log
@@ -853,7 +914,7 @@ def reset_user_password(
         httponly=True,
         max_age=SESSION_TIMEOUT_MINUTES * 60,
         samesite="lax",
-        secure=False
+        secure=_cookie_secure(request),
     )
 
     create_audit_log(
@@ -974,7 +1035,7 @@ def login(
         httponly=True,
         max_age=SESSION_TIMEOUT_MINUTES * 60,
         samesite="lax",
-        secure=False  # Set to True in production with HTTPS
+        secure=_cookie_secure(request),
     )
     
     logger.info(f"User logged in with password: {user.username}")
@@ -1084,7 +1145,7 @@ def verify_user_pin(
         httponly=True,
         max_age=SESSION_TIMEOUT_MINUTES * 60,
         samesite="lax",
-        secure=False  # Set to True in production with HTTPS
+        secure=_cookie_secure(request),
     )
     
     logger.info(f"User authenticated with PIN: {user.username}")
@@ -1106,7 +1167,7 @@ def verify_user_pin(
 
 
 @router.post("/logout")
-def logout(response: Response, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def logout(request: Request, response: Response, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Logout current user by clearing session cookie"""
     
     # Create audit log
@@ -1117,9 +1178,9 @@ def logout(response: Response, current_user: User = Depends(get_current_user), d
         details=json.dumps({"username": current_user.username})
     )
     
-    # Clear both session and account cookies
-    response.delete_cookie(key="session_token")
-    response.delete_cookie(key="account_token")
+    # Clear both session and account cookies (attributes mirror set_cookie)
+    response.delete_cookie(key="session_token", httponly=True, samesite="lax", secure=_cookie_secure(request))
+    response.delete_cookie(key="account_token", httponly=True, samesite="lax", secure=_cookie_secure(request))
     
     logger.info(f"User logged out: {current_user.username}")
     
@@ -1127,7 +1188,7 @@ def logout(response: Response, current_user: User = Depends(get_current_user), d
 
 
 @router.post("/lock")
-def lock(response: Response):
+def lock(request: Request, response: Response):
     """
     Idle lock: drop full auth to account level by clearing ONLY the
     session_token cookie. The 24h account_token is preserved so the user
@@ -1135,7 +1196,7 @@ def lock(response: Response):
     password re-prompt is needed. Has no auth dependency so it still works
     if the session_token is already gone.
     """
-    response.delete_cookie(key="session_token")
+    response.delete_cookie(key="session_token", httponly=True, samesite="lax", secure=_cookie_secure(request))
     return {"message": "Locked to account level"}
 
 

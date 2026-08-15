@@ -1,0 +1,51 @@
+# Smart Home Health — ready-to-run compose file.
+#
+# This is the file the install guide walks you through:
+#   https://smarthomehealth.org/docs/install-with-docker
+#
+# One line is yours to change before starting: JWT_SECRET_KEY (see below).
+# The app refuses to start until you've set your own — that's on purpose.
+#
+#   docker compose up -d      ->  http://localhost:8000
+#
+# NOTE: keep this file in sync with the compose example in the install guide
+# (smart-home-health-site/src/content/docs/install-with-docker.md) — the
+# site's Download button serves this file raw from the main branch.
+
+services:
+  db:
+    image: timescale/timescaledb:latest-pg15
+    command: postgres -c shared_preload_libraries=timescaledb
+    environment:
+      POSTGRES_USER: shh_user
+      POSTGRES_PASSWORD: shh_dev_pass
+      POSTGRES_DB: shh
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shh_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  app:
+    image: ghcr.io/smart-home-health/platform:latest
+    ports:
+      - "8000:8000"
+    environment:
+      TZ: UTC
+      DATABASE_URL: postgresql://shh_user:shh_dev_pass@db:5432/shh
+      # CHANGE THE NEXT LINE — make up your own long random secret.
+      # The app will not start while this is left on the default.
+      JWT_SECRET_KEY: change-this-secret-key-in-production
+    volumes:
+      - app-data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  db-data:
+  app-data:

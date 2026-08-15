@@ -53,6 +53,66 @@ def test_off_window_administration_blocked_then_overridden(admin_client, patient
     assert ok.status_code == 200
 
 
+def test_daily_schedule_include_prior_day_meds_and_tasks(admin_client, patient):
+    """include_prior_day must add yesterday's medications and care tasks
+    (marked is_yesterday), not just nutrition; without the flag the response
+    stays single-day (the admin schedule grid relies on that)."""
+    med_id = _make_med(admin_client, patient)
+    assert admin_client.post(f"/api/add/schedule/{med_id}", json={
+        "cron_expression": "0 12 * * *", "description": "daily noon",
+        "dose_amount": 1, "patient_id": patient.id,
+    }).status_code == 200
+
+    category_id = admin_client.post("/api/add/care-task-category", json={
+        "name": "Respiratory",
+    }).json()["id"]
+    task_id = admin_client.post("/api/add/care-task", json={
+        "name": "Trach care", "category_id": category_id,
+        "patient_id": patient.id, "active": True,
+    }).json()["id"]
+    assert admin_client.post(f"/api/add/care-task-schedule/{task_id}", json={
+        "cron_expression": "0 12 * * *", "patient_id": patient.id,
+    }).status_code == 200
+
+    with_prior = admin_client.get(
+        f"/api/schedule/daily?patient_id={patient.id}&include_prior_day=true"
+    ).json()
+    assert sorted(m["is_yesterday"] for m in with_prior["medications"]) == [False, True]
+    assert sorted(t["is_yesterday"] for t in with_prior["care_tasks"]) == [False, True]
+
+    without = admin_client.get(f"/api/schedule/daily?patient_id={patient.id}").json()
+    assert [m["is_yesterday"] for m in without["medications"]] == [False]
+    assert [t["is_yesterday"] for t in without["care_tasks"]] == [False]
+
+
+def test_daily_schedule_prior_day_no_duplicate_prn(admin_client, patient, db_session):
+    """A PRN dose given yesterday must appear exactly once (in the prior-day
+    window) when include_prior_day=true — the two day windows are disjoint."""
+    from schemas.medication_log import MedicationLog
+    from utils.datetime_utils import resolve_tz_for_patient, local_day_bounds
+
+    med_id = _make_med(admin_client, patient)
+
+    tz = resolve_tz_for_patient(db_session, patient.id)
+    bounds = local_day_bounds(tz)
+    prn_time = bounds["yesterday_start_utc"] + timedelta(hours=12)
+    log = MedicationLog(
+        medication_id=med_id, patient_id=patient.id, schedule_id=None,
+        administered_at=prn_time, dose_amount=1, is_scheduled=False,
+        created_at=prn_time,
+    )
+    db_session.add(log)
+    db_session.commit()
+
+    data = admin_client.get(
+        f"/api/schedule/daily?patient_id={patient.id}&include_prior_day=true"
+    ).json()
+    prn_rows = [m for m in data["medications"] if m.get("log_id") == log.id]
+    assert len(prn_rows) == 1
+    assert prn_rows[0]["is_yesterday"] is True
+    assert prn_rows[0]["is_prn"] is True
+
+
 def test_undo_restores_quantity_and_soft_deletes_log(admin_client, patient, db_session):
     from schemas.medication import Medication
     from schemas.medication_log import MedicationLog

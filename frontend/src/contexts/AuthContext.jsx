@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { API_BASE_URL } from '../config';
+import { API_BASE_URL, isIngress } from '../config';
 import { installAuthInterceptor } from '../utils/authInterceptor';
 import { clearMessagesPopThrottle } from '../utils/messagesPopThrottle';
 
@@ -69,6 +69,14 @@ const storeToken = (data) => {
   }
 };
 
+// Per-tab suppression of HA auto-login. Set on lock / logout / switch-user so
+// the user picker sticks in this tab instead of the HA identity instantly
+// signing back in; a fresh tab opened from the HA sidebar auto-logs-in again.
+export const HA_NO_AUTO_KEY = 'shh_ha_no_auto';
+export const suppressHaAutoLogin = () => {
+  try { sessionStorage.setItem(HA_NO_AUTO_KEY, '1'); } catch { /* private mode */ }
+};
+
 export const AuthProvider = ({ children }) => {
   // Two-layer auth state
   const [account, setAccount] = useState(null);  // Layer 1: Account
@@ -82,6 +90,9 @@ export const AuthProvider = ({ children }) => {
   // Deployment-wide opt-in (env) to skip the account password -> straight to
   // user selection in monitoring mode. Surfaced by /api/auth/first-run.
   const [skipAccountPassword, setSkipAccountPassword] = useState(false);
+  // The HA user this ingress session arrived as: {ha_user_id, username,
+  // display_name, mapped}. Null outside ingress / before the first HA login.
+  const [haIdentity, setHaIdentity] = useState(null);
 
   // Keep a ref in sync with authLevel so the fetch interceptor (installed once)
   // always reads the current value rather than a stale closure.
@@ -102,6 +113,38 @@ export const AuthProvider = ({ children }) => {
       onStale: () => checkFirstRunAndSession(),
     });
   }, []);
+
+  // Sign in from the Home Assistant identity riding the ingress connection.
+  // Only attempted when the page came through ingress and this tab hasn't
+  // locked/switched away; the backend independently verifies the request
+  // really came from the ingress peer (403 otherwise). Returns true when a
+  // session (full for a mapped HA user, account-level otherwise) was minted.
+  const tryHaLogin = async () => {
+    if (!isIngress()) return false;
+    try {
+      if (sessionStorage.getItem(HA_NO_AUTO_KEY)) return false;
+    } catch { /* private mode: treat as not suppressed */ }
+    try {
+      const res = await authFetch(`${API_BASE_URL}/api/auth/ha/login`, { method: 'POST' });
+      if (!res.ok) return false; // 403 = not really ingress; use the normal flow
+      const data = await res.json();
+      storeToken(data);
+      setAccount(data.account);
+      setReadRestricted(!!data.read_restricted);
+      setHaIdentity(data.identity ? { ...data.identity, mapped: data.mapped } : null);
+      if (data.mapped && data.user) {
+        setUser(data.user);
+        setAuthLevel('full');
+      } else {
+        setUser(null);
+        setAuthLevel('account'); // routing lands on the user picker
+      }
+      setShowAuthModal(false);
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   const checkFirstRunAndSession = async () => {
     try {
@@ -155,11 +198,17 @@ export const AuthProvider = ({ children }) => {
           setAuthLevel('full');
           setShowAuthModal(false);
         } else if (sessionData.account_id) {
-          // Account-level auth only
-          setAccount({ id: sessionData.account_id });
-          setAuthLevel('account');
-          setUser(null);
-          // Don't show auth modal - user needs to select a profile
+          // Account-level auth only. Under ingress the HA identity may promote
+          // this straight to a full session (e.g. the 24h account cookie
+          // outlived the 30m session token on a mapped user's device).
+          if (!(await tryHaLogin())) {
+            setAccount({ id: sessionData.account_id });
+            setAuthLevel('account');
+            setUser(null);
+            // Don't show auth modal - user needs to select a profile
+          }
+        } else if (await tryHaLogin()) {
+          // Signed in from the HA identity on the ingress connection.
         } else if (firstRunData.skip_account_password) {
           // Deployment opts to skip the account password: auto-acquire an
           // account-level (monitoring) token so routing lands on user selection.
@@ -171,6 +220,8 @@ export const AuthProvider = ({ children }) => {
           setAuthLevel(null);
           setShowAuthModal(true);
         }
+      } else if (await tryHaLogin()) {
+        // Signed in from the HA identity on the ingress connection.
       } else if (firstRunData.skip_account_password) {
         await accountAccess(null);
       } else {
@@ -491,6 +542,7 @@ export const AuthProvider = ({ children }) => {
       console.error('Logout error:', error);
     } finally {
       sessionStorage.removeItem('auth_token');
+      suppressHaAutoLogin(); // don't let the HA identity instantly sign back in (this tab)
       clearMessagesPopThrottle();
       setAccount(null);
       setUser(null);
@@ -502,6 +554,7 @@ export const AuthProvider = ({ children }) => {
 
   // Switch user within same account (keeps account logged in)
   const switchUser = async () => {
+    suppressHaAutoLogin(); // the picker must stick in this tab under ingress
     clearMessagesPopThrottle();
     setUser(null);
     setAuthLevel('account');
@@ -551,6 +604,7 @@ export const AuthProvider = ({ children }) => {
     showAuthModal,
     setShowAuthModal,
     skipAccountPassword,
+    haIdentity,
 
     // Two-layer auth methods
     accountLogin,

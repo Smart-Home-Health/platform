@@ -23,6 +23,22 @@ jobs:
         # full pytest suite in a one-shot container, exits non-zero on failure.
         run: bash scripts/run_tests.sh
 
+  acme-integration:
+    name: ACME integration (pebble, non-blocking)
+    runs-on: ubuntu-latest
+    # The real-ACME round-trip depends on external images (pebble); surface
+    # failures without gating merges on them.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run pebble ACME tests
+        run: |
+          docker compose -p shh_acme_test -f docker-compose.acme-test.yml \
+            up --build --abort-on-container-exit --exit-code-from tests
+      - name: Tear down
+        if: always()
+        run: docker compose -p shh_acme_test -f docker-compose.acme-test.yml down -v --remove-orphans
+
   frontend:
     name: Frontend (lint + vitest + build)
     runs-on: ubuntu-latest

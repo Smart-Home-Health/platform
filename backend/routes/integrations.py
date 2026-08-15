@@ -500,7 +500,7 @@ async def oauth_callback(
     """
     # Check for errors from provider
     if error:
-        return RedirectResponse(url=f"/care/integrations?error={error}")
+        return RedirectResponse(url=f"/care/profile/connections?error={error}")
     
     # Validate state
     state_data = _oauth_states.pop(state, None)
@@ -559,11 +559,11 @@ async def oauth_callback(
                 logger.warning(f"Failed to auto-subscribe Withings webhooks: {e}")
 
         # Redirect to frontend success page
-        redirect_url = state_data.get("redirect_url", "/care/integrations")
+        redirect_url = state_data.get("redirect_url", "/care/profile/connections")
         return RedirectResponse(url=f"{redirect_url}?success=true")
-        
+
     except AuthenticationError as e:
-        redirect_url = state_data.get("redirect_url", "/care/integrations")
+        redirect_url = state_data.get("redirect_url", "/care/profile/connections")
         return RedirectResponse(url=f"{redirect_url}?error={str(e)}")
 
 

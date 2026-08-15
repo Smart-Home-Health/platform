@@ -76,6 +76,12 @@ class StateModule:
                         await handler(event)
                     except Exception as e:
                         logger.error(f"Error in {name} handler: {e}")
+                if not self.event_bus._running:
+                    # Bus stopped: the subscription generator ends normally;
+                    # without this check the while-True re-subscribes in a
+                    # hot loop during shutdown.
+                    logger.info(f"Subscriber {name} exiting (event bus stopped)")
+                    return
             except (asyncio.CancelledError, GeneratorExit, KeyboardInterrupt):
                 logger.info(f"Subscriber {name} shutting down")
                 return

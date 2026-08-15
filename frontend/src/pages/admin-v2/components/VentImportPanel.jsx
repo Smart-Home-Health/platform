@@ -61,7 +61,7 @@ const fmtDate = (iso) => {
 
 /**
  * Modal-style panel for uploading + tracking imports for a single configured
- * integration. Used by AdminV2Integrations when the user clicks "Logs" on a
+ * integration. Used by AdminV2Connections when the user clicks "Logs" on a
  * ventilator integration row. Self-contained — owns its own polling loop.
  *
  * Props:

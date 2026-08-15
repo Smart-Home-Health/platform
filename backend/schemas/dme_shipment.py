@@ -53,6 +53,12 @@ class DMEShipment(Base):
     # Backorder tracking
     is_backorder = Column(Boolean, nullable=False, default=False)
     parent_shipment_id = Column(Integer, ForeignKey('dme_shipments.id'), nullable=True)
+
+    # Standing order ("usual monthly order") support: a template shipment holds
+    # the recurring expected line items and never receives inventory itself.
+    # Deliveries created from a template link back via template_source_id.
+    is_template = Column(Boolean, nullable=False, default=False)
+    template_source_id = Column(Integer, ForeignKey('dme_shipments.id', ondelete='SET NULL'), nullable=True)
     
     # Notes and metadata
     notes = Column(Text, nullable=True)
@@ -69,9 +75,11 @@ class DMEShipment(Base):
     patient = relationship('Patient', foreign_keys=[patient_id])
     created_by_user = relationship('User', foreign_keys=[created_by])
     finalized_by_user = relationship('User', foreign_keys=[finalized_by])
-    parent_shipment = relationship('DMEShipment', remote_side=[id], backref='backorder_shipments')
+    parent_shipment = relationship('DMEShipment', remote_side=[id], foreign_keys=[parent_shipment_id], backref='backorder_shipments')
+    template_source = relationship('DMEShipment', remote_side=[id], foreign_keys=[template_source_id], backref='deliveries')
     items = relationship('DMEShipmentItem', back_populates='shipment', cascade='all, delete-orphan')
     alerts = relationship('DMEShipmentAlert', back_populates='shipment', cascade='all, delete-orphan', foreign_keys='DMEShipmentAlert.shipment_id')
+    documents = relationship('DMEShipmentDocument', back_populates='shipment', cascade='all, delete-orphan')
 
 
 class DMEShipmentItem(Base):
@@ -93,6 +101,11 @@ class DMEShipmentItem(Base):
     qty_ordered = Column(Integer, nullable=False, default=0)
     qty_shipped = Column(Integer, nullable=False, default=0)
     qty_backordered = Column(Integer, nullable=False, default=0)
+
+    # The invoice says it shipped, but it never showed up in the box. Distinct
+    # from backordered (supplier admits it's coming later) — this is a claim
+    # we're disputing, flagged so it can be chased with the supplier.
+    flagged_missing = Column(Boolean, nullable=False, default=False)
     
     # Unit info (text to handle variations like "BX = 100 EA" vs "BX = 100 OP")
     unit_of_measure = Column(String, nullable=True)  # EA, BX, PK, etc.
@@ -176,3 +189,33 @@ class DMEShipmentAlert(Base):
     shipment_item = relationship('DMEShipmentItem', back_populates='alerts')
     resolved_by_user = relationship('User', foreign_keys=[resolved_by])
     followup_shipment = relationship('DMEShipment', foreign_keys=[followup_shipment_id])
+
+
+class DMEShipmentDocument(Base):
+    """
+    Packing-slip images/documents attached to a shipment.
+    Multiple rows per shipment support multi-page slips ("Page 1 of 3").
+    Blobs live on the ./data volume via document_store; this row is metadata,
+    mirroring the ClinicalDocument pattern.
+    """
+    __tablename__ = 'dme_shipment_documents'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    shipment_id = Column(Integer, ForeignKey('dme_shipments.id', ondelete='CASCADE'), nullable=False, index=True)
+    account_id = Column(Integer, ForeignKey('accounts.id', ondelete='CASCADE'), nullable=True)
+    patient_id = Column(Integer, ForeignKey('patients.id'), nullable=True)
+
+    document_type = Column(String, nullable=False, default='packing-slip')
+    title = Column(String, nullable=True)
+    content_type = Column(String, nullable=True)  # MIME type (image/jpeg, application/pdf, ...)
+    storage = Column(String, nullable=False, default='file')
+    file_path = Column(String(500), nullable=True)
+    size_bytes = Column(Integer, nullable=True)
+    page_number = Column(Integer, nullable=True)  # e.g. "Page 1 of 3"
+
+    uploaded_by = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    created_at = Column(TIMESTAMP(timezone=True), nullable=False)
+
+    # Relationships
+    shipment = relationship('DMEShipment', back_populates='documents')
+    uploaded_by_user = relationship('User', foreign_keys=[uploaded_by])

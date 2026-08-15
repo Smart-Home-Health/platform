@@ -32,6 +32,7 @@ from crud.nutrition import (
 )
 from crud.patients import get_active_patient
 from crud.scheduling import get_due_and_upcoming_nutrition_count
+from utils.datetime_utils import resolve_tz_for_patient
 from models.nutrition import (
     NutritionIntakeCreate,
     NutritionIntakeUpdate,
@@ -150,10 +151,11 @@ async def get_daily_nutrition_intake_endpoint(
 ):
     """Get nutrition intake records for a specific day.
 
-    `tz_offset_minutes` (minutes the caller's local time is ahead of UTC)
-    bounds the day to the caller's local midnight; omitted -> UTC day.
+    Day boundaries derive from the patient's account timezone
+    (Account.timezone). `tz_offset_minutes` is a deprecated legacy fallback.
     """
-    intake_records = get_daily_nutrition_intake(db, patient_id, target_date, tz_offset_minutes=tz_offset_minutes)
+    tz = resolve_tz_for_patient(db, patient_id)
+    intake_records = get_daily_nutrition_intake(db, patient_id, target_date, tz_offset_minutes=tz_offset_minutes, tz=tz)
     return {
         "date": target_date or date.today(),
         "intake_records": intake_records
@@ -167,8 +169,10 @@ async def get_nutrition_summary_endpoint(
     db: Session = Depends(get_db),
     _: bool = Depends(require_read_access)
 ):
-    """Get daily nutrition summary with totals"""
-    summary = get_nutrition_summary(db, patient_id, target_date, tz_offset_minutes=tz_offset_minutes)
+    """Get daily nutrition summary with totals. Day boundaries derive from the
+    patient's account timezone; tz_offset_minutes is a legacy fallback."""
+    tz = resolve_tz_for_patient(db, patient_id)
+    summary = get_nutrition_summary(db, patient_id, target_date, tz_offset_minutes=tz_offset_minutes, tz=tz)
     return {
         "date": target_date or date.today(),
         "summary": summary
@@ -202,7 +206,8 @@ async def get_active_patient_nutrition_summary_endpoint(
     if not active_patient:
         raise HTTPException(status_code=404, detail="No active patient found")
     
-    summary = get_nutrition_summary(db, active_patient.id, target_date)
+    tz = resolve_tz_for_patient(db, active_patient.id)
+    summary = get_nutrition_summary(db, active_patient.id, target_date, tz=tz)
     return {
         "patient": active_patient,
         "date": target_date or date.today(),
@@ -767,9 +772,11 @@ async def get_daily_outputs(
 ):
     """Get output logs for a specific day.
 
-    `tz_offset_minutes` bounds the day to the caller's local midnight.
+    Day boundaries derive from the patient's account timezone;
+    `tz_offset_minutes` is a deprecated legacy fallback.
     """
-    outputs = get_daily_nutrition_outputs(db, patient_id, target_date, tz_offset_minutes=tz_offset_minutes)
+    tz = resolve_tz_for_patient(db, patient_id)
+    outputs = get_daily_nutrition_outputs(db, patient_id, target_date, tz_offset_minutes=tz_offset_minutes, tz=tz)
     return [NutritionOutputResponse.model_validate(o) for o in outputs]
 
 
@@ -782,7 +789,8 @@ async def get_patient_output_summary(
     _: bool = Depends(require_read_access)
 ):
     """Get output summary for a patient for a specific day"""
-    return get_output_summary(db, patient_id, target_date, tz_offset_minutes=tz_offset_minutes)
+    tz = resolve_tz_for_patient(db, patient_id)
+    return get_output_summary(db, patient_id, target_date, tz_offset_minutes=tz_offset_minutes, tz=tz)
 
 
 @router.get("/nutrition/outputs/patient/{patient_id}/history")

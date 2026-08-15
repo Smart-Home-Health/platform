@@ -24,6 +24,7 @@ import AlertsHistory from '../../components/alerts/AlertsHistory';
 import AdminV2MonitoringTimeline from './AdminV2MonitoringTimeline';
 import AdminV2MonitoringVentilator from './AdminV2MonitoringVentilator';
 import AdminV2MonitoringInteractions from './AdminV2MonitoringInteractions';
+import AdminV2MonitoringEnvironment from './AdminV2MonitoringEnvironment';
 import './AdminV2.css';
 
 const AdminV2Monitoring = () => {
@@ -34,6 +35,7 @@ const AdminV2Monitoring = () => {
   const isVentilatorView = location.pathname.includes('/care/monitoring/ventilator');
   const isHistoryView = location.pathname.includes('/care/monitoring/history');
   const isInteractionsView = location.pathname.includes('/care/monitoring/interactions');
+  const isEnvironmentView = location.pathname.includes('/care/monitoring/environment');
 
   const renderContent = () => {
     if (!selectedPatient) {
@@ -54,6 +56,10 @@ const AdminV2Monitoring = () => {
 
     if (isInteractionsView) {
       return <AdminV2MonitoringInteractions />;
+    }
+
+    if (isEnvironmentView) {
+      return <AdminV2MonitoringEnvironment />;
     }
 
     if (isHistoryView) {

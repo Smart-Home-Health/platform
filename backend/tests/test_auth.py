@@ -90,3 +90,58 @@ def test_isolation_no_leaked_patients(admin_client):
     resp = admin_client.get("/api/patients")
     assert resp.status_code == 200
     assert resp.json() == []
+
+
+# --- Cookie Secure flag derives from request scheme (HTTPS work) -------------
+def _login_cookie_header(base_url, db_session, admin_user):
+    from fastapi.testclient import TestClient
+    from main import app
+    c = TestClient(app, base_url=base_url)
+    resp = c.post("/api/auth/login", json={
+        "username": "admin_test", "password": "adminpass",
+    })
+    assert resp.status_code == 200, resp.text
+    return resp.headers.get("set-cookie", "")
+
+
+def test_cookie_not_secure_over_http(client, db_session, admin_user):
+    header = _login_cookie_header("http://testserver", db_session, admin_user)
+    assert "session_token=" in header
+    assert "secure" not in header.lower()
+
+
+def test_cookie_secure_over_https(client, db_session, admin_user):
+    header = _login_cookie_header("https://testserver", db_session, admin_user)
+    assert "session_token=" in header
+    assert "secure" in header.lower()
+
+
+# --- X-Forwarded-For only trusted behind a declared proxy --------------------
+class _FakeRequest:
+    def __init__(self, headers=None, peer="10.0.0.9"):
+        self.headers = headers or {}
+
+        class _Client:
+            host = peer
+
+        self.client = _Client()
+
+
+def test_xff_ignored_without_proxy_flag(monkeypatch):
+    from utils.client_ip import get_client_ip
+    monkeypatch.delenv("SHH_BEHIND_PROXY", raising=False)
+    req = _FakeRequest(headers={"X-Forwarded-For": "1.2.3.4"})
+    assert get_client_ip(req) == "10.0.0.9"
+
+
+def test_xff_honored_with_proxy_flag(monkeypatch):
+    from utils.client_ip import get_client_ip
+    monkeypatch.setenv("SHH_BEHIND_PROXY", "1")
+    req = _FakeRequest(headers={"X-Forwarded-For": "1.2.3.4, 5.6.7.8"})
+    assert get_client_ip(req) == "1.2.3.4"
+
+
+def test_no_xff_falls_back_to_peer(monkeypatch):
+    from utils.client_ip import get_client_ip
+    monkeypatch.setenv("SHH_BEHIND_PROXY", "1")
+    assert get_client_ip(_FakeRequest()) == "10.0.0.9"

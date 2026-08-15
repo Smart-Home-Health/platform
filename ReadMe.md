@@ -42,7 +42,10 @@ browser over WebSockets and bridges to MQTT / home‑automation systems.
 - **Role‑based access control** — users, roles, and fine‑grained permissions
 - **Backup & restore** of application data
 - **Modern responsive web UI**, accessible from a phone or other LAN device
-- **Home Assistant friendly** — works embedded in an iframe and publishes state to MQTT
+- **Home Assistant friendly** — runs behind HA ingress, works embedded in an iframe,
+  and publishes state to MQTT. **Accessing the app through HA ingress is the
+  preferred setup**: HA's own HTTPS gives the app a real trusted certificate with
+  no certificate warnings
 
 ## Integrations
 
@@ -74,12 +77,22 @@ The app requires a **TimescaleDB** database (it uses hypertables — plain Postg
 will fail migrations). Both methods below provision the right database container for
 you; the database always runs separately from the app.
 
-## Run it (recommended)
+## Run it in Home Assistant (recommended)
+
+The **Home Assistant add-on** is the primary way to install: a one-container
+appliance (database included) with a sidebar panel for every household member
+and **automatic sign-in from the HA login** (link HA users to app profiles under
+Configuration → Users). Add this repo as an add-on repository
+(`https://github.com/Smart-Home-Health/platform`) in **Settings → Add-ons →
+Add-on Store → ⋮ → Repositories** and install "Smart Home Health" — see the
+[add-on documentation](addon/DOCS.md).
+
+## Run it standalone
 
 Runs the published **single image** — the backend API and the built web UI served
 together on one port — alongside a TimescaleDB container. It pulls
-[`smarthomehealth/platform`](https://hub.docker.com/r/smarthomehealth/platform)
-from Docker Hub (multi‑arch: amd64 + arm64), so there's nothing to build.
+[`ghcr.io/smart-home-health/platform`](https://github.com/Smart-Home-Health/platform/pkgs/container/platform)
+from GitHub Container Registry (multi‑arch: amd64 + arm64), so there's nothing to build.
 
 ```bash
 git clone https://github.com/Smart-Home-Health/platform.git
@@ -90,7 +103,7 @@ docker compose -f docker-compose.prod.yml up -d
 ```
 
 `JWT_SECRET_KEY` is **required** (`openssl rand -hex 32`) — the app refuses to start
-on an insecure default. Pin a version with `APP_IMAGE=smarthomehealth/platform:<tag>`.
+on an insecure default. Pin a version with `APP_IMAGE=ghcr.io/smart-home-health/platform:<tag>`.
 
 **Access the application:**
 - **Web app + API**: http://localhost:8000
@@ -99,6 +112,15 @@ on an insecure default. Pin a version with `APP_IMAGE=smarthomehealth/platform:<
 On first launch you'll be guided through admin **first‑run setup**. It also works
 from a phone or other LAN device (e.g. `http://192.168.1.184:8000`). For publishing
 and deployment details, see [`docs/unified-image.md`](docs/unified-image.md).
+
+> **Want an encrypted connection? Set up HTTPS.** The app ships with a guided
+> setup under **Configuration → Security** (also offered at the end of
+> first‑run). The recommended path gets you a free `*.duckdns.org` name and an
+> auto‑renewing Let's Encrypt certificate in ~5 minutes, with no port forwarding;
+> there are also paths for an existing reverse proxy (Traefik/nginx/Caddy) or your
+> own certificate. See [`docs/installation/https-setup.md`](docs/installation/https-setup.md).
+> Home Assistant ingress works too and needs no setup at all. Plain‑HTTP LAN
+> access keeps working either way.
 
 ## Develop it (hot reload)
 
@@ -118,9 +140,10 @@ On startup the stack creates the database, runs Alembic migrations
 - **API docs (Swagger)**: http://localhost:8000/docs
 
 The web UI works from a phone or other LAN device too (e.g.
-`http://192.168.1.184:5173`); it reaches the backend on the same origin via the Vite
-dev proxy. Integration credentials and other optional settings go in `backend/.env`
-for dev — see [`.env.example`](.env.example) for the recognized variables.
+`https://192.168.1.184:5173` — note **https**); it reaches the backend on the same
+origin via the Vite dev proxy. Integration credentials and other optional settings
+go in `backend/.env` for dev — see [`.env.example`](.env.example) for the
+recognized variables.
 
 ### Useful commands
 

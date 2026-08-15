@@ -151,6 +151,16 @@ describe('installAuthInterceptor', () => {
       await flush();
       expect(onStale).toHaveBeenCalledTimes(1);
     });
+
+    it('a rejected /api/auth/ha/login (403, LAN port) does not trigger recovery', async () => {
+      window.__BASE_PATH__ = '/api/hassio_ingress/abc';
+      const onStale = vi.fn();
+      await install({ response: res(403, { detail: 'Not a trusted ingress request' }), getAuthLevel: () => 'full', onStale });
+
+      await window.fetch('http://localhost/api/hassio_ingress/abc/api/auth/ha/login', { method: 'POST' });
+      await flush();
+      expect(onStale).not.toHaveBeenCalled();
+    });
   });
 
   describe('iframe Bearer injection', () => {

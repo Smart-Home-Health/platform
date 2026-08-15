@@ -17,6 +17,19 @@ export default defineConfig(({ command }) => ({
         {
           src: 'node_modules/scichart/_wasm/*',
           dest: ''
+        },
+        // Tesseract.js OCR assets, vendored so packing-slip scanning works
+        // fully offline / same-origin (HA add-on + LAN installs; no CDN).
+        // The worker picks a core variant via SIMD feature detection, so all
+        // three lstm variants must be present. Language data lives in
+        // public/tessdata/lang/ (eng.traineddata.gz, tessdata_fast).
+        {
+          src: 'node_modules/tesseract.js/dist/worker.min.js',
+          dest: 'tessdata'
+        },
+        {
+          src: 'node_modules/tesseract.js-core/tesseract-core*lstm*',
+          dest: 'tessdata/core'
         }
       ]
     })

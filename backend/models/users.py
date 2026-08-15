@@ -77,6 +77,9 @@ class User(Base):
     failed_login_attempts = Column(Integer, default=0, nullable=False)
     locked_until = Column(DateTime, nullable=True)  # Account lockout
     preferences = Column(JSON, nullable=True)  # Per-user UI preferences, e.g. {"theme": "light|dark|system"}
+    # Home Assistant user id (uuid4().hex) this app user is linked to; a trusted
+    # ingress request carrying this identity signs in as this user with no prompt.
+    ha_user_id = Column(String(32), unique=True, nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     

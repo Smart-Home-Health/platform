@@ -1270,9 +1270,11 @@ const AdminV2MedicationsManage = () => {
                 {/* Current Schedules */}
                 <h4 className="text-sm font-semibold text-foreground">Current Schedules</h4>
 
+                {/* Row-as-card table: stacks into cards below 768px instead of
+                    forcing the dialog wider than the phone viewport. */}
                 {selectedMedication.schedules && selectedMedication.schedules.length > 0 ? (
-                  <div className="admin-v2-table-container">
-                    <table className="admin-v2-table">
+                  <div className="admin-v2-table-container admin-v2-table-cards-wrap">
+                    <table className="admin-v2-table admin-v2-table-cards">
                       <thead>
                         <tr>
                           <th>Dose</th>
@@ -1292,21 +1294,21 @@ const AdminV2MedicationsManage = () => {
 
                           return (
                             <tr key={schedule.id}>
-                              <td><strong>{schedule.dose_amount}</strong> {selectedMedication.quantity_unit || 'units'}</td>
-                              <td>{parsed?.time || '-'}</td>
-                              <td>
+                              <td data-label="Dose"><span><strong>{schedule.dose_amount}</strong> {selectedMedication.quantity_unit || 'units'}</span></td>
+                              <td data-label="Time">{parsed?.time || '-'}</td>
+                              <td data-label="Schedule" className="admin-v2-cell-stack">
                                 {parsed?.type === 'weekly' && parsed.days}
                                 {parsed?.type === 'monthly' && `Day ${parsed.dayOfMonth} monthly`}
                               </td>
                               {selectedMedication.is_global && (
-                                <td>{patientName ? `${patientName.first_name} ${patientName.last_name}` : '-'}</td>
+                                <td data-label="Patient">{patientName ? `${patientName.first_name} ${patientName.last_name}` : '-'}</td>
                               )}
-                              <td>
+                              <td data-label="Status">
                                 <span className={`admin-v2-status-badge ${schedule.active ? 'active' : 'inactive'}`}>
                                   {schedule.active ? 'Active' : 'Paused'}
                                 </span>
                               </td>
-                              <td>
+                              <td className="admin-v2-cell-actions">
                                 <div className="admin-v2-table-actions">
                                   <button
                                     type="button"

@@ -113,14 +113,16 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
     equipment: [
       { path: '/care/equipment', label: 'Overview' },
       { path: '/care/equipment/history', label: 'History' },
-      { path: '/care/equipment/shipments', label: 'Shipments' },
+      { path: '/care/equipment/shipments', label: 'Deliveries' },
+      { path: '/care/equipment/inventory', label: 'Supplies' },
       { path: '/care/equipment/alerts', label: 'Alerts' },
     ],
     nutrition: [
       { path: '/care/nutrition', label: 'Overview' },
+      { path: '/care/nutrition/schedule', label: 'Schedule' },
       { path: '/care/nutrition/intake', label: 'Intake' },
       { path: '/care/nutrition/output', label: 'Output' },
-      { path: '/care/nutrition/schedules', label: 'Schedules' },
+      { path: '/care/nutrition/schedules', label: 'Manage' },
       { path: '/care/nutrition/goals', label: 'Goals' },
       ...(hasAnyPermission(['audit.read'])
         ? [{ path: '/care/schedule/undo-log', label: 'Undo' }] : []),
@@ -131,6 +133,7 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
       { path: '/care/monitoring/timeline', label: 'Timeline' },
       { path: '/care/monitoring/ventilator', label: 'Ventilator' },
       { path: '/care/monitoring/interactions', label: 'Interactions' },
+      { path: '/care/monitoring/environment', label: 'Environment' },
     ],
     reports: [
       { path: '/care/reports', label: 'Day over Day' },
@@ -148,13 +151,14 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
         ? [{ path: '/care/profile/implants', label: 'Implants' }] : []),
       ...(hasAnyPermission(['businesses.read', 'businesses.create', 'businesses.update', 'businesses.delete'])
         ? [{ path: '/care/profile/businesses', label: 'Businesses' }] : []),
+      ...(isSystemAdmin
+        ? [{ path: '/care/profile/connections', label: 'Connections' }] : []),
     ],
     configuration: [
       // System-wide configuration
       { path: '/care/configuration', label: 'General' },
       ...(isSystemAdmin
         ? [{ path: '/care/configuration/account', label: 'Account' }] : []),
-      { path: '/care/configuration/integrations', label: 'Integrations' },
       ...(hasAnyPermission(['patients.read', 'patients.create', 'patients.update', 'patients.delete'])
         ? [{ path: '/care/configuration/patients', label: 'Patients' }] : []),
       ...(hasAnyPermission(['users.read', 'users.create', 'users.update', 'users.delete'])
@@ -162,8 +166,11 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
       ...(hasAnyPermission(['roles.read', 'roles.create', 'roles.update', 'roles.delete', 'users.read'])
         ? [{ path: '/care/configuration/users/roles', label: 'Roles' }] : []),
       { path: '/care/configuration/mqtt', label: 'MQTT' },
+      { path: '/care/configuration/environment', label: 'Environment' },
       ...(isSystemAdmin
         ? [{ path: '/care/configuration/backup', label: 'Backup' }] : []),
+      ...(isSystemAdmin
+        ? [{ path: '/care/configuration/security', label: 'Security' }] : []),
       ...(isSystemAdmin
         ? [{ path: '/care/configuration/system-health', label: 'System' }] : []),
     ],

@@ -43,6 +43,8 @@ import AdminV2EquipmentHistory from './pages/admin-v2/AdminV2EquipmentHistory';
 import AdminV2Shipments from './pages/admin-v2/AdminV2Shipments';
 import AdminV2ShipmentDetail from './pages/admin-v2/AdminV2ShipmentDetail';
 import AdminV2ShipmentAlerts from './pages/admin-v2/AdminV2ShipmentAlerts';
+import AdminV2Inventory from './pages/admin-v2/AdminV2Inventory';
+import AdminV2InventorySetup from './pages/admin-v2/AdminV2InventorySetup';
 import AdminV2Patients from './pages/admin-v2/AdminV2Patients';
 import AdminV2PatientDetail from './pages/admin-v2/AdminV2PatientDetail';
 import AdminV2Providers from './pages/admin-v2/AdminV2Providers';
@@ -54,6 +56,7 @@ import AdminV2Symptoms from './pages/admin-v2/AdminV2Symptoms';
 import AdminV2Diagnoses from './pages/admin-v2/AdminV2Diagnoses';
 import AdminV2Implants from './pages/admin-v2/AdminV2Implants';
 import AdminV2Nutrition from './pages/admin-v2/AdminV2Nutrition';
+import AdminV2NutritionSchedule from './pages/admin-v2/AdminV2NutritionSchedule';
 import AdminV2ProfileSummary from './pages/admin-v2/AdminV2ProfileSummary';
 import AdminV2Monitoring from './pages/admin-v2/AdminV2Monitoring';
 import AdminV2Messages from './pages/admin-v2/AdminV2Messages';
@@ -63,7 +66,9 @@ import AdminV2ReportsWeekly from './pages/admin-v2/AdminV2ReportsWeekly';
 import AdminV2AccountSettings from './pages/admin-v2/AdminV2AccountSettings';
 import AdminV2Backup from './pages/admin-v2/AdminV2Backup';
 import AdminV2SystemHealth from './pages/admin-v2/AdminV2SystemHealth';
-import AdminV2Integrations from './pages/admin-v2/AdminV2Integrations';
+import AdminV2Security from './pages/admin-v2/AdminV2Security';
+import AdminV2Environment from './pages/admin-v2/AdminV2Environment';
+import AdminV2Connections from './pages/admin-v2/AdminV2Connections';
 import AdminV2Mqtt from './pages/admin-v2/AdminV2Mqtt';
 import { AdminV2SettingsGeneral } from './pages/admin-v2/settings';
 import FirstRunSetup from './components/FirstRunSetup';
@@ -137,6 +142,8 @@ function AppContent() {
           <Route path="/care/equipment/history" element={<ProtectedRoute><Layout><AdminV2EquipmentHistory /></Layout></ProtectedRoute>} />
           <Route path="/care/equipment/shipments" element={<ProtectedRoute><Layout><AdminV2Shipments /></Layout></ProtectedRoute>} />
           <Route path="/care/equipment/shipments/:id" element={<ProtectedRoute><Layout><AdminV2ShipmentDetail /></Layout></ProtectedRoute>} />
+          <Route path="/care/equipment/inventory" element={<ProtectedRoute><Layout><AdminV2Inventory /></Layout></ProtectedRoute>} />
+          <Route path="/care/equipment/inventory/setup" element={<ProtectedRoute><Layout><AdminV2InventorySetup /></Layout></ProtectedRoute>} />
           <Route path="/care/equipment/alerts" element={<ProtectedRoute><Layout><AdminV2ShipmentAlerts /></Layout></ProtectedRoute>} />
           <Route path="/care/patients" element={<ProtectedRoute><Layout><AdminV2Patients /></Layout></ProtectedRoute>} />
           <Route path="/care/providers" element={<ProtectedRoute><Layout><AdminV2Providers /></Layout></ProtectedRoute>} />
@@ -155,6 +162,7 @@ function AppContent() {
             
           {/* Care Nutrition Routes */}
           <Route path="/care/nutrition" element={<ProtectedRoute><Layout><AdminV2Nutrition /></Layout></ProtectedRoute>} />
+          <Route path="/care/nutrition/schedule" element={<ProtectedRoute><Layout><AdminV2NutritionSchedule /></Layout></ProtectedRoute>} />
           <Route path="/care/nutrition/intake" element={<ProtectedRoute><Layout><AdminV2Nutrition /></Layout></ProtectedRoute>} />
           <Route path="/care/nutrition/output" element={<ProtectedRoute><Layout><AdminV2Nutrition /></Layout></ProtectedRoute>} />
           <Route path="/care/nutrition/schedules" element={<ProtectedRoute><Layout><AdminV2Nutrition /></Layout></ProtectedRoute>} />
@@ -167,6 +175,7 @@ function AppContent() {
           <Route path="/care/profile/implants" element={<ProtectedRoute><Layout><AdminV2Implants /></Layout></ProtectedRoute>} />
           <Route path="/care/profile/businesses" element={<ProtectedRoute><Layout><AdminV2Businesses /></Layout></ProtectedRoute>} />
           {/* Per-patient MQTT consolidated onto the patient settings page */}
+          <Route path="/care/profile/connections" element={<ProtectedRoute><Layout><AdminV2Connections /></Layout></ProtectedRoute>} />
           <Route path="/care/profile/mqtt" element={<Navigate to="/care/configuration/patients" replace />} />
             
           {/* Care Monitoring Routes */}
@@ -175,6 +184,7 @@ function AppContent() {
           <Route path="/care/monitoring/timeline" element={<ProtectedRoute><Layout><AdminV2Monitoring /></Layout></ProtectedRoute>} />
           <Route path="/care/monitoring/ventilator" element={<ProtectedRoute><Layout><AdminV2Monitoring /></Layout></ProtectedRoute>} />
           <Route path="/care/monitoring/interactions" element={<ProtectedRoute><Layout><AdminV2Monitoring /></Layout></ProtectedRoute>} />
+          <Route path="/care/monitoring/environment" element={<ProtectedRoute><Layout><AdminV2Monitoring /></Layout></ProtectedRoute>} />
 
           {/* Care Messages Routes */}
           <Route path="/care/messages" element={<ProtectedRoute><Layout><AdminV2Messages /></Layout></ProtectedRoute>} />
@@ -188,12 +198,15 @@ function AppContent() {
           {/* Care Configuration Routes (System-wide) */}
           <Route path="/care/configuration" element={<ProtectedRoute><Layout><AdminV2SettingsGeneral /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/account" element={<ProtectedRoute><Layout><AdminV2AccountSettings /></Layout></ProtectedRoute>} />
-          <Route path="/care/configuration/integrations" element={<ProtectedRoute><Layout><AdminV2Integrations /></Layout></ProtectedRoute>} />
+          {/* Integrations moved under Profile as "Connections"; keep old URL working */}
+          <Route path="/care/configuration/integrations" element={<Navigate to="/care/profile/connections" replace />} />
           <Route path="/care/configuration/patients" element={<ProtectedRoute><Layout><AdminV2Patients /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/patients/:patientId" element={<ProtectedRoute><Layout><AdminV2PatientDetail /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/mqtt" element={<ProtectedRoute><Layout><AdminV2Mqtt /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/backup" element={<ProtectedRoute><Layout><AdminV2Backup /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/system-health" element={<ProtectedRoute><Layout><AdminV2SystemHealth /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/security" element={<ProtectedRoute><Layout><AdminV2Security /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/environment" element={<ProtectedRoute><Layout><AdminV2Environment /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/users" element={<ProtectedRoute><Layout><AdminV2Users /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/users/roles" element={<ProtectedRoute><Layout><AdminV2Roles /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/users/roles/:roleId" element={<ProtectedRoute><Layout><AdminV2RoleDetail /></Layout></ProtectedRoute>} />
