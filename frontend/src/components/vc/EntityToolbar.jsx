@@ -57,7 +57,7 @@ export default function EntityToolbar({
       <div className="ec-toolbar-row">
         <div className="ec-search">
           <SearchIcon size={16} />
-          <input type="text" placeholder={searchPlaceholder} value={search}
+          <input type="text" placeholder={searchPlaceholder} aria-label={searchPlaceholder || 'Search'} value={search}
                  onChange={(e) => onSearchChange(e.target.value)} />
         </div>
         {(Array.isArray(filter) ? filter : filter ? [filter] : []).map((f) => (

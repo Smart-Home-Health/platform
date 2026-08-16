@@ -103,7 +103,7 @@ export default function EntityCard({
                 {d.icon && <span className="ec-detail-icon" aria-hidden="true">{d.icon}</span>}
                 <span className="ec-detail-text">
                   <span className="ec-detail-label">{d.label}</span>
-                  <span className="ec-detail-value">{d.value || '—'}</span>
+                  <span className="ec-detail-value">{d.value || d.value === 0 ? d.value : '—'}</span>
                 </span>
               </div>
             ))}
@@ -115,7 +115,7 @@ export default function EntityCard({
                 return a.href ? (
                   <a key={a.label} className="ec-quick-btn" href={a.href}
                      aria-label={a.label} title={a.label}
-                     {...(a.external ? { target: '_blank', rel: 'noreferrer' } : {})}>{inner}</a>
+                     {...(a.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>{inner}</a>
                 ) : (
                   <button key={a.label} type="button" className="ec-quick-btn"
                           aria-label={a.label} title={a.label}
