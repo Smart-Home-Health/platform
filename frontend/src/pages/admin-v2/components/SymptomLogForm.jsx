@@ -104,10 +104,16 @@ export default function SymptomLogForm({ patient, symptomTypes = [],
   const timeLabel = observed.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   const dateLabel = observed.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
 
-  const showToast = (message, kind = 'success') => {
-    setToast({ message, kind });
-    setTimeout(() => setToast(null), 4000);
-  };
+  const showToast = (message, kind = 'success') => setToast({ message, kind });
+
+  // Auto-dismiss driven by an effect: replacing the toast cancels the prior
+  // timer, and unmount cleans up (a bare setTimeout could clear a newer
+  // toast or fire after unmount).
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timer = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   const reset = () => {
     setObservedAt(nowLocalInput());

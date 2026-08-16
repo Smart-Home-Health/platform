@@ -370,6 +370,11 @@
   display: grid;
   place-content: center;
 }
+.sl-checkbox:focus-visible {
+  outline: none;
+  border-color: var(--vc-data-live);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
+}
 .sl-checkbox:checked {
   background: var(--vc-state-complete);
   border-color: var(--vc-state-complete);

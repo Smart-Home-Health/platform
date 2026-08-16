@@ -53,6 +53,9 @@ class SymptomCreate(BaseModel):
     description: Optional[str] = None
     notes: Optional[str] = None
     timestamp: Optional[str] = None  # ISO format string
+    # A symptom can be logged after the fact as already over (e.g. the
+    # capture form's "still active" unchecked).
+    is_resolved: Optional[bool] = None
 
 
 class SymptomUpdate(BaseModel):
@@ -222,7 +225,8 @@ def create_new_symptom(symptom_data: SymptomCreate, db: Session = Depends(get_db
             duration=symptom_data.duration,
             description=symptom_data.description,
             notes=symptom_data.notes,
-            timestamp=timestamp
+            timestamp=timestamp,
+            is_resolved=bool(symptom_data.is_resolved)
         )
         
         return {
