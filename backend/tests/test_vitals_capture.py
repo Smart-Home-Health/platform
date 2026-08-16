@@ -237,6 +237,14 @@ def test_ranges_include_custom_definitions(admin_client, patient):
     assert "peak_flow" in keys
 
 
+def test_custom_definition_mutations_require_permission(limited_client, patient):
+    denied = limited_client.post("/api/vitals/custom-definitions", json={
+        "patient_id": patient.id, "name": "mood", "unit": ""})
+    assert denied.status_code == 403
+    denied_del = limited_client.delete("/api/vitals/custom-definitions/1")
+    assert denied_del.status_code == 403
+
+
 def test_ranges_put_requires_permission(limited_client, patient):
     resp = limited_client.put("/api/vitals/ranges", json={
         "patient_id": patient.id,

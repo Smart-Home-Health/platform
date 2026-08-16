@@ -818,8 +818,10 @@ def get_vital_history_paginated(vital_type: str, page: int = 1, page_size: int =
 def get_custom_vital_definitions(
     patient_id: int = Query(..., description="Patient ID"),
     db: Session = Depends(get_db),
-    _: bool = Depends(require_read_access)
 ):
+    # Not gated on require_read_access: like /ranges, the definition list is
+    # what the capture flow records against, and recording is allowed in
+    # monitoring mode (read-restricted sessions). Auth via middleware.
     defs = db.query(CustomVitalDefinition).filter(
         CustomVitalDefinition.patient_id == patient_id
     ).order_by(CustomVitalDefinition.created_at).all()
@@ -830,6 +832,7 @@ def get_custom_vital_definitions(
 def create_custom_vital_definition(
     body: dict,
     db: Session = Depends(get_db),
+    _: object = Depends(require_permission("patients.update")),
 ):
     patient_id = body.get("patient_id")
     name = body.get("name", "").strip()
@@ -865,6 +868,7 @@ def create_custom_vital_definition(
 def delete_custom_vital_definition(
     definition_id: int,
     db: Session = Depends(get_db),
+    _: object = Depends(require_permission("patients.update")),
 ):
     definition = db.query(CustomVitalDefinition).filter(
         CustomVitalDefinition.id == definition_id
