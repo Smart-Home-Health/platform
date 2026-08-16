@@ -273,6 +273,7 @@ const AdminV2ProfileSummary = () => {
 
   useEffect(() => {
     if (!selectedPatient) return;
+    let cancelled = false;
     const pid = selectedPatient.id;
     const tzOffsetMinutes = -new Date().getTimezoneOffset();
     const get = async (path, fallback = null) => {
@@ -284,7 +285,10 @@ const AdminV2ProfileSummary = () => {
       }
       return fallback;
     };
-    const toYMD = (d) => d.toISOString().slice(0, 10);
+    // Local calendar date — toISOString() would shift the window's edges in
+    // timezones ahead of UTC (backend parses these as naive local midnights).
+    const toYMD = (d) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
     (async () => {
       setLoadingVitals(true);
@@ -294,6 +298,7 @@ const AdminV2ProfileSummary = () => {
         get(`/api/integrations/patient/${pid}/vent/breath-rate-hourly?days=${WINDOW_DAYS}`, { has_data: false, points: [] }),
         get(`/api/vitals/ranges?patient_id=${pid}`),
       ]);
+      if (cancelled) return;
       setVitalsSummary(vitals);
       setPulseOxSummary(pulseOx);
       setVentBreathRate(vent);
@@ -308,6 +313,7 @@ const AdminV2ProfileSummary = () => {
         get(`/api/nutrition/patient/${pid}/summary?days=${WINDOW_DAYS}&tz_offset_minutes=${tzOffsetMinutes}`, []),
         get(`/api/nutrition/outputs/patient/${pid}/history?days=${WINDOW_DAYS}&tz_offset_minutes=${tzOffsetMinutes}`, []),
       ]);
+      if (cancelled) return;
       setSymptoms(sym || []);
       setNutritionSummary(nutri || []);
       setNutritionOutput(output || []);
@@ -322,6 +328,7 @@ const AdminV2ProfileSummary = () => {
         get(`/api/admin/medications/active?patient_id=${pid}`, []),
         get(`/api/medications/history?patient_id=${pid}&start_date=${toYMD(start)}&end_date=${toYMD(new Date())}&limit=2000`),
       ]);
+      if (cancelled) return;
       setMedications(active || []);
       setMedHistory(history?.history || []);
       setLoadingMeds(false);
@@ -329,27 +336,34 @@ const AdminV2ProfileSummary = () => {
 
     (async () => {
       setLoadingDiagnoses(true);
-      setDiagnoses(await get(`/api/diagnoses/patient/${pid}?active_only=true`, []) || []);
+      const result = await get(`/api/diagnoses/patient/${pid}?active_only=true`, []);
+      if (cancelled) return;
+      setDiagnoses(result || []);
       setLoadingDiagnoses(false);
     })();
     (async () => {
       setLoadingProviders(true);
-      setProviders(await get(`/api/providers/patient/${pid}?active_only=true`, []) || []);
+      const result = await get(`/api/providers/patient/${pid}?active_only=true`, []);
+      if (cancelled) return;
+      setProviders(result || []);
       setLoadingProviders(false);
     })();
     (async () => {
       setLoadingImplants(true);
-      setImplants(await get(`/api/implants/patient/${pid}?include_inactive=false`, []) || []);
+      const result = await get(`/api/implants/patient/${pid}?include_inactive=false`, []);
+      if (cancelled) return;
+      setImplants(result || []);
       setLoadingImplants(false);
     })();
-  }, [selectedPatient]);
 
-  const rangeFor = (vitalKey, fieldKey = '') =>
-    vitalRanges.find(r => r.vital_key === vitalKey && (r.field_key || '') === fieldKey);
+    return () => { cancelled = true; };
+  }, [selectedPatient]);
 
   // Vital trend rows: pulse ox (hourly) for SpO2/HR; vent hourly for RR when
   // available, else manual daily; manual daily for MAP + temperature.
   const vitalRows = useMemo(() => {
+    const rangeFor = (vitalKey, fieldKey = '') =>
+      vitalRanges.find(r => r.vital_key === vitalKey && (r.field_key || '') === fieldKey);
     const pox = (key) => (pulseOxSummary?.[key] || []).map(p => p.avg).filter(v => v != null);
     const daily = (key) => (vitalsSummary?.[key] || []).map(p => p.avg).filter(v => v != null);
     const ventSeries = (ventBreathRate?.points || []).map(p => p.avg).filter(v => v != null);
@@ -361,7 +375,6 @@ const AdminV2ProfileSummary = () => {
       { key: 'map', label: 'Mean Arterial Pressure', source: 'Manual', series: daily('blood_pressure'), range: rangeFor('blood_pressure', 'map'), fmt: v => `${Math.round(v)}` },
       { key: 'temperature', label: 'Temperature (°F)', source: 'Manual', series: daily('temperature'), range: rangeFor('temperature'), fmt: v => v.toFixed(1) },
     ];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pulseOxSummary, vitalsSummary, ventBreathRate, vitalRanges]);
 
   // 30-day events
