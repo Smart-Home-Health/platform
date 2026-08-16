@@ -306,6 +306,113 @@
   color: var(--vc-text-tertiary);
 }
 
+/* ---------- History pages: filter bar, stats row, table cells ---------- */
+:root:not(.light) .history-filter-bar,
+:root:not(.light) .vitals-history-filters {
+  background: var(--vc-bg-surface);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 10px;
+}
+:root:not(.light) .history-filter-group label {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+:root:not(.light) .history-filter-input,
+:root:not(.light) .history-filter-select {
+  background: var(--vc-bg-raised);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  color: var(--vc-text-primary);
+}
+:root:not(.light) .history-filter-input:focus,
+:root:not(.light) .history-filter-select:focus {
+  border-color: var(--vc-data-live);
+  outline: none;
+}
+
+/* Stats row: mono tabular values; 'danger' counts late/missed doses —
+ * schedule adherence, so amber, not red */
+:root:not(.light) .history-stat {
+  background: var(--vc-bg-surface);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 10px;
+}
+:root:not(.light) .history-stat-value {
+  font-family: var(--vc-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+  color: var(--vc-text-primary);
+}
+:root:not(.light) .history-stat-label {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+:root:not(.light) .history-stat.success .history-stat-value { color: var(--vc-state-complete); }
+:root:not(.light) .history-stat.warning .history-stat-value { color: var(--vc-state-due); }
+:root:not(.light) .history-stat.danger .history-stat-value { color: var(--vc-state-due); }
+:root:not(.light) .history-stat.muted .history-stat-value { color: var(--vc-text-tertiary); }
+
+/* Table cell text */
+:root:not(.light) .history-med-name { color: var(--vc-text-primary); }
+:root:not(.light) .history-med-concentration { color: var(--vc-text-secondary); }
+:root:not(.light) .history-dose {
+  font-family: var(--vc-font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-text-secondary);
+}
+:root:not(.light) .history-dose.skipped {
+  color: var(--vc-text-tertiary);
+  text-decoration: line-through;
+}
+:root:not(.light) .history-datetime {
+  font-family: var(--vc-font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-text-secondary);
+}
+:root:not(.light) .history-unscheduled {
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+:root:not(.light) .history-notes { color: var(--vc-text-secondary); }
+:root:not(.light) .history-category-badge {
+  background: transparent;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 999px;
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+
+/* Vitals history source badge (manual / device / integrations) */
+:root:not(.light) .admin-v2-source-badge {
+  background: transparent;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 999px;
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+:root:not(.light) .admin-v2-source-badge.device,
+:root:not(.light) .admin-v2-source-badge.sensor {
+  border-color: color-mix(in srgb, var(--vc-data-live) 45%, transparent);
+  color: var(--vc-data-live);
+}
+
 /* ---------- List cards (manage pages) ---------- */
 :root:not(.light) .admin-v2-med-card {
   background: var(--vc-bg-surface);
