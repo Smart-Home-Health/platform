@@ -34,11 +34,11 @@ import { buildConfigs } from './vitalConfigs';
 import CaptureSheet from './components/CaptureSheet';
 import CaptureTabBar from './components/CaptureTabBar';
 import VitalTile from './components/VitalTile';
-import { clearDraft, loadDraft, saveDraft } from './useCaptureDraft';
+import { clearDraft, loadDraft, newEncounterUid, saveDraft } from './useCaptureDraft';
 import useConnectionStatus from './useConnectionStatus';
 
 const newEncounter = () => ({
-  encounterUid: crypto.randomUUID(),
+  encounterUid: newEncounterUid(),
   startedAt: new Date().toISOString(),
   readings: {},
 });
