@@ -37,7 +37,7 @@
   --vc-text-tertiary: #6b7987; /* decorative only — never sole carrier of meaning */
 
   /* Semantic state — roles, not colors */
-  --vc-data-live: #2fc2e8;   /* live data, active focus, primary action */
+  --vc-data-live: #4da7bd;   /* live data, active focus, primary action (deliberately muted) */
   --vc-state-complete: #3fbf6a;
   --vc-state-due: #f0a52e;   /* needs confirmation / attention */
   --vc-state-alert: #f0563c; /* clinical concern only */

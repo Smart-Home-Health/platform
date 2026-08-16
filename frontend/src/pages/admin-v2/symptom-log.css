@@ -64,7 +64,13 @@
   font-size: 10px;
   letter-spacing: 0.06em;
 }
-.sl-req { color: var(--vc-state-alert); }
+/* Required = needs action -> amber (red stays clinical) */
+.sl-req {
+  color: var(--vc-state-due);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  margin-left: 0.3rem;
+}
 
 /* Observed card */
 .sl-observed {
@@ -111,7 +117,7 @@
   align-items: center;
   gap: 0.4rem;
   background: transparent;
-  border: 1px solid color-mix(in srgb, var(--vc-data-live) 45%, transparent);
+  border: 1px solid var(--vc-line-strong);
   border-radius: 8px;
   color: var(--vc-data-live);
   font-family: var(--vc-font-mono);
@@ -147,9 +153,9 @@
   gap: 0.6rem;
   width: 100%;
   background: transparent;
-  border: 1px solid color-mix(in srgb, var(--vc-data-live) 45%, transparent);
+  border: 1px solid var(--vc-line-strong);
   border-radius: 10px;
-  color: var(--vc-data-live);
+  color: var(--vc-text-secondary);
   font-family: var(--vc-font-mono);
   font-size: 15px;
   font-weight: 600;
@@ -160,10 +166,8 @@
   cursor: pointer;
   text-align: left;
 }
-.sl-picker.set {
-  border-color: var(--vc-line-strong);
-  color: var(--vc-text-primary);
-}
+.sl-picker:hover { border-color: var(--vc-line-strong); color: var(--vc-text-primary); }
+.sl-picker.set { color: var(--vc-text-primary); }
 .sl-picker.compact {
   font-size: 12.5px;
   min-height: 46px;
@@ -329,6 +333,7 @@
 }
 
 /* Care action expander */
+.sl-expander:hover { color: var(--vc-text-primary); border-color: var(--vc-line-strong); }
 .sl-expander {
   display: flex;
   align-items: center;
@@ -337,7 +342,7 @@
   background: transparent;
   border: 1px solid var(--vc-line-hairline);
   border-radius: 10px;
-  color: var(--vc-data-live);
+  color: var(--vc-text-secondary);
   font-family: var(--vc-font-mono);
   font-size: 12.5px;
   font-weight: 600;
@@ -411,10 +416,10 @@
 .sl-footer-status.missing { color: var(--vc-state-due); }
 .sl-footer-status.ready { color: var(--vc-state-complete); }
 .sl-submit {
-  background: var(--vc-data-live);
-  border: 1px solid transparent;
+  background: color-mix(in srgb, var(--vc-data-live) 45%, var(--vc-bg-surface));
+  border: 1px solid color-mix(in srgb, var(--vc-data-live) 45%, transparent);
   border-radius: 8px;
-  color: var(--vc-bg-base);
+  color: var(--vc-text-primary);
   font-family: var(--vc-font-mono);
   font-size: 14px;
   font-weight: 600;

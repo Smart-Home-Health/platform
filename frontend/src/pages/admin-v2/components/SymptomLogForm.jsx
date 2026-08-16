@@ -199,7 +199,7 @@ export default function SymptomLogForm({ patient, symptomTypes = [],
       )}
 
       {/* Symptom type */}
-      <span className="sl-label">Symptom type <span className="sl-req">*</span></span>
+      <span className="sl-label">Symptom type <span className="sl-req">Required</span></span>
       <button type="button" className={`sl-picker ${symptomType ? 'set' : ''}`}
               onClick={() => { setTypeSearch(''); setSheet('type'); }}>
         <span>{symptomType ? titleCase(symptomType) : 'Select symptom'}</span>
@@ -225,7 +225,7 @@ export default function SymptomLogForm({ patient, symptomTypes = [],
       )}
 
       {/* Severity */}
-      <span className="sl-label">Severity (0–10) <span className="sl-req">*</span></span>
+      <span className="sl-label">Severity (0–10) <span className="sl-req">Required</span></span>
       <div className="sl-severity-hero">
         <span className={`sl-severity-value band-${band.key}`}>{severity}</span>
         <span className="sl-severity-denominator">/ 10</span>
