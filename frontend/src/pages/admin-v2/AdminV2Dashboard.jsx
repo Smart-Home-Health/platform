@@ -36,6 +36,7 @@ import config, { API_BASE_URL, getApiBaseUrl } from '../../config';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
 import './AdminV2.css';
+import './vc-dashboard.css'; // bedside-monitor skin (dark theme only)
 
 // Calculate age from DOB
 const calculateAge = (dob) => {
@@ -342,32 +343,34 @@ const AdminV2Dashboard = () => {
                   )}
                 </div>
 
-                {/* Due Counters — red when that category has an overdue item */}
+                {/* Due Counters. The vc skin colors by schedule state (idle /
+                    has-due / overdue), not by category; the legacy per-type
+                    classes stay for the light theme. */}
                 <div className="admin-v2-due-counters">
                   <Link
                     to={`/care/medications/schedule?patient=${patient.id}`}
-                    className={`admin-v2-due-item meds${patient.overdue_counts?.medications ? ' overdue' : ''}`}
+                    className={`admin-v2-due-item meds${(patient.due_counts?.medications || 0) > 0 ? ' has-due' : ''}${patient.overdue_counts?.medications ? ' overdue' : ''}`}
                   >
                     <p className="admin-v2-due-count">{patient.due_counts?.medications || 0}</p>
                     <p className="admin-v2-due-label">Meds</p>
                   </Link>
                   <Link
                     to={`/care/nutrition?patient=${patient.id}`}
-                    className={`admin-v2-due-item nutrition${patient.overdue_counts?.nutrition ? ' overdue' : ''}`}
+                    className={`admin-v2-due-item nutrition${(patient.due_counts?.nutrition || 0) > 0 ? ' has-due' : ''}${patient.overdue_counts?.nutrition ? ' overdue' : ''}`}
                   >
                     <p className="admin-v2-due-count">{patient.due_counts?.nutrition || 0}</p>
                     <p className="admin-v2-due-label">Nutrition</p>
                   </Link>
                   <Link
                     to={`/care/care-tasks/schedule?patient=${patient.id}`}
-                    className={`admin-v2-due-item tasks${patient.overdue_counts?.tasks ? ' overdue' : ''}`}
+                    className={`admin-v2-due-item tasks${(patient.due_counts?.tasks || 0) > 0 ? ' has-due' : ''}${patient.overdue_counts?.tasks ? ' overdue' : ''}`}
                   >
                     <p className="admin-v2-due-count">{patient.due_counts?.tasks || 0}</p>
                     <p className="admin-v2-due-label">Tasks</p>
                   </Link>
                   <Link
                     to={`/care/equipment?patient=${patient.id}`}
-                    className="admin-v2-due-item equip"
+                    className={`admin-v2-due-item equip${(patient.due_counts?.equipment || 0) > 0 ? ' has-due' : ''}`}
                   >
                     <p className="admin-v2-due-count">{patient.due_counts?.equipment || 0}</p>
                     <p className="admin-v2-due-label">Equip</p>

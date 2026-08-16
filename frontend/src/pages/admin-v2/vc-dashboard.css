@@ -1,0 +1,234 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Bedside-monitor ("vc") skin for the /care dashboard. DARK THEME ONLY —
+ * scoped :root:not(.light), same convention as vc-shell.css. Tokens from
+ * src/styles/vc-tokens.css; no raw hex.
+ *
+ * Semantic change vs the legacy look: due counters color by SCHEDULE STATE
+ * (idle / has-due / overdue -> --vc-state-due), not by category, and red is
+ * reserved for clinical concern per the vc token roles. */
+@import '../../styles/vc-tokens.css';
+
+/* ---------- Summary stat cards ---------- */
+:root:not(.light) .admin-v2-stat-card {
+  background: var(--vc-bg-surface);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 10px;
+  box-shadow: none;
+}
+:root:not(.light) .admin-v2-stat-icon,
+:root:not(.light) .admin-v2-stat-icon.medications,
+:root:not(.light) .admin-v2-stat-icon.nutrition,
+:root:not(.light) .admin-v2-stat-icon.tasks,
+:root:not(.light) .admin-v2-stat-icon.equipment {
+  background: var(--vc-bg-raised);
+  color: var(--vc-text-secondary);
+}
+:root:not(.light) .admin-v2-stat-info h4 {
+  font-family: var(--vc-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 26px;
+  font-weight: 400;
+  color: var(--vc-text-primary);
+}
+:root:not(.light) .admin-v2-stat-info p {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+
+/* ---------- Section header ---------- */
+:root:not(.light) .admin-v2-section-title {
+  font-family: var(--vc-font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+
+/* ---------- Patient cards ---------- */
+:root:not(.light) .admin-v2-patient-card {
+  background: var(--vc-bg-surface);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 12px;
+  box-shadow: none;
+}
+:root:not(.light) .admin-v2-patient-avatar {
+  background: var(--vc-bg-raised);
+  color: var(--vc-data-live);
+  font-family: var(--vc-font-mono);
+}
+:root:not(.light) .admin-v2-patient-name {
+  font-family: var(--vc-font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+:root:not(.light) .admin-v2-patient-meta {
+  font-size: 12px;
+  color: var(--vc-text-secondary);
+}
+
+/* Status badge: outline + dot (shape carries the state, not just color) */
+:root:not(.light) .admin-v2-patient-status {
+  background: transparent;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 999px;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+:root:not(.light) .admin-v2-patient-status::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+:root:not(.light) .admin-v2-patient-status.active {
+  color: var(--vc-state-complete);
+  border-color: color-mix(in srgb, var(--vc-state-complete) 45%, transparent);
+}
+
+/* Live vitals chip */
+:root:not(.light) .admin-v2-vitals {
+  background: var(--vc-bg-raised);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+}
+:root:not(.light) .admin-v2-vital-value {
+  font-family: var(--vc-font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-data-live);
+}
+:root:not(.light) .admin-v2-vital-label,
+:root:not(.light) .admin-v2-vital-unit {
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+:root:not(.light) .admin-v2-vitals-camera {
+  background: transparent;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  color: var(--vc-text-secondary);
+}
+:root:not(.light) .admin-v2-vitals-camera:hover {
+  color: var(--vc-text-primary);
+  border-color: var(--vc-line-strong);
+}
+
+/* ---------- Due counters: state, not category ---------- */
+:root:not(.light) .admin-v2-due-item,
+:root:not(.light) .admin-v2-due-item.meds,
+:root:not(.light) .admin-v2-due-item.nutrition,
+:root:not(.light) .admin-v2-due-item.tasks,
+:root:not(.light) .admin-v2-due-item.equip {
+  background: transparent;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+}
+:root:not(.light) .admin-v2-due-count {
+  font-family: var(--vc-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 22px;
+  font-weight: 400;
+  color: var(--vc-text-tertiary);
+}
+:root:not(.light) .admin-v2-due-label {
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+:root:not(.light) .admin-v2-due-item.has-due {
+  border-color: color-mix(in srgb, var(--vc-state-due) 45%, transparent);
+}
+:root:not(.light) .admin-v2-due-item.has-due .admin-v2-due-count {
+  color: var(--vc-state-due);
+}
+:root:not(.light) .admin-v2-due-item.overdue {
+  background: color-mix(in srgb, var(--vc-state-due) 12%, transparent);
+  border-color: color-mix(in srgb, var(--vc-state-due) 70%, transparent);
+}
+:root:not(.light) .admin-v2-due-item.overdue .admin-v2-due-count {
+  color: var(--vc-state-due);
+}
+:root:not(.light) .admin-v2-due-item:hover {
+  border-color: var(--vc-line-strong);
+}
+:root:not(.light) .admin-v2-due-item.has-due:hover,
+:root:not(.light) .admin-v2-due-item.overdue:hover {
+  border-color: var(--vc-state-due);
+}
+
+/* ---------- Card actions ---------- */
+/* The two links are shadcn Buttons (asChild) inside a .tw island; until the
+ * island tokens are remapped to vc (epic #100), restyle them here. Green
+ * belongs to the "complete" role — the primary action is live-cyan. */
+:root:not(.light) .admin-v2-patient-actions a {
+  font-family: var(--vc-font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-decoration: none;
+  border-radius: 8px;
+}
+:root:not(.light) .admin-v2-patient-actions a:first-child {
+  background: transparent;
+  border: 1px solid var(--vc-line-strong);
+  color: var(--vc-text-primary);
+}
+:root:not(.light) .admin-v2-patient-actions a:first-child:hover {
+  background: var(--vc-bg-raised);
+}
+:root:not(.light) .admin-v2-patient-actions a:last-child {
+  background: var(--vc-data-live);
+  border: 1px solid transparent;
+  color: var(--vc-bg-base);
+}
+:root:not(.light) .admin-v2-patient-actions a:last-child:hover {
+  background: color-mix(in srgb, var(--vc-data-live) 85%, var(--vc-text-primary));
+}
+:root:not(.light) .admin-v2-patient-actions a svg {
+  color: currentColor;
+}
+
+/* ---------- Loading / empty states ---------- */
+:root:not(.light) .admin-v2-dashboard .admin-v2-loading,
+:root:not(.light) .admin-v2-dashboard .admin-v2-empty-state {
+  color: var(--vc-text-secondary);
+}
