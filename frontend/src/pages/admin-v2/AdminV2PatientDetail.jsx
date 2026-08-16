@@ -20,6 +20,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import config from '../../config';
 import AdminV2Layout from './AdminV2Layout';
 import PatientFormFields from '../../components/PatientFormFields';
+import VitalRangesCard from '../../components/vitals/VitalRangesCard';
 import { MQTT_SECTIONS, permOptionsForSection, permSelectClass } from './mqttConstants';
 import { ChevronLeftIcon } from '../../components/Icons';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
@@ -380,6 +381,8 @@ export default function AdminV2PatientDetail() {
               </div>
             </CardContent>
           </Card>
+
+          <VitalRangesCard patientId={patientId} />
         </div>
       </div>
     </AdminV2Layout>

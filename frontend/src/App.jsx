@@ -52,6 +52,7 @@ import AdminV2Businesses from './pages/admin-v2/AdminV2Businesses';
 import AdminV2Schedule from './pages/admin-v2/AdminV2Schedule';
 import AdminV2ScheduleUndoLog from './pages/admin-v2/AdminV2ScheduleUndoLog';
 import AdminV2Vitals from './pages/admin-v2/AdminV2Vitals';
+import VitalsCapturePage from './pages/capture/VitalsCapturePage';
 import AdminV2Symptoms from './pages/admin-v2/AdminV2Symptoms';
 import AdminV2Diagnoses from './pages/admin-v2/AdminV2Diagnoses';
 import AdminV2Implants from './pages/admin-v2/AdminV2Implants';
@@ -153,6 +154,7 @@ function AppContent() {
           <Route path="/care/schedule/undo-log" element={<ProtectedRoute><Layout><AdminV2ScheduleUndoLog /></Layout></ProtectedRoute>} />
             
           {/* Care Vitals Routes */}
+          <Route path="/capture" element={<ProtectedRoute><Layout><VitalsCapturePage /></Layout></ProtectedRoute>} />
           <Route path="/care/vitals" element={<ProtectedRoute><Layout><AdminV2Vitals /></Layout></ProtectedRoute>} />
           <Route path="/care/vitals/history" element={<ProtectedRoute><Layout><AdminV2Vitals /></Layout></ProtectedRoute>} />
             
