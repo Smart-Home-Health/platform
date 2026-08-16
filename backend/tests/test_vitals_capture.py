@@ -168,6 +168,65 @@ def test_capture_idempotent_replay(admin_client, patient, db_session, events):
     assert len(events) == 1  # no event for the skipped replay
 
 
+def test_capture_rejects_duplicate_vitals_in_batch(admin_client, patient):
+    resp = _capture(admin_client, patient.id, [
+        {"vital_key": "heart_rate", "value": 72},
+        {"vital_key": "heart_rate", "value": 75},
+    ])
+    assert resp.status_code == 422  # one reading per vital per encounter
+
+
+def test_capture_idempotency_scoped_to_patient(admin_client, patient, db_session,
+                                               account, events):
+    from crud.patients import create_patient
+    other = create_patient(db_session, {"first_name": "Other", "last_name": "One",
+                                        "account_id": account.id, "is_active": True})
+    db_session.commit()
+    euid = str(uuid.uuid4())
+    first = _capture(admin_client, patient.id,
+                     [{"vital_key": "heart_rate", "value": 72}], encounter_uid=euid)
+    assert first.status_code == 200
+    # Same encounter_uid but a different patient must still save
+    second = _capture(admin_client, other.id,
+                      [{"vital_key": "heart_rate", "value": 80}], encounter_uid=euid)
+    assert second.status_code == 200
+    assert second.json()["skipped_duplicates"] == 0
+    assert len(_rows(db_session, other.id)) == 1
+
+
+def test_ranges_bp_required_flag_inherited(admin_client, patient):
+    put = admin_client.put("/api/vitals/ranges", json={
+        "patient_id": patient.id,
+        "ranges": [{"vital_key": "blood_pressure", "field_key": "", "required": True}],
+    })
+    assert put.status_code == 200, put.text
+    ranges = {(r["vital_key"], r["field_key"]): r for r in put.json()["ranges"]}
+    assert ranges[("blood_pressure", "")]["required"] is True  # vital-level row exists
+    assert ranges[("blood_pressure", "systolic")]["required"] is True   # inherited
+    assert ranges[("blood_pressure", "diastolic")]["required"] is True
+
+
+def test_custom_definitions_scoped_to_account(admin_client, db_session, patient):
+    from datetime import datetime, timezone as tz
+    from models.users import Account
+    from schemas.patient import Patient as PatientModel
+    other_account = Account(name="Other Family", slug="other-family",
+                            password_hash="x", timezone="America/New_York")
+    db_session.add(other_account)
+    db_session.commit()
+    foreign = PatientModel(first_name="Foreign", last_name="Patient",
+                           account_id=other_account.id, is_active=True,
+                           created_at=datetime.now(tz.utc),
+                           updated_at=datetime.now(tz.utc))
+    db_session.add(foreign)
+    db_session.commit()
+    resp = admin_client.get(f"/api/vitals/custom-definitions?patient_id={foreign.id}")
+    assert resp.status_code == 404
+    resp = admin_client.post("/api/vitals/custom-definitions", json={
+        "patient_id": foreign.id, "name": "sneaky", "unit": ""})
+    assert resp.status_code == 404
+
+
 def test_capture_unknown_vital_rejected(admin_client, patient):
     resp = _capture(admin_client, patient.id, [{"vital_key": "mood", "value": 5}])
     assert resp.status_code == 422
