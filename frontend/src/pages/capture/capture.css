@@ -53,6 +53,38 @@
   color: var(--vc-text-primary);
 }
 
+/* This surface renders outside the .tw preflight scope. Strip only what the
+ * components don't set themselves: UA appearance (iOS Safari fills unstyled
+ * buttons with a dark rounded rect). Every other box property is declared
+ * per component, which out-specifies index.css's element-level button rule —
+ * except its :hover border recolor (purple), re-asserted below. */
+.vitals-capture button,
+.vc-sheet button,
+.vc-toast button,
+.vc-more-menu button {
+  appearance: none;
+  -webkit-appearance: none;
+}
+/* Pin borders across hover so index.css's global button:hover (#646cff)
+ * never shows through. */
+.vc-btn.secondary,
+.vc-btn.secondary:hover { border-color: var(--vc-line-strong); }
+.vc-btn.primary:hover,
+.vc-btn.confirm-warn:hover { border-color: transparent; }
+.vc-save.neutral,
+.vc-save.neutral:hover { border-color: var(--vc-line-strong); }
+.vc-save.primary:hover { border-color: transparent; }
+.vc-save.disabled,
+.vc-save.disabled:hover { border-color: var(--vc-line-hairline); }
+.vc-btn:disabled,
+.vc-btn:disabled:hover { border-color: var(--vc-line-hairline); }
+.vc-tile:hover { border-color: var(--vc-line-strong); }
+.vc-key:hover { border-color: transparent; }
+.vc-tab:hover, .vc-more-item:hover, .vc-linklike:hover,
+.vc-hero-field:hover { border-color: transparent; }
+.vc-hero-field.active,
+.vc-hero-field.active:hover { border-bottom: 2px solid var(--vc-data-live); }
+
 /* ---------- Page shell ---------- */
 .vitals-capture {
   min-height: 100dvh;
@@ -456,17 +488,22 @@
   font-weight: 300;
 }
 .vc-hero-field {
-  font-size: 64px;
-  line-height: 1;
-  background: none;
+  /* The capture surface lives outside the .tw preflight scope, so UA button
+   * chrome (iOS Safari's rounded dark fill) must be stripped explicitly. */
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
   border: none;
+  border-radius: 0;
   color: var(--vc-text-primary);
   font: inherit;
-  font-size: 64px;
+  font-size: 54px;
+  line-height: 1;
+  white-space: nowrap;
   padding: 0 0.05em;
   cursor: pointer;
 }
-.vc-hero-field.placeholder { color: var(--vc-text-tertiary); letter-spacing: 0.1em; }
+.vc-hero-field.vc-placeholder { color: var(--vc-text-tertiary); letter-spacing: 0.1em; }
 .vc-hero-field.active {
   border-bottom: 2px solid var(--vc-data-live);
 }
@@ -477,9 +514,10 @@
   margin-left: 0.2rem;
   display: inline-flex;
 }
-.vc-hero-sep { font-size: 48px; color: var(--vc-text-tertiary); }
+.vc-hero-sep { font-size: 34px; color: var(--vc-text-tertiary); }
 .vc-hero .vc-unit { font-size: 13px; color: var(--vc-text-secondary); }
-.vc-hero.bp .vc-hero-field { font-size: 44px; }
+.vc-hero.bp .vc-hero-field { font-size: 32px; }
+.vc-hero.bp .vc-hero-field.vc-placeholder { letter-spacing: 0.04em; }
 
 /* Caret */
 .vc-caret {
@@ -537,6 +575,7 @@
 .vc-key {
   background: var(--vc-bg-sheet);
   border: none;
+  padding: 0;
   color: var(--vc-text-primary);
   font-family: var(--vc-font-mono);
   font-size: 22px;

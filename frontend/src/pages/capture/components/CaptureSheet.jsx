@@ -154,7 +154,7 @@ export default function CaptureSheet({ config, ranges, patientFirstName,
             {i > 0 && <span className="vc-hero-sep" aria-hidden="true">/</span>}
             <button
               type="button"
-              className={`vc-hero-field ${i === activeIdx ? 'active' : ''} ${values[i] === '' ? 'placeholder' : ''}`}
+              className={`vc-hero-field ${i === activeIdx ? 'active' : ''} ${values[i] === '' ? 'vc-placeholder' : ''}`}
               aria-label={`${f.label}: ${values[i] || 'not entered'}`}
               onClick={() => setActiveIdx(i)}
             >
