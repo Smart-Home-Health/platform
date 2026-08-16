@@ -154,6 +154,15 @@ describe('blood pressure two-step', () => {
     expect(screen.getByRole('button', { name: 'Confirm 210/130' })).toBeInTheDocument();
   });
 
+  it('cannot commit with only diastolic filled (tapped out of order)', () => {
+    const { onCommit } = renderSheet('blood_pressure');
+    // Jump straight to the diastolic field without entering systolic
+    fireEvent.click(screen.getByRole('button', { name: /Diastolic: not entered/i }));
+    type(['7', '6']);
+    expect(screen.getByRole('button', { name: /Add reading/i })).toBeDisabled();
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
   it('lets you jump back to systolic by tapping the field', () => {
     renderSheet('blood_pressure');
     type(['1', '1', '8']);

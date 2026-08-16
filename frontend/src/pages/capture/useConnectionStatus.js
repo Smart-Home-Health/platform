@@ -36,6 +36,9 @@ export default function useConnectionStatus() {
         setOnline(true);
         return true;
       }
+      // Non-2xx from the liveness probe is a hub problem, not connectivity —
+      // but saving would fail either way, so report offline honestly.
+      setOnline(false);
       return false;
     } catch {
       setOnline(false);

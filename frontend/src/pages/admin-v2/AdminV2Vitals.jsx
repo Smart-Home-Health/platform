@@ -86,15 +86,8 @@ const AdminV2Vitals = () => {
     if (selectedPatient) {
       loadVitalsHistory();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on patient change only
-  }, [selectedPatient]);
-
-  useEffect(() => {
-    if (selectedPatient) {
-      loadVitalsHistory();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect re-runs on filter change only, patient changes are handled by the effect above
-  }, [filterType, filterDateFrom, filterDateTo, searchTerm]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on patient/filter changes only
+  }, [selectedPatient, filterType, filterDateFrom, filterDateTo, searchTerm]);
 
   const loadCustomDefinitions = async () => {
     if (!selectedPatient) return;

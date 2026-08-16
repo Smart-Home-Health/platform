@@ -42,7 +42,10 @@ export function loadDraft(patientId) {
     if (!raw) return null;
     const draft = JSON.parse(raw);
     if (!draft?.encounterUid || !draft.readings) return null;
-    if (Date.now() - new Date(draft.updatedAt).getTime() > DRAFT_MAX_AGE_MS) {
+    const updatedAt = new Date(draft.updatedAt).getTime();
+    // Missing/invalid updatedAt would make the age NaN (never expires) —
+    // treat it as stale.
+    if (!Number.isFinite(updatedAt) || Date.now() - updatedAt > DRAFT_MAX_AGE_MS) {
       localStorage.removeItem(draftKey(patientId));
       return null;
     }

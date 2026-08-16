@@ -162,7 +162,12 @@ export default function VitalRangesCard({ patientId }) {
               </tr>
             </thead>
             <tbody>
-              {orderedRows.map((r) => (
+              {orderedRows.map((r) => {
+                // BP's vital-level row only carries the required flag; its
+                // bounds live on the component sub-rows.
+                const boundsLess = !r.field_key &&
+                  componentRows.some((c) => c.vital_key === r.vital_key);
+                return (
                 <tr key={keyOf(r)} className="border-t border-border">
                   <td className={`py-1.5 pr-2 whitespace-nowrap ${r.field_key ? 'pl-4 text-muted-foreground' : 'text-foreground'}`}>
                     {labelFor(r)}
@@ -170,32 +175,39 @@ export default function VitalRangesCard({ patientId }) {
                       <Badge variant="muted" className="ml-2">default</Badge>
                     )}
                   </td>
-                  <td className="py-1.5 pr-2">
-                    <Input inputMode="decimal" className="h-8 w-20"
-                           aria-label={`${labelFor(r)} expected minimum`}
-                           value={valueOf(r, 'expected_min')}
-                           onChange={(e) => setEdit(r, 'expected_min', e.target.value)} />
-                  </td>
-                  <td className="py-1.5 pr-2">
-                    <Input inputMode="decimal" className="h-8 w-20"
-                           aria-label={`${labelFor(r)} expected maximum`}
-                           value={valueOf(r, 'expected_max')}
-                           onChange={(e) => setEdit(r, 'expected_max', e.target.value)} />
-                  </td>
-                  {showAdvanced && (
+                  {boundsLess ? (
+                    <td className="py-1.5 pr-2 text-muted-foreground"
+                        colSpan={showAdvanced ? 4 : 2}>—</td>
+                  ) : (
                     <>
                       <td className="py-1.5 pr-2">
                         <Input inputMode="decimal" className="h-8 w-20"
-                               aria-label={`${labelFor(r)} implausible minimum`}
-                               value={valueOf(r, 'implausible_min')}
-                               onChange={(e) => setEdit(r, 'implausible_min', e.target.value)} />
+                               aria-label={`${labelFor(r)} expected minimum`}
+                               value={valueOf(r, 'expected_min')}
+                               onChange={(e) => setEdit(r, 'expected_min', e.target.value)} />
                       </td>
                       <td className="py-1.5 pr-2">
                         <Input inputMode="decimal" className="h-8 w-20"
-                               aria-label={`${labelFor(r)} implausible maximum`}
-                               value={valueOf(r, 'implausible_max')}
-                               onChange={(e) => setEdit(r, 'implausible_max', e.target.value)} />
+                               aria-label={`${labelFor(r)} expected maximum`}
+                               value={valueOf(r, 'expected_max')}
+                               onChange={(e) => setEdit(r, 'expected_max', e.target.value)} />
                       </td>
+                      {showAdvanced && (
+                        <>
+                          <td className="py-1.5 pr-2">
+                            <Input inputMode="decimal" className="h-8 w-20"
+                                   aria-label={`${labelFor(r)} implausible minimum`}
+                                   value={valueOf(r, 'implausible_min')}
+                                   onChange={(e) => setEdit(r, 'implausible_min', e.target.value)} />
+                          </td>
+                          <td className="py-1.5 pr-2">
+                            <Input inputMode="decimal" className="h-8 w-20"
+                                   aria-label={`${labelFor(r)} implausible maximum`}
+                                   value={valueOf(r, 'implausible_max')}
+                                   onChange={(e) => setEdit(r, 'implausible_max', e.target.value)} />
+                          </td>
+                        </>
+                      )}
                     </>
                   )}
                   <td className="py-1.5">
@@ -208,7 +220,8 @@ export default function VitalRangesCard({ patientId }) {
                     )}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

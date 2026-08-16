@@ -126,7 +126,11 @@ export default function CaptureSheet({ config, ranges, patientFirstName,
     commit(result, true);
   };
 
-  const primaryDisabled = normalizeValue(activeValue) === null;
+  // BP fields are individually tappable, so someone can land on diastolic
+  // first — committing needs BOTH fields, not just the active one.
+  const primaryDisabled = isBP && activeIdx !== 0
+    ? values.some((v) => normalizeValue(v) === null)
+    : normalizeValue(activeValue) === null;
   const confirmLabel = isBP
     ? `Confirm ${normalizeValue(values[0])}/${normalizeValue(values[1])}`
     : `Confirm ${formatWithUnit(normalizeValue(values[0]), config.unit)}`;

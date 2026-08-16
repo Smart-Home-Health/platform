@@ -164,7 +164,9 @@ export default function CaptureVitalsPanel({ patient, connection, embedded = fal
         }),
       });
       if (resp.ok) {
-        const savedKeys = Object.keys(encounter.readings);
+        // Count/highlight only what was actually sent (unknown/deleted custom
+        // vitals were filtered out of the payload above).
+        const savedKeys = readings.map((r) => r.vital_key);
         clearDraft(patientId);
         markSuccess();
         setEncounter(newEncounter());

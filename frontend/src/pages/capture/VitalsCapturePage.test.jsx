@@ -145,6 +145,17 @@ describe('VitalsCapturePage', () => {
     expect(screen.getByText(/1 of 6 recorded/i)).toBeInTheDocument();
   });
 
+  it('treats a draft without a valid updatedAt as stale', async () => {
+    localStorage.setItem(draftKey(5), JSON.stringify({
+      encounterUid: 'draft-uid-1234', startedAt: new Date().toISOString(),
+      readings: { heart_rate: { vitalKey: 'heart_rate', value: 70, unit: 'bpm',
+                                measuredAt: new Date().toISOString() } },
+    }));
+    await renderPage();
+    expect(screen.queryByText(/Unsaved readings from/i)).not.toBeInTheDocument();
+    expect(localStorage.getItem(draftKey(5))).toBeNull();
+  });
+
   it('discarding a draft removes it from storage', async () => {
     localStorage.setItem(draftKey(5), JSON.stringify({
       encounterUid: 'draft-uid-1234', startedAt: new Date().toISOString(),
