@@ -136,6 +136,82 @@ def save_temperature(db: Session, body_temp=None, skin_temp=None, timestamp=None
     return vital_ids
 
 
+def save_capture_reading(db: Session, *, patient_id, vital_type, value, timestamp,
+                         vital_group=None, unit=None, code=None, ucum_unit=None,
+                         account_id=None, recorded_by=None, encounter_uid=None,
+                         external_id=None, confirmed_against_warning=None,
+                         reference_low=None, reference_high=None, notes=None):
+    """Build one fully-stamped Vital row for the capture flow (no commit).
+
+    Unlike save_vital, callers batch several rows into one transaction and
+    commit once. Naive timestamps are interpreted in the patient's account
+    timezone, matching save_vital.
+    """
+    now = datetime.now(timezone.utc)
+    ts = timestamp or now
+    if isinstance(ts, str):
+        try:
+            ts = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+        except ValueError:
+            ts = now
+    if ts.tzinfo is None:
+        tz = resolve_tz_for_patient(db, patient_id)
+        ts = ts.replace(tzinfo=tz).astimezone(timezone.utc)
+    vital = Vital(
+        patient_id=patient_id,
+        timestamp=ts,
+        vital_type=vital_type,
+        vital_group=vital_group,
+        value=value,
+        unit=unit,
+        code=code,
+        ucum_unit=ucum_unit,
+        source='manual',
+        account_id=account_id,
+        recorded_by=recorded_by,
+        encounter_uid=encounter_uid,
+        external_id=external_id,
+        confirmed_against_warning=confirmed_against_warning,
+        reference_low=reference_low,
+        reference_high=reference_high,
+        notes=notes,
+        created_at=now,
+    )
+    db.add(vital)
+    return vital
+
+
+def get_patient_vital_ranges(db: Session, patient_id: int):
+    from models.patient_vital_range import PatientVitalRange
+    return db.query(PatientVitalRange).filter(
+        PatientVitalRange.patient_id == patient_id).all()
+
+
+def upsert_patient_vital_ranges(db: Session, patient_id: int, ranges, set_by=None):
+    """Upsert on (patient_id, vital_key, field_key); commits once at the end."""
+    from models.patient_vital_range import PatientVitalRange
+    now = datetime.now(timezone.utc)
+    existing = {(r.vital_key, r.field_key or ''): r
+                for r in get_patient_vital_ranges(db, patient_id)}
+    for item in ranges:
+        key = (item['vital_key'], item.get('field_key') or '')
+        row = existing.get(key)
+        if row is None:
+            row = PatientVitalRange(patient_id=patient_id,
+                                    vital_key=key[0], field_key=key[1])
+            db.add(row)
+            existing[key] = row
+        row.expected_min = item.get('expected_min')
+        row.expected_max = item.get('expected_max')
+        row.implausible_min = item.get('implausible_min')
+        row.implausible_max = item.get('implausible_max')
+        row.required = bool(item.get('required', False))
+        row.note = item.get('note')
+        row.set_by = set_by
+        row.set_at = now
+    db.commit()
+
+
 def get_patient_vitals_mqtt_state(db: Session, patient_id: int) -> dict:
     """Latest manually-entered vitals as per-patient MQTT combined-state keys
     (weight, body_temp/skin_temp, systolic_bp/diastolic_bp/map_bp). Used to seed
