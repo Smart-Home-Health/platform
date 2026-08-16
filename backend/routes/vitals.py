@@ -517,10 +517,15 @@ def _ranges_response(db: Session, patient_id: int):
 async def get_vital_ranges(
     patient_id: int = Query(...),
     db: Session = Depends(get_db),
-    _: bool = Depends(require_read_access),
     account_id=Depends(get_current_account_id),
 ):
-    """Resolved expected/implausible bounds + required flags for a patient."""
+    """Resolved expected/implausible bounds + required flags for a patient.
+
+    Deliberately NOT gated on require_read_access: recording vitals is an
+    allowed action in monitoring mode (read-restricted sessions), and these
+    bounds are what make the capture flow's out-of-range warning fire — a
+    safety feature that must work wherever recording works.
+    """
     if not _get_scoped_patient(db, patient_id, account_id):
         raise HTTPException(status_code=404, detail="Patient not found")
     return _ranges_response(db, patient_id)
