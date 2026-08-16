@@ -973,3 +973,16 @@ export const PlusSquareIcon = ({ size = 20 }) => (
     <line x1="8.5" y1="12" x2="15.5" y2="12" />
   </svg>
 );
+export const FilterIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 5h16l-6.5 8v5.5L10.5 20v-7L4 5z" />
+  </svg>
+);
+export const BodyIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="4.5" r="2.2" />
+    <path d="M12 7.5v6.5M12 14l-2.5 6M12 14l2.5 6M6.5 9.5 12 8.2l5.5 1.3" />
+  </svg>
+);

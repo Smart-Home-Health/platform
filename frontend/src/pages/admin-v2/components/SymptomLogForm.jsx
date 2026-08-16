@@ -28,17 +28,7 @@ import {
 import BottomSheet from '../../capture/components/BottomSheet';
 import '../symptom-log.css';
 
-const titleCase = (s) =>
-  (s || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-
-// Severity bands: 0 idle, 1–3 mild (green), 4–7 moderate (amber),
-// 8–10 severe (red — clinical concern, the one place red belongs).
-const bandFor = (sev) => {
-  if (sev === 0) return { key: 'none', label: 'None' };
-  if (sev <= 3) return { key: 'mild', label: 'Mild' };
-  if (sev <= 7) return { key: 'moderate', label: 'Moderate' };
-  return { key: 'severe', label: 'Severe' };
-};
+import { titleCase, bandFor } from './symptomUtils';
 
 const DURATION_OPTIONS = ['Ongoing', '15 minutes', '30 minutes', '1 hour',
                           '2 hours', '4 hours', 'All day'];
@@ -50,22 +40,26 @@ const nowLocalInput = () => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
+// `initial` switches the form into edit mode (PUT to the existing record);
+// mount with a key so a different symptom reseeds the state.
 export default function SymptomLogForm({ patient, symptomTypes = [],
-                                         bodyLocations = [], onLogged }) {
+                                         bodyLocations = [], onLogged,
+                                         initial = null, onCancel }) {
   // Recent entries feed the quick chips; fetched here because the page only
   // loads symptoms for its Active/History views.
   const [recentSymptoms, setRecentSymptoms] = useState([]);
-  const [observedAt, setObservedAt] = useState(nowLocalInput);
-  const [timeEdited, setTimeEdited] = useState(false);
+  const [observedAt, setObservedAt] = useState(() =>
+    initial?.timestamp ? initial.timestamp.slice(0, 16) : nowLocalInput());
+  const [timeEdited, setTimeEdited] = useState(Boolean(initial));
   const [editingTime, setEditingTime] = useState(false);
-  const [symptomType, setSymptomType] = useState('');
-  const [severity, setSeverity] = useState(5);
-  const [location, setLocation] = useState('');
-  const [duration, setDuration] = useState('');
-  const [note, setNote] = useState('');
-  const [careAction, setCareAction] = useState('');
-  const [showCareAction, setShowCareAction] = useState(false);
-  const [stillActive, setStillActive] = useState(true);
+  const [symptomType, setSymptomType] = useState(initial?.symptom_type || '');
+  const [severity, setSeverity] = useState(initial?.severity ?? 5);
+  const [location, setLocation] = useState(initial?.location || '');
+  const [duration, setDuration] = useState(initial?.duration || '');
+  const [note, setNote] = useState(initial?.description || '');
+  const [careAction, setCareAction] = useState(initial?.notes || '');
+  const [showCareAction, setShowCareAction] = useState(Boolean(initial?.notes));
+  const [stillActive, setStillActive] = useState(initial ? !initial.is_resolved : true);
   const [sheet, setSheet] = useState(null); // 'type' | 'location' | 'duration'
   const [typeSearch, setTypeSearch] = useState('');
   const [saving, setSaving] = useState(false);
@@ -133,8 +127,11 @@ export default function SymptomLogForm({ patient, symptomTypes = [],
     if (!symptomType || saving) return;
     setSaving(true);
     try {
-      const resp = await apiFetch(`${config.apiUrl}/api/symptoms`, {
-        method: 'POST',
+      const url = initial
+        ? `${config.apiUrl}/api/symptoms/${initial.id}`
+        : `${config.apiUrl}/api/symptoms`;
+      const resp = await apiFetch(url, {
+        method: initial ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           patient_id: patient.id,
@@ -149,9 +146,14 @@ export default function SymptomLogForm({ patient, symptomTypes = [],
         }),
       });
       if (resp.ok) {
-        showToast(`Symptom logged · ${titleCase(symptomType)}`);
-        reset();
-        onLogged?.();
+        if (initial) {
+          onLogged?.();
+          onCancel?.();
+        } else {
+          showToast(`Symptom logged · ${titleCase(symptomType)}`);
+          reset();
+          onLogged?.();
+        }
       } else {
         const data = await resp.json().catch(() => ({}));
         showToast(typeof data.detail === 'string' ? data.detail : 'Could not log symptom', 'error');
@@ -315,14 +317,18 @@ export default function SymptomLogForm({ patient, symptomTypes = [],
 
       {/* Footer */}
       <div className="sl-footer">
-        <span className={`sl-footer-status ${missingRequired ? 'missing' : 'ready'}`}>
-          {missingRequired
-            ? `${missingRequired} required field${missingRequired === 1 ? '' : 's'}`
-            : 'Ready to log'}
-        </span>
+        {onCancel ? (
+          <button type="button" className="sl-cancel" onClick={onCancel}>Cancel</button>
+        ) : (
+          <span className={`sl-footer-status ${missingRequired ? 'missing' : 'ready'}`}>
+            {missingRequired
+              ? `${missingRequired} required field${missingRequired === 1 ? '' : 's'}`
+              : 'Ready to log'}
+          </span>
+        )}
         <button type="button" className="sl-submit"
                 disabled={missingRequired > 0 || saving} onClick={submit}>
-          {saving ? 'Logging…' : 'Log symptom'}
+          {saving ? 'Saving…' : initial ? 'Update symptom' : 'Log symptom'}
         </button>
       </div>
 
