@@ -145,12 +145,12 @@ const AdminV2MedicationsSchedule = () => {
     const statusMap = {
       'on_time': { label: 'On Time', color: 'var(--sched-completed-border, #238636)', bg: 'var(--sched-completed-chip, rgba(35, 134, 54, 0.15))', border: 'var(--sched-completed-border, #238636)' },
       'completed': { label: 'Completed', color: 'var(--sched-completed-border, #238636)', bg: 'var(--sched-completed-chip, rgba(35, 134, 54, 0.15))', border: 'var(--sched-completed-border, #238636)' },
-      'warning': { label: 'Warning', color: 'var(--sched-warning-border, #9e6a03)', bg: 'rgba(158, 106, 3, 0.15)', border: 'var(--sched-warning-border, #9e6a03)' },
+      'warning': { label: 'Warning', color: 'var(--sched-warning-border, #9e6a03)', bg: 'var(--sched-warning-chip, rgba(158, 106, 3, 0.15))', border: 'var(--sched-warning-border, #9e6a03)' },
       'late_early': { label: 'Late/Early', color: 'var(--sched-late-border, #f85149)', bg: 'var(--sched-late-chip, rgba(248, 81, 73, 0.15))', border: 'var(--sched-late-border, #f85149)' },
       'missed': { label: 'Missed', color: 'var(--sched-late-border, #f85149)', bg: 'var(--sched-late-chip, rgba(248, 81, 73, 0.15))', border: 'var(--sched-late-border, #f85149)' },
       'upcoming': { label: 'Upcoming', color: 'var(--sched-pending-border, #1f6feb)', bg: 'var(--sched-pending-chip, rgba(31, 111, 235, 0.15))', border: 'var(--sched-pending-border, #1f6feb)' },
       'ready': { label: 'Ready', color: 'var(--sched-ontime-border, #58a6ff)', bg: 'var(--sched-ontime-chip, rgba(88, 166, 255, 0.15))', border: 'var(--sched-ontime-border, #58a6ff)' },
-      'skipped': { label: 'Skipped', color: 'var(--muted-foreground)', bg: 'rgba(139, 148, 158, 0.15)', border: 'var(--muted-foreground)' }
+      'skipped': { label: 'Skipped', color: 'var(--muted-foreground)', bg: 'var(--sched-skipped-chip, rgba(139, 148, 158, 0.15))', border: 'var(--muted-foreground)' }
     };
     return statusMap[status] || statusMap.upcoming;
   };

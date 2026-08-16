@@ -97,8 +97,10 @@
 :root:not(.light) {
   --sched-ontime-chip: color-mix(in srgb, var(--vc-state-due) 15%, transparent);
   --sched-pending-chip: var(--vc-bg-raised);
+  --sched-warning-chip: color-mix(in srgb, var(--vc-state-due) 20%, transparent);
   --sched-late-chip: color-mix(in srgb, var(--vc-state-due) 25%, transparent);
   --sched-completed-chip: color-mix(in srgb, var(--vc-state-complete) 15%, transparent);
+  --sched-skipped-chip: var(--vc-bg-surface);
 }
 
 /* ---------- Page headers / sections ---------- */

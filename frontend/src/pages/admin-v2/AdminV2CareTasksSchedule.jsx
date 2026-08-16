@@ -143,13 +143,13 @@ const AdminV2CareTasksSchedule = () => {
   const getStatusInfo = (status) => {
     const statusMap = {
       'pending': { label: 'Pending', color: 'var(--sched-pending-border, #1f6feb)', bg: 'var(--sched-pending-chip, rgba(31, 111, 235, 0.15))', border: 'var(--sched-pending-border, #1f6feb)' },
-      'due_warning': { label: 'Due Warning', color: 'var(--sched-warning-border, #9e6a03)', bg: 'rgba(158, 106, 3, 0.15)', border: 'var(--sched-warning-border, #9e6a03)' },
-      'due_on_time': { label: 'Due On Time', color: 'var(--sched-completed-border, #238636)', bg: 'var(--sched-completed-chip, rgba(35, 134, 54, 0.15))', border: 'var(--sched-completed-border, #238636)' },
+      'due_warning': { label: 'Due Warning', color: 'var(--sched-warning-border, #9e6a03)', bg: 'var(--sched-warning-chip, rgba(158, 106, 3, 0.15))', border: 'var(--sched-warning-border, #9e6a03)' },
+      'due_on_time': { label: 'Due On Time', color: 'var(--sched-ontime-border, #238636)', bg: 'var(--sched-ontime-chip, rgba(35, 134, 54, 0.15))', border: 'var(--sched-ontime-border, #238636)' },
       'due_late': { label: 'Due Late', color: 'var(--sched-late-border, #f85149)', bg: 'var(--sched-late-chip, rgba(248, 81, 73, 0.15))', border: 'var(--sched-late-border, #f85149)' },
-      'upcoming': { label: 'Upcoming', color: 'var(--sched-ontime-border, #58a6ff)', bg: 'var(--sched-ontime-chip, rgba(88, 166, 255, 0.15))', border: 'var(--sched-ontime-border, #58a6ff)' },
+      'upcoming': { label: 'Upcoming', color: 'var(--sched-pending-border, #58a6ff)', bg: 'var(--sched-pending-chip, rgba(88, 166, 255, 0.15))', border: 'var(--sched-pending-border, #58a6ff)' },
       'missed': { label: 'Missed', color: 'var(--sched-late-border, #f85149)', bg: 'var(--sched-late-chip, rgba(248, 81, 73, 0.15))', border: 'var(--sched-late-border, #f85149)' },
       'completed': { label: 'Completed', color: 'var(--sched-completed-border, #238636)', bg: 'var(--sched-completed-chip, rgba(35, 134, 54, 0.15))', border: 'var(--sched-completed-border, #238636)' },
-      'skipped': { label: 'Skipped', color: 'var(--muted-foreground)', bg: 'rgba(139, 148, 158, 0.15)', border: 'var(--muted-foreground)' }
+      'skipped': { label: 'Skipped', color: 'var(--muted-foreground)', bg: 'var(--sched-skipped-chip, rgba(139, 148, 158, 0.15))', border: 'var(--muted-foreground)' }
     };
     return statusMap[status] || statusMap.upcoming;
   };
@@ -325,7 +325,7 @@ const AdminV2CareTasksSchedule = () => {
                 }))}
                 style={{ cursor: 'pointer' }}
               >
-                <div className="admin-v2-stat-icon" style={{ background: 'var(--sched-completed-chip, rgba(35, 134, 54, 0.15))' }}>
+                <div className="admin-v2-stat-icon" style={{ background: 'var(--sched-ontime-chip, rgba(35, 134, 54, 0.15))' }}>
                   <ClockIcon size={20} />
                 </div>
                 <div className="admin-v2-stat-info">
@@ -535,7 +535,7 @@ const AdminV2CareTasksSchedule = () => {
               <h4>Status Legend</h4>
               <div className="admin-v2-legend-items">
                 <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: 'var(--sched-completed-border, #238636)' }}></span>
+                  <span className="admin-v2-legend-dot" style={{ backgroundColor: 'var(--sched-ontime-border, #238636)' }}></span>
                   <span>Due On Time</span>
                 </div>
                 <div className="admin-v2-legend-item">
