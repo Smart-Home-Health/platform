@@ -595,7 +595,7 @@ const AdminV2Layout = ({ children }) => {
                   return (
                     <Link
                       key={item.path}
-                      to={item.path}
+                      to={getNavUrl(item.path)}
                       className={`admin-v2-sidebar-link ${isActiveLink(item.path) ? 'active' : ''}`}
                       onClick={closeMobileMenu}
                     >
