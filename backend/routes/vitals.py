@@ -17,13 +17,16 @@
 Vitals and sensor data routes
 """
 import logging
-from fastapi import APIRouter, Depends, Query
+from typing import List, Literal, Optional
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field as PydanticField, model_validator
 from sqlalchemy.orm import Session
 from sqlalchemy import func, cast, Date, text
 from datetime import datetime, timedelta
 from db import get_db
-from dependencies import require_read_access, require_permission
+from dependencies import (require_read_access, require_permission,
+                          get_current_user, get_current_account_id)
 from crud.vitals import (get_vitals_by_type, get_distinct_vital_types, get_vitals_by_type_paginated,
                   save_blood_pressure, save_temperature, save_vital)
 from models.custom_vital_definition import CustomVitalDefinition
@@ -439,6 +442,262 @@ async def add_manual_vitals(vital_data: dict, db: Session = Depends(get_db)):
     except Exception as e:
         print(f"Error saving manual vitals: {str(e)}")
         return {"status": "error", "message": str(e)}
+
+
+# --- Capture flow (mobile vitals capture surface) ---
+
+class CaptureReading(BaseModel):
+    vital_key: str = PydanticField(min_length=1, max_length=50)
+    value: Optional[float] = None
+    systolic: Optional[float] = None
+    diastolic: Optional[float] = None
+    unit: Optional[str] = None
+    measured_at: Optional[datetime] = None
+    source: Literal['manual'] = 'manual'
+    confirmed_against_warning: bool = False
+    note: Optional[str] = None
+
+    @model_validator(mode='after')
+    def _one_shape(self):
+        if self.vital_key == 'blood_pressure':
+            if self.systolic is None or self.diastolic is None:
+                raise ValueError('blood_pressure readings need systolic and diastolic')
+        elif self.value is None:
+            raise ValueError('value is required')
+        return self
+
+
+class CaptureRequest(BaseModel):
+    patient_id: int
+    encounter_uid: str = PydanticField(min_length=8, max_length=36)
+    readings: List[CaptureReading] = PydanticField(min_length=1)
+
+
+class VitalRangeItem(BaseModel):
+    vital_key: str = PydanticField(min_length=1, max_length=50)
+    field_key: str = PydanticField(default='', max_length=20)
+    expected_min: Optional[float] = None
+    expected_max: Optional[float] = None
+    implausible_min: Optional[float] = None
+    implausible_max: Optional[float] = None
+    required: bool = False
+    note: Optional[str] = None
+
+    @model_validator(mode='after')
+    def _sane_bounds(self):
+        for lo, hi, label in ((self.expected_min, self.expected_max, 'expected'),
+                              (self.implausible_min, self.implausible_max, 'implausible')):
+            if lo is not None and hi is not None and lo >= hi:
+                raise ValueError(f'{label}_min must be below {label}_max')
+        return self
+
+
+class VitalRangesUpdate(BaseModel):
+    patient_id: int
+    ranges: List[VitalRangeItem]
+
+
+def _get_scoped_patient(db: Session, patient_id: int, account_id):
+    from schemas.patient import Patient
+    q = db.query(Patient).filter(Patient.id == patient_id)
+    if account_id is not None:
+        q = q.filter((Patient.account_id == account_id) | (Patient.account_id.is_(None)))
+    return q.first()
+
+
+def _ranges_response(db: Session, patient_id: int):
+    from vital_validation import resolve_ranges
+    resolved = resolve_ranges(db, patient_id)
+    return {"patient_id": patient_id,
+            "ranges": sorted(resolved.values(),
+                             key=lambda r: (r['vital_key'], r['field_key']))}
+
+
+@router.get("/ranges")
+async def get_vital_ranges(
+    patient_id: int = Query(...),
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access),
+    account_id=Depends(get_current_account_id),
+):
+    """Resolved expected/implausible bounds + required flags for a patient."""
+    if not _get_scoped_patient(db, patient_id, account_id):
+        raise HTTPException(status_code=404, detail="Patient not found")
+    return _ranges_response(db, patient_id)
+
+
+@router.put("/ranges", dependencies=[Depends(require_permission("patients.update"))])
+async def put_vital_ranges(
+    body: VitalRangesUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+    account_id=Depends(get_current_account_id),
+):
+    from crud.vitals import upsert_patient_vital_ranges
+    if not _get_scoped_patient(db, body.patient_id, account_id):
+        raise HTTPException(status_code=404, detail="Patient not found")
+    upsert_patient_vital_ranges(db, body.patient_id,
+                                [r.model_dump() for r in body.ranges],
+                                set_by=getattr(current_user, 'id', None))
+    return _ranges_response(db, body.patient_id)
+
+
+@router.post("/capture", dependencies=[Depends(require_permission("vitals.record"))])
+async def capture_vitals(
+    body: CaptureRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+    account_id=Depends(get_current_account_id),
+):
+    """Save one capture encounter (a batch of readings entered together).
+
+    Server-side re-validation of both bands — the client pre-confirms
+    concerning values, but stale client ranges must not slip through:
+    - any implausible value (incl. diastolic >= systolic) -> 422, nothing saved
+    - any concerning value without confirmed_against_warning -> 409, nothing saved
+    Rows are stamped with unit/LOINC/UCUM, account, recorded_by, encounter_uid
+    and the expected range in effect. external_id = encounter:vital:field makes
+    client retries idempotent.
+    """
+    from vital_validation import BUILTIN_VITALS, classify, resolve_ranges
+    from terminology import loinc_for
+    from crud.vitals import save_capture_reading
+    from schemas.vital import Vital
+
+    patient = _get_scoped_patient(db, body.patient_id, account_id)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    custom_defs = {cd.name: cd for cd in db.query(CustomVitalDefinition).filter(
+        CustomVitalDefinition.patient_id == body.patient_id).all()}
+    for r in body.readings:
+        if r.vital_key not in BUILTIN_VITALS and r.vital_key not in custom_defs:
+            raise HTTPException(status_code=422, detail={
+                "code": "unknown_vital",
+                "errors": [{"vital_key": r.vital_key,
+                            "message": f"Unknown vital '{r.vital_key}' for this patient."}]})
+
+    resolved = resolve_ranges(db, body.patient_id)
+
+    def _fields_for(reading):
+        if reading.vital_key == 'blood_pressure':
+            return [('systolic', reading.systolic), ('diastolic', reading.diastolic)]
+        return [('', reading.value)]
+
+    errors, warnings = [], []
+    for r in body.readings:
+        if r.vital_key == 'blood_pressure' and r.diastolic >= r.systolic:
+            errors.append({"vital_key": r.vital_key, "field_key": "",
+                           "value": r.diastolic,
+                           "message": "Diastolic must be lower than systolic. "
+                                      "Check which number is which."})
+            continue
+        for field_key, value in _fields_for(r):
+            entry = resolved.get((r.vital_key, field_key))
+            band = classify(value, entry)
+            if band == 'implausible':
+                errors.append({"vital_key": r.vital_key, "field_key": field_key,
+                               "value": value,
+                               "implausible_min": entry.get('implausible_min'),
+                               "implausible_max": entry.get('implausible_max'),
+                               "message": f"{value} is outside the plausible range for "
+                                          f"{r.vital_key.replace('_', ' ')}."})
+            elif band == 'concerning' and not r.confirmed_against_warning:
+                warnings.append({"vital_key": r.vital_key, "field_key": field_key,
+                                 "value": value,
+                                 "expected_min": entry.get('expected_min'),
+                                 "expected_max": entry.get('expected_max'),
+                                 "message": f"{value} is outside the expected range "
+                                            f"({entry.get('expected_min')}–{entry.get('expected_max')})."})
+    if errors:
+        raise HTTPException(status_code=422, detail={"code": "implausible", "errors": errors})
+    if warnings:
+        raise HTTPException(status_code=409,
+                            detail={"code": "confirmation_required", "warnings": warnings})
+
+    existing_ids = {eid for (eid,) in db.query(Vital.external_id).filter(
+        Vital.encounter_uid == body.encounter_uid,
+        Vital.external_id.isnot(None)).all()}
+
+    from datetime import timezone as _tz
+    saved_rows, events, skipped = [], [], 0
+    for r in body.readings:
+        # One timestamp per reading: BP components (and grouped views elsewhere
+        # in the codebase) rely on a shared timestamp as the grouping key.
+        measured = r.measured_at or datetime.now(_tz.utc)
+        meta = BUILTIN_VITALS.get(r.vital_key)
+        if meta:
+            unit, ucum = meta['unit'], meta['ucum']
+        else:
+            unit, ucum = custom_defs[r.vital_key].unit, None
+        # was_concerning: a confirmed flag is only persisted for values that
+        # actually tripped the expected band
+        def _stamp(field_key, value, vital_group):
+            ext_id = f"{body.encounter_uid}:{r.vital_key}:{field_key}"
+            if ext_id in existing_ids:
+                return None
+            entry = resolved.get((r.vital_key, field_key)) or {}
+            band = classify(value, entry)
+            if meta:
+                lk = meta['loinc_key']
+                loinc = loinc_for(lk.get(vital_group or field_key) if isinstance(lk, dict) else lk,
+                                  'manual')
+            else:
+                loinc = None
+            return save_capture_reading(
+                db, patient_id=body.patient_id, vital_type=r.vital_key, value=value,
+                timestamp=measured, vital_group=vital_group, unit=unit,
+                code=loinc, ucum_unit=ucum, account_id=account_id,
+                recorded_by=getattr(current_user, 'id', None),
+                encounter_uid=body.encounter_uid, external_id=ext_id,
+                confirmed_against_warning=True if band == 'concerning' else None,
+                reference_low=entry.get('expected_min'),
+                reference_high=entry.get('expected_max'),
+                notes=r.note)
+
+        if r.vital_key == 'blood_pressure':
+            map_value = round(r.diastolic + (r.systolic - r.diastolic) / 3)
+            rows = [_stamp('systolic', r.systolic, 'systolic'),
+                    _stamp('diastolic', r.diastolic, 'diastolic'),
+                    _stamp('map', map_value, 'map')]
+            rows = [row for row in rows if row is not None]
+            if rows:
+                events.append(('blood_pressure',
+                               {'systolic': r.systolic, 'diastolic': r.diastolic,
+                                'map': map_value}))
+            else:
+                skipped += 1
+            saved_rows.extend(rows)
+        elif r.vital_key == 'temperature':
+            row = _stamp('', r.value, 'body')
+            if row is not None:
+                saved_rows.append(row)
+                events.append(('temperature', {'temperature': r.value}))
+            else:
+                skipped += 1
+        else:
+            row = _stamp('', r.value, None)
+            if row is not None:
+                saved_rows.append(row)
+                events.append((r.vital_key, {r.vital_key: r.value}))
+            else:
+                skipped += 1
+
+    db.commit()
+
+    for vital_type, vital_data in events:
+        publish_event("vital_saved", {
+            "vital_type": vital_type,
+            "vital_data": vital_data,
+            "from_manual": True,
+            "patient_id": body.patient_id,
+        })
+
+    return {"status": "success", "encounter_uid": body.encounter_uid,
+            "saved": [{"vital_type": v.vital_type, "vital_group": v.vital_group,
+                       "id": v.id, "timestamp": v.timestamp.isoformat()}
+                      for v in saved_rows],
+            "skipped_duplicates": skipped}
 
 
 @router.get("/types")

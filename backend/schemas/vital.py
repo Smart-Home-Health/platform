@@ -13,7 +13,7 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from sqlalchemy import Column, Integer, String, Float, Text, ForeignKey, TIMESTAMP, JSON
+from sqlalchemy import Column, Integer, String, Float, Text, ForeignKey, TIMESTAMP, JSON, Boolean
 from sqlalchemy.orm import relationship
 from schemas import Base
 
@@ -39,6 +39,13 @@ class Vital(Base):
     raw_data = Column(JSON, nullable=True)  # Original payload from integration for debugging
     notes = Column(Text)
     created_at = Column(TIMESTAMP(timezone=True), nullable=False)
+    # Capture provenance (migration 041). All nullable — only the capture flow
+    # sets them; integration/manual-form rows leave them NULL.
+    recorded_by = Column(Integer, ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    encounter_uid = Column(String(36), nullable=True, index=True)  # groups readings captured together
+    confirmed_against_warning = Column(Boolean, nullable=True)  # caregiver confirmed an out-of-expected-range value
+    reference_low = Column(Float, nullable=True)   # expected range in effect at save time
+    reference_high = Column(Float, nullable=True)
     
     # Relationships
     patient = relationship('Patient', back_populates='vitals')
