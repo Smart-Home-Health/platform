@@ -64,38 +64,57 @@ const DEFAULT_FILTERS = {
   skipped: false,
 };
 
+// Status colors are applied as inline styles, so themes can't restyle them
+// with plain CSS overrides. Each value reads a --sched-* custom property with
+// the legacy bootstrap palette as the fallback: the light theme (which never
+// defines the vars) keeps today's look, while the vc dark skin defines them
+// from the shared tokens (see pages/admin-v2/vc-content.css).
+const themed = (group, fallback) => ({
+  bg: `var(--sched-${group}-bg, ${fallback.bg})`,
+  border: `var(--sched-${group}-border, ${fallback.border})`,
+  text: `var(--sched-${group}-text, ${fallback.text})`,
+});
+const STATUS_GROUPS = {
+  ontime: themed('ontime', { bg: '#d4edda', border: '#28a745', text: '#155724' }),
+  pending: themed('pending', { bg: '#d1ecf1', border: '#17a2b8', text: '#0c5460' }),
+  warning: themed('warning', { bg: '#fff3cd', border: '#ffc107', text: '#856404' }),
+  late: themed('late', { bg: '#f8d7da', border: '#dc3545', text: '#721c24' }),
+  completed: themed('completed', { bg: '#e8f5e8', border: '#28a745', text: '#155724' }),
+  skipped: themed('skipped', { bg: '#f8f9fa', border: '#6c757d', text: '#495057' }),
+};
+
 const FILTER_OPTIONS = [
-  { key: 'pending', label: 'Pending', color: '#17a2b8' },
-  { key: 'due_warning', label: 'Due Warning', color: '#ffc107' },
-  { key: 'due_on_time', label: 'Due On Time', color: '#28a745' },
-  { key: 'due_late', label: 'Due Late', color: '#dc3545' },
-  { key: 'upcoming', label: 'Upcoming', color: '#17a2b8' },
-  { key: 'missed', label: 'Missed', color: '#dc3545' },
-  { key: 'completed', label: 'Completed', color: '#28a745' },
-  { key: 'skipped', label: 'Skipped', color: '#6c757d' },
+  { key: 'pending', label: 'Pending', color: STATUS_GROUPS.pending.border },
+  { key: 'due_warning', label: 'Due Warning', color: STATUS_GROUPS.warning.border },
+  { key: 'due_on_time', label: 'Due On Time', color: STATUS_GROUPS.ontime.border },
+  { key: 'due_late', label: 'Due Late', color: STATUS_GROUPS.late.border },
+  { key: 'upcoming', label: 'Upcoming', color: STATUS_GROUPS.pending.border },
+  { key: 'missed', label: 'Missed', color: STATUS_GROUPS.late.border },
+  { key: 'completed', label: 'Completed', color: STATUS_GROUPS.completed.border },
+  { key: 'skipped', label: 'Skipped', color: STATUS_GROUPS.skipped.border },
 ];
 
 function getStatusColors(status) {
   switch (status) {
     case 'ready_to_take':
     case 'due_on_time':
-      return { bg: '#d4edda', border: '#28a745', text: '#155724' };
+      return STATUS_GROUPS.ontime;
     case 'upcoming':
     case 'pending':
-      return { bg: '#d1ecf1', border: '#17a2b8', text: '#0c5460' };
+      return STATUS_GROUPS.pending;
     case 'due_warning':
     case 'warning':
     case 'late_early':
-      return { bg: '#fff3cd', border: '#ffc107', text: '#856404' };
+      return STATUS_GROUPS.warning;
     case 'due_late':
     case 'missed':
-      return { bg: '#f8d7da', border: '#dc3545', text: '#721c24' };
+      return STATUS_GROUPS.late;
     case 'completed':
-      return { bg: '#e8f5e8', border: '#28a745', text: '#155724' };
+      return STATUS_GROUPS.completed;
     case 'skipped':
-      return { bg: '#f8f9fa', border: '#6c757d', text: '#495057' };
+      return STATUS_GROUPS.skipped;
     default:
-      return { bg: '#f8f9fa', border: '#6c757d', text: '#495057' };
+      return STATUS_GROUPS.skipped;
   }
 }
 
@@ -328,7 +347,8 @@ export default function ScheduleList({
                           }
                         }}
                         style={{
-                          background: '#007bff', color: '#fff', border: 'none',
+                          background: 'var(--sched-primary, #007bff)',
+                          color: 'var(--sched-primary-text, #fff)', border: 'none',
                           borderRadius: 12, padding: '8px 18px', fontWeight: 600,
                           fontSize: 14, cursor: 'pointer',
                         }}
