@@ -16,10 +16,26 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import logoImage from '../assets/logo2.png';
-import './LoginPage.css';
+import {
+  LockIcon,
+  UnlockIcon,
+  ChevronRightIcon,
+  BackArrowIcon,
+} from '../components/Icons';
+import AuthShell from './AuthShell';
+import './auth.css';
+
+// Credential chips shown next to clinical roles on the picker cards.
+const ROLE_ABBREVIATIONS = {
+  'registered nurse': 'RN',
+  'licensed practical nurse': 'LPN',
+  'certified nursing assistant': 'CNA',
+};
+
+const initialsOf = (name) =>
+  name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
 
 export default function UserSelectionPage() {
   const navigate = useNavigate();
@@ -31,9 +47,10 @@ export default function UserSelectionPage() {
     getAccountUsers,
     selectUser,
     logout,
-    haIdentity
+    haIdentity,
+    readRestricted
   } = useAuth();
-  
+
   const [users, setUsers] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
   const [password, setPassword] = useState('');
@@ -143,136 +160,155 @@ export default function UserSelectionPage() {
     navigate('/login', { replace: true });
   };
 
+  const roleChip = (user) => {
+    for (const role of user.roles || []) {
+      const abbrev = ROLE_ABBREVIATIONS[(role.display_name || role.name || '').toLowerCase()];
+      if (abbrev) return abbrev;
+    }
+    return null;
+  };
+
   return (
-    <div className="login-page">
-      <div className="login-container">
-        <Link to="/" className="login-logo">
-          <img src={logoImage} alt="Smart Home Health Logo" />
-          <span>Smart Home Health</span>
-        </Link>
+    <AuthShell>
+      <div className="au-eyebrow">Care Session</div>
+      <h2 className="au-title">Who is documenting?</h2>
+      <p className="au-subtitle">
+        {haIdentity && !haIdentity.mapped
+          ? `Signed in with Home Assistant as ${haIdentity.display_name || haIdentity.username || 'an unlinked user'} — choose your profile.`
+          : account?.name
+            ? `${account.name} — select your profile. Activity in this session will be recorded under your name.`
+            : 'Select your profile. Activity in this session will be recorded under your name.'}
+      </p>
 
-        <div className="login-card">
-          <div className="login-header">
-            <h2>Select User</h2>
-            <p>
-              {haIdentity && !haIdentity.mapped
-                ? `Signed in with Home Assistant as ${haIdentity.display_name || haIdentity.username || 'an unlinked user'} — choose your profile`
-                : account?.name ? `Account: ${account.name}` : 'Choose your profile to continue'}
-            </p>
-          </div>
+      <div className={`au-access${readRestricted ? '' : ' full'}`}>
+        {readRestricted ? <LockIcon size={16} /> : <UnlockIcon size={16} />}
+        <span className="au-access-label">Access · {readRestricted ? 'Quick entry' : 'Full'}</span>
+        <span className="au-access-sep" aria-hidden="true" />
+        <span className="au-access-state">{readRestricted ? 'Record only' : 'Unlocked'}</span>
+        <button type="button" className="au-access-change" onClick={handleLogout}>Change</button>
+      </div>
 
-          {!selectedUser ? (
-            <div className="user-selection">
-              {users.length === 0 ? (
-                <div className="no-users-message">
-                  <p>No users available. Please contact an administrator.</p>
-                </div>
-              ) : (
-                users.map((user) => (
-                  <button
-                    key={user.id}
-                    className="user-card"
-                    onClick={() => handleUserSelect(user)}
-                  >
-                    <div className="user-avatar">
-                      {(user.full_name || user.username).charAt(0).toUpperCase()}
-                    </div>
-                    <div className="user-info">
-                      <div className="user-name">{user.full_name || user.username}</div>
-                      <div className="user-roles">
-                        {user.roles?.map(r => r.display_name || r.name).join(', ') || 'User'}
-                        {user.ha_linked ? ' · Signs in with Home Assistant' : ''}
-                      </div>
-                    </div>
-                  </button>
-                ))
-              )}
+      {!selectedUser ? (
+        <div className="au-user-list">
+          {users.length === 0 ? (
+            <div className="au-no-users">
+              <p>No users available. Please contact an administrator.</p>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className="login-form">
-              <div className="selected-user">
-                <div className="user-avatar large">
-                  {(selectedUser.full_name || selectedUser.username).charAt(0).toUpperCase()}
-                </div>
-                <div className="user-name">{selectedUser.full_name || selectedUser.username}</div>
+            users.map((user) => {
+              const name = user.full_name || user.username;
+              const chip = roleChip(user);
+              return (
                 <button
-                  type="button"
-                  className="change-user-button"
-                  onClick={() => setSelectedUser(null)}
+                  key={user.id}
+                  className="user-card"
+                  onClick={() => handleUserSelect(user)}
                 >
-                  Change User
+                  <span className="au-avatar" aria-hidden="true">{initialsOf(name)}</span>
+                  <span className="au-user-info">
+                    <span className="au-user-name">{name}</span>
+                    <span className="au-user-roles">
+                      <span>
+                        {user.roles?.map(r => r.display_name || r.name).join(', ') || 'User'}
+                        {user.ha_linked ? ' · Signs in with Home Assistant' : ''}
+                      </span>
+                      {chip && <span className="au-role-chip">{chip}</span>}
+                    </span>
+                  </span>
+                  <span className="au-user-chev" aria-hidden="true"><ChevronRightIcon size={20} /></span>
                 </button>
-              </div>
-
-              {error && <div className="error-message">{error}</div>}
-
-              {usePassword ? (
-                <div className="form-group">
-                  <label htmlFor="password">Password</label>
-                  <input
-                    type="password"
-                    id="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter your password"
-                    autoFocus
-                    required
-                  />
-                  {selectedUser.ha_linked && !selectedUser.has_pin && (
-                    <small className="form-hint">
-                      This profile normally signs in automatically from the Home
-                      Assistant sidebar. To use it here, enter its app password —
-                      if it was never given one, an administrator can set one (or
-                      a PIN) under Configuration → Users.
-                    </small>
-                  )}
-                </div>
-              ) : (
-                <div className="form-group">
-                  <label htmlFor="pin">PIN</label>
-                  <input
-                    type="password"
-                    id="pin"
-                    inputMode="numeric"
-                    value={pin}
-                    onChange={(e) => setPin(e.target.value)}
-                    placeholder="Enter your PIN"
-                    maxLength={8}
-                    pattern="\d*"
-                    autoFocus
-                    required
-                  />
-                </div>
-              )}
-
-              <button type="submit" className="submit-button" disabled={loading}>
-                {loading ? 'Signing in...' : 'Sign In'}
-              </button>
-
-              {selectedUser.has_pin && (
-                <button
-                  type="button"
-                  className="toggle-auth-method"
-                  onClick={() => {
-                    setUsePassword(!usePassword);
-                    setPassword('');
-                    setPin('');
-                    setError('');
-                  }}
-                >
-                  {usePassword ? 'Use PIN instead' : 'Use password instead'}
-                </button>
-              )}
-            </form>
+              );
+            })
           )}
         </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="au-form">
+          <div className="au-selected">
+            <span className="au-avatar large" aria-hidden="true">
+              {initialsOf(selectedUser.full_name || selectedUser.username)}
+            </span>
+            <span className="au-user-name">{selectedUser.full_name || selectedUser.username}</span>
+            <button
+              type="button"
+              className="au-ghost-btn"
+              onClick={() => setSelectedUser(null)}
+            >
+              Change user
+            </button>
+          </div>
 
-        <div className="login-footer">
-          <button className="back-link" onClick={handleLogout} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
-            ← Sign Out / Change Account
+          {error && <div className="au-error">{error}</div>}
+
+          {usePassword ? (
+            <>
+              <label className="au-label" htmlFor="password">Password</label>
+              <div className="au-input-wrap">
+                <input
+                  type="password"
+                  id="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter your password"
+                  autoFocus
+                  required
+                />
+              </div>
+              {selectedUser.ha_linked && !selectedUser.has_pin && (
+                <small className="au-hint">
+                  This profile normally signs in automatically from the Home
+                  Assistant sidebar. To use it here, enter its app password —
+                  if it was never given one, an administrator can set one (or
+                  a PIN) under Configuration → Users.
+                </small>
+              )}
+            </>
+          ) : (
+            <>
+              <label className="au-label" htmlFor="pin">PIN</label>
+              <div className="au-input-wrap">
+                <input
+                  type="password"
+                  id="pin"
+                  inputMode="numeric"
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value)}
+                  placeholder="Enter your PIN"
+                  maxLength={8}
+                  pattern="\d*"
+                  autoFocus
+                  required
+                />
+              </div>
+            </>
+          )}
+
+          <button type="submit" className="au-primary" disabled={loading}>
+            {loading ? 'Signing in...' : 'Sign In'}
           </button>
-        </div>
+
+          {selectedUser.has_pin && (
+            <button
+              type="button"
+              className="au-toggle"
+              onClick={() => {
+                setUsePassword(!usePassword);
+                setPassword('');
+                setPin('');
+                setError('');
+              }}
+            >
+              {usePassword ? 'Use PIN instead' : 'Use password instead'}
+            </button>
+          )}
+        </form>
+      )}
+
+      <div className="au-footer">
+        <button type="button" className="au-account-btn" onClick={handleLogout}>
+          <BackArrowIcon size={16} /> Change account
+        </button>
+        <div className="au-footnote">Session locks after inactivity</div>
       </div>
-    </div>
+    </AuthShell>
   );
 }

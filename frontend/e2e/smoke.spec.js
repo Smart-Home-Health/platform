@@ -18,7 +18,7 @@
 // Wave 5 — browser smoke against the live docker-compose stack.
 //
 // The first test is credential-free: it drives the real two-layer auth up to
-// the user picker via "Continue without unlocking" (account-level access).
+// the user picker via "Continue in quick entry" (account-level access).
 //
 // The full login -> /care step needs a real user credential, so it is GATED by
 // env vars and skipped unless provided:
@@ -30,17 +30,17 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('auth smoke', () => {
-  test('login page -> continue without unlocking -> user picker', async ({ page }) => {
+  test('login page -> continue in quick entry -> user picker', async ({ page }) => {
     await page.goto('/login');
 
     // Layer 1: the account sign-in screen.
-    await expect(page.getByRole('heading', { name: 'Sign In' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Unlock Care Record' })).toBeVisible();
 
     // Account-level access (no account password) lands on the user picker.
-    await page.getByRole('button', { name: 'Continue without unlocking' }).click();
+    await page.getByRole('button', { name: 'Continue in quick entry' }).click();
 
     await expect(page).toHaveURL(/\/select-user$/);
-    await expect(page.getByRole('heading', { name: 'Select User' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Who is documenting?' })).toBeVisible();
     // At least one profile card is rendered for the account.
     await expect(page.locator('.user-card').first()).toBeVisible();
   });
@@ -52,7 +52,7 @@ test.describe('auth smoke', () => {
     test.skip(!user || (!password && !pin), 'set E2E_USER + E2E_PASSWORD or E2E_PIN to run');
 
     await page.goto('/login');
-    await page.getByRole('button', { name: 'Continue without unlocking' }).click();
+    await page.getByRole('button', { name: 'Continue in quick entry' }).click();
     await expect(page).toHaveURL(/\/select-user$/);
 
     // Pick the profile (cards show the full name / username).

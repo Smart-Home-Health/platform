@@ -1020,3 +1020,45 @@ export const MoreVerticalIcon = ({ size = 20 }) => (
     <circle cx="12" cy="19" r="1.6" />
   </svg>
 );
+
+export const LockIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="4" y="11" width="16" height="10" rx="2" />
+    <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+  </svg>
+);
+
+export const UnlockIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="4" y="11" width="16" height="10" rx="2" />
+    <path d="M8 11V7a4 4 0 0 1 7.7-1.5" />
+  </svg>
+);
+
+export const EyeIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+
+export const EyeOffIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17.94 17.94A10.9 10.9 0 0 1 12 18.5C5.5 18.5 2 12 2 12a20 20 0 0 1 5.06-5.94" />
+    <path d="M9.9 5.24A10.4 10.4 0 0 1 12 5.5c6.5 0 10 6.5 10 6.5a19.9 19.9 0 0 1-3.22 4.31" />
+    <path d="M14.12 14.12A3 3 0 1 1 9.88 9.88" />
+    <line x1="2" y1="2" x2="22" y2="22" />
+  </svg>
+);
+
+export const BrandMarkIcon = ({ size = 32 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 10.5 12 3l9 7.5V21H3z" />
+    <polyline points="6 14.5 9 14.5 10.5 11 12.5 17 14 14.5 18 14.5" />
+  </svg>
+);
