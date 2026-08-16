@@ -56,6 +56,7 @@ import { Field, FormRow } from '@/components/ui/field';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import './AdminV2.css';
+import './vc-schedule.css'; // bedside-monitor skin (dark theme only)
 
 const AdminV2Schedule = () => {
   const { user } = useAuth();
