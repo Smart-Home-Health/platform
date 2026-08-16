@@ -63,6 +63,19 @@
   margin: 0 auto;
 }
 
+/* Embedded in the admin-v2 layout (hamburger shell): the layout owns the
+ * viewport, so no full-height claim; round the panel like a card. */
+.vitals-capture.vc-embedded {
+  min-height: 0;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 12px;
+  padding-bottom: 0.25rem;
+}
+.vitals-capture.vc-embedded .vc-encounter { margin-top: 0.75rem; }
+.vitals-capture.vc-embedded .vc-footer {
+  padding-bottom: 0.75rem;
+}
+
 .vc-label {
   font-family: var(--vc-font-mono);
   font-size: 11px;

@@ -53,6 +53,7 @@ import AdminV2Schedule from './pages/admin-v2/AdminV2Schedule';
 import AdminV2ScheduleUndoLog from './pages/admin-v2/AdminV2ScheduleUndoLog';
 import AdminV2Vitals from './pages/admin-v2/AdminV2Vitals';
 import VitalsCapturePage from './pages/capture/VitalsCapturePage';
+import AdminV2VitalsCapture from './pages/admin-v2/AdminV2VitalsCapture';
 import AdminV2Symptoms from './pages/admin-v2/AdminV2Symptoms';
 import AdminV2Diagnoses from './pages/admin-v2/AdminV2Diagnoses';
 import AdminV2Implants from './pages/admin-v2/AdminV2Implants';
@@ -155,7 +156,9 @@ function AppContent() {
             
           {/* Care Vitals Routes */}
           <Route path="/capture" element={<ProtectedRoute><Layout><VitalsCapturePage /></Layout></ProtectedRoute>} />
-          <Route path="/care/vitals" element={<ProtectedRoute><Layout><AdminV2Vitals /></Layout></ProtectedRoute>} />
+          {/* Recording vitals IS the capture experience, embedded in the admin
+              shell here; AdminV2Vitals keeps history only. */}
+          <Route path="/care/vitals" element={<ProtectedRoute><Layout><AdminV2VitalsCapture /></Layout></ProtectedRoute>} />
           <Route path="/care/vitals/history" element={<ProtectedRoute><Layout><AdminV2Vitals /></Layout></ProtectedRoute>} />
             
           {/* Care Symptoms Routes */}

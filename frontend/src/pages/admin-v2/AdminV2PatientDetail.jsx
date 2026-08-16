@@ -21,6 +21,7 @@ import config from '../../config';
 import AdminV2Layout from './AdminV2Layout';
 import PatientFormFields from '../../components/PatientFormFields';
 import VitalRangesCard from '../../components/vitals/VitalRangesCard';
+import CustomVitalsCard from '../../components/vitals/CustomVitalsCard';
 import { MQTT_SECTIONS, permOptionsForSection, permSelectClass } from './mqttConstants';
 import { ChevronLeftIcon } from '../../components/Icons';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
@@ -68,6 +69,7 @@ export default function AdminV2PatientDetail() {
   const [savingMqtt, setSavingMqtt] = useState(false);
   const [savingTopics, setSavingTopics] = useState(false);
   const [runningDiscovery, setRunningDiscovery] = useState(false);
+  const [vitalConfigVersion, setVitalConfigVersion] = useState(0);
 
   const flash = (msg) => { setSuccess(msg); setTimeout(() => setSuccess(''), 3000); };
 
@@ -382,7 +384,10 @@ export default function AdminV2PatientDetail() {
             </CardContent>
           </Card>
 
-          <VitalRangesCard patientId={patientId} />
+          <CustomVitalsCard patientId={patientId}
+                            onChanged={() => setVitalConfigVersion((v) => v + 1)} />
+          {/* Re-mount on custom-vital changes so the ranges list picks them up. */}
+          <VitalRangesCard key={vitalConfigVersion} patientId={patientId} />
         </div>
       </div>
     </AdminV2Layout>

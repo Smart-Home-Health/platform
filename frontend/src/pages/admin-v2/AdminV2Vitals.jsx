@@ -16,12 +16,10 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 import React, { useState, useEffect, useMemo } from 'react';
-import { useLocation } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
 import config from '../../config';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import { XIcon, SearchIcon } from '../../components/Icons';
-import RecordVitalsForm from '../../components/vitals/RecordVitalsForm';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -43,12 +41,12 @@ const builtInVitalTypes = [
   { value: 'weight', label: 'Weight', unit: 'lbs' },
 ];
 
+// Recording moved to the capture surface (/care/vitals -> VitalsCapturePage);
+// this page is the vitals HISTORY view only.
 const AdminV2Vitals = () => {
-  const location = useLocation();
   const { selectedPatient: contextPatient } = useAdminPatient();
 
   const selectedPatient = contextPatient;
-  const isHistoryView = location.pathname.includes('/history');
 
   const [vitalsHistory, setVitalsHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -85,17 +83,17 @@ const AdminV2Vitals = () => {
   }, [selectedPatient]);
 
   useEffect(() => {
-    if (selectedPatient && isHistoryView) {
+    if (selectedPatient) {
       loadVitalsHistory();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on patient/view change only
-  }, [selectedPatient, isHistoryView]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on patient change only
+  }, [selectedPatient]);
 
   useEffect(() => {
-    if (isHistoryView && selectedPatient) {
+    if (selectedPatient) {
       loadVitalsHistory();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect re-runs on filter change only, view/patient changes are handled by the effect above
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect re-runs on filter change only, patient changes are handled by the effect above
   }, [filterType, filterDateFrom, filterDateTo, searchTerm]);
 
   const loadCustomDefinitions = async () => {
@@ -170,14 +168,6 @@ const AdminV2Vitals = () => {
   };
 
   const hasActiveFilters = !!(filterType || filterDateFrom || filterDateTo || searchTerm);
-
-  const renderRecordView = () => (
-    <RecordVitalsForm
-      patientId={selectedPatient?.id}
-      onSaved={() => { loadCustomDefinitions(); }}
-      allowCreateDefinitions={true}
-    />
-  );
 
   const renderHistoryView = () => (
     <div className="admin-v2-vitals-content">
@@ -288,7 +278,7 @@ const AdminV2Vitals = () => {
         {!selectedPatient ? (
           <div className="admin-v2-empty-state"><p>Please select a patient from the sidebar</p></div>
         ) : (
-          isHistoryView ? renderHistoryView() : renderRecordView()
+          renderHistoryView()
         )}
       </div>
     </AdminV2Layout>
