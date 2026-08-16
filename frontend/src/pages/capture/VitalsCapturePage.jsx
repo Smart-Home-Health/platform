@@ -21,9 +21,10 @@
 import { useEffect, useState } from 'react';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import config, { apiFetch } from '../../config';
-import CaptureVitalsPanel, { ConnectionChip } from './CaptureVitalsPanel';
+import CaptureVitalsPanel from './CaptureVitalsPanel';
+import ConnectionChip from '../../components/ConnectionChip';
 import CaptureTabBar from './components/CaptureTabBar';
-import useConnectionStatus from './useConnectionStatus';
+import useConnectionStatus from '../../hooks/useConnectionStatus';
 
 export default function VitalsCapturePage() {
   const { patients: contextPatients, selectedPatient, selectPatient } = useAdminPatient();

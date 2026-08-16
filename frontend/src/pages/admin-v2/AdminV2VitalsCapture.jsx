@@ -21,7 +21,7 @@
 import AdminV2Layout from './AdminV2Layout';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import CaptureVitalsPanel from '../capture/CaptureVitalsPanel';
-import useConnectionStatus from '../capture/useConnectionStatus';
+import useConnectionStatus from '../../hooks/useConnectionStatus';
 import './AdminV2.css';
 
 const AdminV2VitalsCapture = () => {
