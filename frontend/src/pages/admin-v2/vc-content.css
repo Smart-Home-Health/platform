@@ -332,6 +332,9 @@
 :root:not(.light) .history-filter-select:focus {
   border-color: var(--vc-data-live);
   outline: none;
+  /* visible focus ring — border recolor alone is too weak (WCAG focus
+   * appearance) */
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
 }
 
 /* Stats row: mono tabular values; 'danger' counts late/missed doses —
