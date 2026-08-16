@@ -15,35 +15,104 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine, Area, ComposedChart } from 'recharts';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useSearchParams, Link } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
-import config from '../../config';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { useChartColors } from '../../hooks/useChartColors';
+import config, { apiFetch } from '../../config';
+import {
+  CalendarIcon,
+  PrintIcon,
+  VitalsIcon,
+  NutritionIcon,
+  UrineIcon,
+  BowelIcon,
+  PillIcon,
+  VirusIcon,
+  UsersIcon,
+  PhoneIcon,
+  ChevronRightIcon,
+  BodyIcon,
+  InfoIcon,
+} from '../../components/Icons';
 import './AdminV2.css';
+import './clinical-summary.css';
 
-const getSeverityColor = (severity) => {
-  if (severity >= 7) return '#ef4444';
-  if (severity >= 4) return '#f59e0b';
-  return '#22c55e';
+const WINDOW_DAYS = 30;
+
+const fmtLabel = (s) => (s ? String(s).replace(/_/g, ' ') : '');
+const fmtDate = (d) => (d ? new Date(d).toLocaleDateString() : '');
+const fmtShortDate = (d, withYear = false) =>
+  d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(withYear ? { year: 'numeric' } : {}) });
+const fmtDayTime = (d) => {
+  const dt = new Date(d);
+  return `${fmtShortDate(dt)} · ${dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
 };
 
-const statusVariant = (status) => (
-  { active: 'success', chronic: 'warning', resolved: 'muted', in_remission: 'info', ruled_out: 'danger' }[status] || 'muted'
+const severityTone = (sev) => {
+  if (sev >= 7) return 'cs-tone-alert';
+  if (sev >= 4) return 'cs-tone-due';
+  return 'cs-tone-ok';
+};
+const diagnosisSeverityTone = (sev) => (
+  { severe: 'cs-tone-alert', critical: 'cs-tone-alert', moderate: 'cs-tone-due', mild: 'cs-tone-ok' }[sev] || 'cs-tone-dim'
 );
-const mriVariant = (mriSafe) => (
-  { safe: 'success', conditional: 'warning', unsafe: 'danger' }[mriSafe] || 'muted'
+const diagnosisStatusTone = (status) => (
+  { resolved: 'cs-tone-ok', active: 'cs-tone-live', chronic: 'cs-tone-due', in_remission: 'cs-tone-live', ruled_out: 'cs-tone-idle' }[status] || 'cs-tone-dim'
 );
 
-const fmtDate = (d) => (d ? new Date(d).toLocaleDateString() : '');
+/* Sparkline: avg trend as a single line, with dashed expected-range
+ * thresholds (upper = alert, lower = due). Decorative — the AVG cell and
+ * row labels carry the accessible meaning. */
+function Spark({ series, lo, hi }) {
+  const W = 300;
+  const H = 52;
+  const domain = [...series];
+  if (lo != null) domain.push(lo);
+  if (hi != null) domain.push(hi);
+  let dLo = Math.min(...domain);
+  let dHi = Math.max(...domain);
+  if (dHi === dLo) { dHi += 1; dLo -= 1; }
+  const pad = (dHi - dLo) * 0.12;
+  dLo -= pad;
+  dHi += pad;
+  const x = (i) => (i / (series.length - 1)) * W;
+  const y = (v) => H - ((v - dLo) / (dHi - dLo)) * H;
+  // A lone reading still deserves a visible mark — draw it as a short dash.
+  const points = series.length === 1
+    ? `${W / 2 - 10},${y(series[0]).toFixed(1)} ${W / 2 + 10},${y(series[0]).toFixed(1)}`
+    : series.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  return (
+    <svg className="cs-spark" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true">
+      {hi != null && <line className="cs-spark-threshold cs-spark-hi" x1="0" x2={W} y1={y(hi)} y2={y(hi)} />}
+      {lo != null && <line className="cs-spark-threshold cs-spark-lo" x1="0" x2={W} y1={y(lo)} y2={y(lo)} />}
+      <polyline className="cs-spark-line" points={points} />
+    </svg>
+  );
+}
 
-// Loading/empty placeholder text.
-const Muted = ({ children }) => <p className="text-sm text-muted-foreground">{children}</p>;
+function Section({ num, title, loading, children }) {
+  return (
+    <section className="cs-section">
+      <div className="cs-section-head">
+        <span className="cs-section-num">{num}.</span>
+        <span>{title}</span>
+      </div>
+      {loading ? <div className="cs-loading">Loading…</div> : children}
+    </section>
+  );
+}
+
+function EmptyRow({ icon, label, tone = 'cs-tone-due' }) {
+  return (
+    <div className="cs-row">
+      {icon && <span className="cs-row-icon" aria-hidden="true">{icon}</span>}
+      <div className="cs-row-main">
+        <div className={`cs-row-title ${tone}`}>{label}</div>
+      </div>
+    </div>
+  );
+}
 
 /* -------------------------------------------------------------------------
  * Print document — light, black-on-white, table-based. Hidden on screen;
@@ -84,13 +153,13 @@ function PrintTable({ columns, rows, empty }) {
   );
 }
 
-function SummaryPrintView({ patient, diagnoses, symptoms, medications, implants, providers }) {
+function SummaryPrintView({ patient, rangeLabel, diagnoses, symptoms, medWindow, activeMedsByName, implants, providers }) {
   return (
     <div className="summary-print-root bg-white font-sans text-black">
       <div className="border-b-2 border-black pb-2">
         <div className="text-[20pt] font-bold leading-tight">{patient.first_name} {patient.last_name}</div>
         <div className="flex justify-between text-[10pt] text-black/70">
-          <span>Patient Health Summary</span>
+          <span>30-Day Clinical Summary — {rangeLabel}</span>
           <span>Printed {new Date().toLocaleString()}</span>
         </div>
       </div>
@@ -100,22 +169,25 @@ function SummaryPrintView({ patient, diagnoses, symptoms, medications, implants,
           columns={['Diagnosis', 'ICD-10', 'Status', 'Severity', 'Provider']}
           empty="No active diagnoses recorded."
           rows={diagnoses.map(d => [
-            `${d.is_primary_diagnosis ? '★ ' : ''}${d.name}`,
-            d.icd10_code, d.status, d.severity, d.diagnosing_provider_name,
+            `${d.is_primary_diagnosis ? '(primary) ' : ''}${d.name}`,
+            d.icd10_code, fmtLabel(d.status), fmtLabel(d.severity), d.diagnosing_provider_name,
           ])}
         />
       </PrintSection>
 
-      <PrintSection title="Current Medications">
+      <PrintSection title="Medications (Last 30 Days)">
         <PrintTable
-          columns={['Medication', 'Dose', 'Qty', 'Instructions', 'Prescriber']}
-          empty="No active medications."
-          rows={medications.map(m => [
-            m.name, m.concentration,
-            m.quantity ? `${m.quantity} ${m.quantity_unit || ''}` : '',
-            `${m.instructions || ''}${m.as_needed ? ' (PRN)' : ''}`,
-            m.prescriber_name,
-          ])}
+          columns={['Medication', 'Dose', 'Doses Given', 'Last Given', 'Directions', 'Prescriber']}
+          empty="No medications active or administered in the last 30 days."
+          rows={medWindow.map(m => {
+            const active = activeMedsByName.get(m.name);
+            return [
+              m.name, m.concentration, String(m.doses),
+              m.last ? fmtDayTime(m.last) : '',
+              `${active?.instructions || ''}${m.prn ? ' (PRN)' : ''}${m.active ? '' : ' (no longer active)'}`.trim(),
+              active?.prescriber_name,
+            ];
+          })}
         />
       </PrintSection>
 
@@ -124,7 +196,7 @@ function SummaryPrintView({ patient, diagnoses, symptoms, medications, implants,
           columns={['Device', 'Category', 'Make / Model', 'MRI', 'Placed', 'Managed By']}
           empty="No implants or medical devices recorded."
           rows={implants.map(im => [
-            `${im.is_life_sustaining ? '❤ ' : ''}${im.name}`,
+            `${im.is_life_sustaining ? '(life-sustaining) ' : ''}${im.name}`,
             im.category, `${im.manufacturer || ''} ${im.model || ''}`.trim(),
             im.mri_safe, fmtDate(im.implant_date), im.managing_provider_name,
           ])}
@@ -136,7 +208,7 @@ function SummaryPrintView({ patient, diagnoses, symptoms, medications, implants,
           columns={['Symptom', 'Severity', 'Location', 'Status', 'Date']}
           empty="No symptoms recorded."
           rows={symptoms.map(s => [
-            s.symptom_type, s.severity != null ? `${s.severity}/10` : '',
+            fmtLabel(s.symptom_type), s.severity != null ? `${s.severity}/10` : '',
             s.location, s.is_resolved ? 'resolved' : 'active',
             s.timestamp ? fmtDate(s.timestamp) : '',
           ])}
@@ -149,7 +221,7 @@ function SummaryPrintView({ patient, diagnoses, symptoms, medications, implants,
           empty="No providers assigned."
           rows={providers.map(p => [
             `${p.first_name} ${p.last_name}`, p.title, p.specialty, p.provider_type,
-            p.business?.name, p.phone || p.business?.phone, p.is_primary ? '✓' : '',
+            p.business?.name, p.phone || p.business?.phone, p.is_primary ? 'Yes' : '',
           ])}
         />
       </PrintSection>
@@ -157,18 +229,9 @@ function SummaryPrintView({ patient, diagnoses, symptoms, medications, implants,
   );
 }
 
-const PrinterIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="6 9 6 2 18 2 18 9" />
-    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-    <rect x="6" y="14" width="12" height="8" />
-  </svg>
-);
-
 const AdminV2ProfileSummary = () => {
   const [searchParams] = useSearchParams();
   const { selectedPatient, setPatientId } = useAdminPatient();
-  const chart = useChartColors();
 
   // Sync URL ?patient= id to active patient (e.g. from dashboard View Details)
   useEffect(() => {
@@ -178,247 +241,192 @@ const AdminV2ProfileSummary = () => {
     }
   }, [searchParams, setPatientId]);
 
-  // State for fetched data
+  // The reporting window is fixed at mount so every section agrees on it.
+  const [generatedAt] = useState(() => new Date());
+  const windowStart = useMemo(() => {
+    const d = new Date(generatedAt);
+    d.setDate(d.getDate() - (WINDOW_DAYS - 1));
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, [generatedAt]);
+  const rangeLabel = `${fmtShortDate(windowStart)} — ${fmtShortDate(generatedAt, true)}`;
+
   const [diagnoses, setDiagnoses] = useState([]);
   const [symptoms, setSymptoms] = useState([]);
-  const [medications, setMedications] = useState([]);
+  const [medications, setMedications] = useState([]);       // currently active meds
+  const [medHistory, setMedHistory] = useState([]);         // administrations in the window
   const [providers, setProviders] = useState([]);
   const [implants, setImplants] = useState([]);
+  const [vitalsSummary, setVitalsSummary] = useState(null);
+  const [pulseOxSummary, setPulseOxSummary] = useState(null);
+  const [ventBreathRate, setVentBreathRate] = useState(null);
+  const [nutritionSummary, setNutritionSummary] = useState([]);
+  const [nutritionOutput, setNutritionOutput] = useState([]);
+  const [vitalRanges, setVitalRanges] = useState([]);
 
-  // Loading states
+  const [loadingVitals, setLoadingVitals] = useState(false);
+  const [loadingEvents, setLoadingEvents] = useState(false);
+  const [loadingMeds, setLoadingMeds] = useState(false);
   const [loadingDiagnoses, setLoadingDiagnoses] = useState(false);
-  const [loadingSymptoms, setLoadingSymptoms] = useState(false);
-  const [loadingMedications, setLoadingMedications] = useState(false);
   const [loadingProviders, setLoadingProviders] = useState(false);
   const [loadingImplants, setLoadingImplants] = useState(false);
-  const [vitalsSummary, setVitalsSummary] = useState(null);
-  const [loadingVitals, setLoadingVitals] = useState(false);
-  const [pulseOxSummary, setPulseOxSummary] = useState(null);
-  const [loadingPulseOx, setLoadingPulseOx] = useState(false);
-  const [ventBreathRate, setVentBreathRate] = useState(null);   // {has_data, points}
-  const [loadingVentBreath, setLoadingVentBreath] = useState(false);
-  const [nutritionSummary, setNutritionSummary] = useState([]);
-  const [loadingNutrition, setLoadingNutrition] = useState(false);
-  const [nutritionOutput, setNutritionOutput] = useState([]);
-  const [loadingNutritionOutput, setLoadingNutritionOutput] = useState(false);
 
-  // Fetch all data when patient changes
   useEffect(() => {
     if (!selectedPatient) return;
-
-    const fetchDiagnoses = async () => {
-      setLoadingDiagnoses(true);
+    const pid = selectedPatient.id;
+    const tzOffsetMinutes = -new Date().getTimezoneOffset();
+    const get = async (path, fallback = null) => {
       try {
-        const response = await fetch(`${config.apiUrl}/api/diagnoses/patient/${selectedPatient.id}?active_only=true`, { credentials: 'include' });
-        if (response.ok) setDiagnoses(await response.json());
+        const response = await apiFetch(`${config.apiUrl}${path}`, { credentials: 'include' });
+        if (response.ok) return await response.json();
       } catch (error) {
-        console.error('Error fetching diagnoses:', error);
-      } finally {
-        setLoadingDiagnoses(false);
+        console.error(`Error fetching ${path}:`, error);
       }
+      return fallback;
     };
+    const toYMD = (d) => d.toISOString().slice(0, 10);
 
-    const fetchSymptoms = async () => {
-      setLoadingSymptoms(true);
-      try {
-        const response = await fetch(`${config.apiUrl}/api/symptoms/patient/${selectedPatient.id}?limit=50&include_resolved=true`, { credentials: 'include' });
-        if (response.ok) setSymptoms(await response.json());
-      } catch (error) {
-        console.error('Error fetching symptoms:', error);
-      } finally {
-        setLoadingSymptoms(false);
-      }
-    };
-
-    const fetchMedications = async () => {
-      setLoadingMedications(true);
-      try {
-        const response = await fetch(`${config.apiUrl}/api/admin/medications/active?patient_id=${selectedPatient.id}`, { credentials: 'include' });
-        if (response.ok) setMedications(await response.json());
-      } catch (error) {
-        console.error('Error fetching medications:', error);
-      } finally {
-        setLoadingMedications(false);
-      }
-    };
-
-    const fetchProviders = async () => {
-      setLoadingProviders(true);
-      try {
-        const response = await fetch(`${config.apiUrl}/api/providers/patient/${selectedPatient.id}?active_only=true`, { credentials: 'include' });
-        if (response.ok) setProviders(await response.json());
-      } catch (error) {
-        console.error('Error fetching providers:', error);
-      } finally {
-        setLoadingProviders(false);
-      }
-    };
-
-    const fetchImplants = async () => {
-      setLoadingImplants(true);
-      try {
-        const response = await fetch(`${config.apiUrl}/api/implants/patient/${selectedPatient.id}?include_inactive=false`, { credentials: 'include' });
-        if (response.ok) setImplants(await response.json());
-      } catch (error) {
-        console.error('Error fetching implants:', error);
-      } finally {
-        setLoadingImplants(false);
-      }
-    };
-
-    const fetchVitalsSummary = async () => {
+    (async () => {
       setLoadingVitals(true);
-      try {
-        const response = await fetch(`${config.apiUrl}/api/vitals/patient/${selectedPatient.id}/summary?days=30`, { credentials: 'include' });
-        if (response.ok) setVitalsSummary(await response.json());
-      } catch (error) {
-        console.error('Error fetching vitals summary:', error);
-      } finally {
-        setLoadingVitals(false);
-      }
-    };
+      const [vitals, pulseOx, vent, ranges] = await Promise.all([
+        get(`/api/vitals/patient/${pid}/summary?days=${WINDOW_DAYS}`),
+        get(`/api/vitals/patient/${pid}/pulse-ox-summary?days=${WINDOW_DAYS}`),
+        get(`/api/integrations/patient/${pid}/vent/breath-rate-hourly?days=${WINDOW_DAYS}`, { has_data: false, points: [] }),
+        get(`/api/vitals/ranges?patient_id=${pid}`),
+      ]);
+      setVitalsSummary(vitals);
+      setPulseOxSummary(pulseOx);
+      setVentBreathRate(vent);
+      setVitalRanges(ranges?.ranges || []);
+      setLoadingVitals(false);
+    })();
 
-    const fetchPulseOxSummary = async () => {
-      setLoadingPulseOx(true);
-      try {
-        const response = await fetch(`${config.apiUrl}/api/vitals/patient/${selectedPatient.id}/pulse-ox-summary?days=30`, { credentials: 'include' });
-        if (response.ok) setPulseOxSummary(await response.json());
-      } catch (error) {
-        console.error('Error fetching pulse-ox summary:', error);
-      } finally {
-        setLoadingPulseOx(false);
-      }
-    };
+    (async () => {
+      setLoadingEvents(true);
+      const [sym, nutri, output] = await Promise.all([
+        get(`/api/symptoms/patient/${pid}?limit=200&include_resolved=true`, []),
+        get(`/api/nutrition/patient/${pid}/summary?days=${WINDOW_DAYS}&tz_offset_minutes=${tzOffsetMinutes}`, []),
+        get(`/api/nutrition/outputs/patient/${pid}/history?days=${WINDOW_DAYS}&tz_offset_minutes=${tzOffsetMinutes}`, []),
+      ]);
+      setSymptoms(sym || []);
+      setNutritionSummary(nutri || []);
+      setNutritionOutput(output || []);
+      setLoadingEvents(false);
+    })();
 
-    const fetchVentBreathRate = async () => {
-      setLoadingVentBreath(true);
-      try {
-        const response = await fetch(`${config.apiUrl}/api/integrations/patient/${selectedPatient.id}/vent/breath-rate-hourly?days=30`, { credentials: 'include' });
-        if (response.ok) {
-          setVentBreathRate(await response.json());
-        } else {
-          setVentBreathRate({ has_data: false, points: [] });
-        }
-      } catch (error) {
-        console.error('Error fetching vent breath rate:', error);
-        setVentBreathRate({ has_data: false, points: [] });
-      } finally {
-        setLoadingVentBreath(false);
-      }
-    };
+    (async () => {
+      setLoadingMeds(true);
+      const start = new Date();
+      start.setDate(start.getDate() - (WINDOW_DAYS - 1));
+      const [active, history] = await Promise.all([
+        get(`/api/admin/medications/active?patient_id=${pid}`, []),
+        get(`/api/medications/history?patient_id=${pid}&start_date=${toYMD(start)}&end_date=${toYMD(new Date())}&limit=2000`),
+      ]);
+      setMedications(active || []);
+      setMedHistory(history?.history || []);
+      setLoadingMeds(false);
+    })();
 
-    const fetchNutritionSummary = async () => {
-      setLoadingNutrition(true);
-      try {
-        const tzOffsetMinutes = -new Date().getTimezoneOffset();
-        const response = await fetch(`${config.apiUrl}/api/nutrition/patient/${selectedPatient.id}/summary?days=30&tz_offset_minutes=${tzOffsetMinutes}`, { credentials: 'include' });
-        if (response.ok) setNutritionSummary(await response.json());
-      } catch (error) {
-        console.error('Error fetching nutrition summary:', error);
-      } finally {
-        setLoadingNutrition(false);
-      }
-    };
-
-    const fetchNutritionOutput = async () => {
-      setLoadingNutritionOutput(true);
-      try {
-        const tzOffsetMinutes = -new Date().getTimezoneOffset();
-        const response = await fetch(`${config.apiUrl}/api/nutrition/outputs/patient/${selectedPatient.id}/history?days=30&tz_offset_minutes=${tzOffsetMinutes}`, { credentials: 'include' });
-        if (response.ok) setNutritionOutput(await response.json());
-      } catch (error) {
-        console.error('Error fetching nutrition output:', error);
-      } finally {
-        setLoadingNutritionOutput(false);
-      }
-    };
-
-    fetchDiagnoses();
-    fetchSymptoms();
-    fetchMedications();
-    fetchProviders();
-    fetchImplants();
-    fetchVitalsSummary();
-    fetchPulseOxSummary();
-    fetchVentBreathRate();
-    fetchNutritionSummary();
-    fetchNutritionOutput();
+    (async () => {
+      setLoadingDiagnoses(true);
+      setDiagnoses(await get(`/api/diagnoses/patient/${pid}?active_only=true`, []) || []);
+      setLoadingDiagnoses(false);
+    })();
+    (async () => {
+      setLoadingProviders(true);
+      setProviders(await get(`/api/providers/patient/${pid}?active_only=true`, []) || []);
+      setLoadingProviders(false);
+    })();
+    (async () => {
+      setLoadingImplants(true);
+      setImplants(await get(`/api/implants/patient/${pid}?include_inactive=false`, []) || []);
+      setLoadingImplants(false);
+    })();
   }, [selectedPatient]);
 
-  // Helper to format vitals data for chart display
-  const formatVitalChartData = (vitalType) => {
-    if (!vitalsSummary || !vitalsSummary[vitalType]) return [];
-    return vitalsSummary[vitalType].map(d => ({
-      date: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      min: d.min, avg: d.avg, max: d.max
-    }));
-  };
+  const rangeFor = (vitalKey, fieldKey = '') =>
+    vitalRanges.find(r => r.vital_key === vitalKey && (r.field_key || '') === fieldKey);
 
-  const formatVentBreathChartData = () => {
-    if (!ventBreathRate || !ventBreathRate.points) return [];
-    return ventBreathRate.points.map(d => {
-      const dt = new Date(d.date);
-      return {
-        date: dt.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric' }),
-        min: d.min != null ? Math.round(d.min) : null,
-        avg: d.avg != null ? Math.round(d.avg * 10) / 10 : null,
-        max: d.max != null ? Math.round(d.max) : null,
+  // Vital trend rows: pulse ox (hourly) for SpO2/HR; vent hourly for RR when
+  // available, else manual daily; manual daily for MAP + temperature.
+  const vitalRows = useMemo(() => {
+    const pox = (key) => (pulseOxSummary?.[key] || []).map(p => p.avg).filter(v => v != null);
+    const daily = (key) => (vitalsSummary?.[key] || []).map(p => p.avg).filter(v => v != null);
+    const ventSeries = (ventBreathRate?.points || []).map(p => p.avg).filter(v => v != null);
+    const useVent = Boolean(ventBreathRate?.has_data && ventSeries.length);
+    return [
+      { key: 'spo2', label: 'SpO2 (%)', source: 'Pulse ox, hourly', series: pox('spo2'), range: rangeFor('spo2'), fmt: v => `${Math.round(v)}%` },
+      { key: 'heart_rate', label: 'Heart Rate (BPM)', source: 'Pulse ox, hourly', series: pox('heart_rate'), range: rangeFor('heart_rate'), fmt: v => `${Math.round(v)}` },
+      { key: 'respiratory_rate', label: 'Respiratory Rate', source: useVent ? 'Vent, hourly' : 'Manual', series: useVent ? ventSeries : daily('respiratory_rate'), range: rangeFor('respiratory_rate'), fmt: v => `${Math.round(v)}` },
+      { key: 'map', label: 'Mean Arterial Pressure', source: 'Manual', series: daily('blood_pressure'), range: rangeFor('blood_pressure', 'map'), fmt: v => `${Math.round(v)}` },
+      { key: 'temperature', label: 'Temperature (°F)', source: 'Manual', series: daily('temperature'), range: rangeFor('temperature'), fmt: v => v.toFixed(1) },
+    ];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pulseOxSummary, vitalsSummary, ventBreathRate, vitalRanges]);
+
+  // 30-day events
+  const symptoms30 = useMemo(
+    () => symptoms.filter(s => s.timestamp && new Date(s.timestamp) >= windowStart),
+    [symptoms, windowStart]
+  );
+  const symptomPeaks = useMemo(() => {
+    const peaks = new Map();
+    for (const s of symptoms30) {
+      const key = s.symptom_type;
+      if (!peaks.has(key) || (s.severity ?? 0) > peaks.get(key)) peaks.set(key, s.severity ?? 0);
+    }
+    return [...peaks.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2);
+  }, [symptoms30]);
+  const activeSymptomCount = symptoms30.filter(s => !s.is_resolved).length;
+
+  const nutriDays = nutritionSummary.filter(d => (d.calories || 0) > 0 || (d.water_ml || 0) > 0);
+  const avgCalories = (() => {
+    const vals = nutriDays.map(d => d.calories).filter(v => v > 0);
+    return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
+  })();
+  const urineTotal = nutritionOutput.reduce((a, d) => a + (d.urine_count || 0), 0);
+  const urineMlTotal = nutritionOutput.reduce((a, d) => a + (d.urine_ml || 0), 0);
+  const urineDays = nutritionOutput.filter(d => (d.urine_count || 0) > 0 || (d.urine_ml || 0) > 0).length;
+  const bowelTotal = nutritionOutput.reduce((a, d) => a + (d.bowel_count || 0), 0);
+  const bowelDays = nutritionOutput.filter(d => (d.bowel_count || 0) > 0).length;
+
+  // Full 30-day medication list: everything currently active plus everything
+  // actually administered in the window (even if since discontinued).
+  const activeMedsByName = useMemo(() => new Map(medications.map(m => [m.name, m])), [medications]);
+  const medWindow = useMemo(() => {
+    const byName = new Map();
+    for (const m of medications) {
+      byName.set(m.name, {
+        name: m.name, concentration: m.concentration, prn: Boolean(m.as_needed),
+        active: true, doses: 0, last: m.last_administered || null,
+      });
+    }
+    for (const h of medHistory) {
+      if (h.status === 'skipped' || !h.administered_at) continue;
+      const entry = byName.get(h.medication_name) || {
+        name: h.medication_name, concentration: h.concentration, prn: false,
+        active: false, doses: 0, last: null,
       };
-    });
-  };
+      entry.doses += 1;
+      if (!entry.last || h.administered_at > entry.last) entry.last = h.administered_at;
+      byName.set(h.medication_name, entry);
+    }
+    return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [medications, medHistory]);
 
-  const formatPulseOxChartData = (key) => {
-    if (!pulseOxSummary || !pulseOxSummary[key]) return [];
-    return pulseOxSummary[key].map(d => {
-      const dt = new Date(d.date);
-      return {
-        date: dt.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric' }),
-        min: d.min, avg: d.avg, max: d.max,
-      };
-    });
-  };
-
-  const formatNutritionChartData = () => {
-    return nutritionSummary.map(d => {
-      let caloriesDeviation = null;
-      let fluidsDeviation = null;
-      if (d.calories_target && d.calories_target > 0) {
-        caloriesDeviation = Math.round(((d.calories - d.calories_target) / d.calories_target) * 100);
-      }
-      const fluidTarget = d.total_fluid_target || d.water_target;
-      if (fluidTarget && fluidTarget > 0) {
-        fluidsDeviation = Math.round(((d.water_ml - fluidTarget) / fluidTarget) * 100);
-      }
-      return {
-        date: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        calories: caloriesDeviation, fluids: fluidsDeviation
-      };
-    });
-  };
-
-  const nutritionChartDomain = () => {
-    const data = formatNutritionChartData();
-    const vals = data.flatMap(d => [d.calories, d.fluids]).filter(v => v != null);
-    if (!vals.length) return [-50, 50];
-    const maxAbs = Math.max(50, ...vals.map(Math.abs));
-    const bound = Math.ceil(maxAbs / 25) * 25;
-    return [-bound, bound];
-  };
-
-  const formatOutputChartData = () => {
-    return nutritionOutput.map(d => ({
-      date: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      urine: d.urine_ml || 0,
-      urineCount: d.urine_count || 0,
-      bowel: d.bowel_count || 0,
-      urineTarget: d.urine_target,
-      bowelTarget: d.bowel_target
-    }));
-  };
-
-  const handlePrint = () => {
-    window.print();
-  };
+  // Care team grouped by specialty, primary provider's group first.
+  const teamGroups = useMemo(() => {
+    const groups = new Map();
+    for (const p of providers) {
+      const key = p.specialty || fmtLabel(p.provider_type) || 'General';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(p);
+    }
+    for (const list of groups.values()) list.sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0));
+    return [...groups.entries()].sort((a, b) =>
+      (b[1].some(p => p.is_primary) ? 1 : 0) - (a[1].some(p => p.is_primary) ? 1 : 0) || a[0].localeCompare(b[0])
+    );
+  }, [providers]);
 
   if (!selectedPatient) {
     return (
@@ -432,339 +440,229 @@ const AdminV2ProfileSummary = () => {
     );
   }
 
-  const tooltipStyle = { backgroundColor: chart.cutout, border: `1px solid ${chart.grid}`, borderRadius: '8px', color: chart.foreground };
-
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
-        <div className="tw flex flex-col gap-4">
-          <div className="flex justify-end">
-            <Button variant="secondary" onClick={handlePrint}>
-              <PrinterIcon /> Print Summary
-            </Button>
+        <div className="clin-summary">
+          <div className="cs-header">
+            <div>
+              <h1 className="cs-title">{WINDOW_DAYS}-Day Clinical Summary</h1>
+              <div className="cs-range">
+                <CalendarIcon size={16} />
+                <span>{rangeLabel}</span>
+              </div>
+              <div className="cs-generated">Generated {fmtDayTime(generatedAt)}</div>
+              <div className="cs-purpose">Appointment + admission handoff</div>
+            </div>
+            <button type="button" className="cs-print-btn" onClick={() => window.print()}>
+              <PrintIcon size={16} /> Print / Share
+            </button>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            {/* Active Diagnoses */}
-            <Card>
-              <CardHeader className="py-3"><CardTitle className="text-sm">Active Diagnoses</CardTitle></CardHeader>
-              <CardContent className="py-3">
-                {loadingDiagnoses ? <Muted>Loading diagnoses…</Muted> : diagnoses.length === 0 ? <Muted>No active diagnoses recorded</Muted> : (
-                  <ul className="flex flex-col gap-2">
-                    {diagnoses.map(dx => (
-                      <li key={dx.id} className="rounded-md border border-border p-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
-                            {dx.is_primary_diagnosis && <Badge variant="info">Primary</Badge>}
-                            {dx.name}
-                          </span>
-                          <Badge variant={statusVariant(dx.status)}>{dx.status}</Badge>
-                        </div>
-                        <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                          {dx.icd10_code && <span>{dx.icd10_code}</span>}
-                          {dx.severity && <span>{dx.severity}</span>}
-                          {dx.diagnosing_provider_name && <span>{dx.diagnosing_provider_name}</span>}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Recent Symptoms */}
-            <Card>
-              <CardHeader className="py-3"><CardTitle className="text-sm">Symptoms (Last 30 Days)</CardTitle></CardHeader>
-              <CardContent className="py-3">
-                {loadingSymptoms ? <Muted>Loading symptoms…</Muted> : symptoms.length === 0 ? <Muted>No symptoms recorded</Muted> : (
-                  <ul className="flex flex-col gap-2">
-                    {symptoms.map(symptom => (
-                      <li key={symptom.id} className="rounded-md border border-border p-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-sm font-medium text-foreground">{symptom.symptom_type}</span>
-                          <Badge variant={symptom.is_resolved ? 'muted' : 'success'}>{symptom.is_resolved ? 'resolved' : 'active'}</Badge>
-                        </div>
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                          <span className="rounded px-1.5 py-0.5 font-medium text-white" style={{ backgroundColor: getSeverityColor(symptom.severity) }}>
-                            {symptom.severity}/10
-                          </span>
-                          {symptom.location && <span>{symptom.location}</span>}
-                          {symptom.timestamp && <span>{fmtDate(symptom.timestamp)}</span>}
-                          {symptom.duration && <span>{symptom.duration}</span>}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Current Medications */}
-            <Card>
-              <CardHeader className="py-3"><CardTitle className="text-sm">Current Medications</CardTitle></CardHeader>
-              <CardContent className="py-3">
-                {loadingMedications ? <Muted>Loading medications…</Muted> : medications.length === 0 ? <Muted>No active medications</Muted> : (
-                  <ul className="flex flex-col gap-2">
-                    {medications.map(med => (
-                      <li key={med.id} className="rounded-md border border-border p-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-sm font-medium text-foreground">{med.name}</span>
-                          {med.concentration && <Badge variant="secondary">{med.concentration}</Badge>}
-                          {med.quantity && <Badge variant="secondary">{med.quantity} {med.quantity_unit || ''}</Badge>}
-                          {med.as_needed && <Badge variant="warning">PRN</Badge>}
-                        </div>
-                        <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                          {med.instructions && <span>{med.instructions}</span>}
-                          {med.prescriber_name && <span>· {med.prescriber_name}</span>}
-                          {med.last_administered && <span>· Last: {new Date(med.last_administered).toLocaleString()}</span>}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Implants */}
-            <Card>
-              <CardHeader className="py-3"><CardTitle className="text-sm">Implants &amp; Medical Devices</CardTitle></CardHeader>
-              <CardContent className="py-3">
-                {loadingImplants ? <Muted>Loading implants…</Muted> : implants.length === 0 ? <Muted>No implants or medical devices recorded</Muted> : (
-                  <ul className="flex flex-col gap-2">
-                    {implants.map(implant => (
-                      <li key={implant.id} className="rounded-md border border-border p-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-sm font-medium text-foreground">{implant.name}</span>
-                          {implant.is_life_sustaining && <Badge variant="danger">Life Sustaining</Badge>}
-                        </div>
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                          {implant.category && <span>{implant.category}</span>}
-                          {(implant.manufacturer || implant.model) && <span>{implant.manufacturer} {implant.model}</span>}
-                          {implant.mri_safe && <Badge variant={mriVariant(implant.mri_safe)}>MRI: {implant.mri_safe}</Badge>}
-                        </div>
-                        <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                          {implant.implant_date && <span>Placed: {fmtDate(implant.implant_date)}</span>}
-                          {implant.managing_provider_name && <span>· {implant.managing_provider_name}</span>}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Vitals Charts */}
-            <Card className="lg:col-span-2">
-              <CardHeader className="py-3"><CardTitle className="text-sm">Vitals Trends (30 Days)</CardTitle></CardHeader>
-              <CardContent className="py-3">
-                {loadingVitals ? <Muted>Loading vitals data…</Muted> : !vitalsSummary ? <Muted>No vitals data available</Muted> : (
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div className="min-w-0">
-                      <h3 className="mb-1 text-sm font-medium text-foreground">SpO2 (%) <span className="text-xs text-muted-foreground">— pulse ox, hourly</span></h3>
-                      {loadingPulseOx ? <Muted>Loading…</Muted> : (
-                        <ResponsiveContainer width="100%" height={180}>
-                          <ComposedChart data={formatPulseOxChartData('spo2')} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
-                            <XAxis dataKey="date" tick={{ fontSize: 10, fill: chart.axis }} interval="preserveStartEnd" minTickGap={40} />
-                            <YAxis domain={[80, 100]} tick={{ fontSize: 10, fill: chart.axis }} />
-                            <Tooltip contentStyle={tooltipStyle} />
-                            <ReferenceLine y={92} stroke="#ef4444" strokeDasharray="3 3" />
-                            <Area type="monotone" dataKey="max" stroke="none" fill="#3b82f6" fillOpacity={0.15} />
-                            <Area type="monotone" dataKey="min" stroke="none" fill={chart.cutout} fillOpacity={1} />
-                            <Line type="monotone" dataKey="avg" stroke="#3b82f6" strokeWidth={2} dot={false} connectNulls />
-                          </ComposedChart>
-                        </ResponsiveContainer>
-                      )}
-                    </div>
-
-                    <div className="min-w-0">
-                      <h3 className="mb-1 text-sm font-medium text-foreground">Heart Rate (BPM) <span className="text-xs text-muted-foreground">— pulse ox, hourly</span></h3>
-                      {loadingPulseOx ? <Muted>Loading…</Muted> : (
-                        <ResponsiveContainer width="100%" height={180}>
-                          <ComposedChart data={formatPulseOxChartData('heart_rate')} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
-                            <XAxis dataKey="date" tick={{ fontSize: 10, fill: chart.axis }} interval="preserveStartEnd" minTickGap={40} />
-                            <YAxis domain={[40, 140]} tick={{ fontSize: 10, fill: chart.axis }} />
-                            <Tooltip contentStyle={tooltipStyle} />
-                            <Area type="monotone" dataKey="max" stroke="none" fill="#ef4444" fillOpacity={0.15} />
-                            <Area type="monotone" dataKey="min" stroke="none" fill={chart.cutout} fillOpacity={1} />
-                            <Line type="monotone" dataKey="avg" stroke="#ef4444" strokeWidth={2} dot={false} connectNulls />
-                          </ComposedChart>
-                        </ResponsiveContainer>
-                      )}
-                    </div>
-
-                    {(() => {
-                      const useVent = ventBreathRate?.has_data;
-                      const data = useVent ? formatVentBreathChartData() : formatVitalChartData('respiratory_rate');
-                      return (
-                        <div className="min-w-0">
-                          <h3 className="mb-1 text-sm font-medium text-foreground">{useVent ? 'Breath Rate (vent, hourly)' : 'Respiratory Rate'}</h3>
-                          {(useVent ? loadingVentBreath : loadingVitals) ? <Muted>Loading…</Muted> : (
-                            <ResponsiveContainer width="100%" height={180}>
-                              <ComposedChart data={data} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
-                                <XAxis dataKey="date" tick={{ fontSize: 10, fill: chart.axis }} interval={useVent ? 'preserveStartEnd' : 6} minTickGap={useVent ? 40 : undefined} />
-                                <YAxis domain={[0, 40]} tick={{ fontSize: 10, fill: chart.axis }} />
-                                <Tooltip contentStyle={tooltipStyle} />
-                                <Area type="monotone" dataKey="max" stroke="none" fill="#22c55e" fillOpacity={0.15} />
-                                <Area type="monotone" dataKey="min" stroke="none" fill={chart.cutout} fillOpacity={1} />
-                                <Line type="monotone" dataKey="avg" stroke="#22c55e" strokeWidth={2} dot={false} connectNulls />
-                              </ComposedChart>
-                            </ResponsiveContainer>
-                          )}
-                        </div>
-                      );
-                    })()}
-
-                    <div className="min-w-0">
-                      <h3 className="mb-1 text-sm font-medium text-foreground">Temperature (°F)</h3>
-                      <ResponsiveContainer width="100%" height={180}>
-                        <ComposedChart data={formatVitalChartData('temperature')} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
-                          <XAxis dataKey="date" tick={{ fontSize: 10, fill: chart.axis }} interval={6} />
-                          <YAxis domain={[96, 102]} tick={{ fontSize: 10, fill: chart.axis }} />
-                          <Tooltip contentStyle={tooltipStyle} />
-                          <ReferenceLine y={100.4} stroke="#ef4444" strokeDasharray="3 3" />
-                          <Area type="monotone" dataKey="max" stroke="none" fill="#f59e0b" fillOpacity={0.15} />
-                          <Area type="monotone" dataKey="min" stroke="none" fill={chart.cutout} fillOpacity={1} />
-                          <Line type="monotone" dataKey="avg" stroke="#f59e0b" strokeWidth={2} dot={false} connectNulls />
-                        </ComposedChart>
-                      </ResponsiveContainer>
-                    </div>
-
-                    <div className="min-w-0 sm:col-span-2">
-                      <h3 className="mb-1 text-sm font-medium text-foreground">Mean Arterial Pressure (mmHg)</h3>
-                      <ResponsiveContainer width="100%" height={180}>
-                        <ComposedChart data={formatVitalChartData('blood_pressure')} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
-                          <XAxis dataKey="date" tick={{ fontSize: 10, fill: chart.axis }} interval={6} />
-                          <YAxis domain={[60, 110]} tick={{ fontSize: 10, fill: chart.axis }} />
-                          <Tooltip contentStyle={tooltipStyle} />
-                          <ReferenceLine y={70} stroke="#f59e0b" strokeDasharray="3 3" label={{ value: 'Low', fill: '#f59e0b', fontSize: 10 }} />
-                          <ReferenceLine y={100} stroke="#f59e0b" strokeDasharray="3 3" label={{ value: 'High', fill: '#f59e0b', fontSize: 10 }} />
-                          <Area type="monotone" dataKey="max" stroke="none" fill="#8b5cf6" fillOpacity={0.15} />
-                          <Area type="monotone" dataKey="min" stroke="none" fill={chart.cutout} fillOpacity={1} />
-                          <Line type="monotone" dataKey="avg" stroke="#8b5cf6" strokeWidth={2} dot={false} connectNulls name="MAP" />
-                        </ComposedChart>
-                      </ResponsiveContainer>
-                    </div>
+          <Section num={1} title={`${WINDOW_DAYS}-Day Vital Trends`} loading={loadingVitals}>
+            {vitalRows.map(row => {
+              const hasData = row.series.length > 0;
+              const avg = hasData ? row.series.reduce((a, b) => a + b, 0) / row.series.length : null;
+              return (
+                <div key={row.key} className="cs-vital-row">
+                  <div className="cs-row-main">
+                    <div className="cs-row-title">{row.label}</div>
+                    <div className={`cs-row-sub${hasData ? ' accent' : ''}`}>{row.source}</div>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Nutrition Intake Chart */}
-            <Card className="lg:col-span-2">
-              <CardHeader className="py-3"><CardTitle className="text-sm">Nutrition Intake (% from Goal — 30 Days)</CardTitle></CardHeader>
-              <CardContent className="py-3">
-                {loadingNutrition ? <Muted>Loading nutrition data…</Muted> : nutritionSummary.length === 0 ? <Muted>No nutrition data available</Muted> : (
-                  <div className="min-w-0">
-                    <ResponsiveContainer width="100%" height={240}>
-                      <LineChart data={formatNutritionChartData()} margin={{ top: 10, right: 30, bottom: 5, left: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
-                        <XAxis dataKey="date" tick={{ fontSize: 10, fill: chart.axis }} interval={4} />
-                        <YAxis domain={nutritionChartDomain()} tick={{ fontSize: 10, fill: chart.axis }} tickFormatter={(value) => `${value > 0 ? '+' : ''}${value}%`} />
-                        <Tooltip contentStyle={tooltipStyle} formatter={(value, name) => (value === null ? ['No target set', name] : [`${value > 0 ? '+' : ''}${value}%`, name])} />
-                        <Legend />
-                        <ReferenceLine y={25} stroke={chart.grid} strokeDasharray="2 4" />
-                        <ReferenceLine y={-25} stroke={chart.grid} strokeDasharray="2 4" />
-                        <ReferenceLine y={0} stroke={chart.axis} strokeWidth={2} label={{ value: 'Goal', fill: chart.axis, fontSize: 10, position: 'right' }} />
-                        <Line type="monotone" dataKey="calories" stroke="#f59e0b" strokeWidth={2} dot={false} name="Calories" connectNulls />
-                        <Line type="monotone" dataKey="fluids" stroke="#3b82f6" strokeWidth={2} dot={false} name="Fluids" connectNulls />
-                      </LineChart>
-                    </ResponsiveContainer>
+                  <div className="cs-spark-track">
+                    {hasData ? (
+                      <Spark series={row.series} lo={row.range?.expected_min} hi={row.range?.expected_max} />
+                    ) : (
+                      <>
+                        <span className="cs-nodata-line" aria-hidden="true" />
+                        <span className="cs-nodata">No data</span>
+                      </>
+                    )}
                   </div>
-                )}
-              </CardContent>
-            </Card>
+                  <div className="cs-vital-avg">
+                    <span className="cs-avg-label">Avg</span>
+                    <span className={`cs-avg-value${hasData ? '' : ' none'}`}>{hasData ? row.fmt(avg) : '—'}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </Section>
 
-            {/* Nutrition Output Chart */}
-            <Card className="lg:col-span-2">
-              <CardHeader className="py-3"><CardTitle className="text-sm">Nutrition Output (30 Days)</CardTitle></CardHeader>
-              <CardContent className="py-3">
-                {loadingNutritionOutput ? <Muted>Loading output data…</Muted> : nutritionOutput.length === 0 ? <Muted>No output data available</Muted> : (
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div className="min-w-0">
-                      <h3 className="mb-1 text-sm font-medium text-foreground">Urine Output <span className="text-xs text-muted-foreground">— count (left) · volume mL (right)</span></h3>
-                      <ResponsiveContainer width="100%" height={180}>
-                        <LineChart data={formatOutputChartData()} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
-                          <XAxis dataKey="date" tick={{ fontSize: 10, fill: chart.axis }} interval={6} />
-                          <YAxis yAxisId="count" orientation="left" allowDecimals={false} tick={{ fontSize: 10, fill: '#a855f7' }} />
-                          <YAxis yAxisId="ml" orientation="right" tick={{ fontSize: 10, fill: '#06b6d4' }} />
-                          <Tooltip contentStyle={tooltipStyle} formatter={(value, name) => (name === 'Volume (ml)' ? [`${value} mL`, name] : [value, name])} />
-                          <Legend />
-                          {nutritionOutput[0]?.urine_target && (
-                            <ReferenceLine yAxisId="ml" y={nutritionOutput[0].urine_target} stroke="#22c55e" strokeDasharray="3 3" label={{ value: 'Min mL', fill: '#22c55e', fontSize: 10 }} />
-                          )}
-                          <Line yAxisId="count" type="monotone" dataKey="urineCount" stroke="#a855f7" strokeWidth={2} dot={false} connectNulls name="Voids" />
-                          <Line yAxisId="ml" type="monotone" dataKey="urine" stroke="#06b6d4" strokeWidth={2} strokeDasharray="4 2" dot={false} connectNulls name="Volume (ml)" />
-                        </LineChart>
-                      </ResponsiveContainer>
+          <Section num={2} title={`${WINDOW_DAYS}-Day Events`} loading={loadingEvents}>
+            <div className="cs-row">
+              <span className="cs-row-icon" aria-hidden="true"><VitalsIcon size={18} /></span>
+              <div className="cs-row-main">
+                <div className="cs-row-title">Symptoms</div>
+                <div className="cs-row-sub">
+                  {symptoms30.length === 0 ? '0 recorded' : (
+                    <span className="cs-frag">
+                      <span>{symptoms30.length} recorded</span>
+                      {symptomPeaks.map(([type, sev]) => (
+                        <React.Fragment key={type}>
+                          <span className="cs-sep">|</span>
+                          <span>{fmtLabel(type)} <span className={severityTone(sev)}>{sev}/10</span></span>
+                        </React.Fragment>
+                      ))}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <span className={`cs-status ${symptoms30.length === 0 ? 'cs-tone-dim' : activeSymptomCount > 0 ? 'cs-tone-due' : 'cs-tone-ok'}`}>
+                {symptoms30.length === 0 ? '—' : activeSymptomCount > 0 ? `${activeSymptomCount} active` : 'Resolved'}
+              </span>
+            </div>
+            <div className="cs-row">
+              <span className="cs-row-icon" aria-hidden="true"><NutritionIcon size={18} /></span>
+              <div className="cs-row-main">
+                <div className="cs-row-title">Nutrition</div>
+                <div className={`cs-row-sub${nutriDays.length === 0 ? ' cs-tone-due' : ''}`}>
+                  {nutriDays.length === 0 ? 'No data' : `${nutriDays.length} days logged`}
+                </div>
+              </div>
+              <span className={`cs-status ${avgCalories == null ? 'cs-tone-dim' : 'cs-tone-live'}`}>
+                {avgCalories == null ? '—' : `Avg ${avgCalories.toLocaleString()} cal/day`}
+              </span>
+            </div>
+            <div className="cs-row">
+              <span className="cs-row-icon" aria-hidden="true"><UrineIcon size={18} /></span>
+              <div className="cs-row-main">
+                <div className="cs-row-title">Urine Output</div>
+                <div className={`cs-row-sub${urineTotal === 0 ? ' cs-tone-due' : ''}`}>{urineTotal} recorded</div>
+              </div>
+              <span className={`cs-status ${urineDays === 0 ? 'cs-tone-dim' : 'cs-tone-live'}`}>
+                {urineDays === 0 ? '—' : urineMlTotal > 0 ? `Avg ${Math.round(urineMlTotal / urineDays)} mL/day` : `${urineDays} days logged`}
+              </span>
+            </div>
+            <div className="cs-row">
+              <span className="cs-row-icon" aria-hidden="true"><BowelIcon size={18} /></span>
+              <div className="cs-row-main">
+                <div className="cs-row-title">Bowel Movements</div>
+                <div className={`cs-row-sub${bowelTotal === 0 ? ' cs-tone-due' : ''}`}>{bowelTotal} recorded</div>
+              </div>
+              <span className={`cs-status ${bowelDays === 0 ? 'cs-tone-dim' : 'cs-tone-live'}`}>
+                {bowelDays === 0 ? '—' : `Avg ${(bowelTotal / Math.min(WINDOW_DAYS, Math.max(bowelDays, 1))).toFixed(1)}/day`}
+              </span>
+            </div>
+          </Section>
+
+          <Section num={3} title={`Medications · ${WINDOW_DAYS} Days`} loading={loadingMeds}>
+            {medWindow.length === 0 ? (
+              <EmptyRow icon={<PillIcon size={18} />} label="None recorded" />
+            ) : medWindow.map(m => (
+              <div key={m.name} className="cs-row">
+                <span className="cs-row-icon" aria-hidden="true"><PillIcon size={18} /></span>
+                <div className="cs-row-body">
+                  <div className="cs-row-head">
+                    <div className="cs-row-title">{m.name}</div>
+                    <span className={`cs-status ${m.doses > 0 ? 'cs-tone-live' : 'cs-tone-dim'}`}>
+                      {m.doses} {m.doses === 1 ? 'dose' : 'doses'}
+                    </span>
+                    {m.prn && <span className="cs-pill cs-tone-due">PRN</span>}
+                    {!m.active && <span className="cs-pill cs-tone-idle">Ended</span>}
+                  </div>
+                  <div className="cs-row-sub">
+                    <span className="cs-frag">
+                      {m.concentration && <span>{m.concentration}</span>}
+                      <span>
+                        {m.concentration && <span className="cs-sep">| </span>}
+                        {m.last ? `Last given ${fmtDayTime(m.last)}` : `Not given in ${WINDOW_DAYS} days`}
+                      </span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </Section>
+
+          <Section num={4} title="Diagnoses" loading={loadingDiagnoses}>
+            {diagnoses.length === 0 ? (
+              <EmptyRow icon={<VirusIcon size={18} />} label="None recorded" />
+            ) : diagnoses.map(d => (
+              <div key={d.id} className="cs-row">
+                <span className="cs-row-icon" aria-hidden="true"><VirusIcon size={18} /></span>
+                <div className="cs-row-main">
+                  <div className="cs-row-title">{d.name}</div>
+                  {(d.icd10_code || d.diagnosing_provider_name) && (
+                    <div className="cs-row-sub">
+                      <span className="cs-frag">
+                        {d.icd10_code && <span>{d.icd10_code}</span>}
+                        {d.icd10_code && d.diagnosing_provider_name && <span className="cs-sep">|</span>}
+                        {d.diagnosing_provider_name && <span>{d.diagnosing_provider_name}</span>}
+                      </span>
                     </div>
-                    <div className="min-w-0">
-                      <h3 className="mb-1 text-sm font-medium text-foreground">Bowel Movements (count)</h3>
-                      <ResponsiveContainer width="100%" height={180}>
-                        <LineChart data={formatOutputChartData()} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
-                          <XAxis dataKey="date" tick={{ fontSize: 10, fill: chart.axis }} interval={6} />
-                          <YAxis domain={[0, 5]} tick={{ fontSize: 10, fill: chart.axis }} />
-                          <Tooltip contentStyle={tooltipStyle} formatter={(value, name) => (name === 'bowel' ? [value, 'Bowel Movements'] : [value, name])} />
-                          <Line type="stepAfter" dataKey="bowel" stroke="#a855f7" strokeWidth={2} dot={false} connectNulls />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                  )}
+                </div>
+                {d.is_primary_diagnosis && <span className="cs-pill cs-tone-live">Primary</span>}
+                {d.severity && <span className={`cs-status ${diagnosisSeverityTone(d.severity)}`}>{fmtLabel(d.severity)}</span>}
+                <span className={`cs-status ${diagnosisStatusTone(d.status)}`}>{fmtLabel(d.status)}</span>
+              </div>
+            ))}
+          </Section>
 
-            {/* Care Team */}
-            <Card className="lg:col-span-2">
-              <CardHeader className="py-3"><CardTitle className="text-sm">Care Team</CardTitle></CardHeader>
-              <CardContent className="py-3">
-                {loadingProviders ? <Muted>Loading care team…</Muted> : providers.length === 0 ? <Muted>No providers assigned</Muted> : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full border-collapse text-sm">
-                      <thead>
-                        <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-                          <th className="p-2 font-medium">Name</th>
-                          <th className="p-2 font-medium">Title</th>
-                          <th className="p-2 font-medium">Specialty</th>
-                          <th className="p-2 font-medium">Type</th>
-                          <th className="p-2 font-medium">Business</th>
-                          <th className="p-2 font-medium">Phone</th>
-                          <th className="p-2 font-medium">Primary</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {providers.map(provider => (
-                          <tr key={provider.id} className="border-b border-border/60">
-                            <td className="whitespace-nowrap p-2 font-medium text-foreground">{provider.first_name} {provider.last_name}</td>
-                            <td className="p-2 text-muted-foreground">{provider.title}</td>
-                            <td className="p-2 text-muted-foreground">{provider.specialty}</td>
-                            <td className="p-2"><Badge variant="secondary">{provider.provider_type}</Badge></td>
-                            <td className="p-2 text-muted-foreground">{provider.business?.name || '—'}</td>
-                            <td className="p-2 text-muted-foreground">{provider.phone || provider.business?.phone || '—'}</td>
-                            <td className="p-2 text-[#3fb950]">{provider.is_primary ? '✓' : ''}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+          <Section num={5} title="Care Team by Specialty" loading={loadingProviders}>
+            {providers.length === 0 ? (
+              <EmptyRow icon={<UsersIcon size={18} />} label="None assigned" />
+            ) : teamGroups.map(([specialty, list]) => list.map((p, i) => {
+              const phone = p.phone || p.business?.phone;
+              return (
+                <div key={p.id} className="cs-row">
+                  {i === 0
+                    ? <span className="cs-row-icon" aria-hidden="true"><UsersIcon size={18} /></span>
+                    : <span className="cs-row-spacer" aria-hidden="true" />}
+                  <div className="cs-row-main">
+                    {i === 0 && <div className="cs-row-sub accent above">{specialty}</div>}
+                    <div className="cs-row-title">{[p.title, p.first_name, p.last_name].filter(Boolean).join(' ')}</div>
                   </div>
-                )}
-              </CardContent>
-            </Card>
+                  {p.is_primary && <span className="cs-status cs-tone-live">Primary</span>}
+                  {phone && (
+                    <a className="cs-icon-btn" href={`tel:${phone}`} aria-label={`Call ${p.first_name} ${p.last_name}`}>
+                      <PhoneIcon size={16} />
+                    </a>
+                  )}
+                  <Link className="cs-chevron-link" to="/care/profile/providers" aria-label={`View ${p.first_name} ${p.last_name} in Providers`}>
+                    <ChevronRightIcon size={18} />
+                  </Link>
+                </div>
+              );
+            }))}
+          </Section>
+
+          <Section num={6} title="Devices / Implants" loading={loadingImplants}>
+            {implants.length === 0 ? (
+              <EmptyRow icon={<BodyIcon size={18} />} label="None recorded" />
+            ) : implants.map(im => (
+              <div key={im.id} className="cs-row">
+                <span className="cs-row-icon" aria-hidden="true"><BodyIcon size={18} /></span>
+                <div className="cs-row-main">
+                  <div className="cs-row-title">{im.name}</div>
+                  <div className="cs-row-sub">
+                    <span className="cs-frag">
+                      {im.category && <span>{fmtLabel(im.category)}</span>}
+                      {im.category && (im.manufacturer || im.model) && <span className="cs-sep">|</span>}
+                      {(im.manufacturer || im.model) && <span>{`${im.manufacturer || ''} ${im.model || ''}`.trim()}</span>}
+                    </span>
+                  </div>
+                </div>
+                {im.mri_safe && <span className={`cs-status ${im.mri_safe === 'safe' ? 'cs-tone-ok' : im.mri_safe === 'unsafe' ? 'cs-tone-alert' : 'cs-tone-due'}`}>MRI {im.mri_safe}</span>}
+                {im.is_life_sustaining && <span className="cs-pill cs-tone-alert">Life-sustaining</span>}
+              </div>
+            ))}
+          </Section>
+
+          <div className="cs-footnote">
+            <InfoIcon size={16} />
+            <span>Full report includes expanded charts, medication directions + provider contact details.</span>
           </div>
         </div>
 
         {/* Dedicated print document — hidden on screen, the only thing that prints. */}
         <SummaryPrintView
           patient={selectedPatient}
+          rangeLabel={rangeLabel}
           diagnoses={diagnoses}
-          symptoms={symptoms}
-          medications={medications}
+          symptoms={symptoms30}
+          medWindow={medWindow}
+          activeMedsByName={activeMedsByName}
           implants={implants}
           providers={providers}
         />

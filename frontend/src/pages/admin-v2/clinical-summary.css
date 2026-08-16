@@ -1,0 +1,306 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* 30-day clinical summary (Profile > Summary) — bedside-monitor aesthetic.
+ * Paints its own dark card (like .symptom-log) so it reads the same in both
+ * app themes. Tokens only. */
+@import '../../styles/vc-tokens.css';
+
+.clin-summary {
+  max-width: 920px;
+  padding: 1rem 1.1rem 1.1rem;
+  background: var(--vc-bg-base);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 12px;
+  font-family: var(--vc-font-mono);
+  color: var(--vc-text-primary);
+}
+.clin-summary *,
+.clin-summary *::before,
+.clin-summary *::after { box-sizing: border-box; }
+
+/* ---- Header ---- */
+.cs-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.1rem;
+}
+.cs-title {
+  margin: 0 0 0.45rem;
+  font-family: var(--vc-font-mono);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+.cs-range {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--vc-data-live);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.cs-generated {
+  margin-top: 0.35rem;
+  color: var(--vc-text-secondary);
+  font-size: 12.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.cs-purpose {
+  margin-top: 0.55rem;
+  color: var(--vc-text-tertiary);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.cs-print-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.6rem 1rem;
+  border: 1px solid var(--vc-data-live);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--vc-data-live);
+  font-family: var(--vc-font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.cs-print-btn:hover {
+  background: color-mix(in srgb, var(--vc-data-live) 12%, transparent);
+}
+
+/* ---- Sections ---- */
+.cs-section {
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 10px;
+  background: var(--vc-bg-surface);
+  margin-bottom: 1rem;
+  overflow: hidden;
+}
+.cs-section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--vc-line-hairline);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.cs-section-num { color: var(--vc-data-live); }
+
+.cs-row {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.8rem 1rem;
+  min-width: 0;
+}
+.cs-row + .cs-row { border-top: 1px solid var(--vc-line-hairline); }
+.cs-row-icon {
+  flex-shrink: 0;
+  display: grid;
+  place-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 50%;
+  color: var(--vc-text-secondary);
+}
+.cs-row-main { flex: 1; min-width: 0; }
+/* Two-line row body: header line (title + right-aligned statuses), then a
+ * detail line that gets the full row width — long names and long detail
+ * fragments wrap at word boundaries instead of fighting for one line. */
+.cs-row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.cs-row-head { display: flex; align-items: center; gap: 0.7rem; min-width: 0; }
+.cs-row-head .cs-row-title { flex: 1; }
+.cs-row-title {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+  overflow-wrap: break-word;
+}
+.cs-row-sub {
+  margin-top: 0.2rem;
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.cs-row-sub.accent { color: var(--vc-data-live); }
+.cs-row-sub.above { margin: 0 0 0.2rem; }
+.cs-row-body .cs-row-sub { margin-top: 0; }
+
+/* Right-aligned status words — mono uppercase, tone-colored text */
+.cs-status { flex-shrink: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; text-align: right; }
+.cs-tone-ok { color: var(--vc-state-complete); }
+.cs-tone-due { color: var(--vc-state-due); }
+.cs-tone-alert { color: var(--vc-state-alert); }
+.cs-tone-live { color: var(--vc-data-live); }
+.cs-tone-idle { color: var(--vc-state-idle); }
+.cs-tone-dim { color: var(--vc-text-secondary); }
+
+/* Small bordered pill (PRN, ENDED) */
+.cs-pill {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Inline separators between summary fragments; wraps at fragment boundaries */
+.cs-frag { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.45rem; }
+.cs-sep { color: var(--vc-line-strong); }
+
+/* ---- Vital trend rows ---- */
+.cs-vital-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 170px) 1fr 58px;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.8rem 1rem;
+}
+.cs-vital-row + .cs-vital-row { border-top: 1px solid var(--vc-line-hairline); }
+.cs-spark-track {
+  position: relative;
+  height: 52px;
+  min-width: 0;
+  border-left: 1px dashed var(--vc-line-strong);
+  border-right: 1px dashed var(--vc-line-strong);
+  padding: 0 3px;
+}
+.cs-spark { display: block; width: 100%; height: 100%; }
+.cs-spark-line {
+  fill: none;
+  stroke: var(--vc-data-live);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.cs-spark-hi { stroke: var(--vc-state-alert); }
+.cs-spark-lo { stroke: var(--vc-state-due); }
+.cs-spark-threshold {
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke;
+}
+.cs-nodata {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  color: var(--vc-state-due);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.cs-nodata-line {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  top: 50%;
+  border-top: 1px dashed var(--vc-line-strong);
+}
+.cs-vital-avg { text-align: right; }
+.cs-vital-avg .cs-avg-label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--vc-text-secondary);
+  text-transform: uppercase;
+}
+.cs-vital-avg .cs-avg-value {
+  display: block;
+  margin-top: 0.1rem;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--vc-text-primary);
+}
+.cs-vital-avg .cs-avg-value.none { color: var(--vc-state-due); }
+
+/* ---- Care team ---- */
+.cs-row-spacer { flex-shrink: 0; width: 34px; }
+.cs-icon-btn {
+  flex-shrink: 0;
+  display: grid;
+  place-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--vc-data-live);
+  cursor: pointer;
+}
+.cs-icon-btn:hover { border-color: var(--vc-data-live); }
+.cs-chevron-link {
+  flex-shrink: 0;
+  display: grid;
+  place-content: center;
+  color: var(--vc-text-secondary);
+}
+.cs-chevron-link:hover { color: var(--vc-text-primary); }
+
+/* ---- Foot note ---- */
+.cs-footnote {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 10px;
+  color: var(--vc-text-secondary);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.6;
+}
+.cs-footnote svg { flex-shrink: 0; margin-top: 2px; }
+
+/* Loading placeholder inside a section */
+.cs-loading {
+  padding: 0.8rem 1rem;
+  color: var(--vc-text-tertiary);
+  font-size: 12.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 560px) {
+  .cs-vital-row { grid-template-columns: minmax(100px, 130px) 1fr 52px; gap: 0.6rem; }
+  .cs-title { font-size: 19px; }
+}
