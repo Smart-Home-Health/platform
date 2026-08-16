@@ -19,7 +19,7 @@
 // public liveness probe. There is no offline write queue (v1), so OFFLINE
 // disables saving rather than pretending to sync.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import config, { apiFetch } from '../../config';
+import config, { apiFetch } from '../config';
 
 const POLL_MS = 30000;
 

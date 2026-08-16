@@ -142,26 +142,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.vc-chip {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-family: var(--vc-font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.08em;
-  color: var(--vc-text-secondary);
-  white-space: nowrap;
-}
-.vc-chip-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--vc-state-complete);
-  flex-shrink: 0;
-}
-.vc-chip.offline { color: var(--vc-state-due); }
-.vc-chip.offline .vc-chip-dot { background: var(--vc-state-due); }
-
 .vc-title {
   font-family: var(--vc-font-mono);
   font-size: 17px;

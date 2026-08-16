@@ -134,6 +134,39 @@
   background: rgba(0, 0, 0, 0.6);
 }
 
+/* ---------- Grouped nav + drawer (dark colors for admin-nav.css) ---------- */
+:root:not(.light) .admin-v2-nav-group + .admin-v2-nav-group {
+  border-top-color: var(--vc-line-hairline);
+}
+:root:not(.light) .admin-v2-nav-group-label {
+  font-family: var(--vc-font-mono);
+  color: var(--vc-text-tertiary);
+}
+:root:not(.light) .admin-v2-drawer-header {
+  background: var(--vc-bg-surface);
+  border-bottom-color: var(--vc-line-hairline);
+}
+:root:not(.light) .admin-v2-drawer-close {
+  border-color: var(--vc-line-hairline);
+  color: var(--vc-text-primary);
+}
+:root:not(.light) .admin-v2-drawer-close-caption { font-family: var(--vc-font-mono); }
+:root:not(.light) .admin-v2-drawer-title {
+  font-family: var(--vc-font-mono);
+  color: var(--vc-text-primary);
+}
+:root:not(.light) .admin-v2-drawer-title-sep { color: var(--vc-text-tertiary); }
+:root:not(.light) .admin-v2-patient-selector-status { color: var(--vc-text-tertiary); }
+:root:not(.light) .admin-v2-patient-selector-status.active { color: var(--vc-state-complete); }
+:root:not(.light) .admin-v2-mobile-menu-caption { font-family: var(--vc-font-mono); }
+:root:not(.light) .admin-v2-mobile-header-sub {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+
 /* ---------- Sub-nav strip (Record | History …) ---------- */
 :root:not(.light) .admin-v2-topnav {
   background: var(--vc-bg-base);

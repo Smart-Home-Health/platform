@@ -28,6 +28,7 @@ import { buildConfigs } from './vitalConfigs';
 import CaptureSheet from './components/CaptureSheet';
 import VitalTile from './components/VitalTile';
 import { clearDraft, loadDraft, newEncounterUid, saveDraft } from './useCaptureDraft';
+import ConnectionChip from '../../components/ConnectionChip';
 
 const newEncounter = () => ({
   encounterUid: newEncounterUid(),
@@ -38,21 +39,6 @@ const newEncounter = () => ({
 function encounterLabel(startedAt) {
   const d = new Date(startedAt);
   return `${d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })} · ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
-}
-
-export function ConnectionChip({ connection }) {
-  const { connected, lastSuccess } = connection;
-  const stamp = lastSuccess
-    ? lastSuccess.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-    : null;
-  return (
-    <span className={`vc-chip ${connected ? '' : 'offline'}`}>
-      <span className="vc-chip-dot" aria-hidden="true" />
-      {connected
-        ? `Connected${stamp ? ` · Synced ${stamp}` : ''}`
-        : `Offline${stamp ? ` · Last synced ${stamp}` : ''}`}
-    </span>
-  );
 }
 
 export default function CaptureVitalsPanel({ patient, connection, embedded = false }) {
