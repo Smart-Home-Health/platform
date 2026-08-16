@@ -18,12 +18,7 @@
 // The capture experience itself (grid, sheet, draft, save), shared by two
 // shells: the standalone phone surface at /capture and the embedded
 // admin-v2 vitals page at /care/vitals (inside the hamburger layout).
-import '@fontsource/ibm-plex-mono/300.css';
-import '@fontsource/ibm-plex-mono/400.css';
-import '@fontsource/ibm-plex-mono/500.css';
-import '@fontsource/ibm-plex-mono/600.css';
-import '@fontsource/ibm-plex-sans/400.css';
-import '@fontsource/ibm-plex-sans/500.css';
+import '../../styles/vcFonts';
 import './capture.css';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
