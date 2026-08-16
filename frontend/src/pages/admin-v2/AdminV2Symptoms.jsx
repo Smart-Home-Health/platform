@@ -47,6 +47,7 @@ import {
 } from '@/components/ui/select';
 import { Field, FormRow } from '@/components/ui/field';
 import { Alert } from '@/components/ui/alert';
+import SymptomLogForm from './components/SymptomLogForm';
 import './AdminV2.css';
 
 // Severity color mapping
@@ -422,98 +423,12 @@ const AdminV2Symptoms = () => {
 
   // Render log symptom view
   const renderLogView = () => (
-    <div className="admin-v2-vitals-content">
-      {/* Log Form */}
-      <div className="admin-v2-settings-card">
-        <form onSubmit={handleSymptomSubmit} className="tw">
-          <div className="flex flex-col gap-4">
-            <FormRow>
-              <Field label="Symptom Type" required>
-                <Select
-                  value={symptomFormData.symptom_type || undefined}
-                  onValueChange={(v) => setSymptomFormData(prev => ({ ...prev, symptom_type: v }))}
-                >
-                  <SelectTrigger><SelectValue placeholder="Select symptom..." /></SelectTrigger>
-                  <SelectContent>
-                    {symptomTypes.map(type => (
-                      <SelectItem key={type} value={type}>{formatSymptomType(type)}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-
-              <Field label="Date/Time" required>
-                <Input
-                  type="datetime-local"
-                  value={symptomFormData.timestamp}
-                  onChange={(e) => setSymptomFormData(prev => ({ ...prev, timestamp: e.target.value }))}
-                  required
-                />
-              </Field>
-            </FormRow>
-
-            <FormRow>
-              <Field label={severityLabel}>
-                {renderSeveritySlider()}
-              </Field>
-
-              <Field label="Body Location">
-                <Select
-                  value={symptomFormData.location || '__none__'}
-                  onValueChange={(v) => setSymptomFormData(prev => ({ ...prev, location: v === '__none__' ? '' : v }))}
-                >
-                  <SelectTrigger><SelectValue placeholder="Select location..." /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Not specified</SelectItem>
-                    {bodyLocations.map(loc => (
-                      <SelectItem key={loc} value={loc}>{formatLocation(loc)}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-            </FormRow>
-
-            <FormRow>
-              <Field label="Duration">
-                <Input
-                  type="text"
-                  value={symptomFormData.duration}
-                  onChange={(e) => setSymptomFormData(prev => ({ ...prev, duration: e.target.value }))}
-                  placeholder="e.g., 30 minutes"
-                />
-              </Field>
-            </FormRow>
-
-            <Field label="Description">
-              <Textarea
-                value={symptomFormData.description}
-                onChange={(e) => setSymptomFormData(prev => ({ ...prev, description: e.target.value }))}
-                rows={2}
-                placeholder="Describe the symptom..."
-              />
-            </Field>
-
-            <Field label="Notes (optional)">
-              <Textarea
-                value={symptomFormData.notes}
-                onChange={(e) => setSymptomFormData(prev => ({ ...prev, notes: e.target.value }))}
-                rows={2}
-                placeholder="Any additional notes..."
-              />
-            </Field>
-
-            <div className="flex justify-end">
-              <Button
-                type="submit"
-                disabled={saving || !selectedPatient || !symptomFormData.symptom_type}
-              >
-                {saving ? 'Saving...' : 'Log Symptom'}
-              </Button>
-            </div>
-          </div>
-        </form>
-      </div>
-    </div>
+    <SymptomLogForm
+      patient={selectedPatient}
+      symptomTypes={symptomTypes}
+      bodyLocations={bodyLocations}
+      onLogged={loadSymptoms}
+    />
   );
 
   // Render active symptoms view
