@@ -32,6 +32,7 @@
 }
 :root:not(.light) .admin-v2-schedule-date {
   font-family: var(--vc-font-mono);
+  font-variant-numeric: tabular-nums;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -49,6 +50,7 @@
   text-transform: uppercase;
 }
 :root:not(.light) .admin-v2-date-picker {
+  font-variant-numeric: tabular-nums;
   background: var(--vc-bg-raised);
   border: 1px solid var(--vc-line-hairline);
   border-radius: 8px;
