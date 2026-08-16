@@ -102,7 +102,8 @@ function ActiveCard({ symptom, onResolve, onEdit, onDelete }) {
         </button>
         <div className="sa-menu-wrap" ref={menuRef}>
           <button type="button" className="sa-icon-btn" aria-label="More actions"
-                  aria-expanded={menuOpen} onClick={() => setMenuOpen((v) => !v)}>
+                  aria-haspopup="menu" aria-expanded={menuOpen}
+                  onClick={() => setMenuOpen((v) => !v)}>
             <MoreHorizontalIcon size={16} />
           </button>
           {menuOpen && (

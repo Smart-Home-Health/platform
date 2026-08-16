@@ -18,7 +18,8 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
-import config from '../../config';
+import config, { apiFetch } from '../../config';
+import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import {
   EditIcon,
@@ -113,7 +114,7 @@ const AdminV2Symptoms = () => {
 
   const loadSymptomTypes = async () => {
     try {
-      const response = await fetch(`${config.apiUrl}/api/symptoms/types`, {
+      const response = await apiFetch(`${config.apiUrl}/api/symptoms/types`, {
         credentials: 'include'
       });
       if (response.ok) {
@@ -127,7 +128,7 @@ const AdminV2Symptoms = () => {
 
   const loadBodyLocations = async () => {
     try {
-      const response = await fetch(`${config.apiUrl}/api/symptoms/locations`, {
+      const response = await apiFetch(`${config.apiUrl}/api/symptoms/locations`, {
         credentials: 'include'
       });
       if (response.ok) {
@@ -144,7 +145,7 @@ const AdminV2Symptoms = () => {
 
     setLoadingSymptoms(true);
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${config.apiUrl}/api/symptoms/patient/${selectedPatient.id}?limit=20&resolved=false`,
         { credentials: 'include' }
       );
@@ -165,7 +166,7 @@ const AdminV2Symptoms = () => {
     if (!selectedPatient) return;
     setLoadingHistory(true);
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${config.apiUrl}/api/symptoms/patient/${selectedPatient.id}?limit=200`,
         { credentials: 'include' }
       );
@@ -182,7 +183,7 @@ const AdminV2Symptoms = () => {
 
   const handleResolveSymptom = async (symptomId) => {
     try {
-      const response = await fetch(`${config.apiUrl}/api/symptoms/${symptomId}/resolve`, {
+      const response = await apiFetch(`${config.apiUrl}/api/symptoms/${symptomId}/resolve`, {
         method: 'POST',
         credentials: 'include'
       });
@@ -205,7 +206,7 @@ const AdminV2Symptoms = () => {
     if (!selectedSymptom) return;
 
     try {
-      const response = await fetch(`${config.apiUrl}/api/symptoms/${selectedSymptom.id}`, {
+      const response = await apiFetch(`${config.apiUrl}/api/symptoms/${selectedSymptom.id}`, {
         method: 'DELETE',
         credentials: 'include'
       });
@@ -292,24 +293,29 @@ const AdminV2Symptoms = () => {
           isHistoryView ? renderHistoryView() : isActiveView ? renderActiveView() : renderLogView()
         )}
 
-        {/* Edit symptom: the log form reused in edit mode (vc overlay) */}
-        {editingSymptom && selectedPatient && (
-          <div className="sl-edit-overlay" role="dialog" aria-modal="true"
-               aria-label="Edit symptom"
-               onClick={(e) => { if (e.target === e.currentTarget) setEditingSymptom(null); }}>
-            <div className="sl-edit-panel">
-              <SymptomLogForm
-                key={editingSymptom.id}
-                patient={selectedPatient}
-                symptomTypes={symptomTypes}
-                bodyLocations={bodyLocations}
-                initial={editingSymptom}
-                onCancel={() => setEditingSymptom(null)}
-                onLogged={() => { loadSymptoms(); loadHistorySymptoms(); setSuccess('Symptom updated'); setTimeout(() => setSuccess(null), 3000); }}
-              />
-            </div>
-          </div>
-        )}
+        {/* Edit symptom: the log form reused in edit mode. Radix primitives
+            provide the focus trap, Escape dismissal and scroll lock the
+            previous Dialog had; chrome stays vc (sl-edit-* classes). */}
+        <DialogPrimitive.Root open={Boolean(editingSymptom && selectedPatient)}
+                              onOpenChange={(o) => { if (!o) setEditingSymptom(null); }}>
+          <DialogPrimitive.Portal>
+            <DialogPrimitive.Overlay className="sl-edit-overlay" />
+            <DialogPrimitive.Content className="sl-edit-panel" aria-describedby={undefined}>
+              <DialogPrimitive.Title className="sl-sr-only">Edit symptom</DialogPrimitive.Title>
+              {editingSymptom && selectedPatient && (
+                <SymptomLogForm
+                  key={editingSymptom.id}
+                  patient={selectedPatient}
+                  symptomTypes={symptomTypes}
+                  bodyLocations={bodyLocations}
+                  initial={editingSymptom}
+                  onCancel={() => setEditingSymptom(null)}
+                  onLogged={() => { loadSymptoms(); loadHistorySymptoms(); setSuccess('Symptom updated'); setTimeout(() => setSuccess(null), 3000); }}
+                />
+              )}
+            </DialogPrimitive.Content>
+          </DialogPrimitive.Portal>
+        </DialogPrimitive.Root>
 
         {/* Delete Confirmation Dialog */}
         <Dialog open={showDeleteModal && !!selectedSymptom} onOpenChange={(o) => { if (!o) setShowDeleteModal(false); }}>
