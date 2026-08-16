@@ -18,8 +18,17 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import logoImage from '../assets/logo2.png';
-import './LoginPage.css';
+import {
+  UnlockIcon,
+  LockIcon,
+  EyeIcon,
+  EyeOffIcon,
+  ClipboardListIcon,
+  ChevronRightIcon,
+  BackArrowIcon,
+} from '../components/Icons';
+import AuthShell from './AuthShell';
+import './auth.css';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -27,6 +36,7 @@ export default function LoginPage() {
   const { isAuthenticated, isAccountAuthenticated, accountAccess, skipAccountPassword } = useAuth();
 
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [autoSkipTried, setAutoSkipTried] = useState(false);
@@ -62,6 +72,12 @@ export default function LoginPage() {
   const handleUnlockAndContinue = async (e) => {
     e.preventDefault();
     setError('');
+    // accountAccess() treats a blank password as a request for restricted
+    // access — never what someone clicking "Unlock full access" meant.
+    if (!password.trim()) {
+      setError('Enter the account password, or use quick entry below.');
+      return;
+    }
     setLoading(true);
     const result = await accountAccess(password);
     setLoading(false);
@@ -72,8 +88,7 @@ export default function LoginPage() {
     }
   };
 
-  const handleContinueWithoutUnlock = async (e) => {
-    e.preventDefault();
+  const handleContinueWithoutUnlock = async () => {
     setError('');
     setLoading(true);
     const result = await accountAccess(null);
@@ -88,70 +103,70 @@ export default function LoginPage() {
   // While the account-password skip is resolving, don't flash the password form.
   if (skipAccountPassword && !error) {
     return (
-      <div className="login-page">
-        <div className="login-container">
-          <Link to="/" className="login-logo">
-            <img src={logoImage} alt="Smart Home Health Logo" />
-            <span>Smart Home Health</span>
-          </Link>
-          <p className="login-subtitle">Continuing…</p>
-        </div>
-      </div>
+      <AuthShell>
+        <p className="au-continuing">Continuing…</p>
+      </AuthShell>
     );
   }
 
   return (
-    <div className="login-page">
-      <div className="login-container">
-        <Link to="/" className="login-logo">
-          <img src={logoImage} alt="Smart Home Health Logo" />
-          <span>Smart Home Health</span>
-        </Link>
+    <AuthShell>
+      <div className="au-eyebrow">Access Control</div>
+      <h2 className="au-title">Unlock Care Record</h2>
+      <p className="au-subtitle">Enter the account password for full access to patient data and settings.</p>
 
-        <div className="login-card">
-          <div className="login-header">
-            <h2>Sign In</h2>
-            <p>Enter account password to view data, or continue without unlocking to log and record only.</p>
-          </div>
+      <form onSubmit={handleUnlockAndContinue} className="au-form">
+        {error && <div className="au-error">{error}</div>}
 
-          <form onSubmit={handleUnlockAndContinue} className="login-form">
-            {error && <div className="error-message">{error}</div>}
-
-            <div className="form-group">
-              <label htmlFor="password">Account password</label>
-              <input
-                type="password"
-                id="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter password to unlock"
-                autoFocus
-              />
-            </div>
-
-            <button type="submit" className="submit-button" disabled={loading}>
-              {loading ? 'Signing in...' : 'Unlock and continue'}
-            </button>
-          </form>
-
-          <div className="login-form login-form-secondary">
-            <button
-              type="button"
-              className="submit-button submit-button-secondary"
-              disabled={loading}
-              onClick={handleContinueWithoutUnlock}
-            >
-              Continue without unlocking
-            </button>
-          </div>
-
-          <div className="login-footer">
-            <Link to="/" className="back-link">
-              ← Back to Home
-            </Link>
-          </div>
+        <label className="au-label" htmlFor="password">Account password</label>
+        <div className="au-input-wrap">
+          <input
+            type={showPassword ? 'text' : 'password'}
+            id="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Enter password"
+            autoFocus
+            required
+          />
+          <button
+            type="button"
+            className="au-eye"
+            aria-label={showPassword ? 'Hide password' : 'Show password'}
+            onClick={() => setShowPassword(!showPassword)}
+          >
+            {showPassword ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
+          </button>
         </div>
+
+        <button type="submit" className="au-primary" disabled={loading}>
+          <UnlockIcon size={18} /> {loading ? 'Unlocking…' : 'Unlock full access'}
+        </button>
+        <div className="au-caps">View · Edit · Export · Settings</div>
+      </form>
+
+      <div className="au-or"><em>or</em></div>
+
+      <div className="au-quick">
+        <span className="au-quick-icon" aria-hidden="true"><ClipboardListIcon size={24} /></span>
+        <div className="au-quick-title">Quick entry</div>
+        <p className="au-quick-body">Record medications, vitals and care tasks without viewing protected history.</p>
+        <button
+          type="button"
+          className="au-quick-btn"
+          disabled={loading}
+          onClick={handleContinueWithoutUnlock}
+        >
+          Continue in quick entry <ChevronRightIcon size={16} />
+        </button>
+        <div className="au-quick-caps"><LockIcon size={13} /> Record only · Patient data locked</div>
       </div>
-    </div>
+
+      <div className="au-footer">
+        <Link to="/" className="au-back">
+          <BackArrowIcon size={16} /> Back to home
+        </Link>
+      </div>
+    </AuthShell>
   );
 }
