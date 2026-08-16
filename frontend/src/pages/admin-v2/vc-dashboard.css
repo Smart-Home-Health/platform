@@ -221,7 +221,7 @@
   color: var(--vc-bg-base);
 }
 :root:not(.light) .admin-v2-patient-actions a:last-child:hover {
-  background: color-mix(in srgb, var(--vc-data-live) 85%, white);
+  background: color-mix(in srgb, var(--vc-data-live) 85%, var(--vc-text-primary));
 }
 :root:not(.light) .admin-v2-patient-actions a svg {
   color: currentColor;
