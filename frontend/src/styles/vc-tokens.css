@@ -1,0 +1,48 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Bedside-monitor design tokens (the "vc" aesthetic), shared by the vitals
+ * capture surface and the admin shell skin — the app-wide look pages migrate
+ * toward. Dark-only by design; consumers scope themselves to the dark theme.
+ * No raw hex outside token files. */
+:root {
+  /* Surfaces */
+  --vc-bg-base: #0a0e14;
+  --vc-bg-surface: #131a24;
+  --vc-bg-raised: #1b242f;
+  --vc-bg-sheet: #161e29;
+
+  /* Lines */
+  --vc-line-hairline: rgba(255, 255, 255, 0.1);
+  --vc-line-strong: rgba(255, 255, 255, 0.2);
+
+  /* Text */
+  --vc-text-primary: #e8edf3;
+  --vc-text-secondary: #9aa8b8;
+  --vc-text-tertiary: #6b7987; /* decorative only — never sole carrier of meaning */
+
+  /* Semantic state — roles, not colors */
+  --vc-data-live: #2fc2e8;   /* live data, active focus, primary action */
+  --vc-state-complete: #3fbf6a;
+  --vc-state-due: #f0a52e;   /* needs confirmation / attention */
+  --vc-state-alert: #f0563c; /* clinical concern only */
+  --vc-state-idle: #6b7987;
+
+  --vc-font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --vc-font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+}
