@@ -19,17 +19,24 @@
 // the liveness probe). Pairs with src/hooks/useConnectionStatus.
 import './connection-chip.css';
 
-export default function ConnectionChip({ connection }) {
+export default function ConnectionChip({ connection, stacked = false }) {
   const { connected, lastSuccess } = connection;
   const stamp = lastSuccess
     ? lastSuccess.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
     : null;
+  const stateWord = connected ? 'Connected' : 'Offline';
+  const syncLine = stamp ? `${connected ? 'Synced' : 'Last synced'} ${stamp}` : null;
   return (
-    <span className={`vc-chip ${connected ? '' : 'offline'}`}>
+    <span className={`vc-chip ${connected ? '' : 'offline'} ${stacked ? 'stacked' : ''}`}>
       <span className="vc-chip-dot" aria-hidden="true" />
-      {connected
-        ? `Connected${stamp ? ` · Synced ${stamp}` : ''}`
-        : `Offline${stamp ? ` · Last synced ${stamp}` : ''}`}
+      {stacked ? (
+        <span className="vc-chip-lines">
+          <span>{stateWord}</span>
+          {syncLine && <span>{syncLine}</span>}
+        </span>
+      ) : (
+        `${stateWord}${syncLine ? ` · ${syncLine}` : ''}`
+      )}
     </span>
   );
 }

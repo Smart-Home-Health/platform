@@ -37,3 +37,12 @@
 }
 .vc-chip.offline { color: var(--vc-state-due); }
 .vc-chip.offline .vc-chip-dot { background: var(--vc-state-due); }
+
+/* Stacked variant (tight headers): state on one row, sync time below */
+.vc-chip.stacked { align-items: flex-start; }
+.vc-chip.stacked .vc-chip-dot { margin-top: 3px; }
+.vc-chip-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}

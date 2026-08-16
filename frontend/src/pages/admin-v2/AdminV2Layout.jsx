@@ -661,7 +661,7 @@ const AdminV2Layout = ({ children }) => {
                 </span>
               )}
             </div>
-            <ConnectionChip connection={connection} />
+            <ConnectionChip connection={connection} stacked />
           </header>
 
           {/* Restricted mode banner */}
