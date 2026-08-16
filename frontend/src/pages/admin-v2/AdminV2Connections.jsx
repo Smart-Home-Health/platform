@@ -26,42 +26,18 @@ import {
   RefreshIcon,
   XIcon,
   LinkIcon,
-  TrashIcon
+  WifiIcon,
+  ClockIcon,
+  GlobeIcon,
+  VitalsIcon,
+  AlertIcon,
+  FileTextIcon
 } from '../../components/Icons';
+import EntityCard from '../../components/vc/EntityCard';
+import EntityModal, { EmField, EmRow, EmSelect } from '../../components/vc/EntityModal';
 import { VentImportPanel } from './components';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Alert } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
-import { Field } from '@/components/ui/field';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
-import { cn } from '@/lib/utils';
 import './AdminV2.css';
-
-// Label/value row used inside the integration & reader cards.
-function CardRow({ label, value }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-muted-foreground">{label}:</span>
-      <span className="text-right text-foreground">{value}</span>
-    </div>
-  );
-}
 
 export default function AdminV2Connections() {
   const { selectedPatient, loadingPatients } = useAdminPatient();
@@ -536,15 +512,27 @@ export default function AdminV2Connections() {
   };
 
   // Plain-English status wording — technical detail lives behind the error
-  // line, not the badge.
-  const getStatusBadge = (integration) => {
-    if (!integration.is_enabled) return <Badge variant="muted">Paused</Badge>;
-    if (integration.last_sync_status === 'failed') return <Badge variant="danger">Needs attention</Badge>;
-    if (integration.last_sync_at) return <Badge variant="success">Working</Badge>;
-    if (integration.auth_type === 'none') return <Badge variant="success">Working</Badge>;
-    if (integration.auth_type === 'oauth2') return <Badge variant="warning">Waiting for sign-in</Badge>;
-    return <Badge variant="warning">Finishing setup</Badge>;
+  // line, not the tag.
+  const getStatusTag = (integration) => {
+    if (!integration.is_enabled) return { label: 'Paused', tone: 'idle' };
+    if (integration.last_sync_status === 'failed') return { label: 'Needs attention', tone: 'due' };
+    if (integration.last_sync_at) return { label: 'Working', tone: 'complete' };
+    if (integration.auth_type === 'none') return { label: 'Working', tone: 'complete' };
+    if (integration.auth_type === 'oauth2') return { label: 'Waiting for sign-in', tone: 'accent' };
+    return { label: 'Finishing setup', tone: 'accent' };
   };
+
+  const integrationMenu = (integration) => [
+    {
+      label: integration.is_enabled ? 'Pause' : 'Resume',
+      onClick: () => handleToggle(integration, !integration.is_enabled),
+    },
+    {
+      label: 'Delete',
+      danger: true,
+      onClick: () => { if (deletingId !== integration.id) handleDelete(integration); },
+    },
+  ];
 
   // Check URL params for OAuth callback
   useEffect(() => {
@@ -626,22 +614,22 @@ export default function AdminV2Connections() {
       <div className="admin-v2-page">
         {/* Alerts */}
         {(error || success) && (
-          <div className="tw mb-4 flex flex-col gap-3">
+          <div className="ec-page-alerts">
             {error && (
-              <Alert variant="destructive" className="flex items-center justify-between gap-3">
+              <div className="em-error em-alert-row">
                 <span>{error}</span>
-                <button type="button" className="shrink-0 opacity-70 hover:opacity-100" onClick={() => setError('')}>
+                <button type="button" className="em-dismiss" aria-label="Dismiss" onClick={() => setError('')}>
                   <XIcon size={16} />
                 </button>
-              </Alert>
+              </div>
             )}
             {success && (
-              <Alert variant="success" className="flex items-center justify-between gap-3">
+              <div className="em-success em-alert-row">
                 <span>{success}</span>
-                <button type="button" className="shrink-0 opacity-70 hover:opacity-100" onClick={() => setSuccess('')}>
+                <button type="button" className="em-dismiss" aria-label="Dismiss" onClick={() => setSuccess('')}>
                   <XIcon size={16} />
                 </button>
-              </Alert>
+              </div>
             )}
           </div>
         )}
@@ -673,59 +661,55 @@ export default function AdminV2Connections() {
                   </Button>
                 </div>
               ) : patientIntegrations.length === 0 ? null : (
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="ec-grid">
                   {patientIntegrations.map(integration => (
-                    <Card key={integration.id} className={cn(!integration.is_enabled && "opacity-60")}>
-                      <CardHeader className="py-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <CardTitle className="text-sm">{integration.integration_name}</CardTitle>
-                          {getStatusBadge(integration)}
-                        </div>
-                      </CardHeader>
-                      <CardContent className="flex flex-col gap-1.5 py-3 text-sm">
-                        <p className="text-muted-foreground">
-                          {integration.last_sync_at
+                    <EntityCard
+                      key={integration.id}
+                      icon={<LinkIcon size={22} />}
+                      title={integration.integration_name}
+                      tag={getStatusTag(integration)}
+                      inactive={!integration.is_enabled}
+                      details={[
+                        {
+                          icon: <ClockIcon size={18} />,
+                          label: 'Last sync',
+                          value: integration.last_sync_at
                             ? `Synced ${timeAgo(integration.last_sync_at)}`
-                            : 'Not synced yet'}
-                        </p>
-                        {integration.last_sync_status === 'failed' && integration.last_sync_error && (
-                          <div className="text-xs text-[#ff7b72]">
-                            Something went wrong: {integration.last_sync_error}
-                          </div>
-                        )}
-                      </CardContent>
-                      <CardFooter className="flex-wrap justify-start gap-2 py-3">
-                        {integration.is_enabled && integration.auth_type === 'oauth2' && !integration.last_sync_at && (
-                          <Button size="sm" variant="ghost" onClick={() => startOAuthFlow(integration.id)} title="Connect OAuth">
-                            <LinkIcon size={14} /> Connect
-                          </Button>
-                        )}
-                        {integration.is_enabled && integration.integration_slug !== 'ventilator' && (
-                          <Button size="sm" variant="ghost" onClick={() => handleSync(integration)} disabled={syncingId === integration.id} title="Sync Now">
-                            <RefreshIcon size={14} className={syncingId === integration.id ? 'spinning' : undefined} />
-                            {syncingId === integration.id ? 'Syncing...' : 'Sync'}
-                          </Button>
-                        )}
-                        {integration.is_enabled && integration.integration_slug === 'ventilator' && (
-                          <Button size="sm" variant="ghost" onClick={() => setImportsPanel({ open: true, integration })} title="Upload + view log exports">
-                            Logs
-                          </Button>
-                        )}
-                        <Button size="sm" variant="outline" onClick={() => handleToggle(integration, !integration.is_enabled)}>
-                          {integration.is_enabled ? 'Pause' : 'Resume'}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="ml-auto text-[#ff7b72] hover:text-[#ff7b72]"
-                          onClick={() => handleDelete(integration)}
-                          disabled={deletingId === integration.id}
-                          title="Delete integration"
-                        >
-                          <TrashIcon size={14} />
-                        </Button>
-                      </CardFooter>
-                    </Card>
+                            : 'Not synced yet',
+                        },
+                        ...(integration.last_sync_status === 'failed' && integration.last_sync_error
+                          ? [{
+                              icon: <AlertIcon size={18} />,
+                              label: 'Something went wrong',
+                              value: integration.last_sync_error,
+                            }]
+                          : []),
+                      ]}
+                      quickActions={[
+                        ...(integration.is_enabled && integration.auth_type === 'oauth2' && !integration.last_sync_at
+                          ? [{
+                              icon: <LinkIcon size={18} />,
+                              label: 'Connect',
+                              onClick: () => startOAuthFlow(integration.id),
+                            }]
+                          : []),
+                        ...(integration.is_enabled && integration.integration_slug !== 'ventilator'
+                          ? [{
+                              icon: <RefreshIcon size={18} />,
+                              label: syncingId === integration.id ? 'Syncing...' : 'Sync now',
+                              onClick: () => { if (syncingId !== integration.id) handleSync(integration); },
+                            }]
+                          : []),
+                        ...(integration.is_enabled && integration.integration_slug === 'ventilator'
+                          ? [{
+                              icon: <FileTextIcon size={18} />,
+                              label: 'Upload + view log exports',
+                              onClick: () => setImportsPanel({ open: true, integration }),
+                            }]
+                          : []),
+                      ]}
+                      menu={integrationMenu(integration)}
+                    />
                   ))}
                 </div>
               )}
@@ -733,36 +717,32 @@ export default function AdminV2Connections() {
 
             {/* Connected Readers */}
             {patientReaders.filter(r => r.is_paired).length > 0 && (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="ec-grid">
                 {patientReaders.filter(r => r.is_paired).map(reader => (
-                  <Card key={`reader-${reader.id}`}>
-                    <CardHeader className="py-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <CardTitle className="text-sm">{reader.name}</CardTitle>
-                        {reader.connected ? (
-                          <Badge variant="success">
-                            <span className="inline-block h-2 w-2 rounded-full" style={{ background: '#3fb950' }} />
-                            Online
-                          </Badge>
-                        ) : (
-                          <Badge variant="muted">Offline</Badge>
-                        )}
-                      </div>
-                    </CardHeader>
-                    <CardContent className="flex flex-col gap-1.5 py-3 text-sm">
-                      <p className="text-muted-foreground">
-                        {reader.last_seen ? `Last seen ${timeAgo(reader.last_seen)}` : 'Never seen'}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Pulse oximeter reader · {reader.ip_address}
-                      </p>
-                    </CardContent>
-                    <CardFooter className="justify-start py-3">
-                      <Button size="sm" variant="ghost" className="text-[#ff7b72] hover:text-[#ff7b72]" onClick={() => handleUnpairReader(reader.id)}>
-                        Disconnect
-                      </Button>
-                    </CardFooter>
-                  </Card>
+                  <EntityCard
+                    key={`reader-${reader.id}`}
+                    icon={<WifiIcon size={22} />}
+                    title={reader.name}
+                    badges={['Pulse oximeter reader']}
+                    tag={reader.connected
+                      ? { label: 'Online', tone: 'complete' }
+                      : { label: 'Offline', tone: 'idle' }}
+                    details={[
+                      {
+                        icon: <ClockIcon size={18} />,
+                        label: 'Last seen',
+                        value: reader.last_seen ? timeAgo(reader.last_seen) : 'Never seen',
+                      },
+                      {
+                        icon: <GlobeIcon size={18} />,
+                        label: 'Address',
+                        value: reader.ip_address,
+                      },
+                    ]}
+                    menu={[
+                      { label: 'Disconnect', danger: true, onClick: () => handleUnpairReader(reader.id) },
+                    ]}
+                  />
                 ))}
               </div>
             )}
@@ -772,53 +752,54 @@ export default function AdminV2Connections() {
               <h3 className="text-base font-semibold text-foreground">
                 Available to add ({allAvailableIntegrations.length})
               </h3>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="ec-grid">
                 {allAvailableIntegrations.map(integration => {
                   const isSHHDevice = integration.slug === 'shh_pulse_ox';
                   const isConfigured = isSHHDevice
                     ? hasConfiguredReaders
                     : patientIntegrations.some(pi => pi.integration_slug === integration.slug);
                   return (
-                    <Card key={integration.slug} className={cn(isConfigured && "opacity-60")}>
-                      <CardHeader className="gap-2 py-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <CardTitle className="text-sm">{integration.name}</CardTitle>
-                          {isConfigured && (
-                            <Badge variant="success">
-                              {isSHHDevice ? `${patientReaders.filter(r => r.is_paired).length} Connected` : 'Configured'}
-                            </Badge>
-                          )}
-                        </div>
-                        <Badge variant="info" className="w-fit">{getAuthTypeLabel(integration.auth_type)}</Badge>
-                      </CardHeader>
-                      <CardContent className="flex flex-col gap-1.5 py-3 text-sm">
-                        <p className="text-muted-foreground">{integration.description}</p>
-                        <CardRow
-                          label="Supports"
-                          value={
-                            <>
-                              {integration.supported_vitals?.slice(0, 4).join(', ')}
-                              {integration.supported_vitals?.length > 4 && '...'}
-                            </>
+                    <EntityCard
+                      key={integration.slug}
+                      icon={isSHHDevice ? <WifiIcon size={22} /> : <LinkIcon size={22} />}
+                      title={integration.name}
+                      badges={[getAuthTypeLabel(integration.auth_type)]}
+                      tag={isConfigured
+                        ? {
+                            label: isSHHDevice ? `${pairedReaderCount} Connected` : 'Configured',
+                            tone: 'complete',
                           }
-                        />
-                      </CardContent>
-                      <CardFooter className="justify-start py-3">
-                        <Button
-                          size="sm"
-                          onClick={() => {
+                        : undefined}
+                      inactive={isConfigured}
+                      details={[
+                        {
+                          icon: <VitalsIcon size={18} />,
+                          label: 'Supports',
+                          value: integration.supported_vitals
+                            ? integration.supported_vitals.slice(0, 4).join(', ')
+                              + (integration.supported_vitals.length > 4 ? '...' : '')
+                            : undefined,
+                        },
+                      ]}
+                      quickActions={[
+                        {
+                          icon: <PlusIcon size={18} />,
+                          label: isSHHDevice ? 'Add Device' : `Add ${integration.name}`,
+                          onClick: () => {
                             if (isSHHDevice) {
                               setShowReaderModal(true);
                             } else {
                               pickIntegration(integration);
                               setShowAddModal(true);
                             }
-                          }}
-                        >
-                          <PlusIcon size={14} /> {isSHHDevice ? 'Add Device' : 'Add'}
-                        </Button>
-                      </CardFooter>
-                    </Card>
+                          },
+                        },
+                      ]}
+                    >
+                      <div className="ec-body">
+                        <span className="ec-detail-label">{integration.description}</span>
+                      </div>
+                    </EntityCard>
                   );
                 })}
               </div>
@@ -827,205 +808,197 @@ export default function AdminV2Connections() {
         )}
 
         {/* Add Reader Dialog */}
-        <Dialog open={showReaderModal} onOpenChange={(o) => { if (!o) resetReaderModal(); }}>
-          <DialogContent className="sm:max-w-[520px]" aria-describedby={undefined}>
-            <DialogHeader>
-              <DialogTitle>{pairingReader ? 'Approve on Reader' : 'Add SHH Reader'}</DialogTitle>
-            </DialogHeader>
-
+        <EntityModal
+          open={showReaderModal}
+          onOpenChange={(o) => { if (!o) resetReaderModal(); }}
+          title={pairingReader ? 'Approve on reader' : 'Add SHH reader'}
+        >
+          <div className="em-form">
             {!pairingReader ? (
-              <div className="flex flex-col gap-4">
-                <p className="text-sm text-muted-foreground">
+              <>
+                <p className="ec-detail-label">
                   Enter the IP address and port of your SHH Reader device. Make sure the reader is powered on and connected to your network.
                 </p>
-                <div className="flex gap-3">
-                  <Field label="Reader IP Address" required className="flex-1">
-                    <Input value={readerIp} onChange={(e) => setReaderIp(e.target.value)} placeholder="e.g., 192.168.1.100" autoFocus />
-                  </Field>
-                  <Field label="Port" className="w-24">
-                    <Input type="number" value={readerPort} onChange={(e) => setReaderPort(e.target.value)} placeholder="8080" />
-                  </Field>
-                </div>
-              </div>
+                <EmRow>
+                  <EmField label="Reader IP address" required htmlFor="reader-ip">
+                    <input id="reader-ip" className="em-input" value={readerIp} onChange={(e) => setReaderIp(e.target.value)} placeholder="e.g., 192.168.1.100" autoFocus />
+                  </EmField>
+                  <EmField label="Port" htmlFor="reader-port">
+                    <input id="reader-port" className="em-input" type="number" value={readerPort} onChange={(e) => setReaderPort(e.target.value)} placeholder="8080" />
+                  </EmField>
+                </EmRow>
+              </>
             ) : pairingReader.status === 'waiting' ? (
-              <div className="flex flex-col gap-4">
-                <Alert variant="default">
+              <>
+                <div>
                   <strong>Waiting for approval</strong>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Approve this hub on <strong className="text-foreground">{pairingReader.name}</strong> — open the reader's screen at <code className="text-foreground">{readerIp}</code> and click <strong className="text-foreground">Allow</strong>.
+                  <p className="ec-detail-label">
+                    Approve this hub on <strong>{pairingReader.name}</strong> — open the reader's screen at <code>{readerIp}</code> and click <strong>Allow</strong>.
                   </p>
-                </Alert>
-                <div className="flex items-center justify-center gap-3 rounded-lg bg-ring/10 py-6">
-                  <span className="inline-flex animate-spin text-[#58a6ff]"><RefreshIcon size={20} /></span>
-                  <span className="text-sm text-muted-foreground">Waiting for the reader…</span>
                 </div>
-              </div>
+                <p className="ec-detail-label">Waiting for the reader…</p>
+              </>
             ) : (
-              <Alert variant="destructive">
+              <div className="em-error">
                 <strong>{pairingReader.status === 'denied' ? 'Pairing denied' : 'Pairing request expired'}</strong>
-                <p className="mt-1 text-sm text-muted-foreground">
+                <p className="ec-detail-label">
                   {pairingReader.status === 'denied'
                     ? 'The request was denied on the reader.'
                     : 'The reader did not respond in time.'} You can try again.
                 </p>
-              </Alert>
+              </div>
             )}
 
-            <DialogFooter>
+            <div className="em-footer">
               {pairingReader && pairingReader.status !== 'waiting' && (
-                <Button variant="ghost" onClick={() => { stopPairPolling(); setPairingReader(null); }}>Try Again</Button>
+                <button type="button" className="em-cancel" onClick={() => { stopPairPolling(); setPairingReader(null); }}>Try Again</button>
               )}
-              <Button variant="secondary" onClick={resetReaderModal}>Cancel</Button>
+              <button type="button" className="em-cancel" onClick={resetReaderModal}>Cancel</button>
               {!pairingReader && (
-                <Button onClick={handleInitiatePairing} disabled={pairingLoading || !readerIp.trim()}>
-                  {pairingLoading ? 'Connecting...' : 'Connect Reader'}
-                </Button>
+                <button type="button" className="em-submit" onClick={handleInitiatePairing} disabled={pairingLoading || !readerIp.trim()}>
+                  {pairingLoading ? 'Connecting…' : 'Connect Reader'}
+                </button>
               )}
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            </div>
+          </div>
+        </EntityModal>
 
         {/* Add Integration Dialog */}
-        <Dialog open={showAddModal} onOpenChange={(o) => { if (!o) closeAddModal(); }}>
-          <DialogContent className="sm:max-w-[560px]" aria-describedby={undefined}>
-            <DialogHeader>
-              <DialogTitle>{addStep === 'select-camera' ? 'Select Camera' : 'Add a connection'}</DialogTitle>
-            </DialogHeader>
-
+        <EntityModal
+          open={showAddModal}
+          onOpenChange={(o) => { if (!o) closeAddModal(); }}
+          title={addStep === 'select-camera' ? 'Select camera' : 'Add a connection'}
+        >
+          <div className="em-form">
             {addStep === 'select-camera' ? (
-              <div className="flex flex-col gap-4">
-                <p className="text-sm text-muted-foreground">
+              <>
+                <p className="ec-detail-label">
                   Choose which camera covers this patient. You can change this later from the integration settings.
                 </p>
                 {discoveredCameras.length === 0 ? (
-                  <Alert variant="default">No cameras were discovered on this Frigate instance.</Alert>
+                  <p className="ec-detail-label">No cameras were discovered on this Frigate instance.</p>
                 ) : (
-                  <Field label="Camera">
-                    <Select value={pickedCamera || undefined} onValueChange={(v) => setPickedCamera(v)}>
-                      <SelectTrigger><SelectValue placeholder="Select a camera" /></SelectTrigger>
-                      <SelectContent>
-                        {discoveredCameras.map(cam => (
-                          <SelectItem key={cam.device_id} value={cam.device_id}>
-                            {cam.device_name || cam.device_id}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </Field>
+                  <EmField label="Camera" htmlFor="int-camera">
+                    <EmSelect id="int-camera" value={pickedCamera} onChange={(e) => setPickedCamera(e.target.value)}>
+                      {discoveredCameras.map(cam => (
+                        <option key={cam.device_id} value={cam.device_id}>
+                          {cam.device_name || cam.device_id}
+                        </option>
+                      ))}
+                    </EmSelect>
+                  </EmField>
                 )}
-              </div>
+              </>
             ) : !selectedIntegration ? (
-              <div className="flex flex-col gap-2">
+              <>
                 <button
                   type="button"
-                  className="flex items-center justify-between gap-3 rounded-md border border-border bg-secondary px-3 py-3 text-left transition-colors hover:bg-accent"
+                  className="em-cancel"
                   onClick={() => { setShowAddModal(false); setShowReaderModal(true); }}
                 >
-                  <div>
-                    <strong className="text-sm text-foreground">{shhPulseOxIntegration.name}</strong>
-                    <p className="text-xs text-muted-foreground">{shhPulseOxIntegration.description}</p>
-                  </div>
-                  <Badge variant="secondary">{getAuthTypeLabel(shhPulseOxIntegration.auth_type)}</Badge>
+                  <div><strong>{shhPulseOxIntegration.name}</strong> <span className="ec-badge">{getAuthTypeLabel(shhPulseOxIntegration.auth_type)}</span></div>
+                  <div className="ec-detail-label">{shhPulseOxIntegration.description}</div>
                 </button>
                 {unconfiguredIntegrations.map(integration => (
                   <button
                     key={integration.slug}
                     type="button"
-                    className="flex items-center justify-between gap-3 rounded-md border border-border bg-secondary px-3 py-3 text-left transition-colors hover:bg-accent"
+                    className="em-cancel"
                     onClick={() => pickIntegration(integration)}
                   >
-                    <div>
-                      <strong className="text-sm text-foreground">{integration.name}</strong>
-                      <p className="text-xs text-muted-foreground">{integration.description}</p>
-                    </div>
-                    <Badge variant="secondary">{getAuthTypeLabel(integration.auth_type)}</Badge>
+                    <div><strong>{integration.name}</strong> <span className="ec-badge">{getAuthTypeLabel(integration.auth_type)}</span></div>
+                    <div className="ec-detail-label">{integration.description}</div>
                   </button>
                 ))}
                 {unconfiguredIntegrations.length === 0 && (
-                  <p className="py-8 text-center text-sm text-muted-foreground">
+                  <p className="ec-detail-label">
                     Everything available is already connected.
                   </p>
                 )}
-              </div>
+              </>
             ) : (
-              <div className="flex flex-col gap-3">
+              <>
                 <div>
-                  <h3 className="text-base font-semibold text-foreground">{selectedIntegration.name}</h3>
-                  <p className="text-sm text-muted-foreground">{selectedIntegration.description}</p>
+                  <strong>{selectedIntegration.name}</strong>
+                  <p className="ec-detail-label">{selectedIntegration.description}</p>
                 </div>
 
                 {selectedIntegration.auth_type === 'oauth2' && (
-                  <Alert variant="default">
+                  <p className="ec-detail-label">
                     You will be redirected to {selectedIntegration.name} to authorize access.
-                  </Alert>
+                  </p>
                 )}
 
                 {configSchemaProps && Object.keys(configSchemaProps).length > 0 && (
-                  <div className="flex flex-col gap-4">
-                    <h4 className="text-sm font-semibold text-foreground">Settings</h4>
+                  <>
+                    <strong>Settings</strong>
                     {Object.entries(configSchemaProps)
                       // Hide fields whose value is chosen in a later step
                       // (Frigate camera is picked from the discovered list)
                       .filter(([key]) => !(selectedIntegration.slug === 'frigate' && key === 'camera'))
                       .map(([key, schema]) => (
-                        <Field key={key} label={schema.title || key}>
+                        <EmField key={key} label={schema.title || key} htmlFor={`int-set-${key}`}>
                           {schema.type === 'boolean' ? (
-                            <label className="flex cursor-pointer items-center gap-2">
-                              <Checkbox
+                            <label className="em-check-row">
+                              <input
+                                id={`int-set-${key}`}
+                                type="checkbox"
+                                className="em-check"
                                 checked={newSettings[key] ?? schema.default ?? false}
-                                onCheckedChange={(v) => setNewSettings({ ...newSettings, [key]: v === true })}
+                                onChange={(e) => setNewSettings({ ...newSettings, [key]: e.target.checked })}
                               />
-                              <span className="text-sm text-muted-foreground">{schema.description}</span>
+                              <span className="em-check-label">{schema.description}</span>
                             </label>
                           ) : Array.isArray(schema.enum) ? (
-                            <Select
-                              value={(newSettings[key] ?? schema.default) != null ? String(newSettings[key] ?? schema.default) : undefined}
-                              onValueChange={(v) => setNewSettings({ ...newSettings, [key]: v })}
+                            <EmSelect
+                              id={`int-set-${key}`}
+                              value={(newSettings[key] ?? schema.default) != null ? String(newSettings[key] ?? schema.default) : ''}
+                              onChange={(e) => setNewSettings({ ...newSettings, [key]: e.target.value })}
                             >
-                              <SelectTrigger><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                {schema.enum.map((opt, idx) => (
-                                  <SelectItem key={opt} value={String(opt)}>
-                                    {(schema.enumLabels && schema.enumLabels[idx]) || opt}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                              {(newSettings[key] ?? schema.default) == null && <option value="" />}
+                              {schema.enum.map((opt, idx) => (
+                                <option key={opt} value={String(opt)}>
+                                  {(schema.enumLabels && schema.enumLabels[idx]) || opt}
+                                </option>
+                              ))}
+                            </EmSelect>
                           ) : (
-                            <Input
+                            <input
+                              id={`int-set-${key}`}
+                              className="em-input"
                               value={newSettings[key] ?? schema.default ?? ''}
                               onChange={(e) => setNewSettings({ ...newSettings, [key]: e.target.value })}
                               placeholder={schema.description}
                             />
                           )}
-                        </Field>
+                        </EmField>
                       ))}
-                  </div>
+                  </>
                 )}
-              </div>
+              </>
             )}
 
-            <DialogFooter>
+            <div className="em-footer">
               {selectedIntegration && addStep === 'form' && (
-                <Button variant="ghost" onClick={() => { setSelectedIntegration(null); setNewSettings({}); }}>Back</Button>
+                <button type="button" className="em-cancel" onClick={() => { setSelectedIntegration(null); setNewSettings({}); }}>Back</button>
               )}
-              <Button variant="secondary" onClick={closeAddModal}>Cancel</Button>
+              <button type="button" className="em-cancel" onClick={closeAddModal}>Cancel</button>
               {addStep === 'select-camera' ? (
-                <Button onClick={handlePickCamera} disabled={addingIntegration || !pickedCamera}>
-                  {addingIntegration ? 'Saving...' : 'Use this camera'}
-                </Button>
+                <button type="button" className="em-submit" onClick={handlePickCamera} disabled={addingIntegration || !pickedCamera}>
+                  {addingIntegration ? 'Saving…' : 'Use this camera'}
+                </button>
               ) : selectedIntegration && (
-                <Button onClick={handleAddIntegration} disabled={addingIntegration}>
-                  {addingIntegration ? 'Adding...' : (
+                <button type="button" className="em-submit" onClick={handleAddIntegration} disabled={addingIntegration}>
+                  {addingIntegration ? 'Adding…' : (
                     selectedIntegration.auth_type === 'oauth2'
                       ? `Connect to ${selectedIntegration.name}`
                       : 'Add'
                   )}
-                </Button>
+                </button>
               )}
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            </div>
+          </div>
+        </EntityModal>
 
         <VentImportPanel
           open={importsPanel.open}
