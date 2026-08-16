@@ -472,6 +472,13 @@ class CaptureRequest(BaseModel):
     encounter_uid: str = PydanticField(min_length=8, max_length=36)
     readings: List[CaptureReading] = PydanticField(min_length=1)
 
+    @model_validator(mode='after')
+    def _one_reading_per_vital(self):
+        keys = [r.vital_key for r in self.readings]
+        if len(keys) != len(set(keys)):
+            raise ValueError('one reading per vital per encounter')
+        return self
+
 
 class VitalRangeItem(BaseModel):
     vital_key: str = PydanticField(min_length=1, max_length=50)
@@ -621,6 +628,7 @@ async def capture_vitals(
                             detail={"code": "confirmation_required", "warnings": warnings})
 
     existing_ids = {eid for (eid,) in db.query(Vital.external_id).filter(
+        Vital.patient_id == body.patient_id,
         Vital.encounter_uid == body.encounter_uid,
         Vital.external_id.isnot(None)).all()}
 
@@ -641,6 +649,7 @@ async def capture_vitals(
             ext_id = f"{body.encounter_uid}:{r.vital_key}:{field_key}"
             if ext_id in existing_ids:
                 return None
+            existing_ids.add(ext_id)
             entry = resolved.get((r.vital_key, field_key)) or {}
             band = classify(value, entry)
             if meta:
@@ -818,10 +827,14 @@ def get_vital_history_paginated(vital_type: str, page: int = 1, page_size: int =
 def get_custom_vital_definitions(
     patient_id: int = Query(..., description="Patient ID"),
     db: Session = Depends(get_db),
+    account_id=Depends(get_current_account_id),
 ):
     # Not gated on require_read_access: like /ranges, the definition list is
     # what the capture flow records against, and recording is allowed in
-    # monitoring mode (read-restricted sessions). Auth via middleware.
+    # monitoring mode (read-restricted sessions). Auth via middleware; the
+    # patient must belong to the caller's account.
+    if not _get_scoped_patient(db, patient_id, account_id):
+        return JSONResponse(status_code=404, content={"detail": "Patient not found"})
     defs = db.query(CustomVitalDefinition).filter(
         CustomVitalDefinition.patient_id == patient_id
     ).order_by(CustomVitalDefinition.created_at).all()
@@ -833,6 +846,7 @@ def create_custom_vital_definition(
     body: dict,
     db: Session = Depends(get_db),
     _: object = Depends(require_permission("patients.update")),
+    account_id=Depends(get_current_account_id),
 ):
     patient_id = body.get("patient_id")
     name = body.get("name", "").strip()
@@ -841,6 +855,8 @@ def create_custom_vital_definition(
 
     if not patient_id or not name:
         return JSONResponse(status_code=400, content={"detail": "patient_id and name are required"})
+    if not _get_scoped_patient(db, patient_id, account_id):
+        return JSONResponse(status_code=404, content={"detail": "Patient not found"})
 
     key = name.lower().replace(" ", "_")
     existing = db.query(CustomVitalDefinition).filter(
@@ -869,11 +885,14 @@ def delete_custom_vital_definition(
     definition_id: int,
     db: Session = Depends(get_db),
     _: object = Depends(require_permission("patients.update")),
+    account_id=Depends(get_current_account_id),
 ):
     definition = db.query(CustomVitalDefinition).filter(
         CustomVitalDefinition.id == definition_id
     ).first()
     if not definition:
+        return JSONResponse(status_code=404, content={"detail": "Definition not found"})
+    if not _get_scoped_patient(db, definition.patient_id, account_id):
         return JSONResponse(status_code=404, content={"detail": "Definition not found"})
     db.delete(definition)
     db.commit()

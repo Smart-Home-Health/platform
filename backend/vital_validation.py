@@ -83,6 +83,16 @@ def resolve_ranges(db: Session, patient_id: int) -> Dict[Tuple[str, str], dict]:
     """
     resolved: Dict[Tuple[str, str], dict] = {}
     for vital_key, meta in BUILTIN_VITALS.items():
+        if '' not in meta['fields']:
+            # Multi-field vitals (blood pressure) get a bounds-less vital-level
+            # row: it carries the required flag the components inherit.
+            resolved[(vital_key, '')] = {
+                'vital_key': vital_key, 'field_key': '',
+                'expected_min': None, 'expected_max': None,
+                'implausible_min': None, 'implausible_max': None,
+                'required': False, 'source': 'default',
+                'note': None, 'set_by': None, 'set_at': None,
+            }
         for field_key in meta['fields']:
             imp = DEFAULT_IMPLAUSIBLE.get((vital_key, field_key), (None, None))
             exp = DEFAULT_EXPECTED.get((vital_key, field_key), (None, None))
@@ -116,6 +126,17 @@ def resolve_ranges(db: Session, patient_id: int) -> Dict[Tuple[str, str], dict]:
             'set_at': row.set_at.isoformat() if row.set_at else None,
         })
         resolved[key] = base
+    # The required flag lives on the vital-level ('', field_key) row; multi-
+    # field vitals inherit it so API output matches the documented model.
+    for vital_key, meta in BUILTIN_VITALS.items():
+        parent = resolved.get((vital_key, ''))
+        if parent is None:
+            continue
+        for field_key in meta['fields']:
+            if field_key:
+                entry = resolved.get((vital_key, field_key))
+                if entry is not None:
+                    entry['required'] = parent['required']
     return resolved
 
 
