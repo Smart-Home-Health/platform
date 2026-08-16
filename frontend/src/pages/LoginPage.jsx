@@ -72,6 +72,12 @@ export default function LoginPage() {
   const handleUnlockAndContinue = async (e) => {
     e.preventDefault();
     setError('');
+    // accountAccess() treats a blank password as a request for restricted
+    // access — never what someone clicking "Unlock full access" meant.
+    if (!password.trim()) {
+      setError('Enter the account password, or use quick entry below.');
+      return;
+    }
     setLoading(true);
     const result = await accountAccess(password);
     setLoading(false);
@@ -121,6 +127,7 @@ export default function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Enter password"
             autoFocus
+            required
           />
           <button
             type="button"
