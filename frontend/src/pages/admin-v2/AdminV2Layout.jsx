@@ -59,6 +59,7 @@ import './AdminV2.css';
 // with the capture surface). Loaded after AdminV2.css so overrides win.
 import '../../styles/vcFonts';
 import './vc-shell.css';
+import './vc-content.css';
 
 // Side navigation items - main app sections
 const sideNavItems = [

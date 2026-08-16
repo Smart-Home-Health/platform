@@ -143,14 +143,14 @@ const AdminV2MedicationsSchedule = () => {
   // Status helpers
   const getStatusInfo = (status) => {
     const statusMap = {
-      'on_time': { label: 'On Time', color: '#238636', bg: 'rgba(35, 134, 54, 0.15)', border: '#238636' },
-      'completed': { label: 'Completed', color: '#238636', bg: 'rgba(35, 134, 54, 0.15)', border: '#238636' },
-      'warning': { label: 'Warning', color: '#9e6a03', bg: 'rgba(158, 106, 3, 0.15)', border: '#9e6a03' },
-      'late_early': { label: 'Late/Early', color: '#f85149', bg: 'rgba(248, 81, 73, 0.15)', border: '#f85149' },
-      'missed': { label: 'Missed', color: '#f85149', bg: 'rgba(248, 81, 73, 0.15)', border: '#f85149' },
-      'upcoming': { label: 'Upcoming', color: '#1f6feb', bg: 'rgba(31, 111, 235, 0.15)', border: '#1f6feb' },
-      'ready': { label: 'Ready', color: '#58a6ff', bg: 'rgba(88, 166, 255, 0.15)', border: '#58a6ff' },
-      'skipped': { label: 'Skipped', color: 'var(--muted-foreground)', bg: 'rgba(139, 148, 158, 0.15)', border: 'var(--muted-foreground)' }
+      'on_time': { label: 'On Time', color: 'var(--sched-completed-border, #238636)', bg: 'var(--sched-completed-chip, rgba(35, 134, 54, 0.15))', border: 'var(--sched-completed-border, #238636)' },
+      'completed': { label: 'Completed', color: 'var(--sched-completed-border, #238636)', bg: 'var(--sched-completed-chip, rgba(35, 134, 54, 0.15))', border: 'var(--sched-completed-border, #238636)' },
+      'warning': { label: 'Warning', color: 'var(--sched-warning-border, #9e6a03)', bg: 'var(--sched-warning-chip, rgba(158, 106, 3, 0.15))', border: 'var(--sched-warning-border, #9e6a03)' },
+      'late_early': { label: 'Late/Early', color: 'var(--sched-late-border, #f85149)', bg: 'var(--sched-late-chip, rgba(248, 81, 73, 0.15))', border: 'var(--sched-late-border, #f85149)' },
+      'missed': { label: 'Missed', color: 'var(--sched-late-border, #f85149)', bg: 'var(--sched-late-chip, rgba(248, 81, 73, 0.15))', border: 'var(--sched-late-border, #f85149)' },
+      'upcoming': { label: 'Upcoming', color: 'var(--sched-pending-border, #1f6feb)', bg: 'var(--sched-pending-chip, rgba(31, 111, 235, 0.15))', border: 'var(--sched-pending-border, #1f6feb)' },
+      'ready': { label: 'Ready', color: 'var(--sched-ontime-border, #58a6ff)', bg: 'var(--sched-ontime-chip, rgba(88, 166, 255, 0.15))', border: 'var(--sched-ontime-border, #58a6ff)' },
+      'skipped': { label: 'Skipped', color: 'var(--muted-foreground)', bg: 'var(--sched-skipped-chip, rgba(139, 148, 158, 0.15))', border: 'var(--muted-foreground)' }
     };
     return statusMap[status] || statusMap.upcoming;
   };
@@ -360,7 +360,7 @@ const AdminV2MedicationsSchedule = () => {
                 onClick={() => setStatusFilters(f => ({ ...f, ready: !f.ready }))}
                 style={{ cursor: 'pointer' }}
               >
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(88, 166, 255, 0.15)' }}>
+                <div className="admin-v2-stat-icon" style={{ background: 'var(--sched-ontime-chip, rgba(88, 166, 255, 0.15))' }}>
                   <ClockIcon size={20} />
                 </div>
                 <div className="admin-v2-stat-info">
@@ -373,7 +373,7 @@ const AdminV2MedicationsSchedule = () => {
                 onClick={() => setStatusFilters(f => ({ ...f, upcoming: !f.upcoming }))}
                 style={{ cursor: 'pointer' }}
               >
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(31, 111, 235, 0.15)' }}>
+                <div className="admin-v2-stat-icon" style={{ background: 'var(--sched-pending-chip, rgba(31, 111, 235, 0.15))' }}>
                   <ClockIcon size={20} />
                 </div>
                 <div className="admin-v2-stat-info">
@@ -386,7 +386,7 @@ const AdminV2MedicationsSchedule = () => {
                 onClick={() => setStatusFilters(f => ({ ...f, missed: !f.missed }))}
                 style={{ cursor: 'pointer' }}
               >
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(248, 81, 73, 0.15)' }}>
+                <div className="admin-v2-stat-icon" style={{ background: 'var(--sched-late-chip, rgba(248, 81, 73, 0.15))' }}>
                   <XIcon size={20} />
                 </div>
                 <div className="admin-v2-stat-info">
@@ -399,7 +399,7 @@ const AdminV2MedicationsSchedule = () => {
                 onClick={() => setStatusFilters(f => ({ ...f, completed: !f.completed }))}
                 style={{ cursor: 'pointer' }}
               >
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(35, 134, 54, 0.15)' }}>
+                <div className="admin-v2-stat-icon" style={{ background: 'var(--sched-completed-chip, rgba(35, 134, 54, 0.15))' }}>
                   <CheckIcon size={20} />
                 </div>
                 <div className="admin-v2-stat-info">
@@ -545,19 +545,19 @@ const AdminV2MedicationsSchedule = () => {
               <h4>Status Legend</h4>
               <div className="admin-v2-legend-items">
                 <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: '#58a6ff' }}></span>
+                  <span className="admin-v2-legend-dot" style={{ backgroundColor: 'var(--sched-ontime-border, #58a6ff)' }}></span>
                   <span>Ready to Take</span>
                 </div>
                 <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: '#1f6feb' }}></span>
+                  <span className="admin-v2-legend-dot" style={{ backgroundColor: 'var(--sched-pending-border, #1f6feb)' }}></span>
                   <span>Upcoming</span>
                 </div>
                 <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: '#f85149' }}></span>
+                  <span className="admin-v2-legend-dot" style={{ backgroundColor: 'var(--sched-late-border, #f85149)' }}></span>
                   <span>Missed</span>
                 </div>
                 <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: '#238636' }}></span>
+                  <span className="admin-v2-legend-dot" style={{ backgroundColor: 'var(--sched-completed-border, #238636)' }}></span>
                   <span>Completed</span>
                 </div>
                 <div className="admin-v2-legend-item">

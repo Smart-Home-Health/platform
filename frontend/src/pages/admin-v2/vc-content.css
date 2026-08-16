@@ -1,0 +1,367 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Bedside-monitor ("vc") skin for the SHARED admin content vocabulary:
+ * tables, stat/filter cards, action buttons, badges, list cards, day
+ * pickers, progress bars, page headers and the shared ScheduleList status
+ * palette. Loaded by AdminV2Layout, so every admin page using these
+ * classes picks it up — the medications / care-tasks / nutrition families
+ * are built almost entirely from them.
+ *
+ * DARK THEME ONLY (scoped :root:not(.light)). Tokens from
+ * src/styles/vc-tokens.css; no raw hex.
+ *
+ * Color roles: schedule adherence is NEVER red — due/late/missed are
+ * amber (--vc-state-due); green means done/active; cyan is the live or
+ * primary-action accent; red stays for clinical concern and destructive
+ * actions. */
+@import '../../styles/vc-tokens.css';
+
+/* ---------- ScheduleList status palette (consumed as inline-style vars) ---------- */
+:root:not(.light) {
+  --sched-ontime-bg: color-mix(in srgb, var(--vc-state-due) 8%, var(--vc-bg-raised));
+  --sched-ontime-border: color-mix(in srgb, var(--vc-state-due) 55%, transparent);
+  --sched-ontime-text: var(--vc-text-primary);
+
+  --sched-pending-bg: var(--vc-bg-raised);
+  --sched-pending-border: var(--vc-line-strong);
+  --sched-pending-text: var(--vc-text-primary);
+
+  --sched-warning-bg: color-mix(in srgb, var(--vc-state-due) 12%, var(--vc-bg-raised));
+  --sched-warning-border: color-mix(in srgb, var(--vc-state-due) 70%, transparent);
+  --sched-warning-text: var(--vc-text-primary);
+
+  --sched-late-bg: color-mix(in srgb, var(--vc-state-due) 18%, var(--vc-bg-raised));
+  --sched-late-border: var(--vc-state-due);
+  --sched-late-text: var(--vc-text-primary);
+
+  --sched-completed-bg: color-mix(in srgb, var(--vc-state-complete) 10%, var(--vc-bg-raised));
+  --sched-completed-border: color-mix(in srgb, var(--vc-state-complete) 55%, transparent);
+  --sched-completed-text: var(--vc-text-secondary);
+
+  --sched-skipped-bg: var(--vc-bg-surface);
+  --sched-skipped-border: var(--vc-line-hairline);
+  --sched-skipped-text: var(--vc-text-tertiary);
+
+  --sched-primary: var(--vc-data-live);
+  --sched-primary-text: var(--vc-bg-base);
+}
+
+/* ---------- shadcn (.tw) island token remap ---------- */
+/* Everything built from the ui/ primitives — buttons, cards, dialogs,
+ * selects — re-reads its palette from the vc tokens in dark theme. Scoped
+ * to the islands and the Radix portal slots, NOT :root, so legacy CSS that
+ * reads the same var names keeps the old palette until its page is skinned. */
+:root:not(.light) .tw,
+:root:not(.light) [data-slot='dialog-content'],
+:root:not(.light) [data-slot='select-content'] {
+  --background: var(--vc-bg-base);
+  --foreground: var(--vc-text-primary);
+  --card: var(--vc-bg-surface);
+  --card-foreground: var(--vc-text-primary);
+  --popover: var(--vc-bg-raised);
+  --popover-foreground: var(--vc-text-primary);
+  --primary: var(--vc-data-live);
+  --primary-foreground: var(--vc-bg-base);
+  --secondary: var(--vc-bg-raised);
+  --secondary-foreground: var(--vc-text-primary);
+  --muted: var(--vc-bg-raised);
+  --muted-foreground: var(--vc-text-secondary);
+  --accent: var(--vc-bg-raised);
+  --accent-foreground: var(--vc-text-primary);
+  --success: var(--vc-state-complete);
+  --warning: var(--vc-state-due);
+  --warning-foreground: var(--vc-bg-base);
+  --border: var(--vc-line-strong);
+  --input: var(--vc-line-strong);
+  --ring: var(--vc-data-live);
+}
+
+/* Legend dots / stat-icon chips on the schedule pages consume these as
+ * inline-style vars (bootstrap-ish fallbacks keep the light theme). */
+:root:not(.light) {
+  --sched-ontime-chip: color-mix(in srgb, var(--vc-state-due) 15%, transparent);
+  --sched-pending-chip: var(--vc-bg-raised);
+  --sched-warning-chip: color-mix(in srgb, var(--vc-state-due) 20%, transparent);
+  --sched-late-chip: color-mix(in srgb, var(--vc-state-due) 25%, transparent);
+  --sched-completed-chip: color-mix(in srgb, var(--vc-state-complete) 15%, transparent);
+  --sched-skipped-chip: var(--vc-bg-surface);
+}
+
+/* ---------- Page headers / sections ---------- */
+:root:not(.light) .admin-v2-page-header h1,
+:root:not(.light) .admin-v2-section-title {
+  font-family: var(--vc-font-mono);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+:root:not(.light) .admin-v2-text-muted { color: var(--vc-text-secondary); }
+:root:not(.light) .admin-v2-loading,
+:root:not(.light) .admin-v2-empty-state,
+:root:not(.light) .admin-v2-no-patient { color: var(--vc-text-secondary); }
+
+/* ---------- Tables ---------- */
+:root:not(.light) .admin-v2-table-container {
+  background: var(--vc-bg-surface);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 10px;
+  box-shadow: none;
+}
+:root:not(.light) .admin-v2-table th {
+  background: var(--vc-bg-surface);
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--vc-line-strong);
+}
+:root:not(.light) .admin-v2-table td {
+  border-bottom: 1px solid var(--vc-line-hairline);
+  color: var(--vc-text-primary);
+}
+:root:not(.light) .admin-v2-table tr:hover { background: var(--vc-bg-raised); }
+:root:not(.light) .admin-v2-table tr.inactive-row td { color: var(--vc-text-tertiary); }
+
+/* ---------- Stat cards as filter chips ---------- */
+:root:not(.light) .admin-v2-stat-card.selected {
+  border-color: color-mix(in srgb, var(--vc-data-live) 55%, transparent);
+  box-shadow: inset 0 -2px 0 var(--vc-data-live);
+}
+:root:not(.light) .admin-v2-stat-card.selected .admin-v2-stat-info h4 {
+  color: var(--vc-data-live);
+}
+
+/* ---------- Action buttons (table row + card controls) ---------- */
+:root:not(.light) .admin-v2-action-btn {
+  background: transparent;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  color: var(--vc-text-secondary);
+}
+:root:not(.light) .admin-v2-action-btn:hover {
+  border-color: var(--vc-line-strong);
+  background: var(--vc-bg-raised);
+  color: var(--vc-text-primary);
+}
+:root:not(.light) .admin-v2-action-btn-delete:hover {
+  border-color: color-mix(in srgb, var(--vc-state-alert) 60%, transparent);
+  color: var(--vc-state-alert);
+}
+:root:not(.light) .admin-v2-action-btn-success:hover,
+:root:not(.light) .admin-v2-action-btn.resume:hover {
+  border-color: color-mix(in srgb, var(--vc-state-complete) 60%, transparent);
+  color: var(--vc-state-complete);
+}
+:root:not(.light) .admin-v2-action-btn-warning:hover,
+:root:not(.light) .admin-v2-action-btn.pause:hover {
+  border-color: color-mix(in srgb, var(--vc-state-due) 60%, transparent);
+  color: var(--vc-state-due);
+}
+
+/* ---------- Buttons ---------- */
+:root:not(.light) .admin-v2-btn {
+  border-radius: 8px;
+  font-family: var(--vc-font-mono);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+:root:not(.light) .admin-v2-btn-primary {
+  background: var(--vc-data-live);
+  border-color: transparent;
+  color: var(--vc-bg-base);
+}
+:root:not(.light) .admin-v2-btn-primary:hover {
+  background: color-mix(in srgb, var(--vc-data-live) 85%, var(--vc-text-primary));
+}
+:root:not(.light) .admin-v2-btn-secondary,
+:root:not(.light) .admin-v2-btn-ghost {
+  background: transparent;
+  border: 1px solid var(--vc-line-strong);
+  color: var(--vc-text-primary);
+}
+:root:not(.light) .admin-v2-btn-secondary:hover,
+:root:not(.light) .admin-v2-btn-ghost:hover { background: var(--vc-bg-raised); }
+:root:not(.light) .admin-v2-btn-danger {
+  background: var(--vc-state-alert);
+  border-color: transparent;
+  color: var(--vc-text-primary);
+}
+:root:not(.light) .admin-v2-btn-danger-ghost {
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--vc-state-alert) 55%, transparent);
+  color: var(--vc-state-alert);
+}
+
+/* ---------- Badges: outline pills, roles not rainbow ---------- */
+:root:not(.light) .admin-v2-badge {
+  background: transparent;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 999px;
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+:root:not(.light) .admin-v2-badge-success {
+  border-color: color-mix(in srgb, var(--vc-state-complete) 50%, transparent);
+  color: var(--vc-state-complete);
+}
+:root:not(.light) .admin-v2-badge-warning {
+  border-color: color-mix(in srgb, var(--vc-state-due) 50%, transparent);
+  color: var(--vc-state-due);
+}
+:root:not(.light) .admin-v2-badge-danger,
+:root:not(.light) .admin-v2-badge-critical {
+  border-color: color-mix(in srgb, var(--vc-state-alert) 50%, transparent);
+  color: var(--vc-state-alert);
+}
+:root:not(.light) .admin-v2-badge-info,
+:root:not(.light) .admin-v2-badge-primary {
+  border-color: color-mix(in srgb, var(--vc-data-live) 50%, transparent);
+  color: var(--vc-data-live);
+}
+:root:not(.light) .admin-v2-badge-secondary,
+:root:not(.light) .admin-v2-badge-muted {
+  border-color: var(--vc-line-hairline);
+  color: var(--vc-text-tertiary);
+}
+
+/* Active/inactive status pills (meds, schedules, tasks) — dot + outline */
+:root:not(.light) .admin-v2-status-badge {
+  background: transparent;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 999px;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+:root:not(.light) .admin-v2-status-badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+:root:not(.light) .admin-v2-status-badge.active {
+  color: var(--vc-state-complete);
+  border-color: color-mix(in srgb, var(--vc-state-complete) 45%, transparent);
+}
+:root:not(.light) .admin-v2-status-badge.inactive {
+  color: var(--vc-text-tertiary);
+  border-color: var(--vc-line-hairline);
+}
+
+/* History dose-status badges: 'danger' here means a LATE dose — schedule
+ * adherence, so amber, not red. */
+:root:not(.light) .history-status-badge {
+  border-radius: 999px;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+:root:not(.light) .history-status-badge.success {
+  background: color-mix(in srgb, var(--vc-state-complete) 14%, transparent);
+  color: var(--vc-state-complete);
+}
+:root:not(.light) .history-status-badge.warning {
+  background: color-mix(in srgb, var(--vc-state-due) 14%, transparent);
+  color: var(--vc-state-due);
+}
+:root:not(.light) .history-status-badge.danger {
+  background: color-mix(in srgb, var(--vc-state-due) 22%, transparent);
+  color: var(--vc-state-due);
+}
+:root:not(.light) .history-status-badge.muted {
+  background: var(--vc-bg-raised);
+  color: var(--vc-text-tertiary);
+}
+
+/* ---------- List cards (manage pages) ---------- */
+:root:not(.light) .admin-v2-med-card {
+  background: var(--vc-bg-surface);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 10px;
+  box-shadow: none;
+}
+:root:not(.light) .admin-v2-med-card-inactive { opacity: 0.65; }
+:root:not(.light) .admin-v2-med-card-label {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+
+/* ---------- Filters / day picker ---------- */
+:root:not(.light) .admin-v2-filter-card {
+  background: var(--vc-bg-surface);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 10px;
+}
+:root:not(.light) .admin-v2-day-btn {
+  background: transparent;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+}
+:root:not(.light) .admin-v2-day-btn:hover { border-color: var(--vc-line-strong); }
+:root:not(.light) .admin-v2-day-btn.selected {
+  background: color-mix(in srgb, var(--vc-data-live) 15%, transparent);
+  border-color: var(--vc-data-live);
+  color: var(--vc-data-live);
+}
+
+/* ---------- Schedule summary cards + legend + progress ---------- */
+:root:not(.light) .admin-v2-schedule-summary-card {
+  background: var(--vc-bg-surface);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 10px;
+}
+:root:not(.light) .admin-v2-schedule-summary-title {
+  font-family: var(--vc-font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+:root:not(.light) .admin-v2-schedule-summary-detail { color: var(--vc-text-secondary); }
+:root:not(.light) .admin-v2-schedule-legend {
+  background: var(--vc-bg-surface);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 10px;
+}
+:root:not(.light) .admin-v2-legend-item { color: var(--vc-text-secondary); }
+:root:not(.light) .admin-v2-schedule-progress-bar.success { background: var(--vc-state-complete); }
+:root:not(.light) .admin-v2-schedule-progress-bar.good { background: var(--vc-data-live); }
+:root:not(.light) .admin-v2-schedule-progress-bar.warning { background: var(--vc-state-due); }
