@@ -1,0 +1,693 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Vitals Capture design tokens. Every capture component reads from these;
+ * no raw hex below the token block. Dark-only by design (bedside-monitor
+ * surface) — the page root carries .vitals-capture. */
+.vitals-capture,
+.vc-sheet,
+.vc-toast {
+  /* Surfaces */
+  --vc-bg-base: #0a0e14;
+  --vc-bg-surface: #131a24;
+  --vc-bg-raised: #1b242f;
+  --vc-bg-sheet: #161e29;
+
+  /* Lines */
+  --vc-line-hairline: rgba(255, 255, 255, 0.1);
+  --vc-line-strong: rgba(255, 255, 255, 0.2);
+
+  /* Text */
+  --vc-text-primary: #e8edf3;
+  --vc-text-secondary: #9aa8b8;
+  --vc-text-tertiary: #6b7987; /* decorative only — never sole carrier of meaning */
+
+  /* Semantic state — roles, not colors */
+  --vc-data-live: #2fc2e8;   /* live data, active focus, primary action */
+  --vc-state-complete: #3fbf6a;
+  --vc-state-due: #f0a52e;   /* needs confirmation */
+  --vc-state-alert: #f0563c; /* clinical concern only */
+  --vc-state-idle: #6b7987;
+
+  --vc-font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --vc-font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+
+  font-family: var(--vc-font-sans);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+  color: var(--vc-text-primary);
+}
+
+/* This surface renders outside the .tw preflight scope. Strip only what the
+ * components don't set themselves: UA appearance (iOS Safari fills unstyled
+ * buttons with a dark rounded rect). Every other box property is declared
+ * per component, which out-specifies index.css's element-level button rule —
+ * except its :hover border recolor (purple), re-asserted below. */
+.vitals-capture button,
+.vc-sheet button,
+.vc-toast button,
+.vc-more-menu button {
+  appearance: none;
+  -webkit-appearance: none;
+}
+/* Pin borders across hover so index.css's global button:hover (#646cff)
+ * never shows through. */
+.vc-btn.secondary,
+.vc-btn.secondary:hover { border-color: var(--vc-line-strong); }
+.vc-btn.primary:hover,
+.vc-btn.confirm-warn:hover { border-color: transparent; }
+.vc-save.neutral,
+.vc-save.neutral:hover { border-color: var(--vc-line-strong); }
+.vc-save.primary:hover { border-color: transparent; }
+.vc-save.disabled,
+.vc-save.disabled:hover { border-color: var(--vc-line-hairline); }
+.vc-btn:disabled,
+.vc-btn:disabled:hover { border-color: var(--vc-line-hairline); }
+.vc-tile:hover { border-color: var(--vc-line-strong); }
+.vc-key:hover { border-color: transparent; }
+.vc-tab:hover, .vc-more-item:hover, .vc-linklike:hover,
+.vc-hero-field:hover { border-color: transparent; }
+.vc-hero-field.active,
+.vc-hero-field.active:hover { border-bottom: 2px solid var(--vc-data-live); }
+
+/* ---------- Page shell ---------- */
+.vitals-capture {
+  min-height: 100dvh;
+  background: var(--vc-bg-base);
+  display: flex;
+  flex-direction: column;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+/* Embedded in the admin-v2 layout (hamburger shell): the layout owns the
+ * viewport, so no full-height claim; round the panel like a card and scale
+ * the display type down one step — the shell's own chrome already spends
+ * vertical space, so the standalone sizes crowd the content area. */
+.vitals-capture.vc-embedded {
+  min-height: 0;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 12px;
+  padding-bottom: 0.25rem;
+}
+.vitals-capture.vc-embedded .vc-encounter { margin-top: 0.75rem; }
+.vitals-capture.vc-embedded .vc-grid {
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+}
+.vitals-capture.vc-embedded .vc-tile {
+  min-height: 86px;
+  padding: 0.55rem 0.65rem 0.5rem;
+}
+.vitals-capture.vc-embedded .vc-tile-value { font-size: 30px; }
+.vitals-capture.vc-embedded .vc-tile-value.bp { font-size: 25px; }
+.vitals-capture.vc-embedded .vc-tile-value.empty { font-size: 22px; }
+.vitals-capture.vc-embedded .vc-tile-head .vc-label { font-size: 10px; }
+.vitals-capture.vc-embedded .vc-tile-provenance { font-size: 9.5px; }
+.vitals-capture.vc-embedded .vc-encounter,
+.vitals-capture.vc-embedded .vc-resume { margin-left: 0.75rem; margin-right: 0.75rem; }
+.vitals-capture.vc-embedded .vc-footer {
+  padding: 0.4rem 0.75rem 0.75rem;
+  gap: 0.5rem;
+}
+.vitals-capture.vc-embedded .vc-progress { font-size: 11px; padding: 0.4rem; }
+.vitals-capture.vc-embedded .vc-save { min-height: 46px; font-size: 14px; }
+
+.vc-label {
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.vc-caption {
+  font-size: 12px;
+  color: var(--vc-text-secondary);
+}
+
+/* Header */
+.vc-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--vc-line-hairline);
+  background: var(--vc-bg-surface);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.vc-header-patient {
+  font-family: var(--vc-font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vc-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--vc-text-secondary);
+  white-space: nowrap;
+}
+.vc-chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--vc-state-complete);
+  flex-shrink: 0;
+}
+.vc-chip.offline { color: var(--vc-state-due); }
+.vc-chip.offline .vc-chip-dot { background: var(--vc-state-due); }
+
+.vc-title {
+  font-family: var(--vc-font-mono);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 1rem 1rem 0.25rem;
+}
+.vc-encounter {
+  margin: 0.5rem 1rem 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  color: var(--vc-text-secondary);
+}
+.vc-encounter > span { white-space: nowrap; }
+/* Embedded mode adds the connection chip as a third item; give it its own
+ * right-aligned slot when the row wraps. */
+.vc-encounter .vc-chip { margin-left: auto; }
+
+/* ---------- Tile grid ---------- */
+.vc-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+}
+.vc-tile {
+  background: var(--vc-bg-surface);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 10px;
+  padding: 0.7rem 0.8rem 0.6rem;
+  text-align: left;
+  color: var(--vc-text-primary);
+  min-height: 108px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  cursor: pointer;
+  transition: border-color 120ms ease;
+}
+.vc-tile:active { border-color: var(--vc-line-strong); }
+.vc-tile.just-saved { border-color: var(--vc-state-complete); }
+.vc-tile-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: var(--vc-text-secondary);
+}
+.vc-tile-head .vc-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vc-tile-state { flex-shrink: 0; display: flex; }
+.vc-tile-state.recorded { color: var(--vc-state-complete); }
+/* Dotted ring: the non-color signal for "not recorded" */
+.vc-ring {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px dotted var(--vc-state-idle);
+}
+.vc-tile-value {
+  font-family: var(--vc-font-mono);
+  font-size: 40px;
+  font-weight: 300;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  flex: 1;
+}
+.vc-tile-value .vc-unit {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--vc-text-secondary);
+}
+.vc-tile-value.empty {
+  color: var(--vc-text-tertiary);
+  font-size: 28px;
+  letter-spacing: 0.2em;
+}
+.vc-tile-value.bp { font-size: 32px; }
+.vc-tile-provenance {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--vc-text-secondary);
+  text-transform: uppercase;
+}
+.vc-tile-provenance.empty { color: var(--vc-text-tertiary); }
+
+/* ---------- Footer / save ---------- */
+.vc-footer {
+  margin-top: auto;
+  padding: 0.5rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.vc-progress {
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  padding: 0.5rem;
+  text-align: center;
+  font-family: var(--vc-font-mono);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  color: var(--vc-data-live);
+  text-transform: uppercase;
+}
+.vc-progress-hint {
+  text-align: center;
+  font-size: 13px;
+  color: var(--vc-text-secondary);
+}
+.vc-save {
+  font-family: var(--vc-font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  border-radius: 8px;
+  min-height: 52px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.vc-save.disabled {
+  background: transparent;
+  border-color: var(--vc-line-hairline);
+  color: var(--vc-text-tertiary);
+  cursor: not-allowed;
+}
+.vc-save.neutral {
+  background: var(--vc-bg-raised);
+  border-color: var(--vc-line-strong);
+  color: var(--vc-text-primary);
+}
+.vc-save.primary {
+  background: var(--vc-data-live);
+  color: var(--vc-bg-base);
+}
+
+/* ---------- Tab bar ---------- */
+.vc-tabbar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border-top: 1px solid var(--vc-line-hairline);
+  background: var(--vc-bg-surface);
+  padding-bottom: env(safe-area-inset-bottom);
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+}
+.vc-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.6rem 0.25rem 0.5rem;
+  min-height: 56px;
+  color: var(--vc-text-secondary);
+  text-decoration: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.vc-tab .vc-label { font-size: 9.5px; }
+.vc-tab.active { color: var(--vc-data-live); }
+
+/* More menu */
+.vc-more-menu {
+  position: fixed;
+  right: 0.75rem;
+  bottom: calc(64px + env(safe-area-inset-bottom));
+  z-index: 40;
+  background: var(--vc-bg-raised);
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 10px;
+  min-width: 220px;
+  padding: 0.4rem;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+.vc-more-item {
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--vc-text-primary);
+  font-family: var(--vc-font-sans);
+  font-size: 14px;
+  padding: 0.65rem 0.7rem;
+  border-radius: 6px;
+  min-height: 44px;
+  cursor: pointer;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.vc-more-item:active { background: var(--vc-bg-surface); }
+.vc-more-item.selected { color: var(--vc-data-live); }
+.vc-more-heading {
+  padding: 0.5rem 0.7rem 0.2rem;
+  color: var(--vc-text-tertiary);
+}
+
+/* ---------- Bottom sheet ---------- */
+.vc-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.6);
+}
+.vc-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1001;
+  margin: 0 auto;
+  max-width: 480px;
+  background: var(--vc-bg-sheet);
+  border: 1px solid var(--vc-line-strong);
+  border-bottom: none;
+  border-radius: 16px 16px 0 0;
+  padding: 0.5rem 1rem calc(1rem + env(safe-area-inset-bottom));
+  max-height: calc(100dvh - 3rem);
+  overflow-y: auto;
+  font-family: var(--vc-font-sans);
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-text-primary);
+}
+.vc-sheet[data-state='open'] { animation: vc-sheet-in 200ms ease-out; }
+.vc-sheet-overlay[data-state='open'] { animation: vc-fade-in 200ms ease-out; }
+@keyframes vc-sheet-in {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+@keyframes vc-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.vc-grabber {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--vc-line-strong);
+  margin: 0.25rem auto 0.6rem;
+  /* padded hit area for the swipe affordance */
+  box-sizing: content-box;
+  padding: 10px 40px;
+  background-clip: content-box;
+  display: block;
+  border: none;
+  cursor: grab;
+}
+.vc-sheet-title {
+  text-align: center;
+  font-family: var(--vc-font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--vc-line-hairline);
+}
+.vc-sheet-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.6rem 0;
+  color: var(--vc-text-secondary);
+}
+.vc-sheet-meta .vc-value { color: var(--vc-text-primary); }
+.vc-sheet-prompt {
+  text-align: center;
+  font-size: 15px;
+  color: var(--vc-text-secondary);
+  padding: 0.25rem 0 0.5rem;
+}
+
+/* Hero value */
+.vc-hero {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0 0.6rem;
+  font-family: var(--vc-font-mono);
+  font-weight: 300;
+}
+.vc-hero-field {
+  /* The capture surface lives outside the .tw preflight scope, so UA button
+   * chrome (iOS Safari's rounded dark fill) must be stripped explicitly. */
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  color: var(--vc-text-primary);
+  font: inherit;
+  font-size: 54px;
+  line-height: 1;
+  white-space: nowrap;
+  padding: 0 0.05em;
+  cursor: pointer;
+}
+.vc-hero-field.vc-placeholder { color: var(--vc-text-tertiary); letter-spacing: 0.1em; }
+.vc-hero-field.active {
+  border-bottom: 2px solid var(--vc-data-live);
+}
+.vc-hero-field .vc-field-check {
+  color: var(--vc-state-complete);
+  font-size: 16px;
+  vertical-align: middle;
+  margin-left: 0.2rem;
+  display: inline-flex;
+}
+.vc-hero-sep { font-size: 34px; color: var(--vc-text-tertiary); }
+.vc-hero .vc-unit { font-size: 13px; color: var(--vc-text-secondary); }
+.vc-hero.bp .vc-hero-field { font-size: 32px; }
+.vc-hero.bp .vc-hero-field.vc-placeholder { letter-spacing: 0.04em; }
+
+/* Caret */
+.vc-caret {
+  display: inline-block;
+  width: 2px;
+  height: 0.85em;
+  background: var(--vc-data-live);
+  margin-left: 2px;
+  vertical-align: baseline;
+  animation: vc-caret-blink 1.1s steps(1) infinite;
+}
+@keyframes vc-caret-blink { 50% { opacity: 0; } }
+
+/* Warning / block banners */
+.vc-band {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  border-radius: 8px;
+  padding: 0.7rem 0.8rem;
+  margin: 0.3rem 0 0.6rem;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.vc-band .vc-band-title {
+  font-family: var(--vc-font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 0.15rem;
+}
+.vc-band.warn {
+  border: 1px solid var(--vc-state-due);
+  color: var(--vc-text-primary);
+}
+.vc-band.warn .vc-band-title, .vc-band.warn svg { color: var(--vc-state-due); }
+.vc-band.block {
+  border: 1px solid var(--vc-state-alert);
+}
+.vc-band.block .vc-band-title, .vc-band.block svg { color: var(--vc-state-alert); }
+
+/* ---------- Keypad ---------- */
+.vc-keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--vc-line-hairline);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 0.4rem 0 0.8rem;
+}
+.vc-key {
+  background: var(--vc-bg-sheet);
+  border: none;
+  padding: 0;
+  color: var(--vc-text-primary);
+  font-family: var(--vc-font-mono);
+  font-size: 22px;
+  min-height: 52px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.vc-key:active { background: var(--vc-bg-raised); }
+.vc-key:disabled { color: var(--vc-text-tertiary); cursor: default; }
+
+/* Sheet actions */
+.vc-sheet-actions {
+  display: flex;
+  gap: 0.6rem;
+}
+.vc-btn {
+  font-family: var(--vc-font-mono);
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border-radius: 8px;
+  min-height: 50px;
+  padding: 0 1rem;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.vc-btn.secondary {
+  background: transparent;
+  border-color: var(--vc-line-strong);
+  color: var(--vc-text-primary);
+  flex: 1;
+}
+.vc-btn.primary {
+  background: var(--vc-data-live);
+  color: var(--vc-bg-base);
+  flex: 1.6;
+}
+.vc-btn.confirm-warn {
+  background: var(--vc-state-due);
+  color: var(--vc-bg-base);
+  flex: 1.6;
+}
+.vc-btn:disabled {
+  background: transparent;
+  border-color: var(--vc-line-hairline);
+  color: var(--vc-text-tertiary);
+  cursor: not-allowed;
+}
+.vc-linklike {
+  background: none;
+  border: none;
+  color: var(--vc-data-live);
+  font-family: var(--vc-font-mono);
+  font-size: 12.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  min-height: 44px;
+  padding: 0 0.75rem;
+  cursor: pointer;
+  display: block;
+  margin: 0 auto;
+}
+
+/* ---------- Toast (overlay; never shifts layout) ---------- */
+.vc-toast {
+  position: fixed;
+  top: 3.4rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  max-width: min(440px, calc(100vw - 2rem));
+  width: max-content;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--vc-bg-raised);
+  border: 1px solid var(--vc-state-complete);
+  color: var(--vc-text-primary);
+  border-radius: 8px;
+  padding: 0.6rem 0.9rem;
+  font-family: var(--vc-font-mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  animation: vc-fade-in 150ms ease-out;
+}
+.vc-toast svg { color: var(--vc-state-complete); flex-shrink: 0; }
+.vc-toast.error { border-color: var(--vc-state-due); }
+.vc-toast.error svg { color: var(--vc-state-due); }
+
+/* Resume-draft prompt */
+.vc-resume {
+  margin: 0.5rem 1rem 0;
+  border: 1px solid var(--vc-line-strong);
+  background: var(--vc-bg-surface);
+  border-radius: 8px;
+  padding: 0.7rem 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  font-size: 14px;
+}
+.vc-resume-actions { display: flex; gap: 0.5rem; margin-left: auto; }
+.vc-resume .vc-btn { min-height: 44px; font-size: 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .vc-sheet[data-state='open'],
+  .vc-sheet-overlay[data-state='open'],
+  .vc-toast { animation: vc-fade-in 1ms linear; }
+  .vc-caret { animation: none; }
+}

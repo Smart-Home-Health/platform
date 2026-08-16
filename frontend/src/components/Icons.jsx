@@ -943,3 +943,33 @@ export const BarcodeIcon = ({ size = 20 }) => (
     <line x1="20" y1="5" x2="20" y2="19" />
   </svg>
 );
+export const BackspaceIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 5H9l-6 7 6 7h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1z" />
+    <line x1="12" y1="9" x2="17" y2="14" />
+    <line x1="17" y1="9" x2="12" y2="14" />
+  </svg>
+);
+export const CheckCircleIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="9" />
+    <polyline points="8.5 12.5 11 15 15.5 9.5" />
+  </svg>
+);
+export const MoreHorizontalIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <circle cx="5" cy="12" r="1.6" />
+    <circle cx="12" cy="12" r="1.6" />
+    <circle cx="19" cy="12" r="1.6" />
+  </svg>
+);
+export const PlusSquareIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3.5" y="3.5" width="17" height="17" rx="3" />
+    <line x1="12" y1="8.5" x2="12" y2="15.5" />
+    <line x1="8.5" y1="12" x2="15.5" y2="12" />
+  </svg>
+);
