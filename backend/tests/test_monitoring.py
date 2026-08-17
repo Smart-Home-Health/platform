@@ -79,3 +79,69 @@ def test_read_restricted_cannot_list_alerts(client, admin_user, account):
 
 def test_requires_auth(client):
     assert client.get("/api/monitoring/alerts").status_code == 401
+
+
+# --- /api/monitoring/history/recent (live dashboard backfill) ---
+
+@pytest.fixture
+def pulse_ox_rows(db_session, patient):
+    """A minute of 1 Hz-ish pulse-ox samples, plus a disconnect sentinel."""
+    from datetime import timedelta
+    from schemas.pulse_ox_data import PulseOxData
+    now = datetime.now(timezone.utc)
+    rows = [
+        PulseOxData(patient_id=patient.id, timestamp=now - timedelta(seconds=i * 5),
+                    spo2=97, bpm=90, pa=2.0, created_at=now)
+        for i in range(12)
+    ]
+    rows.append(PulseOxData(patient_id=patient.id, timestamp=now - timedelta(seconds=3),
+                            spo2=-1, bpm=-1, pa=0, created_at=now))
+    db_session.add_all(rows)
+    db_session.commit()
+    return rows
+
+
+def test_recent_history_raw_bucket(admin_client, patient, pulse_ox_rows):
+    resp = admin_client.get(f"/api/monitoring/history/recent?patient_id={patient.id}&minutes=15")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["bucket_seconds"] == 2
+    # 12 real samples; the spo2 = -1 sentinel row is excluded
+    assert data["count"] == 12
+    assert all(p["spo2"] == 97 for p in data["points"])
+    assert data["points"] == sorted(data["points"], key=lambda p: p["t"])
+
+
+def test_recent_history_bucketed(admin_client, patient, pulse_ox_rows):
+    resp = admin_client.get(f"/api/monitoring/history/recent?patient_id={patient.id}&minutes=1440")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["bucket_seconds"] == 300
+    # All samples fall in one or two 5-minute buckets
+    assert 1 <= data["count"] <= 2
+    assert data["points"][0]["bpm"] == pytest.approx(90, abs=0.1)
+
+
+def test_recent_history_clamps_params(admin_client, patient):
+    resp = admin_client.get(
+        f"/api/monitoring/history/recent?patient_id={patient.id}&minutes=99999&max_points=5")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["minutes"] == 1440
+    assert data["bucket_seconds"] == 300  # snapped to the coarsest step
+
+
+def test_recent_history_patient_scoped(admin_client, db_session, account, pulse_ox_rows):
+    from crud.patients import create_patient
+    other = create_patient(db_session, {
+        "first_name": "Other", "last_name": "Patient",
+        "account_id": account.id, "is_active": True,
+    })
+    db_session.commit()
+    resp = admin_client.get(f"/api/monitoring/history/recent?patient_id={other.id}&minutes=15")
+    assert resp.status_code == 200
+    assert resp.json()["count"] == 0
+
+
+def test_recent_history_requires_auth(client, patient):
+    assert client.get(f"/api/monitoring/history/recent?patient_id={patient.id}").status_code == 401

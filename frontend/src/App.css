@@ -46,102 +46,36 @@ html, body, #root {
 /* Add these new styles for the revised layout */
 
 /* ---------------------------------------------------------------------------
-   Live-dashboard color schemes.
+   Live-dashboard structural colors.
 
-   The dashboard's structural colors (backgrounds, surfaces, borders, text) are
-   driven by these CSS variables. The default values below ARE the historical
-   "Blue" look, so an unthemed wrapper renders exactly as before. A theme class
-   on `.dashboard-wrapper` (`theme-dark` / `theme-light`, set from
-   DashboardThemeContext) overrides them.
+   Dark-only by design (bedside-monitor aesthetic): the --dash-* variable
+   layer survives — every dashboard modal reads it — but the values are now
+   defined once from the vc tokens (styles/vc-tokens.css). Literals rather
+   than var(--vc-*) so rules using `var(--dash-*, <fallback>)` outside the
+   wrapper keep their fallback behavior unchanged.
 
-   Every consuming rule uses `var(--dash-*, <original-literal>)`, so any element
-   that happens to render outside the wrapper (e.g. a portaled modal or a legacy
-   admin page reusing the same class) falls back to the original color and is
-   unaffected. Vital accent colors (SpO2/HR/perfusion) and alarm reds are
-   intentionally NOT variables — they stay constant across every theme.
+   Vital accent colors (SpO2/HR/perfusion) and alarm reds are intentionally
+   NOT variables — they stay constant.
    --------------------------------------------------------------------------- */
 .dashboard-wrapper {
-  --dash-bg: #161e2e;            /* app/page background */
-  --dash-surface: #1a202c;       /* cards, panels, modal headers */
-  --dash-surface-2: #2d3748;     /* inputs, raised chips */
-  --dash-border: #30363d;        /* hairline borders */
-  --dash-border-strong: #4a5568; /* stronger separators */
-  --dash-text: #ffffff;          /* primary text */
-  --dash-text-muted: #a0aec0;    /* secondary / labels */
-  --dash-text-dim: #999999;      /* tertiary / hints */
-}
-
-.dashboard-wrapper.theme-dark {
-  --dash-bg: #0d1117;
-  --dash-surface: #161b22;
-  --dash-surface-2: #21262d;
-  --dash-border: #30363d;
-  --dash-border-strong: #484f58;
-  --dash-text: #e6edf3;
-  --dash-text-muted: #8b949e;
-  --dash-text-dim: #6e7681;
-}
-
-.dashboard-wrapper.theme-light {
-  --dash-bg: #f6f8fa;
-  --dash-surface: #ffffff;
-  --dash-surface-2: #eaeef2;
-  --dash-border: #d0d7de;
-  --dash-border-strong: #afb8c1;
-  --dash-text: #1f2328;
-  --dash-text-muted: #57606a;
-  --dash-text-dim: #6e7781;
-}
-
-/* Subsections (modals/lists) inside the dashboard are built with the `.tw`
-   shadcn design system, which reads the semantic tokens below. The wrapper also
-   carries `.force-dark`, which pins those tokens dark — fine for Blue/Dark, but
-   it leaves `.tw` content dark under the Light scheme. These selectors re-map
-   the shadcn palette per dashboard theme and out-specify `.force-dark`
-   (two classes vs one), so subsections follow the live-board theme. Blue/Dark
-   mirror the existing GitHub-dark palette; Light uses the GitHub-light one. */
-.dashboard-wrapper.theme-light {
-  color-scheme: light;
-  --background: #ffffff;
-  --foreground: #1f2328;
-  /* Cards are white so they contrast against the modal body, which is painted
-     with --dash-bg (#f6f8fa) rather than --background. */
-  --card: #ffffff;
-  --card-foreground: #1f2328;
-  --popover: #ffffff;
-  --popover-foreground: #1f2328;
-  --primary: #1f883d;
-  --primary-foreground: #ffffff;
-  --secondary: #eaeef2;
-  --secondary-foreground: #1f2328;
-  --muted: #f6f8fa;
-  --muted-foreground: #656d76;
-  --accent: #eaeef2;
-  --accent-foreground: #1f2328;
-  --destructive: #cf222e;
-  --destructive-foreground: #ffffff;
-  --success: #1f883d;
-  --success-foreground: #ffffff;
-  --warning: #9a6700;
-  --warning-foreground: #ffffff;
-  --accent-purple: #8250df;
-  --accent-purple-foreground: #ffffff;
-  --border: #d0d7de;
-  --input: #d0d7de;
-  --ring: #0969da;
+  --dash-bg: #0a0e14;            /* vc-bg-base */
+  --dash-surface: #131a24;       /* vc-bg-surface */
+  --dash-surface-2: #1b242f;     /* vc-bg-raised */
+  --dash-border: rgba(255, 255, 255, 0.1);  /* vc-line-hairline */
+  --dash-border-strong: rgba(255, 255, 255, 0.2); /* vc-line-strong */
+  --dash-text: #e8edf3;          /* vc-text-primary */
+  --dash-text-muted: #9aa8b8;    /* vc-text-secondary */
+  --dash-text-dim: #6b7987;      /* vc-text-tertiary */
 }
 
 /* ---------------------------------------------------------------------------
    Portaled overlays (Radix Dialog/Select/Popover render into <body>, OUTSIDE
-   .dashboard-wrapper) can't inherit the board scheme from the wrapper. While
-   the live dashboard is mounted, DashboardThemeProvider sets `dash-scheme-*`
-   on <html>; these blocks re-map the shadcn tokens there so portaled content
+   .dashboard-wrapper) can't inherit the board's dark tokens. While the live
+   dashboard is mounted, DashboardThemeProvider sets `dash-scheme-dark` on
+   <html>; this block re-maps the shadcn tokens there so portaled content
    matches the board. `!important` guarantees they win over the admin theme
-   regardless of stylesheet order. They do NOT affect in-wrapper content: the
-   wrapper declares its own tokens, so descendants inherit those, not these.
-   Blue + Dark use the GitHub-dark palette; Light uses GitHub-light.
+   regardless of stylesheet order.
    --------------------------------------------------------------------------- */
-:root.dash-scheme-blue,
 :root.dash-scheme-dark {
   color-scheme: dark;
   --background: #0d1117 !important;

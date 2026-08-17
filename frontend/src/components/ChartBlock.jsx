@@ -18,16 +18,16 @@
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { CHART_CHROME } from "../contexts/DashboardThemeContext";
 
-export default function ChartBlock({ yLabel, color, dataset, showXaxis = true, showYaxis = true, chrome = CHART_CHROME.blue }) {
-  // Map colors to match value displays
+export default function ChartBlock({ yLabel, color, dataset, showXaxis = true, showYaxis = true, chrome = CHART_CHROME, windowMs = 5 * 60 * 1000 }) {
+  // Series colors follow the vc state tokens (literals — recharts needs them)
   const getColor = (colorName) => {
     switch (colorName.toLowerCase()) {
       case 'blue':
-        return '#1565C0';
+        return '#4da7bd';
       case 'green':
-        return '#2E7D32';
+        return '#3fbf6a';
       case 'orange':
-        return '#EF6C00';
+        return '#f0a52e';
       default:
         return colorName;
     }
@@ -35,9 +35,11 @@ export default function ChartBlock({ yLabel, color, dataset, showXaxis = true, s
   
   const chartColor = getColor(color);
   
-  // Filter dataset to show only the last 5 minutes of data
-  const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
-  const filteredData = dataset.filter(point => point.x >= fiveMinutesAgo);
+  // Filter dataset to the chart's time window
+  const windowStart = Date.now() - windowMs;
+  const filteredData = dataset.filter(point => point.x >= windowStart);
+  // Seconds only add noise once a tick spans minutes
+  const coarseTicks = windowMs > 60 * 60 * 1000;
   
   // Calculate min and max values for auto-scaling Y axis
   const calculateYDomain = () => {
@@ -77,7 +79,7 @@ export default function ChartBlock({ yLabel, color, dataset, showXaxis = true, s
         </div>
       ) : (
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={filteredData}>
+          <LineChart data={filteredData} margin={{ top: 5, right: 22, bottom: 5, left: 0 }}>
             {showXaxis && (
               <XAxis
                 dataKey="x"
@@ -85,7 +87,8 @@ export default function ChartBlock({ yLabel, color, dataset, showXaxis = true, s
                 domain={['dataMin', 'dataMax']}
                 tickFormatter={(unixTime) => {
                   const d = new Date(unixTime);
-                  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`;
+                  const hm = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+                  return coarseTicks ? hm : `${hm}:${d.getSeconds().toString().padStart(2, '0')}`;
                 }}
                 axisLine={{ stroke: chrome.grid }}
                 tickLine={{ stroke: chrome.grid }}

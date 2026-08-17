@@ -17,11 +17,12 @@
 Monitoring and alerts routes
 """
 import logging
+import math
 from collections import defaultdict
 from fastapi import APIRouter, Depends, Body, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_
+from sqlalchemy import func, and_, text
 from typing import Optional, List
 from datetime import datetime, date, time, timedelta, timezone
 from utils.datetime_utils import resolve_tz_for_patient
@@ -172,6 +173,71 @@ async def analyze_pulse_ox_history(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error analyzing pulse ox data: {str(e)}")
+
+
+# Buckets the recent-history endpoint may snap to. Coarser than 5 minutes is
+# never needed: 24 h / 300 s ≈ 288 points.
+RECENT_BUCKET_STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 300]
+
+
+@router.get("/history/recent")
+async def get_recent_pulse_ox_history(
+        patient_id: int,
+        minutes: int = 15,
+        max_points: int = 600,
+        db: Session = Depends(get_db),
+        _: bool = Depends(require_read_access)
+):
+    """Recent pulse-ox series for the live dashboard charts, downsampled
+    server-side (TimescaleDB time_bucket) so any window returns a bounded
+    number of points. Excludes the in-band disconnect sentinel (spo2 = -1)."""
+    minutes = max(1, min(minutes, 1440))
+    max_points = max(50, min(max_points, 2000))
+    raw_bucket = math.ceil(minutes * 60 / max_points)
+    bucket_seconds = next((s for s in RECENT_BUCKET_STEPS if s >= raw_bucket), RECENT_BUCKET_STEPS[-1])
+
+    start = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+    params = {"pid": patient_id, "start": start}
+
+    if bucket_seconds == 1:
+        rows = db.execute(text("""
+            SELECT timestamp AS ts, spo2::float AS spo2, bpm::float AS bpm, pa AS perfusion
+            FROM pulse_ox_data
+            WHERE patient_id = :pid AND timestamp >= :start AND spo2 <> -1
+            ORDER BY timestamp
+        """), params).all()
+    else:
+        params["bucket"] = bucket_seconds
+        rows = db.execute(text("""
+            SELECT time_bucket(make_interval(secs => :bucket), timestamp) AS ts,
+                   AVG(spo2)::float AS spo2, AVG(bpm)::float AS bpm, AVG(pa)::float AS perfusion
+            FROM pulse_ox_data
+            WHERE patient_id = :pid AND timestamp >= :start AND spo2 <> -1
+            GROUP BY 1 ORDER BY 1
+        """), params).all()
+
+    def epoch_ms(ts):
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return int(ts.timestamp() * 1000)
+
+    points = [
+        {
+            "t": epoch_ms(r.ts),
+            "spo2": round(r.spo2, 1) if r.spo2 is not None else None,
+            "bpm": round(r.bpm, 1) if r.bpm is not None else None,
+            "perfusion": round(r.perfusion, 2) if r.perfusion is not None else None,
+        }
+        for r in rows
+    ]
+
+    return {
+        "patient_id": patient_id,
+        "minutes": minutes,
+        "bucket_seconds": bucket_seconds,
+        "count": len(points),
+        "points": points,
+    }
 
 
 @router.get("/history/raw/{date}", response_model=PulseOxDataResponse)

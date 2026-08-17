@@ -21,7 +21,7 @@ import NutritionGaugeCard from './dashboard/NutritionGaugeCard';
 import QuickAddVitalModal from './vitals/QuickAddVitalModal';
 import { CHART_CHROME } from '../contexts/DashboardThemeContext';
 
-const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved, chrome = CHART_CHROME.blue }) => {
+const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved, chrome = CHART_CHROME }) => {
   const [isFlipped, setIsFlipped] = useState(false);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
 
@@ -266,15 +266,16 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved, ch
       return groupColors[group.toLowerCase()] || '#6B7280';
     }
     
+    // vc-aligned accents (literals — recharts needs them)
     const colors = {
-      'blood_pressure': '#ff5252',
-      'temperature': '#9c56b8',
-      'weight': '#4caf50',
-      'calories': '#ff9800',
-      'water': '#2196f3',
-      'bathroom': '#795548'
+      'blood_pressure': '#f0563c',
+      'temperature': '#b48ce0',
+      'weight': '#3fbf6a',
+      'calories': '#f0a52e',
+      'water': '#4da7bd',
+      'bathroom': '#a1887f'
     };
-    return colors[vitalType] || '#666';
+    return colors[vitalType] || '#6b7987';
   };
 
   const displayTitle = title || vitalType.charAt(0).toUpperCase() + vitalType.slice(1);
@@ -318,18 +319,20 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved, ch
               getChartColor(vitalType, primaryGroup) :
               getChartColor(vitalType),
             margin: '0 0 10px 0',
-            fontSize: '18px',
-            fontWeight: '600',
-            textAlign: 'center'
+            fontSize: '13px',
+            fontWeight: '700',
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
+            textAlign: 'left'
           }}>
             {displayTitle} History
           </h3>
 
           {/* Chart only view */}
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {chartData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
+                <LineChart data={chartData} margin={{ top: 4, right: 18, bottom: 4, left: 4 }}>
                   <XAxis
                     dataKey="index"
                     type="number"
@@ -349,7 +352,7 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved, ch
                   />
                   <YAxis
                     domain={calculateYDomain()}
-                    width={30}
+                    width={38}
                     tick={{ fontSize: 9, fill: chrome.axis }}
                     axisLine={false}
                     tickLine={false}
@@ -415,14 +418,16 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved, ch
         }}
         onClick={() => setIsFlipped(false)}
         >
-          <h3 style={{ 
-            color: vitalType === 'bathroom' && primaryGroup ? 
-              getChartColor(vitalType, primaryGroup) : 
-              getChartColor(vitalType), 
-            margin: '0 0 10px 0', 
-            fontSize: '18px',
-            fontWeight: '600',
-            textAlign: 'center'
+          <h3 style={{
+            color: vitalType === 'bathroom' && primaryGroup ?
+              getChartColor(vitalType, primaryGroup) :
+              getChartColor(vitalType),
+            margin: '0 0 10px 0',
+            fontSize: '13px',
+            fontWeight: '700',
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
+            textAlign: 'left'
           }}>
             {displayTitle} Data
           </h3>

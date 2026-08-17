@@ -24,7 +24,6 @@ import config from '../../config';
  */
 const DashboardSettings = () => {
   const [formData, setFormData] = useState({
-    chart_time_range: '5m', // '1m', '3m', '5m', '10m', '30m', '1h'
     show_alerts_count: true,
     show_statistics: true,
     perfusion_as_percent: false, // true = show %, false = show PI
@@ -145,7 +144,6 @@ const DashboardSettings = () => {
     try {
       // Convert numeric inputs to numbers
       const settingsToUpdate = {
-        chart_time_range: formData.chart_time_range,
         show_alerts_count: formData.show_alerts_count,
         show_statistics: formData.show_statistics,
         perfusion_as_percent: formData.perfusion_as_percent,
@@ -187,46 +185,6 @@ const DashboardSettings = () => {
           fontWeight: '500'
         }}>Chart Display Settings</h4>
         
-        <div style={{ marginBottom: '16px' }}>
-          <label style={{ 
-            color: 'var(--dash-text-muted)', 
-            fontSize: '13px', 
-            fontWeight: '500', 
-            marginBottom: '6px', 
-            display: 'block' 
-          }}>Time Range Displayed in Charts</label>
-          <select
-            value={formData.chart_time_range}
-            onChange={(e) => handleInputChange('chart_time_range', e.target.value)}
-            style={{
-              width: '100%',
-              padding: '10px 12px',
-              backgroundColor: 'var(--dash-surface-2)',
-              border: '1px solid var(--dash-border-strong)',
-              borderRadius: '6px',
-              color: 'var(--dash-text)',
-              fontSize: '14px',
-              outline: 'none',
-              cursor: 'pointer',
-              boxSizing: 'border-box'
-            }}
-          >
-            <option value="1m">1 Minute</option>
-            <option value="3m">3 Minutes</option>
-            <option value="5m">5 Minutes</option>
-            <option value="10m">10 Minutes</option>
-            <option value="30m">30 Minutes</option>
-            <option value="1h">1 Hour</option>
-          </select>
-          <div style={{ 
-            color: 'var(--dash-text-muted)', 
-            fontSize: '12px', 
-            marginTop: '6px',
-            fontStyle: 'italic'
-          }}>
-            Controls how much historical data is shown in the SpO₂, Heart Rate, and Perfusion charts
-          </div>
-        </div>
 
         <div style={{ 
           display: 'flex', 
