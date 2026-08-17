@@ -54,7 +54,7 @@ const DialogContent = React.forwardRef(function DialogContent({ className, child
         {...props}
       >
         {children}
-        <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm text-muted-foreground opacity-80 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring disabled:pointer-events-none">
+        <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm border border-transparent bg-transparent text-muted-foreground opacity-80 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring disabled:pointer-events-none">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
             <path d="M18 6 6 18M6 6l12 12" />
           </svg>
@@ -83,6 +83,7 @@ const DialogTitle = React.forwardRef(function DialogTitle({ className, ...props 
   return (
     <DialogPrimitive.Title
       ref={ref}
+      data-slot="dialog-title"
       className={cn("text-lg font-semibold leading-none tracking-tight text-foreground", className)}
       {...props}
     />
@@ -90,7 +91,14 @@ const DialogTitle = React.forwardRef(function DialogTitle({ className, ...props 
 });
 
 const DialogDescription = React.forwardRef(function DialogDescription({ className, ...props }, ref) {
-  return <DialogPrimitive.Description ref={ref} className={cn("text-sm text-muted-foreground", className)} {...props} />;
+  return (
+    <DialogPrimitive.Description
+      ref={ref}
+      data-slot="dialog-description"
+      className={cn("text-sm text-muted-foreground", className)}
+      {...props}
+    />
+  );
 });
 
 export {

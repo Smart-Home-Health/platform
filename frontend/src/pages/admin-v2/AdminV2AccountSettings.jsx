@@ -24,6 +24,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { Field } from '@/components/ui/field';
 import {
   Select,
@@ -379,16 +380,9 @@ export default function AdminV2AccountSettings() {
                 <div className="flex items-center justify-between py-2">
                   <dt className="text-muted-foreground">Status</dt>
                   <dd>
-                    <span
-                      className={
-                        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium " +
-                        (accountData?.is_active
-                          ? "bg-success/20 text-[#3fb950]"
-                          : "bg-destructive/20 text-[#ff7b72]")
-                      }
-                    >
+                    <Badge variant={accountData?.is_active ? 'success' : 'danger'}>
                       {accountData?.is_active ? 'Active' : 'Inactive'}
-                    </span>
+                    </Badge>
                   </dd>
                 </div>
                 {accountData?.organization && (

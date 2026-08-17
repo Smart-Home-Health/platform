@@ -61,6 +61,7 @@ import './admin-nav.css'; // grouped-nav structure (both themes)
 import '../../styles/vcFonts';
 import './vc-shell.css';
 import './vc-content.css';
+import './vc-forms.css';
 import ConnectionChip from '../../components/ConnectionChip';
 import useConnectionStatus from '../../hooks/useConnectionStatus';
 
@@ -354,6 +355,16 @@ const AdminV2Layout = ({ children }) => {
     const delta = (activeRect.left - navRect.left) - (nav.clientWidth - active.clientWidth) / 2;
     nav.scrollBy({ left: delta, behavior: 'smooth' });
   }, [location.pathname, topNavItems.length]);
+
+  // vc form skin (vc-forms.css) is opt-in per section while the rebuild rolls
+  // out. The class goes on <body> rather than the page wrapper so it also
+  // covers Radix's portalled Select/Dialog content. Widen this test as more
+  // sections are rebuilt.
+  useEffect(() => {
+    if (!location.pathname.startsWith('/care/configuration')) return undefined;
+    document.body.classList.add('vc-form-skin');
+    return () => document.body.classList.remove('vc-form-skin');
+  }, [location.pathname]);
 
   // Chevron scroll hints: shown at whichever edge has more tabs off-screen.
   const [navScroll, setNavScroll] = useState({ left: false, right: false });
