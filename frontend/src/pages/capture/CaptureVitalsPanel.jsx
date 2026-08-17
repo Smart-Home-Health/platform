@@ -41,9 +41,33 @@ function encounterLabel(startedAt) {
   return `${d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })} · ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
 }
 
-export default function CaptureVitalsPanel({ patient, connection, embedded = false }) {
+// <input type="datetime-local"> wants local wall-clock with no zone, so the
+// ISO string has to be shifted out of UTC before slicing.
+function toLocalInput(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+
+/* Vitals the connected oximeter can supply, in the order the panel shows them.
+ * Keyed to BUILTIN_CONFIGS; `read` pulls the value off the board's live
+ * sensor state. */
+const SNAPSHOT_VITALS = [
+  { key: 'spo2', read: (s) => s.spo2 },
+  { key: 'heart_rate', read: (s) => s.bpm },
+];
+
+export default function CaptureVitalsPanel({
+  patient,
+  connection,
+  embedded = false,
+  layout = 'grid',
+  snapshot = null,
+  onSaved,
+}) {
   const patientId = patient.id;
   const { connected, markSuccess } = connection;
+  const rows = layout === 'rows';
 
   const [customDefs, setCustomDefs] = useState([]);
   const [ranges, setRanges] = useState([]);
@@ -54,6 +78,13 @@ export default function CaptureVitalsPanel({ patient, connection, embedded = fal
   const [justSaved, setJustSaved] = useState([]);
   const [saving, setSaving] = useState(false);
   const toastTimer = useRef(null);
+  // Row layout extras (mirrors the bedside panel design): a set-level time
+  // override for readings taken a few minutes ago, and a note carried onto
+  // every reading in the encounter.
+  const [timeOverride, setTimeOverride] = useState(null);
+  const [editingTime, setEditingTime] = useState(false);
+  const [note, setNote] = useState('');
+  const [editingNote, setEditingNote] = useState(false);
 
   const configs = useMemo(() => buildConfigs(customDefs), [customDefs]);
 
@@ -106,6 +137,26 @@ export default function CaptureVitalsPanel({ patient, connection, embedded = fal
     setOpenVital(null);
   };
 
+  // Accept a live oximeter value into the encounter. Recorded with
+  // source 'pulse_ox' — the record must not claim someone typed it, and the
+  // backend keys the SpO2 LOINC code off exactly this distinction.
+  const acceptSnapshot = (vitalKey, value, unit) => {
+    setEncounter((prev) => {
+      const next = {
+        ...prev,
+        readings: {
+          ...prev.readings,
+          [vitalKey]: {
+            vitalKey, value, unit, source: 'pulse_ox',
+            measuredAt: new Date().toISOString(),
+          },
+        },
+      };
+      saveDraft(patientId, next);
+      return next;
+    });
+  };
+
   const removeReading = (vitalKey) => {
     setEncounter((prev) => {
       const readings = { ...prev.readings };
@@ -130,9 +181,12 @@ export default function CaptureVitalsPanel({ patient, connection, embedded = fal
           ? { systolic: r.systolic, diastolic: r.diastolic }
           : { value: r.value }),
         unit: r.unit,
-        measured_at: r.measuredAt,
-        source: 'manual',
+        // A set-level time override wins: the caregiver is stating when the
+        // readings were actually taken, not when they typed them in.
+        measured_at: timeOverride || r.measuredAt,
+        source: r.source === 'pulse_ox' ? 'pulse_ox' : 'manual',
         confirmed_against_warning: Boolean(r.confirmedAgainstWarning),
+        ...(note.trim() ? { note: note.trim() } : {}),
       }));
     try {
       const resp = await apiFetch(`${config.apiUrl}/api/vitals/capture`, {
@@ -151,9 +205,13 @@ export default function CaptureVitalsPanel({ patient, connection, embedded = fal
         clearDraft(patientId);
         markSuccess();
         setEncounter(newEncounter());
+        setTimeOverride(null);
+        setNote('');
+        setEditingNote(false);
         setJustSaved(savedKeys);
         setTimeout(() => setJustSaved([]), 4000);
         showToast(`Vitals saved · ${savedKeys.length} reading${savedKeys.length === 1 ? '' : 's'}`);
+        if (onSaved) onSaved(savedKeys);
       } else if (resp.status === 409 || resp.status === 422) {
         // Server ranges disagreed with ours (stale client). Reopen the first
         // offending vital so the caregiver sees the server's range.
@@ -180,6 +238,18 @@ export default function CaptureVitalsPanel({ patient, connection, embedded = fal
     }
   };
 
+  // Throw away the in-progress encounter (distinct from the resume banner's
+  // Discard, which drops a draft from a *previous* sitting).
+  const clearEncounter = () => {
+    clearDraft(patientId);
+    setEncounter(newEncounter());
+    setTimeOverride(null);
+    setEditingTime(false);
+    setNote('');
+    setEditingNote(false);
+    setOpenVital(null);
+  };
+
   const resumeDraft = () => {
     setEncounter(resumable);
     setResumable(null);
@@ -199,6 +269,25 @@ export default function CaptureVitalsPanel({ patient, connection, embedded = fal
   const counter = `${readingCount} of ${configs.length} recorded` +
     (requiredKeys.length > 0 && allRequiredDone ? ' · All required complete' : '');
   const remaining = configs.length - readingCount;
+
+  // Row layout splits the list the way the bedside does: what the connected
+  // oximeter can answer for, and what a person has to measure.
+  const snapshotKeys = snapshot ? SNAPSHOT_VITALS.map((s) => s.key) : [];
+  const snapshotConfigs = snapshot
+    ? SNAPSHOT_VITALS
+        .map((s) => ({ config: configs.find((c) => c.key === s.key), live: s.read(snapshot.values || {}) }))
+        .filter((s) => s.config)
+    : [];
+  const manualConfigs = configs.filter((c) => !snapshotKeys.includes(c.key));
+  // Say which of the three situations we're in rather than only "offline":
+  // a stalled probe still shows its last values, and accepting one of those
+  // silently would be the wrong kind of quiet.
+  const hasLive = snapshotConfigs.some((s) => s.live != null);
+  const snapshotCaption = !hasLive
+    ? 'Pulse ox offline — enter these by hand'
+    : snapshot.streaming
+      ? 'From the pulse ox at encounter time'
+      : 'Pulse ox not streaming — these may be stale';
 
   return (
     <>
@@ -227,22 +316,122 @@ export default function CaptureVitalsPanel({ patient, connection, embedded = fal
       )}
 
       <div className="vc-encounter vc-label">
-        <span>Encounter</span>
-        <span>{encounterLabel(encounter.startedAt)}</span>
+        <span>{rows && !timeOverride ? 'Now' : 'Encounter'}</span>
+        <span>{encounterLabel(timeOverride || encounter.startedAt)}</span>
+        {rows && (
+          <button
+            type="button"
+            className="vc-linklike vc-encounter-edit"
+            onClick={() => setEditingTime((v) => !v)}
+            aria-expanded={editingTime}
+          >
+            {editingTime ? 'Done' : 'Edit time'}
+          </button>
+        )}
         {embedded && <ConnectionChip connection={connection} />}
       </div>
 
-      <div className="vc-grid">
-        {configs.map((c) => (
-          <VitalTile
-            key={c.key}
-            config={c}
-            reading={encounter.readings[c.key]}
-            justSaved={justSaved.includes(c.key)}
-            onOpen={() => setOpenVital(c.key)}
+      {rows && editingTime && (
+        <div className="vc-encounter-time">
+          <label className="vc-caption" htmlFor="vc-measured-at">
+            When were these taken?
+          </label>
+          <input
+            id="vc-measured-at"
+            type="datetime-local"
+            className="vc-text-input"
+            value={toLocalInput(timeOverride || encounter.startedAt)}
+            max={toLocalInput(new Date().toISOString())}
+            onChange={(e) => setTimeOverride(
+              e.target.value ? new Date(e.target.value).toISOString() : null)}
           />
-        ))}
-      </div>
+          {timeOverride && (
+            <button type="button" className="vc-linklike" onClick={() => setTimeOverride(null)}>
+              Reset to now
+            </button>
+          )}
+        </div>
+      )}
+
+      {rows ? (
+        <>
+          {snapshotConfigs.length > 0 && (
+            <>
+              <div className="vc-section vc-label">
+                <span>Connected snapshot</span>
+                <span className="vc-caption">{snapshotCaption}</span>
+              </div>
+              <div className="vc-rows">
+                {snapshotConfigs.map(({ config: c, live }) => (
+                  <VitalTile
+                    key={c.key}
+                    config={c}
+                    reading={encounter.readings[c.key]}
+                    justSaved={justSaved.includes(c.key)}
+                    onOpen={() => setOpenVital(c.key)}
+                    row
+                    liveValue={live}
+                    onAcceptLive={live == null
+                      ? null
+                      : () => acceptSnapshot(c.key, live, c.unit)}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+          <div className="vc-section vc-label">
+            <span>{snapshotConfigs.length > 0 ? 'Manual readings' : 'Readings'}</span>
+          </div>
+          <div className="vc-rows">
+            {manualConfigs.map((c) => (
+              <VitalTile
+                key={c.key}
+                config={c}
+                reading={encounter.readings[c.key]}
+                justSaved={justSaved.includes(c.key)}
+                onOpen={() => setOpenVital(c.key)}
+                row
+              />
+            ))}
+          </div>
+        </>
+      ) : (
+        <div className="vc-grid">
+          {configs.map((c) => (
+            <VitalTile
+              key={c.key}
+              config={c}
+              reading={encounter.readings[c.key]}
+              justSaved={justSaved.includes(c.key)}
+              onOpen={() => setOpenVital(c.key)}
+            />
+          ))}
+        </div>
+      )}
+
+      {rows && (
+        <div className="vc-note">
+          {editingNote || note ? (
+            <>
+              <label className="vc-caption" htmlFor="vc-note">Note for this set</label>
+              <textarea
+                id="vc-note"
+                className="vc-text-input"
+                rows={2}
+                value={note}
+                maxLength={500}
+                placeholder="Context that applies to all readings — position, activity, device…"
+                onChange={(e) => setNote(e.target.value)}
+              />
+            </>
+          ) : (
+            <button type="button" className="vc-note-add" onClick={() => setEditingNote(true)}>
+              <span>Add note</span>
+              <span aria-hidden="true">›</span>
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="vc-footer">
         <div className="vc-progress" aria-live="polite">{counter}</div>
@@ -266,6 +455,16 @@ export default function CaptureVitalsPanel({ patient, connection, embedded = fal
         >
           {saving ? 'Saving…' : 'Save vitals'}
         </button>
+        {rows && (
+          <button
+            type="button"
+            className="vc-btn secondary vc-clear"
+            disabled={readingCount === 0 && !note && !timeOverride}
+            onClick={clearEncounter}
+          >
+            Clear draft
+          </button>
+        )}
       </div>
 
       {openConfig && (
