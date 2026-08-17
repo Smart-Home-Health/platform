@@ -75,6 +75,53 @@ def test_capture_ok_values_stamped(admin_client, admin_user, account, patient,
     assert events[0][1]["vital_data"] == {"spo2": 97}
 
 
+def test_capture_pulse_ox_source_is_recorded_and_changes_the_spo2_code(
+        admin_client, patient, db_session):
+    """A reading accepted from the connected oximeter is not a manual entry.
+
+    The live dashboard's capture panel offers the current SpO2/HR as a
+    snapshot; recording those as 'manual' would misstate provenance, and LOINC
+    distinguishes the two (2708-6 generic arterial vs 59408-5 pulse oximetry).
+    """
+    resp = _capture(admin_client, patient.id, [
+        {"vital_key": "spo2", "value": 97, "source": "pulse_ox"},
+        {"vital_key": "heart_rate", "value": 72, "source": "pulse_ox"},
+        {"vital_key": "temperature", "value": 98.6},
+    ])
+    assert resp.status_code == 200, resp.text
+
+    rows = {r.vital_type: r for r in _rows(db_session, patient.id)}
+    assert rows["spo2"].source == "pulse_ox"
+    assert rows["spo2"].code == "59408-5"  # device SpO2 -> pulse oximetry
+    assert rows["heart_rate"].source == "pulse_ox"
+    # An unmarked reading in the same batch stays manual.
+    assert rows["temperature"].source == "manual"
+
+
+def test_patient_vitals_endpoint_reports_the_stored_source(admin_client, patient):
+    """GET /patient/{id} used to hardcode source='manual' in its response.
+
+    With capture able to record device-accepted readings that is no longer a
+    safe assumption — the endpoint has to report what is stored.
+    """
+    _capture(admin_client, patient.id, [
+        {"vital_key": "spo2", "value": 97, "source": "pulse_ox"},
+        {"vital_key": "weight", "value": 150},
+    ])
+    resp = admin_client.get(f"/api/vitals/patient/{patient.id}?limit=20")
+    assert resp.status_code == 200, resp.text
+    by_type = {row["vital_type"]: row for row in resp.json()}
+    assert by_type["spo2"]["source"] == "pulse_ox"
+    assert by_type["weight"]["source"] == "manual"
+
+
+def test_capture_rejects_an_unknown_source(admin_client, patient):
+    resp = _capture(admin_client, patient.id, [
+        {"vital_key": "spo2", "value": 97, "source": "withings"},
+    ])
+    assert resp.status_code == 422
+
+
 def test_capture_blood_pressure_expands_and_computes_map(admin_client, patient,
                                                          db_session, events):
     resp = _capture(admin_client, patient.id, [

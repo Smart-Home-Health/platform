@@ -384,27 +384,100 @@
 .ld-tone-alert { color: #f0563c; }
 
 /* ---- Docked modal panels (desktop) ----
- * The dashboard modals (ModalBase → .dashboard-modal-overlay) deliberately
- * leave the vitals column and status strip uncovered so the board stays
- * readable while a panel is open. App.css's base rule still carries the OLD
- * layout's magic numbers (top: 10vh for a 10%-tall header, left: 25vw for a
- * 25% values column); both are gone, so anchor to the real geometry instead —
- * Dashboard.jsx measures it into these variables. The doubled `.live-dash`
- * selector wins on specificity regardless of sheet order (App.css is injected
- * after this one — same trick as the mobile rules below).
+ * A menu doesn't cover the board, it takes a seat in it. Two stops:
+ *   narrow   — exactly the cards column's footprint (the default on open)
+ *   expanded — also takes the charts column
+ * The vitals tiles, top bar and status strip stay visible in both.
+ *
+ * App.css's base rule still carries the OLD layout's magic numbers (top: 10vh
+ * for a 10%-tall header, left: 25vw for a 25% values column); both are gone,
+ * so anchor to the real geometry instead — Dashboard.jsx measures it into
+ * these variables. The doubled `.live-dash` selector wins on specificity
+ * regardless of sheet order (App.css is injected after this one — same trick
+ * as the mobile rules below).
  * Breakpoint matches ModalBase's own `window.innerWidth <= 768` test, which
  * switches the overlay to its full-screen `.mobile` variant. */
 @media (min-width: 769px) {
-  .live-dash .dashboard-modal-overlay {
-    top: var(--ld-topbar-h, 60px);
+  .live-dash .dashboard-modal-overlay.docked {
+    top: var(--ld-panel-top, 60px);
     left: var(--ld-panel-left, 0px);
-    right: 0;
-    bottom: var(--ld-strip-h, 0px);
+    right: var(--ld-panel-right, 0px);
+    bottom: var(--ld-panel-bottom, 0px);
     width: auto;
     height: auto;
-    border-left: 1px solid var(--dash-border);
+    /* The panel *is* the surface — no scrim, the board stays legible. */
+    background: none;
+    backdrop-filter: none;
+    transition: left 160ms ease;
+  }
+  .live-dash .dashboard-modal-overlay.docked.expanded {
+    left: var(--ld-panel-left-wide, 0px);
+  }
+
+  /* Undocked panels (the auth gates, `dock={false}`) still cover the board
+     below the top bar — an unlock prompt isn't something to work beside. */
+  .live-dash .dashboard-modal-overlay:not(.docked):not(.mobile) {
+    top: var(--ld-panel-top, 60px);
+    left: 0;
+    right: 0;
+    bottom: var(--ld-panel-bottom, 0px);
+    width: auto;
+    height: auto;
+  }
+
+  /* Docked panels wear the same chrome as the cards they stand in for. */
+  .live-dash .modal-container.docked {
+    border: 1px solid var(--dash-border);
+    border-radius: 12px;
+    background: var(--dash-surface);
+  }
+  .live-dash .modal-header.docked {
+    border-bottom: 1px solid var(--dash-border);
+    background: none;
+    padding: 0.7rem 0.5rem 0.7rem 1rem;
+    gap: 0.5rem;
+  }
+  .live-dash .modal-header.docked .modal-title {
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--dash-text-muted);
+  }
+  .live-dash .modal-body.docked {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 0.85rem 1rem;
   }
 }
+
+/* Expand / collapse control in a docked panel header.
+ * box-sizing + padding are explicit because index.css styles every bare
+ * <button> outside `.tw` (0.6em/1.2em padding on a content-box), and the icon
+ * needs its own dimensions or it collapses to zero width as a flex item. */
+.modal-expand {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  margin-left: auto;
+  border: 1px solid var(--dash-border);
+  border-radius: 8px;
+  background: none;
+  color: var(--dash-text-muted);
+  cursor: pointer;
+}
+.modal-expand svg { flex: 0 0 auto; width: 16px; height: 16px; }
+.modal-expand:hover {
+  border-color: var(--dash-border-strong);
+  color: var(--dash-text);
+}
+.modal-header.docked .modal-close { margin-left: 0; }
 
 /* ---- Mobile ---- */
 @media (max-width: 768px) {

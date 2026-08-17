@@ -1,0 +1,57 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Narrow stop of a docked dashboard panel (`.ld-dock-narrow`, set by ModalBase
+ * when docked and not expanded).
+ *
+ * The sections inside these panels were written for a slab several hundred
+ * pixels wider, and their own responsive rules are keyed to *viewport* media
+ * queries — which don't fire for a 380px panel on a 1920px screen. Rather than
+ * rewrite eight modals here, this sheet reflows the specific structures that
+ * would otherwise clip or crush; each is rebuilt properly when its section
+ * gets its own vc pass. Expanding the panel drops the class and restores the
+ * original layout, so nothing below is load-bearing for the wide view.
+ *
+ * Container queries are deliberately NOT used: `container-type` also makes the
+ * element a containing block for `position: fixed` descendants, and the alert
+ * detail sheet inside AlertsModal relies on fixed-to-viewport positioning.
+ */
+
+/* Titles are a flex row of tabs + counts with no wrap — let them stack rather
+   than overflow the header. Scoped to the title node, not "any flex row". */
+.ld-dock-narrow .modal-header > .modal-title { min-width: 0; }
+.ld-dock-narrow .modal-title > div,
+.ld-dock-narrow .modal-title > span { flex-wrap: wrap; }
+
+/* History's table sits in a container that clips (`overflow: hidden`) rather
+   than scrolls, so a 4-column table just loses its right-hand columns. */
+.ld-dock-narrow .admin-v2-table-container { overflow-x: auto; }
+.ld-dock-narrow .admin-v2-table { min-width: 420px; }
+.ld-dock-narrow .admin-v2-table th,
+.ld-dock-narrow .admin-v2-table td { padding: 0.5rem; }
+
+/* Give the content back the space the wide slab's padding spends. */
+.ld-dock-narrow .modal-body { padding: 0.75rem; }
+
+/* NOTE — deliberately not patched here: Settings' two hard `1fr 1fr` field
+   grids and the Alerts history row grid (a viewport-keyed Tailwind `sm:`
+   class, which stays "on" inside a narrow panel on a wide screen). Both need
+   a real fix in their own markup, and blanket inline-style attribute
+   selectors to reach them would fire on unrelated rows. They are cramped but
+   usable at the narrow stop, and the expand control is one click away —
+   they get sorted when those sections are rebuilt. */
