@@ -32,8 +32,13 @@
  * actions. */
 @import '../../styles/vc-tokens.css';
 
-/* ---------- ScheduleList status palette (consumed as inline-style vars) ---------- */
-:root:not(.light) {
+/* ---------- ScheduleList status palette (consumed as inline-style vars) ----------
+   `.force-dark` is included because the live dashboard pins itself dark through
+   that class rather than through the html theme class. Without it, a user whose
+   theme is light gets ScheduleList's bootstrap *light* fallbacks on the dark
+   board. */
+:root:not(.light),
+.force-dark {
   --sched-ontime-bg: color-mix(in srgb, var(--vc-state-due) 8%, var(--vc-bg-raised));
   --sched-ontime-border: color-mix(in srgb, var(--vc-state-due) 55%, transparent);
   --sched-ontime-text: var(--vc-text-primary);

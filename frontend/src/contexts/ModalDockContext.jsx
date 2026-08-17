@@ -28,7 +28,11 @@ import { createContext, useContext } from 'react';
  * Outside a provider the default is inert, so every other ModalBase consumer
  * (the PIN challenge, quick-add, the alert detail sheet) is untouched.
  */
-const INERT = { docked: false, expanded: false, toggleExpand: null };
+// `setExpanded` is separate from `toggleExpand` because content inside a panel
+// sometimes needs to *reach* the wide stop rather than flip it — tapping a dose
+// card in the narrow medications panel opens it in the detail pane, which only
+// exists once expanded.
+const INERT = { docked: false, expanded: false, toggleExpand: null, setExpanded: null };
 
 const ModalDockContext = createContext(INERT);
 

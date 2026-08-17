@@ -19,7 +19,10 @@ import React, { useState, useEffect, useMemo } from 'react';
 import ModalBase from './ModalBase';
 import config from '../config';
 import { useAdminPatient } from '../contexts/AdminPatientContext';
-import ScheduleList from './schedule/ScheduleList';
+import { useAuth } from '../contexts/AuthContext';
+import DoseScheduleView from './schedule/DoseScheduleView';
+import DoseDetailPane from './schedule/DoseDetailPane';
+import { useModalDock } from '../contexts/ModalDockContext';
 import { computeScheduleStatus } from './schedule/scheduleStatus';
 import { checkAdministrationWindow, formatDurationMinutes, getCurrentLocalDateTime } from '../utils/timezone';
 import MedicationDoseModal from '../pages/admin-v2/components/MedicationDoseModal';
@@ -47,6 +50,14 @@ const OFF_WINDOW_ERRORS = ['early_administration', 'late_administration', 'off_w
 const MedicationModal = ({ onClose }) => {
   const { selectedPatient } = useAdminPatient();
   const [tab, setTab] = useState('scheduled');
+  // Which dose the detail pane is showing. Kept here rather than in the view so
+  // it survives the refetch after recording.
+  const [selectedId, setSelectedId] = useState(null);
+  const { user } = useAuth();
+  const { docked, expanded } = useModalDock();
+  // The panel is ~380px at the narrow stop on a 1920px screen, so the compact
+  // controls have to key off the dock, not the viewport.
+  const compact = docked && !expanded;
   const [scheduled, setScheduled] = useState([]);          // raw `medications` rows from /api/schedule/daily
   const [activeMedications, setActiveMedications] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -133,6 +144,16 @@ const MedicationModal = ({ onClose }) => {
     });
   }, [scheduled]);
 
+  // A dose's normalized id embeds log_id, which appears the moment the dose is
+  // recorded — so selecting by id would drop the selection on the refetch that
+  // follows. Key on the schedule slot instead, which is stable.
+  const doseKey = (raw) => `${raw?.schedule_id ?? 'prn'}-${raw?.scheduled_time}`;
+  const selectedItem = useMemo(
+    () => scheduledItems.find(i => doseKey(i._raw) === selectedId) || null,
+    [scheduledItems, selectedId]
+  );
+  const recordingAs = user?.full_name || user?.username || null;
+
   const formatTimestamp = (iso) => {
     if (!iso) return null;
     try {
@@ -145,7 +166,7 @@ const MedicationModal = ({ onClose }) => {
   };
 
   // ===== Completion / skip (unified endpoints) =====
-  const submitMed = async (med, { override = false, skip = false } = {}) => {
+  const submitMed = async (med, { override = false, skip = false, note } = {}) => {
     if (!selectedPatient) return;
     try {
       const res = await fetch(`${config.apiUrl}/api/schedule/complete/medication`, {
@@ -158,14 +179,14 @@ const MedicationModal = ({ onClose }) => {
           patient_id: selectedPatient.id,
           dose_amount: skip ? 0 : (med.dose_amount ?? null),
           completed_at: null,
-          notes: skip ? 'Dose skipped via live dashboard' : 'Administered via live dashboard',
+          notes: note || (skip ? 'Dose skipped via live dashboard' : 'Administered via live dashboard'),
           early_override: override,
         }),
       });
       if (res.ok) { fetchSchedule(); fetchActiveMedications(); return; }
       const err = await res.json().catch(() => ({}));
       if (res.status === 409 && err.error === 'insufficient_quantity') {
-        setQtyGate({ open: true, info: err, retry: () => submitMed(med, { override, skip }) });
+        setQtyGate({ open: true, info: err, retry: () => submitMed(med, { override, skip, note }) });
         return;
       }
       if (res.status === 409 && OFF_WINDOW_ERRORS.includes(err.error) && !override && !skip) {
@@ -180,7 +201,7 @@ const MedicationModal = ({ onClose }) => {
               ? `${formatDurationMinutes(Math.abs(check.minutesOffset))} ago`
               : `${formatDurationMinutes(check.minutesOffset)} from now`
           }.`,
-          onConfirm: () => submitMed(med, { override: true }),
+          onConfirm: () => submitMed(med, { override: true, note }),
         });
         return;
       }
@@ -284,7 +305,7 @@ const MedicationModal = ({ onClose }) => {
   return (
     <>
       <ModalBase isOpen={true} onClose={onClose} title={
-        isMobile ? (
+        (compact || isMobile) ? (
           <div className="tw flex w-full gap-2">
             <Select value={tab} onValueChange={setTab}>
               <SelectTrigger className="flex-1"><SelectValue /></SelectTrigger>
@@ -324,14 +345,24 @@ const MedicationModal = ({ onClose }) => {
 
           <div style={{ flex: 1, overflow: 'auto' }}>
             {tab === 'scheduled' && (
-              <ScheduleList
+              <DoseScheduleView
                 items={scheduledItems}
                 loading={loading}
-                title="Scheduled Medications"
                 emptyText="No scheduled medications for today"
-                onMarkComplete={(item) => submitMed(item._raw)}
-                onSkip={(item) => submitMed(item._raw, { skip: true })}
-                onMarkAll={(items) => submitBulk(items.map(i => i._raw))}
+                selectedId={selectedItem?.id || null}
+                onSelect={(item) => setSelectedId(doseKey(item._raw))}
+                onRecord={(item, opts) => submitMed(item._raw, opts)}
+                onSkip={(item, opts) => submitMed(item._raw, { ...opts, skip: true })}
+                onRecordAll={(items) => submitBulk(items.map(i => i._raw))}
+                detail={(
+                  <DoseDetailPane
+                    item={selectedItem}
+                    patientId={selectedPatient?.id}
+                    recordingAs={recordingAs}
+                    onRecord={(item, opts) => submitMed(item._raw, opts)}
+                    onSkip={(item, opts) => submitMed(item._raw, { ...opts, skip: true })}
+                  />
+                )}
               />
             )}
             {tab === 'active' && (

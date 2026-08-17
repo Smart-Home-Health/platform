@@ -965,6 +965,7 @@ export default function Dashboard() {
     docked: !isMobile,
     expanded: panelExpanded,
     toggleExpand: () => setPanelExpanded(v => !v),
+    setExpanded: setPanelExpanded,
   }), [isMobile, panelExpanded]);
 
   return (

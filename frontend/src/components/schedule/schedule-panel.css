@@ -1,0 +1,592 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Dose panel — the medication schedule at both dock stops.
+ *
+ * Colour roles follow the rule set in pages/admin-v2/vc-content.css: schedule
+ * adherence is NEVER red. Due / missed are amber (--vc-state-due), green means
+ * given, cyan is the primary action, and red stays reserved for clinical
+ * concern and destructive actions.
+ *
+ * This surface renders outside the `.tw` island, so box-sizing and the bare
+ * <button> paint have to be asserted here (index.css styles every button
+ * outside .tw with a padded, filled default). */
+@import '../../styles/vc-tokens.css';
+
+.ld-dose-panel,
+.ld-dose-panel *,
+.ld-dose-detail,
+.ld-dose-detail * { box-sizing: border-box; }
+
+.ld-dose-panel button,
+.ld-dose-detail button {
+  font-family: var(--vc-font-mono);
+  padding: 0;
+  border: 1px solid transparent;
+  background: none;
+  color: inherit;
+}
+
+.ld-dose-empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--vc-text-tertiary);
+  font-family: var(--vc-font-mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ---------- shared bits ---------- */
+
+.ld-dose-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid;
+  border-radius: 999px;
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.ld-dose-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+
+.ld-dose-badge.missed,
+.ld-dose-badge.due {
+  color: var(--vc-state-due);
+  border-color: color-mix(in srgb, var(--vc-state-due) 55%, transparent);
+  background: color-mix(in srgb, var(--vc-state-due) 12%, transparent);
+}
+.ld-dose-badge.given {
+  color: var(--vc-state-complete);
+  border-color: color-mix(in srgb, var(--vc-state-complete) 45%, transparent);
+  background: color-mix(in srgb, var(--vc-state-complete) 10%, transparent);
+}
+.ld-dose-badge.skipped {
+  color: var(--vc-text-tertiary);
+  border-color: var(--vc-line-hairline);
+  background: var(--vc-bg-surface);
+}
+
+.ld-dose-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 0.85rem;
+  border-radius: 8px;
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ld-dose-btn.primary {
+  border: 1px solid var(--vc-data-live);
+  background: color-mix(in srgb, var(--vc-data-live) 16%, transparent);
+  color: var(--vc-text-primary);
+}
+.ld-dose-btn.primary:hover {
+  background: color-mix(in srgb, var(--vc-data-live) 28%, transparent);
+}
+.ld-dose-btn.primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.ld-dose-btn.ghost {
+  border: 1px solid var(--vc-line-strong);
+  color: var(--vc-text-secondary);
+}
+.ld-dose-btn.ghost:hover { color: var(--vc-text-primary); border-color: var(--vc-text-tertiary); }
+.ld-dose-btn.sm { min-height: 30px; font-size: 10px; padding: 0 0.65rem; }
+.ld-dose-btn.block { width: 100%; min-height: 42px; margin-top: 0.6rem; }
+
+.ld-dose-linkbtn {
+  margin-left: auto;
+  color: var(--vc-data-live);
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.ld-dose-linkbtn:hover { text-decoration: underline; }
+
+/* ---------- narrow stop: triage cards ---------- */
+
+.ld-dose-panel.narrow { display: flex; flex-direction: column; }
+
+.ld-dose-lead {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding-bottom: 0.4rem;
+}
+.ld-dose-lead-count {
+  font-family: var(--vc-font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.ld-dose-lead-count.missed, .ld-dose-lead-count.due { color: var(--vc-state-due); }
+.ld-dose-lead-count.given { color: var(--vc-state-complete); }
+
+.ld-dose-subcount {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid var(--vc-line-hairline);
+}
+
+.ld-dose-cards { display: flex; flex-direction: column; gap: 0.55rem; }
+
+/* Time bands in the narrow panel. The header is sticky so the slot you are
+   scrolled into stays named — with a day of doses the list is long. */
+.ld-dose-panel.narrow .ld-dose-slot + .ld-dose-slot { margin-top: 0.9rem; }
+.ld-dose-panel.narrow .ld-dose-day + .ld-dose-day { margin-top: 1.1rem; }
+.ld-dose-panel.narrow .ld-dose-slot-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.45rem;
+  padding: 0.35rem 0;
+  background: var(--vc-bg-sheet);
+  border-bottom: 1px solid var(--vc-line-strong);
+}
+.ld-dose-panel.narrow .ld-dose-slot-time { font-size: 14px; }
+.ld-dose-panel.narrow .ld-dose-slot-count {
+  min-width: 18px;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  background: var(--vc-bg-raised);
+  color: var(--vc-text-secondary);
+  text-align: center;
+  font-size: 10px;
+}
+.ld-dose-panel.narrow .ld-dose-day-head {
+  margin-bottom: 0.5rem;
+  border-bottom: none;
+  padding-bottom: 0;
+  color: var(--vc-state-due);
+}
+
+.ld-dose-card {
+  border: 1px solid var(--vc-line-hairline);
+  border-left: 3px solid var(--vc-line-strong);
+  border-radius: 10px;
+  background: var(--vc-bg-surface);
+  overflow: hidden;
+}
+.ld-dose-card.missed, .ld-dose-card.due { border-left-color: var(--vc-state-due); }
+.ld-dose-card.given { border-left-color: var(--vc-state-complete); }
+.ld-dose-card.selected { border-color: var(--vc-data-live); }
+
+.ld-dose-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  width: 100%;
+  padding: 0.7rem 0.8rem 0.5rem;
+  text-align: left;
+  cursor: pointer;
+}
+.ld-dose-card-body:hover { background: var(--vc-bg-raised); }
+.ld-dose-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.ld-dose-name {
+  font-family: var(--vc-font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--vc-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ld-dose-amount {
+  font-family: var(--vc-font-mono);
+  font-size: 12px;
+  color: var(--vc-text-secondary);
+}
+.ld-dose-schedule {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.ld-dose-card-actions {
+  display: flex;
+  gap: 0.4rem;
+  padding: 0 0.8rem 0.7rem;
+}
+.ld-dose-card-actions .ld-dose-btn.primary { flex: 1; min-width: 0; }
+.ld-dose-card-actions .ld-dose-btn.ghost { flex: 0 0 auto; min-width: 64px; }
+
+/* ---------- wide stop: tiles, table, detail ---------- */
+
+.ld-dose-panel.wide {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+  gap: 1rem;
+  align-items: start;
+}
+.ld-dose-main { min-width: 0; }
+.ld-dose-side { min-width: 0; }
+
+.ld-dose-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+.ld-dose-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 10px;
+  background: var(--vc-bg-surface);
+}
+.ld-dose-tile.alert {
+  border-color: color-mix(in srgb, var(--vc-state-due) 55%, transparent);
+  background: color-mix(in srgb, var(--vc-state-due) 10%, var(--vc-bg-surface));
+}
+.ld-dose-tile-label {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.ld-dose-tile-count {
+  font-family: var(--vc-font-mono);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-text-primary);
+}
+.ld-dose-tile.missed .ld-dose-tile-count { color: var(--vc-state-due); }
+.ld-dose-tile.given .ld-dose-tile-count { color: var(--vc-state-complete); }
+
+.ld-dose-slot + .ld-dose-slot { margin-top: 1.1rem; }
+.ld-dose-slot-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding-bottom: 0.5rem;
+}
+.ld-dose-slot-time {
+  font-family: var(--vc-font-mono);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--vc-data-live);
+  font-variant-numeric: tabular-nums;
+}
+.ld-dose-slot-count {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+
+.ld-dose-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--vc-font-mono);
+  /* Each time slot renders its own table, so the columns only line up down the
+     page if their widths are fixed rather than content-derived. */
+  table-layout: fixed;
+}
+.ld-dose-table th:nth-child(1) { width: auto; }
+.ld-dose-table th:nth-child(2) { width: 15%; }
+.ld-dose-table th:nth-child(3) { width: 22%; }
+.ld-dose-table th:nth-child(4) { width: 14%; }
+.ld-dose-table th:nth-child(5) { width: 15%; }
+.ld-dose-table td, .ld-dose-table th { overflow: hidden; text-overflow: ellipsis; }
+.ld-dose-table th,
+.ld-dose-table td {
+  padding: 0.6rem 0.7rem;
+  text-align: left;
+  border-bottom: 1px solid var(--vc-line-hairline);
+  font-weight: 400;
+}
+.ld-dose-table thead th {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+  border-bottom-color: var(--vc-line-strong);
+}
+.ld-dose-table tbody td { font-size: 12px; color: var(--vc-text-secondary); }
+.ld-dose-table tbody tr { cursor: pointer; border-left: 3px solid transparent; }
+.ld-dose-table tbody tr:hover { background: var(--vc-bg-surface); }
+.ld-dose-table tbody tr.selected {
+  background: var(--vc-bg-surface);
+  border-left-color: var(--vc-data-live);
+}
+.ld-dose-table tbody th[scope='row'] { padding-left: 0.7rem; }
+.ld-dose-rowbtn {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--vc-text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+.ld-dose-rowbtn:hover { color: var(--vc-data-live); }
+.ld-dose-actions-col { white-space: nowrap; text-align: right; }
+
+/* ---------- detail pane ---------- */
+
+.ld-dose-detail {
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 12px;
+  background: var(--vc-bg-surface);
+  padding: 0.9rem 1rem 1rem;
+}
+.ld-dose-detail.empty {
+  color: var(--vc-text-tertiary);
+  font-family: var(--vc-font-mono);
+  font-size: 12px;
+  text-align: center;
+  padding: 2rem 1rem;
+}
+.ld-dose-detail.empty p { margin: 0; }
+
+.ld-dose-detail-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid var(--vc-line-hairline);
+}
+.ld-dose-detail-name {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+.ld-dose-detail-amount {
+  font-family: var(--vc-font-mono);
+  font-size: 12px;
+  color: var(--vc-text-secondary);
+  white-space: nowrap;
+}
+
+.ld-dose-detail-rows { margin: 0.8rem 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.ld-dose-detail-rows > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.ld-dose-detail-rows dt {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.ld-dose-detail-rows dd {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 12px;
+  color: var(--vc-text-primary);
+  text-align: right;
+}
+.ld-dose-detail-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.ld-dose-detail-status.missed, .ld-dose-detail-status.due { color: var(--vc-state-due); }
+.ld-dose-detail-status.given { color: var(--vc-state-complete); }
+.ld-dose-detail-status.skipped { color: var(--vc-text-tertiary); }
+
+.ld-dose-detail-label {
+  display: block;
+  margin-top: 0.6rem;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.ld-dose-note {
+  width: 100%;
+  margin-top: 0.35rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 8px;
+  background: var(--vc-bg-base);
+  color: var(--vc-text-primary);
+  font-family: var(--vc-font-mono);
+  font-size: 12.5px;
+  resize: vertical;
+}
+.ld-dose-note:focus {
+  outline: none;
+  border-color: var(--vc-data-live);
+  box-shadow: 0 0 0 1px var(--vc-data-live);
+}
+
+.ld-dose-detail-actions {
+  margin-top: 1rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--vc-line-hairline);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.ld-dose-detail-actions .ld-dose-detail-label { margin-top: 0; margin-bottom: 0.25rem; }
+.ld-dose-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-base);
+  color: var(--vc-text-primary);
+  font-family: var(--vc-font-sans);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.ld-dose-action:hover { border-color: var(--vc-line-strong); }
+.ld-dose-action:disabled { opacity: 0.5; cursor: default; }
+.ld-dose-action em {
+  display: block;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--vc-text-tertiary);
+  margin-top: 0.1rem;
+}
+
+.ld-dose-history {
+  margin-top: 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.ld-dose-history-empty {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  color: var(--vc-text-tertiary);
+}
+.ld-dose-history-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-base);
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+}
+.ld-dose-history-when { color: var(--vc-text-secondary); }
+.ld-dose-history-status {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 9.5px;
+}
+.ld-dose-history-status.given { color: var(--vc-state-complete); }
+.ld-dose-history-status.skipped { color: var(--vc-text-tertiary); }
+.ld-dose-history-dose { margin-left: auto; color: var(--vc-text-primary); }
+.ld-dose-history-note {
+  flex-basis: 100%;
+  color: var(--vc-text-tertiary);
+  font-family: var(--vc-font-sans);
+}
+
+.ld-dose-detail-footer {
+  margin: 0.9rem 0 0;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--vc-line-hairline);
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+
+/* Below the dock's breakpoint the panel is the whole screen, so the wide
+   layout's two columns stack rather than squeezing the detail pane. */
+@media (max-width: 900px) {
+  .ld-dose-panel.wide { grid-template-columns: minmax(0, 1fr); }
+  .ld-dose-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Yesterday's uncompleted doses come back alongside today's so nothing missed
+   drops off the board; they need their own band or they read as duplicate rows
+   of the same medication at the same time. */
+.ld-dose-day + .ld-dose-day { margin-top: 1.4rem; }
+.ld-dose-day-head {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--vc-line-hairline);
+  margin-bottom: 0.7rem;
+}
+.ld-dose-yesterday { font-style: normal; color: var(--vc-state-due); }

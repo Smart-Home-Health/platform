@@ -266,7 +266,8 @@ async def get_daily_schedule(
 @router.post("/complete/medication")
 async def complete_medication(
     data: CompleteItemRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
 ):
     """Mark a scheduled medication as administered"""
     try:
@@ -342,6 +343,10 @@ async def complete_medication(
             scheduled_time=scheduled_dt,
             administered_early=early_flag,
             administered_late=late_flag,
+            # Care tasks have always recorded who performed them; medications
+            # left this column unwritten, so `completed_by` on the daily
+            # schedule was permanently None for doses.
+            administered_by=getattr(current_user, 'id', None),
             notes=data.notes,
             created_at=utc_now()
         )
@@ -487,7 +492,8 @@ async def complete_bulk(
     medications: List[CompleteItemRequest] = Body(default=[]),
     nutrition: List[CompleteItemRequest] = Body(default=[]),
     care_tasks: List[CompleteItemRequest] = Body(default=[]),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
 ):
     """Complete multiple schedule items at once (e.g., all items in an hour)"""
     # Pre-flight: refuse the whole bulk if any item is outside the administration
@@ -611,6 +617,7 @@ async def complete_bulk(
                             scheduled_time=scheduled_dt,
                             administered_early=early_flag,
                             administered_late=late_flag,
+                            administered_by=getattr(current_user, 'id', None),
                             notes=item.notes,
                             created_at=utc_now()
                         )

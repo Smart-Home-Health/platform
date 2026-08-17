@@ -23,7 +23,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from db import get_db
-from dependencies import require_read_access
+from dependencies import require_read_access, get_current_user
 from models.medications import (
     MedicationCreate,
     MedicationUpdate,
@@ -333,7 +333,9 @@ async def toggle_medication_active_endpoint(med_id: int, db: Session = Depends(g
 
 
 @router.post("/medications/{med_id}/administer")
-async def administer_medication_endpoint(med_id: int, data: MedicationAdminister, db: Session = Depends(get_db)):
+async def administer_medication_endpoint(med_id: int, data: MedicationAdminister,
+                                         db: Session = Depends(get_db),
+                                         current_user=Depends(get_current_user)):
     """Record a medication administration and deduct from quantity. Pass patient_id when administering a patient-specific medication without a global current patient."""
     # A dose can't be given in the future — reject an administered_at past now
     # (catches the date-left-on-today slip). Not overridable.
@@ -357,6 +359,7 @@ async def administer_medication_endpoint(med_id: int, data: MedicationAdminister
         result = administer_medication(
             db, med_id, data.dose_amount, data.schedule_id, data.scheduled_time, data.notes,
             patient_id=data.patient_id, administered_at=data.administered_at,
+            administered_by=getattr(current_user, 'id', None),
         )
     except InsufficientMedicationQuantityError as e:
         # Refuse — the caller must update on-hand quantity first.
@@ -493,6 +496,7 @@ async def get_medication_history_endpoint(
     end_date: Optional[str] = None,
     status_filter: Optional[str] = None,
     patient_id: Optional[int] = None,
+    medication_id: Optional[int] = None,
     db: Session = Depends(get_db),
     _: bool = Depends(require_read_access)
 ):
@@ -506,6 +510,9 @@ async def get_medication_history_endpoint(
     - end_date: Filter by end date (YYYY-MM-DD format)
     - status_filter: Filter by status ('late', 'early', 'skipped', 'on-time')
     - patient_id: Filter by patient ID
+    - medication_id: Filter to exactly one medication. Callers that already
+      hold the id (the dose panel does — every schedule row carries it) should
+      use this rather than medication_name, which is a substring match.
     """
     try:
         history = get_medication_history(
@@ -515,7 +522,8 @@ async def get_medication_history_endpoint(
             start_date=start_date,
             end_date=end_date,
             status_filter=status_filter,
-            patient_id=patient_id
+            patient_id=patient_id,
+            medication_id=medication_id
         )
         return {"history": history, "count": len(history)}
     except Exception as e:
