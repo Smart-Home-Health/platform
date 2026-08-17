@@ -28,6 +28,7 @@ import {
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Alert } from '@/components/ui/alert';
 import { Field, FormRow } from '@/components/ui/field';
@@ -499,11 +500,10 @@ export default function AdminV2UserDetail() {
                   placeholder="Re-enter new password"
                 />
               </Field>
-              <label className="flex items-center gap-2 text-sm text-foreground">
-                <input
-                  type="checkbox"
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
+                <Checkbox
                   checked={requireChange}
-                  onChange={e => setRequireChange(e.target.checked)}
+                  onCheckedChange={(v) => setRequireChange(v === true)}
                 />
                 Require the user to choose a new password at next sign-in
               </label>

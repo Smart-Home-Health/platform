@@ -20,7 +20,8 @@ import AdminV2Layout from '../AdminV2Layout';
 import { useAdminPatient } from '../../../contexts/AdminPatientContext';
 import { getSettings, setSetting, updateSettings } from '../../../services/settings';
 import config from '../../../config';
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
+import { ConfigIcon, PatientsIcon, InfoIcon } from '../../../components/Icons';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -43,13 +44,13 @@ const SectionHeader = ({ icon, title, subtitle, saved }) => (
   <CardHeader>
     <div className="flex items-center justify-between gap-3">
       <div className="flex items-center gap-3">
-        <span className="text-xl" aria-hidden>{icon}</span>
+        <span className="text-muted-foreground" aria-hidden>{icon}</span>
         <div className="flex flex-col gap-0.5">
           <CardTitle>{title}</CardTitle>
-          {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
+          {subtitle && <CardDescription>{subtitle}</CardDescription>}
         </div>
       </div>
-      {saved && <span className="text-sm font-medium text-[#3fb950]">Saved!</span>}
+      {saved && <span className="text-sm font-medium text-success">Saved!</span>}
     </div>
   </CardHeader>
 );
@@ -287,7 +288,7 @@ const AdminV2SettingsGeneral = () => {
           {/* Application Settings */}
           <Card>
             <SectionHeader
-              icon="⚙️"
+              icon={<ConfigIcon size={20} />}
               title="Application Settings"
               subtitle="These settings apply to the entire application"
               saved={successApp}
@@ -387,7 +388,7 @@ const AdminV2SettingsGeneral = () => {
           {/* Patient Settings */}
           <Card>
             <SectionHeader
-              icon="👤"
+              icon={<PatientsIcon size={20} />}
               title="Patient Settings"
               subtitle={selectedPatient
                 ? `Settings for ${selectedPatient.first_name} ${selectedPatient.last_name}`
@@ -441,7 +442,7 @@ const AdminV2SettingsGeneral = () => {
 
           {/* About */}
           <Card>
-            <SectionHeader icon="ℹ️" title="About" subtitle="Smart Home Health" />
+            <SectionHeader icon={<InfoIcon size={20} />} title="About" subtitle="Smart Home Health" />
             <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
               <p>
                 This software is free and open source, licensed under the{' '}
