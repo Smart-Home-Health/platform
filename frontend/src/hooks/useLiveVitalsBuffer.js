@@ -29,13 +29,21 @@ const RANGE_KEY = 'dash_chart_range';
 const LIVE_RING_MAX = 1000;
 const STALL_MS = 5000;
 
+// sessionStorage can throw in some embedded / private-browsing contexts.
+const readStoredRange = () => {
+  try { return sessionStorage.getItem(RANGE_KEY); } catch { return null; }
+};
+const writeStoredRange = (key) => {
+  try { sessionStorage.setItem(RANGE_KEY, key); } catch { /* non-critical */ }
+};
+
 /* Live chart buffer for the /live dashboard: server-side downsampled backfill
  * (/api/monitoring/history/recent) merged with raw WebSocket ticks. Bucketed
  * ranges re-fetch every 60 s so the canonical buckets absorb the raw live
  * tail and client state stays bounded. */
 export default function useLiveVitalsBuffer(patientId, enabled) {
   const [range, setRangeState] = useState(() => {
-    const stored = sessionStorage.getItem(RANGE_KEY);
+    const stored = readStoredRange();
     return CHART_RANGES.some(r => r.key === stored) ? stored : '15m';
   });
   const [backfill, setBackfill] = useState([]);
@@ -43,12 +51,13 @@ export default function useLiveVitalsBuffer(patientId, enabled) {
   // Tick arrival times for the streaming indicator (wall clock, not sample ts).
   const arrivalsRef = useRef([]);
   const [lastTickAt, setLastTickAt] = useState(null);
-  // Re-render at 1 Hz so the stall detection and data-age readouts move.
-  const [, setHeartbeat] = useState(0);
+  // Wall clock refreshed at 1 Hz; the memos below read it (not Date.now())
+  // so the window trim and stall detection advance even when no ticks arrive.
+  const [now, setNow] = useState(() => Date.now());
 
   const setRange = useCallback((key) => {
     setRangeState(key);
-    sessionStorage.setItem(RANGE_KEY, key);
+    writeStoredRange(key);
   }, []);
 
   const rangeDef = CHART_RANGES.find(r => r.key === range) || CHART_RANGES[0];
@@ -56,6 +65,11 @@ export default function useLiveVitalsBuffer(patientId, enabled) {
   // Backfill fetch — on mount, patient change, range change; then every 60 s
   // for bucketed ranges so buckets stay canonical.
   useEffect(() => {
+    // Any patient/enabled change invalidates the live tail and the streaming
+    // history — otherwise a cleared patient (or a switch) leaks stale data.
+    setLiveTicks([]);
+    setLastTickAt(null);
+    arrivalsRef.current = [];
     if (!enabled || !patientId) {
       setBackfill([]);
       return;
@@ -75,7 +89,6 @@ export default function useLiveVitalsBuffer(patientId, enabled) {
       }
     };
     load();
-    setLiveTicks([]);
     const interval = rangeDef.minutes > 15 ? setInterval(load, 60000) : null;
     return () => {
       cancelled = true;
@@ -94,14 +107,13 @@ export default function useLiveVitalsBuffer(patientId, enabled) {
     setLiveTicks(prev => [...prev.slice(-(LIVE_RING_MAX - 1)), tick]);
   }, []);
 
-  // 1 Hz heartbeat keeps the streaming status honest when ticks stop.
   useEffect(() => {
-    const t = setInterval(() => setHeartbeat(h => h + 1), 1000);
+    const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
 
   const series = useMemo(() => {
-    const windowStart = Date.now() - rangeDef.minutes * 60 * 1000;
+    const windowStart = now - rangeDef.minutes * 60 * 1000;
     const lastBackfillT = backfill.length ? backfill[backfill.length - 1].t : 0;
     const merged = backfill
       .concat(liveTicks.filter(p => p.t > lastBackfillT))
@@ -110,11 +122,11 @@ export default function useLiveVitalsBuffer(patientId, enabled) {
       .filter(p => p[key] != null)
       .map(p => ({ x: p.t, y: p[key] }));
     return { spo2: pick('spo2'), bpm: pick('bpm'), perfusion: pick('perfusion') };
-  }, [backfill, liveTicks, rangeDef.minutes]);
+  }, [backfill, liveTicks, rangeDef.minutes, now]);
 
   const streaming = useMemo(() => {
     const arrivals = arrivalsRef.current;
-    if (!lastTickAt || Date.now() - lastTickAt > STALL_MS) {
+    if (!lastTickAt || now - lastTickAt > STALL_MS) {
       return { status: lastTickAt ? 'stalled' : 'offline', rateHz: null };
     }
     if (arrivals.length < 3) return { status: 'streaming', rateHz: null };
@@ -122,8 +134,7 @@ export default function useLiveVitalsBuffer(patientId, enabled) {
     const median = deltas[Math.floor(deltas.length / 2)];
     const rateHz = median > 0 ? 1000 / median : null;
     return { status: 'streaming', rateHz };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- heartbeat state drives the 1 Hz recompute
-  }, [lastTickAt, series]);
+  }, [lastTickAt, now]);
 
   return { range, setRange, rangeDef, series, pushTick, streaming, lastTickAt };
 }
