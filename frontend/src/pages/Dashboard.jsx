@@ -16,8 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 import { useState, useEffect, useRef } from "react";
-import ChartBlock from "../components/ChartBlock";
-import ClockCard from "../components/ClockCard";
 import DynamicVitalsCard from "../components/DynamicVitalsCard";
 import ModalBase from "../components/ModalBase";
 import SettingsForm from "../components/SettingsForm";
@@ -32,8 +30,14 @@ import {
   MessagesIcon,
   CameraIcon
 } from "../components/Icons";
-import logoImage from '../assets/logo2.png';
+import TopBar from "../components/dashboard/TopBar";
+import { buildTopBarActions } from "../components/dashboard/topBarActions";
+import StatTile from "../components/dashboard/StatTile";
+import LiveCharts from "../components/dashboard/LiveCharts";
+import StatusStrip from "../components/dashboard/StatusStrip";
+import useLiveVitalsBuffer from "../hooks/useLiveVitalsBuffer";
 import config from '../config';
+import "../components/dashboard/live-dashboard.css";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
@@ -59,7 +63,7 @@ export default function Dashboard() {
   const { isAuthenticated, readRestricted, unlockWithAccountPassword } = useAuth();
   const { patients, selectedPatient, selectPatient, loadingPatients } = useAdminPatient();
   const { requirePinAuth, pinChallengeOpen } = usePinChallenge();
-  const { scheme, chartChrome } = useDashboardTheme();
+  const { chartChrome } = useDashboardTheme();
 
   // Add mobile detection state
   const [isMobile, setIsMobile] = useState(false);
@@ -83,6 +87,12 @@ export default function Dashboard() {
   const needsUnlock = !!readRestricted;
   const unlockModalOpen = needsUnlock || actionUnlockOpen;
 
+  // Live chart buffer: server-side backfill + WS ticks, range tabs.
+  const buffer = useLiveVitalsBuffer(selectedPatient?.id, !needsUnlock);
+  // The mount-time WS closure reaches the current pushTick through a ref.
+  const pushTickRef = useRef(buffer.pushTick);
+  pushTickRef.current = buffer.pushTick;
+
   // Patient selection
   const [showPatientModal, setShowPatientModal] = useState(false);
 
@@ -104,13 +114,11 @@ export default function Dashboard() {
     body_temp: null
   });
 
-  const [datasets, setDatasets] = useState({
-    spo2: [],
-    bpm: [],
-    perfusion: []
-  });
+  // WebSocket link state for the status strip. The pulse ox reports its own
+  // disconnect in-band as spo2 === -1.
+  const [wsStatus, setWsStatus] = useState('closed');
+  const [sensorOffline, setSensorOffline] = useState(false);
 
-  const [chartTimeRange, setChartTimeRange] = useState('5m');
   const [perfusionAsPercent, setPerfusionAsPercent] = useState(false);
   const [showStatistics, setShowStatistics] = useState(true);
   
@@ -323,10 +331,6 @@ export default function Dashboard() {
         if (response.ok) {
           const settings = await response.json();
           console.log('All settings loaded:', settings);
-          if (settings.chart_time_range) {
-            console.log('Found chart_time_range setting:', settings.chart_time_range);
-            setChartTimeRange(settings.chart_time_range);
-          }
           if (settings.perfusion_as_percent !== undefined) {
             let perfusionValue = settings.perfusion_as_percent;
             if (perfusionValue === "True" || perfusionValue === "true") perfusionValue = true;
@@ -385,9 +389,6 @@ export default function Dashboard() {
           const response = await fetch(`${config.apiUrl}/api/settings`, { credentials: 'include' });
           if (response.ok) {
             const settings = await response.json();
-            if (settings.chart_time_range) {
-              setChartTimeRange(settings.chart_time_range);
-            }
             if (settings.perfusion_as_percent !== undefined) {
               let perfusionValue = settings.perfusion_as_percent;
               if (perfusionValue === "True" || perfusionValue === "true") perfusionValue = true;
@@ -430,19 +431,6 @@ export default function Dashboard() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on modal close/unlock/patient change only
   }, [isSettingsModalOpen, needsUnlock, selectedPatient?.id]);
-
-  // Convert time range to data points
-  const getMaxDataPoints = () => {
-    switch (chartTimeRange) {
-      case '1m': return 60;
-      case '3m': return 180;
-      case '5m': return 300;
-      case '10m': return 600;
-      case '30m': return 1800;
-      case '1h': return 3600;
-      default: return 300;
-    }
-  };
 
   // Account-scoped equipment due count (matches Equipment List API)
   // All dashboard "due" badges are scoped to the patient on screen via REST so
@@ -515,14 +503,12 @@ export default function Dashboard() {
 
   const wsRef = useRef(null);
   useEffect(() => {
-    const url = config.wsUrl;
-    console.log(`Connecting to WebSocket at: ${url}`);
-    const ws = new WebSocket(url);
-    wsRef.current = ws;
+    let disposed = false;
+    let ws = null;
+    let retryTimer = null;
+    let retryDelay = 1000;
 
-    ws.onopen = () => console.log("WebSocket connected");
-
-    ws.onmessage = (event) => {
+    const handleMessage = (event) => {
       const msg = JSON.parse(event.data);
       if (msg.type === "sensor_update" && msg.state) {
         const alarmActive = !!msg.state.alarm;
@@ -534,48 +520,36 @@ export default function Dashboard() {
         setIsAlarmActive(alarmActive);
         prevAlarmActive.current = alarmActive;
 
+        // The pulse ox reports its own disconnect in-band as -1 readings —
+        // surface that as "sensor offline" instead of rendering -1.
+        const offline = msg.state.spo2 === -1 || msg.state.bpm === -1;
+        setSensorOffline(offline);
+        const clean = (v) => (v === -1 || v == null ? null : v);
+
         setSensorValues({
-          spo2: msg.state.spo2,
-          bpm: msg.state.bpm,
-          perfusion: msg.state.perfusion,
+          spo2: clean(msg.state.spo2),
+          bpm: clean(msg.state.bpm),
+          perfusion: offline ? null : msg.state.perfusion,
           skin_temp: msg.state.skin_temp,
           body_temp: msg.state.body_temp
         });
 
-        const now = Date.now();
-
-        setDatasets(prev => {
-          const newState = { ...prev };
-          const maxDataPoints = getMaxDataPoints();
-
-          if (msg.state.spo2 !== null && msg.state.spo2 !== undefined) {
-            newState.spo2 = [...prev.spo2, { x: now, y: msg.state.spo2 }].slice(-maxDataPoints);
-          }
-
-          if (msg.state.bpm !== null && msg.state.bpm !== undefined) {
-            newState.bpm = [...prev.bpm, { x: now, y: msg.state.bpm }].slice(-maxDataPoints);
-          }
-
-          if (msg.state.perfusion !== null && msg.state.perfusion !== undefined) {
-            newState.perfusion = [...prev.perfusion, { x: now, y: msg.state.perfusion }].slice(-maxDataPoints);
-          }
-
-          return newState;
+        pushTickRef.current({
+          t: Date.now(),
+          spo2: clean(msg.state.spo2),
+          bpm: clean(msg.state.bpm),
+          perfusion: offline ? null : msg.state.perfusion ?? null,
         });
 
         if (msg.state.alerts_count !== undefined) {
           setPulseOxAlerts(msg.state.alerts_count);
         }
-        
-        if (msg.state.dashboard_chart_1) {
-          setDashboardChart1(msg.state.dashboard_chart_1);
-        }
-        
-        if (msg.state.dashboard_chart_2) {
-          setDashboardChart2(msg.state.dashboard_chart_2);
-        }
+        // NOTE: msg.state.dashboard_chart_1/2 are deliberately ignored — the
+        // server builds them without a patient filter, so consuming them here
+        // would leak other patients' vitals into the cards. The cards use the
+        // patient-scoped REST fetch instead (fetchChartData).
       }
-      
+
       else if (msg.type === "alarm_update") {
         const alarmActive = !!(msg.alarm1 || msg.alarm2);
         setIsAlarmActive(alarmActive);
@@ -605,16 +579,38 @@ export default function Dashboard() {
       }
     };
 
-    ws.onclose = () => {
-      if (wsRef.current === ws) wsRef.current = null;
-      console.log("WebSocket disconnected");
+    // Reconnect with capped exponential backoff — a dropped socket used to be
+    // permanent until reload. Alarm state carries across via prevAlarmActive;
+    // request_state on (re)open resyncs immediately.
+    const connect = () => {
+      if (disposed) return;
+      const url = config.wsUrl;
+      console.log(`Connecting to WebSocket at: ${url}`);
+      ws = new WebSocket(url);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        retryDelay = 1000;
+        setWsStatus('open');
+        try { ws.send(JSON.stringify({ type: 'request_state' })); } catch { /* just wait for the next tick */ }
+      };
+      ws.onmessage = handleMessage;
+      ws.onclose = () => {
+        if (wsRef.current === ws) wsRef.current = null;
+        if (disposed) return;
+        setWsStatus('reconnecting');
+        retryTimer = setTimeout(connect, retryDelay);
+        retryDelay = Math.min(retryDelay * 2, 30000);
+      };
     };
+    connect();
 
     return () => {
-      if (wsRef.current === ws) {
-        ws.close();
-        wsRef.current = null;
-      }
+      disposed = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      if (ws) ws.close();
+      wsRef.current = null;
+      setWsStatus('closed');
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only WebSocket connection; adding the render-recreated helpers would tear down and reopen the live socket every render
   }, []);
@@ -842,8 +838,36 @@ export default function Dashboard() {
     }
   };
 
+  // Tile AVG/MIN/MAX from the chart buffer (zeros excluded, matching the old
+  // stat behavior).
+  const tileStats = (pts, fmtAvg, fmtMinMax = fmtAvg) => {
+    if (!showStatistics) return null;
+    const clean = pts.filter(p => p.y !== 0);
+    if (!clean.length) return { avg: '--', min: '--', max: '--' };
+    return {
+      avg: fmtAvg(calculateAvg(clean)),
+      min: fmtMinMax(calculateMin(clean)),
+      max: fmtMinMax(calculateMax(clean)),
+    };
+  };
+
+  const topBarActions = buildTopBarActions({
+    pulseOxAlerts, medicationDueCount, nutritionDueCount, careTaskDueCount, equipmentDueCount,
+    hasCamera,
+    modalOpen: {
+      alerts: isPulseOxModalOpen, medications: isMedicationModalOpen, nutrition: isNutritionModalOpen,
+      careTasks: isCareTaskModalOpen, equipment: isVentModalOpen, history: isHistoryModalOpen,
+      camera: isCameraModalOpen, messages: isMessagesModalOpen,
+    },
+    handlers: {
+      alerts: handlePulseOxClick, medications: handleMedicationClick, nutrition: handleNutritionClick,
+      careTasks: handleCareTaskClick, equipment: handleVentClick, history: handleHistoryClick,
+      camera: handleCameraClick, messages: handleMessagesClick,
+    },
+  });
+
   return (
-    <div className={`dashboard-wrapper force-dark theme-${scheme}`}>
+    <div className="dashboard-wrapper force-dark live-dash">
       <ModalBase
         isOpen={unlockModalOpen}
         onClose={() => { if (!needsUnlock) setActionUnlockOpen(false); }}
@@ -920,138 +944,19 @@ export default function Dashboard() {
         )}
       </ModalBase>
 
-      <div className={`header-section${isAlarmBlinking ? ' alarm-blink' : ''}${isAlarmActive ? ' alarm-active' : ''}`}>
-        {isMobile ? (
-          // Mobile Header
-          <>
-            <div className="mobile-logo-container" onClick={() => navigate('/care')} style={{ cursor: 'pointer' }}>
-              <img src={logoImage} alt="Logo" className="header-logo" />
-              <div className="logo-text">Smart Home Health</div>
-            </div>
-            
-            <button 
-              className="mobile-menu-button"
-              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              aria-label="Menu"
-            >
-              <div className={`hamburger ${isMobileMenuOpen ? 'open' : ''}`}>
-                <span></span>
-                <span></span>
-                <span></span>
-              </div>
-            </button>
-          </>
-        ) : (
-          // Desktop Header
-          <>
-            <div className="logo-container" onClick={() => navigate('/care')} style={{ cursor: 'pointer' }}>
-              <img src={logoImage} alt="Logo" className="header-logo" />
-              <div className="logo-text">Smart Home Health</div>
-            </div>
-            
-            <div className="menu-container">
-              <div className="icon-wrapper">
-                <button 
-                  className={`menu-button ${isPulseOxModalOpen ? 'active' : ''}`}
-                  onClick={handlePulseOxClick}
-                  aria-label="Alerts"
-                >
-                  <MinimalistPulseOxIcon />
-                  {pulseOxAlerts > 0 && <div className="badge">{pulseOxAlerts}</div>}
-                </button>
-              </div>
-              
-              <div className="icon-wrapper">
-                <button
-                  className={`menu-button ${isMedicationModalOpen ? 'active' : ''}`}
-                  onClick={handleMedicationClick}
-                  aria-label="Medication Tracker"
-                >
-                  <MedicationIcon />
-                  {medicationDueCount > 0 && <div className="badge">{medicationDueCount}</div>}
-                </button>
-              </div>
-
-              <div className="icon-wrapper">
-                <button
-                  className={`menu-button ${isNutritionModalOpen ? 'active' : ''}`}
-                  onClick={handleNutritionClick}
-                  aria-label="Nutrition"
-                >
-                  <NutritionIcon />
-                  {nutritionDueCount > 0 && <div className="badge">{nutritionDueCount}</div>}
-                </button>
-              </div>
-
-              <div className="icon-wrapper">
-                <button
-                  className={`menu-button ${isCareTaskModalOpen ? 'active' : ''}`}
-                  onClick={handleCareTaskClick}
-                  aria-label="Care Tasks"
-                >
-                  <CareTasksIcon />
-                  {careTaskDueCount > 0 && <div className="badge">{careTaskDueCount}</div>}
-                </button>
-              </div>
-              
-              <div className="icon-wrapper">
-                <button 
-                  className={`menu-button ${isVentModalOpen ? 'active' : ''}`}
-                  onClick={handleVentClick}
-                  aria-label="Ventilator"
-                >
-                  <MinimalistVentIcon />
-                  {equipmentDueCount > 0 && <div className="badge">{equipmentDueCount}</div>}
-                </button>
-              </div>
-              
-              <div className="icon-wrapper">
-                <button 
-                  className={`menu-button ${isHistoryModalOpen ? 'active' : ''}`}
-                  onClick={handleHistoryClick}
-                  aria-label="History"
-                >
-                  <HistoryIcon />
-                </button>
-              </div>
-
-              <div className="icon-wrapper">
-                {hasCamera ? (
-                  <button
-                    className={`menu-button ${isCameraModalOpen ? 'active' : ''}`}
-                    onClick={handleCameraClick}
-                    aria-label="Live Camera"
-                  >
-                    <CameraIcon />
-                  </button>
-                ) : (
-                  <button
-                    className={`menu-button ${isMessagesModalOpen ? 'active' : ''}`}
-                    onClick={handleMessagesClick}
-                    aria-label="Messages"
-                  >
-                    <MessagesIcon />
-                  </button>
-                )}
-              </div>
-
-              <div className="icon-wrapper">
-                <button 
-                  className={`menu-button ${isSettingsModalOpen ? 'active' : ''}`}
-                  onClick={handleSettingsClick}
-                  aria-label="Settings"
-                >
-                  <SettingsIcon />
-                </button>
-              </div>
-            </div>
-            
-            <div className="datetime-container">
-              <ClockCard />
-            </div>
-          </>
-        )}
-      </div>
+      <TopBar
+        isMobile={isMobile}
+        isAlarmBlinking={isAlarmBlinking}
+        isAlarmActive={isAlarmActive}
+        patientName={selectedPatient ? [selectedPatient.first_name, selectedPatient.last_name].filter(Boolean).join(' ') : ''}
+        onBrandClick={() => navigate('/care')}
+        onPatientClick={() => setShowPatientModal(true)}
+        actions={topBarActions}
+        settingsActive={isSettingsModalOpen}
+        onSettingsClick={handleSettingsClick}
+        isMobileMenuOpen={isMobileMenuOpen}
+        onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+      />
 
       {/* Mobile Menu Overlay */}
       {isMobile && isMobileMenuOpen && (
@@ -1134,253 +1039,82 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className={`dashboard-container ${isMobile ? 'mobile' : ''}`}>
-        {isMobile ? (
-          // Mobile Layout - Only show the three value cards
-          <div className="mobile-values-container">
-            <div className="value-display spo2">
-              <h3 className="value-title">SpO₂</h3>
-              <div className="value-content">
-                <div className="value">{sensorValues.spo2 ?? "--"}</div>
-                <div className="unit">%</div>
-              </div>
-              {showStatistics && (
-                <div className="value-stats">
-                  {datasets.spo2.length > 0 ? (
-                    <>
-                      <span>
-                        Avg: {calculateAvg(datasets.spo2.filter(item => item.y !== 0)).toFixed(1)}%
-                      </span>
-                      <span>
-                        Min: {calculateMin(datasets.spo2.filter(item => item.y !== 0)).toFixed(0)}%
-                      </span>
-                      <span>
-                        Max: {calculateMax(datasets.spo2.filter(item => item.y !== 0)).toFixed(0)}%
-                      </span>
-                    </>
-                  ) : (
-                    <span>No data available</span>
-                  )}
-                </div>
-              )}
-            </div>
-            
-            <div className="value-display bpm">
-              <h3 className="value-title">Heart Rate</h3>
-              <div className="value-content">
-                <div className="value">{sensorValues.bpm ?? "--"}</div>
-                <div className="unit">BPM</div>
-              </div>
-              {showStatistics && (
-                <div className="value-stats">
-                  {datasets.bpm.length > 0 ? (
-                    <>
-                      <span>
-                        Avg: {calculateAvg(datasets.bpm.filter(item => item.y !== 0)).toFixed(0)}
-                      </span>
-                      <span>
-                        Min: {calculateMin(datasets.bpm.filter(item => item.y !== 0)).toFixed(0)}
-                      </span>
-                      <span>
-                        Max: {calculateMax(datasets.bpm.filter(item => item.y !== 0)).toFixed(0)}
-                      </span>
-                    </>
-                  ) : (
-                    <span>No data available</span>
-                  )}
-                </div>
-              )}
-            </div>
-            
-            <div className="value-display perfusion">
-              <h3 className="value-title">Perfusion</h3>
-              <div className="value-content">
-                <div className="value">{sensorValues.perfusion ?? "--"}</div>
-                <div className="unit">{perfusionAsPercent ? "%" : "PI"}</div>
-              </div>
-              {showStatistics && (
-                <div className="value-stats">
-                  {datasets.perfusion.length > 0 ? (
-                    <>
-                      <span>
-                        Avg: {calculateAvg(datasets.perfusion.filter(item => item.y !== 0)).toFixed(1)}
-                      </span>
-                      <span>
-                        Min: {calculateMin(datasets.perfusion.filter(item => item.y !== 0)).toFixed(1)}
-                      </span>
-                      <span>
-                        Max: {calculateMax(datasets.perfusion.filter(item => item.y !== 0)).toFixed(1)}
-                      </span>
-                    </>
-                  ) : (
-                    <span>No data available</span>
-                  )}
-                </div>
-              )}
-            </div>
+      <div className={`ld-main${needsUnlock ? ' locked' : ''}`}>
+        <div className="ld-tiles">
+          {/* Sits in the same row as the chart toolbar so tiles align with
+              their chart rows; also names the window the AVG/MIN/MAX cover. */}
+          <div className="ld-tiles-head">
+            <span className="ld-tiles-head-title">Live Vitals</span>
+            {!needsUnlock && (
+              <span className="ld-tiles-head-range">Stats · {buffer.rangeDef.label}</span>
+            )}
           </div>
-        ) : (
-          // Desktop Layout - Full layout with charts
-          <>
-            <div className="values-column">
-              <div className="value-display spo2">
-                <h3 className="value-title">SpO₂</h3>
-                <div className="value-content">
-                  <div className="value">{sensorValues.spo2 ?? "--"}</div>
-                  <div className="unit">%</div>
-                </div>
-                {showStatistics && (
-                  <div className="value-stats">
-                    {datasets.spo2.length > 0 ? (
-                      <>
-                        <span>
-                          Avg: {calculateAvg(datasets.spo2.filter(item => item.y !== 0)).toFixed(1)}%
-                        </span>
-                        <span>
-                          Min: {calculateMin(datasets.spo2.filter(item => item.y !== 0)).toFixed(0)}%
-                        </span>
-                        <span>
-                          Max: {calculateMax(datasets.spo2.filter(item => item.y !== 0)).toFixed(0)}%
-                        </span>
-                      </>
-                    ) : (
-                      <span>No data available</span>
-                    )}
-                  </div>
-                )}
-              </div>
-              
-              <div className="value-display bpm">
-                <h3 className="value-title">Heart Rate</h3>
-                <div className="value-content">
-                  <div className="value">{sensorValues.bpm ?? "--"}</div>
-                  <div className="unit">BPM</div>
-                </div>
-                {showStatistics && (
-                  <div className="value-stats">
-                    {datasets.bpm.length > 0 ? (
-                      <>
-                        <span>
-                          Avg: {calculateAvg(datasets.bpm.filter(item => item.y !== 0)).toFixed(0)}
-                        </span>
-                        <span>
-                          Min: {calculateMin(datasets.bpm.filter(item => item.y !== 0)).toFixed(0)}
-                        </span>
-                        <span>
-                          Max: {calculateMax(datasets.bpm.filter(item => item.y !== 0)).toFixed(0)}
-                        </span>
-                      </>
-                    ) : (
-                      <span>No data available</span>
-                    )}
-                  </div>
-                )}
-              </div>
-              
-              <div className="value-display perfusion">
-                <h3 className="value-title">Perfusion</h3>
-                <div className="value-content">
-                  <div className="value">{sensorValues.perfusion ?? "--"}</div>
-                  <div className="unit">{perfusionAsPercent ? "%" : "PI"}</div>
-                </div>
-                {showStatistics && (
-                  <div className="value-stats">
-                    {datasets.perfusion.length > 0 ? (
-                      <>
-                        <span>
-                          Avg: {calculateAvg(datasets.perfusion.filter(item => item.y !== 0)).toFixed(1)}
-                        </span>
-                        <span>
-                          Min: {calculateMin(datasets.perfusion.filter(item => item.y !== 0)).toFixed(1)}
-                        </span>
-                        <span>
-                          Max: {calculateMax(datasets.perfusion.filter(item => item.y !== 0)).toFixed(1)}
-                        </span>
-                      </>
-                    ) : (
-                      <span>No data available</span>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
+          <StatTile
+            label="SpO₂"
+            source="Pulse ox · live"
+            value={sensorValues.spo2}
+            unit="%"
+            accent="#4da7bd"
+            stats={tileStats(buffer.series.spo2, v => `${v.toFixed(1)}%`, v => `${v.toFixed(0)}%`)}
+          />
+          <StatTile
+            label="Heart Rate"
+            source="Pulse ox · live"
+            value={sensorValues.bpm}
+            unit="bpm"
+            accent="#3fbf6a"
+            stats={tileStats(buffer.series.bpm, v => v.toFixed(0))}
+          />
+          <StatTile
+            label="Perfusion Index"
+            source="PI · live"
+            value={sensorValues.perfusion}
+            unit={perfusionAsPercent ? '%' : 'PI'}
+            accent="#f0a52e"
+            stats={tileStats(buffer.series.perfusion, v => v.toFixed(1))}
+          />
+        </div>
 
-            {!needsUnlock && <div className="charts-column">
-              <div className="chart-block">
-                <div className="chart-inner">
-                  <ChartBlock
-                    title="SpO₂ Monitor"
-                    yLabel="SpO2"
-                    yMin={40}
-                    yMax={100}
-                    color="blue"
-                    dataset={datasets.spo2}
-                    showXaxis={false}
-                    showYaxis={true}
-                    chrome={chartChrome}
-                  />
-                </div>
-              </div>
+        {!needsUnlock && (
+          <LiveCharts
+            range={buffer.range}
+            setRange={buffer.setRange}
+            rangeDef={buffer.rangeDef}
+            series={buffer.series}
+            streaming={buffer.streaming}
+            chrome={chartChrome}
+            perfusionAsPercent={perfusionAsPercent}
+          />
+        )}
 
-              <div className="chart-block">
-                <div className="chart-inner">
-                  <ChartBlock
-                    title="BPM"
-                    yLabel="BPM"
-                    yMin={40}
-                    yMax={160}
-                    color="green"
-                    dataset={datasets.bpm}
-                    showXaxis={false}
-                    showYaxis={true}
-                    chrome={chartChrome}
-                  />
-                </div>
-              </div>
-
-              <div className="chart-block">
-                <div className="chart-inner">
-                  <ChartBlock
-                    title="Perfusion Monitor"
-                    yLabel={perfusionAsPercent ? "PAI (%)" : "PAI (PI)"}
-                    yMin={40}
-                    yMax={160}
-                    color="orange"
-                    dataset={datasets.perfusion}
-                    showXaxis={true}
-                    showYaxis={true}
-                    chrome={chartChrome}
-                  />
-                </div>
-              </div>
-            </div>}
-
-            {!needsUnlock && <div className="right-column">
-              <div className="dynamic-chart-container">
-                <DynamicVitalsCard
-                  vitalType={dashboardChart1.vital_type}
-                  data={dashboardChart1.data}
-                  title={formatVitalDisplayName(dashboardChart1.vital_type)}
-                  patientId={selectedPatient?.id}
-                  chrome={chartChrome}
-                  onSaved={() => fetchChartData(dashboardChart1.vital_type, 1)}
-                />
-              </div>
-
-              <div className="dynamic-chart-container">
-                <DynamicVitalsCard
-                  vitalType={dashboardChart2.vital_type}
-                  data={dashboardChart2.data}
-                  title={formatVitalDisplayName(dashboardChart2.vital_type)}
-                  patientId={selectedPatient?.id}
-                  chrome={chartChrome}
-                  onSaved={() => fetchChartData(dashboardChart2.vital_type, 2)}
-                />
-              </div>
-            </div>}
-          </>
+        {!needsUnlock && (
+          <div className="ld-cards">
+            <DynamicVitalsCard
+              vitalType={dashboardChart1.vital_type}
+              data={dashboardChart1.data}
+              title={formatVitalDisplayName(dashboardChart1.vital_type)}
+              patientId={selectedPatient?.id}
+              chrome={chartChrome}
+              onSaved={() => fetchChartData(dashboardChart1.vital_type, 1)}
+            />
+            <DynamicVitalsCard
+              vitalType={dashboardChart2.vital_type}
+              data={dashboardChart2.data}
+              title={formatVitalDisplayName(dashboardChart2.vital_type)}
+              patientId={selectedPatient?.id}
+              chrome={chartChrome}
+              onSaved={() => fetchChartData(dashboardChart2.vital_type, 2)}
+            />
+          </div>
         )}
       </div>
+
+      <StatusStrip
+        wsStatus={wsStatus}
+        lastTickAt={buffer.lastTickAt}
+        sensorOffline={sensorOffline}
+        patientId={selectedPatient?.id}
+      />
 
       {/* Settings Modal */}
       {isSettingsModalOpen && (

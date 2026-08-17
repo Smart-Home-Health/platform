@@ -18,7 +18,6 @@
 import React, { useState } from 'react';
 import DashboardSettings from './settings/DashboardSettings';
 import ThresholdSettings from './settings/ThresholdSettings';
-import AppearanceSettings from './settings/AppearanceSettings';
 import ModalBase from './ModalBase';
 import { Button } from '@/components/ui/button';
 
@@ -46,7 +45,6 @@ const SettingsForm = ({ onClose }) => {
           <div style={{ display: 'flex', gap: '8px' }}>
             {tabBtn('dashboard', 'Dashboard')}
             {tabBtn('thresholds', 'Thresholds')}
-            {tabBtn('appearance', 'Appearance')}
           </div>
         </div>
       </div>
@@ -61,7 +59,6 @@ const SettingsForm = ({ onClose }) => {
           }}>
             {activeTab === 'dashboard' && <DashboardSettings />}
             {activeTab === 'thresholds' && <ThresholdSettings />}
-            {activeTab === 'appearance' && <AppearanceSettings />}
           </div>
         </div>
       </div>

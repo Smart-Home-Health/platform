@@ -74,7 +74,6 @@ const AdminV2SettingsGeneral = () => {
 
   // App-wide settings
   const [appSettings, setAppSettings] = useState({
-    chart_time_range: '5m',
     show_statistics: true,
     perfusion_as_percent: false,
     dashboard_chart_1_vital: '',
@@ -219,7 +218,6 @@ const AdminV2SettingsGeneral = () => {
 
     try {
       const settingsToUpdate = {
-        chart_time_range: appSettings.chart_time_range,
         show_statistics: appSettings.show_statistics,
         perfusion_as_percent: appSettings.perfusion_as_percent,
         dashboard_chart_1_vital: appSettings.dashboard_chart_1_vital,
@@ -297,26 +295,6 @@ const AdminV2SettingsGeneral = () => {
             <CardContent className="flex flex-col gap-6">
               <SettingsGroup title="Dashboard Display">
                 <FormRow>
-                  <Field
-                    label="Chart Time Range"
-                    hint="Amount of historical data shown in SpO₂, Heart Rate, and Perfusion charts"
-                  >
-                    <Select
-                      value={appSettings.chart_time_range}
-                      onValueChange={(v) => handleAppInputChange('chart_time_range', v)}
-                    >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1m">1 Minute</SelectItem>
-                        <SelectItem value="3m">3 Minutes</SelectItem>
-                        <SelectItem value="5m">5 Minutes</SelectItem>
-                        <SelectItem value="10m">10 Minutes</SelectItem>
-                        <SelectItem value="30m">30 Minutes</SelectItem>
-                        <SelectItem value="1h">1 Hour</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </Field>
-
                   <Field label="Day Start Hour" hint="When daily tracking (calories, water) resets">
                     <Select
                       value={String(appSettings.day_start_hour)}
