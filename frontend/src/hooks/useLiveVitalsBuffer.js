@@ -136,5 +136,8 @@ export default function useLiveVitalsBuffer(patientId, enabled) {
     return { status: 'streaming', rateHz };
   }, [lastTickAt, now]);
 
-  return { range, setRange, rangeDef, series, pushTick, streaming, lastTickAt };
+  // `now` is exported so the charts can pin their x domain to the same clock
+  // the buffer trims against — otherwise they'd each call Date.now() at render
+  // time and drift from the window the data was filtered to.
+  return { range, setRange, rangeDef, series, pushTick, streaming, lastTickAt, now };
 }

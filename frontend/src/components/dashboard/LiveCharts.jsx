@@ -22,7 +22,7 @@ import { CHART_RANGES } from '../../hooks/useLiveVitalsBuffer';
 const STREAM_LABEL = { streaming: 'Streaming', stalled: 'Stalled', offline: 'Offline' };
 
 /* Center column: range tabs + streaming chip + three stacked live charts. */
-export default function LiveCharts({ range, setRange, rangeDef, series, streaming, chrome, perfusionAsPercent }) {
+export default function LiveCharts({ range, setRange, rangeDef, series, streaming, chrome, perfusionAsPercent, now }) {
   const windowMs = rangeDef.minutes * 60 * 1000;
   const rate = streaming.status === 'streaming' && streaming.rateHz
     ? ` · ${streaming.rateHz >= 0.95 ? `${Math.round(streaming.rateHz)} Hz` : `${streaming.rateHz.toFixed(1)} Hz`}`
@@ -54,17 +54,17 @@ export default function LiveCharts({ range, setRange, rangeDef, series, streamin
         <div className="ld-chart">
           <div className="ld-chart-title">Oxygen Saturation</div>
           <ChartBlock yLabel="SpO2 (%)" color="blue" dataset={series.spo2}
-                      showXaxis={false} chrome={chrome} windowMs={windowMs} />
+                      showXaxis={false} chrome={chrome} windowMs={windowMs} now={now} />
         </div>
         <div className="ld-chart">
           <div className="ld-chart-title">Heart Rate</div>
           <ChartBlock yLabel="bpm" color="green" dataset={series.bpm}
-                      showXaxis={false} chrome={chrome} windowMs={windowMs} />
+                      showXaxis={false} chrome={chrome} windowMs={windowMs} now={now} />
         </div>
         <div className="ld-chart">
           <div className="ld-chart-title">Perfusion Index</div>
           <ChartBlock yLabel={perfusionAsPercent ? 'PI (%)' : 'PI'} color="orange" dataset={series.perfusion}
-                      showXaxis={true} chrome={chrome} windowMs={windowMs} />
+                      showXaxis={true} chrome={chrome} windowMs={windowMs} now={now} />
         </div>
       </div>
     </div>
