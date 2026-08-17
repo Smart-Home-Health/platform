@@ -28,6 +28,7 @@
 // reads wrong in the dock today.
 import { useMemo } from 'react';
 import { useModalDock } from '../../contexts/ModalDockContext';
+import { ChevronLeftIcon } from '../Icons';
 import {
   BUCKETS, BUCKET_LABELS, bucketFor, groupByDaySlot, recurrenceLabel, rollupSchedule, slotLabel,
 } from './scheduleRollup';
@@ -72,22 +73,23 @@ export default function DoseScheduleView({
   onRecordAll,
   detail = null,
 }) {
-  const { expanded, setExpanded } = useModalDock();
-  // The wide layout is opt-in: it appears only when the panel has actually been
-  // expanded. That covers the narrow dock stop *and* a phone, where the modal
-  // fills a 390px screen and is never expandable — keying off `docked` instead
-  // would hand the phone the table.
-  const narrow = !expanded;
+  const { docked, expanded, setExpanded } = useModalDock();
+  // Side-by-side needs room, which only the expanded dock stop has. A phone is
+  // never wide — it fills a 390px screen and has no expand control, so it must
+  // not be handed the table just because a dose got selected.
+  const wide = docked && expanded;
+  // With no room beside the list, the detail takes the panel and the list steps
+  // back — the same move AlertDetailInline makes inside AlertsList.
+  const stackedDetail = !docked && detail && selectedId;
 
   const { counts, needsAttention, lead } = useMemo(() => rollupSchedule(items), [items]);
   const days = useMemo(() => groupByDaySlot(items), [items]);
 
-  // Tapping a dose in the narrow panel opens it in the detail pane, which only
-  // exists at the wide stop — so reaching it means widening first.
+  // Tapping a dose opens its details. In the dock that means widening first,
+  // since the pane lives beside the list; on a phone the pane replaces it.
   const openDetail = (item) => {
     if (onSelect) onSelect(item);
-    // No-op where there is nothing wider to reach (mobile).
-    if (narrow && setExpanded) setExpanded(true);
+    if (docked && !expanded && setExpanded) setExpanded(true);
   };
 
   if (loading) {
@@ -97,7 +99,23 @@ export default function DoseScheduleView({
     return <div className="ld-dose-empty">{emptyText}</div>;
   }
 
-  if (narrow) {
+  if (stackedDetail) {
+    return (
+      <div className="ld-dose-panel stacked">
+        <button
+          type="button"
+          className="ld-dose-back"
+          onClick={() => onSelect && onSelect(null)}
+        >
+          <ChevronLeftIcon size={16} />
+          Back to schedule
+        </button>
+        {detail}
+      </div>
+    );
+  }
+
+  if (!wide) {
     return (
       <div className="ld-dose-panel narrow">
         {lead && (

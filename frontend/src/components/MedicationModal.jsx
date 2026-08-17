@@ -350,7 +350,7 @@ const MedicationModal = ({ onClose }) => {
                 loading={loading}
                 emptyText="No scheduled medications for today"
                 selectedId={selectedItem?.id || null}
-                onSelect={(item) => setSelectedId(doseKey(item._raw))}
+                onSelect={(item) => setSelectedId(item ? doseKey(item._raw) : null)}
                 onRecord={(item, opts) => submitMed(item._raw, opts)}
                 onSkip={(item, opts) => submitMed(item._raw, { ...opts, skip: true })}
                 onRecordAll={(items) => submitBulk(items.map(i => i._raw))}

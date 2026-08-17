@@ -425,6 +425,9 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 0.6rem;
+  /* At phone width the value ("8:00 AM · Daily · yesterday") is longer than the
+     row, so let it drop under the label rather than run off the edge. */
+  flex-wrap: wrap;
 }
 .ld-dose-detail-rows dt {
   font-family: var(--vc-font-mono);
@@ -436,6 +439,7 @@
 }
 .ld-dose-detail-rows dd {
   margin: 0;
+  min-width: 0;
   font-family: var(--vc-font-mono);
   font-size: 12px;
   color: var(--vc-text-primary);
@@ -590,3 +594,27 @@
   margin-bottom: 0.7rem;
 }
 .ld-dose-yesterday { font-style: normal; color: var(--vc-state-due); }
+
+/* Stacked detail — a phone has no room beside the list, so the detail takes the
+   panel and this steps back to it. */
+.ld-dose-panel.stacked { display: flex; flex-direction: column; gap: 0.7rem; }
+.ld-dose-back {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 40px;
+  padding: 0 0.7rem 0 0.4rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-surface);
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.ld-dose-back:hover { color: var(--vc-text-primary); border-color: var(--vc-line-strong); }
+.ld-dose-panel.stacked .ld-dose-detail { border: none; padding: 0; background: none; }

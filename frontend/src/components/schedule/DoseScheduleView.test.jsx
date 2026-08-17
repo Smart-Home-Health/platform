@@ -97,32 +97,6 @@ describe('DoseScheduleView — narrow stop', () => {
     expect(container.querySelectorAll('.ld-dose-card')).toHaveLength(3);
   });
 
-  it('gives a phone the cards too — it is narrow and cannot expand', () => {
-    // Not docked (mobile), so `docked` is false; the layout must still be the
-    // card list rather than the wide table.
-    const { container } = render(
-      <ModalDockProvider value={{ docked: false, expanded: false, toggleExpand: null, setExpanded: null }}>
-        <DoseScheduleView items={ITEMS} />
-      </ModalDockProvider>
-    );
-    expect(container.querySelector('.ld-dose-panel.narrow')).toBeInTheDocument();
-    expect(container.querySelector('table')).toBeNull();
-  });
-
-  it('does not try to expand when the host offers no way to', () => {
-    const onSelect = vi.fn();
-    render(
-      <ModalDockProvider value={{ docked: false, expanded: false, setExpanded: null }}>
-        <DoseScheduleView items={ITEMS} onSelect={onSelect} />
-      </ModalDockProvider>
-    );
-    // Selecting still works; it just has nowhere wider to go.
-    expect(() => fireEvent.click(
-      screen.getByRole('button', { name: /Briviact, Missed\. Open details\./i })
-    )).not.toThrow();
-    expect(onSelect).toHaveBeenCalled();
-  });
-
   it('tapping a card expands the panel and selects that dose', () => {
     const onSelect = vi.fn();
     const { dock } = renderAt({ expanded: false }, { onSelect });
@@ -238,5 +212,60 @@ describe('DoseScheduleView — empty and loading', () => {
       </ModalDockProvider>
     );
     expect(screen.getByText(/loading schedule/i)).toBeInTheDocument();
+  });
+});
+
+// A phone is not docked: it fills the screen, has no expand control, and never
+// has room for a pane beside the list.
+describe('DoseScheduleView — phone', () => {
+  const onPhone = (props = {}) => {
+    const dock = { docked: false, expanded: false, toggleExpand: null, setExpanded: vi.fn() };
+    const utils = render(
+      <ModalDockProvider value={dock}>
+        <DoseScheduleView items={ITEMS} {...props} />
+      </ModalDockProvider>
+    );
+    return { ...utils, dock };
+  };
+
+  it('gets the cards, not the table', () => {
+    const { container } = onPhone();
+    expect(container.querySelector('.ld-dose-panel.narrow')).toBeInTheDocument();
+    expect(container.querySelector('table')).toBeNull();
+  });
+
+  it('never switches to the wide layout, even once a dose is selected', () => {
+    // The host still hands setExpanded down, so selecting must not be allowed
+    // to flip a 390px screen to the side-by-side table.
+    const { container, dock } = onPhone({ selectedId: 'briviact', detail: <p>Details</p> });
+    expect(container.querySelector('.ld-dose-panel.wide')).toBeNull();
+    expect(dock.setExpanded).not.toHaveBeenCalled();
+  });
+
+  it('shows the detail in place of the list, with a way back', () => {
+    const onSelect = vi.fn();
+    const { container } = onPhone({
+      selectedId: 'briviact', detail: <p>Dose details go here</p>, onSelect,
+    });
+
+    expect(screen.getByText('Dose details go here')).toBeInTheDocument();
+    expect(container.querySelectorAll('.ld-dose-card')).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: /back to schedule/i }));
+    expect(onSelect).toHaveBeenCalledWith(null);
+  });
+
+  it('tapping a dose selects it without asking for a width it cannot get', () => {
+    const onSelect = vi.fn();
+    const { dock } = onPhone({ onSelect });
+    fireEvent.click(screen.getByRole('button', { name: /Briviact, Missed\. Open details\./i }));
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ name: 'Briviact' }));
+    expect(dock.setExpanded).not.toHaveBeenCalled();
+  });
+
+  it('stays on the list while nothing is selected', () => {
+    const { container } = onPhone({ detail: <p>Dose details go here</p> });
+    expect(screen.queryByText('Dose details go here')).toBeNull();
+    expect(container.querySelectorAll('.ld-dose-card')).toHaveLength(3);
   });
 });
