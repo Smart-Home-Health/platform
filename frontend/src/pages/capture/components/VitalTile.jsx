@@ -18,21 +18,30 @@
 // One vital card. Recorded state is carried by BOTH color and shape:
 // solid check = recorded, dotted ring = not recorded. Provenance shows on
 // every recorded tile (SOURCE • time), per the spec's consistency rule.
+//
+// `row` switches to the list layout used by the live dashboard's docked panel
+// (a side panel is too narrow for the two-up card grid). `liveValue` /
+// `onAcceptLive` add the connected-oximeter affordance: a reading the
+// caregiver accepts rather than types, recorded as source 'pulse_ox'.
 import { CheckCircleIcon } from '../../../components/Icons';
+
+const SOURCE_LABEL = { pulse_ox: 'Pulse ox', manual: 'Manual' };
 
 function provenanceLabel(reading) {
   const t = new Date(reading.measuredAt)
     .toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-  return `Manual · ${t}`;
+  return `${SOURCE_LABEL[reading.source] || 'Manual'} · ${t}`;
 }
 
-export default function VitalTile({ config, reading, justSaved, onOpen }) {
+export default function VitalTile({ config, reading, justSaved, onOpen, row = false, liveValue = null, onAcceptLive = null }) {
   const recorded = Boolean(reading);
   const isBP = config.key === 'blood_pressure';
-  return (
+  const offerLive = !recorded && liveValue != null && onAcceptLive;
+
+  const tile = (
     <button
       type="button"
-      className={`vc-tile ${justSaved ? 'just-saved' : ''}`}
+      className={`vc-tile ${row ? 'row' : ''} ${justSaved ? 'just-saved' : ''}`}
       onClick={onOpen}
       aria-label={recorded
         ? `${config.label}, recorded. Edit reading.`
@@ -56,5 +65,28 @@ export default function VitalTile({ config, reading, justSaved, onOpen }) {
         {recorded ? provenanceLabel(reading) : 'Not recorded'}
       </span>
     </button>
+  );
+
+  // Grid mode returns the bare tile so the phone and admin-embedded surfaces
+  // keep their existing grid-child structure untouched.
+  if (!row) return tile;
+
+  return (
+    <div className="vc-tile-wrap">
+      {tile}
+      {offerLive && (
+        <button
+          type="button"
+          className="vc-tile-accept"
+          onClick={onAcceptLive}
+          aria-label={`Record ${config.label} ${liveValue}${config.unit} from the pulse ox`}
+        >
+          <span className="vc-tile-accept-value">
+            {liveValue}<span className="vc-unit">{config.unit}</span>
+          </span>
+          <span className="vc-tile-accept-hint">Use live</span>
+        </button>
+      )}
+    </div>
   );
 }

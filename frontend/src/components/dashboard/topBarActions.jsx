@@ -25,6 +25,7 @@ import {
   CareTasksIcon,
   MessagesIcon,
   CameraIcon,
+  VitalsCaptureIcon,
 } from '../Icons';
 
 export function buildTopBarActions({
@@ -32,6 +33,9 @@ export function buildTopBarActions({
   hasCamera, modalOpen, handlers,
 }) {
   return [
+    // Capture leads: recording a vital set is the one action a caregiver takes
+    // at the bedside mid-shift, and it is allowed in monitoring mode.
+    { key: 'capture', label: 'Capture Vitals', icon: <VitalsCaptureIcon />, onClick: handlers.capture, active: modalOpen.capture, badge: 0 },
     { key: 'alerts', label: 'Alerts', icon: <MinimalistPulseOxIcon />, onClick: handlers.alerts, active: modalOpen.alerts, badge: pulseOxAlerts },
     { key: 'medications', label: 'Medications', icon: <MedicationIcon />, onClick: handlers.medications, active: modalOpen.medications, badge: medicationDueCount },
     { key: 'nutrition', label: 'Nutrition', icon: <NutritionIcon />, onClick: handlers.nutrition, active: modalOpen.nutrition, badge: nutritionDueCount },

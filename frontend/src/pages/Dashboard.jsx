@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import DynamicVitalsCard from "../components/DynamicVitalsCard";
 import ModalBase from "../components/ModalBase";
 import SettingsForm from "../components/SettingsForm";
@@ -28,9 +28,12 @@ import {
   NutritionIcon,
   CareTasksIcon,
   MessagesIcon,
-  CameraIcon
+  CameraIcon,
+  VitalsCaptureIcon
 } from "../components/Icons";
 import TopBar from "../components/dashboard/TopBar";
+import CaptureVitalsModal from "../components/dashboard/CaptureVitalsModal";
+import { ModalDockProvider } from "../contexts/ModalDockContext";
 import { buildTopBarActions } from "../components/dashboard/topBarActions";
 import StatTile from "../components/dashboard/StatTile";
 import LiveCharts from "../components/dashboard/LiveCharts";
@@ -38,6 +41,7 @@ import StatusStrip from "../components/dashboard/StatusStrip";
 import useLiveVitalsBuffer from "../hooks/useLiveVitalsBuffer";
 import config from '../config';
 import "../components/dashboard/live-dashboard.css";
+import "../components/dashboard/dock-panel.css";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
@@ -151,7 +155,11 @@ export default function Dashboard() {
   const [isCareTaskModalOpen, setIsCareTaskModalOpen] = useState(false);
   const [isMessagesModalOpen, setIsMessagesModalOpen] = useState(false);
   const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
+  const [isCaptureModalOpen, setIsCaptureModalOpen] = useState(false);
   const [hasCamera, setHasCamera] = useState(false);
+  // Docked panels open on the narrow stop (over the cards column) and expand
+  // over the charts on request; every open starts narrow again.
+  const [panelExpanded, setPanelExpanded] = useState(false);
   const [isAlarmActive, setIsAlarmActive] = useState(false);
   const [isAlarmBlinking, setIsAlarmBlinking] = useState(false);
   const alarmBlinkInterval = useRef(null);
@@ -175,42 +183,67 @@ export default function Dashboard() {
     return () => root.style.setProperty('--auth-banner-height', '0px');
   }, [isMobile, authModalActive]);
 
-  // The dashboard modals dock against the live board rather than covering it,
-  // so the vitals stay readable while a panel is open. Publish the board's real
-  // geometry as CSS variables (see .live-dash .dashboard-modal-overlay in
-  // live-dashboard.css) — the left column is a grid `minmax(230px, 320px)`, so
-  // there is no viewport-relative constant that stays correct at every width.
+  // Menus open as a panel docked into the board, not a slab over it, so the
+  // vitals stay readable. Two stops: narrow sits exactly on the cards column,
+  // expanded also takes the charts. Both are measured rather than written as
+  // vw constants — the columns are a grid (`minmax(230px, 320px)` /
+  // `minmax(300px, 400px)`), so no viewport fraction is right at every width.
+  // Consumed by .live-dash .dashboard-modal-overlay in live-dashboard.css.
+  //
+  // Written to <html>, not to the board element: the capture panel's entry
+  // sheet portals to <body>, outside the board, and still has to line up with
+  // the panel. The board fills the viewport, so its offsets are the viewport's.
   const boardRef = useRef(null);
   useLayoutEffect(() => {
     const root = boardRef.current;
     if (!root) return undefined;
+    const target = document.documentElement;
 
     const measure = () => {
       const topbar = root.querySelector('.ld-topbar');
       const main = root.querySelector('.ld-main');
-      const tiles = root.querySelector('.ld-tiles');
+      const charts = root.querySelector('.ld-charts');
+      const cards = root.querySelector('.ld-cards');
       const strip = root.querySelector('.ld-strip');
+      const set = (name, px) => target.style.setProperty(name, `${Math.round(px)}px`);
+      const board = root.getBoundingClientRect();
 
-      root.style.setProperty('--ld-topbar-h', `${Math.round(topbar?.offsetHeight ?? 60)}px`);
-      root.style.setProperty('--ld-strip-h', `${Math.round(strip?.offsetHeight ?? 0)}px`);
-
-      // Locked (unauthenticated) shows a single centred column, so there is
-      // nothing to dock beside — let the unlock panel cover the whole board.
-      if (!main || !tiles || main.classList.contains('locked')) {
-        root.style.setProperty('--ld-panel-left', '0px');
+      // Fallback: locked (single centred column) and any state without the
+      // charts/cards columns has nothing to dock beside, so the panel takes
+      // the whole board below the top bar.
+      if (!main || !charts || !cards) {
+        set('--ld-panel-top', topbar?.offsetHeight ?? 60);
+        set('--ld-panel-bottom', strip?.offsetHeight ?? 0);
+        set('--ld-panel-left', 0);
+        set('--ld-panel-left-wide', 0);
+        set('--ld-panel-right', 0);
         return;
       }
-      const gap = parseFloat(getComputedStyle(main).columnGap) || 0;
-      const left = tiles.getBoundingClientRect().right - root.getBoundingClientRect().left + gap;
-      root.style.setProperty('--ld-panel-left', `${Math.round(left)}px`);
+
+      const chartsBox = charts.getBoundingClientRect();
+      const cardsBox = cards.getBoundingClientRect();
+      // Anchor to the grid's content box so the panel sits inside the board's
+      // padding like the cards it replaces, rather than bleeding to the edge.
+      set('--ld-panel-top', chartsBox.top - board.top);
+      set('--ld-panel-bottom', board.bottom - chartsBox.bottom);
+      set('--ld-panel-right', board.right - cardsBox.right);
+      set('--ld-panel-left', cardsBox.left - board.left);
+      set('--ld-panel-left-wide', chartsBox.left - board.left);
     };
 
     measure();
     const observer = new ResizeObserver(measure);
-    [root, root.querySelector('.ld-topbar'), root.querySelector('.ld-tiles'), root.querySelector('.ld-strip')]
+    ['.ld-topbar', '.ld-tiles', '.ld-charts', '.ld-cards', '.ld-strip']
+      .map(sel => root.querySelector(sel))
+      .concat(root)
       .filter(Boolean)
       .forEach(el => observer.observe(el));
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      ['--ld-panel-top', '--ld-panel-bottom', '--ld-panel-left',
+        '--ld-panel-left-wide', '--ld-panel-right']
+        .forEach(name => target.style.removeProperty(name));
+    };
     // Re-measure when the board's structure changes (lock state adds/removes
     // the charts and cards columns, which resizes the tiles column).
   }, [needsUnlock, isMobile]);
@@ -708,7 +741,10 @@ export default function Dashboard() {
     setIsCareTaskModalOpen(false);
     setIsMessagesModalOpen(false);
     setIsCameraModalOpen(false);
+    setIsCaptureModalOpen(false);
     setIsMobileMenuOpen(false);
+    // Each panel opens at the narrow stop; expanding is a per-visit choice.
+    setPanelExpanded(false);
   };
 
   // Open a specific top-nav modal after user selection redirect
@@ -839,6 +875,13 @@ export default function Dashboard() {
     setIsNutritionModalOpen(true);
   };
 
+  const handleCaptureClick = async () => {
+    if (isCaptureModalOpen) { setIsCaptureModalOpen(false); return; }
+    if (!(await requireUnlockAndFreshUser())) return;
+    closeAllModals();
+    setIsCaptureModalOpen(true);
+  };
+
   // Add this function to handle alert acknowledgment
   const handleAlertAcknowledged = () => {
     fetch(`${config.apiUrl}/api/monitoring/alerts/count`, { credentials: 'include' })
@@ -908,21 +951,32 @@ export default function Dashboard() {
     modalOpen: {
       alerts: isPulseOxModalOpen, medications: isMedicationModalOpen, nutrition: isNutritionModalOpen,
       careTasks: isCareTaskModalOpen, equipment: isVentModalOpen, history: isHistoryModalOpen,
-      camera: isCameraModalOpen, messages: isMessagesModalOpen,
+      camera: isCameraModalOpen, messages: isMessagesModalOpen, capture: isCaptureModalOpen,
     },
     handlers: {
       alerts: handlePulseOxClick, medications: handleMedicationClick, nutrition: handleNutritionClick,
       careTasks: handleCareTaskClick, equipment: handleVentClick, history: handleHistoryClick,
-      camera: handleCameraClick, messages: handleMessagesClick,
+      camera: handleCameraClick, messages: handleMessagesClick, capture: handleCaptureClick,
     },
   });
 
+  // Panels dock into the board on desktop; mobile keeps the full-screen sheet.
+  const modalDock = useMemo(() => ({
+    docked: !isMobile,
+    expanded: panelExpanded,
+    toggleExpand: () => setPanelExpanded(v => !v),
+  }), [isMobile, panelExpanded]);
+
   return (
+    <ModalDockProvider value={modalDock}>
     <div className="dashboard-wrapper force-dark live-dash" ref={boardRef}>
+      {/* Auth gates take the whole board rather than docking beside it — an
+          unlock prompt is not something to work alongside. */}
       <ModalBase
         isOpen={unlockModalOpen}
         onClose={() => { if (!needsUnlock) setActionUnlockOpen(false); }}
         title="Unlock"
+        dock={false}
       >
         <form onSubmit={handleUnlockSubmit} className="tw">
           <div className="flex flex-col gap-3">
@@ -953,6 +1007,7 @@ export default function Dashboard() {
         isOpen={!unlockModalOpen && showPatientModal}
         onClose={() => { if (selectedPatient) setShowPatientModal(false); }}
         title="Select Patient"
+        dock={false}
       >
         {loadingPatients ? (
           <div>Loading patients…</div>
@@ -1013,6 +1068,13 @@ export default function Dashboard() {
       {isMobile && isMobileMenuOpen && (
         <div className="mobile-menu-overlay" onClick={() => setIsMobileMenuOpen(false)}>
           <div className="mobile-menu" onClick={(e) => e.stopPropagation()}>
+            {/* Mirrors buildTopBarActions' order — this list is hand-written
+                because the drawer shows labels, not icon buttons. */}
+            <div className="mobile-menu-item" onClick={() => { handleCaptureClick(); setIsMobileMenuOpen(false); }}>
+              <VitalsCaptureIcon size={24} />
+              <span>Capture Vitals</span>
+            </div>
+
             <div className="mobile-menu-item" onClick={() => { handlePulseOxClick(); setIsMobileMenuOpen(false); }}>
               <MinimalistPulseOxIcon />
               <span>Alerts</span>
@@ -1225,6 +1287,19 @@ export default function Dashboard() {
       {isCareTaskModalOpen && (
         <CareTaskModal onClose={() => setIsCareTaskModalOpen(false)} />
       )}
+
+      {/* Capture Vitals — the live SpO2/HR are offered as a connected
+          snapshot, so they are read straight off the board's sensor state. */}
+      {isCaptureModalOpen && selectedPatient?.id && (
+        <CaptureVitalsModal
+          patient={selectedPatient}
+          sensorValues={sensorValues}
+          streaming={buffer.streaming.status === 'streaming'}
+          onClose={() => setIsCaptureModalOpen(false)}
+          onSaved={() => { reloadChart1(); reloadChart2(); }}
+        />
+      )}
     </div>
+    </ModalDockProvider>
   );
 }

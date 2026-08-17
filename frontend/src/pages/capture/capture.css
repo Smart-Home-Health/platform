@@ -648,3 +648,198 @@
   .vc-toast { animation: vc-fade-in 1ms linear; }
   .vc-caret { animation: none; }
 }
+
+/* ---- Docked in the live dashboard --------------------------------------
+ * Third shell (components/dashboard/CaptureVitalsModal). The panel stands in
+ * the board's cards column, so it is narrower than the phone surface and the
+ * admin embed: the two-up tile grid becomes a list, and the vitals split into
+ * what the connected oximeter answers for and what a person measures.
+ * The panel body already supplies the card chrome, so no border here. */
+.vitals-capture.vc-docked {
+  min-height: 0;
+  max-width: none;
+  background: none;
+  gap: 0;
+}
+.vitals-capture.vc-docked .vc-encounter,
+.vitals-capture.vc-docked .vc-resume { margin-left: 0; margin-right: 0; }
+.vitals-capture.vc-docked .vc-rows { padding: 0; }
+.vitals-capture.vc-docked .vc-footer { padding: 0.75rem 0 0; }
+
+/* Section headings inside the docked panel */
+.vc-section {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 0.9rem 0 0.45rem;
+}
+.vc-section:first-child { margin-top: 0.25rem; }
+.vc-section .vc-caption { text-transform: none; letter-spacing: 0.02em; }
+
+/* Row layout: label + value on one line, provenance under it. */
+.vc-rows { display: flex; flex-direction: column; gap: 0.4rem; }
+.vc-tile-wrap {
+  display: flex;
+  align-items: stretch;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.vc-tile-wrap > .vc-tile { flex: 1; min-width: 0; }
+.vc-tile.row {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  row-gap: 0.15rem;
+  column-gap: 0.6rem;
+  padding: 0.55rem 0.7rem;
+}
+.vc-tile.row .vc-tile-head {
+  grid-column: 1;
+  grid-row: 1;
+  justify-content: flex-start;
+  gap: 0.4rem;
+}
+.vc-tile.row .vc-tile-head .vc-label { font-size: 11px; }
+.vc-tile.row .vc-tile-value {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  font-size: 26px;
+  justify-self: end;
+  white-space: nowrap;
+}
+.vc-tile.row .vc-tile-value.bp { font-size: 22px; }
+.vc-tile.row .vc-tile-value.empty { font-size: 18px; }
+.vc-tile.row .vc-tile-provenance { grid-column: 1; grid-row: 2; font-size: 9.5px; }
+
+/* "Use live" — accept the oximeter's current reading instead of typing it.
+   Sits beside the row so the recorded state stays a single tap away. */
+.vc-tile-accept {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  min-width: 82px;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--vc-data-live);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--vc-data-live) 14%, transparent);
+  color: var(--vc-text-primary);
+  cursor: pointer;
+}
+.vc-tile-accept:hover {
+  background: color-mix(in srgb, var(--vc-data-live) 24%, transparent);
+  border-color: var(--vc-data-live);
+}
+.vc-tile-accept-value {
+  font-family: var(--vc-font-mono);
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.vc-tile-accept-value .vc-unit { font-size: 10px; margin-left: 2px; }
+.vc-tile-accept-hint {
+  font-family: var(--vc-font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-data-live);
+}
+
+/* The docked panel's title carries the connection chip. */
+.ld-capture-title { display: flex; align-items: center; gap: 0.6rem; min-width: 0; }
+
+/* The entry sheet and toast portal to <body>, so they can't inherit the docked
+   panel's bounds — the live dashboard publishes them on <html> (see
+   Dashboard.jsx) and flags the mode on <body>. Without this the sheet slides
+   up from the middle of a 1920px screen while the panel sits on the right. */
+body.ld-capture-docked .vc-sheet,
+body.ld-capture-docked .vc-sheet-overlay {
+  left: var(--ld-panel-left, 0px);
+  right: var(--ld-panel-right, 0px);
+  max-width: none;
+  margin: 0;
+}
+body.ld-capture-docked.ld-capture-wide .vc-sheet,
+body.ld-capture-docked.ld-capture-wide .vc-sheet-overlay {
+  left: var(--ld-panel-left-wide, 0px);
+}
+body.ld-capture-docked .vc-sheet {
+  bottom: var(--ld-panel-bottom, 0px);
+  border-radius: 12px 12px 0 0;
+}
+body.ld-capture-docked .vc-sheet-overlay {
+  top: var(--ld-panel-top, 0px);
+  bottom: var(--ld-panel-bottom, 0px);
+}
+body.ld-capture-docked .vc-toast {
+  left: var(--ld-panel-left, 0px);
+  right: var(--ld-panel-right, 0px);
+  transform: none;
+  justify-content: center;
+  margin: 0 auto;
+  width: max-content;
+  max-width: none;
+}
+body.ld-capture-docked.ld-capture-wide .vc-toast { left: var(--ld-panel-left-wide, 0px); }
+
+/* Set-level time override and note (row layout only) */
+.vc-encounter-edit { margin-left: auto; }
+.vitals-capture.vc-docked .vc-encounter .vc-chip { margin-left: 0.5rem; }
+.vc-encounter-time {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0.5rem 0 0;
+}
+.vc-note { margin-top: 0.9rem; display: flex; flex-direction: column; gap: 0.35rem; }
+.vc-note-add {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 10px;
+  background: var(--vc-bg-surface);
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.vc-note-add:hover { border-color: var(--vc-line-strong); color: var(--vc-text-primary); }
+.vc-text-input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 40px;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 8px;
+  background: var(--vc-bg-base);
+  color: var(--vc-text-primary);
+  font-family: var(--vc-font-mono);
+  font-size: 13px;
+  letter-spacing: 0.03em;
+  resize: vertical;
+}
+.vc-text-input:focus {
+  outline: none;
+  border-color: var(--vc-data-live);
+  box-shadow: 0 0 0 1px var(--vc-data-live);
+}
+
+/* The save actions sit at the bottom of a short panel rather than floating
+   under the last row; `min-height: 100%` gives `margin-top: auto` something to
+   push against, and taller content simply scrolls the panel body instead. */
+.vitals-capture.vc-docked { display: flex; flex-direction: column; min-height: 100%; }
+.vitals-capture.vc-docked .vc-footer { margin-top: auto; padding-bottom: 0; }
+.vitals-capture.vc-docked .vc-clear { width: 100%; min-height: 42px; }

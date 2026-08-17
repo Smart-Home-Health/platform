@@ -140,7 +140,8 @@ def save_capture_reading(db: Session, *, patient_id, vital_type, value, timestam
                          vital_group=None, unit=None, code=None, ucum_unit=None,
                          account_id=None, recorded_by=None, encounter_uid=None,
                          external_id=None, confirmed_against_warning=None,
-                         reference_low=None, reference_high=None, notes=None):
+                         reference_low=None, reference_high=None, notes=None,
+                         source='manual'):
     """Build one fully-stamped Vital row for the capture flow (no commit).
 
     Unlike save_vital, callers batch several rows into one transaction and
@@ -166,7 +167,7 @@ def save_capture_reading(db: Session, *, patient_id, vital_type, value, timestam
         unit=unit,
         code=code,
         ucum_unit=ucum_unit,
-        source='manual',
+        source=source,
         account_id=account_id,
         recorded_by=recorded_by,
         encounter_uid=encounter_uid,

@@ -453,7 +453,12 @@ class CaptureReading(BaseModel):
     diastolic: Optional[float] = None
     unit: Optional[str] = None
     measured_at: Optional[datetime] = None
-    source: Literal['manual'] = 'manual'
+    # 'pulse_ox' is for readings the caregiver accepted from the connected
+    # oximeter rather than typing (the live dashboard's capture panel offers
+    # them as a snapshot). Recording those as 'manual' would misstate
+    # provenance in the record, and loinc_for() already keys the SpO2 code off
+    # this distinction: manual -> 2708-6, device -> 59408-5.
+    source: Literal['manual', 'pulse_ox'] = 'manual'
     confirmed_against_warning: bool = False
     note: Optional[str] = None
 
@@ -655,7 +660,7 @@ async def capture_vitals(
             if meta:
                 lk = meta['loinc_key']
                 loinc = loinc_for(lk.get(vital_group or field_key) if isinstance(lk, dict) else lk,
-                                  'manual')
+                                  r.source)
             else:
                 loinc = None
             return save_capture_reading(
@@ -667,7 +672,7 @@ async def capture_vitals(
                 confirmed_against_warning=True if band == 'concerning' else None,
                 reference_low=entry.get('expected_min'),
                 reference_high=entry.get('expected_max'),
-                notes=r.note)
+                notes=r.note, source=r.source)
 
         if r.vital_key == 'blood_pressure':
             map_value = round(r.diastolic + (r.systolic - r.diastolic) / 3)
@@ -767,6 +772,7 @@ def get_patient_vitals(
             grouped[key]['vital_type'] = v.vital_type
             grouped[key]['notes'] = v.notes
             grouped[key]['patient_id'] = v.patient_id
+            grouped[key]['source'] = v.source or 'manual'
             grouped[key]['values'][v.vital_group] = v.value
         else:
             single_vitals.append({
@@ -776,7 +782,9 @@ def get_patient_vitals(
                 'value': v.value,
                 'notes': v.notes,
                 'patient_id': v.patient_id,
-                'source': 'manual'
+                # The stored provenance, not an assumption: capture can record
+                # readings accepted from the connected oximeter ('pulse_ox').
+                'source': v.source or 'manual'
             })
     
     # Convert grouped vitals to list format
@@ -790,7 +798,7 @@ def get_patient_vitals(
                 'map': data['values'].get('map'),
                 'notes': data['notes'],
                 'patient_id': data['patient_id'],
-                'source': 'manual'
+                'source': data.get('source', 'manual')
             })
         elif data['vital_type'] == 'temperature':
             single_vitals.append({
@@ -799,7 +807,7 @@ def get_patient_vitals(
                 'value': data['values'].get('body') or data['values'].get('core'),
                 'notes': data['notes'],
                 'patient_id': data['patient_id'],
-                'source': 'manual'
+                'source': data.get('source', 'manual')
             })
     
     # Sort by timestamp descending
