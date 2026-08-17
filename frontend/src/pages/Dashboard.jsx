@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import DynamicVitalsCard from "../components/DynamicVitalsCard";
 import ModalBase from "../components/ModalBase";
 import SettingsForm from "../components/SettingsForm";
@@ -175,6 +175,46 @@ export default function Dashboard() {
     return () => root.style.setProperty('--auth-banner-height', '0px');
   }, [isMobile, authModalActive]);
 
+  // The dashboard modals dock against the live board rather than covering it,
+  // so the vitals stay readable while a panel is open. Publish the board's real
+  // geometry as CSS variables (see .live-dash .dashboard-modal-overlay in
+  // live-dashboard.css) — the left column is a grid `minmax(230px, 320px)`, so
+  // there is no viewport-relative constant that stays correct at every width.
+  const boardRef = useRef(null);
+  useLayoutEffect(() => {
+    const root = boardRef.current;
+    if (!root) return undefined;
+
+    const measure = () => {
+      const topbar = root.querySelector('.ld-topbar');
+      const main = root.querySelector('.ld-main');
+      const tiles = root.querySelector('.ld-tiles');
+      const strip = root.querySelector('.ld-strip');
+
+      root.style.setProperty('--ld-topbar-h', `${Math.round(topbar?.offsetHeight ?? 60)}px`);
+      root.style.setProperty('--ld-strip-h', `${Math.round(strip?.offsetHeight ?? 0)}px`);
+
+      // Locked (unauthenticated) shows a single centred column, so there is
+      // nothing to dock beside — let the unlock panel cover the whole board.
+      if (!main || !tiles || main.classList.contains('locked')) {
+        root.style.setProperty('--ld-panel-left', '0px');
+        return;
+      }
+      const gap = parseFloat(getComputedStyle(main).columnGap) || 0;
+      const left = tiles.getBoundingClientRect().right - root.getBoundingClientRect().left + gap;
+      root.style.setProperty('--ld-panel-left', `${Math.round(left)}px`);
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    [root, root.querySelector('.ld-topbar'), root.querySelector('.ld-tiles'), root.querySelector('.ld-strip')]
+      .filter(Boolean)
+      .forEach(el => observer.observe(el));
+    return () => observer.disconnect();
+    // Re-measure when the board's structure changes (lock state adds/removes
+    // the charts and cards columns, which resizes the tiles column).
+  }, [needsUnlock, isMobile]);
+
   // Enforce 24h unlock window (client-side)
   useEffect(() => {
     const raw = localStorage.getItem('dashboardUnlockedAt');
@@ -244,8 +284,10 @@ export default function Dashboard() {
     navigate(location.pathname + location.search, { replace: true, state: {} });
   }, [location.state, isAuthenticated, needsUnlock, navigate, location.pathname, location.search]);
 
-  // Function to fetch chart data for a specific vital type
-  const fetchChartData = async (vitalType, chartNumber) => {
+  // Function to fetch chart data for a specific vital type.
+  // Memoized so the `onSaved` callbacks handed to the (memoized) vitals cards
+  // keep a stable identity across the dashboard's ~1 Hz re-renders.
+  const fetchChartData = useCallback(async (vitalType, chartNumber) => {
     try {
       // Skip fetching data for nutrition - it has its own real-time data source
       if (vitalType === 'nutrition') {
@@ -318,7 +360,7 @@ export default function Dashboard() {
     } catch (error) {
       console.error(`Error fetching chart data for ${vitalType}:`, error);
     }
-  };
+  }, [selectedPatient?.id, needsUnlock]);
 
   // Load chart time range and perfusion display settings
   useEffect(() => {
@@ -851,6 +893,15 @@ export default function Dashboard() {
     };
   };
 
+  const reloadChart1 = useCallback(
+    () => fetchChartData(dashboardChart1.vital_type, 1),
+    [fetchChartData, dashboardChart1.vital_type]
+  );
+  const reloadChart2 = useCallback(
+    () => fetchChartData(dashboardChart2.vital_type, 2),
+    [fetchChartData, dashboardChart2.vital_type]
+  );
+
   const topBarActions = buildTopBarActions({
     pulseOxAlerts, medicationDueCount, nutritionDueCount, careTaskDueCount, equipmentDueCount,
     hasCamera,
@@ -867,7 +918,7 @@ export default function Dashboard() {
   });
 
   return (
-    <div className="dashboard-wrapper force-dark live-dash">
+    <div className="dashboard-wrapper force-dark live-dash" ref={boardRef}>
       <ModalBase
         isOpen={unlockModalOpen}
         onClose={() => { if (!needsUnlock) setActionUnlockOpen(false); }}
@@ -1084,6 +1135,7 @@ export default function Dashboard() {
             streaming={buffer.streaming}
             chrome={chartChrome}
             perfusionAsPercent={perfusionAsPercent}
+            now={buffer.now}
           />
         )}
 
@@ -1095,7 +1147,7 @@ export default function Dashboard() {
               title={formatVitalDisplayName(dashboardChart1.vital_type)}
               patientId={selectedPatient?.id}
               chrome={chartChrome}
-              onSaved={() => fetchChartData(dashboardChart1.vital_type, 1)}
+              onSaved={reloadChart1}
             />
             <DynamicVitalsCard
               vitalType={dashboardChart2.vital_type}
@@ -1103,7 +1155,7 @@ export default function Dashboard() {
               title={formatVitalDisplayName(dashboardChart2.vital_type)}
               patientId={selectedPatient?.id}
               chrome={chartChrome}
-              onSaved={() => fetchChartData(dashboardChart2.vital_type, 2)}
+              onSaved={reloadChart2}
             />
           </div>
         )}

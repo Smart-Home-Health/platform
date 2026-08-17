@@ -383,6 +383,29 @@
 .ld-tone-due { color: #f0a52e; }
 .ld-tone-alert { color: #f0563c; }
 
+/* ---- Docked modal panels (desktop) ----
+ * The dashboard modals (ModalBase → .dashboard-modal-overlay) deliberately
+ * leave the vitals column and status strip uncovered so the board stays
+ * readable while a panel is open. App.css's base rule still carries the OLD
+ * layout's magic numbers (top: 10vh for a 10%-tall header, left: 25vw for a
+ * 25% values column); both are gone, so anchor to the real geometry instead —
+ * Dashboard.jsx measures it into these variables. The doubled `.live-dash`
+ * selector wins on specificity regardless of sheet order (App.css is injected
+ * after this one — same trick as the mobile rules below).
+ * Breakpoint matches ModalBase's own `window.innerWidth <= 768` test, which
+ * switches the overlay to its full-screen `.mobile` variant. */
+@media (min-width: 769px) {
+  .live-dash .dashboard-modal-overlay {
+    top: var(--ld-topbar-h, 60px);
+    left: var(--ld-panel-left, 0px);
+    right: 0;
+    bottom: var(--ld-strip-h, 0px);
+    width: auto;
+    height: auto;
+    border-left: 1px solid var(--dash-border);
+  }
+}
+
 /* ---- Mobile ---- */
 @media (max-width: 768px) {
   /* Doubled selector: App.css's .dashboard-wrapper (100vh, overflow hidden)

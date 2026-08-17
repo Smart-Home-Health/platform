@@ -42,7 +42,12 @@ export const CHART_CHROME = {
   border: 'rgba(255, 255, 255, 0.1)',
 };
 
-const DashboardThemeContext = createContext({ chartChrome: CHART_CHROME });
+// Hoisted (not an inline literal in the Provider) so consumers see a stable
+// context value — the live dashboard re-renders ~1 Hz and a fresh object would
+// invalidate every memoized chart below it.
+const CONTEXT_VALUE = { chartChrome: CHART_CHROME };
+
+const DashboardThemeContext = createContext(CONTEXT_VALUE);
 
 export function DashboardThemeProvider({ children }) {
   // Radix overlays (Dialog/Select/Popover) portal into <body>, outside the
@@ -56,7 +61,7 @@ export function DashboardThemeProvider({ children }) {
   }, []);
 
   return (
-    <DashboardThemeContext.Provider value={{ chartChrome: CHART_CHROME }}>
+    <DashboardThemeContext.Provider value={CONTEXT_VALUE}>
       {children}
     </DashboardThemeContext.Provider>
   );
