@@ -82,23 +82,64 @@ describe('buildTimeTicks', () => {
     }
   });
 
-  it('anchors to the local offset, not the epoch (half-hour zones)', () => {
-    // India is UTC+5:30 -> getTimezoneOffset() === -330. Anchoring to epoch
-    // multiples would put every hourly tick on :30.
-    const spy = vi.spyOn(Date.prototype, 'getTimezoneOffset').mockReturnValue(-330);
-    try {
-      // 04:00 UTC == 09:30 IST, so the ticks fall on 10:00 / 11:00 / 12:00 IST
-      // — half past the hour in UTC, which is exactly what epoch-anchoring
-      // would get wrong (it would place them on the UTC hour instead).
-      const start = Date.UTC(2026, 7, 17, 4, 0, 0);
-      const ticks = buildTimeTicks(start, start + 3 * HOUR, HOUR);
-      expect(ticks.map(t => (t - start) / HOUR)).toEqual([0.5, 1.5, 2.5]);
-      // Every tick is a whole hour on the *local* (IST) clock.
-      const IST_OFFSET = 5.5 * HOUR;
-      ticks.forEach(t => expect((t + IST_OFFSET) % HOUR).toBe(0));
-    } finally {
-      spy.mockRestore();
+  // The invariant that matters: read back in local time, every tick sits on a
+  // multiple of the step within its own day. This is what makes the labels
+  // round, and it holds regardless of the zone's offset or a DST transition.
+  const onLocalBoundary = (t, step) => {
+    const d = new Date(t);
+    const intoDay = ((d.getHours() * 60 + d.getMinutes()) * 60 + d.getSeconds()) * 1000
+      + d.getMilliseconds();
+    return intoDay % step === 0;
+  };
+
+  it('puts every tick on a local-clock boundary, for every range', () => {
+    const start = new Date(2026, 7, 17, 14, 3, 37, 250).getTime();
+    for (const minutes of [15, 60, 360, 1440]) {
+      const windowMs = minutes * MIN;
+      const step = pickTimeStep(windowMs);
+      const ticks = buildTimeTicks(start, start + windowMs, step);
+      expect(ticks.length).toBeGreaterThan(0);
+      ticks.forEach(t => expect(onLocalBoundary(t, step)).toBe(true));
     }
+  });
+
+  it('holds the boundary across a spring-forward transition', () => {
+    // TZ is pinned to America/New_York: 2026-03-08 02:00 EST -> 03:00 EDT.
+    // A fixed offset taken at the window start used to push the post-shift
+    // ticks to 07:00 / 13:00 / 19:00.
+    const start = new Date(2026, 2, 7, 18, 0, 0).getTime();
+    const ticks = buildTimeTicks(start, start + 24 * HOUR, 6 * HOUR);
+    expect(ticks.map(t => new Date(t).getHours())).toEqual([18, 0, 6, 12, 18]);
+    ticks.forEach(t => expect(onLocalBoundary(t, 6 * HOUR)).toBe(true));
+  });
+
+  it('holds the boundary across a fall-back transition', () => {
+    // 2026-11-01 02:00 EDT -> 01:00 EST. The repeated hour must not produce a
+    // duplicate or a backwards step. Note 24 *real* hours from Oct 31 18:00
+    // only reaches 17:00 local, because that day is 25 hours long — so the
+    // closing 18:00 tick falls outside the window, correctly.
+    const start = new Date(2026, 9, 31, 18, 0, 0).getTime();
+    const ticks = buildTimeTicks(start, start + 24 * HOUR, 6 * HOUR);
+    expect(ticks.map(t => new Date(t).getHours())).toEqual([18, 0, 6, 12]);
+    ticks.forEach(t => expect(onLocalBoundary(t, 6 * HOUR)).toBe(true));
+    for (let i = 1; i < ticks.length; i += 1) {
+      expect(ticks[i]).toBeGreaterThan(ticks[i - 1]);
+    }
+  });
+
+  it('stays strictly increasing over the non-existent spring-forward hour', () => {
+    // An hourly walk straight through 02:00 on 2026-03-08 — the local clock
+    // goes 01:00 then 03:00, and 5 real hours reach 06:00 because the day is
+    // only 23 hours long.
+    const start = new Date(2026, 2, 8, 0, 30, 0).getTime();
+    const ticks = buildTimeTicks(start, start + 5 * HOUR, HOUR);
+    expect(new Set(ticks).size).toBe(ticks.length);
+    for (let i = 1; i < ticks.length; i += 1) {
+      expect(ticks[i]).toBeGreaterThan(ticks[i - 1]);
+    }
+    expect(ticks.map(t => new Date(t).getHours())).toEqual([1, 3, 4, 5, 6]);
+    // No 02:00 label, because that hour does not exist locally.
+    expect(ticks.map(t => new Date(t).getHours())).not.toContain(2);
   });
 
   it('returns nothing for a degenerate window or step', () => {

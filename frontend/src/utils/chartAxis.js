@@ -53,23 +53,49 @@ export function pickTimeStep(windowMs, target = 5) {
   );
 }
 
+// Enough slack to absorb a DST shift when guessing where in the day to start
+// scanning (the guess uses elapsed milliseconds, which a transition skews).
+const DAY_MS = 24 * 60 * 60 * 1000;
+const DST_SLACK_MS = 2 * 60 * 60 * 1000;
+
 /**
  * Round wall-clock tick positions inside [startMs, endMs].
  *
- * Anchored to the *local* UTC offset rather than the epoch: epoch multiples
- * only line up with the local clock when the offset is a whole number of
- * steps, so a half-hour zone (India, Newfoundland) would put every hourly
- * tick on :30.
+ * Every ladder step divides evenly into a day, so the boundaries are always
+ * "local midnight + k * step". Each one is built from date *components* so the
+ * platform resolves the UTC offset in effect at that instant. Two things go
+ * wrong if you instead take one offset and add fixed millisecond steps:
+ *  - a half-hour zone (India, Newfoundland) puts every hourly tick on :30 when
+ *    anchored to the epoch, and
+ *  - a DST transition inside the window drags every later tick off the local
+ *    boundary — 6h ticks landing on 07:00/13:00/19:00 instead of
+ *    06:00/12:00/18:00 for the spring-forward day.
  */
 export function buildTimeTicks(startMs, endMs, step) {
   if (!(step > 0) || !(endMs > startMs)) return [];
-  const offset = new Date(startMs).getTimezoneOffset() * 60 * 1000;
+  const perDay = Math.round(DAY_MS / step);
+  const stepSeconds = step / 1000;
+  const from = new Date(startMs);
+  const year = from.getFullYear();
+  const month = from.getMonth();
+  const date = from.getDate();
   const ticks = [];
-  let t = Math.ceil((startMs - offset) / step) * step + offset;
-  // Guard against a pathological window/step combination running away.
-  for (let i = 0; t <= endMs && i < 64; i += 1) {
-    ticks.push(t);
-    t += step;
+
+  // The window is at most a day (see CHART_RANGES), so a few calendar days
+  // always covers it; the 64-tick cap is the runaway backstop.
+  for (let day = 0; day < 4; day += 1) {
+    const dayStart = new Date(year, month, date + day).getTime();
+    const firstK = Math.max(0, Math.floor((startMs - dayStart - DST_SLACK_MS) / step));
+    for (let k = firstK; k < perDay; k += 1) {
+      const t = new Date(year, month, date + day, 0, 0, k * stepSeconds).getTime();
+      if (t > endMs) return ticks;
+      // The spring-forward hour doesn't exist, so two k values can resolve to
+      // the same instant — keep the sequence strictly increasing.
+      if (t >= startMs && (ticks.length === 0 || t > ticks[ticks.length - 1])) {
+        ticks.push(t);
+        if (ticks.length >= 64) return ticks;
+      }
+    }
   }
   return ticks;
 }
