@@ -117,6 +117,29 @@ describe('CaptureVitalsModal', () => {
     ]);
   });
 
+  it('stamps an accepted reading with the snapshot time, not the click time', async () => {
+    // The value is frozen at open, so the timestamp has to be too — otherwise a
+    // panel left sitting open attributes an older oximeter reading to "now".
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      vi.setSystemTime(new Date('2026-08-17T21:00:00.000Z'));
+      await renderPanel();
+
+      vi.setSystemTime(new Date('2026-08-17T21:10:00.000Z')); // ten minutes pass
+      await act(async () => {
+        fireEvent.click(screen.getByLabelText(/Record Oxygen 97% from the pulse ox/i));
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /save vitals/i }));
+      });
+      await waitFor(() => expect(captureBodies).toHaveLength(1));
+
+      expect(captureBodies[0].readings[0].measured_at).toBe('2026-08-17T21:00:00.000Z');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('freezes the snapshot at open so the accepted number is the one on screen', async () => {
     const { rerender } = await renderPanel({ sensorValues: { spo2: 97, bpm: 72 } });
 

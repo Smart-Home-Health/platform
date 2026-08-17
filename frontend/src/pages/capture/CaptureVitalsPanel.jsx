@@ -140,16 +140,18 @@ export default function CaptureVitalsPanel({
   // Accept a live oximeter value into the encounter. Recorded with
   // source 'pulse_ox' — the record must not claim someone typed it, and the
   // backend keys the SpO2 LOINC code off exactly this distinction.
+  //
+  // Stamped with the time the snapshot was *taken*, not the time it was
+  // accepted: the value was frozen when the panel opened, so if the panel has
+  // been sitting open the click time would attribute an older reading to now.
   const acceptSnapshot = (vitalKey, value, unit) => {
+    const measuredAt = snapshot?.at || new Date().toISOString();
     setEncounter((prev) => {
       const next = {
         ...prev,
         readings: {
           ...prev.readings,
-          [vitalKey]: {
-            vitalKey, value, unit, source: 'pulse_ox',
-            measuredAt: new Date().toISOString(),
-          },
+          [vitalKey]: { vitalKey, value, unit, source: 'pulse_ox', measuredAt },
         },
       };
       saveDraft(patientId, next);
