@@ -24,6 +24,7 @@ import { render, screen, fireEvent, within } from '@testing-library/react';
 
 import DoseScheduleView from './DoseScheduleView';
 import { ModalDockProvider } from '../../contexts/ModalDockContext';
+import { TASK_LABELS } from './scheduleLabels';
 
 const at = (h, m = 0) => new Date(2026, 7, 17, h, m, 0).toISOString();
 
@@ -282,5 +283,63 @@ describe('DoseScheduleView — phone', () => {
     const { container } = onPhone({ detail: <p>Dose details go here</p> });
     expect(screen.queryByText('Dose details go here')).toBeNull();
     expect(container.querySelectorAll('.ld-dose-card')).toHaveLength(3);
+  });
+});
+
+// The same layout serves care tasks; only the vocabulary and the middle column
+// change. These guard that the generalisation didn't hard-code medications.
+describe('DoseScheduleView — care task vocabulary', () => {
+  const TASKS = [
+    {
+      id: 'neb', name: 'Nebulizer', description: 'Daily', status: 'missed',
+      is_completed: false, scheduled_time: at(8),
+      category: { name: 'Treatments', color: '#FF9800' },
+      _raw: { schedule_id: 1, care_task_id: 9 },
+    },
+    {
+      id: 'teeth', name: 'Brush Teeth', description: 'Daily', status: 'completed',
+      is_completed: true, scheduled_time: at(21),
+      category: { name: 'Bathroom', color: '#2196F3' },
+      _raw: { schedule_id: 2, care_task_id: 10 },
+    },
+  ];
+
+  const renderTasks = (dock, props = {}) => render(
+    <ModalDockProvider value={{ docked: true, expanded: false, setExpanded: vi.fn(), ...dock }}>
+      <DoseScheduleView items={TASKS} labels={TASK_LABELS} {...props} />
+    </ModalDockProvider>
+  );
+
+  it('uses the task wording, not the medication wording', () => {
+    const { container } = renderTasks({ expanded: true }, { onRecord: vi.fn(), onRecordAll: vi.fn() });
+    expect(screen.getAllByRole('button', { name: /mark done/i })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: /record dose/i })).toBeNull();
+    // Two slots, one task each — singular in both.
+    const counts = [...container.querySelectorAll('.ld-dose-slot-count')].map(c => c.textContent);
+    expect(counts).toEqual(['1 task', '1 task']);
+    expect(screen.getByRole('button', { name: /complete all/i })).toBeInTheDocument();
+  });
+
+  it('names its columns for tasks', () => {
+    const { container } = renderTasks({ expanded: true });
+    const heads = [...container.querySelectorAll('.ld-dose-table thead th')].map(t => t.textContent);
+    expect(heads.slice(0, 5)).toEqual(['Task', 'Category', 'Schedule', 'Status', 'Actions']);
+  });
+
+  it('shows the category as a coloured chip where a dose would go', () => {
+    const { container } = renderTasks({ expanded: true });
+    const chips = [...container.querySelectorAll('.ld-dose-chip')];
+    expect(chips.map(c => c.textContent)).toEqual(['Treatments', 'Bathroom']);
+    expect(chips[0].style.getPropertyValue('--chip')).toBe('#FF9800');
+  });
+
+  it('keeps the dose text for items that carry no category', () => {
+    const { container } = render(
+      <ModalDockProvider value={{ docked: true, expanded: true, setExpanded: vi.fn() }}>
+        <DoseScheduleView items={ITEMS} />
+      </ModalDockProvider>
+    );
+    expect(container.querySelector('.ld-dose-chip')).toBeNull();
+    expect(screen.getByText('10 mL')).toBeInTheDocument();
   });
 });

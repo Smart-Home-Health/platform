@@ -25,7 +25,7 @@
 // along on SelectContent rather than being inherited.
 import * as SelectPrimitive from '@radix-ui/react-select';
 import { ChevronDownIcon, CheckIcon, CalendarIcon, ClipboardListIcon } from '../Icons';
-import './medication-panel.css';
+import './section-panel.css';
 
 const VIEW_ICON = {
   scheduled: CalendarIcon,
@@ -37,7 +37,7 @@ const VIEW_ICON = {
  *               `note` is the right-hand status line (e.g. "23 missed");
  *               `tone` colours it ('due' | 'given' | null).
  */
-export default function MedicationViewSwitcher({
+export default function PanelViewSwitcher({
   views,
   value,
   onChange,

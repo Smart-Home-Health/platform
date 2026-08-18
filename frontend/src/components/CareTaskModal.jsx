@@ -19,7 +19,15 @@ import React, { useState, useEffect, useMemo } from 'react';
 import ModalBase from './ModalBase';
 import config from '../config';
 import { useAdminPatient } from '../contexts/AdminPatientContext';
-import ScheduleList from './schedule/ScheduleList';
+import { useAuth } from '../contexts/AuthContext';
+import DoseScheduleView from './schedule/DoseScheduleView';
+import DoseDetailPane from './schedule/DoseDetailPane';
+import { TASK_LABELS } from './schedule/scheduleLabels';
+import { rollupSchedule } from './schedule/scheduleRollup';
+import PanelViewSwitcher from './section-panel/PanelViewSwitcher';
+import PrnPicker from './section-panel/PrnPicker';
+import { careTaskRows } from './section-panel/prnRows';
+import './section-panel/section-panel.css';
 import { computeScheduleStatus } from './schedule/scheduleStatus';
 import NutritionTrackingModal from './nutrition/NutritionTrackingModal';
 import {
@@ -52,18 +60,15 @@ const OFF_WINDOW_ERRORS = ['early_administration', 'late_administration', 'off_w
 
 const CareTaskModal = ({ onClose }) => {
   const { selectedPatient } = useAdminPatient();
+  const { user } = useAuth();
   const [tab, setTab] = useState('scheduled');
+  // Which task the detail pane is showing. Keyed on the schedule slot rather
+  // than the normalized id, which embeds log_id and changes the moment a task
+  // is completed — selecting by it would drop the selection on the refetch.
+  const [selectedId, setSelectedId] = useState(null);
   const [activeTasks, setActiveTasks] = useState([]);
   const [scheduled, setScheduled] = useState([]);   // raw `care_tasks` rows from /api/schedule/daily
   const [loading, setLoading] = useState(false);
-  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' && window.innerWidth <= 768);
-
-  const [statusFilters, setStatusFilters] = useState({
-    pending: true, due_warning: true, due_on_time: true, due_late: true,
-    upcoming: true, missed: true, completed: false, skipped: false,
-  });
-  const [showFilters, setShowFilters] = useState(false);
-
   // Off-window (early/late) completion confirmation
   const [windowConfirm, setWindowConfirm] = useState({ open: false, task: null, check: null });
 
@@ -77,15 +82,12 @@ const CareTaskModal = ({ onClose }) => {
   const [prnError, setPrnError] = useState(null);
 
   useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth <= 768);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
-
-  useEffect(() => {
     if (!selectedPatient) return;
     if (tab === 'scheduled') fetchSchedule();
-    if (tab === 'active') fetchActiveTasks();
+    // Active tasks are fetched either way: the view menu and the PRN button
+    // both report their count, and a button that says 0 until you press it is
+    // worse than one extra request.
+    fetchActiveTasks();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helpers are recreated each render and selectedPatient is tracked via its id; effect is intentionally keyed on tab/patient id only
   }, [tab, selectedPatient?.id]);
 
@@ -146,8 +148,39 @@ const CareTaskModal = ({ onClose }) => {
     });
   }, [scheduled]);
 
+  const taskKey = (raw) => `${raw?.schedule_id ?? 'prn'}-${raw?.scheduled_time}`;
+  const selectedItem = useMemo(
+    () => scheduledItems.find(i => taskKey(i._raw) === selectedId) || null,
+    [scheduledItems, selectedId]
+  );
+  const recordingAs = user?.full_name || user?.username || null;
+
+  // The menu reports what each view is holding, so you can choose without
+  // opening both.
+  const viewOptions = useMemo(() => {
+    const { counts } = rollupSchedule(scheduledItems);
+    const outstanding = counts.missed + counts.due;
+    return [
+      {
+        value: 'scheduled',
+        label: 'Scheduled',
+        sublabel: "Today's care tasks",
+        note: counts.missed > 0
+          ? `${counts.missed} missed`
+          : (outstanding > 0 ? `${outstanding} due` : 'All done'),
+        tone: counts.missed > 0 || outstanding > 0 ? 'due' : 'given',
+      },
+      {
+        value: 'active',
+        label: 'Active care tasks',
+        sublabel: 'All current task profiles',
+        count: activeTasks.length,
+      },
+    ];
+  }, [scheduledItems, activeTasks.length]);
+
   // ===== Complete (legacy endpoint — carries the nutrition-tracking trigger) =====
-  const submitMarkCompleted = async (task, earlyOverride = false) => {
+  const submitMarkCompleted = async (task, { earlyOverride = false, note } = {}) => {
     try {
       const res = await fetch(`${config.apiUrl}/api/care-task-schedules/${task.schedule_id}/complete`, {
         method: 'POST',
@@ -155,7 +188,7 @@ const CareTaskModal = ({ onClose }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           scheduled_time: task.scheduled_time,
-          notes: 'Completed via live dashboard',
+          notes: note || 'Completed via live dashboard',
           early_override: earlyOverride,
         }),
       });
@@ -169,7 +202,7 @@ const CareTaskModal = ({ onClose }) => {
       }
       const err = await res.json().catch(() => ({}));
       if (res.status === 409 && OFF_WINDOW_ERRORS.includes(err.error) && !earlyOverride) {
-        setWindowConfirm({ open: true, task, check: checkAdministrationWindow(task.scheduled_time) });
+        setWindowConfirm({ open: true, task, note, check: checkAdministrationWindow(task.scheduled_time) });
         return;
       }
       window.alert(err.detail || 'Failed to mark task as completed');
@@ -180,7 +213,7 @@ const CareTaskModal = ({ onClose }) => {
   };
 
   // ===== Skip (unified endpoint — skips aren't gated and skip nutrition tracking) =====
-  const handleSkipTask = async (task) => {
+  const handleSkipTask = async (task, { note } = {}) => {
     if (!selectedPatient) return;
     try {
       const res = await fetch(`${config.apiUrl}/api/schedule/complete/care-task`, {
@@ -193,7 +226,7 @@ const CareTaskModal = ({ onClose }) => {
           patient_id: selectedPatient.id,
           skipped: true,
           completed_at: null,
-          notes: 'Skipped via live dashboard',
+          notes: note || 'Skipped via live dashboard',
         }),
       });
       if (res.ok) { fetchSchedule(); return; }
@@ -205,7 +238,7 @@ const CareTaskModal = ({ onClose }) => {
     }
   };
 
-  const closeWindowConfirm = () => setWindowConfirm({ open: false, task: null, check: null });
+  const closeWindowConfirm = () => setWindowConfirm({ open: false, task: null, note: undefined, check: null });
 
   // ===== PRN =====
   const openPrnPicker = () => {
@@ -277,57 +310,68 @@ const CareTaskModal = ({ onClose }) => {
   return (
     <>
       <ModalBase isOpen={true} onClose={onClose} title={
-        isMobile ? (
-          <div className="tw flex w-full gap-2">
-            <Select value={tab} onValueChange={setTab}>
-              <SelectTrigger className="flex-1"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="scheduled">Scheduled</SelectItem>
-                <SelectItem value="active">Active ({activeTasks.length})</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button
-              onClick={openPrnPicker}
-              disabled={!selectedPatient}
-              className="shrink-0 bg-[#6f42c1] text-white hover:bg-[#6f42c1]/90"
-            >PRN</Button>
-          </div>
-        ) : (
-          <div className="tw flex w-full items-center gap-2">
-            <Button size="sm" variant={tab === 'scheduled' ? 'default' : 'secondary'} onClick={() => setTab('scheduled')}>Scheduled</Button>
-            <Button size="sm" variant={tab === 'active' ? 'default' : 'secondary'} onClick={() => setTab('active')}>Active ({activeTasks.length})</Button>
-            <Button
-              size="sm"
-              onClick={openPrnPicker}
-              disabled={!selectedPatient}
-              className="bg-[#6f42c1] text-white hover:bg-[#6f42c1]/90"
-            >PRN</Button>
-          </div>
-        )
+        <span className="mp-modal-title">
+          <span>Care tasks</span>
+          <span className="mp-modal-title-sub">
+            {selectedPatient
+              ? `${selectedPatient.first_name} ${selectedPatient.last_name} \u00b7 ${tab === 'active' ? 'Active' : 'Schedule'}`
+              : 'No patient selected'}
+          </span>
+        </span>
       }>
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-          {/* Patient banner */}
-          <div className="tw" style={{ marginBottom: 16 }}>
-            <Alert variant={selectedPatient ? 'default' : 'warning'}>
-              {selectedPatient
-                ? <>Viewing care tasks for: {selectedPatient.first_name} {selectedPatient.last_name}</>
-                : 'No patient selected'}
-            </Alert>
-          </div>
+          {!selectedPatient && (
+            <div className="tw" style={{ marginBottom: 16 }}>
+              <Alert variant="warning">No patient selected</Alert>
+            </div>
+          )}
+
+          <PanelViewSwitcher
+            views={viewOptions}
+            value={tab}
+            onChange={setTab}
+            prnCount={activeTasks.length}
+            prnDisabled={!selectedPatient}
+            onPrn={openPrnPicker}
+          />
 
           <div style={{ flex: 1, overflow: 'auto' }}>
             {tab === 'scheduled' && (
-              <ScheduleList
+              <DoseScheduleView
                 items={scheduledItems}
                 loading={loading}
-                title="Scheduled Care Tasks"
                 emptyText="No scheduled care tasks"
-                onMarkComplete={(item) => submitMarkCompleted(item._raw)}
-                onSkip={(item) => handleSkipTask(item._raw)}
-                statusFilters={statusFilters}
-                setStatusFilters={setStatusFilters}
-                showFilters={showFilters}
-                setShowFilters={setShowFilters}
+                labels={TASK_LABELS}
+                selectedId={selectedItem?.id || null}
+                onSelect={(item) => setSelectedId(item ? taskKey(item._raw) : null)}
+                onRecord={(item, opts) => submitMarkCompleted(item._raw, opts)}
+                onSkip={(item, opts) => handleSkipTask(item._raw, opts)}
+                detail={(
+                  <DoseDetailPane
+                    item={selectedItem}
+                    patientId={selectedPatient?.id}
+                    recordingAs={recordingAs}
+                    labels={TASK_LABELS}
+                    scheduleHref="/care/care-tasks/schedule"
+                    skipNote="Recorded as skipped with your note"
+                    historyQuery={(item) => (item?._raw?.care_task_id
+                      ? `/api/care-tasks/history?task_id=${item._raw.care_task_id}`
+                      : null)}
+                    mapHistoryRow={(row) => ({
+                      id: row.id,
+                      at: row.completed_at,
+                      status: row.completion_status === 'skipped' ? 'Skipped' : 'Done',
+                      tone: row.completion_status === 'skipped' ? 'skipped' : 'given',
+                      // No "who": the endpoint returns `completed_by` as a raw
+                      // user id, and an id on a clinical row is noise. Showing
+                      // a name needs the endpoint to resolve it.
+                      meta: null,
+                      note: row.notes,
+                    })}
+                    onRecord={(item, opts) => submitMarkCompleted(item._raw, opts)}
+                    onSkip={(item, opts) => handleSkipTask(item._raw, opts)}
+                  />
+                )}
               />
             )}
 
@@ -400,7 +444,11 @@ const CareTaskModal = ({ onClose }) => {
               </Alert>
               <DialogFooter>
                 <Button variant="secondary" onClick={closeWindowConfirm}>Cancel</Button>
-                <Button onClick={async () => { const task = windowConfirm.task; closeWindowConfirm(); await submitMarkCompleted(task, true); }}>
+                <Button onClick={async () => {
+                  const { task, note } = windowConfirm;
+                  closeWindowConfirm();
+                  await submitMarkCompleted(task, { earlyOverride: true, note });
+                }}>
                   Complete Anyway
                 </Button>
               </DialogFooter>
@@ -410,48 +458,29 @@ const CareTaskModal = ({ onClose }) => {
       })()}
 
       {/* PRN modal — pick a task, then enter time + notes */}
-      <Dialog open={prnModal.open} onOpenChange={(o) => { if (!o) closePrnModal(); }}>
+      {/* PRN step 1: pick a task */}
+      <PrnPicker
+        open={prnModal.open && !prnModal.selectedTask}
+        onOpenChange={(o) => { if (!o) closePrnModal(); }}
+        patientName={selectedPatient
+          ? `${selectedPatient.first_name} ${selectedPatient.last_name}`.trim()
+          : null}
+        rows={careTaskRows(activeTasks)}
+        onSelect={pickPrnTask}
+        eyebrow="Ad-hoc care task"
+        title="Select task"
+        hint="Select a task to set when it was done"
+        emptyText="No active care tasks for this patient."
+      />
+
+      {/* PRN step 2: when it was done + notes */}
+      <Dialog open={prnModal.open && !!prnModal.selectedTask} onOpenChange={(o) => { if (!o) closePrnModal(); }}>
         <DialogContent className="sm:max-w-[480px]" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{prnModal.selectedTask ? `Mark Done — ${prnModal.selectedTask.name}` : 'Mark a Care Task Done'}</DialogTitle>
           </DialogHeader>
 
           {prnError && <Alert variant="destructive">{prnError}</Alert>}
-
-          {/* Step 1: pick a task */}
-          {!prnModal.selectedTask && (
-            activeTasks.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No active care tasks for this patient.</p>
-            ) : (
-              <div className="flex flex-col gap-4">
-                {groupByCategory(activeTasks).map(group => (
-                  <div key={group.id ?? 'uncat'}>
-                    <div className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-                      <span style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: group.color }} />
-                      {group.name}
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      {group.tasks.map(task => (
-                        <Button
-                          key={task.id}
-                          type="button"
-                          variant="secondary"
-                          onClick={() => pickPrnTask(task)}
-                          className="h-auto justify-between py-2.5"
-                          style={{ borderLeft: `4px solid ${group.color}` }}
-                        >
-                          <span className="flex min-w-0 flex-col items-start">
-                            <strong className="text-sm">{task.name}</strong>
-                            {task.description && <span className="text-xs text-muted-foreground">{task.description}</span>}
-                          </span>
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )
-          )}
 
           {/* Step 2: time + notes */}
           {prnModal.selectedTask && (
