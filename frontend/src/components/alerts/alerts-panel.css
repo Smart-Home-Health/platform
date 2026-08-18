@@ -1,0 +1,445 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Alert episodes at both dock stops.
+ *
+ * Colour roles differ from the schedule panels on purpose. There, adherence is
+ * never red — being late is not an emergency. Here red *is* correct: an alert
+ * is the clinical concern the palette reserves it for. So an ongoing episode is
+ * red (--vc-state-alert), one waiting on a human is amber (--vc-state-due), and
+ * a reviewed one is green.
+ *
+ * Rendered outside the `.tw` island, so box-sizing and the bare <button> paint
+ * are asserted; `:where()` keeps that reset at element specificity. */
+@import '../../styles/vc-tokens.css';
+
+.al-panel, .al-panel * { box-sizing: border-box; }
+:where(.al-panel) button {
+  font-family: var(--vc-font-mono);
+  padding: 0;
+  border: 1px solid transparent;
+  background: none;
+  color: inherit;
+}
+
+.al-panel.wide {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+  gap: 1rem;
+  align-items: start;
+}
+.al-list { min-width: 0; display: flex; flex-direction: column; gap: 0.55rem; }
+.al-side { min-width: 0; }
+
+/* ---- header line ---- */
+
+.al-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  row-gap: 0.45rem;
+  gap: 0.6rem;
+  padding-bottom: 0.6rem;
+  margin-bottom: 0.7rem;
+  border-bottom: 1px solid var(--vc-line-hairline);
+}
+.al-count {
+  white-space: nowrap;
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.al-count strong { color: var(--vc-state-due); font-weight: 700; }
+.al-head-actions { display: flex; align-items: center; gap: 0.5rem; margin-left: auto; }
+
+/* ---- episode card ---- */
+
+.al-card {
+  border: 1px solid var(--vc-line-hairline);
+  border-left: 3px solid var(--vc-line-strong);
+  border-radius: 10px;
+  background: var(--vc-bg-surface);
+  overflow: hidden;
+}
+.al-card.active { border-left-color: var(--vc-state-alert); }
+.al-card.unacknowledged { border-left-color: var(--vc-state-due); }
+.al-card.acknowledged { border-left-color: var(--vc-state-complete); }
+.al-card.selected { border-color: var(--vc-data-live); }
+
+.al-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  width: 100%;
+  padding: 0.7rem 0.8rem 0.55rem;
+  text-align: left;
+  cursor: pointer;
+}
+.al-card-body:hover { background: var(--vc-bg-raised); }
+.al-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.al-seq {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 50%;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--vc-text-secondary);
+}
+.al-title {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.al-when {
+  flex-shrink: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+  white-space: nowrap;
+}
+.al-badge {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.12rem 0.45rem;
+  border: 1px solid;
+  border-radius: 999px;
+  font-family: var(--vc-font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.al-badge.active {
+  color: var(--vc-state-alert);
+  border-color: color-mix(in srgb, var(--vc-state-alert) 55%, transparent);
+  background: color-mix(in srgb, var(--vc-state-alert) 12%, transparent);
+}
+.al-badge.unacknowledged {
+  color: var(--vc-state-due);
+  border-color: color-mix(in srgb, var(--vc-state-due) 55%, transparent);
+  background: color-mix(in srgb, var(--vc-state-due) 12%, transparent);
+}
+.al-badge.acknowledged {
+  color: var(--vc-state-complete);
+  border-color: color-mix(in srgb, var(--vc-state-complete) 45%, transparent);
+  background: color-mix(in srgb, var(--vc-state-complete) 10%, transparent);
+}
+
+/* The one line a caregiver actually scans. */
+.al-vitals {
+  font-family: var(--vc-font-mono);
+  font-size: 11.5px;
+  color: var(--vc-text-secondary);
+}
+/* Red marks the signal that actually tripped its alarm, not every number on
+   the row — an episode where SpO2 breached and the heart rate did not should
+   say so. */
+.al-vitals b { color: var(--vc-text-primary); font-weight: 700; }
+.al-vitals b.breach { color: var(--vc-state-alert); }
+.al-vitals .ok { color: var(--vc-text-primary); font-weight: 700; }
+.al-vitals .sep { color: var(--vc-text-tertiary); margin: 0 0.3rem; }
+
+.al-card-actions { display: flex; gap: 0.4rem; padding: 0 0.8rem 0.7rem; }
+.al-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 32px;
+  padding: 0 0.75rem;
+  border-radius: 8px;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.al-btn.primary {
+  border: 1px solid var(--vc-data-live);
+  background: color-mix(in srgb, var(--vc-data-live) 16%, transparent);
+  color: var(--vc-text-primary);
+  flex: 1;
+}
+.al-btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--vc-data-live) 28%, transparent); }
+.al-btn.ghost { border: 1px solid var(--vc-line-strong); color: var(--vc-text-secondary); flex: 1; }
+.al-btn.ghost:hover:not(:disabled) { color: var(--vc-text-primary); border-color: var(--vc-text-tertiary); }
+.al-btn:disabled { opacity: 0.45; cursor: default; }
+
+.al-empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--vc-text-tertiary);
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.al-error {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--vc-state-alert) 55%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--vc-state-alert) 12%, transparent);
+  color: var(--vc-text-primary);
+  font-family: var(--vc-font-sans);
+  font-size: 12.5px;
+}
+
+.al-toggle {
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+  cursor: pointer;
+}
+.al-toggle input { accent-color: var(--vc-data-live); width: 14px; height: 14px; }
+
+/* ---- stacked detail (narrow) ---- */
+
+.al-panel.stacked { display: flex; flex-direction: column; gap: 0.7rem; }
+.al-back {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 38px;
+  padding: 0 0.7rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-surface);
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.al-back:hover { color: var(--vc-text-primary); border-color: var(--vc-line-strong); }
+
+/* ---- episode detail ---- */
+
+.al-detail { display: flex; flex-direction: column; gap: 0.9rem; }
+.al-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid var(--vc-line-hairline);
+}
+.al-detail-title {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+
+.al-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-left: 3px solid var(--vc-line-strong);
+  border-radius: 8px;
+  background: var(--vc-bg-surface);
+}
+.al-status.active { border-left-color: var(--vc-state-alert); }
+.al-status.unacknowledged { border-left-color: var(--vc-state-due); }
+.al-status.acknowledged { border-left-color: var(--vc-state-complete); }
+.al-status-alarms {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.al-status-alarms strong { color: var(--vc-text-primary); }
+
+.al-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.6rem;
+}
+.al-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-surface);
+}
+.al-info-label {
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.al-info-value {
+  font-family: var(--vc-font-mono);
+  font-size: 12px;
+  color: var(--vc-text-primary);
+  word-break: break-word;
+}
+
+/* The two series keep the board's own colours so the episode reads as the
+   same data the charts behind it are showing. */
+.al-metric {
+  padding: 0.65rem 0.8rem;
+  border: 1px solid;
+  border-radius: 10px;
+}
+.al-metric.spo2 {
+  border-color: color-mix(in srgb, var(--vc-data-live) 40%, transparent);
+  background: color-mix(in srgb, var(--vc-data-live) 10%, transparent);
+}
+.al-metric.hr {
+  border-color: color-mix(in srgb, var(--vc-state-complete) 40%, transparent);
+  background: color-mix(in srgb, var(--vc-state-complete) 10%, transparent);
+}
+.al-metric-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+}
+.al-metric-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.al-metric.spo2 .al-metric-label { color: var(--vc-data-live); }
+.al-metric.hr .al-metric-label { color: var(--vc-state-complete); }
+.al-metric-value {
+  font-family: var(--vc-font-mono);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-text-primary);
+}
+/* Red only here: an alarm actually tripped. */
+.al-alarm {
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  background: var(--vc-state-alert);
+  color: var(--vc-bg-base);
+  font-family: var(--vc-font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* ---- wide: table ----
+   Same visual language as the schedule panels' tables so the sections read as
+   one board. Fixed layout because the columns should line up down the page
+   regardless of how long an event name happens to be. */
+.al-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-family: var(--vc-font-mono);
+}
+.al-table th, .al-table td {
+  padding: 0.6rem 0.7rem;
+  text-align: left;
+  border-bottom: 1px solid var(--vc-line-hairline);
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.al-table thead th {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+  border-bottom-color: var(--vc-line-strong);
+}
+.al-table th:nth-child(1) { width: 20%; }
+.al-table th:nth-child(2) { width: auto; }
+.al-table th:nth-child(3) { width: 22%; }
+.al-table th:nth-child(4) { width: 11%; }
+.al-table th:nth-child(5) { width: 13%; }
+.al-table th:nth-child(6) { width: 11%; }
+.al-table tbody td { font-size: 12px; color: var(--vc-text-secondary); }
+.al-table tbody tr { cursor: pointer; border-left: 3px solid transparent; }
+.al-table tbody tr:hover { background: var(--vc-bg-surface); }
+.al-table tbody tr.selected {
+  background: var(--vc-bg-surface);
+  border-left-color: var(--vc-data-live);
+}
+.al-td-time { white-space: nowrap; }
+.al-rowbtn {
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--vc-text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+.al-rowbtn:hover { color: var(--vc-data-live); }
+.al-actions-col { white-space: nowrap; text-align: right; }
+.al-btn.sm { min-height: 28px; font-size: 9.5px; padding: 0 0.55rem; flex: none; }

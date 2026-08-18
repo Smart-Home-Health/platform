@@ -15,129 +15,67 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import ModalBase from './ModalBase';
 import AlertsList from './alerts/AlertsList';
 import AlertsHistory from './alerts/AlertsHistory';
+import './alerts/alerts-panel.css';
+import PanelViewSwitcher from './section-panel/PanelViewSwitcher';
+import { useAdminPatient } from '../contexts/AdminPatientContext';
+import './section-panel/section-panel.css';
 
 export default function AlertsModal({ isOpen, onClose, alertsCount, onAlertAcknowledged }) {
   const [tab, setTab] = useState('list');
-
-  // Mark alerts as viewed when modal opens
-  useEffect(() => {
-    if (alertsCount > 0 && isOpen) {
-      // You can add alerts viewed logic here if needed
-    }
-  }, [alertsCount, isOpen]);
+  const { selectedPatient } = useAdminPatient();
 
   const handleAlertAcknowledge = (alertId) => {
-    if (onAlertAcknowledged) {
-      onAlertAcknowledged(alertId);
-    }
+    if (onAlertAcknowledged) onAlertAcknowledged(alertId);
   };
 
-  const renderContent = () => {
-    switch (tab) {
-      case 'list':
-        return <AlertsList onAlertAcknowledge={handleAlertAcknowledge} />;
-      case 'history':
-        return <AlertsHistory />;
-      default:
-        return <AlertsList onAlertAcknowledge={handleAlertAcknowledge} />;
-    }
-  };
-
-  // If not using modal wrapper (for future noModal prop)
-  const renderInnerContent = () => (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      {renderContent()}
-    </div>
-  );
+  // The second view is not an alert history — it is the day’s pulse-ox
+  // analysis. The sublabel says so rather than the tab quietly misnaming it.
+  const views = useMemo(() => ([
+    {
+      value: 'list',
+      label: 'Alerts',
+      sublabel: 'Pulse ox episodes',
+      note: alertsCount > 0 ? `${alertsCount} unreviewed` : 'All reviewed',
+      tone: alertsCount > 0 ? 'due' : 'given',
+    },
+    {
+      value: 'history',
+      label: 'History',
+      sublabel: 'Daily pulse-ox analysis',
+    },
+  ]), [alertsCount]);
 
   return (
     <ModalBase isOpen={isOpen} onClose={onClose} title={
-      <div style={{ display: 'flex', gap: '8px' }}>
-        <button
-          onClick={() => setTab('list')}
-          style={{
-            padding: '8px 16px',
-            border: 'none',
-            borderRadius: '6px',
-            backgroundColor: tab === 'list' ? 'var(--primary)' : 'var(--secondary)',
-            color: tab === 'list' ? 'var(--primary-foreground)' : 'var(--secondary-foreground)',
-            cursor: 'pointer',
-            fontWeight: '500',
-            fontSize: '14px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}
-        >
-          Alert List
-          {alertsCount > 0 && (
-            <span style={{
-              backgroundColor: 'var(--destructive)',
-              color: 'var(--destructive-foreground)',
-              borderRadius: '12px',
-              padding: '2px 8px',
-              fontSize: '12px',
-              fontWeight: 'bold'
-            }}>
-              {alertsCount}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => setTab('history')}
-          style={{
-            padding: '8px 16px',
-            border: 'none',
-            borderRadius: '6px',
-            backgroundColor: tab === 'history' ? 'var(--primary)' : 'var(--secondary)',
-            color: tab === 'history' ? 'var(--primary-foreground)' : 'var(--secondary-foreground)',
-            cursor: 'pointer',
-            fontWeight: '500',
-            fontSize: '14px'
-          }}
-        >
-          History
-        </button>
-        {/* Future navigation tabs can be added here */}
-        {/* 
-        <button
-          onClick={() => setTab('analytics')}
-          style={{
-            padding: '8px 16px',
-            border: 'none',
-            borderRadius: '6px',
-            backgroundColor: tab === 'analytics' ? '#007bff' : '#f8f9fa',
-            color: tab === 'analytics' ? '#fff' : '#333',
-            cursor: 'pointer',
-            fontWeight: '500',
-            fontSize: '14px'
-          }}
-        >
-          Analytics
-        </button>
-        <button
-          onClick={() => setTab('settings')}
-          style={{
-            padding: '8px 16px',
-            border: 'none',
-            borderRadius: '6px',
-            backgroundColor: tab === 'settings' ? '#007bff' : '#f8f9fa',
-            color: tab === 'settings' ? '#fff' : '#333',
-            cursor: 'pointer',
-            fontWeight: '500',
-            fontSize: '14px'
-          }}
-        >
-          Settings
-        </button>
-        */}
-      </div>
+      <span className="mp-modal-title">
+        <span>Alerts</span>
+        <span className="mp-modal-title-sub">
+          {selectedPatient
+            ? `${selectedPatient.first_name} ${selectedPatient.last_name} · ${tab === 'history' ? 'Analysis' : 'Episodes'}`
+            : 'No patient selected'}
+        </span>
+      </span>
     }>
-      {renderInnerContent()}
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <PanelViewSwitcher views={views} value={tab} onChange={setTab} />
+
+        <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+          {/* With no patient chosen the alert queries drop their patient filter
+              and return every patient's episodes, so hold off entirely — the
+              same bail the medication and care-task panels make. */}
+          {!selectedPatient ? (
+            <div className="al-empty">Select a patient to see alerts</div>
+          ) : tab === 'history' ? (
+            <AlertsHistory patientId={selectedPatient.id} />
+          ) : (
+            <AlertsList onAlertAcknowledge={handleAlertAcknowledge} patientId={selectedPatient.id} />
+          )}
+        </div>
+      </div>
     </ModalBase>
   );
 }
