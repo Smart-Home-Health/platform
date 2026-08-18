@@ -41,18 +41,53 @@ export default function PanelViewSwitcher({
   views,
   value,
   onChange,
-  prnCount = 0,
-  prnDisabled = false,
-  onPrn,
+  actions = [],
 }) {
   const current = views.find((v) => v.value === value) || views[0];
+  // Nutrition has a single view; a dropdown that cannot go anywhere is a lie
+  // about what is available, so it renders as a plain heading instead.
+  const single = views.length < 2;
+
+  const actionButtons = actions.map((action) => (
+    <button
+      key={action.label}
+      type="button"
+      className="mp-prn-btn"
+      onClick={action.onClick}
+      disabled={action.disabled}
+      title={action.title || action.label}
+    >
+      <span className="mp-prn-label">{action.label}</span>
+      {action.count != null && <span className="mp-prn-count">{action.count}</span>}
+    </button>
+  ));
+
+  if (single) {
+    return (
+      <div className="mp-viewrow">
+        <span className="mp-viewrow-label">View</span>
+        <div className="mp-viewrow-controls">
+          <div className="mp-view-trigger static">
+            <span className="mp-view-trigger-text">
+              <span className="mp-view-title">{current?.label}</span>
+              {current?.sublabel && <span className="mp-view-sub">{current.sublabel}</span>}
+            </span>
+            {current?.note && (
+              <span className={`mp-view-note ${current.tone || ''}`}>{current.note}</span>
+            )}
+          </div>
+          {actionButtons}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mp-viewrow">
       <span className="mp-viewrow-label">View</span>
       <div className="mp-viewrow-controls">
         <SelectPrimitive.Root value={value} onValueChange={onChange}>
-          <SelectPrimitive.Trigger className="mp-view-trigger" aria-label="Choose a medication view">
+          <SelectPrimitive.Trigger className="mp-view-trigger" aria-label="Choose a view">
             <span className="mp-view-trigger-text">
               <span className="mp-view-title">{current?.label}</span>
               {current?.sublabel && <span className="mp-view-sub">{current.sublabel}</span>}
@@ -93,16 +128,7 @@ export default function PanelViewSwitcher({
           </SelectPrimitive.Portal>
         </SelectPrimitive.Root>
 
-        <button
-          type="button"
-          className="mp-prn-btn"
-          onClick={onPrn}
-          disabled={prnDisabled}
-          title={prnDisabled ? 'No as-needed medications for this patient' : 'Give an as-needed medication'}
-        >
-          <span className="mp-prn-label">PRN</span>
-          <span className="mp-prn-count">{prnCount}</span>
-        </button>
+        {actionButtons}
       </div>
     </div>
   );

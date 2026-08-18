@@ -330,9 +330,13 @@ const CareTaskModal = ({ onClose }) => {
             views={viewOptions}
             value={tab}
             onChange={setTab}
-            prnCount={activeTasks.length}
-            prnDisabled={!selectedPatient}
-            onPrn={openPrnPicker}
+            actions={[{
+              label: 'PRN',
+              count: activeTasks.length,
+              onClick: openPrnPicker,
+              disabled: !selectedPatient,
+              title: 'Record an ad-hoc care task',
+            }]}
           />
 
           <div style={{ flex: 1, overflow: 'auto' }}>
@@ -354,8 +358,8 @@ const CareTaskModal = ({ onClose }) => {
                     labels={TASK_LABELS}
                     scheduleHref="/care/care-tasks/schedule"
                     skipNote="Recorded as skipped with your note"
-                    historyQuery={(item) => (item?._raw?.care_task_id
-                      ? `/api/care-tasks/history?task_id=${item._raw.care_task_id}`
+                    historyQuery={(item, pid) => (item?._raw?.care_task_id
+                      ? `/api/care-tasks/history?task_id=${item._raw.care_task_id}&patient_id=${pid}&limit=10`
                       : null)}
                     mapHistoryRow={(row) => ({
                       id: row.id,

@@ -520,10 +520,18 @@ def get_patient_nutrition_intake(
     limit: int = 50,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
+    schedule_id: Optional[int] = None,
 ) -> List[NutritionIntake]:
     """Get nutrition intake records for a patient, optionally bounded by a
-    consumed_at date range (UTC datetimes)."""
+    consumed_at date range (UTC datetimes).
+
+    `schedule_id` narrows to the intakes recorded against one nutrition
+    schedule — what the dose panel shows as that item's history. Ad-hoc
+    intakes carry no schedule, so they are correctly excluded.
+    """
     query = db.query(NutritionIntake).filter(NutritionIntake.patient_id == patient_id)
+    if schedule_id is not None:
+        query = query.filter(NutritionIntake.schedule_id == schedule_id)
     if start_date:
         query = query.filter(NutritionIntake.consumed_at >= start_date)
     if end_date:

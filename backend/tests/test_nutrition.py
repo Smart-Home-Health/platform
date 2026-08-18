@@ -26,6 +26,54 @@ def _iso_utc(d, hour):
     return f"{d.isoformat()}T{hour:02d}:00:00+00:00"
 
 
+def test_intake_history_filters_by_schedule(admin_client, patient, db_session):
+    """`schedule_id` narrows intake history to one nutrition schedule.
+
+    The dose panel shows this as an item's own history, so it must not mix in
+    other items — and ad-hoc intakes, which carry no schedule at all, must not
+    appear under any of them.
+    """
+    from schemas.nutrition_intake import NutritionIntake
+    from schemas.nutrition_schedule import NutritionSchedule
+    from datetime import datetime, timezone
+
+    def _schedule(name):
+        row = NutritionSchedule(patient_id=patient.id, schedule_type="liquid",
+                                name=name, cron_expression="0 1 * * *")
+        db_session.add(row)
+        db_session.flush()
+        return row.id
+
+    water_id = _schedule("Overnight Water")
+    feed_id = _schedule("Morning Feed")
+
+    def _record(schedule_id, name):
+        db_session.add(NutritionIntake(
+            patient_id=patient.id, schedule_id=schedule_id, item_name=name,
+            item_type="liquid", amount=100.0, amount_unit="ml",
+            consumed_at=datetime.now(timezone.utc),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        ))
+
+    _record(water_id, "Overnight Water")
+    _record(water_id, "Overnight Water")
+    _record(feed_id, "Morning Feed")
+    _record(None, "Ad-hoc sip")
+    db_session.commit()
+
+    scoped = admin_client.get(
+        f"/api/patients/{patient.id}/nutrition-intake?schedule_id={water_id}")
+    assert scoped.status_code == 200, scoped.text
+    names = [r["item_name"] for r in scoped.json()]
+    assert names == ["Overnight Water", "Overnight Water"]
+
+    # Unfiltered still returns everything, ad-hoc included.
+    everything = admin_client.get(f"/api/patients/{patient.id}/nutrition-intake")
+    assert {r["item_name"] for r in everything.json()} == {
+        "Overnight Water", "Morning Feed", "Ad-hoc sip"}
+
+
 def test_create_nutrition_intake(admin_client, patient):
     resp = admin_client.post(f"/api/nutrition-intake?patient_id={patient.id}", json=_intake())
     assert resp.status_code == 200

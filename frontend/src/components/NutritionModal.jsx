@@ -27,7 +27,12 @@ import {
 } from '../utils/timezone';
 import IntakeModal from '../pages/admin-v2/components/IntakeModal';
 import OutputModal from '../pages/admin-v2/components/OutputModal';
-import ScheduleList from './schedule/ScheduleList';
+import DoseScheduleView from './schedule/DoseScheduleView';
+import DoseDetailPane from './schedule/DoseDetailPane';
+import { NUTRITION_LABELS } from './schedule/scheduleLabels';
+import { rollupSchedule } from './schedule/scheduleRollup';
+import PanelViewSwitcher from './section-panel/PanelViewSwitcher';
+import './section-panel/section-panel.css';
 import { computeScheduleStatus } from './schedule/scheduleStatus';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
@@ -54,9 +59,12 @@ const NutritionModal = ({ onClose }) => {
   const { selectedPatient } = useAdminPatient();
   const { user } = useAuth() || {};
   const [tab, setTab] = useState('scheduled');
+  // Keyed on the schedule slot, not the normalized id — see the medication
+  // panel: the id embeds the log and changes the moment an item is recorded.
+  const [selectedId, setSelectedId] = useState(null);
+  const [bulkConfirm, setBulkConfirm] = useState({ open: false, items: [], count: 0 });
   const [scheduled, setScheduled] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' && window.innerWidth <= 768);
 
   // Off-window confirm (mirrors care-task modal)
   const [windowConfirm, setWindowConfirm] = useState({ open: false, item: null, check: null });
@@ -65,12 +73,6 @@ const NutritionModal = ({ onClose }) => {
   // the shared AdminV2 modal of the same name.
   const [prnMode, setPrnMode] = useState(null); // null | 'pick' | 'intake' | 'output'
   const [prnDefaultDateTime, setPrnDefaultDateTime] = useState('');
-
-  useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth <= 768);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
 
   useEffect(() => {
     if (!selectedPatient) return;
@@ -124,8 +126,31 @@ const NutritionModal = ({ onClose }) => {
     });
   }, [scheduled]);
 
+  const itemKey = (raw) => `${raw?.schedule_id ?? 'prn'}-${raw?.scheduled_time}`;
+  const selectedItem = useMemo(
+    () => scheduledItems.find(i => itemKey(i._raw) === selectedId) || null,
+    [scheduledItems, selectedId]
+  );
+  const recordingAs = user?.full_name || user?.username || null;
+
+  // Nutrition has a single view, so the row shows a heading rather than a
+  // dropdown — the outstanding count still earns its place.
+  const viewOptions = useMemo(() => {
+    const { counts } = rollupSchedule(scheduledItems);
+    const outstanding = counts.missed + counts.due;
+    return [{
+      value: 'scheduled',
+      label: 'Scheduled',
+      sublabel: "Today's nutrition",
+      note: counts.missed > 0
+        ? `${counts.missed} missed`
+        : (outstanding > 0 ? `${outstanding} due` : 'All done'),
+      tone: counts.missed > 0 || outstanding > 0 ? 'due' : 'given',
+    }];
+  }, [scheduledItems]);
+
   // ===== Complete scheduled item =====
-  const submitComplete = async (item, earlyOverride = false) => {
+  const submitComplete = async (item, { earlyOverride = false, note } = {}) => {
     try {
       const res = await fetch(`${config.apiUrl}/api/schedule/complete/nutrition`, {
         method: 'POST',
@@ -137,7 +162,7 @@ const NutritionModal = ({ onClose }) => {
           patient_id: selectedPatient.id,
           user_id: user?.id || null,
           completed_at: null,
-          notes: 'Completed via live dashboard',
+          notes: note || 'Completed via live dashboard',
           early_override: earlyOverride,
         }),
       });
@@ -155,6 +180,7 @@ const NutritionModal = ({ onClose }) => {
         setWindowConfirm({
           open: true,
           item,
+          note,
           check: checkAdministrationWindow(item.scheduled_time),
         });
         return;
@@ -166,12 +192,52 @@ const NutritionModal = ({ onClose }) => {
     }
   };
 
-  const handleMarkCompleted = (item) => submitComplete(item, false);
-
   // ===== PRN entry =====
-  const openPrnPicker = () => {
+  // Seeds the form's default time, which the direct Intake/Output buttons
+  // would otherwise skip.
+  const openPrn = (mode) => {
     setPrnDefaultDateTime(getCurrentLocalDateTime());
-    setPrnMode('pick');
+    setPrnMode(mode);
+  };
+
+  // Bulk uses the unified endpoint, which fills each item's defaults from its
+  // schedule and publishes the due-count change just as the single path does.
+  // It pre-flights the whole batch against the administration window, so one
+  // confirmation covers the slot instead of one dialog per item.
+  const submitBulk = async (items, { earlyOverride = false } = {}) => {
+    if (!selectedPatient || items.length === 0) return;
+    try {
+      const res = await fetch(`${config.apiUrl}/api/schedule/complete/bulk`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nutrition: items.map(i => ({
+            schedule_id: i.schedule_id,
+            scheduled_time: i.scheduled_time,
+            patient_id: selectedPatient.id,
+            user_id: user?.id || null,
+            completed_at: null,
+            early_override: earlyOverride,
+          })),
+        }),
+      });
+      if (res.ok) { fetchSchedule(); return; }
+      const err = await res.json().catch(() => ({}));
+      const offWindow = res.status === 409 && (
+        err.error === 'early_administration' ||
+        err.error === 'late_administration' ||
+        err.error === 'off_window_administration'
+      );
+      if (offWindow && !earlyOverride) {
+        setBulkConfirm({ open: true, items, count: err.early_items?.length || items.length });
+        return;
+      }
+      alert(err.detail || err.error || 'Failed to record all');
+    } catch (err) {
+      console.error('Error completing nutrition items:', err);
+      alert('Error connecting to server');
+    }
   };
 
   const closePrn = () => setPrnMode(null);
@@ -185,54 +251,71 @@ const NutritionModal = ({ onClose }) => {
   return (
     <>
       <ModalBase isOpen={true} onClose={onClose} title={
-        isMobile ? (
-          <div className="tw flex w-full gap-2">
-            <Select value={tab} onValueChange={setTab}>
-              <SelectTrigger className="flex-1"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="scheduled">Scheduled</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button
-              onClick={openPrnPicker}
-              disabled={!selectedPatient}
-              className="shrink-0 bg-[#6f42c1] text-white hover:bg-[#6f42c1]/90"
-            >PRN</Button>
-          </div>
-        ) : (
-          <div className="tw flex w-full items-center gap-2">
-            <Button
-              size="sm"
-              variant={tab === 'scheduled' ? 'default' : 'secondary'}
-              onClick={() => setTab('scheduled')}
-            >Scheduled</Button>
-            <Button
-              size="sm"
-              onClick={openPrnPicker}
-              disabled={!selectedPatient}
-              className="bg-[#6f42c1] text-white hover:bg-[#6f42c1]/90"
-            >PRN</Button>
-          </div>
-        )
+        <span className="mp-modal-title">
+          <span>Nutrition</span>
+          <span className="mp-modal-title-sub">
+            {selectedPatient
+              ? `${selectedPatient.first_name} ${selectedPatient.last_name} \u00b7 Schedule`
+              : 'No patient selected'}
+          </span>
+        </span>
       }>
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-          {/* Patient banner */}
-          <div className="tw" style={{ marginBottom: 16 }}>
-            <Alert variant={selectedPatient ? 'default' : 'warning'}>
-              {selectedPatient
-                ? <>Viewing nutrition for: {selectedPatient.first_name} {selectedPatient.last_name}</>
-                : 'No patient selected'}
-            </Alert>
-          </div>
+          {!selectedPatient && (
+            <div className="tw" style={{ marginBottom: 16 }}>
+              <Alert variant="warning">No patient selected</Alert>
+            </div>
+          )}
+
+          {/* Two entry points rather than one PRN: intake and output are
+              different records, and the extra pick dialog was a tap with
+              nothing else in it. */}
+          <PanelViewSwitcher
+            views={viewOptions}
+            value={tab}
+            onChange={setTab}
+            actions={[
+              { label: 'Intake', onClick: () => openPrn('intake'), disabled: !selectedPatient,
+                title: 'Log an ad-hoc intake' },
+              { label: 'Output', onClick: () => openPrn('output'), disabled: !selectedPatient,
+                title: 'Log an output' },
+            ]}
+          />
 
           <div style={{ flex: 1, overflow: 'auto' }}>
             {tab === 'scheduled' && (
-              <ScheduleList
+              <DoseScheduleView
                 items={scheduledItems}
                 loading={loading}
-                title="Scheduled Nutrition"
                 emptyText="No scheduled nutrition for today"
-                onMarkComplete={(item) => handleMarkCompleted(item._raw)}
+                labels={NUTRITION_LABELS}
+                selectedId={selectedItem?.id || null}
+                onSelect={(item) => setSelectedId(item ? itemKey(item._raw) : null)}
+                onRecord={(item, opts) => submitComplete(item._raw, opts)}
+                onRecordAll={(items) => submitBulk(items.map(i => i._raw))}
+                detail={(
+                  <DoseDetailPane
+                    item={selectedItem}
+                    patientId={selectedPatient?.id}
+                    recordingAs={recordingAs}
+                    labels={NUTRITION_LABELS}
+                    scheduleHref="/care/nutrition/schedule"
+                    historyQuery={(item, pid) => (item?._raw?.schedule_id
+                      ? `/api/patients/${pid}/nutrition-intake?schedule_id=${item._raw.schedule_id}&limit=10`
+                      : null)}
+                    mapHistoryRow={(row) => ({
+                      id: row.id,
+                      at: row.consumed_at,
+                      status: 'Taken',
+                      tone: 'given',
+                      meta: row.amount != null
+                        ? `${row.amount}${row.amount_unit ? ` ${row.amount_unit}` : ''}`
+                        : null,
+                      note: row.notes,
+                    })}
+                    onRecord={(item, opts) => submitComplete(item._raw, opts)}
+                  />
+                )}
               />
             )}
           </div>
@@ -249,7 +332,7 @@ const NutritionModal = ({ onClose }) => {
         const offsetText = isLate
           ? `${formatDurationMinutes(Math.abs(windowConfirm.check.minutesOffset))} ago`
           : `${formatDurationMinutes(windowConfirm.check.minutesOffset)} from now`;
-        const close = () => setWindowConfirm({ open: false, item: null, check: null });
+        const close = () => setWindowConfirm({ open: false, item: null, note: undefined, check: null });
         return (
           <Dialog open onOpenChange={(o) => { if (!o) close(); }}>
             <DialogContent className="sm:max-w-[440px]" aria-describedby={undefined}>
@@ -271,9 +354,9 @@ const NutritionModal = ({ onClose }) => {
                 <Button variant="secondary" onClick={close}>Cancel</Button>
                 <Button
                   onClick={async () => {
-                    const item = windowConfirm.item;
+                    const { item, note } = windowConfirm;
                     close();
-                    await submitComplete(item, true);
+                    await submitComplete(item, { earlyOverride: true, note });
                   }}
                 >Complete Anyway</Button>
               </DialogFooter>
@@ -282,31 +365,30 @@ const NutritionModal = ({ onClose }) => {
         );
       })()}
 
-      {/* PRN pick: intake vs output */}
-      <Dialog open={prnMode === 'pick'} onOpenChange={(o) => { if (!o) closePrn(); }}>
-        <DialogContent className="sm:max-w-[480px]" aria-describedby={undefined}>
+      {/* Off-window confirm for a whole slot */}
+      <Dialog open={bulkConfirm.open} onOpenChange={(o) => { if (!o) setBulkConfirm({ open: false, items: [], count: 0 }); }}>
+        <DialogContent className="sm:max-w-[440px]" aria-describedby={undefined}>
           <DialogHeader>
-            <DialogTitle>Log Ad-Hoc Nutrition</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="flex h-7 w-7 items-center justify-center rounded-md bg-[rgba(240,136,62,0.2)] text-[#f0883e]">⚠</span>
+              Confirm Off-Window Completion
+            </DialogTitle>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-3">
-            <Button
-              type="button"
-              onClick={() => setPrnMode('intake')}
-              className="h-auto flex-col gap-1.5 py-6 text-base font-bold"
-            >
-              <span className="text-2xl leading-none">↓</span>
-              Log Intake
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setPrnMode('output')}
-              className="h-auto flex-col gap-1.5 py-6 text-base font-bold"
-            >
-              <span className="text-2xl leading-none">↑</span>
-              Log Output
-            </Button>
-          </div>
+          <Alert variant="warning">
+            <div className="mb-1.5 font-semibold text-[#f0883e]">Some items are outside their window</div>
+            <div>
+              {bulkConfirm.count} item{bulkConfirm.count === 1 ? ' is' : 's are'} outside the
+              administration window. Record them anyway?
+            </div>
+          </Alert>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setBulkConfirm({ open: false, items: [], count: 0 })}>Cancel</Button>
+            <Button onClick={async () => {
+              const items = bulkConfirm.items;
+              setBulkConfirm({ open: false, items: [], count: 0 });
+              await submitBulk(items, { earlyOverride: true });
+            }}>Record Anyway</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
