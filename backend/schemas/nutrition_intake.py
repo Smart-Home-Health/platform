@@ -26,9 +26,17 @@ class NutritionIntake(Base):
     care_task_log_id = Column(Integer, ForeignKey('care_task_log.id'), nullable=True)  # Link to care task completion
     schedule_id = Column(Integer, ForeignKey('nutrition_schedules.id', ondelete='SET NULL'), nullable=True)  # Link to nutrition schedule
     
+    # One user action can produce several intake rows -- a tube feed and its
+    # water flush are separate records by design, but were logged together and
+    # should undo together. See nutrition_vocab / the preset expansion.
+    event_group_id = Column(String(36), nullable=True, index=True)
+
     # Item details
     item_name = Column(String, nullable=False)  # e.g., "Peptamen", "Water", "Apple"
-    item_type = Column(String, nullable=False)  # 'food', 'liquid', 'supplement'
+    item_type = Column(String, nullable=False)  # 'food', 'liquid', 'supplement', 'tube_feed'
+
+    # Saved reusable item this was logged from, when it came from the library.
+    item_id = Column(Integer, ForeignKey('nutrition_items.id', ondelete='SET NULL'), nullable=True)
     
     # Nutritional information
     amount = Column(Float, nullable=False)  # Quantity consumed
@@ -42,6 +50,12 @@ class NutritionIntake(Base):
     fiber_grams = Column(Float, nullable=True)
     sodium_mg = Column(Float, nullable=True)
     
+    # Tube-feed specifics. Null for every other intake type. The water flush
+    # that accompanies a feed is its own row (type 'liquid'), not a column here.
+    feed_route = Column(String(20), nullable=True)  # 'bolus', 'pump', 'gravity'
+    rate_ml_per_hr = Column(Float, nullable=True)
+    duration_minutes = Column(Float, nullable=True)
+
     # Timing and context
     consumed_at = Column(TIMESTAMP(timezone=True), nullable=False)  # When it was consumed
     scheduled_time = Column(TIMESTAMP(timezone=True), nullable=True)  # The scheduled time this intake was for (if from schedule)
