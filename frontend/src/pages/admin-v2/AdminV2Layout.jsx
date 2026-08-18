@@ -358,7 +358,7 @@ const AdminV2Layout = ({ children }) => {
   // covers Radix's portalled Select/Dialog content. Widen this test as more
   // sections are rebuilt.
   useEffect(() => {
-    const vcFormSkinPaths = ['/care/configuration', '/care/medications'];
+    const vcFormSkinPaths = ['/care/configuration', '/care/medications', '/care/nutrition'];
     if (!vcFormSkinPaths.some((p) => location.pathname.startsWith(p))) return undefined;
     document.body.classList.add('vc-form-skin');
     return () => document.body.classList.remove('vc-form-skin');

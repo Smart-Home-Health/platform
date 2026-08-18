@@ -35,6 +35,7 @@ import {
   ToiletIcon,
   TargetIcon,
 } from '../../../components/Icons';
+import { groupOutputEvents } from '../../../components/nutrition/groupOutputs';
 
 /**
  * Nutrition Overview — single-day rollup of intake + output for one patient.
@@ -117,42 +118,19 @@ const NutritionOverview = ({
   // urine + bowel from the same physical diaper change are logged as two
   // rows but should render as one. Non-diaper outputs and lone diapers are
   // passed through unchanged.
-  const mergedOutputs = useMemo(() => {
-    const MERGE_WINDOW_MS = 3 * 60 * 1000; // 3 min — generous for back-to-back saves
-    const standalone = [];
-    const diapers = [];
-    for (const o of outputs) {
-      (o.is_diaper ? diapers : standalone).push(o);
-    }
-    diapers.sort((a, b) => new Date(a.occurred_at) - new Date(b.occurred_at));
-    const groups = [];
-    for (const d of diapers) {
-      const last = groups[groups.length - 1];
-      if (last && Math.abs(new Date(d.occurred_at) - new Date(last[0].occurred_at)) <= MERGE_WINDOW_MS) {
-        last.push(d);
-      } else {
-        groups.push([d]);
+  const mergedOutputs = useMemo(() => groupOutputEvents(outputs).map((event) => (
+    event.isMerged
+      ? {
+        // A single synthesized row for the whole event. Members ride along so
+        // edit/delete can fan out across them.
+        ...event.members[0],
+        id: `mixed-${event.members.map((m) => m.id).join('-')}`,
+        output_type: 'mixed_diaper',
+        _members: event.members,
+        occurred_at: event.time,
       }
-    }
-    const merged = [];
-    for (const g of groups) {
-      if (g.length === 1) {
-        merged.push(g[0]);
-      } else {
-        // Synthesize a single "mixed diaper" row. Carry both members so the
-        // edit/delete actions can fan out across them.
-        merged.push({
-          ...g[0],
-          id: `mixed-${g.map(m => m.id).join('-')}`,
-          output_type: 'mixed_diaper',
-          _members: g,
-          // Use the earliest time so the chronological sort still works.
-          occurred_at: g[0].occurred_at,
-        });
-      }
-    }
-    return [...standalone, ...merged];
-  }, [outputs]);
+      : event.members[0]
+  )), [outputs]);
 
   // Combined chronological log. Tag each row with its source so the table
   // renderer knows whether to call onEditIntake / onEditOutput. Intakes

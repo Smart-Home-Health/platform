@@ -18,7 +18,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
-import { PatientSelectorModal, IntakeModal, OutputModal } from './components';
+import { PatientSelectorModal, IntakeSheet, OutputSheet } from './components';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
@@ -26,7 +26,10 @@ import {
   NutritionIcon,
   ClockIcon,
   CheckIcon,
-  XIcon
+  XIcon,
+  AlertIcon,
+  LiquidIcon,
+  ToiletIcon
 } from '../../components/Icons';
 import { computeScheduleStatus } from '../../components/schedule/scheduleStatus';
 import ScheduleBoard from '../../components/schedule/ScheduleBoard';
@@ -445,12 +448,12 @@ const AdminV2NutritionSchedule = () => {
               <DialogContent className="sm:max-w-[440px]" aria-describedby={undefined}>
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-md bg-[rgba(240,136,62,0.2)] text-[#f0883e]">⚠</span>
+                    <span className="nsched-warn-badge"><AlertIcon size={16} /></span>
                     {title}
                   </DialogTitle>
                 </DialogHeader>
                 <Alert variant="warning">
-                  <div className="mb-1.5 font-semibold text-[#f0883e]">{heading}</div>
+                  <div className="nsched-warn-heading">{heading}</div>
                   <div>
                     <strong>{windowConfirm.item.name}</strong> is scheduled for{' '}
                     <strong>{windowConfirm.check.scheduledLocal}</strong> — that's{' '}
@@ -484,7 +487,7 @@ const AdminV2NutritionSchedule = () => {
                 onClick={() => setPrnMode('intake')}
                 className="h-auto flex-col gap-1.5 py-6 text-base font-bold"
               >
-                <span className="text-2xl leading-none">↓</span>
+                <LiquidIcon size={22} />
                 Log Intake
               </Button>
               <Button
@@ -493,7 +496,7 @@ const AdminV2NutritionSchedule = () => {
                 onClick={() => setPrnMode('output')}
                 className="h-auto flex-col gap-1.5 py-6 text-base font-bold"
               >
-                <span className="text-2xl leading-none">↑</span>
+                <ToiletIcon size={22} />
                 Log Output
               </Button>
             </div>
@@ -501,7 +504,7 @@ const AdminV2NutritionSchedule = () => {
         </Dialog>
 
         {/* Shared AdminV2 intake form */}
-        <IntakeModal
+        <IntakeSheet
           open={prnMode === 'intake'}
           onClose={closePrn}
           onSaved={onPrnSaved}
@@ -510,7 +513,7 @@ const AdminV2NutritionSchedule = () => {
         />
 
         {/* Shared AdminV2 output form */}
-        <OutputModal
+        <OutputSheet
           open={prnMode === 'output'}
           onClose={closePrn}
           onSaved={onPrnSaved}

@@ -18,7 +18,11 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useLocation } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
-import { PatientHeader, PatientSelectorModal, IntakeModal, OutputModal, NutritionOverview } from './components';
+import { nutritionService } from '../../services/nutrition';
+import {
+  PatientHeader, PatientSelectorModal, IntakeSheet, OutputSheet, NutritionOverview,
+  NutritionIntakeTab, NutritionOutputTab,
+} from './components';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
@@ -1081,67 +1085,20 @@ const AdminV2Nutrition = () => {
     return labels[type] || type;
   };
 
-  // Output display helpers (shared by single + merged rows).
-  const outputDetailText = (o) =>
-    [o.consistency, o.color, o.clarity, o.diaper_wetness ? `Wetness: ${o.diaper_wetness}` : null]
-      .filter(Boolean)
-      .join(', ');
-  const outputConcernText = (o) =>
-    [o.has_blood && 'Blood', o.has_mucus && 'Mucus', o.pain_reported && 'Pain', o.straining && 'Straining']
-      .filter(Boolean)
-      .join(', ');
-
-  // Stool size is qualitative (smear/small/medium/large) and stored in
-  // amount_unit with amount=null; measured outputs (urine) use amount + unit.
-  const SIZE_UNITS = new Set(['smear', 'small', 'medium', 'large']);
-  const outputAmountText = (o) => {
-    if (o.amount != null && o.amount !== '') {
-      return `${o.amount}${o.amount_unit ? ` ${o.amount_unit}` : ''}`;
-    }
-    if (o.amount_unit && SIZE_UNITS.has(String(o.amount_unit).toLowerCase())) {
-      const s = String(o.amount_unit);
-      return s.charAt(0).toUpperCase() + s.slice(1);
-    }
-    return '';
-  };
-
-  // Diaper outputs logged within a few minutes of each other are one physical
-  // change (e.g. urine + bowel) — merge them into a single display event,
-  // mirroring the schedule view's 3-minute window. Backend already date-filters.
-  const DIAPER_MERGE_WINDOW_MS = 3 * 60 * 1000;
-  const buildOutputEvents = (list) => {
-    const sorted = [...list].sort((a, b) => new Date(a.occurred_at) - new Date(b.occurred_at));
-    const diaperGroups = [];
-    sorted.filter(o => o.is_diaper).forEach((o) => {
-      const last = diaperGroups[diaperGroups.length - 1];
-      if (last && (new Date(o.occurred_at) - new Date(last[last.length - 1].occurred_at)) <= DIAPER_MERGE_WINDOW_MS) {
-        last.push(o);
-      } else {
-        diaperGroups.push([o]);
-      }
-    });
-    const events = [];
-    diaperGroups.forEach(g => events.push(
-      g.length > 1
-        ? { kind: 'merged', members: g, time: g[0].occurred_at }
-        : { kind: 'single', output: g[0], time: g[0].occurred_at }
-    ));
-    sorted.filter(o => !o.is_diaper).forEach(o => events.push({ kind: 'single', output: o, time: o.occurred_at }));
-    events.sort((a, b) => new Date(b.time) - new Date(a.time));
-    return events;
-  };
-  const outputEvents = buildOutputEvents(outputs);
+  // Output rendering moved to NutritionOutputTab / NutritionOverview, which
+  // group rows by event_group_id rather than re-deriving the association here.
 
   // Delete every record in a merged diaper event (mirrors the schedule undo,
   // which voids all members of a mixed diaper together).
   const handleDeleteOutputEvent = async (members) => {
-    const types = members.map(m => m.output_type).join(' + ');
-    if (!window.confirm(`Delete this diaper event (${types})? This removes ${members.length} records.`)) return;
+    const types = members.map(m => (m.output_type === 'bowel' ? 'stool' : m.output_type)).join(' + ');
+    const question = members.length > 1
+      ? `Delete this output event (${types})? This removes ${members.length} records.`
+      : `Delete this ${types} record?`;
+    if (!window.confirm(question)) return;
     setSaving(true);
     try {
-      await Promise.all(members.map(m =>
-        fetch(`${config.apiUrl}/api/nutrition/outputs/${m.id}`, { method: 'DELETE', credentials: 'include' })
-      ));
+      await Promise.all(members.map(m => nutritionService.deleteOutput(m.id)));
       fetchData();
     } catch (err) {
       console.error('Error deleting output event:', err);
@@ -1220,264 +1177,48 @@ const AdminV2Nutrition = () => {
               {/* INTAKE TAB */}
               {activeTab === 'intake' && (
                 <div className="admin-v2-section">
-                  {/* Date range filter */}
-                  <div className="tw mb-4">
-                    <div className="rounded-lg border border-border bg-card p-4">
-                      <div className="grid grid-cols-1 items-end gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                        <Field label="From" htmlFor="intake-from">
-                          <Input
-                            id="intake-from"
-                            type="date"
-                            value={intakeStart}
-                            onChange={e => setIntakeStart(e.target.value)}
-                          />
-                        </Field>
-                        <Field label="To" htmlFor="intake-to">
-                          <Input
-                            id="intake-to"
-                            type="date"
-                            value={intakeEnd}
-                            onChange={e => setIntakeEnd(e.target.value)}
-                          />
-                        </Field>
-                        {(intakeStart || intakeEnd) && (
-                          <div>
-                            <Button
-                              variant="secondary"
-                              onClick={() => { setIntakeStart(''); setIntakeEnd(''); }}
-                            >
-                              Clear Filters
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {loading ? (
-                    <div className="admin-v2-loading">Loading...</div>
-                  ) : intakes.length === 0 ? (
-                    <div className="admin-v2-empty-state">
-                      <p>No intake records found</p>
-                    </div>
-                  ) : (
-                    <div className="admin-v2-table-container admin-v2-table-cards-wrap">
-                      <table className="admin-v2-table admin-v2-table-cards">
-                        <thead>
-                          <tr>
-                            <th>Time</th>
-                            <th>Item</th>
-                            <th>Type</th>
-                            <th>Amount</th>
-                            <th>Calories</th>
-                            <th>Meal</th>
-                            <th>Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {intakes.map(intake => (
-                            <tr key={intake.id}>
-                              <td data-label="Time">{formatDateTime(intake.consumed_at)}</td>
-                              <td className="admin-v2-cell-name"><strong>{intake.item_name}</strong></td>
-                              <td data-label="Type">
-                                <span className={`admin-v2-badge admin-v2-badge-${intake.item_type}`}>
-                                  {intake.item_type}
-                                </span>
-                              </td>
-                              <td data-label="Amount">{intake.amount} {intake.amount_unit}</td>
-                              <td data-label="Calories">{intake.calories || '-'}</td>
-                              <td data-label="Meal">{intake.meal_type || '-'}</td>
-                              <td className="admin-v2-cell-actions">
-                                <div className="admin-v2-table-actions">
-                                  {hasPermission('nutrition.update') && (
-                                    <button
-                                      className="admin-v2-action-btn admin-v2-action-btn-edit"
-                                      onClick={() => openIntakeModal(intake)}
-                                    >
-                                      <EditIcon size={14} />
-                                    </button>
-                                  )}
-                                  {hasPermission('nutrition.delete') && (
-                                    <button
-                                      className="admin-v2-action-btn admin-v2-action-btn-delete"
-                                      onClick={() => openDeleteModal(intake, 'intake')}
-                                    >
-                                      <TrashIcon size={14} />
-                                    </button>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+                  <NutritionIntakeTab
+                    intakes={intakes}
+                    loading={loading}
+                    canCreate={hasPermission('nutrition.create')}
+                    canUpdate={hasPermission('nutrition.update')}
+                    canDelete={hasPermission('nutrition.delete')}
+                    onAdd={() => openIntakeModal()}
+                    onEdit={openIntakeModal}
+                    onDelete={(intake) => openDeleteModal(intake, 'intake')}
+                    formatDateTime={formatDateTime}
+                    dateRange={{
+                      start: intakeStart,
+                      end: intakeEnd,
+                      onStartChange: setIntakeStart,
+                      onEndChange: setIntakeEnd,
+                      onClear: () => { setIntakeStart(''); setIntakeEnd(''); },
+                    }}
+                  />
                 </div>
               )}
 
               {/* OUTPUT TAB */}
               {activeTab === 'output' && (
                 <div className="admin-v2-section">
-                  {/* Date range filter */}
-                  <div className="tw mb-4">
-                    <div className="rounded-lg border border-border bg-card p-4">
-                      <div className="grid grid-cols-1 items-end gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                        <Field label="From" htmlFor="output-from">
-                          <Input
-                            id="output-from"
-                            type="date"
-                            value={outputStart}
-                            onChange={e => setOutputStart(e.target.value)}
-                          />
-                        </Field>
-                        <Field label="To" htmlFor="output-to">
-                          <Input
-                            id="output-to"
-                            type="date"
-                            value={outputEnd}
-                            onChange={e => setOutputEnd(e.target.value)}
-                          />
-                        </Field>
-                        {(outputStart || outputEnd) && (
-                          <div>
-                            <Button
-                              variant="secondary"
-                              onClick={() => { setOutputStart(''); setOutputEnd(''); }}
-                            >
-                              Clear Filters
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {loading ? (
-                    <div className="admin-v2-loading">Loading...</div>
-                  ) : outputEvents.length === 0 ? (
-                    <div className="admin-v2-empty-state">
-                      <p>No output records found</p>
-                    </div>
-                  ) : (
-                    <div className="admin-v2-table-container admin-v2-table-cards-wrap">
-                      <table className="admin-v2-table admin-v2-table-cards">
-                        <thead>
-                          <tr>
-                            <th>Time</th>
-                            <th>Type</th>
-                            <th>Details</th>
-                            <th>Amount</th>
-                            <th>Concerns</th>
-                            <th>Notes</th>
-                            <th>Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {outputEvents.map((ev) => {
-                            if (ev.kind === 'merged') {
-                              const members = ev.members;
-                              const concerns = members.map(outputConcernText).filter(Boolean).join(', ');
-                              const notes = members.map(m => m.notes).filter(Boolean).join('; ');
-                              return (
-                                <tr key={`merged-${members.map(m => m.id).join('-')}`}>
-                                  <td className="admin-v2-cell-name">{formatDateTime(ev.time)}</td>
-                                  <td data-label="Type">
-                                    {members.map(m => (
-                                      <span key={m.id} className={`admin-v2-badge admin-v2-badge-${m.output_type}`} style={{ marginRight: '4px' }}>
-                                        {m.output_type}
-                                      </span>
-                                    ))}
-                                    <span className="admin-v2-badge admin-v2-badge-info">Diaper</span>
-                                  </td>
-                                  <td data-label="Details" className="admin-v2-cell-stack">
-                                    {members.map(m => {
-                                      const line = [outputDetailText(m), outputAmountText(m)].filter(Boolean).join(', ');
-                                      return (
-                                        <span key={m.id} className="admin-v2-output-detail-line">
-                                          <span className="admin-v2-output-detail-type">{m.output_type}</span>
-                                          {line || '—'}
-                                        </span>
-                                      );
-                                    })}
-                                  </td>
-                                  <td data-label="Amount">-</td>
-                                  <td data-label="Concerns">
-                                    {concerns ? <span className="admin-v2-badge admin-v2-badge-danger">{concerns}</span> : '-'}
-                                  </td>
-                                  <td data-label="Notes">{notes || '-'}</td>
-                                  <td className="admin-v2-cell-actions">
-                                    <div className="admin-v2-table-actions">
-                                      {hasPermission('nutrition.update') && members.map(m => (
-                                        <button
-                                          key={m.id}
-                                          className="admin-v2-action-btn admin-v2-action-btn-edit"
-                                          onClick={() => openOutputModal(m)}
-                                          title={`Edit ${m.output_type}`}
-                                        >
-                                          <EditIcon size={14} />
-                                          <span>{m.output_type}</span>
-                                        </button>
-                                      ))}
-                                      {hasPermission('nutrition.delete') && (
-                                        <button
-                                          className="admin-v2-action-btn admin-v2-action-btn-delete"
-                                          onClick={() => handleDeleteOutputEvent(members)}
-                                          title="Delete diaper event"
-                                        >
-                                          <TrashIcon size={14} />
-                                        </button>
-                                      )}
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            }
-                            const output = ev.output;
-                            return (
-                              <tr key={output.id}>
-                                <td className="admin-v2-cell-name">{formatDateTime(output.occurred_at)}</td>
-                                <td data-label="Type">
-                                  <span className={`admin-v2-badge admin-v2-badge-${output.output_type}`}>
-                                    {output.output_type}
-                                  </span>
-                                  {output.is_diaper && <span className="admin-v2-badge admin-v2-badge-info" style={{ marginLeft: '4px' }}>Diaper</span>}
-                                </td>
-                                <td data-label="Details" className="admin-v2-cell-stack">{outputDetailText(output)}</td>
-                                <td data-label="Amount">{outputAmountText(output) || '-'}</td>
-                                <td data-label="Concerns">
-                                  {outputConcernText(output)
-                                    ? <span className="admin-v2-badge admin-v2-badge-danger">{outputConcernText(output)}</span>
-                                    : '-'}
-                                </td>
-                                <td data-label="Notes">{output.notes || '-'}</td>
-                                <td className="admin-v2-cell-actions">
-                                  <div className="admin-v2-table-actions">
-                                    {hasPermission('nutrition.update') && (
-                                      <button
-                                        className="admin-v2-action-btn admin-v2-action-btn-edit"
-                                        onClick={() => openOutputModal(output)}
-                                      >
-                                        <EditIcon size={14} />
-                                      </button>
-                                    )}
-                                    {hasPermission('nutrition.delete') && (
-                                      <button
-                                        className="admin-v2-action-btn admin-v2-action-btn-delete"
-                                        onClick={() => openDeleteModal(output, 'output')}
-                                      >
-                                        <TrashIcon size={14} />
-                                      </button>
-                                    )}
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+                  <NutritionOutputTab
+                    outputs={outputs}
+                    loading={loading}
+                    canCreate={hasPermission('nutrition.create')}
+                    canUpdate={hasPermission('nutrition.update')}
+                    canDelete={hasPermission('nutrition.delete')}
+                    onAdd={() => openOutputModal()}
+                    onEdit={openOutputModal}
+                    onDeleteEvent={handleDeleteOutputEvent}
+                    formatDateTime={formatDateTime}
+                    dateRange={{
+                      start: outputStart,
+                      end: outputEnd,
+                      onStartChange: setOutputStart,
+                      onEndChange: setOutputEnd,
+                      onClear: () => { setOutputStart(''); setOutputEnd(''); },
+                    }}
+                  />
                 </div>
               )}
 
@@ -1914,7 +1655,7 @@ const AdminV2Nutrition = () => {
         />
       )}
 
-      <IntakeModal
+      <IntakeSheet
         open={showIntakeModal}
         onClose={() => { setShowIntakeModal(false); setEditingItem(null); }}
         onSaved={fetchData}
@@ -1922,7 +1663,7 @@ const AdminV2Nutrition = () => {
         editing={editingItem}
       />
 
-      <OutputModal
+      <OutputSheet
         open={showOutputModal}
         onClose={() => { setShowOutputModal(false); setEditingItem(null); }}
         onSaved={fetchData}

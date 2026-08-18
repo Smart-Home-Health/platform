@@ -18,7 +18,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
-import { PatientSelectorModal, IntakeModal, OutputModal, MedicationDoseModal, UpdateQuantityModal, CareTaskCompleteModal } from './components';
+import { PatientSelectorModal, IntakeSheet, OutputSheet, MedicationDoseModal, UpdateQuantityModal, CareTaskCompleteModal } from './components';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
@@ -1548,14 +1548,14 @@ const AdminV2Schedule = () => {
           </DialogContent>
         </Dialog>
         {/* Shared sub-modals launched from the PRN flow */}
-        <IntakeModal
+        <IntakeSheet
           open={showPrnIntakeModal}
           onClose={() => setShowPrnIntakeModal(false)}
           onSaved={fetchSchedule}
           patient={selectedPatient}
           defaultDateTime={prnNutritionDefaultDt}
         />
-        <OutputModal
+        <OutputSheet
           open={showPrnOutputModal}
           onClose={() => setShowPrnOutputModal(false)}
           onSaved={fetchSchedule}
