@@ -343,3 +343,26 @@
   .nsheet-card-head { flex-direction: column; align-items: flex-start; gap: 0.35rem; }
   .nsheet-link { text-align: left; }
 }
+
+/* Two-up number fields for the target sheet. */
+.nsheet-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.6rem;
+}
+.nsheet-unit-label {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.6rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-raised);
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+  white-space: nowrap;
+}
+.nsheet-card-head h4 { display: inline-flex; align-items: center; gap: 0.35rem; }

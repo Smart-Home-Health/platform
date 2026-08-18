@@ -16,14 +16,16 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 import { useState, useEffect } from 'react';
-import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
+import { useSearchParams, useLocation } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
 import { nutritionService } from '../../services/nutrition';
 import { FLUID_ITEM_TYPES } from '../../components/nutrition/intakeVocab';
 import {
   PatientHeader, PatientSelectorModal, IntakeSheet, OutputSheet, NutritionOverview,
-  NutritionIntakeTab, NutritionOutputTab, NutritionPlanTab, GoalHistoryModal,
+  NutritionPlanTab, GoalHistoryModal, NutritionHistoryModal,
 } from './components';
+import ScheduleSheet from '../../components/nutrition/ScheduleSheet';
+import GoalSheet from '../../components/nutrition/GoalSheet';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
@@ -37,271 +39,13 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Label } from '@/components/ui/label';
 import { Alert } from '@/components/ui/alert';
-import { Field, FormRow } from '@/components/ui/field';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
-import { localTimeToUTC, localTimeAndDaysToUTC, utcCronToLocalDaysAndTime } from '../../utils/timezone';
 import './AdminV2.css';
 
 // Module-scope so the inputs don't lose focus on each keystroke (a component
 // defined inside render remounts every change).
-function ScheduleFormFields({
-  scheduleForm, setScheduleForm, editingItem,
-  scheduleMode, setScheduleMode,
-  selectedDays, setSelectedDays,
-  selectedDayOfMonth, setSelectedDayOfMonth,
-  scheduleTime, setScheduleTime,
-  daysOfWeek,
-}) {
-  const showDefaults = ['meal', 'hydration', 'snack', 'supplement'].includes(scheduleForm.schedule_type);
-  return (
-    <div className="flex flex-col gap-4">
-      <FormRow>
-        <Field label="Schedule Type" required>
-          <Select
-            value={scheduleForm.schedule_type}
-            onValueChange={(v) => setScheduleForm({ ...scheduleForm, schedule_type: v })}
-          >
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="meal">Meal</SelectItem>
-              <SelectItem value="hydration">Hydration</SelectItem>
-              <SelectItem value="snack">Snack</SelectItem>
-              <SelectItem value="supplement">Supplement</SelectItem>
-              <SelectItem value="diaper_check">Diaper Check</SelectItem>
-              <SelectItem value="bathroom_assist">Bathroom Assist</SelectItem>
-              <SelectItem value="catheter_care">Catheter Care</SelectItem>
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field label="Name" required htmlFor="sched-name">
-          <Input
-            id="sched-name"
-            value={scheduleForm.name}
-            onChange={e => setScheduleForm({ ...scheduleForm, name: e.target.value })}
-            placeholder="e.g., Morning Feed, Afternoon Water"
-            required
-          />
-        </Field>
-      </FormRow>
-
-      {!editingItem && (
-        <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
-          <h4 className="text-sm font-semibold text-foreground">Timing</h4>
-          <div className="flex flex-wrap gap-2">
-            {['daily', 'weekly', 'monthly'].map(m => (
-              <Button
-                key={m}
-                type="button"
-                size="sm"
-                variant={scheduleMode === m ? 'default' : 'secondary'}
-                className="capitalize"
-                onClick={() => setScheduleMode(m)}
-              >
-                {m}
-              </Button>
-            ))}
-          </div>
-
-          {scheduleMode === 'weekly' && (
-            <div className="flex flex-wrap gap-2">
-              {daysOfWeek.map((day, index) => (
-                <Button
-                  key={day}
-                  type="button"
-                  size="sm"
-                  variant={selectedDays.includes(index) ? 'default' : 'secondary'}
-                  onClick={() => setSelectedDays(
-                    selectedDays.includes(index)
-                      ? selectedDays.filter(d => d !== index)
-                      : [...selectedDays, index]
-                  )}
-                >
-                  {day}
-                </Button>
-              ))}
-            </div>
-          )}
-
-          {scheduleMode === 'monthly' && (
-            <Field label="Day of Month">
-              <Select
-                value={String(selectedDayOfMonth)}
-                onValueChange={(v) => setSelectedDayOfMonth(parseInt(v, 10))}
-              >
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {Array.from({ length: 28 }, (_, i) => i + 1).map(day => (
-                    <SelectItem key={day} value={String(day)}>{day}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-          )}
-
-          <Field label="Time" htmlFor="sched-time">
-            <Input
-              id="sched-time"
-              type="time"
-              value={scheduleTime}
-              onChange={e => setScheduleTime(e.target.value)}
-            />
-          </Field>
-        </div>
-      )}
-
-      {showDefaults && (
-        <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
-          <h4 className="text-sm font-semibold text-foreground">Default Values (optional)</h4>
-          <FormRow cols={4}>
-            <Field label="Item Name" htmlFor="sched-item">
-              <Input
-                id="sched-item"
-                value={scheduleForm.default_item_name}
-                onChange={e => setScheduleForm({ ...scheduleForm, default_item_name: e.target.value })}
-                placeholder="e.g., Peptamen, Water"
-              />
-            </Field>
-            <Field label="Amount" htmlFor="sched-amount">
-              <Input
-                id="sched-amount"
-                type="number"
-                step="0.1"
-                value={scheduleForm.default_amount}
-                onChange={e => setScheduleForm({ ...scheduleForm, default_amount: e.target.value })}
-              />
-            </Field>
-            <Field label="Unit">
-              <Select
-                value={scheduleForm.default_amount_unit}
-                onValueChange={(v) => setScheduleForm({ ...scheduleForm, default_amount_unit: v })}
-              >
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ml">ml</SelectItem>
-                  <SelectItem value="oz">oz</SelectItem>
-                  <SelectItem value="cups">cups</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Calories" htmlFor="sched-cal">
-              <Input
-                id="sched-cal"
-                type="number"
-                step="1"
-                value={scheduleForm.default_calories}
-                onChange={e => setScheduleForm({ ...scheduleForm, default_calories: e.target.value })}
-              />
-            </Field>
-          </FormRow>
-        </div>
-      )}
-
-      <FormRow>
-        <Field label="Reminder (minutes before)" htmlFor="sched-reminder">
-          <Input
-            id="sched-reminder"
-            type="number"
-            value={scheduleForm.reminder_minutes_before}
-            onChange={e => setScheduleForm({ ...scheduleForm, reminder_minutes_before: parseInt(e.target.value) || 0 })}
-          />
-        </Field>
-        <div className="flex items-center gap-2 pt-7">
-          <Checkbox
-            id="sched-care-task"
-            checked={scheduleForm.create_care_task}
-            onCheckedChange={(c) => setScheduleForm({ ...scheduleForm, create_care_task: c === true })}
-          />
-          <Label htmlFor="sched-care-task">Create Care Task</Label>
-        </div>
-      </FormRow>
-
-      <Field label="Instructions" htmlFor="sched-instructions">
-        <Textarea
-          id="sched-instructions"
-          value={scheduleForm.instructions}
-          onChange={e => setScheduleForm({ ...scheduleForm, instructions: e.target.value })}
-          rows={2}
-          placeholder="Instructions for caregiver..."
-        />
-      </Field>
-
-      <Field label="Notes" htmlFor="sched-notes">
-        <Textarea
-          id="sched-notes"
-          value={scheduleForm.notes}
-          onChange={e => setScheduleForm({ ...scheduleForm, notes: e.target.value })}
-          rows={2}
-        />
-      </Field>
-    </div>
-  );
-}
-
-function GoalFormFields({ goalForm, setGoalForm }) {
-  const set = (k) => (e) => setGoalForm({ ...goalForm, [k]: e.target.value });
-  return (
-    <div className="flex flex-col gap-4">
-      <Field label="Effective Date" required htmlFor="goal-date">
-        <Input id="goal-date" type="date" value={goalForm.effective_date} onChange={set('effective_date')} required />
-      </Field>
-
-      <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
-        <h4 className="text-sm font-semibold text-foreground">Fluid Targets</h4>
-        <FormRow>
-          <Field label="Water Target (ml)" htmlFor="goal-water">
-            <Input id="goal-water" type="number" value={goalForm.water_ml_target} onChange={set('water_ml_target')} placeholder="e.g., 2000" />
-          </Field>
-          <Field label="Total Fluids (ml)" htmlFor="goal-total-fluid">
-            <Input id="goal-total-fluid" type="number" value={goalForm.total_fluid_ml_target} onChange={set('total_fluid_ml_target')} placeholder="Including food liquids" />
-          </Field>
-        </FormRow>
-      </div>
-
-      <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
-        <h4 className="text-sm font-semibold text-foreground">Calorie Targets</h4>
-        <FormRow cols={4}>
-          <Field label="Calories Target" htmlFor="goal-cal"><Input id="goal-cal" type="number" value={goalForm.calories_target} onChange={set('calories_target')} placeholder="e.g., 2000" /></Field>
-          <Field label="Min Calories" htmlFor="goal-cal-min"><Input id="goal-cal-min" type="number" value={goalForm.calories_min} onChange={set('calories_min')} /></Field>
-          <Field label="Max Calories" htmlFor="goal-cal-max"><Input id="goal-cal-max" type="number" value={goalForm.calories_max} onChange={set('calories_max')} /></Field>
-        </FormRow>
-      </div>
-
-      <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
-        <h4 className="text-sm font-semibold text-foreground">Macronutrient Targets</h4>
-        <FormRow cols={4}>
-          <Field label="Protein (g)" htmlFor="goal-protein"><Input id="goal-protein" type="number" value={goalForm.protein_grams_target} onChange={set('protein_grams_target')} /></Field>
-          <Field label="Carbs (g)" htmlFor="goal-carbs"><Input id="goal-carbs" type="number" value={goalForm.carbs_grams_target} onChange={set('carbs_grams_target')} /></Field>
-          <Field label="Fat (g)" htmlFor="goal-fat"><Input id="goal-fat" type="number" value={goalForm.fat_grams_target} onChange={set('fat_grams_target')} /></Field>
-          <Field label="Fiber (g)" htmlFor="goal-fiber"><Input id="goal-fiber" type="number" value={goalForm.fiber_grams_target} onChange={set('fiber_grams_target')} /></Field>
-        </FormRow>
-      </div>
-
-      <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
-        <h4 className="text-sm font-semibold text-foreground">Restrictions & Output Targets</h4>
-        <FormRow cols={4}>
-          <Field label="Max Sodium (mg)" htmlFor="goal-sodium"><Input id="goal-sodium" type="number" value={goalForm.sodium_mg_max} onChange={set('sodium_mg_max')} placeholder="For low-sodium diets" /></Field>
-          <Field label="Min Urine Output (ml)" htmlFor="goal-urine"><Input id="goal-urine" type="number" value={goalForm.urine_output_ml_min} onChange={set('urine_output_ml_min')} /></Field>
-          <Field label="BM Target (per day)" htmlFor="goal-bm"><Input id="goal-bm" type="number" value={goalForm.bowel_movements_target} onChange={set('bowel_movements_target')} /></Field>
-        </FormRow>
-      </div>
-
-      <Field label="Notes" htmlFor="goal-notes">
-        <Textarea id="goal-notes" value={goalForm.notes} onChange={set('notes')} rows={2} placeholder="Any special dietary notes..." />
-      </Field>
-    </div>
-  );
-}
+// The schedule and target forms moved to components/nutrition as vc sheets;
+// they own their own field state and cron handling.
 
 const AdminV2Nutrition = () => {
   const { user } = useAuth();
@@ -320,8 +64,8 @@ const AdminV2Nutrition = () => {
   // Derive active tab from URL path
   const getActiveTabFromPath = () => {
     const path = location.pathname;
-    if (path.includes('/nutrition/intake')) return 'intake';
-    if (path.includes('/nutrition/output')) return 'output';
+    // Intake and output are history modals on the Overview now, so their old
+    // paths land there rather than on a tab of their own.
     // /schedules and /goals kept as aliases so old links still land somewhere
     // sensible now that the two views are one.
     if (path.includes('/nutrition/plan')) return 'plan';
@@ -331,19 +75,20 @@ const AdminV2Nutrition = () => {
   };
   
   const activeTab = getActiveTabFromPath();
-  const navigate = useNavigate();
   
   // Loading/error states
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   
   // Data states
-  const [intakes, setIntakes] = useState([]);
-  const [outputs, setOutputs] = useState([]);
   const [goals, setGoals] = useState([]);
   const [currentGoal, setCurrentGoal] = useState(null);
   const [plan, setPlan] = useState(null);
   const [showGoalHistory, setShowGoalHistory] = useState(false);
+  // Which history is open ('intake' | 'output' | null), and a counter to
+  // refetch it after an edit made from inside it.
+  const [historyKind, setHistoryKind] = useState(null);
+  const [historyRefresh, setHistoryRefresh] = useState(0);
 
   // Overview-tab state — single date the page is showing, plus that day's
   // intake + output records pulled from the daily endpoints.
@@ -365,53 +110,13 @@ const AdminV2Nutrition = () => {
   const [deletingItem, setDeletingItem] = useState(null);
   const [deleteType, setDeleteType] = useState(null);
 
-  // Date-range filters for the Intake / Output history tabs.
-  const [intakeStart, setIntakeStart] = useState('');
-  const [intakeEnd, setIntakeEnd] = useState('');
-  const [outputStart, setOutputStart] = useState('');
-  const [outputEnd, setOutputEnd] = useState('');
+  // The intake/output history modal owns its own date range.
 
   // Intake/output form state lives inside the shared modal components now.
 
-  const [scheduleForm, setScheduleForm] = useState({
-    schedule_type: 'meal',
-    name: '',
-    cron_expression: '',
-    default_item_name: '',
-    default_amount: '',
-    default_amount_unit: 'ml',
-    default_calories: '',
-    is_active: true,
-    create_care_task: true,
-    reminder_minutes_before: 15,
-    instructions: '',
-    notes: ''
-  });
-  
-  // Schedule time helpers
-  const [scheduleMode, setScheduleMode] = useState('weekly');
-  const [selectedDays, setSelectedDays] = useState([]);
-  const [selectedDayOfMonth, setSelectedDayOfMonth] = useState(1);
-  const [scheduleTime, setScheduleTime] = useState('08:00');
-  const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  
-  const [goalForm, setGoalForm] = useState({
-    water_ml_target: '',
-    total_fluid_ml_target: '',
-    calories_target: '',
-    calories_min: '',
-    calories_max: '',
-    protein_grams_target: '',
-    carbs_grams_target: '',
-    fat_grams_target: '',
-    fiber_grams_target: '',
-    sodium_mg_max: '',
-    urine_output_ml_min: '',
-    bowel_movements_target: '',
-    effective_date: new Date().toISOString().split('T')[0],
-    notes: ''
-  });
-  
+  // Schedule and target form state lives inside ScheduleSheet / GoalSheet,
+  // which also own the cron building and parsing.
+
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
 
@@ -454,7 +159,7 @@ const AdminV2Nutrition = () => {
       fetchData();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on patient change only
-  }, [selectedPatient, activeTab, overviewDate, intakeStart, intakeEnd, outputStart, outputEnd]);
+  }, [selectedPatient, activeTab, overviewDate]);
 
   // The Overview page needs the current goal to compute % targets — but
   // currentGoal is only loaded by the goals tab in fetchData. Load it once
@@ -539,28 +244,6 @@ const AdminV2Nutrition = () => {
         } else {
           setDailyOutputs([]);
         }
-      } else if (activeTab === 'intake') {
-        const params = new URLSearchParams({ limit: '500' });
-        if (intakeStart) params.append('start_date', new Date(`${intakeStart}T00:00:00`).toISOString());
-        if (intakeEnd) params.append('end_date', new Date(`${intakeEnd}T23:59:59`).toISOString());
-        const response = await fetch(
-          `${config.apiUrl}/api/patients/${selectedPatient.id}/nutrition-intake?${params.toString()}`,
-          { credentials: 'include' }
-        );
-        if (response.ok) {
-          setIntakes(await response.json());
-        }
-      } else if (activeTab === 'output') {
-        const params = new URLSearchParams({ limit: '500' });
-        if (outputStart) params.append('start_date', new Date(`${outputStart}T00:00:00`).toISOString());
-        if (outputEnd) params.append('end_date', new Date(`${outputEnd}T23:59:59`).toISOString());
-        const response = await fetch(
-          `${config.apiUrl}/api/nutrition/outputs/patient/${selectedPatient.id}?${params.toString()}`,
-          { credentials: 'include' }
-        );
-        if (response.ok) {
-          setOutputs(await response.json());
-        }
       } else if (activeTab === 'plan') {
         // The plan endpoint returns targets, schedules and coverage together.
         // These used to be separate calls with the current goal loaded by its
@@ -615,143 +298,31 @@ const AdminV2Nutrition = () => {
   // ========================
   
   const openScheduleModal = (schedule = null) => {
-    if (schedule) {
-      setEditingItem(schedule);
-      setScheduleForm({
-        schedule_type: schedule.schedule_type || 'meal',
-        name: schedule.name || '',
-        cron_expression: schedule.cron_expression || '',
-        default_item_name: schedule.default_item_name || '',
-        default_amount: schedule.default_amount || '',
-        default_amount_unit: schedule.default_amount_unit || 'ml',
-        default_calories: schedule.default_calories || '',
-        is_active: schedule.is_active !== false,
-        create_care_task: schedule.create_care_task !== false,
-        reminder_minutes_before: schedule.reminder_minutes_before || 15,
-        instructions: schedule.instructions || '',
-        notes: schedule.notes || ''
-      });
-      // Parse cron expression
-      parseCronForEdit(schedule.cron_expression);
-    } else {
-      setEditingItem(null);
-      setScheduleForm({
-        schedule_type: 'meal',
-        name: '',
-        cron_expression: '',
-        default_item_name: '',
-        default_amount: '',
-        default_amount_unit: 'ml',
-        default_calories: '',
-        is_active: true,
-        create_care_task: true,
-        reminder_minutes_before: 15,
-        instructions: '',
-        notes: ''
-      });
-      setScheduleMode('weekly');
-      setSelectedDays([]);
-      setScheduleTime('08:00');
-    }
+    setEditingItem(schedule);
     setFormError(null);
     setShowScheduleModal(true);
   };
 
-  const parseCronForEdit = (cronExpr) => {
-    if (!cronExpr) return;
-    const parts = cronExpr.split(' ');
-    if (parts.length < 5) return;
-
-    const [minute, hour, dayOfMonth, , dayOfWeek] = parts;
-
-    if (dayOfMonth !== '*') {
-      // Cron times are stored in UTC; convert hour/minute to local for display.
-      const utc = new Date();
-      utc.setUTCHours(parseInt(hour, 10), parseInt(minute, 10), 0, 0);
-      setScheduleTime(
-        `${String(utc.getHours()).padStart(2, '0')}:${String(utc.getMinutes()).padStart(2, '0')}`
-      );
-      setScheduleMode('monthly');
-      setSelectedDayOfMonth(parseInt(dayOfMonth) || 1);
-    } else if (dayOfWeek !== '*') {
-      // Shift UTC days back to local days so the day checkboxes match what the
-      // user originally picked. utcCronToLocalDaysAndTime also returns the
-      // local HH:MM derived from the UTC hour/minute.
-      const utcDayList = dayOfWeek.split(',').map(d => parseInt(d, 10));
-      const { time, days } = utcCronToLocalDaysAndTime(
-        parseInt(hour, 10),
-        parseInt(minute, 10),
-        utcDayList,
-      );
-      setScheduleTime(time);
-      setScheduleMode('weekly');
-      setSelectedDays(days);
-    } else {
-      const utc = new Date();
-      utc.setUTCHours(parseInt(hour, 10), parseInt(minute, 10), 0, 0);
-      setScheduleTime(
-        `${String(utc.getHours()).padStart(2, '0')}:${String(utc.getMinutes()).padStart(2, '0')}`
-      );
-      setScheduleMode('daily');
-    }
-  };
-
-  const buildCronExpression = () => {
-    if (scheduleMode === 'daily') {
-      const utc = localTimeToUTC(scheduleTime);
-      return `${utc.minute} ${utc.hour} * * *`;
-    } else if (scheduleMode === 'weekly') {
-      if (selectedDays.length === 0) return null;
-      // Convert local time AND local days-of-week to UTC together — the cron's
-      // day list must shift when the time conversion crosses midnight.
-      const utc = localTimeAndDaysToUTC(scheduleTime, selectedDays);
-      return `${utc.minute} ${utc.hour} * * ${utc.days.join(',')}`;
-    } else if (scheduleMode === 'monthly') {
-      const utc = localTimeToUTC(scheduleTime);
-      return `${utc.minute} ${utc.hour} ${selectedDayOfMonth} * *`;
-    }
-    return null;
-  };
-
-  const handleSaveSchedule = async (e) => {
-    e.preventDefault();
+  const handleSaveSchedule = async (payload) => {
     if (!selectedPatient) return;
-    
-    const cronExpr = editingItem ? scheduleForm.cron_expression : buildCronExpression();
-    if (!cronExpr && !editingItem) {
-      setFormError('Please select schedule timing');
-      return;
-    }
-    
     setSaving(true);
     setFormError(null);
-    
     try {
-      const payload = {
-        ...scheduleForm,
-        patient_id: selectedPatient.id,
-        cron_expression: cronExpr || scheduleForm.cron_expression,
-        default_amount: scheduleForm.default_amount ? parseFloat(scheduleForm.default_amount) : null,
-        default_calories: scheduleForm.default_calories ? parseFloat(scheduleForm.default_calories) : null
-      };
-      
       const url = editingItem
         ? `${config.apiUrl}/api/nutrition/schedules/${editingItem.id}`
         : `${config.apiUrl}/api/nutrition/schedules`;
-      
       const response = await fetch(url, {
         method: editingItem ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(payload)
+        body: JSON.stringify({ ...payload, patient_id: selectedPatient.id }),
       });
-      
       if (!response.ok) {
-        const err = await response.json();
+        const err = await response.json().catch(() => ({}));
         throw new Error(err.detail || 'Failed to save schedule');
       }
-      
       setShowScheduleModal(false);
+      setEditingItem(null);
       fetchData();
     } catch (err) {
       setFormError(err.message);
@@ -784,91 +355,33 @@ const AdminV2Nutrition = () => {
   const openGoalHistory = () => setShowGoalHistory(true);
 
   const openGoalModal = (goal = null) => {
-    if (goal) {
-      setEditingItem(goal);
-      setGoalForm({
-        water_ml_target: goal.water_ml_target || '',
-        total_fluid_ml_target: goal.total_fluid_ml_target || '',
-        calories_target: goal.calories_target || '',
-        calories_min: goal.calories_min || '',
-        calories_max: goal.calories_max || '',
-        protein_grams_target: goal.protein_grams_target || '',
-        carbs_grams_target: goal.carbs_grams_target || '',
-        fat_grams_target: goal.fat_grams_target || '',
-        fiber_grams_target: goal.fiber_grams_target || '',
-        sodium_mg_max: goal.sodium_mg_max || '',
-        urine_output_ml_min: goal.urine_output_ml_min || '',
-        bowel_movements_target: goal.bowel_movements_target || '',
-        effective_date: goal.effective_date ? goal.effective_date.split('T')[0] : new Date().toISOString().split('T')[0],
-        notes: goal.notes || ''
-      });
-    } else {
-      setEditingItem(null);
-      setGoalForm({
-        water_ml_target: '',
-        total_fluid_ml_target: '',
-        calories_target: '',
-        calories_min: '',
-        calories_max: '',
-        protein_grams_target: '',
-        carbs_grams_target: '',
-        fat_grams_target: '',
-        fiber_grams_target: '',
-        sodium_mg_max: '',
-        urine_output_ml_min: '',
-        bowel_movements_target: '',
-        effective_date: new Date().toISOString().split('T')[0],
-        notes: ''
-      });
-    }
+    setEditingItem(goal);
     setFormError(null);
     setShowGoalModal(true);
   };
 
-  const handleSaveGoal = async (e) => {
-    e.preventDefault();
+  // The sheet builds the payload; this persists it as a new effective-dated
+  // version (or updates the one being edited).
+  const handleSaveGoal = async (payload) => {
     if (!selectedPatient) return;
-    
     setSaving(true);
     setFormError(null);
-    
     try {
-      const payload = {
-        patient_id: selectedPatient.id,
-        water_ml_target: goalForm.water_ml_target ? parseFloat(goalForm.water_ml_target) : null,
-        total_fluid_ml_target: goalForm.total_fluid_ml_target ? parseFloat(goalForm.total_fluid_ml_target) : null,
-        calories_target: goalForm.calories_target ? parseFloat(goalForm.calories_target) : null,
-        calories_min: goalForm.calories_min ? parseFloat(goalForm.calories_min) : null,
-        calories_max: goalForm.calories_max ? parseFloat(goalForm.calories_max) : null,
-        protein_grams_target: goalForm.protein_grams_target ? parseFloat(goalForm.protein_grams_target) : null,
-        carbs_grams_target: goalForm.carbs_grams_target ? parseFloat(goalForm.carbs_grams_target) : null,
-        fat_grams_target: goalForm.fat_grams_target ? parseFloat(goalForm.fat_grams_target) : null,
-        fiber_grams_target: goalForm.fiber_grams_target ? parseFloat(goalForm.fiber_grams_target) : null,
-        sodium_mg_max: goalForm.sodium_mg_max ? parseFloat(goalForm.sodium_mg_max) : null,
-        urine_output_ml_min: goalForm.urine_output_ml_min ? parseFloat(goalForm.urine_output_ml_min) : null,
-        bowel_movements_target: goalForm.bowel_movements_target ? parseInt(goalForm.bowel_movements_target) : null,
-        effective_date: new Date(goalForm.effective_date).toISOString(),
-        notes: goalForm.notes || null,
-        is_active: true
-      };
-      
       const url = editingItem
         ? `${config.apiUrl}/api/nutrition/goals/${editingItem.id}`
         : `${config.apiUrl}/api/nutrition/goals`;
-      
       const response = await fetch(url, {
         method: editingItem ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(payload)
+        body: JSON.stringify({ ...payload, patient_id: selectedPatient.id, is_active: true }),
       });
-      
       if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.detail || 'Failed to save goal');
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to save targets');
       }
-      
       setShowGoalModal(false);
+      setEditingItem(null);
       fetchData();
     } catch (err) {
       setFormError(err.message);
@@ -877,10 +390,6 @@ const AdminV2Nutrition = () => {
     }
   };
 
-  // ========================
-  // DELETE HANDLERS
-  // ========================
-  
   const openDeleteModal = (item, type) => {
     setDeletingItem(item);
     setDeleteType(type);
@@ -1086,53 +595,8 @@ const AdminV2Nutrition = () => {
                 intakeToMl={intakeToMl}
                 outputToMl={outputToMl}
                 formatTimeShort={formatTimeShort}
-                onViewIntake={() => navigate('/care/nutrition/intake')}
-                onViewOutput={() => navigate('/care/nutrition/output')}
-              />
-            )}
-
-            {/* The rebuilt tabs render at the same level as Overview: their own
-                cards provide the surface, so the legacy content/section
-                wrappers would only box them a second time. */}
-            {activeTab === 'intake' && (
-              <NutritionIntakeTab
-                intakes={intakes}
-                loading={loading}
-                canCreate={hasPermission('nutrition.create')}
-                canUpdate={hasPermission('nutrition.update')}
-                canDelete={hasPermission('nutrition.delete')}
-                onAdd={() => openIntakeModal()}
-                onEdit={openIntakeModal}
-                onDelete={(intake) => openDeleteModal(intake, 'intake')}
-                formatDateTime={formatDateTime}
-                dateRange={{
-                  start: intakeStart,
-                  end: intakeEnd,
-                  onStartChange: setIntakeStart,
-                  onEndChange: setIntakeEnd,
-                  onClear: () => { setIntakeStart(''); setIntakeEnd(''); },
-                }}
-              />
-            )}
-
-            {activeTab === 'output' && (
-              <NutritionOutputTab
-                outputs={outputs}
-                loading={loading}
-                canCreate={hasPermission('nutrition.create')}
-                canUpdate={hasPermission('nutrition.update')}
-                canDelete={hasPermission('nutrition.delete')}
-                onAdd={() => openOutputModal()}
-                onEdit={openOutputModal}
-                onDeleteEvent={handleDeleteOutputEvent}
-                formatDateTime={formatDateTime}
-                dateRange={{
-                  start: outputStart,
-                  end: outputEnd,
-                  onStartChange: setOutputStart,
-                  onEndChange: setOutputEnd,
-                  onClear: () => { setOutputStart(''); setOutputEnd(''); },
-                }}
+                onViewIntake={() => setHistoryKind('intake')}
+                onViewOutput={() => setHistoryKind('output')}
               />
             )}
 
@@ -1177,7 +641,7 @@ const AdminV2Nutrition = () => {
       <IntakeSheet
         open={showIntakeModal}
         onClose={() => { setShowIntakeModal(false); setEditingItem(null); }}
-        onSaved={fetchData}
+        onSaved={() => { fetchData(); setHistoryRefresh((n) => n + 1); }}
         patient={selectedPatient}
         editing={editingItem}
       />
@@ -1185,66 +649,46 @@ const AdminV2Nutrition = () => {
       <OutputSheet
         open={showOutputModal}
         onClose={() => { setShowOutputModal(false); setEditingItem(null); }}
-        onSaved={fetchData}
+        onSaved={() => { fetchData(); setHistoryRefresh((n) => n + 1); }}
         patient={selectedPatient}
         editing={editingItem}
       />
 
 
-      {/* Schedule Modal */}
-      <Dialog open={showScheduleModal} onOpenChange={(o) => { if (!o) setShowScheduleModal(false); }}>
-        <DialogContent className="sm:max-w-[640px]" aria-describedby={undefined}>
-          <DialogHeader>
-            <DialogTitle>{editingItem ? 'Edit Schedule' : 'Add Schedule'}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSaveSchedule} className="flex flex-col gap-4">
-            {formError && <Alert variant="destructive">{formError}</Alert>}
-            <ScheduleFormFields
-              scheduleForm={scheduleForm}
-              setScheduleForm={setScheduleForm}
-              editingItem={editingItem}
-              scheduleMode={scheduleMode}
-              setScheduleMode={setScheduleMode}
-              selectedDays={selectedDays}
-              setSelectedDays={setSelectedDays}
-              selectedDayOfMonth={selectedDayOfMonth}
-              setSelectedDayOfMonth={setSelectedDayOfMonth}
-              scheduleTime={scheduleTime}
-              setScheduleTime={setScheduleTime}
-              daysOfWeek={daysOfWeek}
-            />
-            <DialogFooter>
-              <Button type="button" variant="secondary" onClick={() => setShowScheduleModal(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={saving}>
-                {saving ? 'Saving...' : (editingItem ? 'Update' : 'Save')}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <ScheduleSheet
+        open={showScheduleModal}
+        onClose={() => { setShowScheduleModal(false); setEditingItem(null); setFormError(null); }}
+        onSave={handleSaveSchedule}
+        editing={editingItem}
+        saving={saving}
+        error={formError}
+      />
 
-      {/* Goal Modal */}
-      <Dialog open={showGoalModal} onOpenChange={(o) => { if (!o) setShowGoalModal(false); }}>
-        <DialogContent className="sm:max-w-[640px]" aria-describedby={undefined}>
-          <DialogHeader>
-            <DialogTitle>{editingItem ? 'Edit Goals' : 'Set Daily Goals'}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSaveGoal} className="flex flex-col gap-4">
-            {formError && <Alert variant="destructive">{formError}</Alert>}
-            <GoalFormFields goalForm={goalForm} setGoalForm={setGoalForm} />
-            <DialogFooter>
-              <Button type="button" variant="secondary" onClick={() => setShowGoalModal(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={saving}>
-                {saving ? 'Saving...' : (editingItem ? 'Update' : 'Save')}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <GoalSheet
+        open={showGoalModal}
+        onClose={() => { setShowGoalModal(false); setEditingItem(null); setFormError(null); }}
+        onSave={handleSaveGoal}
+        editing={editingItem}
+        saving={saving}
+        error={formError}
+      />
+
+      {/* Intake and output history — opened from the Overview rather than
+          living in the nav, since they are records to read back through. */}
+      <NutritionHistoryModal
+        open={!!historyKind}
+        kind={historyKind || 'intake'}
+        onOpenChange={(next) => { if (!next) setHistoryKind(null); }}
+        patient={selectedPatient}
+        canUpdate={hasPermission('nutrition.update')}
+        canDelete={hasPermission('nutrition.delete')}
+        onEditIntake={openIntakeModal}
+        onEditOutput={openOutputModal}
+        onDeleteIntake={(item) => openDeleteModal(item, 'intake')}
+        onDeleteOutputEvent={handleDeleteOutputEvent}
+        formatDateTime={formatDateTime}
+        refreshKey={historyRefresh}
+      />
 
       {/* Delete Confirmation Modal */}
       <Dialog open={showDeleteModal} onOpenChange={(o) => { if (!o) setShowDeleteModal(false); }}>

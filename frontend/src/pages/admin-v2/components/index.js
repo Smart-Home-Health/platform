@@ -26,6 +26,7 @@ export { default as NutritionIntakeTab } from './NutritionIntakeTab';
 export { default as NutritionOutputTab } from './NutritionOutputTab';
 export { default as NutritionPlanTab } from './NutritionPlanTab';
 export { default as GoalHistoryModal } from './GoalHistoryModal';
+export { default as NutritionHistoryModal } from './NutritionHistoryModal';
 export { default as MedicationDoseModal } from './MedicationDoseModal';
 export { default as UpdateQuantityModal } from './UpdateQuantityModal';
 export { default as CareTaskCompleteModal } from './CareTaskCompleteModal';
