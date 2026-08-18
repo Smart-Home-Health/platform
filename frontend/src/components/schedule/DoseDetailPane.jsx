@@ -26,6 +26,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import config, { apiFetch } from '../../config';
 import { bucketFor, recurrenceLabel } from './scheduleRollup';
+import { DOSE_LABELS } from './scheduleLabels';
 import { ChevronRightIcon } from '../Icons';
 
 const STATUS_TEXT = {
@@ -55,6 +56,25 @@ const fmtDateTime = (iso) => {
   });
 };
 
+// Medication defaults. Filtering by medication_id, not name: the name filter
+// is a substring match, so "Pro" would pull in every medication starting with
+// it.
+const defaultHistoryQuery = (item) => {
+  const id = item?._raw?.medication_id;
+  return id ? `/api/medications/history?medication_id=${id}` : null;
+};
+
+const HISTORY_STATUS_TONE = { skipped: 'skipped' };
+
+const defaultHistoryRow = (row) => ({
+  id: row.id,
+  at: row.administered_at,
+  status: HISTORY_STATUS[row.status] || row.status,
+  tone: HISTORY_STATUS_TONE[row.status] || 'given',
+  meta: `${row.dose_amount}${row.dose_unit ? ` ${row.dose_unit}` : ''}`,
+  note: row.notes,
+});
+
 const fmtTime = (iso) => {
   if (!iso) return '—';
   const d = new Date(iso);
@@ -62,6 +82,10 @@ const fmtTime = (iso) => {
   return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 };
 
+/* History differs per section: medications filter by medication_id and report
+ * a dose, care tasks filter by task_id and report a completion status. The
+ * shell is the same, so the caller supplies the query and the row mapping
+ * rather than this growing a second copy. */
 export default function DoseDetailPane({
   item,
   patientId,
@@ -69,6 +93,11 @@ export default function DoseDetailPane({
   onRecord,
   onSkip,
   busy = false,
+  labels = DOSE_LABELS,
+  historyQuery,
+  mapHistoryRow,
+  scheduleHref = '/care/medications/schedule',
+  skipNote = 'Recorded as a zero dose with your note',
 }) {
   const navigate = useNavigate();
   const [note, setNote] = useState('');
@@ -76,7 +105,7 @@ export default function DoseDetailPane({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyError, setHistoryError] = useState(false);
 
-  const medicationId = item?._raw?.medication_id ?? null;
+  const query = historyQuery ? historyQuery(item) : defaultHistoryQuery(item);
 
   // The note belongs to the dose in front of you, not to the pane.
   useEffect(() => {
@@ -91,14 +120,12 @@ export default function DoseDetailPane({
   // embed) SameSite blocks the session cookie, and the wrapper falls back to
   // the bearer token.
   useEffect(() => {
-    if (!historyOpen || !medicationId || !patientId) return undefined;
+    if (!historyOpen || !query || !patientId) return undefined;
     let cancelled = false;
     setHistoryError(false);
     (async () => {
       try {
-        const res = await apiFetch(
-          `${config.apiUrl}/api/medications/history?patient_id=${patientId}&medication_id=${medicationId}&limit=10`
-        );
+        const res = await apiFetch(`${config.apiUrl}${query}&patient_id=${patientId}&limit=10`);
         if (cancelled) return;
         if (!res.ok) { setHistoryError(true); return; }
         const data = await res.json();
@@ -108,14 +135,14 @@ export default function DoseDetailPane({
       }
     })();
     return () => { cancelled = true; };
-  }, [historyOpen, medicationId, patientId]);
+  }, [historyOpen, query, patientId]);
 
   const bucket = useMemo(() => (item ? bucketFor(item.status) : null), [item]);
 
   if (!item) {
     return (
       <div className="ld-dose-detail empty">
-        <p>Select a medication to see its details and history.</p>
+        <p>Select a {labels.one} to see its details and history.</p>
       </div>
     );
   }
@@ -164,7 +191,7 @@ export default function DoseDetailPane({
             rows={2}
             maxLength={500}
             value={note}
-            placeholder="Anything worth recording with this dose"
+            placeholder={labels.notePlaceholder}
             onChange={(e) => setNote(e.target.value)}
           />
 
@@ -174,7 +201,7 @@ export default function DoseDetailPane({
             disabled={busy}
             onClick={() => onRecord && onRecord(item, { note: note.trim() || undefined })}
           >
-            {busy ? 'Recording…' : 'Record dose'}
+            {busy ? 'Saving…' : labels.primary}
           </button>
         </>
       )}
@@ -189,8 +216,8 @@ export default function DoseDetailPane({
             onClick={() => onSkip(item, { note: note.trim() || undefined })}
           >
             <span>
-              Skip dose
-              <em>Recorded as a zero dose with your note</em>
+              Skip
+              <em>{skipNote}</em>
             </span>
             <ChevronRightIcon size={16} />
           </button>
@@ -198,7 +225,7 @@ export default function DoseDetailPane({
         <button
           type="button"
           className="ld-dose-action"
-          onClick={() => navigate('/care/medications/schedule')}
+          onClick={() => navigate(scheduleHref)}
         >
           <span>Correct schedule</span>
           <ChevronRightIcon size={16} />
@@ -221,18 +248,17 @@ export default function DoseDetailPane({
           {!historyError && history?.length === 0 && (
             <p className="ld-dose-history-empty">No doses recorded yet.</p>
           )}
-          {!historyError && history?.map((row) => (
-            <div key={row.id} className="ld-dose-history-row">
-              <span className="ld-dose-history-when">{fmtDateTime(row.administered_at)}</span>
-              <span className={`ld-dose-history-status ${row.status === 'skipped' ? 'skipped' : 'given'}`}>
-                {HISTORY_STATUS[row.status] || row.status}
-              </span>
-              <span className="ld-dose-history-dose">
-                {row.dose_amount}{row.dose_unit ? ` ${row.dose_unit}` : ''}
-              </span>
-              {row.notes && <span className="ld-dose-history-note">{row.notes}</span>}
-            </div>
-          ))}
+          {!historyError && history?.map((raw) => {
+            const row = (mapHistoryRow || defaultHistoryRow)(raw);
+            return (
+              <div key={row.id} className="ld-dose-history-row">
+                <span className="ld-dose-history-when">{fmtDateTime(row.at)}</span>
+                <span className={`ld-dose-history-status ${row.tone}`}>{row.status}</span>
+                {row.meta && <span className="ld-dose-history-dose">{row.meta}</span>}
+                {row.note && <span className="ld-dose-history-note">{row.note}</span>}
+              </div>
+            );
+          })}
         </div>
       )}
 

@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-// The medication schedule at both dock stops. Same items, two readings:
+// A day's scheduled items at both dock stops. Same items, two readings:
 //
 //   narrow (the cards column, ~300-400px) — triage. What is overdue, at what
 //     time, and a way to record it without leaving the board.
@@ -32,6 +32,7 @@ import { ChevronLeftIcon } from '../Icons';
 import {
   BUCKETS, BUCKET_LABELS, bucketFor, groupByDaySlot, recurrenceLabel, rollupSchedule, slotLabel,
 } from './scheduleRollup';
+import { DOSE_LABELS } from './scheduleLabels';
 import './schedule-panel.css';
 
 const STATUS_TEXT = {
@@ -55,6 +56,18 @@ function StatusBadge({ status }) {
   );
 }
 
+/* The middle column: a dose for medications, a category chip for care tasks. */
+function ItemMeta({ item }) {
+  if (item.category) {
+    return (
+      <span className="ld-dose-chip" style={{ '--chip': item.category.color || 'var(--vc-text-tertiary)' }}>
+        {item.category.name}
+      </span>
+    );
+  }
+  return item.extra ? <span className="ld-dose-amount">{item.extra}</span> : null;
+}
+
 /* "Daily · 08:00" — the schedule line. */
 function scheduleLine(item) {
   const time = slotLabel(item.scheduled_time);
@@ -66,6 +79,7 @@ export default function DoseScheduleView({
   items = [],
   loading = false,
   emptyText = 'No scheduled doses today',
+  labels = DOSE_LABELS,
   selectedId = null,
   onSelect,
   onRecord,
@@ -131,7 +145,7 @@ export default function DoseScheduleView({
                 className="ld-dose-linkbtn"
                 onClick={() => onRecordAll(needsAttention)}
               >
-                Record all
+                {labels.bulk}
               </button>
             )}
           </div>
@@ -159,7 +173,7 @@ export default function DoseScheduleView({
                         className="ld-dose-linkbtn"
                         onClick={() => onRecordAll(open)}
                       >
-                        Record all
+                        {labels.bulk}
                       </button>
                     )}
                   </div>
@@ -180,7 +194,7 @@ export default function DoseScheduleView({
                             <span className="ld-dose-name">{item.name}</span>
                             <StatusBadge status={item.status} />
                           </span>
-                          {item.extra && <span className="ld-dose-amount">{item.extra}</span>}
+                          <ItemMeta item={item} />
                           <span className="ld-dose-schedule">{recurrenceLabel(item.description)}</span>
                         </button>
                         {!item.is_completed && (
@@ -191,7 +205,7 @@ export default function DoseScheduleView({
                                 className="ld-dose-btn primary"
                                 onClick={(e) => { e.stopPropagation(); onRecord(item); }}
                               >
-                                Record dose
+                                {labels.primary}
                               </button>
                             )}
                             {onSkip && (
@@ -244,7 +258,7 @@ export default function DoseScheduleView({
                   <div className="ld-dose-slot-head">
                     <span className="ld-dose-slot-time">{slot.time || 'Unscheduled'}</span>
                     <span className="ld-dose-slot-count">
-                      {slot.items.length} medication{slot.items.length === 1 ? '' : 's'}
+                      {slot.items.length} {slot.items.length === 1 ? labels.one : labels.many}
                     </span>
                     {onRecordAll && open.length > 0 && (
                       <button
@@ -252,7 +266,7 @@ export default function DoseScheduleView({
                         className="ld-dose-linkbtn"
                         onClick={() => onRecordAll(open)}
                       >
-                        Record all
+                        {labels.bulk}
                       </button>
                     )}
                   </div>
@@ -260,8 +274,8 @@ export default function DoseScheduleView({
                   <table className="ld-dose-table">
                     <thead>
                       <tr>
-                        <th>Medication</th>
-                        <th>Dose</th>
+                        <th>{labels.nameColumn}</th>
+                        <th>{labels.metaColumn}</th>
                         <th>Schedule</th>
                         <th>Status</th>
                         <th className="ld-dose-actions-col">Actions</th>
@@ -285,7 +299,7 @@ export default function DoseScheduleView({
                               {item.name}
                             </button>
                           </th>
-                          <td>{item.extra || '—'}</td>
+                          <td><ItemMeta item={item} /></td>
                           <td>{scheduleLine(item)}</td>
                           <td><StatusBadge status={item.status} /></td>
                           <td className="ld-dose-actions-col">
@@ -295,7 +309,7 @@ export default function DoseScheduleView({
                                 className="ld-dose-btn primary sm"
                                 onClick={(e) => { e.stopPropagation(); onRecord(item); }}
                               >
-                                Record dose
+                                {labels.primary}
                               </button>
                             )}
                           </td>

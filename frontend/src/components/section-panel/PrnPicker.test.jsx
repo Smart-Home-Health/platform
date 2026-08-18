@@ -19,6 +19,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import PrnPicker from './PrnPicker';
+import { medicationRows } from './prnRows';
 
 const MEDS = [
   { id: 1, name: 'Albuterol', concentration: '0.083%', quantity: 19, quantity_unit: 'units' },
@@ -30,7 +31,7 @@ const MEDS = [
 
 const open = (props = {}) => render(
   <PrnPicker open onOpenChange={vi.fn()} patientName="Elijah Carty"
-             medications={MEDS} onSelect={vi.fn()} {...props} />
+             rows={medicationRows(MEDS)} onSelect={vi.fn()} {...props} />
 );
 
 describe('PrnPicker', () => {
@@ -67,7 +68,7 @@ describe('PrnPicker', () => {
   });
 
   it('says so when there is nothing to give, and drops the step footer', () => {
-    open({ medications: [] });
+    open({ rows: [] });
     expect(screen.getByText(/no as-needed medications/i)).toBeInTheDocument();
     expect(screen.queryByText(/step 1 of 2/i)).toBeNull();
   });

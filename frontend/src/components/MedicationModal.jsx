@@ -22,9 +22,10 @@ import { useAdminPatient } from '../contexts/AdminPatientContext';
 import { useAuth } from '../contexts/AuthContext';
 import DoseScheduleView from './schedule/DoseScheduleView';
 import DoseDetailPane from './schedule/DoseDetailPane';
-import MedicationViewSwitcher from './medication-panel/MedicationViewSwitcher';
-import PrnPicker from './medication-panel/PrnPicker';
-import './medication-panel/medication-panel.css';
+import PanelViewSwitcher from './section-panel/PanelViewSwitcher';
+import PrnPicker from './section-panel/PrnPicker';
+import { medicationRows } from './section-panel/prnRows';
+import './section-panel/section-panel.css';
 import { computeScheduleStatus } from './schedule/scheduleStatus';
 import { rollupSchedule } from './schedule/scheduleRollup';
 import { checkAdministrationWindow, formatDurationMinutes, getCurrentLocalDateTime } from '../utils/timezone';
@@ -337,7 +338,7 @@ const MedicationModal = ({ onClose }) => {
             </div>
           )}
 
-          <MedicationViewSwitcher
+          <PanelViewSwitcher
             views={viewOptions}
             value={tab}
             onChange={setTab}
@@ -408,7 +409,7 @@ const MedicationModal = ({ onClose }) => {
         patientName={selectedPatient
           ? `${selectedPatient.first_name} ${selectedPatient.last_name}`.trim()
           : null}
-        medications={prnMedications}
+        rows={medicationRows(prnMedications)}
         onSelect={pickPrnMed}
       />
 

@@ -618,3 +618,24 @@
 }
 .ld-dose-back:hover { color: var(--vc-text-primary); border-color: var(--vc-line-strong); }
 .ld-dose-panel.stacked .ld-dose-detail { border: none; padding: 0; background: none; }
+
+/* Category chip — care tasks carry a colour per category; medications don't,
+   and use the plain dose text in the same slot. */
+.ld-dose-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--chip) 55%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--chip) 14%, transparent);
+  color: var(--vc-text-primary);
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
