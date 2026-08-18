@@ -1,0 +1,270 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Recorded vitals, at the panel's two sizes.
+ *
+ * Rendered outside the `.tw` island, so box-sizing and the bare <button> paint
+ * are asserted here; `:where()` keeps the reset at element specificity. */
+@import '../../styles/vc-tokens.css';
+
+.vh-panel, .vh-panel * { box-sizing: border-box; }
+:where(.vh-panel) button {
+  font-family: var(--vc-font-mono);
+  padding: 0;
+  border: 1px solid transparent;
+  background: none;
+  color: inherit;
+}
+
+.vh-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.15rem 0 0.6rem;
+  color: var(--vc-text-primary);
+}
+
+.vh-tone-live     { --vh-tone: var(--vc-data-live); }
+.vh-tone-complete { --vh-tone: var(--vc-state-complete); }
+.vh-tone-due      { --vh-tone: var(--vc-state-due); }
+.vh-tone-alert    { --vh-tone: var(--vc-state-alert); }
+.vh-tone-idle     { --vh-tone: var(--vc-text-tertiary); }
+
+/* ---- narrow: latest per vital ---- */
+
+.vh-latest { display: flex; flex-direction: column; gap: 0.45rem; }
+
+.vh-card {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.15rem 0.6rem;
+  width: 100%;
+  padding: 0.65rem 0.7rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 10px;
+  background: var(--vc-bg-surface);
+  text-align: left;
+  cursor: pointer;
+}
+.vh-card:hover { border-color: var(--vc-data-live); background: var(--vc-bg-raised); }
+.vh-card.empty { cursor: default; opacity: 0.75; }
+.vh-card.empty:hover { border-color: var(--vc-line-hairline); background: var(--vc-bg-surface); }
+
+.vh-card-icon {
+  grid-row: 1 / 3;
+  grid-column: 1 / 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vc-text-secondary);
+}
+.vh-card-icon svg { width: 18px; height: 18px; }
+.vh-card-label {
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.vh-card-value {
+  display: flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  font-family: var(--vc-font-mono);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--vc-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.vh-card-value.none { color: var(--vc-text-tertiary); font-size: 18px; letter-spacing: 0.1em; }
+.vh-card-unit { font-size: 10.5px; font-weight: 600; color: var(--vc-text-tertiary); }
+.vh-card-when {
+  grid-column: 2 / 3;
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  color: var(--vc-text-tertiary);
+}
+.vh-card-go { grid-row: 1 / 3; grid-column: 3 / 4; color: var(--vc-text-tertiary); display: flex; align-items: center; }
+.vh-card:hover .vh-card-go { color: var(--vc-data-live); }
+.vh-card-flag {
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.35rem;
+  border: 1px solid color-mix(in srgb, var(--vc-state-due) 55%, transparent);
+  border-radius: 999px;
+  font-family: var(--vc-font-mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-state-due);
+}
+
+/* ---- wide: metric + range tabs, chart, table ---- */
+
+.vh-tabs { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.vh-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 34px;
+  padding: 0 0.7rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-surface);
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.vh-tab:hover { color: var(--vc-text-primary); border-color: var(--vc-line-strong); }
+.vh-tab[data-active='true'] {
+  border-color: var(--vc-data-live);
+  background: color-mix(in srgb, var(--vc-data-live) 15%, transparent);
+  color: var(--vc-text-primary);
+}
+.vh-tab svg { width: 14px; height: 14px; }
+
+.vh-ranges { display: flex; gap: 0; border: 1px solid var(--vc-line-hairline); border-radius: 8px; overflow: hidden; width: max-content; }
+.vh-range {
+  min-height: 32px;
+  padding: 0 0.85rem;
+  border: none;
+  background: var(--vc-bg-surface);
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+.vh-range + .vh-range { border-left: 1px solid var(--vc-line-hairline); }
+.vh-range:hover { color: var(--vc-text-primary); }
+.vh-range[data-active='true'] {
+  background: color-mix(in srgb, var(--vc-data-live) 18%, transparent);
+  color: var(--vc-text-primary);
+}
+
+.vh-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem; }
+
+.vh-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.75rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 10px;
+  background: var(--vc-bg-surface);
+}
+.vh-block-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
+.vh-block-title {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+.vh-block-unit { font-size: 10px; font-weight: 600; letter-spacing: 0.1em; color: var(--vc-text-tertiary); }
+
+.vh-legend { display: flex; flex-wrap: wrap; gap: 0.8rem; }
+.vh-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.vh-legend-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--vh-tone); }
+
+.vh-chart { width: 100%; height: 260px; }
+.vh-panel:not(.wide) .vh-chart { height: 190px; }
+
+/* ---- table ---- */
+
+.vh-table-wrap { overflow-x: auto; }
+.vh-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.vh-table th {
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--vc-line-hairline);
+  font-family: var(--vc-font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+  text-align: left;
+  white-space: nowrap;
+}
+.vh-table td {
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--vc-line-hairline);
+  font-family: var(--vc-font-mono);
+  font-size: 11.5px;
+  color: var(--vc-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vh-table tbody tr:last-child td { border-bottom: none; }
+.vh-table td.num { font-variant-numeric: tabular-nums; }
+.vh-table td.dim { color: var(--vc-text-tertiary); }
+.vh-src {
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.vh-src[data-source='pulse_ox'] {
+  border-color: color-mix(in srgb, var(--vc-data-live) 50%, transparent);
+  color: var(--vc-data-live);
+}
+
+.vh-note, .vh-empty {
+  padding: 1.2rem 0.8rem;
+  text-align: center;
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.vh-warn {
+  padding: 0.5rem 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--vc-state-due) 45%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--vc-state-due) 10%, transparent);
+  font-family: var(--vc-font-sans);
+  font-size: 11.5px;
+  color: var(--vc-text-secondary);
+}

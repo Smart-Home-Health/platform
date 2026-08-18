@@ -30,31 +30,6 @@ import { CHART_CHROME } from '../contexts/DashboardThemeContext';
 
 // ---- Formatting helpers ---------------------------------------------------
 
-// Bathroom size mapping for display
-const getBathroomSizeDisplay = (value, vitalGroup) => {
-  // Check if this is a bathroom-related group
-  const bathroomGroups = ['bathroom', 'mix', 'wet', 'dry', 'solid', 'liquid'];
-  const isBathroomGroup = vitalGroup && bathroomGroups.includes(vitalGroup.toLowerCase());
-
-  if (isBathroomGroup && value !== null && value !== undefined && typeof value === 'number') {
-    const sizeMap = {
-      0: 'Smear',
-      1: 'Small',
-      2: 'Medium',
-      3: 'Large',
-      4: 'Extra Large'
-    };
-    return sizeMap[value] || value;
-  }
-  return value;
-};
-
-// Group display formatting
-const getGroupDisplay = (vitalGroup) => {
-  if (!vitalGroup) return '-';
-  return vitalGroup.charAt(0).toUpperCase() + vitalGroup.slice(1);
-};
-
 // Format display value based on vital type
 const formatDisplayValue = (item, vitalType) => {
   if (!item) return '--';
@@ -77,9 +52,6 @@ const formatDisplayValue = (item, vitalType) => {
       return item.value ? `${item.value} cal` : '--';
     case 'water':
       return item.value ? `${item.value} ml` : '--';
-    case 'bathroom':
-      // For bathroom, show the mapped size
-      return getBathroomSizeDisplay(item.value, item.vital_group) || '--';
     default:
       return item.value ? `${item.value}` : '--';
   }
@@ -144,21 +116,7 @@ const formatDateTime = (dateTimeStr) => {
 };
 
 // Get chart color based on vital type
-const getChartColor = (vitalType, group = null) => {
-  if (vitalType === 'bathroom' && group) {
-    // Use group-specific colors for bathroom vitals
-    const groupColors = {
-      'mix': '#8B4513',      // Brown
-      'wet': '#4169E1',      // Royal Blue
-      'dry': '#DAA520',      // Goldenrod
-      'solid': '#8B4513',    // Brown
-      'liquid': '#4169E1',   // Royal Blue
-      'bathroom': '#6B46C1', // Purple
-      'unknown': '#6B7280'   // Gray
-    };
-    return groupColors[group.toLowerCase()] || '#6B7280';
-  }
-
+const getChartColor = (vitalType) => {
   // vc-aligned accents (literals — recharts needs them)
   const colors = {
     'blood_pressure': '#f0563c',
@@ -166,7 +124,6 @@ const getChartColor = (vitalType, group = null) => {
     'weight': '#3fbf6a',
     'calories': '#f0a52e',
     'water': '#4da7bd',
-    'bathroom': '#a1887f'
   };
   return colors[vitalType] || '#6b7987';
 };
@@ -180,17 +137,6 @@ const formatChartData = (data, vitalType) => {
   // Data arrives newest-first from the API. Take the newest 5 and reverse
   // so the chart renders oldest → newest left-to-right.
   const recent = data.slice(0, 5).slice().reverse();
-
-  // For bathroom vitals, we want to keep the numeric values for charting
-  // but we may want to group by vital_group for different colors
-  if (vitalType === 'bathroom') {
-    return recent.map((item, index) => ({
-      index,
-      value: item.value, // Keep numeric value for chart
-      originalItem: item,
-      group: item.vital_group || 'unknown' // Add group for potential color coding
-    }));
-  }
 
   return recent.map((item, index) => {
     let value = item.value;
@@ -227,10 +173,6 @@ const calculateYDomain = (chartData, vitalType) => {
     // For temperature, use a more reasonable range around body temperature
     min = Math.max(95, min - 2); // Don't go below 95°F
     max = Math.min(110, max + 2); // Don't go above 110°F
-  } else if (vitalType === 'bathroom') {
-    // For bathroom vitals (0-4 scale), ensure we show the full range
-    min = 0;
-    max = Math.max(4, max);
   } else {
     // Add padding for other vital types
     const padding = (max - min) * 0.1 || 10;
@@ -266,15 +208,6 @@ const VitalsTooltip = ({ active, payload, vitalType, chrome }) => {
       <div style={{ color: chrome.textMuted, fontSize: '10px' }}>
         {formatDateTime(item.datetime)}
       </div>
-      {vitalType === 'bathroom' && item.vital_group && (
-        <div style={{
-          color: getChartColor(vitalType, item.vital_group),
-          fontSize: '10px',
-          marginTop: '2px'
-        }}>
-          {getGroupDisplay(item.vital_group)}
-        </div>
-      )}
     </div>
   );
 };
@@ -297,17 +230,8 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved, ch
 
   const displayTitle = title || vitalType.charAt(0).toUpperCase() + vitalType.slice(1);
 
-  // Get the primary group for bathroom vitals to determine title color
-  // (data is newest-first, so the most recent entry is at index 0)
-  const primaryGroup = vitalType === 'bathroom' && data && data.length > 0 ?
-    data[0]?.vital_group : null;
-
-  const seriesColor = vitalType === 'bathroom' && chartData[0]?.group
-    ? getChartColor(vitalType, chartData[0].group)
-    : getChartColor(vitalType);
-  const titleColor = vitalType === 'bathroom' && primaryGroup
-    ? getChartColor(vitalType, primaryGroup)
-    : getChartColor(vitalType);
+  const seriesColor = getChartColor(vitalType);
+  const titleColor = seriesColor;
 
   return (
     <div style={{
@@ -470,17 +394,6 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved, ch
                   }}>
                     Time
                   </th>
-                  {vitalType === 'bathroom' && (
-                    <th style={{
-                      padding: '4px 8px',
-                      borderBottom: `1px solid ${chrome.border}`,
-                      fontSize: '10px',
-                      color: chrome.textMuted,
-                      textAlign: 'left'
-                    }}>
-                      Group
-                    </th>
-                  )}
                   <th style={{
                     padding: '4px 8px',
                     borderBottom: `1px solid ${chrome.border}`,
@@ -504,17 +417,6 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved, ch
                       }}>
                         {formatDateTime(item.datetime)}
                       </td>
-                      {vitalType === 'bathroom' && (
-                        <td style={{
-                          padding: '4px 8px',
-                          borderBottom: `1px solid ${chrome.border}`,
-                          fontSize: '11px',
-                          color: getChartColor(vitalType, item.vital_group),
-                          fontWeight: '500'
-                        }}>
-                          {getGroupDisplay(item.vital_group)}
-                        </td>
-                      )}
                       <td style={{
                         padding: '4px 8px',
                         borderBottom: `1px solid ${chrome.border}`,
@@ -529,7 +431,7 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved, ch
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={vitalType === 'bathroom' ? 3 : 2} style={{
+                    <td colSpan={2} style={{
                       textAlign: "center",
                       padding: '20px',
                       color: chrome.textDim,

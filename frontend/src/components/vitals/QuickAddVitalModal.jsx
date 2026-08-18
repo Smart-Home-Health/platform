@@ -19,6 +19,7 @@ import { createPortal } from 'react-dom';
 import ModalBase from '../ModalBase';
 import RecordVitalsForm from './RecordVitalsForm';
 import { formatVitalDisplayName } from '../../utils/vitals';
+import '../section-panel/section-panel.css';
 
 /**
  * Minimal wrapper that opens RecordVitalsForm locked to a single vital_type.
@@ -33,7 +34,12 @@ import { formatVitalDisplayName } from '../../utils/vitals';
 export default function QuickAddVitalModal({ vitalType, patientId, onClose, onSaved }) {
   if (!vitalType || !patientId) return null;
   return createPortal(
-    <ModalBase isOpen={true} onClose={onClose} title={`Quick Add — ${formatVitalDisplayName(vitalType)}`}>
+    <ModalBase isOpen={true} onClose={onClose} title={
+      <span className="mp-modal-title">
+        <span>{formatVitalDisplayName(vitalType)}</span>
+        <span className="mp-modal-title-sub">Quick add</span>
+      </span>
+    }>
       <RecordVitalsForm
         patientId={patientId}
         singleVitalType={vitalType}

@@ -27,6 +27,7 @@ import { Textarea } from '@/components/ui/textarea';
 // mounted from outside the admin-v2 route (e.g. the live dashboard History
 // modal). Vite dedupes with admin pages that also import it.
 import '../../pages/admin-v2/AdminV2.css';
+import './vitals-form.css';
 
 /**
  * Shared "Record Vitals" form used by AdminV2 Vitals → Record and by the
@@ -338,7 +339,7 @@ export default function RecordVitalsForm({
   }, [customDefinitions, activeVitals, singleVitalType]);
 
   return (
-    <div className="admin-v2-vitals-content">
+    <div className="admin-v2-vitals-content vc-vitals-form">
       <div className="admin-v2-settings-card">
         <form onSubmit={handleSubmit}>
           {/* Status messages */}
