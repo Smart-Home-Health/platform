@@ -1,0 +1,487 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Day-over-day report.
+ *
+ * Same approach as the messages board: this page is read in admin, which
+ * follows the user's theme, so the palette is a local token layer over the
+ * app's own light-capable variables, swapped to the vc tokens under dark.
+ *
+ * Colour roles here: the day series carry identity only (see SERIES_COLORS —
+ * amber and red are deliberately not in that set), amber marks the configured
+ * alarm line, and red marks a day that actually breached it. */
+@import '../../../styles/vc-tokens.css';
+
+.dod {
+  --dod-surface: var(--card);
+  --dod-raised: var(--secondary, var(--card));
+  --dod-line: var(--border);
+  --dod-text: var(--foreground);
+  --dod-text-2: var(--muted-foreground);
+  --dod-text-3: var(--muted-foreground);
+  --dod-accent: #0e7490;
+  --dod-alarm: #b54708;
+  --dod-breach: #b42318;
+  --dod-plot: transparent;
+}
+
+:root:not(.light) .dod,
+.force-dark .dod {
+  --dod-surface: var(--vc-bg-surface);
+  --dod-raised: var(--vc-bg-raised);
+  --dod-line: var(--vc-line-hairline);
+  --dod-text: var(--vc-text-primary);
+  --dod-text-2: var(--vc-text-secondary);
+  --dod-text-3: var(--vc-text-tertiary);
+  --dod-accent: var(--vc-data-live);
+  --dod-alarm: var(--vc-state-due);
+  --dod-breach: var(--vc-state-alert);
+  --dod-plot: #0f1620;
+}
+
+.dod, .dod * { box-sizing: border-box; }
+:where(.dod) button {
+  font-family: var(--vc-font-mono);
+  padding: 0;
+  border: 1px solid transparent;
+  background: none;
+  color: inherit;
+}
+
+.dod {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  max-width: 1100px;
+  font-family: var(--vc-font-sans);
+  color: var(--dod-text);
+}
+
+.dod-sr {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ---- controls ---- */
+
+/* One row, always: two pickers sharing the width and the filter button as a
+   square. Wrapping put Filters on a line of its own at phone width. */
+.dod-controls { display: flex; flex-wrap: nowrap; gap: 0.4rem; }
+.dod-control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 260px;
+  min-height: 46px;
+  padding: 0 0.75rem;
+  border: 1px solid var(--dod-line);
+  border-radius: 10px;
+  background: var(--dod-surface);
+  color: var(--dod-text);
+  font-family: var(--vc-font-mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.dod-control:hover { border-color: var(--dod-accent); }
+.dod-control.icon {
+  flex: 0 0 46px;
+  width: 46px;
+  padding: 0;
+  justify-content: center;
+  color: var(--dod-accent);
+}
+.dod-control > svg:first-child { color: var(--dod-accent); flex-shrink: 0; }
+.dod-control select {
+  appearance: none;
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+.dod-control select:focus-visible { outline: 2px solid var(--dod-accent); outline-offset: 2px; }
+.dod-chevron { color: var(--dod-text-3); flex-shrink: 0; }
+:root:not(.light) .dod select,
+.force-dark .dod select { color-scheme: dark; }
+
+/* A dot rather than a count: the filter panel holds a range, not a tally. */
+.dod-filter-dot {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dod-accent);
+}
+
+.dod-window {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dod-text-3);
+}
+.dod-window strong { color: var(--dod-accent); font-weight: 700; }
+
+/* ---- day chips ---- */
+
+.dod-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.dod-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 30px;
+  padding: 0 0.15rem 0 0.4rem;
+  border: 1px solid var(--dod-line);
+  border-radius: 10px;
+  background: var(--dod-surface);
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--dod-text);
+}
+.dod-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dod-series, var(--dod-accent));
+  flex-shrink: 0;
+}
+.dod-chip-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: var(--dod-text-3);
+  cursor: pointer;
+}
+.dod-chip-x:hover { color: var(--dod-breach); background: var(--dod-raised); }
+
+.dod-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 30px;
+  padding: 0 0.5rem;
+  border: 1px dashed var(--dod-line);
+  border-radius: 10px;
+  color: var(--dod-accent);
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.dod-add:hover { border-color: var(--dod-accent); border-style: solid; }
+.dod-add:disabled { color: var(--dod-text-3); cursor: default; }
+
+/* ---- chart card ---- */
+
+.dod-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--dod-line);
+  border-radius: 12px;
+  background: var(--dod-surface);
+  overflow: hidden;
+}
+.dod-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.7rem 0.8rem;
+  border-bottom: 1px solid var(--dod-line);
+}
+.dod-card-title {
+  font-family: var(--vc-font-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dod-text);
+}
+.dod-card-note {
+  margin-left: auto;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dod-text-3);
+  white-space: nowrap;
+}
+.dod-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--dod-line);
+  border-radius: 8px;
+  color: var(--dod-text-2);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.dod-icon-btn:hover { color: var(--dod-text); border-color: var(--dod-accent); }
+
+.dod-plot {
+  position: relative;
+  height: 340px;
+  padding: 0.6rem;
+  background: var(--dod-plot);
+}
+
+/* Full-screen chart: same card, taken out of the page flow. The vitals behind
+   it are not live here, so covering the screen costs nothing. */
+.dod-card.full {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  border-radius: 0;
+  background: var(--dod-surface);
+}
+.dod-card.full .dod-plot { flex: 1; height: auto; }
+
+/* ---- summary table ---- */
+
+.dod-table-wrap { overflow-x: auto; }
+.dod-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--vc-font-mono);
+}
+.dod-table th, .dod-table td {
+  padding: 0.6rem 0.7rem;
+  text-align: right;
+  border-bottom: 1px solid var(--dod-line);
+  white-space: nowrap;
+}
+.dod-table th:first-child, .dod-table td:first-child { text-align: left; }
+.dod-table thead th {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dod-text-3);
+}
+.dod-table tbody td { font-size: 12.5px; color: var(--dod-text); font-variant-numeric: tabular-nums; }
+.dod-table tbody tr:last-child td { border-bottom: none; }
+.dod-day-cell { display: inline-flex; align-items: center; gap: 0.5rem; }
+.dod-day-name {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+/* Written against the cell, not as a bare class: `.dod-table tbody td` sets a
+   colour of its own and would otherwise win on specificity. */
+.dod-table tbody td.dod-muted { color: var(--dod-text-3); }
+/* The one red on the page: this day went past the alarm the monitor uses. */
+.dod-table tbody td.dod-breach { color: var(--dod-breach); font-weight: 700; }
+
+/* ---- data table (VIEW DATA) ---- */
+
+.dod-data-scroll { max-height: 420px; overflow: auto; }
+.dod-data-table td, .dod-data-table th { font-size: 11.5px; }
+.dod-data-table thead th { position: sticky; top: 0; background: var(--dod-surface); }
+
+/* ---- footer actions ---- */
+
+.dod-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.dod-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  flex: 1 1 160px;
+  min-height: 44px;
+  padding: 0 0.9rem;
+  border: 1px solid var(--dod-line);
+  border-radius: 10px;
+  background: var(--dod-surface);
+  color: var(--dod-accent);
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.dod-btn:hover:not(:disabled) { border-color: var(--dod-accent); }
+.dod-btn:disabled { color: var(--dod-text-3); cursor: default; }
+
+/* ---- states ---- */
+
+.dod-empty {
+  padding: 2.5rem 1rem;
+  text-align: center;
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dod-text-3);
+}
+.dod-error {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--dod-breach) 55%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--dod-breach) 12%, transparent);
+  color: var(--dod-text);
+  font-size: 12.5px;
+}
+
+/* ---- sheets ----
+   These portal to <body>, outside `.dod`, so the button reset above does not
+   reach them and index.css's bare-button rule does: it pays out 1.2em of
+   inline padding, which on a fixed-width icon button eats the whole content
+   box and collapses the icon to zero width. Everything drawn in a sheet
+   states its own box. */
+
+.dod-sheet, .dod-sheet * { box-sizing: border-box; }
+:where(.dod-sheet) button {
+  font-family: var(--vc-font-mono);
+  padding: 0;
+  border: 1px solid transparent;
+  background: none;
+  color: inherit;
+}
+
+.dod-sheet { display: flex; flex-direction: column; gap: 0.9rem; padding-top: 0.8rem; }
+.dod-field { display: flex; flex-direction: column; gap: 0.4rem; }
+.dod-field-label {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+.dod-range { display: flex; align-items: center; gap: 0.5rem; }
+.dod-range .dod-control {
+  flex: 1;
+  background: var(--vc-bg-base);
+  border-color: var(--vc-line-strong);
+  color: var(--vc-text-primary);
+}
+.dod-range-sep {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+
+/* calendar */
+.dod-cal { display: flex; flex-direction: column; gap: 0.5rem; }
+.dod-cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.dod-cal-month {
+  font-family: var(--vc-font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+.dod-cal-nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  background: none;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 8px;
+  color: var(--vc-text-secondary);
+  cursor: pointer;
+}
+.dod-cal-nav:hover:not(:disabled) { color: var(--vc-text-primary); border-color: var(--vc-data-live); }
+.dod-cal-nav:disabled { opacity: 0.4; cursor: default; }
+.dod-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.dod-cal-weekday {
+  text-align: center;
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.dod-cal-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-base);
+  color: var(--vc-text-primary);
+  font-family: var(--vc-font-mono);
+  font-size: 13px;
+  cursor: pointer;
+}
+.dod-cal-cell:hover:not(:disabled) { border-color: var(--vc-data-live); }
+.dod-cal-cell.today { border-color: var(--vc-line-strong); font-weight: 700; }
+/* The selected day carries its own series colour, so the calendar and the
+   chart agree at a glance. */
+.dod-cal-cell.on {
+  border-color: var(--dod-series);
+  background: color-mix(in srgb, var(--dod-series) 22%, transparent);
+  color: var(--vc-text-primary);
+  font-weight: 700;
+}
+.dod-cal-cell:disabled { color: var(--vc-text-tertiary); opacity: 0.45; cursor: default; }
+.dod-cal-cell.empty { border: none; background: none; cursor: default; }
+.dod-cal-note {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-state-due);
+}
