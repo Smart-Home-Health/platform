@@ -48,6 +48,34 @@ def test_overnight_ok(admin_client, patient):
     assert resp.status_code == 200, resp.text
 
 
+def test_overnight_reports_sensor_coverage(admin_client, db_session, patient):
+    """The overnight header says how much of the window the sensor actually
+    covered. It is derived from the sample count at the same ~4s cadence the
+    time-below-90 figure already assumes, and capped at the window itself."""
+    from datetime import datetime, timedelta, timezone
+    from schemas.pulse_ox_data import PulseOxData
+
+    # 3 AM UTC on the 2nd sits inside the 8 PM–8 AM window whether the account
+    # keeps UTC or a US timezone, so the count is the same either way.
+    start = datetime(2026, 6, 2, 3, 0, tzinfo=timezone.utc)
+    db_session.add_all([
+        PulseOxData(patient_id=patient.id, timestamp=start + timedelta(seconds=i * 4),
+                    spo2=97, bpm=90, pa=2.0, created_at=start)
+        for i in range(150)  # 150 samples × 4s = 10 minutes of wall clock
+    ])
+    db_session.commit()
+
+    resp = admin_client.get("/api/reports/overnight", params={
+        "patient_id": patient.id, "report_date": "2026-06-01",
+    })
+    assert resp.status_code == 200, resp.text
+    vs = resp.json()["vitals_summary"]
+    assert vs["sample_count"] == 150
+    assert vs["coverage_minutes"] == 10.0        # ten minutes hold a reading
+    assert vs["window_minutes"] == 720.0        # 8 PM -> 8 AM
+    assert vs["coverage_minutes"] <= vs["window_minutes"]
+
+
 def test_overnight_rejects_bad_date(admin_client, patient):
     resp = admin_client.get("/api/reports/overnight", params={
         "patient_id": patient.id, "report_date": "not-a-date",
