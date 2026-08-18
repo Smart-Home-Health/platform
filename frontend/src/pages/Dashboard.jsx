@@ -1066,7 +1066,7 @@ export default function Dashboard() {
         onClose={() => setIsMobileMenuOpen(false)}
         actions={topBarActions}
         patientName={selectedPatient
-          ? `${selectedPatient.first_name} ${selectedPatient.last_name}`.trim()
+          ? [selectedPatient.first_name, selectedPatient.last_name].filter(Boolean).join(' ')
           : null}
         onSettings={handleSettingsClick}
       />
