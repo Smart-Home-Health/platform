@@ -1,0 +1,194 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* vc skin for RecordVitalsForm.
+ *
+ * The form was written for the admin pages and still carries their class
+ * names (`admin-v2-settings-card`, `vital-input-card`, ...). Its only caller
+ * now is the dashboard's Quick Add sheet, where those admin rules render a
+ * light card on the dark board.
+ *
+ * Rather than rename the markup, this re-skins those classes under a single
+ * `.vc-vitals-form` root. Every selector is deliberately two classes deep so
+ * it outranks the one-class AdminV2.css rules regardless of import order —
+ * App.css and AdminV2.css both load after component CSS. */
+@import '../../styles/vc-tokens.css';
+
+.vc-vitals-form, .vc-vitals-form * { box-sizing: border-box; }
+
+.vc-vitals-form.admin-v2-vitals-content { padding: 0; background: none; }
+
+.vc-vitals-form .admin-v2-settings-card {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+/* ---- date/time header ---- */
+
+.vc-vitals-form .vitals-form-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 0.9rem;
+  padding: 0;
+  border: none;
+  background: none;
+}
+.vc-vitals-form .vitals-datetime-field { display: flex; flex-direction: column; gap: 0.3rem; flex: 1; min-width: 200px; }
+.vc-vitals-form .vitals-datetime-field label {
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.vc-vitals-form .vitals-datetime-field input {
+  width: 100%;
+  min-height: 42px;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 8px;
+  background: var(--vc-bg-base);
+  color: var(--vc-text-primary);
+  font-family: var(--vc-font-mono);
+  font-size: 13px;
+  color-scheme: dark;
+}
+.vc-vitals-form .vitals-datetime-field input:focus {
+  outline: none;
+  border-color: var(--vc-data-live);
+  box-shadow: 0 0 0 1px var(--vc-data-live);
+}
+
+/* ---- one card per vital ---- */
+
+.vc-vitals-form .vital-input-card {
+  margin-bottom: 0.6rem;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 10px;
+  background: var(--vc-bg-surface);
+  box-shadow: none;
+}
+.vc-vitals-form .vital-input-header { margin-bottom: 0.5rem; padding: 0; border: none; background: none; }
+.vc-vitals-form .vital-input-title {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.vc-vitals-form .vital-input-fields { display: flex; align-items: flex-end; gap: 0.5rem; flex-wrap: wrap; }
+.vc-vitals-form .vital-input-group { display: flex; flex-direction: column; gap: 0.25rem; }
+.vc-vitals-form .vital-input-label {
+  font-family: var(--vc-font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.vc-vitals-form .vital-input {
+  width: 100px;
+  min-height: 46px;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 8px;
+  background: var(--vc-bg-base);
+  color: var(--vc-text-primary);
+  font-family: var(--vc-font-mono);
+  /* 16px keeps iOS from zooming the board when the field takes focus. */
+  font-size: 16px;
+  font-weight: 700;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.vc-vitals-form .vital-input.large { width: 130px; font-size: 20px; }
+.vc-vitals-form .vital-input:focus {
+  outline: none;
+  border-color: var(--vc-data-live);
+  box-shadow: 0 0 0 1px var(--vc-data-live);
+}
+.vc-vitals-form .vital-input::placeholder { color: var(--vc-text-tertiary); font-weight: 400; }
+.vc-vitals-form .bp-separator {
+  align-self: center;
+  padding-bottom: 1.1rem;
+  font-family: var(--vc-font-mono);
+  font-size: 18px;
+  color: var(--vc-text-tertiary);
+}
+.vc-vitals-form .vital-unit {
+  align-self: center;
+  padding-bottom: 1.1rem;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--vc-text-tertiary);
+}
+
+/* ---- notes + actions ---- */
+
+.vc-vitals-form .admin-v2-input {
+  width: 100%;
+  min-height: 46px;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 8px;
+  background: var(--vc-bg-base);
+  color: var(--vc-text-primary);
+  font-family: var(--vc-font-sans);
+  font-size: 16px;
+}
+.vc-vitals-form .admin-v2-input:focus {
+  outline: none;
+  border-color: var(--vc-data-live);
+  box-shadow: 0 0 0 1px var(--vc-data-live);
+}
+.vc-vitals-form .admin-v2-input::placeholder { color: var(--vc-text-tertiary); }
+
+.vc-vitals-form .vitals-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.9rem;
+  padding: 0.8rem 0 0;
+  border-top: 1px solid var(--vc-line-hairline);
+  background: none;
+}
+
+/* The notes block and the custom-vital manager are `.tw` islands, so their
+   surfaces come from shadcn tokens rather than these class names. Pin the two
+   that read as light panels on the board. */
+.vc-vitals-form .tw.mb-6 { border-color: var(--vc-line-hairline); background: var(--vc-bg-surface); }
+.vc-vitals-form .custom-vitals-manager {
+  padding: 0.7rem 0.75rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 10px;
+  background: var(--vc-bg-surface);
+}
+.vc-vitals-form .custom-vital-item {
+  border-color: var(--vc-line-hairline);
+  background: var(--vc-bg-raised);
+  color: var(--vc-text-primary);
+}

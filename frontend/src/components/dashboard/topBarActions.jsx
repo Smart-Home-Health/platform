@@ -41,14 +41,16 @@ export function buildTopBarActions({
   hasCamera, modalOpen, handlers,
 }) {
   return [
-    // Capture leads: recording a vital set is the one action a caregiver takes
-    // at the bedside mid-shift, and it is allowed in monitoring mode.
-    { key: 'capture', group: 'record', label: 'Capture Vitals', icon: <VitalsCaptureIcon />, onClick: handlers.capture, active: modalOpen.capture, badge: 0 },
     { key: 'alerts', group: 'monitoring', label: 'Alerts', icon: <MinimalistPulseOxIcon />, onClick: handlers.alerts, active: modalOpen.alerts, badge: pulseOxAlerts },
     { key: 'medications', group: 'care', label: 'Medications', icon: <MedicationIcon />, onClick: handlers.medications, active: modalOpen.medications, badge: medicationDueCount },
     { key: 'nutrition', group: 'care', label: 'Nutrition', icon: <NutritionIcon />, onClick: handlers.nutrition, active: modalOpen.nutrition, badge: nutritionDueCount },
     { key: 'careTasks', group: 'care', label: 'Care Tasks', icon: <CareTasksIcon />, onClick: handlers.careTasks, active: modalOpen.careTasks, badge: careTaskDueCount },
     { key: 'equipment', group: 'care', label: 'Equipment', icon: <MinimalistVentIcon />, onClick: handlers.equipment, active: modalOpen.equipment, badge: equipmentDueCount },
+    // Capture sits next to History: one records a vital set, the other reads
+    // the ones already recorded, and History no longer carries its own add
+    // button. The drawer is grouped rather than ordered, so Capture still
+    // heads its own Record group there.
+    { key: 'capture', group: 'record', label: 'Capture Vitals', icon: <VitalsCaptureIcon />, onClick: handlers.capture, active: modalOpen.capture, badge: 0 },
     { key: 'history', group: 'monitoring', label: 'History', icon: <HistoryIcon />, onClick: handlers.history, active: modalOpen.history, badge: 0 },
     hasCamera
       ? { key: 'camera', group: 'monitoring', label: 'Live Camera', icon: <CameraIcon />, onClick: handlers.camera, active: modalOpen.camera, badge: 0 }
