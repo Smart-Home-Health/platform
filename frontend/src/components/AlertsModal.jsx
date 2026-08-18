@@ -19,6 +19,7 @@ import { useMemo, useState } from 'react';
 import ModalBase from './ModalBase';
 import AlertsList from './alerts/AlertsList';
 import AlertsHistory from './alerts/AlertsHistory';
+import './alerts/alerts-panel.css';
 import PanelViewSwitcher from './section-panel/PanelViewSwitcher';
 import { useAdminPatient } from '../contexts/AdminPatientContext';
 import './section-panel/section-panel.css';
@@ -63,9 +64,16 @@ export default function AlertsModal({ isOpen, onClose, alertsCount, onAlertAckno
         <PanelViewSwitcher views={views} value={tab} onChange={setTab} />
 
         <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-          {tab === 'history'
-            ? <AlertsHistory patientId={selectedPatient?.id} />
-            : <AlertsList onAlertAcknowledge={handleAlertAcknowledge} patientId={selectedPatient?.id} />}
+          {/* With no patient chosen the alert queries drop their patient filter
+              and return every patient's episodes, so hold off entirely — the
+              same bail the medication and care-task panels make. */}
+          {!selectedPatient ? (
+            <div className="al-empty">Select a patient to see alerts</div>
+          ) : tab === 'history' ? (
+            <AlertsHistory patientId={selectedPatient.id} />
+          ) : (
+            <AlertsList onAlertAcknowledge={handleAlertAcknowledge} patientId={selectedPatient.id} />
+          )}
         </div>
       </div>
     </ModalBase>

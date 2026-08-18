@@ -34,7 +34,7 @@ import {
   SelectItem,
 } from '@/components/ui/select';
 
-const AlertDetailInline = ({ alert, onClose, onAcknowledge, initiateAcknowledge = false, showBack = true }) => {
+const AlertDetailInline = ({ alert, onClose, onAcknowledge, initiateAcknowledge = false }) => {
   const [eventData, setEventData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -204,12 +204,9 @@ const AlertDetailInline = ({ alert, onClose, onAcknowledge, initiateAcknowledge 
 
   return (
     <div className="al-detail tw text-foreground">
-      {/* Back button + title. The host supplies the back control when the
-          detail replaces the list; beside the list there is nowhere to go. */}
+      {/* No back control here: the host renders one above the detail when it
+          replaces the list, and beside the list there is nowhere to go. */}
       <div className="al-detail-head">
-        {showBack && (
-          <button type="button" className="al-btn ghost" onClick={onClose}>← Back</button>
-        )}
         <h3 className="al-detail-title">Episode detail</h3>
       </div>
 
@@ -321,14 +318,13 @@ const AlertDetailInline = ({ alert, onClose, onAcknowledge, initiateAcknowledge 
 
       {/* Actions */}
       {!showOxygenForm ? (
-        <div className="flex justify-end gap-2.5 border-t border-border pt-3">
-          <Button variant="secondary" onClick={onClose}>Back to List</Button>
-          {!alert.acknowledged && (
+        !alert.acknowledged && (
+          <div className="flex justify-end gap-2.5 border-t border-border pt-3">
             <Button onClick={() => setShowOxygenForm(true)}>
               <CheckIcon size={14} /> Acknowledge
             </Button>
-          )}
-        </div>
+          </div>
+        )
       ) : (
         <div className="rounded-xl border border-border bg-card p-4">
           <h4 className="m-0 mb-3 text-base font-semibold">Acknowledge Alert</h4>

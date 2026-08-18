@@ -179,7 +179,6 @@ const AlertsList = ({ onAlertAcknowledge, patientId }) => {
       onClose={() => { setSelectedId(null); setShowAcknowledgeForm(false); }}
       onAcknowledge={acknowledgeAlert}
       initiateAcknowledge={showAcknowledgeForm}
-      showBack={!expanded}
     />
   ) : null;
 
