@@ -1,0 +1,255 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Standalone (non-docked) schedule list for admin-v2's Medications/Care Tasks/
+ * Nutrition Schedule tabs — same visual language as schedule-panel.css's
+ * `.ld-dose-*` narrow layout (the live dashboard's dose panel), minus the
+ * ModalDockContext coupling that view needs for its narrow/wide branching.
+ *
+ * Six status tones, not four: admin-v2's pages already distinguish more states
+ * than the dock's given/due/missed/skipped rollup (e.g. a mild "ready" vs a
+ * "warning" vs a full "late"), so this reads tone straight off vc-content.css's
+ * existing --sched-* families rather than collapsing them.
+ *
+ * Vc-native (dark by design), like entity-card.css — every page that adopts
+ * this component is already dark-only (Overview/Manage went through the same
+ * rebuild). Tokens only, no raw hex. Status colour lives in the badge pill and
+ * a subtle 3px card accent — never a thick stripe as the only signal. */
+@import '../../styles/vc-tokens.css';
+
+.sb-board, .sb-board *, .sb-board *::before, .sb-board *::after { box-sizing: border-box; }
+.sb-board button {
+  font-family: var(--vc-font-mono);
+  padding: 0;
+  border: 1px solid transparent;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.sb-empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--vc-text-tertiary);
+  font-family: var(--vc-font-mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ---------- day / slot grouping ---------- */
+
+.sb-day + .sb-day { margin-top: 1.4rem; }
+.sb-day-head {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--vc-line-hairline);
+  margin-bottom: 0.7rem;
+}
+
+.sb-slot + .sb-slot { margin-top: 0.9rem; }
+.sb-slot-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.45rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--vc-line-strong);
+}
+.sb-slot-time {
+  font-family: var(--vc-font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--vc-data-live);
+  font-variant-numeric: tabular-nums;
+}
+.sb-slot-count {
+  min-width: 18px;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  background: var(--vc-bg-raised);
+  color: var(--vc-text-secondary);
+  text-align: center;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+}
+
+.sb-cards { display: flex; flex-direction: column; gap: 0.55rem; }
+
+/* ---------- card ---------- */
+
+.sb-card {
+  border: 1px solid var(--vc-line-hairline);
+  border-left: 3px solid var(--vc-line-strong);
+  border-radius: 10px;
+  background: var(--vc-bg-surface);
+  overflow: hidden;
+}
+.sb-card.tone-ontime { border-left-color: var(--sched-ontime-border); }
+.sb-card.tone-pending { border-left-color: var(--sched-pending-border); }
+.sb-card.tone-warning { border-left-color: var(--sched-warning-border); }
+.sb-card.tone-late { border-left-color: var(--sched-late-border); }
+.sb-card.tone-completed { border-left-color: var(--sched-completed-border); }
+.sb-card.tone-skipped { border-left-color: var(--sched-skipped-border); }
+
+.sb-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.7rem 0.8rem 0.5rem;
+}
+.sb-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.sb-name {
+  font-family: var(--vc-font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--vc-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sb-meta {
+  font-family: var(--vc-font-mono);
+  font-size: 12px;
+  color: var(--vc-text-secondary);
+}
+.sb-schedule {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.sb-row-meta { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+
+.sb-card-actions {
+  display: flex;
+  gap: 0.4rem;
+  padding: 0 0.8rem 0.7rem;
+}
+.sb-card-actions .sb-btn.primary { flex: 1; min-width: 0; }
+.sb-card-actions .sb-btn.ghost,
+.sb-card-actions .sb-btn.danger { flex: 0 0 auto; min-width: 64px; }
+
+/* ---------- status badge — border + background wash + text off one token ---------- */
+
+.sb-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid;
+  border-radius: 999px;
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.sb-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+
+.sb-badge.tone-ontime { color: var(--sched-ontime-text); border-color: var(--sched-ontime-border); background: var(--sched-ontime-bg); }
+.sb-badge.tone-pending { color: var(--sched-pending-text); border-color: var(--sched-pending-border); background: var(--sched-pending-bg); }
+.sb-badge.tone-warning { color: var(--sched-warning-text); border-color: var(--sched-warning-border); background: var(--sched-warning-bg); }
+.sb-badge.tone-late { color: var(--sched-late-text); border-color: var(--sched-late-border); background: var(--sched-late-bg); }
+.sb-badge.tone-completed { color: var(--sched-completed-text); border-color: var(--sched-completed-border); background: var(--sched-completed-bg); }
+.sb-badge.tone-skipped { color: var(--sched-skipped-text); border-color: var(--sched-skipped-border); background: var(--sched-skipped-bg); }
+
+/* ---------- category chip (care tasks) — colour set per-item via --chip ---------- */
+
+.sb-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--chip) 55%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--chip) 14%, transparent);
+  color: var(--vc-text-primary);
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb-prn-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 999px;
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ---------- action buttons ---------- */
+
+.sb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 0.85rem;
+  border-radius: 8px;
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.sb-btn.primary {
+  border: 1px solid var(--sched-primary);
+  background: color-mix(in srgb, var(--sched-primary) 16%, transparent);
+  color: var(--vc-text-primary);
+}
+.sb-btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--sched-primary) 28%, transparent); }
+.sb-btn.ghost {
+  border: 1px solid var(--vc-line-strong);
+  color: var(--vc-text-secondary);
+}
+.sb-btn.ghost:hover:not(:disabled) { color: var(--vc-text-primary); border-color: var(--vc-text-tertiary); }
+.sb-btn.danger {
+  border: 1px solid color-mix(in srgb, var(--vc-state-alert) 55%, transparent);
+  color: var(--vc-state-alert);
+}
+.sb-btn.danger:hover:not(:disabled) { background: color-mix(in srgb, var(--vc-state-alert) 12%, transparent); }
+.sb-btn:disabled { opacity: 0.5; cursor: default; }

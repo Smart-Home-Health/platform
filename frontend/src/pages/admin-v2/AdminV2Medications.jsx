@@ -18,12 +18,13 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
-import { PatientSelectorModal } from './components';
+import { PatientSelectorModal, MedStockBar, MedicationHistoryModal } from './components';
 import config from '../../config';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
-import { MedicationsIcon } from '../../components/Icons';
+import { MedicationsIcon, ClockIcon, PackageIcon, ChevronRightIcon } from '../../components/Icons';
+import EntityCard from '../../components/vc/EntityCard';
+import EntityToolbar from '../../components/vc/EntityToolbar';
 import { Button } from '@/components/ui/button';
-import { Alert } from '@/components/ui/alert';
 import './AdminV2.css';
 
 const formatDateTime = (iso) => {
@@ -57,14 +58,9 @@ const AdminV2Medications = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // 'auto' = table on desktop, cards on mobile (via CSS media query).
-  // 'cards' = force the card layout at any width (handy on iPad).
-  const [viewMode, setViewMode] = useState(
-    () => localStorage.getItem('adminV2MedsViewMode') || 'auto'
-  );
-  useEffect(() => {
-    localStorage.setItem('adminV2MedsViewMode', viewMode);
-  }, [viewMode]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterKey, setFilterKey] = useState('all');
+  const [historyMed, setHistoryMed] = useState(null);
 
   // Sync URL <-> context patient
   useEffect(() => {
@@ -127,6 +123,45 @@ const AdminV2Medications = () => {
     setShowPatientModal(false);
   };
 
+  const scheduledCount = medications.filter(m => !m.as_needed).length;
+  const prnCount = medications.filter(m => m.as_needed).length;
+  const lowStockCount = medications.filter(m => m.stock_low).length;
+
+  const matchesSearch = (med) => {
+    if (!searchTerm.trim()) return true;
+    const q = searchTerm.toLowerCase();
+    return med.name.toLowerCase().includes(q) || med.instructions?.toLowerCase().includes(q);
+  };
+  const matchesFilter = (med) => {
+    if (filterKey === 'scheduled') return !med.as_needed;
+    if (filterKey === 'prn') return med.as_needed;
+    if (filterKey === 'low_stock') return !!med.stock_low;
+    return true;
+  };
+  const filtered = medications.filter(med => matchesSearch(med) && matchesFilter(med));
+  const scheduledMeds = filtered.filter(m => !m.as_needed);
+  const prnMeds = filtered.filter(m => m.as_needed);
+
+  const renderCard = (med) => (
+    <EntityCard
+      key={med.id}
+      initials={med.name.slice(0, 2).toUpperCase()}
+      title={med.name}
+      badges={[med.concentration, med.is_global ? 'Global' : null].filter(Boolean)}
+      tag={med.stock_low ? { label: 'Low stock', tone: 'due' } : undefined}
+      details={[
+        { icon: <ClockIcon size={18} />, label: 'Last given', value: formatDateTime(med.last_administered) },
+        { icon: <ClockIcon size={18} />, label: 'Next due', value: formatDateTime(med.next_due) },
+        { icon: <PackageIcon size={18} />, label: 'On hand', value: `${med.quantity} ${med.quantity_unit}` },
+      ]}
+      quickActions={[
+        { icon: <ChevronRightIcon size={20} />, label: `View history for ${med.name}`, onClick: () => setHistoryMed(med) },
+      ]}
+    >
+      <MedStockBar daysLeft={med.days_left} low={med.stock_low} />
+    </EntityCard>
+  );
+
   if (loadingPatients) {
     return (
       <AdminV2Layout>
@@ -140,137 +175,78 @@ const AdminV2Medications = () => {
       <div className="admin-v2-page">
         {selectedPatient ? (
           <>
-            <div className="admin-v2-meds-header">
-              <div className="tw flex gap-2" role="group" aria-label="View mode">
-                <Button
-                  type="button"
-                  variant={viewMode === 'auto' ? 'default' : 'secondary'}
-                  onClick={() => setViewMode('auto')}
-                  aria-pressed={viewMode === 'auto'}
-                >
-                  Table
-                </Button>
-                <Button
-                  type="button"
-                  variant={viewMode === 'cards' ? 'default' : 'secondary'}
-                  onClick={() => setViewMode('cards')}
-                  aria-pressed={viewMode === 'cards'}
-                >
-                  Cards
-                </Button>
+            {error && <div className="em-error ec-page-alert">{error}</div>}
+
+            <div className="admin-v2-summary-stats admin-v2-medications-summary" style={{ marginBottom: '1.5rem' }}>
+              <div className="admin-v2-stat-card">
+                <div className="admin-v2-stat-info">
+                  <h4>{medications.length}</h4>
+                  <p>Active</p>
+                </div>
+              </div>
+              <div className="admin-v2-stat-card">
+                <div className="admin-v2-stat-info">
+                  <h4>{scheduledCount}</h4>
+                  <p>Scheduled</p>
+                </div>
+              </div>
+              <div className="admin-v2-stat-card">
+                <div className="admin-v2-stat-info">
+                  <h4>{prnCount}</h4>
+                  <p>PRN</p>
+                </div>
+              </div>
+              <div className="admin-v2-stat-card">
+                <div className="admin-v2-stat-info">
+                  <h4>{lowStockCount}</h4>
+                  <p>Low Stock</p>
+                </div>
               </div>
             </div>
 
-            {error && <div className="tw mb-4"><Alert variant="destructive">{error}</Alert></div>}
+            <EntityToolbar
+              search={searchTerm}
+              onSearchChange={setSearchTerm}
+              searchPlaceholder="Search medications"
+              filter={{
+                value: filterKey,
+                onChange: setFilterKey,
+                label: 'Show',
+                options: [
+                  { value: 'all', label: 'All' },
+                  { value: 'scheduled', label: 'Scheduled' },
+                  { value: 'prn', label: 'PRN' },
+                  { value: 'low_stock', label: 'Low stock' },
+                ],
+              }}
+            />
 
             {loading ? (
-              <div className="admin-v2-loading">Loading medications...</div>
-            ) : medications.length === 0 ? (
-              <div className="admin-v2-empty-state">
+              <div className="ec-empty">Loading medications…</div>
+            ) : filtered.length === 0 ? (
+              <div className="ec-empty">
                 <MedicationsIcon size={32} />
-                <p>No active medications for this patient</p>
+                <p>{searchTerm ? 'No medications match your search.' : 'No active medications for this patient.'}</p>
               </div>
             ) : (
-              <div className={viewMode === 'cards' ? 'admin-v2-meds-force-cards' : ''}>
-                {/* Desktop: dense table */}
-                <div className="admin-v2-table-container admin-v2-meds-desktop">
-                  <table className="admin-v2-table">
-                    <thead>
-                      <tr>
-                        <th>Medication</th>
-                        <th>Concentration</th>
-                        <th>Qty</th>
-                        <th>Instructions</th>
-                        <th>Status</th>
-                        <th>Last Given</th>
-                        <th>Next Due</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {medications.map(med => {
-                        return (
-                          <tr key={med.id}>
-                            <td>
-                              <div className="admin-v2-med-name">
-                                <strong>{med.name}</strong>
-                                {med.is_global && (
-                                  <span className="admin-v2-badge admin-v2-badge-info">Global</span>
-                                )}
-                              </div>
-                            </td>
-                            <td>{med.concentration || '—'}</td>
-                            <td>{med.quantity} {med.quantity_unit}</td>
-                            <td className="admin-v2-instructions-cell">
-                              {med.instructions || '—'}
-                            </td>
-                            <td>
-                              {med.as_needed ? (
-                                <span className="admin-v2-badge admin-v2-badge-warning">PRN</span>
-                              ) : (
-                                <span className="admin-v2-badge admin-v2-badge-secondary">SCH</span>
-                              )}
-                            </td>
-                            <td>{formatDateTime(med.last_administered)}</td>
-                            <td>{formatDateTime(med.next_due)}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Mobile: stacked card list */}
-                <div className="admin-v2-meds-cards">
-                  {medications.map(med => {
-                    return (
-                      <div key={med.id} className="admin-v2-med-card">
-                        <div className="admin-v2-med-card-row admin-v2-med-card-header">
-                          <div className="admin-v2-med-card-title">
-                            <strong>{med.name}</strong>
-                            {med.concentration && (
-                              <span className="admin-v2-med-card-concentration">{med.concentration}</span>
-                            )}
-                          </div>
-                          <div className="admin-v2-med-card-badges">
-                            {med.as_needed ? (
-                              <span className="admin-v2-badge admin-v2-badge-warning">PRN</span>
-                            ) : (
-                              <span className="admin-v2-badge admin-v2-badge-secondary">SCH</span>
-                            )}
-                            {med.is_global && (
-                              <span className="admin-v2-badge admin-v2-badge-info">Global</span>
-                            )}
-                          </div>
-                        </div>
-
-                        {med.instructions && (
-                          <div className="admin-v2-med-card-instructions">{med.instructions}</div>
-                        )}
-
-                        <div className="admin-v2-med-card-row admin-v2-med-card-meta">
-                          <div className="admin-v2-med-card-meta-item">
-                            <span className="admin-v2-med-card-label">Qty</span>
-                            <span>{med.quantity} {med.quantity_unit}</span>
-                          </div>
-                          <div className="admin-v2-med-card-meta-item">
-                            <span className="admin-v2-med-card-label">Last given</span>
-                            <span>{formatDateTime(med.last_administered)}</span>
-                            {med.last_administered && med.last_dose_amount != null && (
-                              <span className="admin-v2-med-card-sub">
-                                {med.last_dose_amount} {med.quantity_unit}
-                              </span>
-                            )}
-                          </div>
-                          <div className="admin-v2-med-card-meta-item">
-                            <span className="admin-v2-med-card-label">Next due</span>
-                            <span>{formatDateTime(med.next_due)}</span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+              <>
+                {scheduledMeds.length > 0 && (
+                  <>
+                    <h3 className="admin-v2-section-title">Scheduled · {scheduledMeds.length}</h3>
+                    <div className="ec-grid" style={{ marginBottom: '1.5rem' }}>
+                      {scheduledMeds.map(renderCard)}
+                    </div>
+                  </>
+                )}
+                {prnMeds.length > 0 && (
+                  <>
+                    <h3 className="admin-v2-section-title">As Needed · {prnMeds.length}</h3>
+                    <div className="ec-grid">
+                      {prnMeds.map(renderCard)}
+                    </div>
+                  </>
+                )}
+              </>
             )}
           </>
         ) : (
@@ -295,6 +271,13 @@ const AdminV2Medications = () => {
             loading={loadingPatients}
           />
         )}
+
+        <MedicationHistoryModal
+          open={!!historyMed}
+          medication={historyMed}
+          patientId={selectedPatient?.id}
+          onClose={() => setHistoryMed(null)}
+        />
 
       </div>
     </AdminV2Layout>

@@ -24,6 +24,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import config from '../../config';
 import { checkAdministrationWindow, formatDurationMinutes } from '../../utils/timezone';
+import ScheduleBoard from '../../components/schedule/ScheduleBoard';
+import { groupBySlot } from '../../components/schedule/scheduleRollup';
 import {
   Dialog,
   DialogContent,
@@ -139,28 +141,35 @@ const AdminV2CareTasksSchedule = () => {
     setShowPatientModal(false);
   };
 
-  // Status helpers
-  const getStatusInfo = (status) => {
-    const statusMap = {
-      'pending': { label: 'Pending', color: 'var(--sched-pending-border, #1f6feb)', bg: 'var(--sched-pending-chip, rgba(31, 111, 235, 0.15))', border: 'var(--sched-pending-border, #1f6feb)' },
-      'due_warning': { label: 'Due Warning', color: 'var(--sched-warning-border, #9e6a03)', bg: 'var(--sched-warning-chip, rgba(158, 106, 3, 0.15))', border: 'var(--sched-warning-border, #9e6a03)' },
-      'due_on_time': { label: 'Due On Time', color: 'var(--sched-ontime-border, #238636)', bg: 'var(--sched-ontime-chip, rgba(35, 134, 54, 0.15))', border: 'var(--sched-ontime-border, #238636)' },
-      'due_late': { label: 'Due Late', color: 'var(--sched-late-border, #f85149)', bg: 'var(--sched-late-chip, rgba(248, 81, 73, 0.15))', border: 'var(--sched-late-border, #f85149)' },
-      'upcoming': { label: 'Upcoming', color: 'var(--sched-pending-border, #58a6ff)', bg: 'var(--sched-pending-chip, rgba(88, 166, 255, 0.15))', border: 'var(--sched-pending-border, #58a6ff)' },
-      'missed': { label: 'Missed', color: 'var(--sched-late-border, #f85149)', bg: 'var(--sched-late-chip, rgba(248, 81, 73, 0.15))', border: 'var(--sched-late-border, #f85149)' },
-      'completed': { label: 'Completed', color: 'var(--sched-completed-border, #238636)', bg: 'var(--sched-completed-chip, rgba(35, 134, 54, 0.15))', border: 'var(--sched-completed-border, #238636)' },
-      'skipped': { label: 'Skipped', color: 'var(--muted-foreground)', bg: 'var(--sched-skipped-chip, rgba(139, 148, 158, 0.15))', border: 'var(--muted-foreground)' }
-    };
-    return statusMap[status] || statusMap.upcoming;
+  // Status -> ScheduleBoard tone/label
+  const STATUS_TONE = {
+    pending: 'pending',
+    due_warning: 'warning',
+    due_on_time: 'ontime',
+    due_late: 'late',
+    upcoming: 'pending',
+    missed: 'late',
+    completed: 'completed',
+    skipped: 'skipped',
   };
+  const STATUS_LABEL = {
+    pending: 'Pending',
+    due_warning: 'Due Warning',
+    due_on_time: 'Due On Time',
+    due_late: 'Due Late',
+    upcoming: 'Upcoming',
+    missed: 'Missed',
+    completed: 'Completed',
+    skipped: 'Skipped',
+  };
+
+  const getStatusTone = (item) => STATUS_TONE[item.status] || 'pending';
 
   const getStatusText = (item) => {
     if (item.is_completed) {
-      if (item.status === 'skipped') return 'Skipped';
-      return 'Completed';
+      return item.status === 'skipped' ? 'Skipped' : 'Completed';
     }
-    const statusInfo = getStatusInfo(item.status);
-    return statusInfo.label;
+    return STATUS_LABEL[item.status] || item.status;
   };
 
   const getFilteredTasks = () => {
@@ -172,44 +181,57 @@ const AdminV2CareTasksSchedule = () => {
     });
   };
 
-  // Group tasks by day and time
-  const groupTasks = (tasks) => {
-    const groups = {};
-    
-    tasks.forEach(item => {
-      const dateObj = new Date(item.scheduled_time);
-      const dayKey = dateObj.toLocaleDateString(undefined, { 
-        weekday: 'long', 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric' 
+  // Raw item -> ScheduleBoard row.
+  const toRow = (item) => {
+    const actions = [];
+    if (!item.is_completed && hasPermission('care_tasks.update')) {
+      actions.push({
+        key: 'complete',
+        label: item.status === 'missed' ? 'Complete Now' : 'Mark Complete',
+        tone: 'primary',
+        onClick: () => handleMarkCompleted(item),
       });
-      const timeStr = dateObj.toLocaleTimeString(undefined, { 
-        hour: 'numeric', 
-        minute: '2-digit', 
-        hour12: true 
-      });
-      
-      if (!groups[dayKey]) groups[dayKey] = {};
-      if (!groups[dayKey][timeStr]) groups[dayKey][timeStr] = [];
-      groups[dayKey][timeStr].push(item);
-    });
-    
-    return groups;
+      actions.push({ key: 'skip', label: 'Skip', tone: 'ghost', onClick: () => handleSkipTask(item) });
+    }
+
+    return {
+      id: `${item.schedule_id}-${item.scheduled_time}`,
+      title: item.care_task_name,
+      meta: item.care_task_description || undefined,
+      categoryColor: item.care_task_category_color,
+      categoryLabel: item.care_task_category_name,
+      prn: item.is_prn,
+      scheduleLine: item.completed_time
+        ? `Completed at ${new Date(item.completed_time).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true })}`
+        : undefined,
+      statusLabel: getStatusText(item),
+      statusTone: getStatusTone(item),
+      completed: item.is_completed,
+      actions,
+    };
   };
 
-  // Sort time slots
-  const sortTimeSlots = (times) => {
-    return times.sort((a, b) => {
-      const parseTime = (t) => {
-        const [time, period] = t.split(' ');
-        let [hours, minutes] = time.split(':').map(Number);
-        if (period === 'PM' && hours !== 12) hours += 12;
-        if (period === 'AM' && hours === 12) hours = 0;
-        return hours * 60 + minutes;
-      };
-      return parseTime(a) - parseTime(b);
+  // Day (real calendar date) then time slot, reusing scheduleRollup.js's
+  // groupBySlot — the same grouping the live dashboard's dose panel uses.
+  const buildDayGroups = (tasks) => {
+    const days = new Map();
+    tasks.forEach((item) => {
+      const dayKey = new Date(item.scheduled_time).toLocaleDateString(undefined, {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+      });
+      if (!days.has(dayKey)) days.set(dayKey, { key: dayKey, date: new Date(item.scheduled_time), items: [] });
+      days.get(dayKey).items.push(item);
     });
+    return [...days.values()]
+      .sort((a, b) => a.date - b.date)
+      .map((day) => ({
+        key: day.key,
+        label: day.key,
+        slots: groupBySlot(day.items).map((slot) => ({
+          time: slot.time,
+          items: slot.items.map(toRow),
+        })),
+      }));
   };
 
   const handleMarkCompleted = async (task) => {
@@ -305,8 +327,7 @@ const AdminV2CareTasksSchedule = () => {
   }
 
   const filteredTasks = getFilteredTasks();
-  const groupedTasks = groupTasks(filteredTasks);
-  const sortedDays = Object.keys(groupedTasks).sort((a, b) => new Date(a) - new Date(b));
+  const dayGroups = buildDayGroups(filteredTasks);
 
   return (
     <AdminV2Layout>
@@ -415,150 +436,19 @@ const AdminV2CareTasksSchedule = () => {
             </div>
 
             {/* Schedule Content */}
-            {loading ? (
-              <div className="admin-v2-loading">Loading schedule...</div>
-            ) : error ? (
+            {error ? (
               <div className="tw"><Alert variant="destructive">{error}</Alert></div>
-            ) : filteredTasks.length === 0 ? (
-              <div className="admin-v2-empty-state">
-                <TasksIcon size={48} />
-                <h3>No Scheduled Care Tasks</h3>
-                <p className="admin-v2-text-muted">
-                  {scheduledTasks.length === 0 
-                    ? 'No care tasks scheduled for today or yesterday'
-                    : 'No care tasks match the selected filters'}
-                </p>
-              </div>
             ) : (
-              <div className="admin-v2-schedule-list">
-                {sortedDays.map(dayKey => (
-                  <div key={dayKey} className="admin-v2-schedule-day">
-                    <div className="admin-v2-schedule-day-header">
-                      <h3>{dayKey}</h3>
-                    </div>
-                    
-                    {sortTimeSlots(Object.keys(groupedTasks[dayKey])).map(timeStr => (
-                      <div key={timeStr} className="admin-v2-schedule-time-group">
-                        <div className="admin-v2-schedule-time-header">
-                          <span className="admin-v2-schedule-time">{timeStr}</span>
-                          <span className="admin-v2-schedule-count-label">
-                            {groupedTasks[dayKey][timeStr].length} task{groupedTasks[dayKey][timeStr].length !== 1 ? 's' : ''}
-                          </span>
-                        </div>
-                        
-                        <div className="admin-v2-schedule-items">
-                          {groupedTasks[dayKey][timeStr].map((item, idx) => {
-                            const statusInfo = getStatusInfo(item.status);
-                            const isCompleted = item.is_completed;
-                            const categoryColor = item.care_task_category_color || '#6f42c1';
-                            
-                            return (
-                              <div 
-                                key={`${item.schedule_id}-${idx}`}
-                                className={`admin-v2-schedule-item ${isCompleted ? 'completed' : ''}`}
-                                style={{ 
-                                  borderLeftColor: categoryColor,
-                                  backgroundColor: statusInfo.bg
-                                }}
-                              >
-                                <div className="admin-v2-schedule-item-content">
-                                  <div className="admin-v2-schedule-item-main">
-                                    <span className="admin-v2-schedule-med-name">
-                                      {item.care_task_name}
-                                    </span>
-                                    {item.care_task_description && (
-                                      <span className="admin-v2-schedule-dose" style={{ opacity: 0.8 }}>
-                                        {item.care_task_description}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="admin-v2-schedule-item-status">
-                                    {item.is_prn && (
-                                      <span
-                                        className="admin-v2-schedule-status-badge"
-                                        style={{ backgroundColor: '#6f42c1', color: '#fff' }}
-                                        title="Completed as-needed (PRN), not a scheduled occurrence"
-                                      >
-                                        PRN
-                                      </span>
-                                    )}
-                                    <span
-                                      className="admin-v2-schedule-status-badge"
-                                      style={{
-                                        backgroundColor: statusInfo.border,
-                                        color: '#fff'
-                                      }}
-                                    >
-                                      {getStatusText(item)}
-                                    </span>
-                                    {item.completed_time && (
-                                      <span className="admin-v2-schedule-actual-time">
-                                        Completed at {new Date(item.completed_time).toLocaleTimeString(undefined, { 
-                                          hour: 'numeric', 
-                                          minute: '2-digit', 
-                                          hour12: true 
-                                        })}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                                
-                                {!isCompleted && hasPermission('care_tasks.update') && (
-                                  <div className="admin-v2-schedule-item-actions">
-                                    <button
-                                      className="admin-v2-btn admin-v2-btn-success admin-v2-btn-sm"
-                                      onClick={() => handleMarkCompleted(item)}
-                                    >
-                                      {item.status === 'missed' ? 'Complete Now' : 'Mark Complete'}
-                                    </button>
-                                    <button
-                                      className="admin-v2-btn admin-v2-btn-sm"
-                                      onClick={() => handleSkipTask(item)}
-                                    >
-                                      Skip
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
+              <ScheduleBoard
+                dayGroups={dayGroups}
+                loading={loading}
+                emptyText={
+                  scheduledTasks.length === 0
+                    ? 'No care tasks scheduled for today or yesterday'
+                    : 'No care tasks match the selected filters'
+                }
+              />
             )}
-
-            {/* Legend */}
-            <div className="admin-v2-schedule-legend">
-              <h4>Status Legend</h4>
-              <div className="admin-v2-legend-items">
-                <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: 'var(--sched-ontime-border, #238636)' }}></span>
-                  <span>Due On Time</span>
-                </div>
-                <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: 'var(--sched-warning-border, #9e6a03)' }}></span>
-                  <span>Due Warning</span>
-                </div>
-                <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: 'var(--sched-late-border, #f85149)' }}></span>
-                  <span>Due Late / Missed</span>
-                </div>
-                <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: 'var(--sched-ontime-border, #58a6ff)' }}></span>
-                  <span>Upcoming</span>
-                </div>
-                <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: 'var(--muted-foreground)' }}></span>
-                  <span>Skipped</span>
-                </div>
-              </div>
-              <div className="admin-v2-legend-category-note">
-                <strong>Category Colors:</strong> Left border indicates task category
-              </div>
-            </div>
           </>
         ) : (
           <div className="admin-v2-no-patient">

@@ -18,17 +18,18 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
-import { PatientSelectorModal } from './components';
+import { PatientSelectorModal, MedStockBar } from './components';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import {
-  PlusIcon,
-  EditIcon,
-  TrashIcon,
   MedicationsIcon,
-  ClockIcon
+  ClockIcon,
+  PackageIcon,
+  TrashIcon
 } from '../../components/Icons';
+import EntityCard from '../../components/vc/EntityCard';
+import EntityToolbar from '../../components/vc/EntityToolbar';
 import { localTimeToUTC, localTimeAndDaysToUTC, parseCronExpression } from '../../utils/timezone';
 import {
   Dialog,
@@ -245,31 +246,33 @@ function MedicationFormFields({ formData, setFormData, providers, pharmacies, sh
 const AdminV2MedicationsManage = () => {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { 
-    patients, 
-    selectedPatient: contextPatient, 
+  const {
+    patients,
+    selectedPatient: contextPatient,
     selectPatient: setContextPatient,
-    loadingPatients 
+    loadingPatients
   } = useAdminPatient();
-  
+
   // Use context patient as the source of truth
   const selectedPatient = contextPatient;
   const [showPatientModal, setShowPatientModal] = useState(false);
-  
+
   // Medications state
   const [medications, setMedications] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Status filter (default to active-only; user can include inactives)
-  const [showInactive, setShowInactive] = useState(false);
-  
+  // Toolbar: Active/Inactive tab + search + a secondary type filter
+  const [activeTab, setActiveTab] = useState('active');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterKey, setFilterKey] = useState('all');
+
   // Providers state (for prescriber dropdown)
   const [providers, setProviders] = useState([]);
-  
+
   // Pharmacies state (for pharmacy dropdown)
   const [pharmacies, setPharmacies] = useState([]);
-  
+
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showBulkLowStockModal, setShowBulkLowStockModal] = useState(false);
@@ -280,7 +283,7 @@ const AdminV2MedicationsManage = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [selectedMedication, setSelectedMedication] = useState(null);
-  
+
   // Schedule form state
   const [scheduleMode, setScheduleMode] = useState('weekly');
   const [selectedDays, setSelectedDays] = useState([]);
@@ -289,9 +292,9 @@ const AdminV2MedicationsManage = () => {
   const [doseAmount, setDoseAmount] = useState('1.000');
   const [schedulePatientId, setSchedulePatientId] = useState('');
   const [scheduleSaving, setScheduleSaving] = useState(false);
-  
+
   const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  
+
   // Form state
   const [formData, setFormData] = useState({
     name: '',
@@ -353,11 +356,11 @@ const AdminV2MedicationsManage = () => {
 
   const fetchMedications = async () => {
     if (!selectedPatient) return [];
-    
+
     try {
       setLoading(true);
       setError(null);
-      
+
       // Fetch both active and inactive medications
       const [activeRes, inactiveRes] = await Promise.all([
         fetch(`${config.apiUrl}/api/admin/medications/active?patient_id=${selectedPatient.id}`, {
@@ -371,13 +374,13 @@ const AdminV2MedicationsManage = () => {
       if (activeRes.ok && inactiveRes.ok) {
         const activeMeds = await activeRes.json();
         const inactiveMeds = await inactiveRes.json();
-        
+
         // Combine and sort: active first (alphabetically), then inactive (alphabetically)
         const allMeds = [
           ...activeMeds.sort((a, b) => a.name.localeCompare(b.name)),
           ...inactiveMeds.sort((a, b) => a.name.localeCompare(b.name))
         ];
-        
+
         setMedications(allMeds);
         return allMeds;
       } else {
@@ -394,7 +397,7 @@ const AdminV2MedicationsManage = () => {
 
   const fetchProviders = async () => {
     if (!selectedPatient) return;
-    
+
     try {
       const response = await fetch(
         `${config.apiUrl}/api/providers/patient/${selectedPatient.id}?active_only=true`,
@@ -481,7 +484,7 @@ const AdminV2MedicationsManage = () => {
         prescriber_id: formData.prescriber_id ? parseInt(formData.prescriber_id) : null,
         pharmacy_id: formData.pharmacy_id ? parseInt(formData.pharmacy_id) : null
       };
-      
+
       const response = await fetch(`${config.apiUrl}/api/medications/${selectedMedication.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -599,15 +602,15 @@ const AdminV2MedicationsManage = () => {
       setFormError('Please select at least one day');
       return;
     }
-    
+
     if (selectedMedication?.is_global && !schedulePatientId) {
       setFormError('Please select a patient for this global medication');
       return;
     }
-    
+
     setScheduleSaving(true);
     setFormError(null);
-    
+
     try {
       let cron = '';
       let description = '';
@@ -628,7 +631,7 @@ const AdminV2MedicationsManage = () => {
         cron = `${utc.minute} ${utc.hour} ${selectedDayOfMonth} * *`;
         description = `Day ${selectedDayOfMonth} of each month at ${scheduleTime}`;
       }
-      
+
       const scheduleData = {
         type: 'med',
         cron_expression: cron,
@@ -637,23 +640,23 @@ const AdminV2MedicationsManage = () => {
         active: true,
         notes: ''
       };
-      
+
       if (selectedMedication?.is_global && schedulePatientId) {
         scheduleData.patient_id = parseInt(schedulePatientId);
       }
-      
+
       const response = await fetch(`${config.apiUrl}/api/add/schedule/${selectedMedication.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(scheduleData)
       });
-      
+
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.detail || 'Failed to add schedule');
       }
-      
+
       // Refresh medications and reset form
       const updatedMeds = await fetchMedications();
       setSelectedDays([]);
@@ -661,7 +664,7 @@ const AdminV2MedicationsManage = () => {
       setScheduleTime('08:00');
       setDoseAmount('1.000');
       setScheduleMode('weekly');
-      
+
       // Update the selected medication with refreshed data
       const refreshedMed = updatedMeds.find(m => m.id === selectedMedication.id);
       if (refreshedMed) {
@@ -676,18 +679,18 @@ const AdminV2MedicationsManage = () => {
 
   const handleDeleteSchedule = async (scheduleId) => {
     if (!confirm('Are you sure you want to delete this schedule?')) return;
-    
+
     setScheduleSaving(true);
     try {
       const response = await fetch(`${config.apiUrl}/api/schedules/${scheduleId}`, {
         method: 'DELETE',
         credentials: 'include'
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to delete schedule');
       }
-      
+
       const updatedMeds = await fetchMedications();
       const refreshedMed = updatedMeds.find(m => m.id === selectedMedication?.id);
       if (refreshedMed) {
@@ -707,11 +710,11 @@ const AdminV2MedicationsManage = () => {
         method: 'POST',
         credentials: 'include'
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to toggle schedule');
       }
-      
+
       const updatedMeds = await fetchMedications();
       const refreshedMed = updatedMeds.find(m => m.id === selectedMedication?.id);
       if (refreshedMed) {
@@ -750,6 +753,42 @@ const AdminV2MedicationsManage = () => {
     setSelectedMedication(null);
   };
 
+  // Permission-aware kebab menu for a medication card
+  const medicationMenu = (med) => {
+    const items = [];
+    if (hasPermission('medications.update')) {
+      items.push({
+        label: `Manage schedules${med.schedules?.length ? ` (${med.schedules.length})` : ''}`,
+        onClick: () => openScheduleModal(med),
+      });
+      items.push({ label: 'Edit', onClick: () => openEditModal(med) });
+    }
+    if (hasPermission('medications.delete') && !med.is_global) {
+      items.push({ label: 'Delete', onClick: () => openDeleteModal(med), danger: true });
+    }
+    return items;
+  };
+
+  const activeCount = medications.filter(m => m.active).length;
+  const inactiveCount = medications.length - activeCount;
+  const prnCount = medications.filter(m => m.as_needed).length;
+  const lowStockCount = medications.filter(m => m.stock_low).length;
+
+  const matchesSearch = (med) => {
+    if (!searchTerm.trim()) return true;
+    const q = searchTerm.toLowerCase();
+    return med.name.toLowerCase().includes(q) || med.instructions?.toLowerCase().includes(q);
+  };
+  const matchesFilter = (med) => {
+    if (filterKey === 'scheduled') return !med.as_needed;
+    if (filterKey === 'prn') return med.as_needed;
+    if (filterKey === 'low_stock') return !!med.stock_low;
+    return true;
+  };
+  const visibleMeds = medications.filter(
+    (med) => (activeTab === 'active' ? med.active : !med.active) && matchesSearch(med) && matchesFilter(med)
+  );
+
   // Loading state
   if (loadingPatients) {
     return (
@@ -764,243 +803,106 @@ const AdminV2MedicationsManage = () => {
       <div className="admin-v2-page">
         {selectedPatient ? (
           <>
-            {error && (
-              <div className="tw mb-4"><Alert variant="destructive">{error}</Alert></div>
-            )}
+            {error && <div className="em-error ec-page-alert">{error}</div>}
 
             {/* Summary Stats */}
             <div className="admin-v2-summary-stats admin-v2-medications-summary" style={{ marginBottom: '1.5rem' }}>
               <div className="admin-v2-stat-card">
                 <div className="admin-v2-stat-info">
-                  <h4>{medications.filter(m => m.active).length}</h4>
+                  <h4>{activeCount}</h4>
                   <p>Active</p>
                 </div>
               </div>
               <div className="admin-v2-stat-card">
                 <div className="admin-v2-stat-info">
-                  <h4>{medications.filter(m => m.as_needed).length}</h4>
-                  <p>PRN (As Needed)</p>
+                  <h4>{prnCount}</h4>
+                  <p>PRN</p>
                 </div>
               </div>
               <div className="admin-v2-stat-card">
                 <div className="admin-v2-stat-info">
-                  <h4>{medications.filter(m => !m.active).length}</h4>
+                  <h4>{inactiveCount}</h4>
                   <p>Inactive</p>
+                </div>
+              </div>
+              <div className="admin-v2-stat-card">
+                <div className="admin-v2-stat-info">
+                  <h4>{lowStockCount}</h4>
+                  <p>Low Stock</p>
                 </div>
               </div>
             </div>
 
-            {/* Add Medication Button + Filter */}
-            <div className="tw mb-4 flex flex-wrap items-center gap-3">
-              {hasPermission('medications.create') && (
-                <Button onClick={openCreateModal}>
-                  <PlusIcon size={16} /> Add Medication
-                </Button>
-              )}
-              {hasPermission('medications.update') && (
+            <EntityToolbar
+              counts={[
+                { key: 'active', label: 'Active', count: activeCount },
+                { key: 'inactive', label: 'Inactive', count: inactiveCount },
+              ]}
+              activeCount={activeTab}
+              onCountChange={setActiveTab}
+              search={searchTerm}
+              onSearchChange={setSearchTerm}
+              searchPlaceholder="Search medications"
+              filter={{
+                value: filterKey,
+                onChange: setFilterKey,
+                label: 'Type',
+                options: [
+                  { value: 'all', label: 'All' },
+                  { value: 'scheduled', label: 'Scheduled' },
+                  { value: 'prn', label: 'PRN' },
+                  { value: 'low_stock', label: 'Low stock' },
+                ],
+              }}
+              onAdd={hasPermission('medications.create') ? openCreateModal : undefined}
+              addLabel="Add medication"
+            />
+
+            {hasPermission('medications.update') && (
+              <div className="tw mb-4">
                 <Button variant="secondary" onClick={() => { setBulkLowStockResult(null); setShowBulkLowStockModal(true); }}>
                   Bulk Low-Stock Alert
                 </Button>
-              )}
-              <label className="ml-auto flex items-center gap-2 text-sm text-foreground">
-                <Checkbox
-                  checked={showInactive}
-                  onCheckedChange={(c) => setShowInactive(!!c)}
-                />
-                Show inactive
-              </label>
-            </div>
+              </div>
+            )}
 
-            {/* Medications list — table on desktop, stacked cards on mobile */}
+            {/* Medications list */}
             {loading ? (
-              <div className="admin-v2-loading">Loading medications...</div>
-            ) : (() => {
-              const visibleMeds = showInactive
-                ? medications
-                : medications.filter(m => m.active);
-              if (visibleMeds.length === 0) {
-                return (
-                  <div className="admin-v2-empty-state">
-                    <MedicationsIcon size={32} />
-                    <p>
-                      {showInactive
-                        ? 'No medications found for this patient'
-                        : 'No active medications. Enable "Show inactive" to see inactive ones.'}
-                    </p>
-                  </div>
-                );
-              }
-              return (
-                <>
-                  {/* Desktop: table */}
-                  <div className="admin-v2-table-container admin-v2-meds-desktop">
-                    <table className="admin-v2-table">
-                      <thead>
-                        <tr>
-                          <th>Medication</th>
-                          <th>Concentration</th>
-                          <th>Qty</th>
-                          <th>Instructions</th>
-                          <th>Type</th>
-                          <th>Status</th>
-                          <th>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {visibleMeds.map(med => (
-                          <tr key={med.id} className={!med.active ? 'admin-v2-row-inactive' : ''}>
-                            <td>
-                              <div className="admin-v2-med-name">
-                                <strong>{med.name}</strong>
-                                {med.is_global && (
-                                  <span className="admin-v2-badge admin-v2-badge-info">Global</span>
-                                )}
-                              </div>
-                            </td>
-                            <td>{med.concentration || '-'}</td>
-                            <td>{med.quantity} {med.quantity_unit}</td>
-                            <td className="admin-v2-instructions-cell">
-                              {med.instructions || '-'}
-                            </td>
-                            <td>
-                              {med.as_needed ? (
-                                <span className="admin-v2-badge admin-v2-badge-warning">PRN</span>
-                              ) : (
-                                <span className="admin-v2-badge admin-v2-badge-secondary">Scheduled</span>
-                              )}
-                            </td>
-                            <td>
-                              <span className={`admin-v2-status-badge ${med.active ? 'active' : 'inactive'}`}>
-                                {med.active ? 'Active' : 'Inactive'}
-                              </span>
-                            </td>
-                            <td>
-                              <div className="admin-v2-table-actions">
-                                {hasPermission('medications.update') && (
-                                  <button
-                                    className="admin-v2-action-btn admin-v2-action-btn-schedule"
-                                    onClick={() => openScheduleModal(med)}
-                                    title="Manage schedules"
-                                  >
-                                    <ClockIcon size={14} />
-                                    <span>Schedule</span>
-                                    {med.schedules && med.schedules.length > 0 && (
-                                      <span className="admin-v2-schedule-count">{med.schedules.length}</span>
-                                    )}
-                                  </button>
-                                )}
-                                {hasPermission('medications.update') && (
-                                  <button
-                                    className="admin-v2-action-btn admin-v2-action-btn-edit"
-                                    onClick={() => openEditModal(med)}
-                                    title="Edit medication"
-                                  >
-                                    <EditIcon size={14} />
-                                    <span>Edit</span>
-                                  </button>
-                                )}
-                                {hasPermission('medications.delete') && !med.is_global && (
-                                  <button
-                                    className="admin-v2-action-btn admin-v2-action-btn-delete"
-                                    onClick={() => openDeleteModal(med)}
-                                    title="Delete medication"
-                                  >
-                                    <TrashIcon size={14} />
-                                    <span>Delete</span>
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Mobile: stacked cards */}
-                  <div className="admin-v2-meds-cards">
-                    {visibleMeds.map(med => (
-                      <div
-                        key={med.id}
-                        className={`admin-v2-med-card ${!med.active ? 'admin-v2-med-card-inactive' : ''}`}
-                      >
-                        <div className="admin-v2-med-card-row admin-v2-med-card-header">
-                          <div className="admin-v2-med-card-title">
-                            <strong>{med.name}</strong>
-                            {med.concentration && (
-                              <span className="admin-v2-med-card-concentration">{med.concentration}</span>
-                            )}
-                          </div>
-                          <div className="admin-v2-med-card-badges">
-                            {med.as_needed ? (
-                              <span className="admin-v2-badge admin-v2-badge-warning">PRN</span>
-                            ) : (
-                              <span className="admin-v2-badge admin-v2-badge-secondary">SCH</span>
-                            )}
-                            {med.is_global && (
-                              <span className="admin-v2-badge admin-v2-badge-info">Global</span>
-                            )}
-                            <span className={`admin-v2-status-badge ${med.active ? 'active' : 'inactive'}`}>
-                              {med.active ? 'Active' : 'Inactive'}
-                            </span>
-                          </div>
-                        </div>
-
-                        {med.instructions && (
-                          <div className="admin-v2-med-card-instructions">{med.instructions}</div>
-                        )}
-
-                        <div className="admin-v2-med-card-row admin-v2-med-card-meta">
-                          <div className="admin-v2-med-card-meta-item">
-                            <span className="admin-v2-med-card-label">Qty</span>
-                            <span>{med.quantity} {med.quantity_unit}</span>
-                          </div>
-                          {med.schedules && med.schedules.length > 0 && (
-                            <div className="admin-v2-med-card-meta-item">
-                              <span className="admin-v2-med-card-label">Schedules</span>
-                              <span>{med.schedules.length}</span>
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="admin-v2-med-card-actions">
-                          {hasPermission('medications.update') && (
-                            <button
-                              className="admin-v2-action-btn admin-v2-action-btn-schedule"
-                              onClick={() => openScheduleModal(med)}
-                            >
-                              <ClockIcon size={14} />
-                              <span>Schedule</span>
-                              {med.schedules && med.schedules.length > 0 && (
-                                <span className="admin-v2-schedule-count">{med.schedules.length}</span>
-                              )}
-                            </button>
-                          )}
-                          {hasPermission('medications.update') && (
-                            <button
-                              className="admin-v2-action-btn admin-v2-action-btn-edit"
-                              onClick={() => openEditModal(med)}
-                            >
-                              <EditIcon size={14} />
-                              <span>Edit</span>
-                            </button>
-                          )}
-                          {hasPermission('medications.delete') && !med.is_global && (
-                            <button
-                              className="admin-v2-action-btn admin-v2-action-btn-delete"
-                              onClick={() => openDeleteModal(med)}
-                            >
-                              <TrashIcon size={14} />
-                              <span>Delete</span>
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              );
-            })()}
+              <div className="ec-empty">Loading medications…</div>
+            ) : visibleMeds.length === 0 ? (
+              <div className="ec-empty">
+                <MedicationsIcon size={32} />
+                <p>
+                  {searchTerm || filterKey !== 'all'
+                    ? 'No medications match your search.'
+                    : `No ${activeTab} medications for this patient.`}
+                </p>
+              </div>
+            ) : (
+              <div className="ec-grid">
+                {visibleMeds.map((med) => (
+                  <EntityCard
+                    key={med.id}
+                    initials={med.name.slice(0, 2).toUpperCase()}
+                    title={med.name}
+                    badges={[
+                      med.concentration,
+                      med.as_needed ? 'PRN' : 'Scheduled',
+                      med.is_global ? 'Global' : null,
+                    ].filter(Boolean)}
+                    tag={med.stock_low ? { label: 'Low stock', tone: 'due' } : undefined}
+                    inactive={!med.active}
+                    details={[
+                      { icon: <PackageIcon size={18} />, label: 'On hand', value: `${med.quantity} ${med.quantity_unit}` },
+                      { icon: <ClockIcon size={18} />, label: 'Schedules', value: med.schedules?.length ? med.schedules.length : 'None' },
+                    ]}
+                    menu={medicationMenu(med)}
+                  >
+                    <MedStockBar daysLeft={med.days_left} low={med.stock_low} />
+                  </EntityCard>
+                ))}
+              </div>
+            )}
           </>
         ) : (
           <div className="admin-v2-no-patient">

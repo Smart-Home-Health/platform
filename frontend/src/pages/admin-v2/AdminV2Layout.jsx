@@ -133,7 +133,6 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
     medications: [
       { path: '/care/medications', label: 'Overview' },
       { path: '/care/medications/schedule', label: 'Schedule' },
-      { path: '/care/medications/history', label: 'History' },
       { path: '/care/medications/manage', label: 'Manage' },
       ...(hasAnyPermission(['audit.read'])
         ? [{ path: '/care/schedule/undo-log', label: 'Undo' }] : []),
@@ -359,7 +358,8 @@ const AdminV2Layout = ({ children }) => {
   // covers Radix's portalled Select/Dialog content. Widen this test as more
   // sections are rebuilt.
   useEffect(() => {
-    if (!location.pathname.startsWith('/care/configuration')) return undefined;
+    const vcFormSkinPaths = ['/care/configuration', '/care/medications'];
+    if (!vcFormSkinPaths.some((p) => location.pathname.startsWith(p))) return undefined;
     document.body.classList.add('vc-form-skin');
     return () => document.body.classList.remove('vc-form-skin');
   }, [location.pathname]);

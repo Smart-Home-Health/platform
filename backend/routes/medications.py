@@ -35,12 +35,13 @@ from models.medications import (
     ProviderInfo,
     PharmacyInfo,
 )
-from crud.medications import (add_medication, get_active_medications, get_inactive_medications, update_medication, 
-                  delete_medication, add_medication_schedule, get_medication_schedules, 
-                  get_all_medication_schedules, update_medication_schedule, delete_medication_schedule, 
+from crud.medications import (add_medication, get_active_medications, get_inactive_medications, update_medication,
+                  delete_medication, add_medication_schedule, get_medication_schedules,
+                  get_all_medication_schedules, update_medication_schedule, delete_medication_schedule,
                   toggle_medication_schedule_active, get_daily_medication_schedule, administer_medication,
                   get_medication_history, get_medication_names_for_dropdown,
-                  get_due_and_upcoming_medications_count, set_low_stock_days_for_scheduled_meds)
+                  get_due_and_upcoming_medications_count, set_low_stock_days_for_scheduled_meds,
+                  get_medication_stock_status)
 from pydantic import BaseModel, Field
 from crud.settings import get_setting
 from models import Medication
@@ -199,6 +200,7 @@ async def get_admin_active_medications_endpoint(patient_id: Optional[int] = None
         result = []
         for med in medications:
             schedules = get_medication_schedules(db, med.id)
+            stock = get_medication_stock_status(db, med)
             result.append({
                 'id': med.id,
                 'patient_id': med.patient_id,
@@ -208,6 +210,9 @@ async def get_admin_active_medications_endpoint(patient_id: Optional[int] = None
                 'quantity_unit': med.quantity_unit,
                 'low_stock_threshold': med.low_stock_threshold,
                 'low_stock_threshold_type': med.low_stock_threshold_type,
+                'stock_low': stock['low'],
+                'days_left': stock['days_left'],
+                'daily_rate': stock['daily_rate'],
                 'instructions': med.instructions,
                 'start_date': med.start_date.isoformat() if med.start_date else None,
                 'end_date': med.end_date.isoformat() if med.end_date else None,

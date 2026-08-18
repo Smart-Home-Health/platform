@@ -1150,7 +1150,69 @@ def get_medication_history(db: Session, limit=25, medication_name=None, start_da
             })
         
         return result
-    
+
     except Exception as e:
         logger.error(f"Error getting medication history: {e}")
         return []
+
+
+def estimate_daily_consumption(db: Session, medication_id: int) -> float:
+    """Average dose units consumed per day across a med's active schedules,
+    projected over the next 7 days via croniter (so weekly patterns like
+    Mon/Wed/Fri average out correctly). Returns 0 if nothing is scheduled."""
+    schedules = db.query(MedicationSchedule).filter(
+        MedicationSchedule.medication_id == medication_id,
+        MedicationSchedule.active == True  # noqa: E712
+    ).all()
+
+    now = utc_now()
+    horizon = now + timedelta(days=7)
+    total = 0.0
+    for schedule in schedules:
+        dose = float(schedule.dose_amount or 0)
+        if dose <= 0:
+            continue
+        try:
+            cron = croniter(schedule.cron_expression, now)
+            occurrence = cron.get_next(type(now))
+            while occurrence < horizon:
+                total += dose
+                occurrence = cron.get_next(type(now))
+        except Exception as e:
+            logger.warning(f"Skipping bad cron '{schedule.cron_expression}' on schedule {schedule.id}: {e}")
+    return total / 7
+
+
+def get_medication_stock_status(db: Session, med: Medication) -> dict:
+    """Single source of truth for "is this medication low on stock", shared by
+    the low-stock Messages generator (crud/user_messages.py) and the admin
+    medications list endpoints, so alerts and UI always agree.
+
+    threshold_type 'quantity' compares the raw on-hand amount; 'days' projects
+    days of supply left from the med's active schedules and compares against
+    the threshold in days (meds with no scheduled consumption can't be
+    projected, so days_left is None and low stays False for them).
+    """
+    threshold = med.low_stock_threshold
+    threshold_type = med.low_stock_threshold_type or 'quantity'
+    quantity = float(med.quantity) if med.quantity is not None else 0.0
+    out_of_stock = quantity <= 0
+
+    low = False
+    days_left = None
+    daily_rate = None
+    if not out_of_stock and threshold is not None:
+        if threshold_type == 'days':
+            daily_rate = estimate_daily_consumption(db, med.id)
+            if daily_rate > 0:
+                days_left = quantity / daily_rate
+                low = days_left <= float(threshold)
+        else:
+            low = quantity <= float(threshold)
+
+    return {
+        'out_of_stock': out_of_stock,
+        'low': out_of_stock or low,
+        'days_left': round(days_left, 1) if days_left is not None else None,
+        'daily_rate': daily_rate,
+    }
