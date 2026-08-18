@@ -46,6 +46,11 @@ function ChartBlock({
   dataset,
   showXaxis = true,
   showYaxis = true,
+  // A tile-sized trace wants neither: its own card supplies the surface, and
+  // on a phone the tooltip latches on the tap that flipped the tile and then
+  // sits there over the reading.
+  showTooltip = true,
+  transparent = false,
   chrome = CHART_CHROME,
   windowMs = 5 * 60 * 1000,
   now,
@@ -93,7 +98,7 @@ function ChartBlock({
       width: "100%",
       height: "100%",
       position: "relative",
-      backgroundColor: chrome.bg,
+      backgroundColor: transparent ? 'transparent' : chrome.bg,
       borderRadius: "0px"
     }}>
       {dataset.length === 0 ? (
@@ -133,12 +138,14 @@ function ChartBlock({
                 tick={axisStyles.tick}
               />
             )}
-            <Tooltip
-              labelFormatter={(unixTime) => new Date(unixTime).toLocaleTimeString()}
-              contentStyle={axisStyles.tooltipContent}
-              itemStyle={seriesStyle}
-              labelStyle={axisStyles.tooltipLabel}
-            />
+            {showTooltip && (
+              <Tooltip
+                labelFormatter={(unixTime) => new Date(unixTime).toLocaleTimeString()}
+                contentStyle={axisStyles.tooltipContent}
+                itemStyle={seriesStyle}
+                labelStyle={axisStyles.tooltipLabel}
+              />
+            )}
             <Line
               type="monotone"
               dataKey="y"

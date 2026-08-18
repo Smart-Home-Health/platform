@@ -27,7 +27,8 @@ import { buildTopBarActions } from "../components/dashboard/topBarActions";
 import StatTile from "../components/dashboard/StatTile";
 import LiveCharts from "../components/dashboard/LiveCharts";
 import StatusStrip from "../components/dashboard/StatusStrip";
-import useLiveVitalsBuffer from "../hooks/useLiveVitalsBuffer";
+import ChartBlock from "../components/ChartBlock";
+import useLiveVitalsBuffer, { CHART_RANGES } from "../hooks/useLiveVitalsBuffer";
 import config from '../config';
 import "../components/dashboard/live-dashboard.css";
 import "../components/dashboard/dock-panel.css";
@@ -61,6 +62,9 @@ export default function Dashboard() {
   // Add mobile detection state
   const [isMobile, setIsMobile] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  // Which phone tiles are showing their trace instead of just the number.
+  const [flippedTiles, setFlippedTiles] = useState({});
+  const toggleTile = (key) => setFlippedTiles(f => ({ ...f, [key]: !f[key] }));
 
   // Add state for modal
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -82,6 +86,22 @@ export default function Dashboard() {
 
   // Live chart buffer: server-side backfill + WS ticks, range tabs.
   const buffer = useLiveVitalsBuffer(selectedPatient?.id, !needsUnlock);
+
+  // Sparkline for a flipped phone tile: the same ChartBlock the desktop column
+  // uses, with its axes off so the trace reads against the ghosted value.
+  const tileChart = (dataset, color) => (
+    <ChartBlock
+      dataset={dataset}
+      color={color}
+      showXaxis={false}
+      showYaxis={false}
+      showTooltip={false}
+      transparent
+      chrome={chartChrome}
+      windowMs={buffer.rangeDef.minutes * 60 * 1000}
+      now={buffer.now}
+    />
+  );
   // The mount-time WS closure reaches the current pushTick through a ref.
   const pushTickRef = useRef(buffer.pushTick);
   pushTickRef.current = buffer.pushTick;
@@ -1099,9 +1119,27 @@ export default function Dashboard() {
               their chart rows; also names the window the AVG/MIN/MAX cover. */}
           <div className="ld-tiles-head">
             <span className="ld-tiles-head-title">Live Vitals</span>
-            {!needsUnlock && (
+            {!needsUnlock && (isMobile ? (
+              /* The chart toolbar carried the range tabs, and phones no longer
+                 render it — but the range still drives AVG/MIN/MAX and every
+                 flipped trace, so it moves here rather than disappearing. */
+              <div className="ld-range-tabs compact" role="tablist" aria-label="Chart time range">
+                {CHART_RANGES.map(r => (
+                  <button
+                    key={r.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={buffer.range === r.key}
+                    className={`ld-range-tab${buffer.range === r.key ? ' active' : ''}`}
+                    onClick={() => buffer.setRange(r.key)}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+            ) : (
               <span className="ld-tiles-head-range">Stats · {buffer.rangeDef.label}</span>
-            )}
+            ))}
           </div>
           <StatTile
             label="SpO₂"
@@ -1110,6 +1148,9 @@ export default function Dashboard() {
             unit="%"
             accent="#4da7bd"
             stats={tileStats(buffer.series.spo2, v => `${v.toFixed(1)}%`, v => `${v.toFixed(0)}%`)}
+            chart={isMobile && !needsUnlock ? tileChart(buffer.series.spo2, 'blue') : null}
+            flipped={!!flippedTiles.spo2}
+            onFlip={isMobile && !needsUnlock ? () => toggleTile('spo2') : null}
           />
           <StatTile
             label="Heart Rate"
@@ -1118,6 +1159,9 @@ export default function Dashboard() {
             unit="bpm"
             accent="#3fbf6a"
             stats={tileStats(buffer.series.bpm, v => v.toFixed(0))}
+            chart={isMobile && !needsUnlock ? tileChart(buffer.series.bpm, 'green') : null}
+            flipped={!!flippedTiles.bpm}
+            onFlip={isMobile && !needsUnlock ? () => toggleTile('bpm') : null}
           />
           <StatTile
             label="Perfusion Index"
@@ -1126,10 +1170,17 @@ export default function Dashboard() {
             unit={perfusionAsPercent ? '%' : 'PI'}
             accent="#f0a52e"
             stats={tileStats(buffer.series.perfusion, v => v.toFixed(1))}
+            chart={isMobile && !needsUnlock ? tileChart(buffer.series.perfusion, 'orange') : null}
+            flipped={!!flippedTiles.perfusion}
+            onFlip={isMobile && !needsUnlock ? () => toggleTile('perfusion') : null}
           />
         </div>
 
-        {!needsUnlock && (
+        {/* Phones show the three tiles and nothing else: each tile is its own
+            chart now, and the mini cards do not survive the narrow column. Not
+            rendered rather than hidden, so a phone never pays to lay out four
+            recharts trees it will not show. */}
+        {!needsUnlock && !isMobile && (
           <LiveCharts
             range={buffer.range}
             setRange={buffer.setRange}
@@ -1142,7 +1193,7 @@ export default function Dashboard() {
           />
         )}
 
-        {!needsUnlock && (
+        {!needsUnlock && !isMobile && (
           <div className="ld-cards">
             <DynamicVitalsCard
               vitalType={dashboardChart1.vital_type}
