@@ -1092,3 +1092,15 @@ export const VitalsCaptureIcon = ({ size = 26 }) => (
     <path d="M3 12h4l2-5 3 10 2.5-6 1.5 3h5" />
   </svg>
 );
+
+/* A scored tablet — the round kind you swallow. Distinct from TabletIcon, which
+   is a tablet *computer*. The score line is horizontal on purpose: a diagonal
+   line inside a circle is the universal "prohibited" sign, which is not what
+   you want next to a medication. */
+export const TabletPillIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="8" />
+    <line x1="6" y1="12" x2="18" y2="12" />
+  </svg>
+);

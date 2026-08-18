@@ -23,7 +23,7 @@
 // tokens. The content portals to <body>, so the vc class rides on the content
 // element rather than being inherited from the panel.
 import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { XIcon, DropletIcon, PillIcon, TabletIcon } from '../Icons';
+import { XIcon, DropletIcon, PillIcon, TabletPillIcon } from '../Icons';
 import { isLowStock } from './lowStock';
 import './medication-panel.css';
 
@@ -33,7 +33,7 @@ function formIcon(med) {
   const unit = (med.quantity_unit || '').toLowerCase();
   if (unit.includes('ml') || unit.includes('unit') || unit.includes('spray')) return DropletIcon;
   if (unit.includes('capsule')) return PillIcon;
-  return TabletIcon;
+  return TabletPillIcon;
 }
 
 const onHandLabel = (med) => {
