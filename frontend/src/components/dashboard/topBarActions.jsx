@@ -28,6 +28,15 @@ import {
   VitalsCaptureIcon,
 } from '../Icons';
 
+/* Nav groups, mirroring the admin sidebar's shape. The drawer renders from
+ * this same list as the top bar, so the two can never drift — the capture
+ * action had to be added in two places before this. */
+export const NAV_GROUPS = [
+  { key: 'record', label: 'Record' },
+  { key: 'care', label: 'Care' },
+  { key: 'monitoring', label: 'Monitoring' },
+];
+
 export function buildTopBarActions({
   pulseOxAlerts, medicationDueCount, nutritionDueCount, careTaskDueCount, equipmentDueCount,
   hasCamera, modalOpen, handlers,
@@ -35,16 +44,16 @@ export function buildTopBarActions({
   return [
     // Capture leads: recording a vital set is the one action a caregiver takes
     // at the bedside mid-shift, and it is allowed in monitoring mode.
-    { key: 'capture', label: 'Capture Vitals', icon: <VitalsCaptureIcon />, onClick: handlers.capture, active: modalOpen.capture, badge: 0 },
-    { key: 'alerts', label: 'Alerts', icon: <MinimalistPulseOxIcon />, onClick: handlers.alerts, active: modalOpen.alerts, badge: pulseOxAlerts },
-    { key: 'medications', label: 'Medications', icon: <MedicationIcon />, onClick: handlers.medications, active: modalOpen.medications, badge: medicationDueCount },
-    { key: 'nutrition', label: 'Nutrition', icon: <NutritionIcon />, onClick: handlers.nutrition, active: modalOpen.nutrition, badge: nutritionDueCount },
-    { key: 'careTasks', label: 'Care Tasks', icon: <CareTasksIcon />, onClick: handlers.careTasks, active: modalOpen.careTasks, badge: careTaskDueCount },
-    { key: 'equipment', label: 'Equipment', icon: <MinimalistVentIcon />, onClick: handlers.equipment, active: modalOpen.equipment, badge: equipmentDueCount },
-    { key: 'history', label: 'History', icon: <HistoryIcon />, onClick: handlers.history, active: modalOpen.history, badge: 0 },
+    { key: 'capture', group: 'record', label: 'Capture Vitals', icon: <VitalsCaptureIcon />, onClick: handlers.capture, active: modalOpen.capture, badge: 0 },
+    { key: 'alerts', group: 'monitoring', label: 'Alerts', icon: <MinimalistPulseOxIcon />, onClick: handlers.alerts, active: modalOpen.alerts, badge: pulseOxAlerts },
+    { key: 'medications', group: 'care', label: 'Medications', icon: <MedicationIcon />, onClick: handlers.medications, active: modalOpen.medications, badge: medicationDueCount },
+    { key: 'nutrition', group: 'care', label: 'Nutrition', icon: <NutritionIcon />, onClick: handlers.nutrition, active: modalOpen.nutrition, badge: nutritionDueCount },
+    { key: 'careTasks', group: 'care', label: 'Care Tasks', icon: <CareTasksIcon />, onClick: handlers.careTasks, active: modalOpen.careTasks, badge: careTaskDueCount },
+    { key: 'equipment', group: 'care', label: 'Equipment', icon: <MinimalistVentIcon />, onClick: handlers.equipment, active: modalOpen.equipment, badge: equipmentDueCount },
+    { key: 'history', group: 'monitoring', label: 'History', icon: <HistoryIcon />, onClick: handlers.history, active: modalOpen.history, badge: 0 },
     hasCamera
-      ? { key: 'camera', label: 'Live Camera', icon: <CameraIcon />, onClick: handlers.camera, active: modalOpen.camera, badge: 0 }
-      : { key: 'messages', label: 'Messages', icon: <MessagesIcon />, onClick: handlers.messages, active: modalOpen.messages, badge: 0 },
+      ? { key: 'camera', group: 'monitoring', label: 'Live Camera', icon: <CameraIcon />, onClick: handlers.camera, active: modalOpen.camera, badge: 0 }
+      : { key: 'messages', group: 'monitoring', label: 'Messages', icon: <MessagesIcon />, onClick: handlers.messages, active: modalOpen.messages, badge: 0 },
   ];
 }
 
