@@ -18,18 +18,18 @@
 /* Nutrition overview — vc-native, dark by design. Shares the 8px radius and
    mono-uppercase labelling of the logging sheets and entity cards. */
 
-.novw { display: flex; flex-direction: column; gap: 0.75rem; }
+.novw { display: flex; flex-direction: column; gap: 0.55rem; }
 
 /* ---------- date nav ---------- */
 .novw-datenav {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.35rem;
 }
 .novw-nav-btn {
   flex: 0 0 auto;
-  width: 44px;
-  min-height: 44px;
+  width: 40px;
+  min-height: 40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -52,8 +52,8 @@
 }
 .novw-today {
   flex: 0 0 auto;
-  min-height: 44px;
-  padding: 0 0.9rem;
+  min-height: 40px;
+  padding: 0 0.75rem;
   background: transparent;
   border: 1px solid color-mix(in srgb, var(--vc-data-live) 45%, transparent);
   border-radius: 999px;
@@ -70,9 +70,9 @@
   flex: 1 1 auto;
   text-align: center;
   font-family: var(--vc-font-mono);
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--vc-text-primary);
   white-space: nowrap;
@@ -81,14 +81,14 @@
 }
 
 /* ---------- primary actions ---------- */
-.novw-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+.novw-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem; }
 .novw-action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.45rem;
-  min-height: 52px;
-  padding: 0 0.8rem;
+  min-height: 46px;
+  padding: 0 0.6rem;
   background: transparent;
   border: 1px solid var(--vc-line-strong);
   border-radius: 8px;
@@ -119,7 +119,7 @@
   overflow: hidden;
 }
 .novw-card-head {
-  padding: 0.7rem 0.85rem;
+  padding: 0.5rem 0.7rem;
   border-bottom: 1px solid var(--vc-line-hairline);
 }
 .novw-card-head h3 {
@@ -136,8 +136,8 @@
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  padding: 0.65rem 0.85rem;
+  gap: 0.4rem;
+  padding: 0.55rem 0.7rem;
   border-top: 1px solid var(--vc-line-hairline);
   font-family: var(--vc-font-sans);
   font-size: 12.5px;
@@ -164,52 +164,59 @@
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
-  padding: 0.8rem 0.6rem;
+  padding: 0.6rem 0.3rem;
   border-right: 1px solid var(--vc-line-hairline);
   text-align: center;
+  min-width: 0;
 }
 .novw-stat:last-child { border-right: none; }
 .novw-stat-label {
   font-family: var(--vc-font-mono);
-  font-size: 10px;
+  font-size: clamp(8.5px, 2.5vw, 10px);
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--vc-text-secondary);
+  white-space: nowrap;
 }
 /* The metric's colour lives on its own label, not on a bar down the side. */
 .novw-stat.fluids .novw-stat-label { color: var(--vc-data-live); }
 .novw-stat.calories .novw-stat-label { color: var(--vc-state-due); }
-.novw-stat.entries .novw-stat-label { color: var(--vc-state-complete); }
+.novw-stat.urine .novw-stat-label { color: var(--vc-data-live); }
+.novw-stat.bowel .novw-stat-label { color: var(--vc-state-complete); }
 .novw-stat-value {
   font-family: var(--vc-font-mono);
-  font-size: 19px;
+  /* Scales down rather than wrapping, so four stats stay on one line even on
+     a narrow phone. */
+  font-size: clamp(15px, 4.6vw, 19px);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--vc-text-primary);
   line-height: 1.15;
+  white-space: nowrap;
 }
 .novw-stat-value em {
   font-style: normal;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--vc-text-secondary);
 }
 .novw-stat-sub {
   font-family: var(--vc-font-mono);
-  font-size: 10px;
-  letter-spacing: 0.04em;
+  font-size: clamp(8.5px, 2.4vw, 10px);
+  letter-spacing: 0.02em;
   color: var(--vc-text-tertiary);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 /* ---------- progress bars ---------- */
-.novw-bars { display: flex; flex-direction: column; gap: 0.8rem; padding: 0.85rem; }
+.novw-bars { display: flex; flex-direction: column; gap: 0.6rem; padding: 0.7rem; }
 .novw-bar-row {
   display: grid;
   grid-template-columns: auto auto 1fr auto;
   align-items: center;
-  gap: 0.5rem 0.6rem;
+  gap: 0.35rem 0.5rem;
 }
 .novw-bar-icon { display: inline-flex; }
 .novw-bar-icon.fluids { color: var(--vc-data-live); }
@@ -259,8 +266,8 @@
 .novw-outcell {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.75rem 0.85rem;
+  gap: 0.5rem;
+  padding: 0.6rem 0.7rem;
   border-right: 1px solid var(--vc-line-hairline);
   border-bottom: 1px solid var(--vc-line-hairline);
 }
@@ -271,8 +278,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   border-radius: 8px;
   border: 1px solid var(--vc-line-hairline);
   color: var(--vc-text-secondary);
@@ -325,10 +332,10 @@
 }
 
 /* ---------- timeline ---------- */
-.novw-filters { display: flex; gap: 0.4rem; padding: 0.7rem 0.85rem 0; }
+.novw-filters { display: flex; gap: 0.35rem; padding: 0.55rem 0.7rem 0; }
 .novw-filter {
-  min-height: 36px;
-  padding: 0 0.85rem;
+  min-height: 32px;
+  padding: 0 0.75rem;
   background: transparent;
   border: 1px solid var(--vc-line-hairline);
   border-radius: 999px;
@@ -347,14 +354,14 @@
   color: var(--vc-bg-base);
 }
 
-.novw-timeline { list-style: none; margin: 0; padding: 0.5rem 0.85rem 0; }
+.novw-timeline { list-style: none; margin: 0; padding: 0.35rem 0.7rem 0; }
 .novw-tl-row {
   position: relative;
   display: grid;
   grid-template-columns: auto auto auto 1fr auto;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.6rem 0;
+  gap: 0.5rem;
+  padding: 0.45rem 0;
   border-bottom: 1px solid var(--vc-line-hairline);
 }
 .novw-tl-row:last-child { border-bottom: none; }
@@ -392,8 +399,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   border-radius: 8px;
   border: 1px solid var(--vc-line-hairline);
   background: var(--vc-bg-raised);
@@ -438,11 +445,11 @@
 
 .novw-showall {
   width: 100%;
-  min-height: 46px;
+  min-height: 42px;
   background: none;
   border: none;
   border-top: 1px solid var(--vc-line-hairline);
-  margin-top: 0.4rem;
+  margin-top: 0.3rem;
   color: var(--vc-data-live);
   font-family: var(--vc-font-mono);
   font-size: 11px;
@@ -466,8 +473,8 @@
 .novw-status {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
-  padding: 0.75rem 0.85rem;
+  gap: 0.5rem;
+  padding: 0.6rem 0.7rem;
   border: 1px solid var(--vc-line-hairline);
   border-radius: 8px;
   background: var(--vc-bg-surface);
@@ -489,18 +496,24 @@
 .novw-status.flagged .novw-status-dot { background: var(--vc-state-due); }
 
 @media (max-width: 560px) {
-  .novw-glance { grid-template-columns: 1fr 1fr; }
-  .novw-stat:nth-child(2n) { border-right: none; }
-  .novw-stat:nth-child(-n+2) { border-bottom: 1px solid var(--vc-line-hairline); }
-  .novw-bar-row { grid-template-columns: auto 1fr auto; }
-  .novw-bar-value { grid-column: 2 / 3; }
+  /* The glance stays four across — the values scale with clamp() rather than
+     wrapping into a block twice as tall. Same for the bar rows: label, value
+     and percent stay on one line above the track. */
+  .novw-stat { padding: 0.55rem 0.2rem; }
+  .novw-outcell { padding: 0.55rem 0.6rem; gap: 0.45rem; }
+  .novw-bar-label { font-size: 10px; letter-spacing: 0.06em; }
+  .novw-bar-value { font-size: 12px; }
+  .novw-tl-row { gap: 0.4rem; }
+  .novw-tl-time { width: 4rem; font-size: 10px; }
+  .novw-tl-row::before { left: calc(4rem + 0.4rem + 3px); }
+  .novw-action { font-size: 11px; letter-spacing: 0.06em; }
+}
+
+@media (max-width: 380px) {
+  /* Only the very narrowest phones drop the output grid to one column. */
   .novw-outgrid { grid-template-columns: 1fr; }
-  .novw-outcell { border-right: none; }
-  .novw-outcell:nth-last-child(-n+2) { border-bottom: 1px solid var(--vc-line-hairline); }
+  .novw-outcell { border-right: none; border-bottom: 1px solid var(--vc-line-hairline); }
   .novw-outcell:last-child { border-bottom: none; }
-  .novw-tl-row { grid-template-columns: auto auto auto 1fr auto; gap: 0.45rem; }
-  .novw-tl-time { width: 4.2rem; font-size: 10.5px; }
-  .novw-tl-row::before { left: calc(4.2rem + 0.45rem + 3px); }
 }
 
 /* The calendar affordance is a real date input behind the icon, so there is a

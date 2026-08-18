@@ -68,7 +68,6 @@ const NutritionOverview = ({
   onGoToToday,
   onPickDate,
   formatDateForApi,
-  formatDisplayDate,
   isToday,
   intakes,
   outputs,
@@ -93,7 +92,6 @@ const NutritionOverview = ({
   const totals = useMemo(() => {
     const totalFluidMl = intakes.reduce((sum, i) => sum + intakeToMl(i), 0);
     const totalCalories = intakes.reduce((sum, i) => sum + (parseFloat(i.calories) || 0), 0);
-    const totalProtein = intakes.reduce((sum, i) => sum + (parseFloat(i.protein_grams) || 0), 0);
 
     const urineRows = outputs.filter((o) => o.output_type === 'urine');
     const bowelRows = outputs.filter((o) => o.output_type === 'bowel');
@@ -112,14 +110,12 @@ const NutritionOverview = ({
     return {
       totalFluidMl,
       totalCalories,
-      totalProtein,
       measuredUrineMl,
       urineCount: urineRows.length,
       bowelCount: bowelRows.length,
       diaperCount: diaperEvents.length,
       unmeasuredDiapers,
       concerns,
-      entries: intakes.length + events.length,
       balanceMl: totalFluidMl - measuredUrineMl,
     };
   }, [intakes, outputs, events, intakeToMl, outputToMl]);
@@ -194,7 +190,11 @@ const NutritionOverview = ({
         >
           Today
         </button>
-        <span className="novw-date">{formatDisplayDate(selectedDate)}</span>
+        <span className="novw-date">
+          {selectedDate.toLocaleDateString(undefined, { weekday: 'short' })}
+          {' · '}
+          {selectedDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+        </span>
         <button type="button" className="novw-nav-btn" onClick={onNextDay} aria-label="Next day">
           <ChevronRightIcon size={18} />
         </button>
@@ -243,13 +243,17 @@ const NutritionOverview = ({
               <span className="novw-stat-sub">{Math.round(caloriePct)}% of {num(calorieGoal)}</span>
             )}
           </div>
-          <div className="novw-stat protein">
-            <span className="novw-stat-label">Protein</span>
-            <span className="novw-stat-value">{num(totals.totalProtein)} <em>g</em></span>
+          <div className="novw-stat urine">
+            <span className="novw-stat-label">Urine</span>
+            <span className="novw-stat-value">{totals.urineCount}</span>
+            <span className="novw-stat-sub">
+              {totals.measuredUrineMl > 0 ? `${num(totals.measuredUrineMl)} mL` : 'events'}
+            </span>
           </div>
-          <div className="novw-stat entries">
-            <span className="novw-stat-label">Entries</span>
-            <span className="novw-stat-value">{totals.entries}</span>
+          <div className="novw-stat bowel">
+            <span className="novw-stat-label">Bowel</span>
+            <span className="novw-stat-value">{totals.bowelCount}</span>
+            <span className="novw-stat-sub">events</span>
           </div>
         </div>
       </section>

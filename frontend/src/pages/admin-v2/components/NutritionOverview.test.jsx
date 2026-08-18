@@ -81,6 +81,26 @@ describe('NutritionOverview', () => {
     expect(within(glance).getByText(/525/)).toBeInTheDocument();
   });
 
+  it('puts urine and bowel counts in the glance row', () => {
+    setup({
+      outputs: [
+        output({ id: 1, output_type: 'urine', amount: 400, amount_unit: 'ml' }),
+        output({ id: 2, output_type: 'urine', amount: 200, amount_unit: 'ml' }),
+        output({ id: 3, output_type: 'bowel', event_group_id: 'g1' }),
+      ],
+    });
+    const urine = screen.getByText('Urine').closest('.novw-stat');
+    expect(within(urine).getByText('2')).toBeInTheDocument();
+    expect(within(urine).getByText('600 mL')).toBeInTheDocument();
+
+    const bowel = screen.getByText('Bowel').closest('.novw-stat');
+    expect(within(bowel).getByText('1')).toBeInTheDocument();
+
+    // These replaced protein and entry count.
+    expect(screen.queryByText('Protein')).not.toBeInTheDocument();
+    expect(screen.queryByText('Entries')).not.toBeInTheDocument();
+  });
+
   it('says what the fluid balance leaves out', () => {
     // A wet diaper carries no volume, so it cannot appear in a balance. The
     // number stays honest by naming what it excludes.
