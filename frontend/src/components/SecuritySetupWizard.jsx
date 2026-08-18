@@ -19,10 +19,9 @@
 // flow. Three paths: DuckDNS + Let's Encrypt (guided, recommended), an
 // external reverse proxy, or uploading an existing certificate. Self-contained
 // (.tw root) so it renders correctly outside the admin-v2 shell too.
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import config, { apiFetch } from '../config';
 import { canonicalHttpsUrl, generateSubdomain } from '../lib/httpsSetup';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';

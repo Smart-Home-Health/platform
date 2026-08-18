@@ -17,7 +17,7 @@
  */
 // Single-barcode scanner: photograph the barcode on the item's own box
 // (retail UPC/EAN or Code 128) and hand the first read back to the caller.
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Dialog,
   DialogContent,

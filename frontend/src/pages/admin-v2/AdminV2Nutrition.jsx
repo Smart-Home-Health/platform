@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams, useLocation } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
 import { PatientHeader, PatientSelectorModal, IntakeModal, OutputModal, NutritionOverview } from './components';
@@ -31,38 +31,8 @@ import {
   DropletIcon,
   FlameIcon,
   ToiletIcon,
-  UrineIcon,
-  BowelIcon,
-  VomitIcon,
-  NotesIcon,
-  DiaperIcon,
-  CatheterIcon,
-  BloodIcon,
-  MucusIcon,
-  PainIcon,
-  StrainingIcon,
-  SizeSmearIcon,
-  SizeSmallIcon,
-  SizeMediumIcon,
-  SizeLargeIcon,
-  WetnessDryIcon,
-  WetnessWetIcon,
-  WetnessSoakedIcon,
   LeafIcon,
-  BarChartIcon,
-  LiquidIcon,
-  FoodIcon,
-  SupplementIcon,
-  BreakfastIcon,
-  LunchIcon,
-  DinnerIcon,
-  SnackIcon,
-  TubeIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  CalendarIcon,
-  CheckIcon,
-  TargetIcon
+  BarChartIcon
 } from '../../components/Icons';
 import {
   Dialog,

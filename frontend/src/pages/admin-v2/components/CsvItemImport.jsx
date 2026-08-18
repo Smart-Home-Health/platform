@@ -18,7 +18,7 @@
 // Import shipment items from a CSV: we guess which column is which from the
 // first few rows, the user gets the final say via per-column dropdowns, then
 // everything goes through the same bulk-add endpoint the invoice scanner uses.
-import React, { useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Dialog,
   DialogContent,

@@ -18,7 +18,7 @@
 // Wave 3 — live-dashboard PIN freshness. The PinChallengeModal child is stubbed
 // to expose success/cancel buttons; useAuth is mocked.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { render, screen, act, fireEvent } from '@testing-library/react';
 
 let mockUser;

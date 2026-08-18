@@ -22,7 +22,7 @@
 // Typing a code by hand and pressing Enter works too. Values are handed
 // back RAW — parsing (e.g. the /I slip format) stays with the caller, same
 // contract as the camera dialogs.
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Dialog,
   DialogContent,

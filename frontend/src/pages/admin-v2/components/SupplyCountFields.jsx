@@ -19,7 +19,6 @@
 // DME packaging is weird (1 case = 30, 1 pack = 5, loose extras everywhere),
 // so the user counts in packaging units and we store base units. Controlled
 // and fetch-free — the wizard count step and the Supplies-page count modal share it.
-import React from 'react';
 import { countTotal } from '../../../lib/catalogImport';
 
 const numInput = {

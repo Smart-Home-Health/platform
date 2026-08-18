@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Chart from 'chart.js/auto';
 import annotationPlugin from 'chartjs-plugin-annotation';
 import config, { apiFetch } from '../../config';
@@ -27,7 +27,6 @@ import {
   CheckIcon,
   XIcon,
   ClockIcon,
-  AlertIcon,
 } from '../../components/Icons';
 import { Input } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';

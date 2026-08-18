@@ -19,7 +19,7 @@
 // clinical event markers, plus on-demand personal correlation cards.
 // Informational only — copy comes from the backend and makes no causal or
 // care-advice claims.
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Chart from 'chart.js/auto';
 import 'chartjs-adapter-date-fns';
 import annotationPlugin from 'chartjs-plugin-annotation';

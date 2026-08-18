@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import ModalBase from './ModalBase';
 import config from '../config';
 import { useAdminPatient } from '../contexts/AdminPatientContext';
@@ -43,13 +43,6 @@ import {
   DialogFooter,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
 // Pull in AdminV2 styles so the shared Intake/Output modals render correctly
 // when this component is mounted from the live dashboard (which doesn't
 // otherwise load admin-v2 CSS). Vite dedupes with admin pages that also import it.

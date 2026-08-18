@@ -17,7 +17,7 @@
  */
 // Configuration → Environment: home location + environmental data connectors
 // (Open-Meteo outdoor weather). Setup-only page — charts/overlays are #49.
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import AdminV2Layout from './AdminV2Layout';
 import config, { apiFetch } from '../../config';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';

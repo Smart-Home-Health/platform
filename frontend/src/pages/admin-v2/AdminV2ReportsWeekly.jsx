@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Chart from 'chart.js/auto';
 import config, { apiFetch } from '../../config';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
@@ -23,7 +23,6 @@ import AdminV2Layout from './AdminV2Layout';
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
-  AlertIcon,
 } from '../../components/Icons';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';

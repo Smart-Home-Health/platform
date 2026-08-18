@@ -19,7 +19,7 @@
 // and map each to a patient vital or an environmental observation. Running as
 // the HA add-on needs no connection config (Supervisor proxy); standalone
 // installs supply a base URL + long-lived access token.
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import AdminV2Layout from './AdminV2Layout';
 import config, { apiFetch } from '../../config';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
