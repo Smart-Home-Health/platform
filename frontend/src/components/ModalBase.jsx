@@ -30,12 +30,16 @@ import { ExpandPanelIcon, CollapsePanelIcon } from "./Icons";
  *  - plain desktop: the original slab
  *
  * `dock={false}` opts an individual modal out of docking even inside a
- * provider (the unlock gate wants the whole board, not a side panel).
+ * provider (the unlock gate wants the whole board, not a side panel), and
+ * `dock={true}` opts one *in* from outside a provider.
  */
 const ModalBase = ({ isOpen, onClose, title, children, dock }) => {
   const [isMobile, setIsMobile] = useState(false);
   const { docked: dockAvailable, expanded, toggleExpand } = useModalDock();
-  const docked = dock !== false && dockAvailable && !isMobile;
+  // `dock` is normally advisory (opt out with false). `true` forces the docked
+  // treatment for a modal that renders *above* the dock provider in the React
+  // tree but is portalled into the board — the PIN challenge does exactly that.
+  const docked = (dock === true || dockAvailable) && dock !== false && !isMobile;
 
   useEffect(() => {
     const checkMobile = () => {

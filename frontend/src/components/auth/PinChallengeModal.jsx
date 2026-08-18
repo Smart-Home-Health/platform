@@ -19,6 +19,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import ModalBase from '../ModalBase';
 import { useAuth } from '../../contexts/AuthContext';
+import './pin-challenge.css';
 
 /**
  * Global PIN re-auth challenge. Two steps:
@@ -29,8 +30,14 @@ import { useAuth } from '../../contexts/AuthContext';
  * AuthContext is updated with the new user and downstream actions log under
  * that user_id.
  *
- * Portaled to document.body so transform/perspective ancestors (e.g. the
- * flipping DynamicVitalsCard) can't trap its position: fixed overlay.
+ * Portaled rather than rendered in place, so transform/perspective ancestors
+ * (e.g. the flipping DynamicVitalsCard) can't trap its position: fixed overlay.
+ *
+ * When the live dashboard is mounted it portals into the board's own slot
+ * instead of <body>. Two things follow from that: it inherits the board's dark
+ * `--dash-*` tokens (on <body> it fell back to a stale navy), and it picks up
+ * the measured panel geometry, so it docks into the cards column. This prompt
+ * gates *actions*, never the reading of vitals — it must not cover the board.
  */
 export default function PinChallengeModal({ open, onSuccess, onCancel }) {
   const { getAccountUsers, selectUser } = useAuth();
@@ -102,55 +109,37 @@ export default function PinChallengeModal({ open, onSuccess, onCancel }) {
 
   if (!open) return null;
 
+  const boardSlot = typeof document !== 'undefined'
+    ? document.getElementById('ld-auth-slot')
+    : null;
+
   return createPortal(
-    <ModalBase isOpen={true} onClose={onCancel} title="Verify Caregiver">
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, color: '#e6edf3' }}>
-        {error && (
-          <div role="alert" style={{
-            padding: '10px 12px', borderRadius: 6,
-            background: 'rgba(220,53,69,0.15)',
-            border: '1px solid rgba(220,53,69,0.5)',
-            color: '#f8d7da', fontSize: 13,
-          }}>{error}</div>
-        )}
+    <ModalBase isOpen={true} onClose={onCancel} title="Verify Caregiver" dock={!!boardSlot}>
+      <div className="pc-body">
+        {error && <div role="alert" className="pc-error">{error}</div>}
 
         {!selected ? (
           <>
-            <p style={{ margin: 0, color: '#a0aec0', fontSize: 13 }}>
+            <p className="pc-intro">
               Confirm who is at the device. Saves and actions will be logged under
               this user until the next 5-minute idle window.
             </p>
             {loadingUsers ? (
-              <div style={{ textAlign: 'center', padding: 24, color: '#a0aec0' }}>Loading…</div>
+              <div className="pc-loading">Loading…</div>
             ) : users.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 24, color: '#a0aec0' }}>
-                No active users available.
-              </div>
+              <div className="pc-loading">No active users available.</div>
             ) : (
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                gap: 10,
-              }}>
+              <div className="pc-users">
                 {users.map((u) => (
                   <button
                     key={u.id}
                     type="button"
+                    className="pc-user"
                     onClick={() => handlePickUser(u)}
-                    style={{
-                      padding: '14px 16px', borderRadius: 10,
-                      border: '1px solid rgba(255,255,255,0.15)',
-                      background: '#161b22', color: '#e6edf3',
-                      cursor: 'pointer', textAlign: 'left',
-                      display: 'flex', flexDirection: 'column', gap: 4,
-                      fontSize: 14, fontWeight: 600,
-                    }}
                   >
-                    <span>{u.full_name || u.username}</span>
+                    <span className="pc-user-name">{u.full_name || u.username}</span>
                     {u.requires_full_password && (
-                      <span style={{ color: '#f0883e', fontSize: 11, fontWeight: 500 }}>
-                        Password required
-                      </span>
+                      <span className="pc-user-note">Password</span>
                     )}
                   </button>
                 ))}
@@ -158,42 +147,32 @@ export default function PinChallengeModal({ open, onSuccess, onCancel }) {
             )}
           </>
         ) : (
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{
-              padding: '8px 12px', borderRadius: 8,
-              background: 'rgba(88,166,255,0.08)',
-              border: '1px solid rgba(88,166,255,0.3)',
-              color: '#58a6ff', fontSize: 13, fontWeight: 600,
-            }}>
-              {selected.full_name || selected.username}
+          <form onSubmit={handleSubmit} className="pc-form">
+            <div className="pc-chosen">
+              <span className="pc-chosen-label">Signing in as</span>
+              <span className="pc-chosen-name">{selected.full_name || selected.username}</span>
             </div>
 
             {requirePassword ? (
               <div>
-                <label style={{ display: 'block', marginBottom: 6, fontSize: 12, fontWeight: 600 }}>
-                  Password
-                </label>
+                <label className="pc-label" htmlFor="pc-password">Password</label>
                 <input
+                  id="pc-password"
                   type="password"
+                  className="pc-input"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   autoFocus
                   required
-                  style={{
-                    width: '100%', padding: 12, fontSize: 16,
-                    background: '#0d1117', color: '#fff',
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    borderRadius: 6, boxSizing: 'border-box',
-                  }}
                 />
               </div>
             ) : (
               <div>
-                <label style={{ display: 'block', marginBottom: 6, fontSize: 12, fontWeight: 600 }}>
-                  PIN
-                </label>
+                <label className="pc-label" htmlFor="pc-pin">PIN</label>
                 <input
+                  id="pc-pin"
                   type="password"
+                  className="pc-input pin"
                   inputMode="numeric"
                   value={pin}
                   onChange={(e) => setPin(e.target.value)}
@@ -201,52 +180,22 @@ export default function PinChallengeModal({ open, onSuccess, onCancel }) {
                   pattern="\d*"
                   autoFocus
                   required
-                  style={{
-                    width: '100%', padding: 12, fontSize: 18,
-                    background: '#0d1117', color: '#fff',
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    borderRadius: 6, boxSizing: 'border-box',
-                    textAlign: 'center', letterSpacing: '0.5em',
-                  }}
                 />
               </div>
             )}
 
-            <div style={{
-              display: 'flex', justifyContent: 'space-between',
-              gap: 8, alignItems: 'center',
-            }}>
+            <div className="pc-actions">
               <button
                 type="button"
+                className="pc-btn ghost"
                 onClick={() => { setSelected(null); setError(null); }}
-                style={{
-                  padding: '8px 12px', borderRadius: 6,
-                  border: '1px solid rgba(255,255,255,0.15)',
-                  background: 'transparent', color: '#c9d1d9',
-                  cursor: 'pointer', fontSize: 13,
-                }}
               >← Change user</button>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  type="button"
-                  onClick={onCancel}
-                  style={{
-                    padding: '9px 16px', borderRadius: 6,
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    background: 'transparent', color: '#e6edf3',
-                    cursor: 'pointer', fontSize: 14,
-                  }}
-                >Cancel</button>
+              <div className="pc-actions-right">
+                <button type="button" className="pc-btn ghost" onClick={onCancel}>Cancel</button>
                 <button
                   type="submit"
+                  className="pc-btn primary"
                   disabled={submitting || (requirePassword ? !password : !pin)}
-                  style={{
-                    padding: '9px 18px', borderRadius: 6, border: 'none',
-                    background: '#238636', color: '#fff',
-                    cursor: submitting ? 'default' : 'pointer',
-                    fontSize: 14, fontWeight: 600,
-                    opacity: submitting ? 0.6 : 1,
-                  }}
                 >{submitting ? 'Verifying…' : 'Verify'}</button>
               </div>
             </div>
@@ -254,6 +203,6 @@ export default function PinChallengeModal({ open, onSuccess, onCancel }) {
         )}
       </div>
     </ModalBase>,
-    document.body
+    boardSlot || document.body
   );
 }

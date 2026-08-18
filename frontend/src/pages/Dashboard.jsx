@@ -208,14 +208,19 @@ export default function Dashboard() {
       const set = (name, px) => target.style.setProperty(name, `${Math.round(px)}px`);
       const board = root.getBoundingClientRect();
 
-      // Fallback: locked (single centred column) and any state without the
-      // charts/cards columns has nothing to dock beside, so the panel takes
-      // the whole board below the top bar.
+      // Locked (a single centred tiles column) and any state without the
+      // charts/cards columns: dock to the right of the tiles rather than over
+      // them. An auth prompt gates *actions*, not the reading of vitals — the
+      // pulse ox keeps streaming while the board is locked, so covering the
+      // tiles would hide live values that are there to be seen.
       if (!main || !charts || !cards) {
+        const tiles = root.querySelector('.ld-tiles');
+        const gap = main ? parseFloat(getComputedStyle(main).columnGap) || 0 : 0;
+        const left = tiles ? tiles.getBoundingClientRect().right - board.left + gap : 0;
         set('--ld-panel-top', topbar?.offsetHeight ?? 60);
         set('--ld-panel-bottom', strip?.offsetHeight ?? 0);
-        set('--ld-panel-left', 0);
-        set('--ld-panel-left-wide', 0);
+        set('--ld-panel-left', left);
+        set('--ld-panel-left-wide', left);
         set('--ld-panel-right', 0);
         return;
       }
@@ -965,6 +970,7 @@ export default function Dashboard() {
     docked: !isMobile,
     expanded: panelExpanded,
     toggleExpand: () => setPanelExpanded(v => !v),
+    setExpanded: setPanelExpanded,
   }), [isMobile, panelExpanded]);
 
   return (
@@ -1222,6 +1228,11 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* Portal target for screen-level auth prompts. Inside `.live-dash` so
+          they inherit the board's dark tokens and its measured panel geometry
+          instead of landing on <body> in the app's default palette. */}
+      <div id="ld-auth-slot" />
 
       <StatusStrip
         wsStatus={wsStatus}

@@ -251,7 +251,8 @@ def delete_medication(db: Session, med_id):
         return False
 
 
-def administer_medication(db: Session, med_id, dose_amount, schedule_id=None, scheduled_time=None, notes=None, patient_id=None, administered_at=None):
+def administer_medication(db: Session, med_id, dose_amount, schedule_id=None, scheduled_time=None,
+                          notes=None, patient_id=None, administered_at=None, administered_by=None):
     try:
         med = db.query(Medication).filter(Medication.id == med_id).first()
         if not med or med.quantity is None or dose_amount is None:
@@ -342,6 +343,10 @@ def administer_medication(db: Session, med_id, dose_amount, schedule_id=None, sc
             scheduled_time=scheduled_time,
             administered_early=administered_early,
             administered_late=administered_late,
+            # Who gave the dose. The column has existed since the initial
+            # migration but nothing ever wrote it, so `completed_by` came back
+            # None for every medication while care tasks recorded it properly.
+            administered_by=administered_by,
             notes=notes,
             created_at=now
         )
@@ -1046,7 +1051,7 @@ def get_medication_schedule_counts(db: Session, patient_id=None, tz=None):
         return {'due': 0, 'overdue': 0}
 
 
-def get_medication_history(db: Session, limit=25, medication_name=None, start_date=None, end_date=None, status_filter=None, patient_id=None):
+def get_medication_history(db: Session, limit=25, medication_name=None, start_date=None, end_date=None, status_filter=None, patient_id=None, medication_id=None):
     """
     Get medication administration history with filtering options
     
@@ -1058,6 +1063,9 @@ def get_medication_history(db: Session, limit=25, medication_name=None, start_da
         end_date: Filter by end date (YYYY-MM-DD format)  
         status_filter: Filter by status ('late', 'early', 'skipped', 'on-time')
         patient_id: Filter by patient ID
+        medication_id: Filter to exactly one medication. Prefer this over
+            medication_name when the caller already knows the id — the name
+            filter is a substring match, so 'Pro' also returns Propranolol.
     
     Returns:
         List of medication administration records with related data
@@ -1070,6 +1078,13 @@ def get_medication_history(db: Session, limit=25, medication_name=None, start_da
         if patient_id:
             query = query.filter(MedicationLog.patient_id == patient_id)
         
+        # Filter to one medication by id (exact; see the docstring on why this
+        # is not the same as filtering by name). Explicit None check rather
+        # than truthiness — the parameter is Optional[int], and "not provided"
+        # is the only case that should skip the filter.
+        if medication_id is not None:
+            query = query.filter(MedicationLog.medication_id == medication_id)
+
         # Filter by medication name (partial match, case insensitive)
         if medication_name:
             query = query.filter(Medication.name.ilike(f'%{medication_name}%'))
@@ -1125,6 +1140,9 @@ def get_medication_history(db: Session, limit=25, medication_name=None, start_da
                 'scheduled_time': _utc_iso(log.scheduled_time),
                 'is_scheduled': log.is_scheduled,
                 'status': status,
+                # Now that administer paths write it, surface it — the dose
+                # detail pane shows who gave each dose.
+                'administered_by': log.administered_by,
                 'notes': log.notes,
                 'patient_id': log.patient_id,
                 'schedule_id': log.schedule_id,
