@@ -15,255 +15,375 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useState, useEffect } from 'react';
-import config from '../../config';
-import { Alert } from '@/components/ui/alert';
-import { Label } from '@/components/ui/label';
+// A day of pulse oximetry, at the panel's two sizes.
+//
+// Narrow gets the full reading of the day: the scalars, the shape of the two
+// traces, when the sensor was actually on, where the dips were. Wide keeps the
+// arrangement it always had — rollup then distribution, at the analyzer's own
+// thirteen-bucket resolution — moved onto vc tokens.
+//
+// Sizing comes from useModalDock(), never from window.innerWidth: a 380px
+// panel on a 1920px screen is narrow, and the viewport cannot tell you that.
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine, ResponsiveContainer } from 'recharts';
+import * as Select from '@radix-ui/react-select';
+import config, { apiFetch } from '../../config';
+import { useModalDock } from '../../contexts/ModalDockContext';
+import { CHART_CHROME } from '../../contexts/DashboardThemeContext';
+import { ChevronLeftIcon, ChevronRightIcon, CalendarIcon, CheckIcon, AlertIcon, ClockIcon, InfoIcon } from '../Icons';
 import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
-import { cn } from '@/lib/utils';
+  findEpisodes, coverageBuckets, downsample, collapseDistribution,
+  atAGlance, formatDuration, formatHours, WATCH_SPO2,
+} from './pulseOxDay';
+import './alerts-history.css';
+
+const SPO2_COLOR = '#4da7bd';
+const BPM_COLOR = '#3fbf6a';
+
+// The analyzer's full bucket set, in clinical order, for the wide view. Tone
+// follows the project rule: red is reserved for the sub-90 buckets.
+const FULL_BANDS = [
+  ['high_90s_97_plus', 'High 90s (97%+)', 'complete'],
+  ['mid_90s_94_96', 'Mid 90s (94-96%)', 'live'],
+  ['low_90s_90_93', 'Low 90s (90-93%)', 'due'],
+  ['high_eighties_85_89', 'High 80s (85-89%)', 'alert'],
+  ['low_eighties_80_84', 'Low 80s (80-84%)', 'alert'],
+  ['seventies_70_79', '70s (70-79%)', 'alert'],
+  ['sixties_60_69', '60s (60-69%)', 'alert'],
+  ['fifties_50_59', '50s (50-59%)', 'alert'],
+  ['forties_40_49', '40s (40-49%)', 'alert'],
+  ['thirties_30_39', '30s (30-39%)', 'alert'],
+  ['twenties_20_29', '20s (20-29%)', 'alert'],
+  ['below_twenty', 'Below 20%', 'alert'],
+  ['zero_errors', 'Sensor errors', 'idle'],
+];
+
+const GLANCE_ICON = {
+  ok: <CheckIcon size={10} />,
+  alert: <AlertIcon size={10} />,
+  due: <ClockIcon size={10} />,
+  info: <InfoIcon size={10} />,
+};
+
+const clockTime = (msValue) =>
+  new Date(msValue).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+
+// Parsed as a local date. `new Date('2026-08-18')` is UTC midnight, which
+// renders as the previous day for anyone west of Greenwich.
+const parseDay = (iso) => {
+  if (!iso) return null;
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d);
+};
+
+const shortDay = (iso) => {
+  const d = parseDay(iso);
+  return d ? d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : '';
+};
+
+const longDay = (iso) => {
+  const d = parseDay(iso);
+  return d ? d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : '';
+};
 
 const AlertsHistory = ({ patientId }) => {
+  const { expanded } = useModalDock();
   const [availableDates, setAvailableDates] = useState([]);
   const [selectedDate, setSelectedDate] = useState('');
   const [analysis, setAnalysis] = useState(null);
+  const [readings, setReadings] = useState([]);
+  const [alarmSpo2, setAlarmSpo2] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  const withPatient = useCallback(
+    (path) => `${config.apiUrl}${path}${patientId != null ? `${path.includes('?') ? '&' : '?'}patient_id=${patientId}` : ''}`,
+    [patientId]
+  );
+
+  // The alarm threshold decides which dips count as alert-level, so it is read
+  // from settings rather than assumed.
   useEffect(() => {
+    let live = true;
+    apiFetch(`${config.apiUrl}/api/settings`, { credentials: 'include' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(s => { if (live && s && s.min_spo2 != null) setAlarmSpo2(Number(s.min_spo2)); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, []);
+
+  useEffect(() => {
+    let live = true;
     setAnalysis(null);
-    fetchAvailableDates();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchAvailableDates is recreated each render; effect is intentionally keyed on the patient only
-  }, [patientId]);
+    setReadings([]);
+    apiFetch(withPatient('/api/monitoring/history/dates'), { credentials: 'include' })
+      .then(r => { if (!r.ok) throw new Error('Failed to fetch dates'); return r.json(); })
+      .then(data => {
+        if (!live) return;
+        const dates = data.dates || [];
+        setAvailableDates(dates);
+        setSelectedDate(dates[0] || '');
+      })
+      .catch(() => { if (live) setError('Failed to load available dates'); });
+    return () => { live = false; };
+  }, [withPatient]);
 
-  const fetchAvailableDates = async () => {
-    try {
-      let url = `${config.apiUrl}/api/monitoring/history/dates`;
-      if (patientId != null) {
-        url += `?patient_id=${patientId}`;
-      }
-      const response = await fetch(url, { credentials: 'include' });
-      if (!response.ok) throw new Error('Failed to fetch dates');
-      const data = await response.json();
-      console.log('Received dates data:', data);
-      setAvailableDates(data.dates || []);
-      
-      // Auto-select the most recent date
-      if (data.dates && data.dates.length > 0) {
-        setSelectedDate(data.dates[0]);
-      }
-    } catch (err) {
-      console.error('Error fetching available dates:', err);
-      setError('Failed to load available dates');
-    }
-  };
-
-  const fetchAnalysis = async (date) => {
+  useEffect(() => {
+    if (!selectedDate) return;
+    let live = true;
     setLoading(true);
     setError(null);
-    try {
-      let url = `${config.apiUrl}/api/monitoring/history/analyze/${date}`;
-      if (patientId != null) {
-        url += `?patient_id=${patientId}`;
-      }
-      const response = await fetch(url, { credentials: 'include' });
-      if (!response.ok) throw new Error('Failed to fetch analysis');
-      const data = await response.json();
-      console.log('Received analysis data:', data);
-      setAnalysis(data);
-    } catch (err) {
-      console.error('Error fetching analysis:', err);
-      setError('Failed to load analysis data');
-    } finally {
-      setLoading(false);
-    }
-  };
+    // The raw readings back the traces, the coverage strip and the episode
+    // list; only the narrow stop draws those, so wide does not pay for them.
+    const wants = expanded
+      ? [apiFetch(withPatient(`/api/monitoring/history/analyze/${selectedDate}`), { credentials: 'include' })]
+      : [
+        apiFetch(withPatient(`/api/monitoring/history/analyze/${selectedDate}`), { credentials: 'include' }),
+        apiFetch(withPatient(`/api/monitoring/history/raw/${selectedDate}`), { credentials: 'include' }),
+      ];
+    Promise.all(wants)
+      .then(async ([aRes, rRes]) => {
+        if (!aRes.ok) throw new Error('Failed to fetch analysis');
+        const a = await aRes.json();
+        const r = rRes && rRes.ok ? await rRes.json() : null;
+        if (!live) return;
+        setAnalysis(a);
+        setReadings(r?.readings || []);
+      })
+      .catch(() => { if (live) setError('Failed to load analysis data'); })
+      .finally(() => { if (live) setLoading(false); });
+    return () => { live = false; };
+  }, [selectedDate, withPatient, expanded]);
 
-  const handleDateChange = (date) => {
-    setSelectedDate(date);
-    if (date) {
-      fetchAnalysis(date);
-    }
-  };
+  const series = useMemo(() => downsample(readings, 260), [readings]);
+  const episodes = useMemo(
+    () => findEpisodes(readings, { watch: WATCH_SPO2, alarm: alarmSpo2 }),
+    [readings, alarmSpo2]
+  );
+  const coverage = useMemo(() => coverageBuckets(readings, 90), [readings]);
+  const glance = useMemo(() => atAGlance(analysis, episodes, alarmSpo2), [analysis, episodes, alarmSpo2]);
+  const bands = useMemo(() => collapseDistribution(analysis?.spo2_distribution), [analysis]);
 
-  // Auto-load analysis for initial date
-  useEffect(() => {
-    if (selectedDate) {
-      fetchAnalysis(selectedDate);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchAnalysis is recreated each render; effect is intentionally keyed on selected date/patient only
-  }, [selectedDate, patientId]);
+  const idx = availableDates.indexOf(selectedDate);
+  // availableDates is newest-first, so "older" walks forward through it.
+  const goOlder = () => { if (idx >= 0 && idx < availableDates.length - 1) setSelectedDate(availableDates[idx + 1]); };
+  const goNewer = () => { if (idx > 0) setSelectedDate(availableDates[idx - 1]); };
 
-  const formatDate = (dateString) => {
-    // Parse as local date to avoid timezone conversion
-    const [year, month, day] = dateString.split('-');
-    const date = new Date(year, month - 1, day);
-    return date.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-  };
+  const errorPct = analysis && analysis.total_readings
+    ? Math.round((analysis.error_spo2_readings / analysis.total_readings) * 1000) / 10
+    : 0;
+  const validPct = analysis && analysis.total_readings
+    ? Math.round((analysis.valid_spo2_readings / analysis.total_readings) * 100)
+    : 0;
 
-  const getSpo2Color = (category) => {
-    const colors = {
-      'high_90s_97_plus': '#059669',     // Dark Green
-      'mid_90s_94_96': '#22c55e',        // Green
-      'low_90s_90_93': '#65a30d',        // Lime Green
-      'high_eighties_85_89': '#eab308',  // Yellow
-      'low_eighties_80_84': '#f59e0b',   // Amber
-      'seventies_70_79': '#f97316',      // Orange
-      'sixties_60_69': '#ea580c',        // Dark Orange
-      'fifties_50_59': '#ef4444',        // Red
-      'forties_40_49': '#dc2626',        // Dark Red
-      'thirties_30_39': '#b91c1c',       // Darker Red
-      'twenties_20_29': '#991b1b',       // Very Dark Red
-      'below_twenty': '#7c2d12',         // Darkest Red
-      'zero_errors': '#6b7280'           // Gray
-    };
-    return colors[category] || '#6b7280';
-  };
-
-  const getCategoryLabel = (category) => {
-    const labels = {
-      'high_90s_97_plus': 'High 90s (97%+)',
-      'mid_90s_94_96': 'Mid 90s (94-96%)',
-      'low_90s_90_93': 'Low 90s (90-93%)',
-      'high_eighties_85_89': 'High 80s (85-89%)',
-      'low_eighties_80_84': 'Low 80s (80-84%)',
-      'seventies_70_79': '70s (70-79%)',
-      'sixties_60_69': '60s (60-69%)',
-      'fifties_50_59': '50s (50-59%)',
-      'forties_40_49': '40s (40-49%)',
-      'thirties_30_39': '30s (30-39%)',
-      'twenties_20_29': '20s (20-29%)',
-      'below_twenty': 'Below 20%',
-      'zero_errors': 'Sensor Errors (0%)'
-    };
-    return labels[category] || category;
-  };
-
-  const summaryCards = analysis ? [
-    { title: 'Time Logged', value: `${analysis.time_logged_hours}h`, valueClass: 'text-ring',
-      subtitle: `(${analysis.time_logged_minutes} minutes)` },
-    { title: 'Total Readings', value: analysis.total_readings.toLocaleString(), valueClass: 'text-success',
-      subtitle: `(${analysis.valid_spo2_readings} valid SpO₂${analysis.error_spo2_readings > 0 ? `, ${analysis.error_spo2_readings} errors` : ''})` },
-    { title: 'Average SpO₂', value: `${analysis.avg_spo2}%`, valueClass: 'text-warning',
-      subtitle: `Range: ${analysis.min_spo2}% - ${analysis.max_spo2}%` },
-    { title: 'Average BPM', value: analysis.avg_bpm, valueClass: 'text-ring',
-      subtitle: `Range: ${analysis.min_bpm} - ${analysis.max_bpm}` },
-  ] : [];
-
-  return (
-    <div className="tw flex flex-col gap-4 text-foreground">
-      {/* Header + date picker (stacks on mobile) */}
-      <div className="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="m-0 text-xl font-semibold">Pulse Oximetry Analysis</h2>
-        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2.5">
-          <Label htmlFor="date-select" className="text-muted-foreground">Select Date:</Label>
-          <Select
-            value={selectedDate || undefined}
-            onValueChange={handleDateChange}
-            disabled={loading}
-          >
-            <SelectTrigger id="date-select" className="w-full sm:w-auto sm:min-w-[240px]">
-              <SelectValue placeholder="Choose a date..." />
-            </SelectTrigger>
-            <SelectContent>
-              {availableDates.map(date => (
-                <SelectItem key={date} value={date}>
-                  {formatDate(date)}
-                </SelectItem>
+  const dateBar = (
+    <div className="ah-datebar">
+      <button type="button" className="ah-step" onClick={goOlder}
+        disabled={idx < 0 || idx >= availableDates.length - 1} aria-label="Previous day">
+        <ChevronLeftIcon size={16} />
+      </button>
+      {/* Radix Select rather than a Popover: the repo already ships Select, and
+          picking one of a list of days is exactly what it is for. */}
+      {/* Controlled from the first render: `undefined` until the dates land
+          would flip Radix from uncontrolled to controlled and warn. */}
+      <Select.Root value={selectedDate} onValueChange={setSelectedDate}>
+        <Select.Trigger className="ah-date" disabled={!availableDates.length} aria-label="Select date">
+          <CalendarIcon size={14} />
+          <Select.Value>{selectedDate ? shortDay(selectedDate) : 'No data'}</Select.Value>
+        </Select.Trigger>
+        <Select.Portal>
+          <Select.Content className="ah-date-menu" position="popper" sideOffset={6}>
+            <Select.Viewport>
+              {availableDates.map(d => (
+                <Select.Item key={d} value={d} className="ah-date-option" data-active={d === selectedDate}>
+                  <Select.ItemText>{longDay(d)}</Select.ItemText>
+                </Select.Item>
               ))}
-            </SelectContent>
-          </Select>
-        </div>
+            </Select.Viewport>
+          </Select.Content>
+        </Select.Portal>
+      </Select.Root>
+      <button type="button" className="ah-step" onClick={goNewer} disabled={idx <= 0} aria-label="Next day">
+        <ChevronRightIcon size={16} />
+      </button>
+    </div>
+  );
+
+  const stat = (label, value, unit, sub, tone) => (
+    <div className={`ah-stat ah-tone-${tone || 'info'}`} key={label}>
+      <span className="ah-stat-label">{label}</span>
+      <span className="ah-stat-value">{value}{unit && <small>{unit}</small>}</span>
+      {sub && <span className="ah-stat-sub">{sub}</span>}
+    </div>
+  );
+
+  const rollup = analysis && (
+    <div className="ah-rollup">
+      {stat('Coverage', formatHours(analysis.time_logged_minutes), '', `${analysis.time_logged_minutes} minutes`, 'live')}
+      {stat('Valid readings', analysis.valid_spo2_readings.toLocaleString(), '', `${validPct}% of readings`, 'info')}
+      {stat('Average SpO₂', analysis.avg_spo2, '%', `Range ${analysis.min_spo2}-${analysis.max_spo2}%`, 'live')}
+      {stat('Average HR', analysis.avg_bpm, ' BPM', `Range ${analysis.min_bpm}-${analysis.max_bpm}`, 'complete')}
+      {stat('Sensor errors', errorPct, '%', `${analysis.error_spo2_readings.toLocaleString()} readings`,
+        analysis.error_spo2_readings > 0 ? 'due' : 'info')}
+    </div>
+  );
+
+  const distRow = (key, label, tone, count, percentage) => (
+    <div className={`ah-dist-row ah-tone-${tone}`} key={key}>
+      <span className="ah-swatch" />
+      <span className="ah-dist-label">{label}</span>
+      <div className="ah-dist-bar">
+        {/* A band that occurred at all keeps a visible sliver; one that did not
+            stays empty, so "rare" and "never" do not look alike. */}
+        <div className="ah-dist-fill" style={{ width: count > 0 ? `${Math.max(percentage, 1)}%` : 0 }} />
       </div>
+      <span className="ah-dist-stat">
+        <span className="ah-dist-pct">{percentage}%</span>
+        <span className="ah-dist-count">({count.toLocaleString()})</span>
+      </span>
+    </div>
+  );
 
-      {error && <Alert variant="destructive">{error}</Alert>}
+  const timeTicks = series.length
+    ? [series[0].t, series[Math.floor(series.length / 2)].t, series[series.length - 1].t]
+    : [];
 
-      {loading && (
-        <div className="flex items-center justify-center gap-3 py-10 text-muted-foreground">
-          <span className="h-6 w-6 animate-spin rounded-full border-[3px] border-muted border-t-ring" />
-          Loading analysis…
+  const trace = (label, key, color, refLine) => (
+    <>
+      <span className="ah-chart-label">{label}</span>
+      <div className="ah-chart">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={series} margin={{ top: 4, right: 6, bottom: 0, left: -18 }}>
+            <CartesianGrid stroke={CHART_CHROME.grid} vertical={false} />
+            <XAxis dataKey="t" type="number" domain={['dataMin', 'dataMax']} ticks={timeTicks}
+              tickFormatter={clockTime} stroke={CHART_CHROME.axis}
+              tick={{ fill: CHART_CHROME.textDim, fontSize: 9 }} tickLine={false} />
+            {/* Fixed SpO2 scale with even ticks: a percentage the reader
+                already has a feel for should not re-scale per day, and letting
+                recharts pick gave 88/91/94/100. */}
+            <YAxis domain={key === 'spo2' ? [88, 100] : ['dataMin - 10', 'dataMax + 10']}
+              ticks={key === 'spo2' ? [88, 92, 96, 100] : undefined}
+              stroke={CHART_CHROME.axis} tick={{ fill: CHART_CHROME.textDim, fontSize: 9 }}
+              tickLine={false} width={38} />
+            {refLine != null && (
+              <ReferenceLine y={refLine} stroke="var(--vc-state-due)" strokeDasharray="3 3" />
+            )}
+            <Line type="monotone" dataKey={key} stroke={color} strokeWidth={1.4} dot={false} isAnimationActive={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </>
+  );
+
+  const body = () => {
+    if (loading) return <div className="ah-note">Loading analysis…</div>;
+    if (!selectedDate) return <div className="ah-empty">No pulse oximetry data recorded</div>;
+    if (!analysis) return <div className="ah-empty">No data for {shortDay(selectedDate)}</div>;
+
+    if (expanded) {
+      return (
+        <>
+          {rollup}
+          <div className="ah-block">
+            <div className="ah-block-head">
+              <h4 className="ah-block-title">SpO&#8322; distribution</h4>
+              <span className="ah-tag">{longDay(analysis.date)}</span>
+            </div>
+            <div className="ah-dist">
+              {FULL_BANDS.map(([k, label, tone]) => {
+                const d = analysis.spo2_distribution?.[k];
+                return distRow(k, label, tone, d?.count || 0, d?.percentage || 0);
+              })}
+            </div>
+          </div>
+        </>
+      );
+    }
+
+    const alertLevel = episodes.filter(e => e.alertLevel).length;
+    return (
+      <>
+        {rollup}
+
+        {series.length > 0 && (
+          <div className="ah-block">
+            <div className="ah-block-head">
+              <h4 className="ah-block-title">Oxygen + heart rate</h4>
+              {alarmSpo2 != null && <span className="ah-tag">{alarmSpo2}% alarm</span>}
+            </div>
+            {trace('SpO₂ (%)', 'spo2', SPO2_COLOR, alarmSpo2)}
+            {trace('Heart rate (BPM)', 'bpm', BPM_COLOR, null)}
+            {coverage.buckets.length > 0 && (
+              <>
+                <span className="ah-chart-label">Sensor coverage</span>
+                <div className="ah-coverage">
+                  {coverage.buckets.map((on, i) => (
+                    <span key={i} className={`ah-cov-slot${on ? ' on' : ''}`} />
+                  ))}
+                </div>
+                <div className="ah-cov-axis">
+                  <span>{clockTime(coverage.startMs)}</span>
+                  <span>{formatHours(analysis.time_logged_minutes)} of data</span>
+                  <span>{clockTime(coverage.endMs)}</span>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        <div className="ah-block">
+          <h4 className="ah-block-title">SpO&#8322; distribution</h4>
+          <div className="ah-dist">
+            {bands.map(b => distRow(b.key, b.label, b.tone, b.count, b.percentage))}
+          </div>
         </div>
-      )}
 
-      {analysis && !loading && (
-        <div className="flex flex-col gap-5 rounded-xl border border-border bg-card p-4 sm:p-5">
-          <h3 className="m-0 text-center text-lg font-semibold">
-            Pulse Oximetry Analysis for {formatDate(analysis.date)}
-          </h3>
-
-          {/* Summary cards */}
-          <div className="grid gap-3 sm:gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
-            {summaryCards.map(card => (
-              <div key={card.title} className="rounded-xl border border-border bg-muted/40 p-4 text-center">
-                <div className="mb-2 text-sm font-medium text-muted-foreground">{card.title}</div>
-                <div className={cn('text-2xl font-bold', card.valueClass)}>{card.value}</div>
-                <div className="mt-1 text-xs text-muted-foreground">{card.subtitle}</div>
+        <div className="ah-block">
+          <h4 className="ah-block-title">At a glance</h4>
+          <div className="ah-glance">
+            {glance.map((l, i) => (
+              <div className={`ah-glance-row ah-tone-${l.tone}`} key={i}>
+                <span className="ah-glance-dot">{GLANCE_ICON[l.tone]}</span>
+                {l.text}
               </div>
             ))}
           </div>
+        </div>
 
-          {/* SpO₂ distribution */}
-          <div className="rounded-xl border border-border bg-muted/30 p-4 sm:p-5">
-            <h4 className="m-0 mb-4 text-center text-base font-semibold">SpO₂ Distribution</h4>
-            <div className="flex flex-col gap-3">
-              {analysis.spo2_distribution && Object.entries(analysis.spo2_distribution).map(([category, data]) => (
-                <div
-                  key={category}
-                  className="flex flex-col gap-1.5 sm:grid sm:grid-cols-[minmax(140px,200px)_1fr_auto] sm:items-center sm:gap-4 sm:gap-y-0"
-                >
-                  {/* Label (+ inline stats on mobile) */}
-                  <div className="flex items-center justify-between gap-2 sm:justify-start">
-                    <div className="flex items-center gap-2 font-medium">
-                      <span className="h-3.5 w-3.5 shrink-0 rounded" style={{ backgroundColor: getSpo2Color(category) }} />
-                      <span className="text-sm">{getCategoryLabel(category)}</span>
-                    </div>
-                    <div className="flex items-baseline gap-1.5 sm:hidden">
-                      <span className="text-sm font-semibold text-foreground">{data.percentage}%</span>
-                      <span className="text-xs text-muted-foreground">({data.count.toLocaleString()})</span>
-                    </div>
-                  </div>
-
-                  {/* Bar */}
-                  <div className="h-2.5 overflow-hidden rounded-full bg-muted sm:h-5">
-                    <div
-                      className="h-full rounded-full transition-[width] duration-300"
-                      style={{ width: `${Math.max(data.percentage, 0.5)}%`, minWidth: 2, backgroundColor: getSpo2Color(category) }}
-                    />
-                  </div>
-
-                  {/* Stats (desktop column) */}
-                  <div className="hidden flex-col items-end gap-0.5 sm:flex">
-                    <span className="text-sm font-semibold text-foreground">{data.percentage}%</span>
-                    <span className="text-xs text-muted-foreground">({data.count.toLocaleString()})</span>
-                  </div>
+        <div className="ah-block">
+          <div className="ah-block-head">
+            <h4 className="ah-block-title">Low-oxygen episodes</h4>
+            <span className={`ah-tag${alertLevel ? ' ah-tone-alert' : ''}`}>
+              {alertLevel ? `${alertLevel} alert-level` : 'No alert-level episodes'}
+            </span>
+          </div>
+          {episodes.length === 0 ? (
+            <div className="ah-note">Nothing below {WATCH_SPO2}%</div>
+          ) : (
+            <div className="ah-eps">
+              {episodes.map(e => (
+                <div className={`ah-ep ah-tone-${e.alertLevel ? 'alert' : 'due'}`} key={e.startMs}>
+                  <span className="ah-ep-time">{clockTime(e.startMs)}</span>
+                  <span />
+                  <span className="ah-ep-nadir">{e.nadir}%</span>
+                  <span className="ah-ep-meta">
+                    {formatDuration(e.durationMs)} &middot; {e.readings} reading{e.readings === 1 ? '' : 's'}
+                    {e.bpmAtNadir != null && ` · ${e.bpmAtNadir} BPM at nadir`}
+                  </span>
                 </div>
               ))}
             </div>
-          </div>
+          )}
         </div>
-      )}
+      </>
+    );
+  };
 
-      {!analysis && !loading && selectedDate && (
-        <div className="rounded-xl border border-border bg-card p-10 text-center text-muted-foreground">
-          No pulse oximetry data found for {formatDate(selectedDate)}
-        </div>
-      )}
-
-      {!selectedDate && !loading && (
-        <div className="rounded-xl border border-border bg-card p-10 text-center text-muted-foreground">
-          Please select a date to view pulse oximetry analysis
-        </div>
-      )}
+  return (
+    <div className={`ah-panel${expanded ? ' wide' : ''}`}>
+      {dateBar}
+      {error && <div className="ah-error">{error}</div>}
+      {body()}
     </div>
   );
 };
