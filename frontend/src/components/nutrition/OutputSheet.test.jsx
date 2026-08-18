@@ -167,6 +167,19 @@ describe('OutputSheet', () => {
     expect(toggle('Urine')).toHaveAttribute('aria-pressed', 'false');
   });
 
+  it('keeps the suggestion and output rows on one line', () => {
+    setup();
+    // Quick log and concerns scroll sideways rather than wrapping into a block
+    // that pushes the rest of the form down.
+    const scrollers = document.querySelectorAll('.vchips.scroll');
+    expect(scrollers.length).toBeGreaterThanOrEqual(2);
+
+    // Urine and stool sit side by side, including on a phone.
+    expect(document.querySelector('.nsheet-toggles')).toBeTruthy();
+    expect(toggle('Urine')).toBeInTheDocument();
+    expect(toggle('Stool')).toBeInTheDocument();
+  });
+
   it('states the time and keeps the picker behind Edit', () => {
     setup();
     // The common case is "now", so no datetime field is in the way.

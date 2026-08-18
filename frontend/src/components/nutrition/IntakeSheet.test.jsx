@@ -137,6 +137,16 @@ describe('IntakeSheet', () => {
     await waitFor(() => expect(document.getElementById('intake-cal')).toHaveValue(375));
   });
 
+  it('keeps the suggestion rows on one line', async () => {
+    nutritionService.recent.mockResolvedValueOnce({
+      recent: [{ item_name: 'Water', item_type: 'liquid', amount: 120, amount_unit: 'ml' }],
+    });
+    setup();
+    await screen.findByText(/Water · 120 ml/);
+    // Context and Recent scroll sideways instead of wrapping.
+    expect(document.querySelectorAll('.vchips.scroll').length).toBeGreaterThanOrEqual(2);
+  });
+
   it('leaves barcode scanning visibly unavailable', () => {
     setup();
     expect(screen.getByLabelText(/Scan a barcode/)).toBeDisabled();

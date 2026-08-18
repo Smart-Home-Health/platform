@@ -364,6 +364,7 @@ export default function IntakeSheet({
         <ChipGroup
           label="Context"
           optional
+          scroll
           options={CONTEXTS}
           value={form.mealType}
           onChange={(mealType) => set({ mealType })}
@@ -374,6 +375,7 @@ export default function IntakeSheet({
             label="Presets"
             hint="Logs every part as its own record."
             mode="action"
+            scroll
             options={presets.map((p) => ({
               value: `preset-${p.id}`,
               label: p.name,
@@ -389,6 +391,7 @@ export default function IntakeSheet({
             label="Recent"
             hint="Tap to prefill."
             mode="action"
+            scroll
             options={recent.map((r, i) => ({
               value: `recent-${i}`,
               label: `${r.item_name} · ${r.amount} ${r.amount_unit}`,

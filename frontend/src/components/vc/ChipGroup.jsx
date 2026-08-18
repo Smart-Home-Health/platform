@@ -34,6 +34,7 @@ export default function ChipGroup({
   hint,
   tone = 'accent',      // 'accent' | 'due' — due is for the concern flags
   columns,
+  scroll = false,       // keep on one line and scroll sideways instead of wrapping
 }) {
   const selectedValues = mode === 'multi'
     ? (Array.isArray(value) ? value : [])
@@ -67,7 +68,7 @@ export default function ChipGroup({
         </div>
       )}
       <div
-        className={`vchips ${columns ? 'grid' : ''} tone-${tone} ${mode === 'action' ? 'action' : ''}`}
+        className={`vchips ${columns ? 'grid' : ''} ${scroll ? 'scroll' : ''} tone-${tone} ${mode === 'action' ? 'action' : ''}`}
         style={columns ? { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` } : undefined}
         role={mode === 'action' ? undefined : 'group'}
         aria-label={label}

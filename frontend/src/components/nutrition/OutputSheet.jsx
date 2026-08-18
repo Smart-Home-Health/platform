@@ -318,6 +318,7 @@ export default function OutputSheet({
             label="Quick log"
             hint="Tap to prefill."
             mode="action"
+            scroll
             options={QUICK_LOGS}
             onSelect={applyQuickLog}
           />
@@ -538,6 +539,7 @@ export default function OutputSheet({
           optional
           tone="due"
           mode="multi"
+          scroll
           options={CONCERNS}
           value={concernValues}
           onChange={(next) => set(Object.fromEntries(
