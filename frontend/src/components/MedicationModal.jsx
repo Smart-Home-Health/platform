@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import ModalBase from './ModalBase';
 import config from '../config';
 import { useAdminPatient } from '../contexts/AdminPatientContext';
@@ -33,7 +33,6 @@ import MedicationDoseModal from '../pages/admin-v2/components/MedicationDoseModa
 import UpdateQuantityModal from '../pages/admin-v2/components/UpdateQuantityModal';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -41,13 +40,6 @@ import {
   DialogFooter,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
 
 const OFF_WINDOW_ERRORS = ['early_administration', 'late_administration', 'off_window_administration'];
 

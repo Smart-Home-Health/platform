@@ -15,19 +15,13 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
 import config, { apiFetch } from '../../config';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
-import {
-  EditIcon,
-  TrashIcon,
-  XIcon,
-  CheckIcon,
-  SearchIcon
-} from '../../components/Icons';
+import { XIcon } from '../../components/Icons';
 import {
   Dialog,
   DialogContent,
@@ -37,16 +31,6 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
-import { Field, FormRow } from '@/components/ui/field';
 import { Alert } from '@/components/ui/alert';
 import SymptomLogForm from './components/SymptomLogForm';
 import SymptomActiveList from './components/SymptomActiveList';

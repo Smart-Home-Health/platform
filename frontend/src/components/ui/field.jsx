@@ -15,7 +15,6 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import * as React from 'react';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 

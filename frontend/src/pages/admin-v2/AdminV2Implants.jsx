@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import AdminV2Layout from './AdminV2Layout';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import { useAuth } from '../../contexts/AuthContext';

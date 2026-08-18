@@ -15,8 +15,8 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useState, useRef, useEffect } from 'react';
-import { Link, useLocation, Outlet, useSearchParams, useNavigate } from 'react-router-dom';
+import { useState, useRef, useEffect } from 'react';
+import { Link, useLocation, useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import {
@@ -26,9 +26,7 @@ import {
   TasksIcon,
   EquipmentIcon,
   NutritionIcon,
-  ProvidersIcon,
-  BusinessesIcon,
-  MonitoringIcon,
+      MonitoringIcon,
   ProfileIcon,
   ConfigIcon,
   BackArrowIcon,

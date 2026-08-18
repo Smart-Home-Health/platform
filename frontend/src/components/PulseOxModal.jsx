@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import AlertsList from './AlertsList';
 import ModalBase from './ModalBase';
 

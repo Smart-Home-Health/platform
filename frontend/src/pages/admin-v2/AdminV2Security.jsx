@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 // Configuration → Security: HTTPS status + the guided setup wizard.
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import AdminV2Layout from './AdminV2Layout';
 import { useAuth } from '../../contexts/AuthContext';
 import config, { apiFetch } from '../../config';

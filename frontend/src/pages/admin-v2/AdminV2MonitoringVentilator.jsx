@@ -15,13 +15,13 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ResponsiveContainer, ComposedChart, CartesianGrid, XAxis, YAxis,
   Tooltip, Area, Line,
 } from 'recharts';
 import config from '../../config';
-import { ChevronLeftIcon, ChevronRightIcon, ClockIcon } from '../../components/Icons';
+import { ChevronLeftIcon, ChevronRightIcon } from '../../components/Icons';
 import { useChartColors } from '../../hooks/useChartColors';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';

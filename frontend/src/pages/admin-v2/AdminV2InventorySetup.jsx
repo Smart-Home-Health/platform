@@ -23,7 +23,7 @@
 // flow): import -> review -> count -> done. Every piece of state is
 // checkpointed to sessionStorage — iOS discards backgrounded tabs on Photos
 // trips and reloads the SPA, so the wizard must survive a reload anywhere.
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';

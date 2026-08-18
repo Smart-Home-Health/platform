@@ -15,7 +15,6 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React from 'react';
 
 /* One live-vital tile: label, source caption, big value, AVG/MIN/MAX row.
  * `accent` is a literal color (vc state tokens at the call site). `stats`

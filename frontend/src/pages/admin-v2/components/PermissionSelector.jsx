@@ -15,7 +15,6 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React from 'react';
 import { cn } from '@/lib/utils';
 
 // Category-grouped permission toggle pills, shared by the role create dialog and

@@ -17,7 +17,7 @@
  */
 // "Count this supply" dialog for the Supplies page: package math in, one
 // audited absolute count out (POST /api/equipment/{id}/count).
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Dialog,
   DialogContent,

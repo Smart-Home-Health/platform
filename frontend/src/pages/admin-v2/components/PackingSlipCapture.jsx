@@ -21,7 +21,7 @@
 // Designed for a phone in one hand and a box of supplies in the other:
 // big buttons, plain language, and nothing is final here — the parent
 // confirm panel shows an editable review before anything is saved.
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Dialog,
   DialogContent,

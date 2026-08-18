@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { API_BASE_URL, isIngress } from '../config';
 import { installAuthInterceptor } from '../utils/authInterceptor';
 import { clearMessagesPopThrottle } from '../utils/messagesPopThrottle';

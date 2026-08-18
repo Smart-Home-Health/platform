@@ -17,7 +17,7 @@
  */
 // Supplies on hand: a plain-language view of what's in the house, driven by
 // Equipment quantities that confirmed deliveries keep up to date.
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';

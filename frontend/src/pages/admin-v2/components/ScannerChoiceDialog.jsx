@@ -18,7 +18,7 @@
 // "How do you want to scan?" — asked before every scan so the camera and a
 // paired Bluetooth (keyboard-wedge) scanner coexist. The last-used answer is
 // remembered per device and preselected, so continuing is a single tap.
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   Dialog,
   DialogContent,
