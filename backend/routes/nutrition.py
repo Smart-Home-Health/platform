@@ -19,7 +19,14 @@ from datetime import datetime, date
 from typing import List, Optional
 import logging
 from db import get_db
-from dependencies import require_read_access
+from dependencies import require_read_access, require_permission
+from sqlalchemy.exc import IntegrityError
+from crud.nutrition_library import (
+    list_nutrition_items, create_nutrition_item, update_nutrition_item, delete_nutrition_item,
+    list_nutrition_presets, create_nutrition_preset, update_nutrition_preset,
+    delete_nutrition_preset, apply_nutrition_preset, get_recent_intake_items,
+)
+from nutrition_vocab import MEAL_TYPES
 from crud.nutrition import (
     create_nutrition_intake, 
     get_nutrition_intake_by_id,
@@ -37,6 +44,13 @@ from models.nutrition import (
     NutritionIntakeCreate,
     NutritionIntakeUpdate,
     NutritionIntakeResponse,
+    NutritionItemCreate,
+    NutritionItemUpdate,
+    NutritionItemResponse,
+    NutritionPresetCreate,
+    NutritionPresetUpdate,
+    NutritionPresetResponse,
+    NutritionPresetApply,
 )
 
 logger = logging.getLogger("app")
@@ -51,7 +65,7 @@ async def get_nutrition_due_count_endpoint(patient_id: Optional[int] = None, db:
     return {"count": get_due_and_upcoming_nutrition_count(db, patient_id=patient_id)}
 
 # Simple endpoint for frontend compatibility
-@router.post("/nutrition", response_model=NutritionIntakeResponse)
+@router.post("/nutrition", response_model=NutritionIntakeResponse, dependencies=[Depends(require_permission("nutrition.create"))])
 async def create_nutrition_simple(
     intake_data: NutritionIntakeCreate,
     db: Session = Depends(get_db)
@@ -96,7 +110,7 @@ async def create_nutrition_simple(
         logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to create nutrition intake record: {str(e)}")
 
-@router.post("/nutrition-intake", response_model=NutritionIntakeResponse)
+@router.post("/nutrition-intake", response_model=NutritionIntakeResponse, dependencies=[Depends(require_permission("nutrition.create"))])
 async def create_nutrition_intake_endpoint(
     intake_data: NutritionIntakeCreate,
     patient_id: Optional[int] = None,
@@ -216,7 +230,7 @@ async def get_active_patient_nutrition_summary_endpoint(
         "summary": summary
     }
 
-@router.put("/nutrition-intake/{intake_id}", response_model=NutritionIntakeResponse)
+@router.put("/nutrition-intake/{intake_id}", response_model=NutritionIntakeResponse, dependencies=[Depends(require_permission("nutrition.update"))])
 async def update_nutrition_intake_endpoint(
     intake_id: int,
     update_data: NutritionIntakeUpdate,
@@ -234,7 +248,7 @@ async def update_nutrition_intake_endpoint(
     except Exception as e:
         raise HTTPException(status_code=500, detail="Failed to update nutrition intake record")
 
-@router.delete("/nutrition-intake/{intake_id}")
+@router.delete("/nutrition-intake/{intake_id}", dependencies=[Depends(require_permission("nutrition.delete"))])
 async def delete_nutrition_intake_endpoint(
     intake_id: int,
     db: Session = Depends(get_db)
@@ -260,62 +274,199 @@ async def get_care_task_nutrition_intake_endpoint(
 
 # Common nutrition items/presets for quick entry
 @router.get("/nutrition-presets")
-async def get_nutrition_presets(_: bool = Depends(require_read_access)):
-    """Get common nutrition items for quick entry"""
+async def get_nutrition_presets_legacy(
+    patient_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access),
+):
+    """Deprecated shim for the old hardcoded preset dict.
+
+    This used to return a fixed list of items nobody could edit. It now reads
+    the real item library so existing callers keep working; new code should use
+    /api/nutrition/items and /api/nutrition/presets.
+    """
+    items = list_nutrition_items(db, patient_id=patient_id, limit=200)
+
+    def as_legacy(item):
+        return {
+            "id": item.id,
+            "name": item.name,
+            "item_type": item.item_type,
+            "default_unit": item.default_amount_unit,
+            "default_amount": item.default_amount,
+            "calories_per_ml": item.calories_per_unit,
+            "calories_per_serving": item.calories_per_unit,
+            "protein_per_ml": item.protein_per_unit,
+            "carbs_per_ml": item.carbs_per_unit,
+            "fat_per_ml": item.fat_per_unit,
+        }
+
     return {
-        "liquids": [
-            {
-                "name": "Water",
-                "item_type": "liquid",
-                "default_unit": "ml",
-                "calories_per_ml": 0
-            },
-            {
-                "name": "Peptamen",
-                "item_type": "supplement",
-                "default_unit": "ml",
-                "calories_per_ml": 1.5,
-                "protein_per_ml": 0.04,
-                "carbs_per_ml": 0.127,
-                "fat_per_ml": 0.058
-            },
-            {
-                "name": "Orange Juice",
-                "item_type": "liquid",
-                "default_unit": "ml",
-                "calories_per_ml": 0.45
-            }
-        ],
-        "foods": [
-            {
-                "name": "Apple",
-                "item_type": "food",
-                "default_unit": "medium (182g)",
-                "calories_per_serving": 95,
-                "carbs_per_serving": 25,
-                "fiber_per_serving": 4
-            },
-            {
-                "name": "Banana",
-                "item_type": "food",
-                "default_unit": "medium (118g)",
-                "calories_per_serving": 105,
-                "carbs_per_serving": 27,
-                "fiber_per_serving": 3
-            }
-        ],
-        "meal_types": [
-            "breakfast",
-            "lunch", 
-            "dinner",
-            "snack",
-            "supplement"
-        ],
+        "liquids": [as_legacy(i) for i in items if i.item_type in ('liquid', 'tube_feed', 'supplement')],
+        "foods": [as_legacy(i) for i in items if i.item_type == 'food'],
+        "meal_types": MEAL_TYPES,
         "common_units": {
             "liquids": ["ml", "oz", "cups", "liters"],
-            "foods": ["grams", "oz", "servings", "pieces"]
-        }
+            "foods": ["grams", "oz", "servings", "pieces"],
+        },
     }
+
+
+# ---------- Item library ----------
+
+@router.get("/nutrition/items", response_model=List[NutritionItemResponse])
+async def list_items(
+    patient_id: Optional[int] = None,
+    search: Optional[str] = None,
+    item_type: Optional[str] = None,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access),
+):
+    """Saved reusable items, for the sheet's item search."""
+    return list_nutrition_items(db, patient_id=patient_id, search=search,
+                                item_type=item_type, limit=limit)
+
+
+@router.post("/nutrition/items", response_model=NutritionItemResponse,
+             dependencies=[Depends(require_permission("nutrition.create"))])
+async def create_item(item_data: NutritionItemCreate, db: Session = Depends(get_db)):
+    """Save a reusable item (the sheet's 'Save as a reusable item' toggle)."""
+    try:
+        return create_nutrition_item(db, item_data.model_dump())
+    except IntegrityError:
+        raise HTTPException(status_code=409, detail="An item with that name already exists.")
+    except Exception as e:
+        logger.error(f"Error creating nutrition item: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create nutrition item")
+
+
+@router.put("/nutrition/items/{item_id}", response_model=NutritionItemResponse,
+            dependencies=[Depends(require_permission("nutrition.update"))])
+async def update_item(item_id: int, update_data: NutritionItemUpdate, db: Session = Depends(get_db)):
+    item = update_nutrition_item(db, item_id, update_data.model_dump(exclude_unset=True))
+    if not item:
+        raise HTTPException(status_code=404, detail="Nutrition item not found")
+    return item
+
+
+@router.delete("/nutrition/items/{item_id}",
+               dependencies=[Depends(require_permission("nutrition.delete"))])
+async def delete_item(item_id: int, db: Session = Depends(get_db)):
+    """Deactivates the item; logged intakes that reference it are untouched."""
+    if not delete_nutrition_item(db, item_id):
+        raise HTTPException(status_code=404, detail="Nutrition item not found")
+    return {"message": "Nutrition item removed"}
+
+
+@router.get("/nutrition/recent")
+async def recent_items(
+    patient_id: int,
+    limit: int = 6,
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access),
+):
+    """Recent item/amount combinations, for the one-tap prefill chips."""
+    return {"recent": get_recent_intake_items(db, patient_id, limit=limit)}
+
+
+# ---------- Presets ----------
+
+@router.get("/nutrition/presets", response_model=List[NutritionPresetResponse])
+async def list_presets(
+    patient_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access),
+):
+    """Reusable combinations. Each expands into several intake rows."""
+    presets = list_nutrition_presets(db, patient_id=patient_id)
+    return [_preset_response(p) for p in presets]
+
+
+@router.post("/nutrition/presets", response_model=NutritionPresetResponse,
+             dependencies=[Depends(require_permission("nutrition.create"))])
+async def create_preset(preset_data: NutritionPresetCreate, db: Session = Depends(get_db)):
+    try:
+        preset = create_nutrition_preset(db, preset_data.model_dump())
+        return _preset_response(preset)
+    except Exception as e:
+        logger.error(f"Error creating nutrition preset: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create nutrition preset")
+
+
+@router.put("/nutrition/presets/{preset_id}", response_model=NutritionPresetResponse,
+            dependencies=[Depends(require_permission("nutrition.update"))])
+async def update_preset(preset_id: int, update_data: NutritionPresetUpdate, db: Session = Depends(get_db)):
+    preset = update_nutrition_preset(db, preset_id, update_data.model_dump(exclude_unset=True))
+    if not preset:
+        raise HTTPException(status_code=404, detail="Nutrition preset not found")
+    return _preset_response(preset)
+
+
+@router.delete("/nutrition/presets/{preset_id}",
+               dependencies=[Depends(require_permission("nutrition.delete"))])
+async def delete_preset(preset_id: int, db: Session = Depends(get_db)):
+    if not delete_nutrition_preset(db, preset_id):
+        raise HTTPException(status_code=404, detail="Nutrition preset not found")
+    return {"message": "Nutrition preset removed"}
+
+
+@router.post("/nutrition/presets/{preset_id}/apply",
+             response_model=List[NutritionIntakeResponse],
+             dependencies=[Depends(require_permission("nutrition.create"))])
+async def apply_preset(preset_id: int, data: NutritionPresetApply, db: Session = Depends(get_db)):
+    """Log every component of a preset.
+
+    Writes one intake row per component -- the feed and its flush stay separate
+    records -- sharing an event_group_id so they read back as one action.
+    """
+    try:
+        created = apply_nutrition_preset(
+            db, preset_id,
+            patient_id=data.patient_id,
+            consumed_at=data.consumed_at,
+            meal_type=data.meal_type,
+            notes=data.notes,
+            care_task_log_id=data.care_task_log_id,
+        )
+        if not created:
+            raise HTTPException(status_code=404, detail="Nutrition preset not found or has no items")
+        return created
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error applying nutrition preset {preset_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to apply nutrition preset")
+
+
+def _preset_response(preset) -> dict:
+    """Flatten a preset for the API, denormalizing item name/type for display."""
+    return {
+        "id": preset.id,
+        "patient_id": preset.patient_id,
+        "name": preset.name,
+        "description": preset.description,
+        "meal_type": preset.meal_type,
+        "is_active": preset.is_active,
+        "created_at": preset.created_at,
+        "updated_at": preset.updated_at,
+        "components": [
+            {
+                "id": c.id,
+                "item_id": c.item_id,
+                "item_name": c.item.name if c.item else None,
+                "item_type": c.item.item_type if c.item else None,
+                "amount": c.amount,
+                "amount_unit": c.amount_unit,
+                "feed_route": c.feed_route,
+                "rate_ml_per_hr": c.rate_ml_per_hr,
+                "duration_minutes": c.duration_minutes,
+                "sort_order": c.sort_order,
+            }
+            for c in sorted(preset.components, key=lambda x: x.sort_order)
+        ],
+    }
+
 
 @router.get("/nutrition/dashboard")
 async def get_nutrition_dashboard_data(db: Session = Depends(get_db)):
@@ -499,20 +650,22 @@ from models.nutrition import (
     NutritionGoalCreate, NutritionGoalUpdate, NutritionGoalResponse,
     NutritionOutputCreate, NutritionOutputUpdate, NutritionOutputResponse,
     NutritionScheduleCreate, NutritionScheduleUpdate, NutritionScheduleResponse,
+    NutritionOutputEventCreate, NutritionOutputEventResponse,
     OUTPUT_TYPES, CONSISTENCY_TYPES, COLOR_TYPES, CLARITY_TYPES, DIAPER_WETNESS_TYPES,
-    SCHEDULE_TYPES
+    SCHEDULE_TYPES, BRISTOL_SCALE, LOCATION_TYPES, FEED_ROUTES, AMOUNT_UNITS
 )
 from crud.nutrition import (
     create_nutrition_goal, get_nutrition_goal_by_id, get_patient_nutrition_goals,
     get_current_nutrition_goal, update_nutrition_goal, delete_nutrition_goal,
-    create_nutrition_output, get_nutrition_output_by_id, get_patient_nutrition_outputs,
+    create_nutrition_output, create_output_event, get_nutrition_output_by_id,
+    get_patient_nutrition_outputs,
     get_daily_nutrition_outputs, get_output_summary, update_nutrition_output, delete_nutrition_output,
     create_nutrition_schedule, get_nutrition_schedule_by_id, get_patient_nutrition_schedules,
     update_nutrition_schedule, toggle_nutrition_schedule, delete_nutrition_schedule
 )
 
 
-@router.post("/nutrition/goals", response_model=NutritionGoalResponse)
+@router.post("/nutrition/goals", response_model=NutritionGoalResponse, dependencies=[Depends(require_permission("nutrition.create"))])
 async def create_goal(goal_data: NutritionGoalCreate, db: Session = Depends(get_db)):
     """Create a new nutrition goal for a patient"""
     try:
@@ -549,7 +702,7 @@ async def get_goal(goal_id: int, db: Session = Depends(get_db), _: bool = Depend
     return goal
 
 
-@router.put("/nutrition/goals/{goal_id}", response_model=NutritionGoalResponse)
+@router.put("/nutrition/goals/{goal_id}", response_model=NutritionGoalResponse, dependencies=[Depends(require_permission("nutrition.update"))])
 async def update_goal(goal_id: int, update_data: NutritionGoalUpdate, db: Session = Depends(get_db)):
     """Update a nutrition goal"""
     goal = update_nutrition_goal(db, goal_id, update_data.model_dump(exclude_unset=True))
@@ -558,7 +711,7 @@ async def update_goal(goal_id: int, update_data: NutritionGoalUpdate, db: Sessio
     return goal
 
 
-@router.delete("/nutrition/goals/{goal_id}")
+@router.delete("/nutrition/goals/{goal_id}", dependencies=[Depends(require_permission("nutrition.delete"))])
 async def delete_goal(goal_id: int, db: Session = Depends(get_db)):
     """Delete a nutrition goal"""
     if not delete_nutrition_goal(db, goal_id):
@@ -739,7 +892,30 @@ async def get_output_types():
     }
 
 
-@router.post("/nutrition/outputs", response_model=NutritionOutputResponse)
+@router.post("/nutrition/outputs/event", response_model=NutritionOutputEventResponse,
+             dependencies=[Depends(require_permission("nutrition.create"))])
+async def create_output_event_endpoint(event: NutritionOutputEventCreate, db: Session = Depends(get_db)):
+    """Log one bathroom event.
+
+    Urine and stool remain separate rows -- that is what keeps volume sums and
+    bowel-movement counts meaningful -- but they are written in a single
+    transaction under one event_group_id, so a half-saved event is no longer
+    possible and every view groups them the same way.
+    """
+    payload = event.model_dump()
+    payload['urine'] = payload.get('urine') or None
+    payload['stool'] = payload.get('stool') or None
+    try:
+        rows = create_output_event(db, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error creating output event: {e}")
+        raise HTTPException(status_code=500, detail="Failed to log output event")
+    return {"event_group_id": rows[0].event_group_id, "outputs": rows}
+
+
+@router.post("/nutrition/outputs", response_model=NutritionOutputResponse, dependencies=[Depends(require_permission("nutrition.create"))])
 async def create_output(output_data: NutritionOutputCreate, db: Session = Depends(get_db)):
     """Create a new output log entry"""
     try:
@@ -927,7 +1103,7 @@ async def get_output(output_id: int, db: Session = Depends(get_db), _: bool = De
     return output
 
 
-@router.put("/nutrition/outputs/{output_id}", response_model=NutritionOutputResponse)
+@router.put("/nutrition/outputs/{output_id}", response_model=NutritionOutputResponse, dependencies=[Depends(require_permission("nutrition.update"))])
 async def update_output(output_id: int, update_data: NutritionOutputUpdate, db: Session = Depends(get_db)):
     """Update an output log entry"""
     output = update_nutrition_output(db, output_id, update_data.model_dump(exclude_unset=True))
@@ -936,7 +1112,7 @@ async def update_output(output_id: int, update_data: NutritionOutputUpdate, db: 
     return output
 
 
-@router.delete("/nutrition/outputs/{output_id}")
+@router.delete("/nutrition/outputs/{output_id}", dependencies=[Depends(require_permission("nutrition.delete"))])
 async def delete_output(output_id: int, db: Session = Depends(get_db)):
     """Delete an output log entry"""
     if not delete_nutrition_output(db, output_id):
