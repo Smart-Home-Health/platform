@@ -20,8 +20,13 @@ from typing import List, Optional
 from utils.datetime_utils import utc_now, local_day_range_utc
 from schemas.nutrition_intake import NutritionIntake
 from schemas.patient import Patient
+from nutrition_vocab import (
+    to_ml, consistency_for_bristol, bristol_for_consistency,
+    location_from_flags, flags_for_location,
+)
 import logging
 import asyncio
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -469,10 +474,15 @@ def create_nutrition_intake(db: Session, intake_data: dict, patient_id: int = No
             care_task_log_id=intake_data.get('care_task_log_id'),
             schedule_id=intake_data.get('schedule_id'),
             scheduled_time=intake_data.get('scheduled_time'),
+            event_group_id=intake_data.get('event_group_id') or str(uuid.uuid4()),
+            item_id=intake_data.get('item_id'),
             item_name=intake_data['item_name'],
             item_type=intake_data['item_type'],
             amount=intake_data['amount'],
             amount_unit=intake_data['amount_unit'],
+            feed_route=intake_data.get('feed_route'),
+            rate_ml_per_hr=intake_data.get('rate_ml_per_hr'),
+            duration_minutes=intake_data.get('duration_minutes'),
             calories=intake_data.get('calories'),
             protein_grams=intake_data.get('protein_grams'),
             carbs_grams=intake_data.get('carbs_grams'),
@@ -836,11 +846,14 @@ def get_patient_bathroom_mqtt_state(db: Session, patient_id: int) -> dict:
     if last is None:
         return {}
 
-    # A mixed diaper logs a urine row + a bowel row together — grouped by
-    # care_task_log_id (scheduled) or, for ad-hoc/PRN entries, the shared
-    # occurred_at timestamp (care_task_log_id is null in that case).
+    # A mixed diaper logs a urine row + a bowel row together. event_group_id
+    # records that association explicitly; the care_task_log_id / matching
+    # occurred_at fallbacks below only apply to rows written before that
+    # column existed.
     group_q = db.query(NutritionOutput).filter(NutritionOutput.patient_id == patient_id)
-    if last.care_task_log_id is not None:
+    if last.event_group_id:
+        group = group_q.filter(NutritionOutput.event_group_id == last.event_group_id).all()
+    elif last.care_task_log_id is not None:
         group = group_q.filter(NutritionOutput.care_task_log_id == last.care_task_log_id).all()
     else:
         group = group_q.filter(NutritionOutput.occurred_at == last.occurred_at).all()
@@ -879,11 +892,50 @@ def _publish_bathroom_mqtt(db: Session, patient_id: int):
         logger.error(f"Error publishing bathroom MQTT for patient {patient_id}: {e}")
 
 
+def normalize_output_fields(db: Session, output_data: dict) -> dict:
+    """Keep the redundant output columns consistent with each other.
+
+    `location` and the is_diaper/is_catheter/is_accident booleans describe the
+    same thing, as do `bristol_scale` and `consistency`. Both pairs are kept
+    populated -- existing consumers read the older half -- so they are derived
+    here, in one place, rather than by each caller.
+    """
+    data = dict(output_data)
+
+    # location <-> booleans
+    if data.get('location'):
+        data.update(flags_for_location(data['location']))
+    else:
+        data['location'] = location_from_flags(
+            is_diaper=bool(data.get('is_diaper')),
+            is_catheter=bool(data.get('is_catheter')),
+            is_accident=bool(data.get('is_accident')),
+        )
+
+    # bristol <-> consistency
+    if data.get('bristol_scale') is not None:
+        data['consistency'] = consistency_for_bristol(data['bristol_scale'])
+    elif data.get('consistency'):
+        data['bristol_scale'] = bristol_for_consistency(data['consistency'])
+
+    # One row per save still belongs to an event.
+    if not data.get('event_group_id'):
+        data['event_group_id'] = str(uuid.uuid4())
+
+    # Denormalize the owning account so outputs can be scoped like intake.
+    if not data.get('account_id') and data.get('patient_id'):
+        patient = db.query(Patient).filter(Patient.id == data['patient_id']).first()
+        if patient is not None:
+            data['account_id'] = patient.account_id
+
+    return data
+
+
 def create_nutrition_output(db: Session, output_data: dict) -> NutritionOutput:
     """Create a new output log entry"""
     try:
         output = NutritionOutput(
-            **output_data,
+            **normalize_output_fields(db, output_data),
             created_at=utc_now(),
             updated_at=utc_now()
         )
@@ -965,19 +1017,28 @@ def get_output_summary(db: Session, patient_id: int, target_date: date = None, t
         'concerns': []
     }
     
+    # A mixed diaper is one physical change stored as two rows; count the
+    # change once. Rows predating the event_group_id column fall back to
+    # their own id so they still count individually.
+    diaper_groups = set()
+
     for output in outputs:
         if output.output_type == 'urine':
             summary['urine_count'] += 1
-            if output.amount and output.amount_unit == 'ml':
-                summary['urine_total_ml'] += output.amount
+            # Honour every volume unit, not just ml. Qualitative sizes
+            # ('smear', 'small', ...) return None and are skipped rather than
+            # being guessed at.
+            measured_ml = to_ml(output.amount, output.amount_unit)
+            if measured_ml is not None:
+                summary['urine_total_ml'] += measured_ml
         elif output.output_type == 'bowel':
             summary['bowel_count'] += 1
         elif output.output_type == 'vomit':
             summary['vomit_count'] += 1
-        
+
         if output.is_diaper:
-            summary['diaper_changes'] += 1
-        
+            diaper_groups.add(output.event_group_id or f'row-{output.id}')
+
         # Check for concerns
         if output.has_blood:
             summary['has_concerns'] = True
@@ -988,7 +1049,12 @@ def get_output_summary(db: Session, patient_id: int, target_date: date = None, t
         if output.pain_reported:
             summary['has_concerns'] = True
             summary['concerns'].append(f"Pain reported during {output.output_type}")
-    
+        if output.straining:
+            summary['has_concerns'] = True
+            summary['concerns'].append(f"Straining reported during {output.output_type}")
+
+    summary['diaper_changes'] = len(diaper_groups)
+
     return summary
 
 
@@ -1134,4 +1200,73 @@ def delete_nutrition_schedule(db: Session, schedule_id: int) -> bool:
     except Exception as e:
         db.rollback()
         logger.error(f"Error deleting nutrition schedule {schedule_id}: {str(e)}")
+        raise
+
+
+def create_output_event(db: Session, event_data: dict) -> List[NutritionOutput]:
+    """Write one bathroom event as its 1-2 constituent rows, atomically.
+
+    The logging sheet used to fire two independent POSTs and hope both landed;
+    a failure between them left half an event in the record. Urine and stool
+    are still separate rows -- that is what keeps volume sums and BM counts
+    honest -- but they are written in one transaction under one
+    event_group_id.
+
+    `event_data` carries the shared fields plus `urine` / `stool` sub-dicts;
+    whichever are present decide which rows get written.
+    """
+    urine = event_data.pop('urine', None)
+    stool = event_data.pop('stool', None)
+    if not urine and not stool:
+        raise ValueError("An output event needs urine, stool, or both.")
+
+    shared = normalize_output_fields(db, event_data)
+    group_id = shared['event_group_id']
+    created: List[NutritionOutput] = []
+
+    try:
+        if urine:
+            row = dict(shared)
+            row.update(urine)
+            row['output_type'] = 'urine'
+            row['event_group_id'] = group_id
+            # Stool-only descriptors must not leak onto the urine row.
+            row['consistency'] = None
+            row['bristol_scale'] = None
+            row['color'] = None
+            created.append(NutritionOutput(**row, created_at=utc_now(), updated_at=utc_now()))
+
+        if stool:
+            row = dict(shared)
+            row.update(stool)
+            row['output_type'] = 'bowel'
+            row['event_group_id'] = group_id
+            # ...and urine descriptors must not leak onto the stool row.
+            row['clarity'] = None
+            row['catheter_bag_emptied'] = None
+            # A stool row in a diaper means the diaper was soiled.
+            row['diaper_soiled'] = shared.get('location') == 'diaper'
+            row['diaper_wetness'] = None
+            # Re-derive after the stool sub-dict supplied bristol/consistency.
+            if row.get('bristol_scale') is not None:
+                row['consistency'] = consistency_for_bristol(row['bristol_scale'])
+            elif row.get('consistency'):
+                row['bristol_scale'] = bristol_for_consistency(row['consistency'])
+            created.append(NutritionOutput(**row, created_at=utc_now(), updated_at=utc_now()))
+
+        for row_obj in created:
+            db.add(row_obj)
+        db.commit()
+        for row_obj in created:
+            db.refresh(row_obj)
+
+        logger.info(
+            f"Created output event {group_id} for patient {shared.get('patient_id')}: "
+            f"{len(created)} row(s)"
+        )
+        _publish_bathroom_mqtt(db, shared['patient_id'])
+        return created
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error creating output event: {str(e)}")
         raise

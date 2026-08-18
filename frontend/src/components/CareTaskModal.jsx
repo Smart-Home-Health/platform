@@ -29,7 +29,7 @@ import PrnPicker from './section-panel/PrnPicker';
 import { careTaskRows } from './section-panel/prnRows';
 import './section-panel/section-panel.css';
 import { computeScheduleStatus } from './schedule/scheduleStatus';
-import NutritionTrackingModal from './nutrition/NutritionTrackingModal';
+import IntakeSheet from './nutrition/IntakeSheet';
 import {
   checkAdministrationWindow,
   formatDurationMinutes,
@@ -515,14 +515,15 @@ const CareTaskModal = ({ onClose }) => {
         </DialogContent>
       </Dialog>
 
-      {/* Nutrition Tracking Modal */}
-      <NutritionTrackingModal
-        isOpen={nutritionModal.open}
+      {/* Nutrition intake for a task that tracks it — the same sheet the
+          admin pages and the live dashboard use. */}
+      <IntakeSheet
+        open={nutritionModal.open}
         onClose={() => setNutritionModal({ open: false, careTaskLogId: null, careTaskName: '', nutritionData: null })}
+        onSaved={() => fetchSchedule()}
+        patient={selectedPatient}
         careTaskLogId={nutritionModal.careTaskLogId}
         careTaskName={nutritionModal.careTaskName}
-        nutritionData={nutritionModal.nutritionData}
-        onSave={() => fetchSchedule()}
       />
     </>
   );

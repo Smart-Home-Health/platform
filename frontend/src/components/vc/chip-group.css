@@ -1,0 +1,138 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+/* Chips — vc-native, dark by design. */
+
+.vchips-field { display: flex; flex-direction: column; gap: 0.35rem; }
+
+.vchips-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.vchips-optional {
+  margin-left: 0.5rem;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--vc-text-tertiary);
+}
+.vchips-optional::before { content: '· '; }
+.vchips-hint {
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--vc-text-tertiary);
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.vchips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.vchips.grid { display: grid; }
+
+/* Single-row variant: the options stay on one line and scroll sideways rather
+   than wrapping into a block that pushes the rest of the form down. It bleeds
+   to the sheet's edges so a partly-visible chip signals there is more to
+   reach. 1rem matches .em-panel's padding. */
+.vchips.scroll {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+  margin-inline: -1rem;
+  padding-inline: 1rem;
+  padding-bottom: 0.2rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--vc-line-strong) transparent;
+}
+.vchips.scroll .vchip { flex: 0 0 auto; scroll-snap-align: start; }
+.vchips.scroll::-webkit-scrollbar { height: 3px; }
+.vchips.scroll::-webkit-scrollbar-track { background: transparent; }
+.vchips.scroll::-webkit-scrollbar-thumb {
+  background: var(--vc-line-strong);
+  border-radius: 999px;
+}
+
+/* Rectangular, not pill-shaped — these sit among segmented tracks and inputs
+   that all share the same small radius. */
+.vchip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 40px;
+  padding: 0.4rem 0.75rem;
+  background: var(--vc-bg-surface);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.vchip:hover:not(.on) { color: var(--vc-text-primary); border-color: var(--vc-line-strong); }
+
+/* Action chips (quick log, recent, presets) prefill rather than hold state, so
+   they advertise themselves in the accent instead of waiting to be selected. */
+.vchips.action .vchip {
+  border-color: color-mix(in srgb, var(--vc-data-live) 45%, transparent);
+  color: var(--vc-data-live);
+}
+.vchips.action .vchip:hover {
+  background: color-mix(in srgb, var(--vc-data-live) 12%, var(--vc-bg-surface));
+  border-color: var(--vc-data-live);
+  color: var(--vc-data-live);
+}
+
+.vchips.tone-accent .vchip.on {
+  background: var(--vc-data-live);
+  border-color: var(--vc-data-live);
+  color: var(--vc-bg-base);
+}
+
+/* Concerns are observations worth flagging, not alarms — amber, not red.
+   Nothing here interprets or diagnoses what was observed. */
+.vchips.tone-due .vchip.on {
+  background: var(--vc-state-due);
+  border-color: var(--vc-state-due);
+  color: var(--vc-bg-base);
+}
+
+.vchip:focus-visible {
+  outline: none;
+  border-color: var(--vc-data-live);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
+}
+
+.vchip-icon { display: inline-flex; color: currentColor; }
+.vchip-sub {
+  color: var(--vc-text-tertiary);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+.vchip.on .vchip-sub { color: currentColor; opacity: 0.85; }

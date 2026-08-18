@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from schemas.care_task import CareTask
 from schemas.care_task_schedule import CareTaskSchedule
 from schemas.care_task_log import CareTaskLog
+from nutrition_vocab import LOCATION_LABELS
 from crud.patients import get_active_patient
 from utils.datetime_utils import (
     utc_now,
@@ -1217,36 +1218,41 @@ def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset
                 '_source': output,
             })
 
-        # Merge diaper outputs within a 3-minute sliding window. Non-diaper
-        # outputs (vomit, accidents not in a diaper, etc.) are never merged.
-        merge_window = timedelta(minutes=3)
-        diaper_rows = sorted(
-            [r for r in staged_outputs if r['_source'].is_diaper],
-            key=lambda r: r['scheduled_time'],
-        )
-        non_diaper_rows = [r for r in staged_outputs if not r['_source'].is_diaper]
+        # Rows written by one logging action share an event_group_id, so the
+        # association is read rather than re-guessed from a time window. Rows
+        # predating that column fall back to their own id and stay standalone.
+        groups = {}
+        order = []
+        for row in staged_outputs:
+            key = row['_source'].event_group_id or f"row-{row['log_id']}"
+            if key not in groups:
+                groups[key] = []
+                order.append(key)
+            groups[key].append(row)
 
-        groups = []
-        for row in diaper_rows:
-            if groups and (row['scheduled_time'] - groups[-1][0]['scheduled_time']) <= merge_window:
-                groups[-1].append(row)
-            else:
-                groups.append([row])
-
-        for group in groups:
+        for key in order:
+            group = sorted(groups[key], key=lambda r: r['scheduled_time'])
             if len(group) == 1:
                 merged = group[0]
                 merged.pop('_source', None)
                 scheduled_nutrition.append(merged)
                 continue
-            # Build a synthesized "mixed diaper" row. Use the earliest time
-            # so chronological sort is stable; carry member log_ids in a
-            # composite log_id so the frontend row key stays unique.
+
+            # Synthesized multi-output row. Use the earliest time so the
+            # chronological sort is stable; carry member log_ids in a composite
+            # log_id so the frontend row key stays unique and the undo endpoint
+            # can still fan out across the members.
             types = [r['output_type'] for r in group]
             ids = [r['log_id'] for r in group]
+            location = group[0]['_source'].location or (
+                'diaper' if group[0]['_source'].is_diaper else 'restroom'
+            )
+            label = LOCATION_LABELS.get(location, 'Output')
+            for r in group:
+                r.pop('_source', None)
             scheduled_nutrition.append({
                 'schedule_id': None,
-                'name': f"Mixed diaper ({' + '.join(types)})",
+                'name': f"Mixed {label.lower()} ({' + '.join(types)})",
                 'schedule_type': 'output',
                 'default_item_name': None,
                 'default_amount': None,
@@ -1262,12 +1268,8 @@ def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset
                 'is_prn': True,
                 'intake_type': 'output',
                 'log_id': f"mixed-{'-'.join(str(i) for i in ids)}",
-                'output_type': 'mixed_diaper',
+                'output_type': 'mixed_diaper' if location == 'diaper' else 'mixed_output',
             })
-
-        for row in non_diaper_rows:
-            row.pop('_source', None)
-            scheduled_nutrition.append(row)
 
         return sorted(scheduled_nutrition, key=lambda x: x['scheduled_time'])
 

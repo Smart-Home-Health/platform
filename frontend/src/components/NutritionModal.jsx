@@ -25,8 +25,8 @@ import {
   formatDurationMinutes,
   getCurrentLocalDateTime,
 } from '../utils/timezone';
-import IntakeModal from '../pages/admin-v2/components/IntakeModal';
-import OutputModal from '../pages/admin-v2/components/OutputModal';
+import IntakeSheet from './nutrition/IntakeSheet';
+import OutputSheet from './nutrition/OutputSheet';
 import DoseScheduleView from './schedule/DoseScheduleView';
 import DoseDetailPane from './schedule/DoseDetailPane';
 import { NUTRITION_LABELS } from './schedule/scheduleLabels';
@@ -386,7 +386,7 @@ const NutritionModal = ({ onClose }) => {
       </Dialog>
 
       {/* Shared AdminV2 intake form */}
-      <IntakeModal
+      <IntakeSheet
         open={prnMode === 'intake'}
         onClose={closePrn}
         onSaved={onPrnSaved}
@@ -395,7 +395,7 @@ const NutritionModal = ({ onClose }) => {
       />
 
       {/* Shared AdminV2 output form */}
-      <OutputModal
+      <OutputSheet
         open={prnMode === 'output'}
         onClose={closePrn}
         onSaved={onPrnSaved}

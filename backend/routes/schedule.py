@@ -45,6 +45,7 @@ from schemas.care_task_log import CareTaskLog
 from schemas.care_task_category import CareTaskCategory
 from schemas.nutrition_schedule import NutritionSchedule
 from schemas.nutrition_intake import NutritionIntake
+from nutrition_vocab import item_type_for_schedule_type, SCHEDULE_TYPE_TO_MEAL_TYPE
 from schemas.nutrition_output import NutritionOutput
 from croniter import croniter
 
@@ -403,12 +404,27 @@ async def complete_nutrition(
         amount = data.amount if data.amount is not None else (schedule.default_amount or 0)
         amount_unit = data.amount_unit or schedule.default_amount_unit or 'servings'
         
+        # Normalize schedule_type onto the intake vocabulary. Assigning it
+        # straight through used to write schedule words ('meal', 'hydration')
+        # into item_type, bypassing validation. A care activity that produces
+        # no food or fluid maps to None and creates no intake row at all.
+        item_type = item_type_for_schedule_type(schedule.schedule_type)
+        if item_type is None:
+            return {
+                "success": True,
+                "intake_id": None,
+                "detail": "Care activity schedule; no intake recorded.",
+            }
+
         # Create via the dedicated nutrition module so MQTT/HA publishing and the
         # due-count badge fire (the direct NutritionIntake(...) path skipped them).
         intake = create_nutrition_intake(db, {
             "schedule_id": data.schedule_id,
             "item_name": item_name,
-            "item_type": schedule.schedule_type or 'food',  # Map schedule_type to item_type
+            "item_type": item_type,
+            "meal_type": SCHEDULE_TYPE_TO_MEAL_TYPE.get(
+                (schedule.schedule_type or '').strip().lower()
+            ),
             "amount": amount,
             "amount_unit": amount_unit,
             "calories": schedule.default_calories,
@@ -638,11 +654,16 @@ async def complete_bulk(
                     amount = item.amount if item.amount is not None else (schedule.default_amount or 0)
                     amount_unit = item.amount_unit or schedule.default_amount_unit or 'servings'
                     
+                    bulk_item_type = item_type_for_schedule_type(schedule.schedule_type)
+                    if bulk_item_type is None:
+                        # Care activity, not an intake -- see the single path.
+                        continue
+
                     intake = NutritionIntake(
                         patient_id=item.patient_id,
                         schedule_id=item.schedule_id,
                         item_name=item_name,
-                        item_type=schedule.schedule_type or 'food',
+                        item_type=bulk_item_type,
                         amount=amount,
                         amount_unit=amount_unit,
                         calories=schedule.default_calories,

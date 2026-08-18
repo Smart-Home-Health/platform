@@ -627,3 +627,61 @@ select.em-input {
   color: var(--vc-text-tertiary);
   cursor: not-allowed;
 }
+
+/* ---------- Date-range strip (nutrition history tabs) ---------- */
+.ec-daterange {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+.ec-daterange-field { display: flex; flex-direction: column; gap: 0.3rem; }
+.ec-daterange-field span {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.ec-daterange-field input {
+  min-height: 44px;
+  padding: 0 0.75rem;
+  background: var(--vc-bg-surface);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  color: var(--vc-text-primary);
+  font-family: var(--vc-font-mono);
+  font-size: 12px;
+}
+.ec-daterange-field input:focus-visible {
+  outline: none;
+  border-color: var(--vc-data-live);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
+}
+.ec-daterange-clear {
+  min-height: 44px;
+  padding: 0 0.9rem;
+  background: transparent;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.ec-daterange-clear:hover { color: var(--vc-data-live); border-color: var(--vc-line-strong); }
+
+/* Free-text note carried on an entity card. */
+.ec-note {
+  margin: 0;
+  padding: 0 0.9rem 0.8rem;
+  font-family: var(--vc-font-sans);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--vc-text-secondary);
+}
