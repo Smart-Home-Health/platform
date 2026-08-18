@@ -342,9 +342,15 @@ const MedicationModal = ({ onClose }) => {
             views={viewOptions}
             value={tab}
             onChange={setTab}
-            prnCount={prnMedications.length}
-            prnDisabled={!selectedPatient || prnMedications.length === 0}
-            onPrn={openPrnPicker}
+            actions={[{
+              label: 'PRN',
+              count: prnMedications.length,
+              onClick: openPrnPicker,
+              disabled: !selectedPatient || prnMedications.length === 0,
+              title: prnMedications.length === 0
+                ? 'No as-needed medications for this patient'
+                : 'Give an as-needed medication',
+            }]}
           />
 
           <div style={{ flex: 1, overflow: 'auto' }}>

@@ -59,9 +59,9 @@ const fmtDateTime = (iso) => {
 // Medication defaults. Filtering by medication_id, not name: the name filter
 // is a substring match, so "Pro" would pull in every medication starting with
 // it.
-const defaultHistoryQuery = (item) => {
+const defaultHistoryQuery = (item, patientId) => {
   const id = item?._raw?.medication_id;
-  return id ? `/api/medications/history?medication_id=${id}` : null;
+  return id ? `/api/medications/history?medication_id=${id}&patient_id=${patientId}&limit=10` : null;
 };
 
 const HISTORY_STATUS_TONE = { skipped: 'skipped' };
@@ -105,7 +105,7 @@ export default function DoseDetailPane({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyError, setHistoryError] = useState(false);
 
-  const query = historyQuery ? historyQuery(item) : defaultHistoryQuery(item);
+  const query = historyQuery ? historyQuery(item, patientId) : defaultHistoryQuery(item, patientId);
 
   // The note belongs to the dose in front of you, not to the pane.
   useEffect(() => {
@@ -125,11 +125,11 @@ export default function DoseDetailPane({
     setHistoryError(false);
     (async () => {
       try {
-        const res = await apiFetch(`${config.apiUrl}${query}&patient_id=${patientId}&limit=10`);
+        const res = await apiFetch(`${config.apiUrl}${query}`);
         if (cancelled) return;
         if (!res.ok) { setHistoryError(true); return; }
         const data = await res.json();
-        if (!cancelled) setHistory(data.history || []);
+        if (!cancelled) setHistory(Array.isArray(data) ? data : (data.history || []));
       } catch {
         if (!cancelled) setHistoryError(true);
       }

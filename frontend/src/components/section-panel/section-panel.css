@@ -396,3 +396,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* A single-view section (nutrition) shows its heading rather than a dropdown
+   that cannot go anywhere, and the controls wrap when a section offers more
+   than one entry point. */
+.mp-viewrow-controls { flex-wrap: wrap; }
+.mp-view-trigger.static { cursor: default; align-items: center; }
+.mp-view-trigger.static:hover { background: color-mix(in srgb, var(--vc-data-live) 8%, transparent); }

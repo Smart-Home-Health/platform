@@ -33,3 +33,10 @@ export const TASK_LABELS = {
   primary: 'Mark done', bulk: 'Complete all',
   notePlaceholder: 'Anything worth recording with this task',
 };
+
+export const NUTRITION_LABELS = {
+  one: 'item', many: 'items',
+  nameColumn: 'Item', metaColumn: 'Amount',
+  primary: 'Mark taken', bulk: 'Mark all taken',
+  notePlaceholder: 'Anything worth recording with this item',
+};

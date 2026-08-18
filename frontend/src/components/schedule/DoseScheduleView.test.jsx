@@ -24,7 +24,7 @@ import { render, screen, fireEvent, within } from '@testing-library/react';
 
 import DoseScheduleView from './DoseScheduleView';
 import { ModalDockProvider } from '../../contexts/ModalDockContext';
-import { TASK_LABELS } from './scheduleLabels';
+import { TASK_LABELS, NUTRITION_LABELS } from './scheduleLabels';
 
 const at = (h, m = 0) => new Date(2026, 7, 17, h, m, 0).toISOString();
 
@@ -341,5 +341,40 @@ describe('DoseScheduleView — care task vocabulary', () => {
     );
     expect(container.querySelector('.ld-dose-chip')).toBeNull();
     expect(screen.getByText('10 mL')).toBeInTheDocument();
+  });
+});
+
+// Nutrition has no skip concept at all, so the affordance must not appear
+// just because the layout is shared.
+describe('DoseScheduleView — nutrition vocabulary', () => {
+  const FEEDS = [
+    {
+      id: 'water', name: 'Overnight Water', extra: 'Water · 660 ml', description: 'Daily',
+      status: 'missed', is_completed: false, scheduled_time: at(1),
+      _raw: { schedule_id: 3 },
+    },
+  ];
+
+  it('uses the nutrition wording', () => {
+    const { container } = render(
+      <ModalDockProvider value={{ docked: true, expanded: true, setExpanded: vi.fn() }}>
+        <DoseScheduleView items={FEEDS} labels={NUTRITION_LABELS} onRecord={vi.fn()} onRecordAll={vi.fn()} />
+      </ModalDockProvider>
+    );
+    expect(screen.getByRole('button', { name: /mark taken/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /mark all taken/i })).toBeInTheDocument();
+    const heads = [...container.querySelectorAll('.ld-dose-table thead th')].map(t => t.textContent);
+    expect(heads).toEqual(['Item', 'Amount', 'Schedule', 'Status', 'Actions']);
+    expect(container.querySelector('.ld-dose-slot-count').textContent).toBe('1 item');
+  });
+
+  it('offers no skip when the section has no skip', () => {
+    // onSkip is simply not passed; nothing may invent the affordance.
+    render(
+      <ModalDockProvider value={{ docked: true, expanded: false, setExpanded: vi.fn() }}>
+        <DoseScheduleView items={FEEDS} labels={NUTRITION_LABELS} onRecord={vi.fn()} />
+      </ModalDockProvider>
+    );
+    expect(screen.queryByRole('button', { name: /^skip$/i })).toBeNull();
   });
 });
