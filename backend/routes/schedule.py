@@ -40,6 +40,7 @@ from schemas.medication import Medication
 from schemas.medication_schedule import MedicationSchedule
 from schemas.medication_log import MedicationLog
 from schemas.care_task import CareTask
+from care_task_vocab import is_nutrition_category, completion_timing
 from schemas.care_task_schedule import CareTaskSchedule
 from schemas.care_task_log import CareTaskLog
 from schemas.care_task_category import CareTaskCategory
@@ -440,12 +441,35 @@ async def complete_nutrition(
         return {"success": False, "error": str(e)}
 
 
-@router.post("/complete/care-task")
+def _schedule_nutrition_prefill(schedule):
+    """Prefill for the intake sheet, stashed as JSON in the schedule's notes.
+
+    The Manage form writes {"nutrition": {...}} there. Anything else in the
+    field is a plain note and simply yields no prefill.
+    """
+    if not schedule or not schedule.notes:
+        return None
+    try:
+        return json.loads(schedule.notes).get('nutrition')
+    except (json.JSONDecodeError, AttributeError, TypeError):
+        return None
+
+
+@router.post("/complete/care-task",
+             dependencies=[Depends(require_permission("care_tasks.perform"))])
 async def complete_care_task(
     data: CompleteItemRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    """Mark a scheduled care task as completed"""
+    """Mark a scheduled care task as completed.
+
+    This used to take performed_by from the request body with no permission
+    dependency at all, and never recorded whether the completion was early or
+    late — so every completion made from this page counted as on time while
+    the same action from the care-tasks schedule tab did not, quietly skewing
+    the adherence stats.
+    """
     try:
         # Parse scheduled time
         scheduled_dt = parse_scheduled_time(data.scheduled_time)
@@ -477,7 +501,10 @@ async def complete_care_task(
         if not schedule:
             return {"success": False, "error": "Schedule not found"}
 
-        # Create log entry
+        # Skips are neither early nor late — they were not done at all.
+        timing = ({'completed_early': False, 'completed_late': False} if data.skipped
+                  else completion_timing(scheduled_dt, completed_at))
+
         log = CareTaskLog(
             care_task_id=schedule.care_task_id,
             patient_id=data.patient_id,
@@ -487,16 +514,36 @@ async def complete_care_task(
             is_scheduled=True,
             status="skipped" if data.skipped else "completed",
             notes=data.notes,
-            performed_by=data.user_id,
-            created_at=utc_now()
+            # The signed-in user, not whoever the client claimed.
+            performed_by=getattr(current_user, 'id', None),
+            created_at=utc_now(),
+            **timing,
         )
         db.add(log)
         db.commit()
-        
+
         # Real-time badge: notify dashboards the care-task due-count changed.
         publish_due_counts_changed("care_tasks", data.patient_id)
 
-        return {"success": True, "log_id": log.id}
+        # Same nutrition hook the other completion paths carry, so which page
+        # a task was completed from stops deciding whether intake is offered.
+        care_task = db.query(CareTask).filter(CareTask.id == schedule.care_task_id).first()
+        category_name = care_task.category.name if care_task and care_task.category else None
+        is_nutrition = (not data.skipped) and is_nutrition_category(category_name)
+
+        return {
+            "success": True,
+            "log_id": log.id,
+            "id": log.id,
+            "requires_nutrition_tracking": is_nutrition,
+            "care_task": {
+                "id": care_task.id,
+                "name": care_task.name,
+                "category": category_name,
+                "is_nutrition_related": is_nutrition,
+            } if care_task else None,
+            "nutrition_data": _schedule_nutrition_prefill(schedule) if is_nutrition else None,
+        }
     except Exception as e:
         logger.error(f"Error completing care task: {e}")
         db.rollback()

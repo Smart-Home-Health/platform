@@ -47,6 +47,7 @@ from crud.care_tasks import (
     get_care_task_completion_stats, get_overdue_care_tasks,
     get_care_task_adherence_overview, get_care_task_stats_by_user,
 )
+from care_task_vocab import is_nutrition_category
 from crud.scheduling import (
     add_care_task_schedule, get_care_task_schedules, get_all_care_task_schedules,
     update_care_task_schedule, delete_care_task_schedule, toggle_care_task_schedule_active,
@@ -386,9 +387,8 @@ async def complete_care_task_schedule_endpoint(
             is_nutrition_task = False
             nutrition_data = None
             
-            if care_task and care_task.get('category_name'):
-                nutrition_keywords = ['nutrition', 'feeding', 'meal', 'food', 'drink', 'supplement']
-                is_nutrition_task = any(keyword in care_task['category_name'].lower() for keyword in nutrition_keywords)
+            if care_task:
+                is_nutrition_task = is_nutrition_category(care_task.get('category_name'))
             
             # Extract nutrition data from schedule notes if available
             if is_nutrition_task and schedule.get('notes'):
@@ -451,11 +451,7 @@ async def complete_care_task_ad_hoc_endpoint(
         if not log_id:
             return JSONResponse(status_code=500, content={"detail": "Failed to record care task"})
 
-        nutrition_keywords = ['nutrition', 'feeding', 'meal', 'food', 'drink', 'supplement']
-        is_nutrition_task = bool(
-            care_task.get('category_name')
-            and any(k in care_task['category_name'].lower() for k in nutrition_keywords)
-        )
+        is_nutrition_task = is_nutrition_category(care_task.get('category_name'))
         return {
             "id": log_id,
             "status": "success",
