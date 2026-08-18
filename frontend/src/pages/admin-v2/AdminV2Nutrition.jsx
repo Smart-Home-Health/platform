@@ -1091,77 +1091,67 @@ const AdminV2Nutrition = () => {
               />
             )}
 
-            {/* Content based on active tab */}
-            {activeTab !== 'overview' && (
-            <div className="admin-v2-content">
-              {/* INTAKE TAB */}
-              {activeTab === 'intake' && (
-                <div className="admin-v2-section">
-                  <NutritionIntakeTab
-                    intakes={intakes}
-                    loading={loading}
-                    canCreate={hasPermission('nutrition.create')}
-                    canUpdate={hasPermission('nutrition.update')}
-                    canDelete={hasPermission('nutrition.delete')}
-                    onAdd={() => openIntakeModal()}
-                    onEdit={openIntakeModal}
-                    onDelete={(intake) => openDeleteModal(intake, 'intake')}
-                    formatDateTime={formatDateTime}
-                    dateRange={{
-                      start: intakeStart,
-                      end: intakeEnd,
-                      onStartChange: setIntakeStart,
-                      onEndChange: setIntakeEnd,
-                      onClear: () => { setIntakeStart(''); setIntakeEnd(''); },
-                    }}
-                  />
-                </div>
-              )}
+            {/* The rebuilt tabs render at the same level as Overview: their own
+                cards provide the surface, so the legacy content/section
+                wrappers would only box them a second time. */}
+            {activeTab === 'intake' && (
+              <NutritionIntakeTab
+                intakes={intakes}
+                loading={loading}
+                canCreate={hasPermission('nutrition.create')}
+                canUpdate={hasPermission('nutrition.update')}
+                canDelete={hasPermission('nutrition.delete')}
+                onAdd={() => openIntakeModal()}
+                onEdit={openIntakeModal}
+                onDelete={(intake) => openDeleteModal(intake, 'intake')}
+                formatDateTime={formatDateTime}
+                dateRange={{
+                  start: intakeStart,
+                  end: intakeEnd,
+                  onStartChange: setIntakeStart,
+                  onEndChange: setIntakeEnd,
+                  onClear: () => { setIntakeStart(''); setIntakeEnd(''); },
+                }}
+              />
+            )}
 
-              {/* OUTPUT TAB */}
-              {activeTab === 'output' && (
-                <div className="admin-v2-section">
-                  <NutritionOutputTab
-                    outputs={outputs}
-                    loading={loading}
-                    canCreate={hasPermission('nutrition.create')}
-                    canUpdate={hasPermission('nutrition.update')}
-                    canDelete={hasPermission('nutrition.delete')}
-                    onAdd={() => openOutputModal()}
-                    onEdit={openOutputModal}
-                    onDeleteEvent={handleDeleteOutputEvent}
-                    formatDateTime={formatDateTime}
-                    dateRange={{
-                      start: outputStart,
-                      end: outputEnd,
-                      onStartChange: setOutputStart,
-                      onEndChange: setOutputEnd,
-                      onClear: () => { setOutputStart(''); setOutputEnd(''); },
-                    }}
-                  />
-                </div>
-              )}
+            {activeTab === 'output' && (
+              <NutritionOutputTab
+                outputs={outputs}
+                loading={loading}
+                canCreate={hasPermission('nutrition.create')}
+                canUpdate={hasPermission('nutrition.update')}
+                canDelete={hasPermission('nutrition.delete')}
+                onAdd={() => openOutputModal()}
+                onEdit={openOutputModal}
+                onDeleteEvent={handleDeleteOutputEvent}
+                formatDateTime={formatDateTime}
+                dateRange={{
+                  start: outputStart,
+                  end: outputEnd,
+                  onStartChange: setOutputStart,
+                  onEndChange: setOutputEnd,
+                  onClear: () => { setOutputStart(''); setOutputEnd(''); },
+                }}
+              />
+            )}
 
-              {/* PLAN TAB — targets, coverage and the schedules that meet them */}
-              {activeTab === 'plan' && (
-                <div className="admin-v2-section">
-                  <NutritionPlanTab
-                    plan={plan}
-                    loading={loading}
-                    canCreate={hasPermission('nutrition.create')}
-                    canUpdate={hasPermission('nutrition.update')}
-                    canDelete={hasPermission('nutrition.delete')}
-                    onEditGoal={openGoalModal}
-                    onViewGoalHistory={openGoalHistory}
-                    onAddSchedule={() => openScheduleModal()}
-                    onEditSchedule={openScheduleModal}
-                    onToggleSchedule={(s) => handleToggleSchedule(s.id)}
-                    onDeleteSchedule={(s) => openDeleteModal(s, 'schedule')}
-                    formatDate={formatDate}
-                  />
-                </div>
-              )}
-            </div>
+            {/* PLAN TAB — targets, coverage and the schedules that meet them */}
+            {activeTab === 'plan' && (
+              <NutritionPlanTab
+                plan={plan}
+                loading={loading}
+                canCreate={hasPermission('nutrition.create')}
+                canUpdate={hasPermission('nutrition.update')}
+                canDelete={hasPermission('nutrition.delete')}
+                onEditGoal={openGoalModal}
+                onViewGoalHistory={openGoalHistory}
+                onAddSchedule={() => openScheduleModal()}
+                onEditSchedule={openScheduleModal}
+                onToggleSchedule={(s) => handleToggleSchedule(s.id)}
+                onDeleteSchedule={(s) => openDeleteModal(s, 'schedule')}
+                formatDate={formatDate}
+              />
             )}
           </>
         )}
