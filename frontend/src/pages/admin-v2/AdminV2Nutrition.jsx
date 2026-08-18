@@ -16,9 +16,10 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 import { useState, useEffect } from 'react';
-import { useSearchParams, useLocation } from 'react-router-dom';
+import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
 import { nutritionService } from '../../services/nutrition';
+import { FLUID_ITEM_TYPES } from '../../components/nutrition/intakeVocab';
 import {
   PatientHeader, PatientSelectorModal, IntakeSheet, OutputSheet, NutritionOverview,
   NutritionIntakeTab, NutritionOutputTab,
@@ -338,6 +339,7 @@ const AdminV2Nutrition = () => {
   };
   
   const activeTab = getActiveTabFromPath();
+  const navigate = useNavigate();
   
   // Loading/error states
   const [loading, setLoading] = useState(false);
@@ -984,7 +986,8 @@ const AdminV2Nutrition = () => {
   // Convert any intake amount to ml so we can sum total fluids consistently.
   // Counts liquids and hydration-schedule completions (which store
   // item_type='hydration' from the schedule_type). Solid foods are excluded.
-  const FLUID_ITEM_TYPES = new Set(['liquid', 'hydration']);
+  // Shared with the logging sheets so a tube feed counts toward fluids here
+  // too — the local copy predated tube_feed being a real intake type.
   const intakeToMl = (intake) => {
     if (!FLUID_ITEM_TYPES.has(intake.item_type) || !intake.amount) return 0;
     const unit = (intake.amount_unit || 'ml').toLowerCase();
@@ -1168,6 +1171,8 @@ const AdminV2Nutrition = () => {
                 intakeToMl={intakeToMl}
                 outputToMl={outputToMl}
                 formatTimeShort={formatTimeShort}
+                onViewIntake={() => navigate('/care/nutrition/intake')}
+                onViewOutput={() => navigate('/care/nutrition/output')}
               />
             )}
 

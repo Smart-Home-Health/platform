@@ -1,0 +1,529 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+/* Nutrition overview — vc-native, dark by design. Shares the 8px radius and
+   mono-uppercase labelling of the logging sheets and entity cards. */
+
+.novw { display: flex; flex-direction: column; gap: 0.75rem; }
+
+/* ---------- date nav ---------- */
+.novw-datenav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.novw-nav-btn {
+  flex: 0 0 auto;
+  width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--vc-bg-surface);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  color: var(--vc-text-secondary);
+  cursor: pointer;
+}
+.novw-nav-btn:hover { color: var(--vc-data-live); border-color: var(--vc-line-strong); }
+.novw-nav-btn:focus-visible,
+.novw-today:focus-visible,
+.novw-action:focus-visible,
+.novw-filter:focus-visible,
+.novw-link:focus-visible,
+.novw-showall:focus-visible,
+.novw-tl-body:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
+}
+.novw-today {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 0.9rem;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--vc-data-live) 45%, transparent);
+  border-radius: 999px;
+  color: var(--vc-data-live);
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.novw-today.on { background: color-mix(in srgb, var(--vc-data-live) 14%, transparent); }
+.novw-date {
+  flex: 1 1 auto;
+  text-align: center;
+  font-family: var(--vc-font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- primary actions ---------- */
+.novw-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+.novw-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 52px;
+  padding: 0 0.8rem;
+  background: transparent;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 8px;
+  color: var(--vc-text-primary);
+  font-family: var(--vc-font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.novw-action:hover { border-color: var(--vc-data-live); color: var(--vc-data-live); }
+.novw-action.primary {
+  background: var(--vc-data-live);
+  border-color: var(--vc-data-live);
+  color: var(--vc-bg-base);
+}
+.novw-action.primary:hover {
+  background: color-mix(in srgb, var(--vc-data-live) 85%, white);
+  color: var(--vc-bg-base);
+}
+
+/* ---------- cards ---------- */
+.novw-card {
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-surface);
+  overflow: hidden;
+}
+.novw-card-head {
+  padding: 0.7rem 0.85rem;
+  border-bottom: 1px solid var(--vc-line-hairline);
+}
+.novw-card-head h3 {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+.novw-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.65rem 0.85rem;
+  border-top: 1px solid var(--vc-line-hairline);
+  font-family: var(--vc-font-sans);
+  font-size: 12.5px;
+  color: var(--vc-text-tertiary);
+}
+.novw-link {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-data-live);
+  border-radius: 4px;
+}
+.novw-link:hover { text-decoration: underline; }
+
+/* ---------- at a glance ---------- */
+.novw-glance { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.novw-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.8rem 0.6rem;
+  border-right: 1px solid var(--vc-line-hairline);
+  text-align: center;
+}
+.novw-stat:last-child { border-right: none; }
+.novw-stat-label {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+/* The metric's colour lives on its own label, not on a bar down the side. */
+.novw-stat.fluids .novw-stat-label { color: var(--vc-data-live); }
+.novw-stat.calories .novw-stat-label { color: var(--vc-state-due); }
+.novw-stat.entries .novw-stat-label { color: var(--vc-state-complete); }
+.novw-stat-value {
+  font-family: var(--vc-font-mono);
+  font-size: 19px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-text-primary);
+  line-height: 1.15;
+}
+.novw-stat-value em {
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vc-text-secondary);
+}
+.novw-stat-sub {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--vc-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- progress bars ---------- */
+.novw-bars { display: flex; flex-direction: column; gap: 0.8rem; padding: 0.85rem; }
+.novw-bar-row {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  align-items: center;
+  gap: 0.5rem 0.6rem;
+}
+.novw-bar-icon { display: inline-flex; }
+.novw-bar-icon.fluids { color: var(--vc-data-live); }
+.novw-bar-icon.calories { color: var(--vc-state-due); }
+.novw-bar-label {
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.novw-bar-value {
+  text-align: right;
+  font-family: var(--vc-font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-text-primary);
+}
+.novw-bar-value em {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--vc-text-tertiary);
+}
+.novw-bar-pct {
+  font-family: var(--vc-font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-text-secondary);
+}
+.novw-bar-track {
+  grid-column: 1 / -1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--vc-bg-raised);
+  overflow: hidden;
+}
+.novw-bar-fill { height: 100%; border-radius: 3px; }
+.novw-bar-fill.fluids { background: var(--vc-data-live); }
+.novw-bar-fill.calories { background: var(--vc-state-due); }
+
+/* ---------- output summary ---------- */
+.novw-outgrid { display: grid; grid-template-columns: 1fr 1fr; }
+.novw-outcell {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.75rem 0.85rem;
+  border-right: 1px solid var(--vc-line-hairline);
+  border-bottom: 1px solid var(--vc-line-hairline);
+}
+.novw-outcell:nth-child(2n) { border-right: none; }
+.novw-outcell:nth-last-child(-n+2) { border-bottom: none; }
+.novw-outcell-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--vc-line-hairline);
+  color: var(--vc-text-secondary);
+}
+.novw-outcell-icon.fluids { color: var(--vc-data-live); }
+.novw-outcell-icon.ok { color: var(--vc-state-complete); }
+.novw-outcell-icon.due { color: var(--vc-state-due); }
+.novw-outcell-text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.novw-outcell-label {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.novw-outcell.flagged .novw-outcell-label { color: var(--vc-state-due); }
+.novw-outcell-value {
+  font-family: var(--vc-font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-text-primary);
+}
+.novw-outcell.flagged .novw-outcell-value { color: var(--vc-state-due); font-size: 12px; }
+
+.novw-card-foot.balance { align-items: baseline; }
+.novw-balance { display: flex; flex-direction: column; gap: 0.15rem; }
+.novw-balance-label {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-data-live);
+}
+.novw-balance-value {
+  font-family: var(--vc-font-mono);
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-text-primary);
+}
+.novw-balance-note {
+  flex: 1 1 8rem;
+  font-family: var(--vc-font-sans);
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--vc-text-tertiary);
+}
+
+/* ---------- timeline ---------- */
+.novw-filters { display: flex; gap: 0.4rem; padding: 0.7rem 0.85rem 0; }
+.novw-filter {
+  min-height: 36px;
+  padding: 0 0.85rem;
+  background: transparent;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 999px;
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.novw-filter:hover:not(.on) { color: var(--vc-text-primary); border-color: var(--vc-line-strong); }
+.novw-filter.on {
+  background: var(--vc-data-live);
+  border-color: var(--vc-data-live);
+  color: var(--vc-bg-base);
+}
+
+.novw-timeline { list-style: none; margin: 0; padding: 0.5rem 0.85rem 0; }
+.novw-tl-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto auto auto 1fr auto;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--vc-line-hairline);
+}
+.novw-tl-row:last-child { border-bottom: none; }
+.novw-tl-time {
+  width: 4.6rem;
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-text-secondary);
+  white-space: nowrap;
+}
+/* The connecting rail runs through the dots rather than down a card edge. */
+.novw-tl-dot {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--vc-line-strong);
+}
+.novw-tl-row.intake .novw-tl-dot { background: var(--vc-data-live); }
+.novw-tl-row.output .novw-tl-dot { background: var(--vc-state-complete); }
+.novw-tl-row::before {
+  content: '';
+  position: absolute;
+  left: calc(4.6rem + 0.6rem + 3px);
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--vc-line-hairline);
+}
+.novw-tl-row:first-child::before { top: 50%; }
+.novw-tl-row:last-child::before { bottom: 50%; }
+
+.novw-tl-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--vc-line-hairline);
+  background: var(--vc-bg-raised);
+  color: var(--vc-text-secondary);
+}
+.novw-tl-row.intake .novw-tl-icon { color: var(--vc-data-live); }
+
+.novw-tl-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.novw-tl-title {
+  font-family: var(--vc-font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vc-data-live);
+}
+.novw-tl-row.output .novw-tl-title { color: var(--vc-text-primary); }
+.novw-tl-detail {
+  font-family: var(--vc-font-sans);
+  font-size: 12.5px;
+  color: var(--vc-text-secondary);
+}
+.novw-tl-concerns {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vc-state-due);
+}
+.novw-tl-chevron { display: inline-flex; color: var(--vc-text-tertiary); }
+
+.novw-showall {
+  width: 100%;
+  min-height: 46px;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--vc-line-hairline);
+  margin-top: 0.4rem;
+  color: var(--vc-data-live);
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.novw-showall:hover { background: var(--vc-bg-raised); }
+
+.novw-empty {
+  margin: 0;
+  padding: 1.2rem 0.85rem;
+  text-align: center;
+  font-family: var(--vc-font-sans);
+  font-size: 13px;
+  color: var(--vc-text-tertiary);
+}
+
+/* ---------- day status ---------- */
+.novw-status {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-surface);
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.novw-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--vc-state-complete);
+}
+/* Amber, not red: a flagged observation is worth seeing, not an alarm. */
+.novw-status.flagged { color: var(--vc-state-due); }
+.novw-status.flagged .novw-status-dot { background: var(--vc-state-due); }
+
+@media (max-width: 560px) {
+  .novw-glance { grid-template-columns: 1fr 1fr; }
+  .novw-stat:nth-child(2n) { border-right: none; }
+  .novw-stat:nth-child(-n+2) { border-bottom: 1px solid var(--vc-line-hairline); }
+  .novw-bar-row { grid-template-columns: auto 1fr auto; }
+  .novw-bar-value { grid-column: 2 / 3; }
+  .novw-outgrid { grid-template-columns: 1fr; }
+  .novw-outcell { border-right: none; }
+  .novw-outcell:nth-last-child(-n+2) { border-bottom: 1px solid var(--vc-line-hairline); }
+  .novw-outcell:last-child { border-bottom: none; }
+  .novw-tl-row { grid-template-columns: auto auto auto 1fr auto; gap: 0.45rem; }
+  .novw-tl-time { width: 4.2rem; font-size: 10.5px; }
+  .novw-tl-row::before { left: calc(4.2rem + 0.45rem + 3px); }
+}
+
+/* The calendar affordance is a real date input behind the icon, so there is a
+   picker without pulling in another component. */
+.novw-pick { position: relative; overflow: hidden; }
+.novw-pick input[type="date"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+.novw-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
