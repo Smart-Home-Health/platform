@@ -52,9 +52,14 @@ export function buildTopBarActions({
     // heads its own Record group there.
     { key: 'capture', group: 'record', label: 'Capture Vitals', icon: <VitalsCaptureIcon />, onClick: handlers.capture, active: modalOpen.capture, badge: 0 },
     { key: 'history', group: 'monitoring', label: 'History', icon: <HistoryIcon />, onClick: handlers.history, active: modalOpen.history, badge: 0 },
-    hasCamera
-      ? { key: 'camera', group: 'monitoring', label: 'Live Camera', icon: <CameraIcon />, onClick: handlers.camera, active: modalOpen.camera, badge: 0 }
-      : { key: 'messages', group: 'monitoring', label: 'Messages', icon: <MessagesIcon />, onClick: handlers.messages, active: modalOpen.messages, badge: 0 },
+    { key: 'messages', group: 'monitoring', label: 'Messages', icon: <MessagesIcon />, onClick: handlers.messages, active: modalOpen.messages, badge: 0 },
+    // Camera is the only conditional action: it appears when a Frigate camera
+    // is configured for this patient and is simply absent otherwise. It used to
+    // *replace* Messages, which meant configuring a camera hid the messages
+    // list — a whole section unreachable from the board with nothing to say so.
+    ...(hasCamera
+      ? [{ key: 'camera', group: 'monitoring', label: 'Live Camera', icon: <CameraIcon />, onClick: handlers.camera, active: modalOpen.camera, badge: 0 }]
+      : []),
   ];
 }
 

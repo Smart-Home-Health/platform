@@ -384,6 +384,10 @@ def sync_low_medication_messages(db: Session) -> None:
                 account_id=med.account_id,
                 data={
                     "medication_id": med.id,
+                    # The reader-facing surfaces name the medication in their
+                    # follow-up link ("Review Ojemda"); the title is prose, so
+                    # the name is carried as data rather than parsed back out.
+                    "medication_name": med.name,
                     "quantity": med.quantity,
                     "quantity_unit": med.quantity_unit,
                     "low_stock_threshold": threshold,
