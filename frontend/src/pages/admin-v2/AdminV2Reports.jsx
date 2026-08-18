@@ -38,14 +38,6 @@ const AdminV2Reports = () => {
   return (
     <AdminV2Layout>
       <div className="admin-v2-monitoring">
-        <div className="admin-v2-monitoring-header">
-          <h1 className="admin-v2-page-title">Reports</h1>
-          {selectedPatient && (
-            <p className="admin-v2-page-subtitle">
-              Compare vitals across days for {selectedPatient.first_name} {selectedPatient.last_name}
-            </p>
-          )}
-        </div>
         <div className="admin-v2-monitoring-content">
           {renderContent()}
         </div>
