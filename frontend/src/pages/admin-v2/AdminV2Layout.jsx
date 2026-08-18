@@ -26,7 +26,7 @@ import {
   TasksIcon,
   EquipmentIcon,
   NutritionIcon,
-      MonitoringIcon,
+  MonitoringIcon,
   ProfileIcon,
   ConfigIcon,
   BackArrowIcon,

@@ -23,7 +23,7 @@ import AdminV2Layout from './AdminV2Layout';
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
-  } from '../../components/Icons';
+} from '../../components/Icons';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
 import './AdminV2.css';
