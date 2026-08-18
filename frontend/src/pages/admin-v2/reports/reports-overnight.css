@@ -67,71 +67,6 @@
 .ovn-nav:disabled { opacity: 0.4; cursor: default; }
 .ovn-head-spacer { flex: 1; }
 
-/* ---- stat strip ---- */
-
-/* Five across at any width — wrapping them left a hole in the grid and put a
-   border where a reader saw a divider between two unrelated figures. */
-.ovn-stats {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  border: 1px solid var(--rpt-line);
-  border-radius: 12px;
-  background: var(--rpt-surface);
-  overflow: hidden;
-}
-.ovn-stat {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  align-items: center;
-  padding: 0.7rem 0.3rem;
-  border-right: 1px solid var(--rpt-line);
-  text-align: center;
-  min-width: 0;
-}
-.ovn-stat:last-of-type { border-right: none; }
-.ovn-stat-label {
-  font-family: var(--vc-font-mono);
-  font-size: 8.5px;
-  line-height: 1.25;
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--rpt-text-3);
-}
-.ovn-stat-value {
-  font-family: var(--vc-font-mono);
-  font-size: clamp(17px, 4.6vw, 26px);
-  font-weight: 700;
-  line-height: 1.15;
-  font-variant-numeric: tabular-nums;
-  color: var(--rpt-text);
-}
-.ovn-stat-value .ovn-unit { font-size: 0.55em; font-weight: 600; color: var(--rpt-text-3); }
-.ovn-stat.breach .ovn-stat-value { color: var(--rpt-breach); }
-.ovn-stat.warn .ovn-stat-value { color: var(--rpt-alarm); }
-.ovn-stat.ok .ovn-stat-value { color: var(--rpt-text); }
-.ovn-stat-note {
-  font-family: var(--vc-font-mono);
-  font-size: 9px;
-  line-height: 1.25;
-  letter-spacing: 0.04em;
-  color: var(--rpt-text-3);
-}
-.ovn-coverage {
-  grid-column: 1 / -1;
-  padding: 0.5rem;
-  border-top: 1px solid var(--rpt-line);
-  text-align: center;
-  font-family: var(--vc-font-mono);
-  font-size: 9.5px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--rpt-text-3);
-}
-.ovn-coverage strong { color: var(--rpt-text-2); font-weight: 700; }
-
 /* ---- charts ---- */
 
 .ovn-plots { display: flex; flex-direction: column; }
@@ -165,44 +100,6 @@
 .ovn-averages b { color: var(--rpt-text); font-weight: 700; }
 .ovn-averages .spo2 { color: var(--rpt-accent); }
 .ovn-averages .hr { color: var(--rpt-ok); }
-
-/* The markers toggle borrows the compose sheet's switch shape. */
-.ovn-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-left: auto;
-  font-family: var(--vc-font-mono);
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--rpt-text-3);
-  cursor: pointer;
-  white-space: nowrap;
-}
-.ovn-switch {
-  position: relative;
-  width: 40px;
-  height: 22px;
-  border: 1px solid var(--rpt-line);
-  border-radius: 999px;
-  background: var(--rpt-raised);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-.ovn-switch.on { background: var(--rpt-accent); border-color: var(--rpt-accent); }
-.ovn-switch span {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--rpt-text-3);
-  transition: transform 120ms ease, background 120ms ease;
-}
-.ovn-switch.on span { transform: translateX(18px); background: var(--rpt-text); }
 
 /* ---- episodes ---- */
 

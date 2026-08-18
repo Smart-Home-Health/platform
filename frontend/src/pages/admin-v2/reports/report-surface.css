@@ -159,6 +159,72 @@
 }
 .rpt-window strong { color: var(--rpt-accent); font-weight: 700; }
 
+/* ---- stat strip ---- */
+
+/* All across one row at any width — wrapping leaves a hole in the grid and puts
+   a border where a reader sees a divider between two unrelated figures. The
+   page sets how many. */
+.rpt-stats {
+  display: grid;
+  grid-template-columns: repeat(var(--rpt-stat-count, 5), minmax(0, 1fr));
+  border: 1px solid var(--rpt-line);
+  border-radius: 12px;
+  background: var(--rpt-surface);
+  overflow: hidden;
+}
+.rpt-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  align-items: center;
+  padding: 0.7rem 0.3rem;
+  border-right: 1px solid var(--rpt-line);
+  text-align: center;
+  min-width: 0;
+}
+.rpt-stat:last-of-type { border-right: none; }
+.rpt-stat-label {
+  font-family: var(--vc-font-mono);
+  font-size: 8.5px;
+  line-height: 1.25;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--rpt-text-3);
+}
+.rpt-stat-value {
+  font-family: var(--vc-font-mono);
+  font-size: clamp(17px, 4.6vw, 26px);
+  font-weight: 700;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  color: var(--rpt-text);
+}
+.rpt-stat-value .rpt-stat-unit { font-size: 0.55em; font-weight: 600; color: var(--rpt-text-3); }
+.rpt-stat.breach .rpt-stat-value { color: var(--rpt-breach); }
+.rpt-stat.warn .rpt-stat-value { color: var(--rpt-alarm); }
+.rpt-stat.ok .rpt-stat-value { color: var(--rpt-text); }
+.rpt-stat-note {
+  font-family: var(--vc-font-mono);
+  font-size: 9px;
+  line-height: 1.25;
+  letter-spacing: 0.04em;
+  color: var(--rpt-text-3);
+}
+.rpt-stats-foot {
+  grid-column: 1 / -1;
+  padding: 0.5rem;
+  border-top: 1px solid var(--rpt-line);
+  text-align: center;
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--rpt-text-3);
+}
+.rpt-stats-foot strong { color: var(--rpt-text-2); font-weight: 700; }
+
 /* ---- cards ---- */
 
 .rpt-card {
@@ -222,6 +288,45 @@
   border-radius: 0;
   background: var(--rpt-surface);
 }
+
+/* A switch for chart options — event markers, daily range. Borrows the
+   compose sheet's shape so switches read the same everywhere. */
+.rpt-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--rpt-text-3);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.rpt-switch {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  border: 1px solid var(--rpt-line);
+  border-radius: 999px;
+  background: var(--rpt-raised);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.rpt-switch.on { background: var(--rpt-accent); border-color: var(--rpt-accent); }
+.rpt-switch span {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--rpt-text-3);
+  transition: transform 120ms ease, background 120ms ease;
+}
+.rpt-switch.on span { transform: translateX(18px); background: var(--rpt-text); }
 
 /* ---- tables ---- */
 

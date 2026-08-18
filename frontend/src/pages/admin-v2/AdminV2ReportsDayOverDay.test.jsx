@@ -20,6 +20,7 @@
 // controls, and that the table under the chart says what the data says.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 
 const { chartInstances } = vi.hoisted(() => ({ chartInstances: [] }));
 
@@ -84,7 +85,13 @@ const pickDay = async (dayNumber) => {
   fireEvent.click(within(sheet).getByRole('button', { name: String(dayNumber) }));
 };
 
-const setup = () => render(<AdminV2ReportsDayOverDay patientId={2} />);
+// The page reads `?vital=` (the weekly summary links here per vital), so it
+// needs a router around it.
+const setup = (route = '/care/reports/day-over-day') => render(
+  <MemoryRouter initialEntries={[route]}>
+    <AdminV2ReportsDayOverDay patientId={2} />
+  </MemoryRouter>
+);
 
 describe('AdminV2ReportsDayOverDay', () => {
   it('asks for a day before it asks the API for anything', async () => {
@@ -194,6 +201,20 @@ describe('AdminV2ReportsDayOverDay', () => {
     await waitFor(() => expect(chartInstances.length).toBeGreaterThan(0));
     const last = chartInstances[chartInstances.length - 1];
     expect(last.config.options.plugins.annotation.annotations.low).toMatchObject({ yMin: 90, yMax: 90 });
+  });
+
+  it('opens on the vital the weekly summary linked to', async () => {
+    setup('/care/reports/day-over-day?vital=heart_rate');
+    await pickDay(2);
+    await waitFor(() => expect(calls.some(u => u.includes('day-over-day'))).toBe(true));
+    expect(calls.filter(u => u.includes('day-over-day')).pop()).toContain('vital_type=heart_rate');
+  });
+
+  it('ignores a vital it does not have', async () => {
+    setup('/care/reports/day-over-day?vital=telepathy');
+    await pickDay(2);
+    await waitFor(() => expect(calls.some(u => u.includes('day-over-day'))).toBe(true));
+    expect(calls.filter(u => u.includes('day-over-day')).pop()).toContain('vital_type=spo2');
   });
 
   it('surfaces a failed report instead of an empty chart', async () => {

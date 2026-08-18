@@ -25,6 +25,7 @@
 // Derivations (per-day average, low, coverage, the y range and the CSV) live in
 // reports/dayOverDay.js so they can be tested without a canvas.
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import Chart from 'chart.js/auto';
 import zoomPlugin from 'chartjs-plugin-zoom';
 import annotationPlugin from 'chartjs-plugin-annotation';
@@ -82,7 +83,13 @@ const AdminV2ReportsDayOverDay = ({ patientId }) => {
   // selection time, so a date keeps its colour regardless of sort order or
   // later selections. `selectedDates` (sorted) is derived for queries/display.
   const [selection, setSelection] = useState([]); // [{ date, color }]
-  const [vitalType, setVitalType] = useState('spo2');
+  // The weekly summary links here per vital ("Compare days"), so the URL can
+  // name one; anything unrecognised falls back rather than querying nonsense.
+  const [searchParams] = useSearchParams();
+  const [vitalType, setVitalType] = useState(() => {
+    const wanted = searchParams.get('vital');
+    return VITAL_TYPES.some(v => v.value === wanted) ? wanted : 'spo2';
+  });
   const [aggregation, setAggregation] = useState('hour');
   const [startHour, setStartHour] = useState(0);
   const [endHour, setEndHour] = useState(23);

@@ -16,6 +16,7 @@
 """Wave 4 — reports: day-over-day / overnight / weekly-summary contract,
 the vital_type + aggregation allowlists (400), date parsing (400), and the
 require_read_access gate."""
+import pytest
 
 
 def test_day_over_day_ok(admin_client, patient):
@@ -86,6 +87,31 @@ def test_overnight_rejects_bad_date(admin_client, patient):
 def test_weekly_summary_ok(admin_client, patient):
     resp = admin_client.get("/api/reports/weekly-summary", params={"patient_id": patient.id})
     assert resp.status_code == 200, resp.text
+
+
+def test_weekly_summary_daily_carries_the_days_range(admin_client, db_session, patient):
+    """Each day in the weekly sparkline reports its own low/high, not just the
+    mean — a week of 97% averages hides the night that dipped to 55."""
+    from datetime import datetime, timedelta, timezone
+    from schemas.pulse_ox_data import PulseOxData
+
+    day = datetime(2026, 6, 10, 15, 0, tzinfo=timezone.utc)  # mid-afternoon: same date in any US tz
+    db_session.add_all([
+        PulseOxData(patient_id=patient.id, timestamp=day + timedelta(seconds=i * 4),
+                    spo2=spo2, bpm=90, pa=2.0, created_at=day)
+        for i, spo2 in enumerate([99, 55, 97])
+    ])
+    db_session.commit()
+
+    resp = admin_client.get("/api/reports/weekly-summary", params={
+        "patient_id": patient.id, "end_date": "2026-06-10",
+    })
+    assert resp.status_code == 200, resp.text
+    daily = resp.json()["vitals"]["spo2"]["daily"]
+    entry = next(d for d in daily if d["date"] == "2026-06-10")
+    assert entry["low"] == 55
+    assert entry["high"] == 99
+    assert entry["avg"] == pytest.approx(83.7, abs=0.1)
 
 
 def test_read_restricted_blocked(client, admin_user, account, patient):

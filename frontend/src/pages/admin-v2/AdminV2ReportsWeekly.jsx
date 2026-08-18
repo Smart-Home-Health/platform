@@ -15,118 +15,77 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useState, useEffect, useRef } from 'react';
+// Weekly summary: the seven days as one page you can take to an appointment.
+//
+// The vitals are full-width charts, one per vital, rather than sparklines in a
+// table cell — a week of daily points is unreadable at thumbnail size, and the
+// page is allowed to scroll. Each chart draws the day's range as a band behind
+// its average, because a week of 97% averages hides the night that dipped.
+//
+// Derivations live in reports/weekly.js so the figures and the shareable
+// summary can be tested without a canvas.
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Chart from 'chart.js/auto';
+import annotationPlugin from 'chartjs-plugin-annotation';
+import { useNavigate } from 'react-router-dom';
 import config, { apiFetch } from '../../config';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import AdminV2Layout from './AdminV2Layout';
 import {
-  ChevronLeftIcon,
-  ChevronRightIcon,
+  ChevronLeftIcon, ChevronRightIcon, CheckCircleIcon, PrintIcon, LinkIcon,
+  BarChartIcon, EquipmentIcon,
 } from '../../components/Icons';
-import { Button } from '@/components/ui/button';
-import { Alert } from '@/components/ui/alert';
-import './AdminV2.css';
+import { useChartColors } from '../../hooks/useChartColors';
+import { alarmsFor } from './reports/dayOverDay';
+import {
+  VITALS, weekLabel, shiftWeek, toDateStr, weekDays, dayLabel, weekdayLabel,
+  alignSeries, vitalRows, careGroups, careTotals, peakDay, equipmentRollup,
+  headlineTiles, formatNumber, buildSummary,
+} from './reports/weekly';
+import './reports/reports-weekly.css';
 
-const VITAL_LABELS = {
-  spo2: { label: 'SpO2', unit: '%', color: '#58a6ff' },
-  heart_rate: { label: 'Heart Rate', unit: 'bpm', color: '#f78166' },
-  respiratory_rate: { label: 'Resp Rate', unit: '/min', color: '#a371f7' },
-  temperature: { label: 'Temp', unit: '°F', color: '#d29922' },
-  weight: { label: 'Weight', unit: 'lbs', color: '#3fb950' },
-};
-
-function toDateStr(d) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function formatShortDate(dateStr) {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
-function Sparkline({ data, color, min, max }) {
-  const canvasRef = useRef(null);
-  const chartRef = useRef(null);
-
-  useEffect(() => {
-    if (!canvasRef.current || !data?.length) return;
-    if (chartRef.current) chartRef.current.destroy();
-
-    chartRef.current = new Chart(canvasRef.current, {
-      type: 'line',
-      data: {
-        labels: data.map(d => d.date),
-        datasets: [{
-          data: data.map(d => d.avg),
-          borderColor: color,
-          backgroundColor: color + '22',
-          borderWidth: 2,
-          pointRadius: data.length <= 7 ? 3 : 0,
-          pointBackgroundColor: color,
-          fill: true,
-          tension: 0.3,
-        }],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false }, tooltip: { enabled: false } },
-        scales: {
-          x: { display: false },
-          y: { display: false },
-        },
-        animation: false,
-      },
-    });
-
-    return () => { if (chartRef.current) chartRef.current.destroy(); };
-  }, [data, color]);
-
-  return (
-    <div className="weekly-sparkline-card">
-      <div className="weekly-sparkline-chart"><canvas ref={canvasRef} /></div>
-      <div className="weekly-sparkline-stats">
-        <span className="weekly-sparkline-val">{min ?? '--'}</span>
-        <span className="weekly-sparkline-sep">/</span>
-        <span className="weekly-sparkline-val">{max ?? '--'}</span>
-      </div>
-    </div>
-  );
-}
+Chart.register(annotationPlugin);
 
 const AdminV2ReportsWeekly = () => {
   const { selectedPatient } = useAdminPatient();
-  const [endDate, setEndDate] = useState(() => toDateStr(new Date()));
+  const navigate = useNavigate();
+
+  const today = toDateStr(new Date());
+  const [endDate, setEndDate] = useState(today);
   const [data, setData] = useState(null);
+  const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [shared, setShared] = useState(null);
+  // The band is the point of these charts — a week of averages hides the dips —
+  // but on a patient whose lows are mostly sensor dropouts it swamps the line,
+  // so it can be turned off rather than being all or nothing.
+  const [showRange, setShowRange] = useState(true);
 
-  const complianceRef = useRef(null);
-  const complianceChart = useRef(null);
+  const rootRef = useRef(null);
+  const vitalRefs = useRef({});
   const nutritionRef = useRef(null);
-  const nutritionChart = useRef(null);
   const alertsRef = useRef(null);
-  const alertsChart = useRef(null);
+  const charts = useRef([]);
+  const chrome = useChartColors();
 
-  const prevWeek = () => {
-    const d = new Date(endDate + 'T12:00:00');
-    d.setDate(d.getDate() - 7);
-    setEndDate(toDateStr(d));
-  };
-
-  const nextWeek = () => {
-    const d = new Date(endDate + 'T12:00:00');
-    d.setDate(d.getDate() + 7);
-    const today = new Date();
-    if (d > today) return;
-    setEndDate(toDateStr(d));
-  };
+  const alarms = useMemo(() => alarmsFor('spo2', settings), [settings]);
 
   useEffect(() => {
-    if (!selectedPatient) return;
+    let live = true;
+    apiFetch(`${config.apiUrl}/api/settings`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(s => { if (live && s) setSettings(s); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedPatient) return undefined;
+    let live = true;
     setLoading(true);
     setError(null);
+    setShared(null);
 
     const params = new URLSearchParams({ patient_id: selectedPatient.id, end_date: endDate });
     apiFetch(`${config.apiUrl}/api/reports/weekly-summary?${params}`)
@@ -137,293 +96,478 @@ const AdminV2ReportsWeekly = () => {
         }
         return res.json();
       })
-      .then(setData)
-      .catch(e => { setError(e.message); setData(null); })
-      .finally(() => setLoading(false));
+      .then(d => { if (live) setData(d); })
+      .catch(e => { if (live) { setError(e.message); setData(null); } })
+      .finally(() => { if (live) setLoading(false); });
+
+    return () => { live = false; };
   }, [selectedPatient, endDate]);
 
-  // Compliance donut
+  const rows = useMemo(() => vitalRows(data, alarms), [data, alarms]);
+  const tiles = useMemo(() => headlineTiles(data), [data]);
+  const groups = useMemo(() => careGroups(data?.compliance), [data]);
+  const totals = useMemo(() => careTotals(data?.compliance), [data]);
+  const equipment = useMemo(() => equipmentRollup(data?.equipment_due), [data]);
+  const nutritionSeries = useMemo(
+    () => alignSeries(data?.period, data?.nutrition?.daily, 'calories'),
+    [data],
+  );
+  const alertSeries = useMemo(
+    () => alignSeries(data?.period, data?.alerts?.daily_counts, 'count'),
+    [data],
+  );
+  const peak = useMemo(() => peakDay(data?.alerts?.daily_counts), [data]);
+  const days = useMemo(() => weekDays(data?.period), [data]);
+
+  // ---- charts ----
   useEffect(() => {
-    if (!data?.compliance || !complianceRef.current) return;
-    if (complianceChart.current) complianceChart.current.destroy();
+    charts.current.forEach(c => c.destroy());
+    charts.current = [];
+    if (!data) return undefined;
 
-    const c = data.compliance;
-    const onTime = c.medications.on_time + c.care_tasks.completed;
-    const late = c.medications.late;
-    const missed = c.medications.missed + c.care_tasks.missed;
-    const skipped = (c.medications.skipped || 0) + (c.care_tasks.skipped || 0);
+    const rootStyle = rootRef.current ? getComputedStyle(rootRef.current) : null;
+    const token = (name, fallback) => rootStyle?.getPropertyValue(name).trim() || fallback;
+    const alarmColor = token('--rpt-alarm', '#f0a52e');
+    const breachColor = token('--rpt-breach', '#f0563c');
+    const tooltipBg = token('--rpt-raised', chrome.cutout);
+    const gridSoft = `${chrome.grid}80`;
+    const labels = days.map(dayLabel);
 
-    complianceChart.current = new Chart(complianceRef.current, {
-      type: 'doughnut',
-      data: {
-        labels: ['On Time', 'Late', 'Missed', 'Skipped'],
-        datasets: [{
-          data: [onTime, late, missed, skipped],
-          backgroundColor: ['#3fb950', '#d29922', '#f85149', 'var(--muted-foreground)'],
-          borderWidth: 0,
-        }],
+    const base = (extraPlugins = {}) => ({
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: tooltipBg,
+          borderColor: chrome.grid,
+          borderWidth: 1,
+          titleColor: chrome.foreground,
+          bodyColor: chrome.foreground,
+          padding: 10,
+          titleFont: { size: 11, family: 'IBM Plex Mono, monospace', weight: '700' },
+          bodyFont: { size: 11, family: 'IBM Plex Mono, monospace' },
+        },
+        ...extraPlugins,
       },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        cutout: '70%',
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: (ctx) => `${ctx.label}: ${ctx.raw}`,
+      scales: {
+        x: {
+          grid: { display: false },
+          border: { color: chrome.grid },
+          ticks: { color: chrome.axis, font: { size: 9.5, family: 'IBM Plex Mono, monospace' }, maxRotation: 0 },
+        },
+        y: {
+          grid: { color: gridSoft },
+          border: { color: chrome.grid },
+          ticks: { color: chrome.axis, font: { size: 9.5, family: 'IBM Plex Mono, monospace' }, maxTicksLimit: 5 },
+        },
+      },
+    });
+
+    rows.forEach(v => {
+      const canvas = vitalRefs.current[v.key];
+      if (!canvas) return;
+      const hasBand = showRange
+        && v.series.some(p => p.low !== null && p.high !== null && p.high !== p.low);
+      const annotations = {};
+      if (v.alarmLow !== null) {
+        annotations.alarm = {
+          type: 'line',
+          yMin: v.alarmLow,
+          yMax: v.alarmLow,
+          borderColor: alarmColor,
+          borderWidth: 1,
+          borderDash: [5, 4],
+          label: {
+            display: true,
+            content: `Alarm ${v.alarmLow}${v.unit}`,
+            position: 'start',
+            color: alarmColor,
+            backgroundColor: 'transparent',
+            font: { size: 9, family: 'IBM Plex Mono, monospace', weight: '700' },
+            yAdjust: 8,
+          },
+        };
+      }
+      // The day it bottomed out, marked where a reader is already looking.
+      if (v.worstDay && v.breached) {
+        annotations.worst = {
+          type: 'point',
+          xValue: days.indexOf(v.worstDay.date),
+          yValue: v.worstDay.low,
+          radius: 4,
+          backgroundColor: breachColor,
+          borderColor: breachColor,
+        };
+      }
+
+      const datasets = [];
+      if (hasBand) {
+        // Band first, drawn as the gap between the day's high and low.
+        datasets.push(
+          {
+            label: 'High',
+            data: v.series.map(p => p.high),
+            borderColor: 'transparent',
+            backgroundColor: `${v.color}24`,
+            pointRadius: 0,
+            fill: '+1',
+            spanGaps: true,
+            tension: 0.25,
+          },
+          {
+            label: 'Low',
+            data: v.series.map(p => p.low),
+            borderColor: 'transparent',
+            backgroundColor: 'transparent',
+            pointRadius: 0,
+            fill: false,
+            spanGaps: true,
+            tension: 0.25,
+          },
+        );
+      }
+      datasets.push({
+        label: `${v.label} avg`,
+        data: v.series.map(p => p.value),
+        borderColor: v.color,
+        backgroundColor: v.color,
+        borderWidth: 2,
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        fill: false,
+        spanGaps: true,
+        tension: 0.25,
+      });
+
+      charts.current.push(new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+          ...base({ annotation: { annotations } }),
+          plugins: {
+            ...base({ annotation: { annotations } }).plugins,
+            tooltip: {
+              ...base().plugins.tooltip,
+              callbacks: {
+                label: (item) => {
+                  const point = v.series[item.dataIndex];
+                  if (item.dataset.label === 'Low') return null;
+                  if (item.dataset.label === 'High') {
+                    return point.low === null ? null : `Range ${point.low}–${point.high}${v.unit}`;
+                  }
+                  return `Avg ${item.parsed.y}${v.unit}`;
+                },
+              },
             },
           },
         },
-        animation: false,
-      },
+      }));
     });
 
-    return () => { if (complianceChart.current) complianceChart.current.destroy(); };
-  }, [data]);
-
-  // Nutrition bar chart
-  useEffect(() => {
-    if (!data?.nutrition?.daily?.length || !nutritionRef.current) return;
-    if (nutritionChart.current) nutritionChart.current.destroy();
-
-    const daily = data.nutrition.daily;
-    const calTarget = data.nutrition.goals?.calories_target;
-
-    const annotations = {};
-    if (calTarget) {
-      annotations.calGoal = {
-        type: 'line',
-        yMin: calTarget,
-        yMax: calTarget,
-        borderColor: '#f85149',
-        borderWidth: 1,
-        borderDash: [4, 4],
-        label: { display: true, content: `Goal: ${calTarget}`, position: 'start', font: { size: 10 }, color: '#f85149', backgroundColor: 'transparent' },
-      };
+    if (nutritionRef.current && nutritionSeries.some(p => p.value)) {
+      const target = data.nutrition?.goals?.calories_target;
+      charts.current.push(new Chart(nutritionRef.current.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{
+            label: 'Calories',
+            data: nutritionSeries.map(p => p.value),
+            backgroundColor: token('--rpt-accent', '#4da7bd'),
+            borderRadius: 4,
+            maxBarThickness: 42,
+          }],
+        },
+        options: base(target ? {
+          annotation: {
+            annotations: {
+              goal: {
+                type: 'line',
+                yMin: target,
+                yMax: target,
+                borderColor: alarmColor,
+                borderWidth: 1,
+                borderDash: [5, 4],
+                label: {
+                  display: true,
+                  content: `Goal ${formatNumber(target)}`,
+                  position: 'end',
+                  color: alarmColor,
+                  backgroundColor: 'transparent',
+                  font: { size: 9, family: 'IBM Plex Mono, monospace', weight: '700' },
+                  yAdjust: -8,
+                },
+              },
+            },
+          },
+        } : {}),
+      }));
     }
 
-    nutritionChart.current = new Chart(nutritionRef.current, {
-      type: 'bar',
-      data: {
-        labels: daily.map(d => formatShortDate(d.date)),
-        datasets: [{
-          label: 'Calories',
-          data: daily.map(d => d.calories),
-          backgroundColor: '#58a6ff88',
-          borderColor: '#58a6ff',
-          borderWidth: 1,
-          borderRadius: 3,
-        }],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          annotation: { annotations },
+    if (alertsRef.current && alertSeries.some(p => p.value)) {
+      charts.current.push(new Chart(alertsRef.current.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{
+            label: 'Triggers',
+            data: alertSeries.map(p => p.value ?? 0),
+            backgroundColor: alarmColor,
+            borderRadius: 4,
+            maxBarThickness: 42,
+          }],
         },
-        scales: {
-          x: { grid: { display: false }, ticks: { color: 'var(--muted-foreground)', font: { size: 10 } } },
-          y: { grid: { color: 'color-mix(in srgb, var(--foreground) 6%, transparent)' }, ticks: { color: 'var(--muted-foreground)', font: { size: 10 } } },
-        },
-        animation: false,
-      },
-    });
-
-    return () => { if (nutritionChart.current) nutritionChart.current.destroy(); };
-  }, [data]);
-
-  // Alerts bar chart
-  useEffect(() => {
-    if (!data?.alerts?.daily_counts?.length || !alertsRef.current) return;
-    if (alertsChart.current) alertsChart.current.destroy();
-
-    const daily = data.alerts.daily_counts;
-    alertsChart.current = new Chart(alertsRef.current, {
-      type: 'bar',
-      data: {
-        labels: daily.map(d => formatShortDate(d.date)),
-        datasets: [{
-          label: 'Alerts',
-          data: daily.map(d => d.count),
-          backgroundColor: '#f8514988',
-          borderColor: '#f85149',
-          borderWidth: 1,
-          borderRadius: 3,
-        }],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { grid: { display: false }, ticks: { color: 'var(--muted-foreground)', font: { size: 10 } } },
-          y: { grid: { color: 'color-mix(in srgb, var(--foreground) 6%, transparent)' }, ticks: { color: 'var(--muted-foreground)', font: { size: 10 }, stepSize: 1 } },
-        },
-        animation: false,
-      },
-    });
-
-    return () => { if (alertsChart.current) alertsChart.current.destroy(); };
-  }, [data]);
-
-  const renderContent = () => {
-    if (!selectedPatient) {
-      return <div className="admin-v2-monitoring-empty"><p>Select a patient from the sidebar to view the weekly summary.</p></div>;
+        options: base(),
+      }));
     }
-    if (loading) return <div className="overnight-loading">Loading weekly summary...</div>;
-    if (error) return <div className="tw"><Alert variant="destructive">{error}</Alert></div>;
+
+    return () => {
+      charts.current.forEach(c => c.destroy());
+      charts.current = [];
+    };
+  }, [data, rows, days, nutritionSeries, alertSeries, chrome, showRange]);
+
+  const shareSummary = useCallback(async () => {
+    if (!data) return;
+    const patientName = selectedPatient
+      ? [selectedPatient.first_name, selectedPatient.last_name].filter(Boolean).join(' ')
+      : null;
+    const text = buildSummary(data, { patientName, alarms });
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'Weekly summary', text });
+        setShared('Shared');
+        return;
+      }
+      await navigator.clipboard.writeText(text);
+      setShared('Copied to clipboard');
+    } catch {
+      setShared(null);
+    }
+  }, [data, selectedPatient, alarms]);
+
+  const atCurrentWeek = endDate >= today;
+  const symptoms = data?.symptoms || {};
+
+  const body = () => {
+    if (!selectedPatient) return <div className="rpt-empty">Select a patient to see the weekly summary</div>;
+    if (error) return <div className="rpt-error">{error}</div>;
+    if (loading && !data) return <div className="rpt-empty">Loading…</div>;
     if (!data) return null;
 
-    const c = data.compliance || {};
-    const equip = data.equipment_due || [];
-    const symptoms = data.symptoms || {};
-
     return (
-      <div className="weekly-report">
-        {/* Vitals sparklines */}
-        <div className="weekly-section">
-          <h3 className="weekly-section-title">Vitals Trends</h3>
-          <div className="weekly-sparklines">
-            {Object.entries(VITAL_LABELS).map(([key, v]) => {
-              const vd = data.vitals?.[key];
-              if (!vd?.daily?.length) return null;
-              return (
-                <div key={key} className="weekly-sparkline-wrapper">
-                  <div className="weekly-sparkline-label" style={{ color: v.color }}>{v.label}</div>
-                  <Sparkline data={vd.daily} color={v.color} min={vd.min} max={vd.max} />
-                  <div className="weekly-sparkline-unit">avg {vd.avg ?? '--'} {v.unit}</div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Compliance + Nutrition row */}
-        <div className="weekly-row">
-          <div className="weekly-section weekly-half">
-            <h3 className="weekly-section-title">Compliance</h3>
-            <div className="weekly-compliance">
-              <div className="weekly-donut-container">
-                <canvas ref={complianceRef} />
-                <div className="weekly-donut-center">
-                  <span className="weekly-donut-pct">{c.overall_pct ?? '--'}%</span>
-                </div>
-              </div>
-              <div className="weekly-compliance-legend">
-                <div className="weekly-legend-item"><span className="weekly-legend-dot" style={{ background: '#3fb950' }} /> On Time <strong>{(c.medications?.on_time || 0) + (c.care_tasks?.completed || 0)}</strong></div>
-                <div className="weekly-legend-item"><span className="weekly-legend-dot" style={{ background: '#d29922' }} /> Late <strong>{c.medications?.late || 0}</strong></div>
-                <div className="weekly-legend-item"><span className="weekly-legend-dot" style={{ background: '#f85149' }} /> Missed <strong>{(c.medications?.missed || 0) + (c.care_tasks?.missed || 0)}</strong></div>
-                <div className="weekly-legend-item"><span className="weekly-legend-dot" style={{ background: 'var(--muted-foreground)' }} /> Skipped <strong>{(c.medications?.skipped || 0) + (c.care_tasks?.skipped || 0)}</strong></div>
-              </div>
+      <>
+        <div className="rpt-stats" style={{ '--rpt-stat-count': tiles.length }}>
+          {tiles.map(t => (
+            <div key={t.key} data-stat={t.key} className={`rpt-stat${t.tone ? ` ${t.tone}` : ''}`}>
+              <span className="rpt-stat-label">{t.label}</span>
+              <span className="rpt-stat-value">{t.value}</span>
+              <span className="rpt-stat-note">{t.note}</span>
             </div>
-          </div>
-
-          <div className="weekly-section weekly-half">
-            <h3 className="weekly-section-title">Daily Calories</h3>
-            <div className="weekly-chart-sm"><canvas ref={nutritionRef} /></div>
-            {data.nutrition?.avg_calories && (
-              <div className="weekly-avg-text">Avg: {data.nutrition.avg_calories} cal/day</div>
-            )}
-          </div>
+          ))}
         </div>
 
-        {/* Alerts + Equipment row */}
-        <div className="weekly-row">
-          <div className="weekly-section weekly-half">
-            <h3 className="weekly-section-title">
-              Alerts
-              <span className="weekly-section-badge">{data.alerts?.total || 0}</span>
-            </h3>
-            {data.alerts?.daily_counts?.length > 0 ? (
-              <div className="weekly-chart-sm"><canvas ref={alertsRef} /></div>
-            ) : (
-              <div className="weekly-empty-note">No alerts this week</div>
-            )}
-          </div>
-
-          <div className="weekly-section weekly-half">
-            <h3 className="weekly-section-title">Equipment Due</h3>
-            {equip.length > 0 ? (
-              <div className="weekly-equip-list">
-                {equip.map((e, i) => (
-                  <div key={i} className={`weekly-equip-item ${e.days_overdue > 0 ? 'overdue' : ''}`}>
-                    <span className="weekly-equip-name">{e.name}</span>
-                    <span className="weekly-equip-due">
-                      {e.days_overdue > 0
-                        ? <span className="weekly-overdue-badge">{e.days_overdue}d overdue</span>
-                        : `Due ${formatShortDate(e.due_date)}`}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="weekly-empty-note">No equipment due</div>
-            )}
-          </div>
-        </div>
-
-        {/* Symptoms */}
-        {(symptoms.unresolved_count > 0 || symptoms.new?.length > 0) && (
-          <div className="weekly-section">
-            <h3 className="weekly-section-title">
-              Symptoms
-              {symptoms.unresolved_count > 0 && <span className="weekly-section-badge warning">{symptoms.unresolved_count} active</span>}
-            </h3>
-            <div className="weekly-symptoms-list">
-              {(symptoms.new || []).map((s, i) => (
-                <div key={i} className="overnight-symptom">
-                  <span className="overnight-symptom-type">{s.symptom_type}</span>
-                  <span className="overnight-symptom-severity">Severity {s.severity}/10</span>
-                  <span className={`weekly-symptom-status ${s.is_resolved ? 'resolved' : 'active'}`}>
-                    {s.is_resolved ? 'Resolved' : 'Active'}
-                  </span>
-                </div>
-              ))}
-            </div>
+        {rows.length > 0 && (
+          <div className="wk-rangebar">
+            <button
+              type="button"
+              className="rpt-toggle"
+              onClick={() => setShowRange(v => !v)}
+              aria-pressed={showRange}
+              aria-label="Daily range"
+            >
+              Daily range
+              <span className={`rpt-switch${showRange ? ' on' : ''}`}><span /></span>
+            </button>
           </div>
         )}
 
-        {/* Print button */}
-        <div className="weekly-print-row tw">
-          <Button variant="secondary" onClick={() => window.print()}>Print Summary</Button>
+        {rows.length === 0 ? (
+          <div className="rpt-empty">No vitals recorded this week</div>
+        ) : rows.map(v => (
+          <section key={v.key} className="rpt-card" style={{ '--wk-series': v.color }}>
+            <div className="wk-vital-head">
+              <span className="wk-vital-name">{v.label}</span>
+              <span className="wk-vital-avg">{v.avg}<span>{v.unit}</span></span>
+              <span className="wk-vital-range">
+                Range <b className={v.breached ? 'breach' : undefined}>{v.min}</b>–<b>{v.max}</b>{v.unit}
+              </span>
+            </div>
+            <div className="wk-vital-plot">
+              <canvas ref={el => { vitalRefs.current[v.key] = el; }} />
+            </div>
+            <div className="wk-vital-foot">
+              {v.days} of 7 days recorded
+              <button
+                type="button"
+                className="wk-link"
+                onClick={() => navigate(`/care/reports/day-over-day?vital=${v.key}`)}
+              >
+                Compare days
+                <ChevronRightIcon size={13} />
+              </button>
+            </div>
+          </section>
+        ))}
+
+        {groups.length > 0 && (
+          <section className="rpt-card">
+            <div className="rpt-card-head">
+              <span className="rpt-card-title">Care completion</span>
+              <span className={`rpt-card-note${totals.pct !== null && totals.pct < 90 ? ' rpt-warn' : ' rpt-ok'}`}>
+                {totals.pct === null ? '—' : `${totals.pct}% completed`}
+              </span>
+            </div>
+            {/* Medications and care tasks are separate bars: only medications
+                record a late/on-time split, and folding a completed task into
+                "on time" would invent a punctuality nothing measured. */}
+            {groups.map(g => (
+              <div key={g.label} className="wk-group">
+                <div className="wk-group-head">
+                  {g.label}
+                  <span className="wk-group-count">{g.done} of {g.total}</span>
+                </div>
+                <div className="wk-bar">
+                  {g.segments.map(s => (
+                    <div
+                      key={s.key}
+                      className={`wk-seg ${s.tone}`}
+                      style={{ width: `${(s.count / g.total) * 100}%` }}
+                      title={`${s.label}: ${s.count}`}
+                    >
+                      {(s.count / g.total) > 0.08 ? s.count : ''}
+                    </div>
+                  ))}
+                </div>
+                <div className="wk-legend">
+                  {g.segments.map(s => (
+                    <span key={s.key}><i className={s.tone} />{s.label} <b>{s.count}</b></span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </section>
+        )}
+
+        <section className="rpt-card">
+          <div className="rpt-card-head">
+            <span className="rpt-card-title">Nutrition</span>
+            <span className="rpt-card-note">
+              {data.nutrition?.avg_calories
+                ? `${formatNumber(data.nutrition.avg_calories)} cal/day avg`
+                : 'Nothing logged'}
+            </span>
+          </div>
+          {nutritionSeries.some(p => p.value) ? (
+            <div className="wk-plot"><canvas ref={nutritionRef} /></div>
+          ) : (
+            <div className="rpt-empty">No meals logged this week</div>
+          )}
+        </section>
+
+        <section className="rpt-card">
+          <div className="rpt-card-head">
+            <span className="rpt-card-title">Alert activity</span>
+            <span className={`rpt-card-note${data.alerts?.total ? ' rpt-warn' : ' rpt-ok'}`}>
+              {data.alerts?.total || 0} triggers
+            </span>
+          </div>
+          {alertSeries.some(p => p.value) ? (
+            <>
+              <div className="wk-plot"><canvas ref={alertsRef} /></div>
+              {peak && (
+                <div className="wk-note">
+                  <BarChartIcon size={13} />
+                  Busiest {weekdayLabel(peak.date)} {dayLabel(peak.date)} · {peak.count} triggers
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="rpt-empty">No alerts this week</div>
+          )}
+        </section>
+
+        <section className="rpt-card">
+          <div className="rpt-card-head">
+            <span className="rpt-card-title">Equipment</span>
+            <span className={`rpt-card-note${equipment.overdue ? ' rpt-warn' : ' rpt-ok'}`}>
+              {equipment.total ? `${equipment.total} due` : 'Nothing due'}
+            </span>
+          </div>
+          {equipment.items.length ? equipment.items.map((e, i) => (
+            <div key={`${e.name}-${i}`} className="wk-row">
+              <EquipmentIcon size={15} className="rpt-muted" />
+              <span className="wk-row-name">{e.name}</span>
+              <span className={`wk-row-due${e.days_overdue > 0 ? ' overdue' : ''}`}>
+                {e.days_overdue > 0 ? `${e.days_overdue}d overdue` : `Due ${dayLabel(e.due_date)}`}
+              </span>
+            </div>
+          )) : (
+            <div className="wk-clear"><CheckCircleIcon size={16} /> Nothing due this week</div>
+          )}
+        </section>
+
+        {(symptoms.new?.length > 0 || symptoms.unresolved_count > 0) && (
+          <section className="rpt-card">
+            <div className="rpt-card-head">
+              <span className="rpt-card-title">Symptoms</span>
+              <span className="rpt-card-note">
+                {symptoms.new?.length || 0} new · {symptoms.unresolved_count || 0} unresolved
+              </span>
+            </div>
+            {(symptoms.new || []).map((s, i) => (
+              <div key={i} className="wk-row">
+                <span className="wk-row-name">{s.symptom_type}</span>
+                <span className="wk-row-due">
+                  {s.severity != null ? `${s.severity}/10` : ''}
+                  {s.is_resolved ? ' · resolved' : ''}
+                </span>
+              </div>
+            ))}
+          </section>
+        )}
+
+        <div className="rpt-actions">
+          <button type="button" className="rpt-btn" onClick={() => window.print()}>
+            <PrintIcon size={15} />
+            Print summary
+          </button>
+          <button type="button" className="rpt-btn primary" onClick={shareSummary}>
+            <LinkIcon size={15} />
+            Share summary
+          </button>
         </div>
-      </div>
+        {shared && <div className="wk-shared">{shared}</div>}
+      </>
     );
   };
 
-  const startD = new Date(endDate + 'T12:00:00');
-  startD.setDate(startD.getDate() - 6);
-  const periodLabel = data?.period
-    ? `${formatShortDate(data.period.start)} - ${formatShortDate(data.period.end)}`
-    : '';
-
   return (
     <AdminV2Layout>
-      <div className="admin-v2-monitoring">
-        <div className="admin-v2-monitoring-header">
-          <h1 className="admin-v2-page-title">Weekly Summary</h1>
-          {selectedPatient && (
-            <p className="admin-v2-page-subtitle">
-              {periodLabel} for {selectedPatient.first_name} {selectedPatient.last_name}
-            </p>
-          )}
+      <div className="rpt wk" ref={rootRef}>
+        <div className="wk-head">
+          <button type="button" className="wk-nav" onClick={() => setEndDate(shiftWeek(endDate, -1))} aria-label="Previous week">
+            <ChevronLeftIcon size={16} />
+          </button>
+          <span className="wk-period">{data?.period ? weekLabel(data.period) : '—'}</span>
+          <button
+            type="button"
+            className="wk-nav"
+            onClick={() => setEndDate(shiftWeek(endDate, 1))}
+            disabled={atCurrentWeek}
+            aria-label="Next week"
+          >
+            <ChevronRightIcon size={16} />
+          </button>
         </div>
 
-        {selectedPatient && (
-          <div className="overnight-controls">
-            <div className="overnight-date-nav">
-              <button className="dod-cal-nav" onClick={prevWeek}><ChevronLeftIcon size={16} /></button>
-              <span className="weekly-period-label">{periodLabel || 'Select week'}</span>
-              <button className="dod-cal-nav" onClick={nextWeek}><ChevronRightIcon size={16} /></button>
-            </div>
-          </div>
-        )}
-
-        <div className="admin-v2-monitoring-content">
-          {renderContent()}
+        <div className="rpt-window">
+          7-day overview · <strong>{VITALS.length ? `${rows.length}` : '0'}</strong> vitals recorded
         </div>
+
+        {body()}
       </div>
     </AdminV2Layout>
   );

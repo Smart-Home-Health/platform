@@ -387,18 +387,18 @@ const AdminV2ReportsOvernight = () => {
 
     return (
       <>
-        <div className="ovn-stats">
+        <div className="rpt-stats" style={{ '--rpt-stat-count': tiles.length }}>
           {tiles.map(t => (
-            <div key={t.key} data-stat={t.key} className={`ovn-stat${t.tone ? ` ${t.tone}` : ''}`}>
-              <span className="ovn-stat-label">{t.label}</span>
-              <span className="ovn-stat-value">
-                {t.value}{t.unit && <span className="ovn-unit">{t.unit}</span>}
+            <div key={t.key} data-stat={t.key} className={`rpt-stat${t.tone ? ` ${t.tone}` : ''}`}>
+              <span className="rpt-stat-label">{t.label}</span>
+              <span className="rpt-stat-value">
+                {t.value}{t.unit && <span className="rpt-stat-unit">{t.unit}</span>}
               </span>
-              <span className="ovn-stat-note">{t.note}</span>
+              <span className="rpt-stat-note">{t.note}</span>
             </div>
           ))}
           {cov && (
-            <div className="ovn-coverage">
+            <div className="rpt-stats-foot">
               Sensor coverage <strong>{formatMinutes(cov.minutes)}</strong> of {formatMinutes(cov.windowMinutes)}
               {cov.pct !== null && <> · <strong>{cov.pct}%</strong></>}
             </div>
@@ -411,13 +411,13 @@ const AdminV2ReportsOvernight = () => {
               <span className="rpt-card-title">Overnight vitals</span>
               <button
                 type="button"
-                className="ovn-toggle"
+                className="rpt-toggle"
                 onClick={() => setMarkers(v => !v)}
                 aria-pressed={markers}
                 aria-label="Event markers"
               >
                 Markers
-                <span className={`ovn-switch${markers ? ' on' : ''}`}><span /></span>
+                <span className={`rpt-switch${markers ? ' on' : ''}`}><span /></span>
               </button>
               <button
                 type="button"
