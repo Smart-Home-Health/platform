@@ -1,0 +1,143 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+/* Segmented control — vc-native, dark by design.
+   One joined track with hairline dividers, not a row of separate pills: the
+   segments read as a single control, and the selected one takes a solid fill
+   the way the symptom-severity scale does. */
+
+.vseg-field { display: flex; flex-direction: column; gap: 0.35rem; }
+
+.vseg-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+
+/* Required reads amber, not red — red stays clinical. */
+.vseg-req,
+.vseg-optional {
+  margin-left: 0.4rem;
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+}
+.vseg-req { color: var(--vc-state-due); }
+.vseg-req::before,
+.vseg-optional::before { content: '· '; color: var(--vc-text-tertiary); }
+.vseg-optional { color: var(--vc-text-tertiary); }
+
+.vseg-hint {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--vc-text-secondary);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* The track. Dividers live on the buttons; the outer radius is clipped here so
+   the ends stay square-ish rather than bubbly. */
+.vseg {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--vc-bg-surface);
+}
+.vseg.grid { display: grid; }
+.vseg.disabled { opacity: 0.5; pointer-events: none; }
+
+.vseg-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.5rem;
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--vc-line-hairline);
+  border-radius: 0;
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.vseg-btn:last-child { border-right: none; }
+
+/* Icon-bearing segments stack the glyph over the label, still on one track. */
+.vseg-btn.has-icon {
+  flex-direction: column;
+  gap: 0.3rem;
+  min-height: 62px;
+  padding: 0.5rem 0.35rem;
+}
+
+.vseg-btn:hover:not(.on):not(:disabled) {
+  background: var(--vc-bg-raised);
+  color: var(--vc-text-primary);
+}
+
+/* Selected takes the accent as a solid fill — same treatment the severity
+   scale uses, so the two controls read as one family. */
+.vseg-btn.on {
+  background: var(--vc-data-live);
+  color: var(--vc-bg-base);
+}
+
+.vseg-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* A recoloured border alone is too weak to pass as a focus indicator. */
+.vseg-btn:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--vc-data-live);
+}
+
+.vseg-icon { display: inline-flex; color: currentColor; }
+.vseg-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Compact variant — the Bristol 1-7 number row. */
+.vseg-field.sm .vseg-btn {
+  min-height: 38px;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  padding: 0.35rem 0.25rem;
+}
+
+/* The scale plus its descriptor sit on one line while there is room. */
+.vseg-inline { display: flex; align-items: center; gap: 0.6rem; }
+.vseg-inline .vseg { flex: 1 1 auto; min-width: 0; }
+
+@media (max-width: 520px) {
+  .vseg-btn { font-size: 10px; letter-spacing: 0.04em; padding: 0.45rem 0.3rem; }
+  .vseg-inline { flex-direction: column; align-items: stretch; gap: 0.3rem; }
+  .vseg-inline .vseg-hint { text-align: right; }
+}
