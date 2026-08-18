@@ -492,22 +492,90 @@
     padding: 0.75rem;
   }
   /* Stacked flow needs natural heights — flex-basis 0 collapses the column */
-  .ld-tiles, .ld-charts, .ld-cards, .ld-tile { flex: none; }
+  .ld-tiles, .ld-tile { flex: none; }
   .ld-tiles { display: flex; flex-direction: column; gap: 0.9rem; }
-  .ld-tiles-head { display: none; }
   .ld-tile, .ld-tiles-head + .ld-tile { margin: 0; min-height: 150px; }
   .ld-tile-value-row { container-type: normal; }
   .ld-tile-value-row { padding: 0.5rem 0; }
   .ld-tile-value { font-size: 54px; }
   .ld-tile-unit { font-size: 16px; }
-  /* Explicit heights: recharts' 100%-height chain needs a definite ancestor,
-   * and in the stacked flow nothing above these is definite. */
-  .ld-charts { display: flex; flex-direction: column; }
-  .ld-charts-toolbar { height: auto; padding: 0.55rem 0.9rem; flex-wrap: wrap; overflow: visible; }
-  .ld-chart-stack { display: flex; flex-direction: column; }
-  .ld-chart { flex: none; height: 200px; }
-  /* Grid rows are definite, so the cards' inline height:100% chain resolves */
-  .ld-cards { display: grid; grid-auto-rows: 260px; }
+
+  /* The head carries the range tabs here, so it stops being decoration. */
+  .ld-tiles-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    height: auto;
+    padding: 0 0.1rem 0.1rem;
+    border: none;
+    background: none;
+  }
+  .ld-range-tabs.compact { gap: 0.15rem; }
+  .ld-range-tabs.compact .ld-range-tab { padding: 0.3rem 0.5rem; font-size: 10px; }
+
+  /* A tile that can flip is still a tile: strip the button paint index.css
+     gives every bare <button> and keep the card's own box. */
+  .ld-tile-flip {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .ld-tile-flip.flipped { min-height: 210px; }
+
+  /* Value and trace share one box rather than taking turns: the number is the
+     ground, the line is drawn over it. */
+  .ld-tile-plot { position: relative; flex: 1; min-height: 120px; margin: 0.35rem 0 0.15rem; }
+  .ld-tile-ghost {
+    position: absolute;
+    inset: 0;
+    /* Over the trace, not behind it — the line reads through the number
+       rather than the number hiding under the chart's own surface. */
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+    pointer-events: none;
+  }
+  /* The tile's own accent at low alpha, not grey — a greyed number reads as
+     stale, and this one is live. */
+  .ld-tile-ghost-value {
+    font-family: var(--vc-font-mono);
+    font-size: 76px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: color-mix(in srgb, var(--ld-accent, #9aa8b8) 26%, transparent);
+    font-variant-numeric: tabular-nums;
+  }
+  .ld-tile-ghost-unit {
+    align-self: flex-end;
+    padding-bottom: 0.9rem;
+    font-family: var(--vc-font-mono);
+    font-size: 16px;
+    font-weight: 700;
+    color: color-mix(in srgb, var(--ld-accent, #9aa8b8) 26%, transparent);
+  }
+  .ld-tile-trace { position: absolute; inset: 0; }
+
+  /* Four segments at desktop spacing run off a 390px screen. Tighten and let
+     them wrap onto a second line rather than clipping the last one. */
+  .ld-strip {
+    flex-wrap: wrap;
+    gap: 0.35rem 0.9rem;
+    padding: 0.45rem 0.75rem calc(0.45rem + env(safe-area-inset-bottom, 0px));
+  }
+  .ld-strip-seg { gap: 0.35rem; }
+  .ld-strip-label { font-size: 9px; }
+  .ld-strip-value { font-size: 10.5px; gap: 0.3rem; }
+
   .ld-clock, .ld-page-label { display: none; }
 }
 
