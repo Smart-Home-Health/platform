@@ -15,178 +15,64 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useState, useEffect, useCallback } from 'react';
-import config, { apiFetch } from '../config';
-import { CheckIcon } from './Icons';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Alert } from '@/components/ui/alert';
+// Messages as a docked panel: the same board the admin page renders, scoped to
+// what this user has to deal with.
+//
+// Two callers: the Messages nav action, and MessagesAutoPop after login (which
+// hands over the list it already fetched so the generators don't run twice).
+// Outside the dashboard's dock provider ModalBase falls back to a plain slab,
+// which is what the auto-pop wants over an admin page.
+import { useNavigate } from 'react-router-dom';
+import ModalBase from './ModalBase';
+import MessagesBoard from './messages/MessagesBoard';
+import useMessages from './messages/useMessages';
+import { useModalDock } from '../contexts/ModalDockContext';
+import './section-panel/section-panel.css';
 
-const SEVERITY = {
-  critical: { color: '#e53e3e', label: 'Critical' },
-  warning: { color: '#dd6b20', label: 'Warning' },
-  info: { color: '#4299e1', label: 'Info' },
-};
-
-const SNOOZE_OPTIONS = [
-  { label: '1 hour', minutes: 60 },
-  { label: '4 hours', minutes: 240 },
-  { label: '1 day', minutes: 1440 },
-];
-
-/**
- * Pop-up listing the active attention messages (low medication stock,
- * broadcasts, …) with the dismiss/snooze actions each message allows. Used
- * both for the automatic pop-up after login (MessagesAutoPop) and the
- * Messages menu icon.
- */
 const MessagesModal = ({ onClose, initialMessages = null }) => {
-  const [messages, setMessages] = useState(initialMessages || []);
-  const [loading, setLoading] = useState(!initialMessages);
-  const [error, setError] = useState(null);
-  const [busyId, setBusyId] = useState(null);
+  const navigate = useNavigate();
+  const { docked, expanded } = useModalDock();
+  const {
+    status, setStatus, items, total, loading, error, busyId, dismiss, snooze,
+  } = useMessages({ scope: 'mine', initialItems: initialMessages });
 
-  const fetchMessages = useCallback(async () => {
-    try {
-      setError(null);
-      const res = await apiFetch(`${config.apiUrl}/api/messages/active`);
-      if (!res.ok) throw new Error(`Error fetching messages: ${res.statusText}`);
-      const data = await res.json();
-      setMessages(data.items || []);
-    } catch (err) {
-      console.error('Error fetching messages:', err);
-      setError('Failed to load messages. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Narrow is the dock's first stop, not a viewport width.
+  const dense = docked && !expanded;
 
-  useEffect(() => {
-    // When the opener already fetched the list (login auto-pop), reuse it
-    // instead of immediately re-running the generators on the backend.
-    if (!initialMessages) fetchMessages();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchMessages]);
+  // Dismiss and snooze are only meaningful on an open message; the other two
+  // tabs are archive, so the cards there carry no actions.
+  const open = status === 'active';
 
-  const act = async (messageId, path, body) => {
-    try {
-      setBusyId(messageId);
-      setError(null);
-      const res = await apiFetch(`${config.apiUrl}/api/messages/${messageId}/${path}`, {
-        method: 'POST',
-        headers: body ? { 'Content-Type': 'application/json' } : undefined,
-        body: body ? JSON.stringify(body) : undefined,
-      });
-      if (!res.ok) {
-        const detail = await res.json().catch(() => ({}));
-        throw new Error(detail.detail || res.statusText);
-      }
-      await fetchMessages();
-    } catch (err) {
-      console.error(`Error on message ${path}:`, err);
-      setError(err.message || 'Action failed. Please try again.');
-    } finally {
-      setBusyId(null);
-    }
+  const handleReview = (message, link) => {
+    onClose();
+    navigate(link.to);
   };
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-xl">
-        <DialogHeader>
-          <DialogTitle>Messages</DialogTitle>
-          <DialogDescription className="sr-only">
-            Active messages that need your attention
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="flex flex-col gap-3">
-          {error && <Alert variant="destructive">{error}</Alert>}
-
-          {loading ? (
-            <div className="py-10 text-center text-muted-foreground">Loading messages…</div>
-          ) : messages.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border py-10 text-muted-foreground">
-              <CheckIcon size={28} />
-              All caught up — nothing needs your attention.
-            </div>
-          ) : (
-            messages.map(message => {
-              const sev = SEVERITY[message.severity] || SEVERITY.info;
-              const busy = busyId === message.id;
-              return (
-                <div
-                  key={message.id}
-                  className="flex flex-col gap-2.5 rounded-lg border border-border border-l-4 bg-card p-4 shadow-sm"
-                  style={{ borderLeftColor: sev.color }}
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span
-                      className="text-xs font-bold uppercase tracking-wider"
-                      style={{ color: sev.color }}
-                    >
-                      {sev.label}
-                    </span>
-                    {message.created_at && (
-                      <span className="text-xs text-muted-foreground">
-                        {new Date(message.created_at).toLocaleString()}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="text-base font-semibold text-foreground">
-                    {message.title}
-                    {message.data?.patient_name && (
-                      <span className="ml-2 text-sm font-normal text-muted-foreground">
-                        · {message.data.patient_name}
-                      </span>
-                    )}
-                  </div>
-                  {message.body && (
-                    <div className="whitespace-pre-wrap text-sm text-muted-foreground">{message.body}</div>
-                  )}
-                  {message.ack_scope === 'per_user' && (
-                    <div className="text-xs italic text-muted-foreground">
-                      Each person must acknowledge this message individually.
-                    </div>
-                  )}
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    {message.dismissible && (
-                      <Button onClick={() => act(message.id, 'dismiss')} disabled={busy}>
-                        <CheckIcon size={14} />
-                        {message.ack_scope === 'per_user' ? 'Acknowledge' : 'Dismiss'}
-                      </Button>
-                    )}
-                    {message.snoozable && (
-                      <span className="inline-flex items-center gap-1.5">
-                        <span className="text-sm text-muted-foreground">Snooze:</span>
-                        {SNOOZE_OPTIONS.map(opt => (
-                          <Button
-                            key={opt.minutes}
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => act(message.id, 'snooze', { minutes: opt.minutes })}
-                            disabled={busy}
-                          >
-                            {opt.label}
-                          </Button>
-                        ))}
-                      </span>
-                    )}
-                    {!message.dismissible && (
-                      <span className="text-xs text-muted-foreground">
-                        Clears automatically when the underlying condition is resolved.
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+    <ModalBase isOpen={true} onClose={onClose} title={
+      <span className="mp-modal-title">
+        <span>Messages</span>
+        <span className="mp-modal-title-sub">
+          {status === 'active'
+            ? (total > 0 ? `${total} needing attention` : 'All caught up')
+            : `${status.charAt(0).toUpperCase()}${status.slice(1)}`}
+        </span>
+      </span>
+    }>
+      <MessagesBoard
+        items={items}
+        loading={loading}
+        error={error}
+        status={status}
+        onStatusChange={setStatus}
+        statusCount={status === 'active' ? total : null}
+        dense={dense}
+        busyId={busyId}
+        onDismiss={open ? dismiss : undefined}
+        onSnooze={open ? snooze : undefined}
+        onReview={handleReview}
+      />
+    </ModalBase>
   );
 };
 

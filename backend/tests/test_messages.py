@@ -150,5 +150,23 @@ def test_low_medication_message_generated_and_not_dismissible(admin_client, pati
                              json={"minutes": 30}).status_code == 200
 
 
+def test_low_medication_message_carries_medication_identity(admin_client, patient):
+    """The message names the medication in `data`, not only inside the title
+    prose — the readers link to it ("Review Lasix") and must not parse the
+    title back apart to do so."""
+    admin_client.post("/api/add/medication", json={
+        "name": "Lasix", "concentration": "40mg", "quantity": 0,
+        "quantity_unit": "tablets", "instructions": "daily",
+        "start_date": "2026-06-01", "is_patient_specific": True,
+        "admin_patient_id": patient.id,
+    })
+
+    items = admin_client.get("/api/messages/active").json()["items"]
+    msg = next(m for m in items if m["type"] == "low_medication")
+    assert msg["data"]["medication_name"] == "Lasix"
+    assert msg["data"]["medication_id"]
+    assert msg["patient_id"] == patient.id
+
+
 def test_requires_auth(client):
     assert client.get("/api/messages/active").status_code == 401
