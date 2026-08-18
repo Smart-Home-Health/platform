@@ -22,23 +22,12 @@ import { nutritionService } from '../../services/nutrition';
 import { FLUID_ITEM_TYPES } from '../../components/nutrition/intakeVocab';
 import {
   PatientHeader, PatientSelectorModal, IntakeSheet, OutputSheet, NutritionOverview,
-  NutritionIntakeTab, NutritionOutputTab,
+  NutritionIntakeTab, NutritionOutputTab, NutritionPlanTab, GoalHistoryModal,
 } from './components';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
-import {
-  PlusIcon,
-  EditIcon,
-  TrashIcon,
-  NutritionIcon,
-  ClockIcon,
-  DropletIcon,
-  FlameIcon,
-  ToiletIcon,
-  LeafIcon,
-  BarChartIcon
-} from '../../components/Icons';
+import { NutritionIcon } from '../../components/Icons';
 import {
   Dialog,
   DialogContent,
@@ -61,7 +50,7 @@ import {
   SelectContent,
   SelectItem,
 } from '@/components/ui/select';
-import { localTimeToUTC, localTimeAndDaysToUTC, utcCronToLocalDaysAndTime, formatCronExpression } from '../../utils/timezone';
+import { localTimeToUTC, localTimeAndDaysToUTC, utcCronToLocalDaysAndTime } from '../../utils/timezone';
 import './AdminV2.css';
 
 // Module-scope so the inputs don't lose focus on each keystroke (a component
@@ -333,8 +322,11 @@ const AdminV2Nutrition = () => {
     const path = location.pathname;
     if (path.includes('/nutrition/intake')) return 'intake';
     if (path.includes('/nutrition/output')) return 'output';
-    if (path.includes('/nutrition/schedules')) return 'schedules';
-    if (path.includes('/nutrition/goals')) return 'goals';
+    // /schedules and /goals kept as aliases so old links still land somewhere
+    // sensible now that the two views are one.
+    if (path.includes('/nutrition/plan')) return 'plan';
+    if (path.includes('/nutrition/schedules')) return 'plan';
+    if (path.includes('/nutrition/goals')) return 'plan';
     return 'overview'; // default — /care/nutrition lands here
   };
   
@@ -348,9 +340,10 @@ const AdminV2Nutrition = () => {
   // Data states
   const [intakes, setIntakes] = useState([]);
   const [outputs, setOutputs] = useState([]);
-  const [schedules, setSchedules] = useState([]);
   const [goals, setGoals] = useState([]);
   const [currentGoal, setCurrentGoal] = useState(null);
+  const [plan, setPlan] = useState(null);
+  const [showGoalHistory, setShowGoalHistory] = useState(false);
 
   // Overview-tab state — single date the page is showing, plus that day's
   // intake + output records pulled from the daily endpoints.
@@ -568,26 +561,23 @@ const AdminV2Nutrition = () => {
         if (response.ok) {
           setOutputs(await response.json());
         }
-      } else if (activeTab === 'schedules') {
-        const response = await fetch(
-          `${config.apiUrl}/api/nutrition/schedules/patient/${selectedPatient.id}?active_only=false`,
-          { credentials: 'include' }
-        );
-        if (response.ok) {
-          setSchedules(await response.json());
-        }
-      } else if (activeTab === 'goals') {
-        const [goalsRes, currentRes] = await Promise.all([
-          fetch(`${config.apiUrl}/api/nutrition/goals/patient/${selectedPatient.id}?active_only=false`, { credentials: 'include' }),
-          fetch(`${config.apiUrl}/api/nutrition/goals/patient/${selectedPatient.id}/current`, { credentials: 'include' })
+      } else if (activeTab === 'plan') {
+        // The plan endpoint returns targets, schedules and coverage together.
+        // These used to be separate calls with the current goal loaded by its
+        // own effect, so the view could render before its targets arrived and
+        // show them as zero. The goal history list is only needed by the modal.
+        const [planRes, goalsRes] = await Promise.all([
+          fetch(`${config.apiUrl}/api/nutrition/plan?patient_id=${selectedPatient.id}`,
+                { credentials: 'include' }),
+          fetch(`${config.apiUrl}/api/nutrition/goals/patient/${selectedPatient.id}?active_only=false`,
+                { credentials: 'include' }),
         ]);
-        if (goalsRes.ok) {
-          setGoals(await goalsRes.json());
+        if (planRes.ok) {
+          const body = await planRes.json();
+          setPlan(body);
+          setCurrentGoal(body.goal || null);
         }
-        if (currentRes.ok) {
-          const current = await currentRes.json();
-          setCurrentGoal(current);
-        }
+        if (goalsRes.ok) setGoals(await goalsRes.json());
       }
     } catch (err) {
       console.error('Error fetching data:', err);
@@ -791,6 +781,8 @@ const AdminV2Nutrition = () => {
   // GOAL HANDLERS
   // ========================
   
+  const openGoalHistory = () => setShowGoalHistory(true);
+
   const openGoalModal = (goal = null) => {
     if (goal) {
       setEditingItem(goal);
@@ -1008,85 +1000,8 @@ const AdminV2Nutrition = () => {
     return amount;
   };
 
-  // Calculate daily occurrences from cron expression
-  const getDailyOccurrences = (cronExpr) => {
-    if (!cronExpr) return 0;
-    const parts = cronExpr.split(' ');
-    if (parts.length < 5) return 0;
-    
-    const [, , dayOfMonth, , dayOfWeek] = parts;
-
-    // Daily schedule (* * * * *) = 1 per day
-    if (dayOfMonth === '*' && dayOfWeek === '*') {
-      return 1;
-    }
-    // Specific days of week (e.g., 0,1,2,3,4,5,6)
-    if (dayOfWeek !== '*') {
-      const days = dayOfWeek.split(',').length;
-      return days / 7; // Average per day
-    }
-    // Monthly schedule
-    if (dayOfMonth !== '*') {
-      return 1 / 30; // Average per day
-    }
-    return 1;
-  };
-
-  // Calculate scheduled totals for summary cards
-  const getScheduledTotals = () => {
-    const activeSchedules = schedules.filter(s => s.is_active);
-    
-    let totalWaterMl = 0;
-    let totalCalories = 0;
-    let hydrationCount = 0;
-    let mealCount = 0;
-    let bathroomCheckCount = 0;
-    
-    activeSchedules.forEach(schedule => {
-      const dailyOccurrences = getDailyOccurrences(schedule.cron_expression);
-      
-      if (schedule.schedule_type === 'hydration') {
-        hydrationCount += dailyOccurrences;
-        if (schedule.default_amount && schedule.default_amount_unit === 'ml') {
-          totalWaterMl += schedule.default_amount * dailyOccurrences;
-        } else if (schedule.default_amount && schedule.default_amount_unit === 'oz') {
-          totalWaterMl += schedule.default_amount * 29.5735 * dailyOccurrences;
-        }
-      }
-      
-      if (['meal', 'snack'].includes(schedule.schedule_type)) {
-        mealCount += dailyOccurrences;
-        if (schedule.default_calories) {
-          totalCalories += schedule.default_calories * dailyOccurrences;
-        }
-      }
-      
-      if (['diaper_check', 'bathroom_assist', 'catheter_care'].includes(schedule.schedule_type)) {
-        bathroomCheckCount += dailyOccurrences;
-      }
-    });
-    
-    return {
-      totalWaterMl: Math.round(totalWaterMl),
-      totalCalories: Math.round(totalCalories),
-      hydrationCount: Math.round(hydrationCount * 10) / 10,
-      mealCount: Math.round(mealCount * 10) / 10,
-      bathroomCheckCount: Math.round(bathroomCheckCount * 10) / 10
-    };
-  };
-
-  const getScheduleTypeLabel = (type) => {
-    const labels = {
-      'meal': 'Meal',
-      'hydration': 'Hydration',
-      'snack': 'Snack',
-      'supplement': 'Supplement',
-      'diaper_check': 'Diaper Check',
-      'bathroom_assist': 'Bathroom Assist',
-      'catheter_care': 'Catheter Care'
-    };
-    return labels[type] || type;
-  };
+  // The cron arithmetic and the goal-vs-scheduled reconciliation moved to the
+  // backend's /api/nutrition/plan, next to the scheduling code that owns them.
 
   // Output rendering moved to NutritionOutputTab / NutritionOverview, which
   // group rows by event_group_id rather than re-deriving the association here.
@@ -1227,421 +1142,23 @@ const AdminV2Nutrition = () => {
                 </div>
               )}
 
-              {/* SCHEDULES TAB */}
-              {activeTab === 'schedules' && (
+              {/* PLAN TAB — targets, coverage and the schedules that meet them */}
+              {activeTab === 'plan' && (
                 <div className="admin-v2-section">
-                  {/* Schedule Summary Cards */}
-                  {(() => {
-                    const totals = getScheduledTotals();
-                    const waterTarget = currentGoal?.water_ml_target || currentGoal?.total_fluid_ml_target || 0;
-                    const calorieTarget = currentGoal?.calories_target || 0;
-                    const waterRemaining = Math.max(0, waterTarget - totals.totalWaterMl);
-                    const calorieRemaining = Math.max(0, calorieTarget - totals.totalCalories);
-                    const waterPercent = waterTarget > 0 ? Math.min(100, (totals.totalWaterMl / waterTarget) * 100) : 0;
-                    const caloriePercent = calorieTarget > 0 ? Math.min(100, (totals.totalCalories / calorieTarget) * 100) : 0;
-                    
-                    return (
-                      <div className="admin-v2-schedule-summary">
-                        <div className="admin-v2-schedule-summary-card">
-                          <div className="admin-v2-schedule-summary-header">
-                            <span className="admin-v2-schedule-summary-icon water"><DropletIcon size={24} /></span>
-                            <span className="admin-v2-schedule-summary-title">Daily Fluids</span>
-                          </div>
-                          <div className="admin-v2-schedule-summary-values">
-                            <div className="admin-v2-schedule-summary-row">
-                              <span className="label">Goal:</span>
-                              <span className="value">{waterTarget > 0 ? `${waterTarget} ml` : 'Not set'}</span>
-                            </div>
-                            <div className="admin-v2-schedule-summary-row">
-                              <span className="label">Scheduled:</span>
-                              <span className="value scheduled">{totals.totalWaterMl} ml</span>
-                            </div>
-                            <div className="admin-v2-schedule-summary-row">
-                              <span className="label">Remaining:</span>
-                              <span className={`value ${waterRemaining > 0 ? 'warning' : 'success'}`}>
-                                {waterRemaining > 0 ? `${waterRemaining} ml needed` : '✓ Covered'}
-                              </span>
-                            </div>
-                          </div>
-                          {waterTarget > 0 && (
-                            <div className="admin-v2-schedule-progress">
-                              <div 
-                                className={`admin-v2-schedule-progress-bar ${waterPercent >= 100 ? 'success' : waterPercent >= 75 ? 'good' : 'warning'}`}
-                                style={{ width: `${waterPercent}%` }}
-                              />
-                            </div>
-                          )}
-                          <div className="admin-v2-schedule-summary-detail">
-                            {totals.hydrationCount} hydration times/day
-                          </div>
-                        </div>
-
-                        <div className="admin-v2-schedule-summary-card">
-                          <div className="admin-v2-schedule-summary-header">
-                            <span className="admin-v2-schedule-summary-icon calories"><FlameIcon size={24} /></span>
-                            <span className="admin-v2-schedule-summary-title">Daily Calories</span>
-                          </div>
-                          <div className="admin-v2-schedule-summary-values">
-                            <div className="admin-v2-schedule-summary-row">
-                              <span className="label">Goal:</span>
-                              <span className="value">{calorieTarget > 0 ? `${calorieTarget} cal` : 'Not set'}</span>
-                            </div>
-                            <div className="admin-v2-schedule-summary-row">
-                              <span className="label">Scheduled:</span>
-                              <span className="value scheduled">{totals.totalCalories} cal</span>
-                            </div>
-                            <div className="admin-v2-schedule-summary-row">
-                              <span className="label">Remaining:</span>
-                              <span className={`value ${calorieRemaining > 0 ? 'warning' : 'success'}`}>
-                                {calorieRemaining > 0 ? `${calorieRemaining} cal needed` : '✓ Covered'}
-                              </span>
-                            </div>
-                          </div>
-                          {calorieTarget > 0 && (
-                            <div className="admin-v2-schedule-progress">
-                              <div 
-                                className={`admin-v2-schedule-progress-bar ${caloriePercent >= 100 ? 'success' : caloriePercent >= 75 ? 'good' : 'warning'}`}
-                                style={{ width: `${caloriePercent}%` }}
-                              />
-                            </div>
-                          )}
-                          <div className="admin-v2-schedule-summary-detail">
-                            {totals.mealCount} meals/snacks per day
-                          </div>
-                        </div>
-
-                        <div className="admin-v2-schedule-summary-card">
-                          <div className="admin-v2-schedule-summary-header">
-                            <span className="admin-v2-schedule-summary-icon care"><ToiletIcon size={24} /></span>
-                            <span className="admin-v2-schedule-summary-title">Care Checks</span>
-                          </div>
-                          <div className="admin-v2-schedule-summary-values">
-                            <div className="admin-v2-schedule-summary-row">
-                              <span className="label">Bathroom/Diaper:</span>
-                              <span className="value">{totals.bathroomCheckCount}x daily</span>
-                            </div>
-                          </div>
-                          <div className="admin-v2-schedule-summary-detail">
-                            {schedules.filter(s => s.is_active).length} active schedules
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  <div className="admin-v2-section-header">
-                    <h3>Nutrition & Care Schedules</h3>
-                    {hasPermission('nutrition.create') && (
-                      <div className="tw">
-                        <Button onClick={() => openScheduleModal()}>
-                          <PlusIcon size={16} />
-                          Add Schedule
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                  
-                  {loading ? (
-                    <div className="admin-v2-loading">Loading...</div>
-                  ) : schedules.length === 0 ? (
-                    <div className="admin-v2-empty-state">
-                      <p>No schedules found</p>
-                    </div>
-                  ) : (
-                    <div className="admin-v2-table-container">
-                      <table className="admin-v2-table">
-                        <thead>
-                          <tr>
-                            <th>Name</th>
-                            <th>Type</th>
-                            <th>Timing</th>
-                            <th>Default Amount</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {schedules.map(schedule => (
-                            <tr key={schedule.id}>
-                              <td><strong>{schedule.name}</strong></td>
-                              <td>
-                                <span className="admin-v2-badge admin-v2-badge-info">
-                                  {getScheduleTypeLabel(schedule.schedule_type)}
-                                </span>
-                              </td>
-                              <td>{formatCronExpression(schedule.cron_expression)}</td>
-                              <td>
-                                {schedule.default_amount 
-                                  ? `${schedule.default_amount} ${schedule.default_amount_unit || ''}`
-                                  : '-'
-                                }
-                                {schedule.default_calories && ` (${schedule.default_calories} cal)`}
-                              </td>
-                              <td>
-                                <span className={`admin-v2-badge ${schedule.is_active ? 'admin-v2-badge-success' : 'admin-v2-badge-secondary'}`}>
-                                  {schedule.is_active ? 'Active' : 'Inactive'}
-                                </span>
-                              </td>
-                              <td>
-                                <div className="admin-v2-table-actions">
-                                  {hasPermission('nutrition.update') && (
-                                    <>
-                                      <button 
-                                        className={`admin-v2-action-btn admin-v2-action-btn-${schedule.is_active ? 'warning' : 'success'}`}
-                                        onClick={() => handleToggleSchedule(schedule.id)}
-                                        title={schedule.is_active ? 'Deactivate' : 'Activate'}
-                                      >
-                                        <ClockIcon size={14} />
-                                      </button>
-                                      <button 
-                                        className="admin-v2-action-btn admin-v2-action-btn-edit"
-                                        onClick={() => openScheduleModal(schedule)}
-                                      >
-                                        <EditIcon size={14} />
-                                      </button>
-                                    </>
-                                  )}
-                                  {hasPermission('nutrition.delete') && (
-                                    <button 
-                                      className="admin-v2-action-btn admin-v2-action-btn-delete"
-                                      onClick={() => openDeleteModal(schedule, 'schedule')}
-                                    >
-                                      <TrashIcon size={14} />
-                                    </button>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* GOALS TAB */}
-              {activeTab === 'goals' && (
-                <div className="admin-v2-section">
-                  <div className="admin-v2-section-header">
-                    <h3>Daily Nutrition Goals</h3>
-                    {hasPermission('nutrition.create') && (
-                      <div className="tw">
-                        <Button onClick={() => openGoalModal()}>
-                          <PlusIcon size={16} />
-                          Set New Goals
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-
-                  {currentGoal && (
-                    <div className="admin-v2-card nutrition-goals-card" style={{ marginBottom: '1.5rem' }}>
-                      <div className="admin-v2-card-header">
-                        <h4>Current Active Goals</h4>
-                        <span className="admin-v2-badge admin-v2-badge-success">Active</span>
-                      </div>
-                      <div className="admin-v2-card-body">
-                        <div className="nutrition-goals-grid">
-                          {/* Fluids Section */}
-                          <div className="nutrition-goal-card">
-                            <div className="nutrition-goal-card-header">
-                              <DropletIcon size={18} />
-                              <h5>Fluids</h5>
-                            </div>
-                            <div className="nutrition-goal-card-body">
-                              {currentGoal.water_ml_target ? (
-                                <div className="nutrition-goal-stat">
-                                  <span className="nutrition-goal-value">{currentGoal.water_ml_target}</span>
-                                  <span className="nutrition-goal-unit">ml water</span>
-                                </div>
-                              ) : null}
-                              {currentGoal.total_fluid_ml_target ? (
-                                <div className="nutrition-goal-stat secondary">
-                                  <span className="nutrition-goal-label">Total Fluids:</span>
-                                  <span className="nutrition-goal-amount">{currentGoal.total_fluid_ml_target} ml</span>
-                                </div>
-                              ) : null}
-                              {!currentGoal.water_ml_target && !currentGoal.total_fluid_ml_target && (
-                                <span className="nutrition-goal-empty">Not set</span>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Calories Section */}
-                          <div className="nutrition-goal-card">
-                            <div className="nutrition-goal-card-header">
-                              <FlameIcon size={18} />
-                              <h5>Calories</h5>
-                            </div>
-                            <div className="nutrition-goal-card-body">
-                              {currentGoal.calories_target ? (
-                                <div className="nutrition-goal-stat">
-                                  <span className="nutrition-goal-value">{currentGoal.calories_target}</span>
-                                  <span className="nutrition-goal-unit">kcal</span>
-                                </div>
-                              ) : null}
-                              {(currentGoal.calories_min || currentGoal.calories_max) && (
-                                <div className="nutrition-goal-range">
-                                  {currentGoal.calories_min && <span>Min: {currentGoal.calories_min}</span>}
-                                  {currentGoal.calories_min && currentGoal.calories_max && <span className="range-divider">–</span>}
-                                  {currentGoal.calories_max && <span>Max: {currentGoal.calories_max}</span>}
-                                </div>
-                              )}
-                              {!currentGoal.calories_target && !currentGoal.calories_min && !currentGoal.calories_max && (
-                                <span className="nutrition-goal-empty">Not set</span>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Macros Section */}
-                          <div className="nutrition-goal-card">
-                            <div className="nutrition-goal-card-header">
-                              <LeafIcon size={18} />
-                              <h5>Macros</h5>
-                            </div>
-                            <div className="nutrition-goal-card-body">
-                              <div className="nutrition-goal-macros">
-                                {currentGoal.protein_grams_target ? (
-                                  <div className="macro-item protein">
-                                    <span className="macro-value">{currentGoal.protein_grams_target}g</span>
-                                    <span className="macro-label">Protein</span>
-                                  </div>
-                                ) : null}
-                                {currentGoal.carbs_grams_target ? (
-                                  <div className="macro-item carbs">
-                                    <span className="macro-value">{currentGoal.carbs_grams_target}g</span>
-                                    <span className="macro-label">Carbs</span>
-                                  </div>
-                                ) : null}
-                                {currentGoal.fat_grams_target ? (
-                                  <div className="macro-item fat">
-                                    <span className="macro-value">{currentGoal.fat_grams_target}g</span>
-                                    <span className="macro-label">Fat</span>
-                                  </div>
-                                ) : null}
-                                {currentGoal.fiber_grams_target ? (
-                                  <div className="macro-item fiber">
-                                    <span className="macro-value">{currentGoal.fiber_grams_target}g</span>
-                                    <span className="macro-label">Fiber</span>
-                                  </div>
-                                ) : null}
-                              </div>
-                              {!currentGoal.protein_grams_target && !currentGoal.carbs_grams_target && 
-                               !currentGoal.fat_grams_target && !currentGoal.fiber_grams_target && (
-                                <span className="nutrition-goal-empty">Not set</span>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Limits & Output Section */}
-                          <div className="nutrition-goal-card">
-                            <div className="nutrition-goal-card-header">
-                              <BarChartIcon size={18} />
-                              <h5>Limits & Output</h5>
-                            </div>
-                            <div className="nutrition-goal-card-body">
-                              <div className="nutrition-goal-limits">
-                                {currentGoal.sodium_mg_max ? (
-                                  <div className="limit-item">
-                                    <span className="limit-label">Sodium Max</span>
-                                    <span className="limit-value">{currentGoal.sodium_mg_max} mg</span>
-                                  </div>
-                                ) : null}
-                                {currentGoal.urine_output_ml_min ? (
-                                  <div className="limit-item">
-                                    <span className="limit-label">Min Urine</span>
-                                    <span className="limit-value">{currentGoal.urine_output_ml_min} ml</span>
-                                  </div>
-                                ) : null}
-                                {currentGoal.bowel_movements_target ? (
-                                  <div className="limit-item">
-                                    <span className="limit-label">BM Target</span>
-                                    <span className="limit-value">{currentGoal.bowel_movements_target}/day</span>
-                                  </div>
-                                ) : null}
-                              </div>
-                              {!currentGoal.sodium_mg_max && !currentGoal.urine_output_ml_min && 
-                               !currentGoal.bowel_movements_target && (
-                                <span className="nutrition-goal-empty">Not set</span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        
-                        <div className="nutrition-goals-footer">
-                          <span className="effective-date">
-                            Effective: {formatDate(currentGoal.effective_date)}
-                          </span>
-                          {hasPermission('nutrition.update') && (
-                            <div className="tw">
-                              <Button variant="secondary" onClick={() => openGoalModal(currentGoal)}>
-                                <EditIcon size={14} />
-                                Edit Current Goals
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {loading ? (
-                    <div className="admin-v2-loading">Loading...</div>
-                  ) : goals.length === 0 ? (
-                    <div className="admin-v2-empty-state">
-                      <p>No goals configured</p>
-                    </div>
-                  ) : (
-                    <div className="admin-v2-table-container">
-                      <h4 style={{ marginBottom: '1rem' }}>Goal History</h4>
-                      <table className="admin-v2-table">
-                        <thead>
-                          <tr>
-                            <th>Effective Date</th>
-                            <th>Water Target</th>
-                            <th>Calories</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {goals.map(goal => (
-                            <tr key={goal.id}>
-                              <td>{formatDate(goal.effective_date)}</td>
-                              <td>{goal.water_ml_target ? `${goal.water_ml_target} ml` : '-'}</td>
-                              <td>{goal.calories_target ? `${goal.calories_target} kcal` : '-'}</td>
-                              <td>
-                                <span className={`admin-v2-badge ${goal.is_active ? 'admin-v2-badge-success' : 'admin-v2-badge-secondary'}`}>
-                                  {goal.is_active ? 'Active' : 'Inactive'}
-                                </span>
-                              </td>
-                              <td>
-                                <div className="admin-v2-table-actions">
-                                  {hasPermission('nutrition.update') && (
-                                    <button 
-                                      className="admin-v2-action-btn admin-v2-action-btn-edit"
-                                      onClick={() => openGoalModal(goal)}
-                                    >
-                                      <EditIcon size={14} />
-                                    </button>
-                                  )}
-                                  {hasPermission('nutrition.delete') && (
-                                    <button 
-                                      className="admin-v2-action-btn admin-v2-action-btn-delete"
-                                      onClick={() => openDeleteModal(goal, 'goal')}
-                                    >
-                                      <TrashIcon size={14} />
-                                    </button>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+                  <NutritionPlanTab
+                    plan={plan}
+                    loading={loading}
+                    canCreate={hasPermission('nutrition.create')}
+                    canUpdate={hasPermission('nutrition.update')}
+                    canDelete={hasPermission('nutrition.delete')}
+                    onEditGoal={openGoalModal}
+                    onViewGoalHistory={openGoalHistory}
+                    onAddSchedule={() => openScheduleModal()}
+                    onEditSchedule={openScheduleModal}
+                    onToggleSchedule={(s) => handleToggleSchedule(s.id)}
+                    onDeleteSchedule={(s) => openDeleteModal(s, 'schedule')}
+                    formatDate={formatDate}
+                  />
                 </div>
               )}
             </div>
@@ -1659,6 +1176,13 @@ const AdminV2Nutrition = () => {
           onClose={() => setShowPatientModal(false)}
         />
       )}
+
+      <GoalHistoryModal
+        open={showGoalHistory}
+        onOpenChange={setShowGoalHistory}
+        goals={goals}
+        formatDate={formatDate}
+      />
 
       <IntakeSheet
         open={showIntakeModal}

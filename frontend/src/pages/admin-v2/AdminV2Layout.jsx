@@ -157,8 +157,7 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
       { path: '/care/nutrition/schedule', label: 'Schedule' },
       { path: '/care/nutrition/intake', label: 'Intake' },
       { path: '/care/nutrition/output', label: 'Output' },
-      { path: '/care/nutrition/schedules', label: 'Manage' },
-      { path: '/care/nutrition/goals', label: 'Goals' },
+      { path: '/care/nutrition/plan', label: 'Plan' },
       ...(hasAnyPermission(['audit.read'])
         ? [{ path: '/care/schedule/undo-log', label: 'Undo' }] : []),
     ],
