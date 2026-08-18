@@ -1,0 +1,343 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Overnight report, on top of the shared report chrome in report-surface.css.
+ * Only this page's own pieces live here: the night header, the stat strip,
+ * the episode list and the care checklist.
+ *
+ * Colour roles as everywhere else in reports: amber is the configured alarm
+ * (and adherence, which is never red), red is a reading that breached it. */
+@import './report-surface.css';
+
+/* ---- night header ---- */
+
+.ovn-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.ovn-date {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 46px;
+  padding: 0 0.8rem;
+  border: 1px solid var(--rpt-line);
+  border-radius: 10px;
+  background: var(--rpt-surface);
+  font-family: var(--vc-font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--rpt-text);
+  white-space: nowrap;
+}
+.ovn-nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border: 1px solid var(--rpt-line);
+  border-radius: 10px;
+  background: var(--rpt-surface);
+  color: var(--rpt-text-2);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.ovn-nav:hover:not(:disabled) { color: var(--rpt-text); border-color: var(--rpt-accent); }
+.ovn-nav:disabled { opacity: 0.4; cursor: default; }
+.ovn-head-spacer { flex: 1; }
+
+/* ---- stat strip ---- */
+
+/* Five across at any width — wrapping them left a hole in the grid and put a
+   border where a reader saw a divider between two unrelated figures. */
+.ovn-stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  border: 1px solid var(--rpt-line);
+  border-radius: 12px;
+  background: var(--rpt-surface);
+  overflow: hidden;
+}
+.ovn-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  align-items: center;
+  padding: 0.7rem 0.3rem;
+  border-right: 1px solid var(--rpt-line);
+  text-align: center;
+  min-width: 0;
+}
+.ovn-stat:last-of-type { border-right: none; }
+.ovn-stat-label {
+  font-family: var(--vc-font-mono);
+  font-size: 8.5px;
+  line-height: 1.25;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--rpt-text-3);
+}
+.ovn-stat-value {
+  font-family: var(--vc-font-mono);
+  font-size: clamp(17px, 4.6vw, 26px);
+  font-weight: 700;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  color: var(--rpt-text);
+}
+.ovn-stat-value .ovn-unit { font-size: 0.55em; font-weight: 600; color: var(--rpt-text-3); }
+.ovn-stat.breach .ovn-stat-value { color: var(--rpt-breach); }
+.ovn-stat.warn .ovn-stat-value { color: var(--rpt-alarm); }
+.ovn-stat.ok .ovn-stat-value { color: var(--rpt-text); }
+.ovn-stat-note {
+  font-family: var(--vc-font-mono);
+  font-size: 9px;
+  line-height: 1.25;
+  letter-spacing: 0.04em;
+  color: var(--rpt-text-3);
+}
+.ovn-coverage {
+  grid-column: 1 / -1;
+  padding: 0.5rem;
+  border-top: 1px solid var(--rpt-line);
+  text-align: center;
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--rpt-text-3);
+}
+.ovn-coverage strong { color: var(--rpt-text-2); font-weight: 700; }
+
+/* ---- charts ---- */
+
+.ovn-plots { display: flex; flex-direction: column; }
+.ovn-plot { position: relative; height: 210px; padding: 0.6rem 0.6rem 0; }
+.ovn-plot.hr { height: 170px; padding-bottom: 0.4rem; }
+.rpt-card.full .ovn-plots { flex: 1; min-height: 0; }
+.rpt-card.full .ovn-plot { flex: 1; height: auto; min-height: 0; }
+.ovn-caption {
+  padding: 0 0.7rem 0.5rem;
+  text-align: center;
+  font-family: var(--vc-font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--rpt-text-3);
+}
+.ovn-averages {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  padding: 0.55rem 0.7rem;
+  border-top: 1px solid var(--rpt-line);
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--rpt-text-3);
+}
+.ovn-averages b { color: var(--rpt-text); font-weight: 700; }
+.ovn-averages .spo2 { color: var(--rpt-accent); }
+.ovn-averages .hr { color: var(--rpt-ok); }
+
+/* The markers toggle borrows the compose sheet's switch shape. */
+.ovn-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--rpt-text-3);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ovn-switch {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  border: 1px solid var(--rpt-line);
+  border-radius: 999px;
+  background: var(--rpt-raised);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.ovn-switch.on { background: var(--rpt-accent); border-color: var(--rpt-accent); }
+.ovn-switch span {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--rpt-text-3);
+  transition: transform 120ms ease, background 120ms ease;
+}
+.ovn-switch.on span { transform: translateX(18px); background: var(--rpt-text); }
+
+/* ---- episodes ---- */
+
+.ovn-card-sub {
+  padding: 0 0.8rem 0.6rem;
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--rpt-text-3);
+}
+.ovn-more {
+  width: 100%;
+  padding: 0.6rem;
+  border-top: 1px solid var(--rpt-line);
+  color: var(--rpt-accent);
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.ovn-more:hover { background: var(--rpt-raised); }
+
+/* ---- care checklist ---- */
+
+.ovn-group { border-top: 1px solid var(--rpt-line); }
+.ovn-group:first-of-type { border-top: none; }
+.ovn-group-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.7rem 0.8rem;
+  text-align: left;
+  cursor: pointer;
+}
+.ovn-group-head:hover { background: var(--rpt-raised); }
+.ovn-group-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--rpt-line);
+  border-radius: 8px;
+  color: var(--rpt-alarm);
+  flex-shrink: 0;
+}
+.ovn-group-icon.done { color: var(--rpt-ok); }
+.ovn-group-name {
+  font-family: var(--vc-font-mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--rpt-text);
+}
+.ovn-group-count {
+  margin-left: auto;
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--rpt-text-3);
+  white-space: nowrap;
+}
+.ovn-group-count .miss { color: var(--rpt-alarm); }
+.ovn-items { display: flex; flex-direction: column; padding: 0 0.8rem 0.7rem; gap: 0.35rem; }
+.ovn-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--rpt-line);
+  border-radius: 8px;
+  background: var(--rpt-raised);
+  font-size: 12.5px;
+  color: var(--rpt-text);
+}
+.ovn-item-time {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--rpt-text-3);
+  white-space: nowrap;
+}
+.ovn-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ovn-item-status {
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.ovn-item-status.ok { color: var(--rpt-ok); }
+.ovn-item-status.warn { color: var(--rpt-alarm); }
+.ovn-item-status.muted { color: var(--rpt-text-3); }
+.ovn-foot {
+  padding: 0 0.8rem 0.7rem;
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--rpt-text-3);
+}
+
+/* ---- symptoms ---- */
+
+.ovn-symptom {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.55rem 0.8rem;
+  border-top: 1px solid var(--rpt-line);
+  font-size: 13px;
+}
+.ovn-symptom:first-of-type { border-top: none; }
+.ovn-symptom-type {
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--rpt-text);
+}
+.ovn-symptom-sev { font-family: var(--vc-font-mono); font-size: 11px; color: var(--rpt-alarm); }
+.ovn-symptom-desc { color: var(--rpt-text-2); min-width: 0; }
+
+/* A share that has already happened says so where it was pressed. */
+.ovn-shared {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--rpt-ok);
+  text-align: center;
+}

@@ -533,7 +533,26 @@ async def overnight_summary(
         # Estimate minutes below 90 — each sample is roughly 4 seconds apart
         time_below_90_min = round(below_90 * 4 / 60, 1)
 
+        # How much of the window the sensor actually covered: minutes that hold
+        # at least one reading. Counted rather than derived from the sample
+        # count, because readers differ in cadence — at 2s per sample a
+        # 4s-per-sample estimate reports a full night no matter how many gaps
+        # there were.
+        window_minutes = round((utc_end - utc_start).total_seconds() / 60, 1)
+        covered_minutes = db.execute(text("""
+            SELECT COUNT(DISTINCT date_trunc('minute', timestamp)) AS mins
+            FROM pulse_ox_data
+            WHERE patient_id = :pid
+              AND timestamp >= :start AND timestamp < :end
+              AND spo2 IS NOT NULL AND spo2 > 0
+              AND bpm IS NOT NULL AND bpm > 0
+        """), {"pid": patient_id, "start": utc_start, "end": utc_end}).scalar() or 0
+        coverage_minutes = round(min(float(covered_minutes), window_minutes), 1)
+
         vitals_summary = {
+            "sample_count": int(vitals_rows.sample_count),
+            "coverage_minutes": coverage_minutes,
+            "window_minutes": window_minutes,
             "spo2": {
                 "min": int(vitals_rows.spo2_min),
                 "avg": round(vitals_rows.spo2_avg, 1),

@@ -113,8 +113,8 @@ describe('AdminV2ReportsDayOverDay', () => {
     const rows = await screen.findAllByText(/Aug [23]$/);
     expect(rows.length).toBeGreaterThan(0);
     // 88% on Aug 3 is under the configured 90% floor; 94% on Aug 2 is not.
-    await waitFor(() => expect(document.querySelectorAll('.dod-breach')).toHaveLength(1));
-    expect(document.querySelector('.dod-breach').textContent).toBe('88%');
+    await waitFor(() => expect(document.querySelectorAll('.rpt-breach')).toHaveLength(1));
+    expect(document.querySelector('.rpt-breach').textContent).toBe('88%');
   });
 
   it('counts coverage in hours', async () => {

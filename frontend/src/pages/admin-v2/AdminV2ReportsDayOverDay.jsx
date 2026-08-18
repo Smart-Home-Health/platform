@@ -218,8 +218,8 @@ const AdminV2ReportsDayOverDay = ({ patientId }) => {
     // the mounted root — which is where the light/dark token swap happens.
     const rootStyle = rootRef.current ? getComputedStyle(rootRef.current) : null;
     const token = (name, fallback) => rootStyle?.getPropertyValue(name).trim() || fallback;
-    const alarmColor = token('--dod-alarm', '#f0a52e');
-    const tooltipBg = token('--dod-raised', chrome.cutout);
+    const alarmColor = token('--rpt-alarm', '#f0a52e');
+    const tooltipBg = token('--rpt-raised', chrome.cutout);
     const gridSoft = `${chrome.grid}80`;
 
     const isRaw = (reportData.aggregation || 'hour') === 'none';
@@ -370,41 +370,41 @@ const AdminV2ReportsDayOverDay = ({ patientId }) => {
   const fmt = (n) => (n === null || n === undefined ? '—' : `${Math.round(n * 10) / 10}${unit}`);
 
   return (
-    <div className="dod" ref={rootRef}>
-      <div className="dod-controls">
-        <label className="dod-control">
+    <div className="rpt dod" ref={rootRef}>
+      <div className="rpt-controls">
+        <label className="rpt-control">
           <VitalsChartIcon size={16} />
-          <span className="dod-sr">Vital</span>
+          <span className="rpt-sr">Vital</span>
           <select value={vitalType} onChange={e => setVitalType(e.target.value)}>
             {VITAL_TYPES.map(vt => <option key={vt.value} value={vt.value}>{vt.label}</option>)}
           </select>
-          <ChevronDownIcon size={14} className="dod-chevron" />
+          <ChevronDownIcon size={14} className="rpt-chevron" />
         </label>
 
-        <label className="dod-control">
+        <label className="rpt-control">
           <ClockIcon size={16} />
-          <span className="dod-sr">Aggregation</span>
+          <span className="rpt-sr">Aggregation</span>
           <select value={aggregation} onChange={e => setAggregation(e.target.value)}>
             {AGGREGATIONS.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
           </select>
-          <ChevronDownIcon size={14} className="dod-chevron" />
+          <ChevronDownIcon size={14} className="rpt-chevron" />
         </label>
 
         {/* Icon-only so the two pickers and this fit one phone row; the dot
             says the hours have been narrowed without spending a word on it. */}
         <button
           type="button"
-          className="dod-control icon"
+          className="rpt-control icon"
           onClick={() => setSheet('filters')}
           aria-label={filtersOn ? 'Filters — hours narrowed' : 'Filters'}
           title="Filters"
         >
           <FilterIcon size={17} />
-          {filtersOn && <span className="dod-filter-dot" />}
+          {filtersOn && <span className="rpt-dot-flag" />}
         </button>
       </div>
 
-      <div className="dod-window">
+      <div className="rpt-window">
         {hourWindowLabel(startHour, endHour)} · <strong>{selectedDates.length}</strong>
         {selectedDates.length === 1 ? ' day selected' : ' days selected'}
       </div>
@@ -437,25 +437,25 @@ const AdminV2ReportsDayOverDay = ({ patientId }) => {
         </button>
       </div>
 
-      {error && <div className="dod-error">{error}</div>}
+      {error && <div className="rpt-error">{error}</div>}
 
       {selectedDates.length === 0 ? (
-        <div className="dod-empty">Add a day to compare</div>
+        <div className="rpt-empty">Add a day to compare</div>
       ) : loading && !reportData ? (
-        <div className="dod-empty">Loading…</div>
+        <div className="rpt-empty">Loading…</div>
       ) : !rows.some(r => r.points.length) ? (
-        <div className="dod-empty">No {vital.label} recorded on the selected days</div>
+        <div className="rpt-empty">No {vital.label} recorded on the selected days</div>
       ) : (
         <>
-          <section className={`dod-card${fullscreen ? ' full' : ''}`}>
-            <div className="dod-card-head">
-              <span className="dod-card-title">
+          <section className={`rpt-card${fullscreen ? ' full' : ''}`}>
+            <div className="rpt-card-head">
+              <span className="rpt-card-title">
                 {vital.label} by {aggregation === 'hour' ? 'hour' : 'time'}
               </span>
-              <span className="dod-card-note">{agg.note}</span>
+              <span className="rpt-card-note">{agg.note}</span>
               <button
                 type="button"
-                className="dod-icon-btn"
+                className="rpt-icon-btn"
                 onClick={() => setFullscreen(v => !v)}
                 aria-label={fullscreen ? 'Exit full screen' : 'Full screen chart'}
                 aria-pressed={fullscreen}
@@ -464,10 +464,10 @@ const AdminV2ReportsDayOverDay = ({ patientId }) => {
               </button>
             </div>
             {view === 'chart' ? (
-              <div className="dod-plot"><canvas ref={chartRef} /></div>
+              <div className="rpt-plot dod-plot"><canvas ref={chartRef} /></div>
             ) : (
               <div className="dod-data-scroll">
-                <table className="dod-table dod-data-table">
+                <table className="rpt-table dod-data-table">
                   <thead>
                     <tr>
                       <th>Day</th><th>Time</th><th>Avg</th><th>Min</th><th>Max</th><th>Samples</th>
@@ -486,7 +486,7 @@ const AdminV2ReportsDayOverDay = ({ patientId }) => {
                         <td>{fmt(b.avg)}</td>
                         <td>{b.min == null ? '—' : fmt(b.min)}</td>
                         <td>{b.max == null ? '—' : fmt(b.max)}</td>
-                        <td className="dod-muted">{b.count ?? '—'}</td>
+                        <td className="rpt-muted">{b.count ?? '—'}</td>
                       </tr>
                     )))}
                   </tbody>
@@ -495,8 +495,8 @@ const AdminV2ReportsDayOverDay = ({ patientId }) => {
             )}
           </section>
 
-          <div className="dod-table-wrap">
-            <table className="dod-table">
+          <div className="rpt-table-wrap">
+            <table className="rpt-table">
               <thead>
                 <tr>
                   <th>Day</th><th>Avg</th><th>Low</th><th>High</th><th>Coverage</th><th>Source</th>
@@ -514,12 +514,12 @@ const AdminV2ReportsDayOverDay = ({ patientId }) => {
                         </span>
                       </td>
                       <td>{fmt(row.avg)}</td>
-                      <td className={breach.low ? 'dod-breach' : undefined}>{fmt(row.low)}</td>
-                      <td className={breach.high ? 'dod-breach' : undefined}>{fmt(row.high)}</td>
-                      <td className="dod-muted">
+                      <td className={breach.low ? 'rpt-breach' : undefined}>{fmt(row.low)}</td>
+                      <td className={breach.high ? 'rpt-breach' : undefined}>{fmt(row.high)}</td>
+                      <td className="rpt-muted">
                         {row.coverage ? `${row.coverage}h` : '—'}
                       </td>
-                      <td className="dod-muted">{SOURCE_LABELS[row.source] || row.source || '—'}</td>
+                      <td className="rpt-muted">{SOURCE_LABELS[row.source] || row.source || '—'}</td>
                     </tr>
                   );
                 })}
@@ -527,12 +527,12 @@ const AdminV2ReportsDayOverDay = ({ patientId }) => {
             </table>
           </div>
 
-          <div className="dod-actions">
-            <button type="button" className="dod-btn" onClick={() => setView(v => (v === 'chart' ? 'data' : 'chart'))}>
+          <div className="rpt-actions">
+            <button type="button" className="rpt-btn" onClick={() => setView(v => (v === 'chart' ? 'data' : 'chart'))}>
               {view === 'chart' ? <ClipboardListIcon size={15} /> : <BarChartIcon size={15} />}
               {view === 'chart' ? 'View data' : 'View chart'}
             </button>
-            <button type="button" className="dod-btn" onClick={exportCsv} disabled={!reportData}>
+            <button type="button" className="rpt-btn" onClick={exportCsv} disabled={!reportData}>
               <FileTextIcon size={15} />
               Export CSV
             </button>
@@ -548,7 +548,7 @@ const AdminV2ReportsDayOverDay = ({ patientId }) => {
         onSwipeDown={() => setSheet(null)}
         title="Add a day"
       >
-        <div className="dod-sheet">
+        <div className="rpt-sheet">
           <div className="dod-cal">
             <div className="dod-cal-head">
               <button type="button" className="dod-cal-nav" onClick={prevMonth} aria-label="Previous month">
@@ -603,35 +603,35 @@ const AdminV2ReportsDayOverDay = ({ patientId }) => {
         onSwipeDown={() => setSheet(null)}
         title="Filters"
       >
-        <div className="dod-sheet">
-          <div className="dod-field">
-            <span className="dod-field-label">Vital</span>
-            <label className="dod-control">
+        <div className="rpt-sheet">
+          <div className="rpt-field">
+            <span className="rpt-field-label">Vital</span>
+            <label className="rpt-control">
               <VitalsChartIcon size={16} />
               <select value={vitalType} onChange={e => setVitalType(e.target.value)}>
                 {VITAL_TYPES.map(vt => <option key={vt.value} value={vt.value}>{vt.label}</option>)}
               </select>
-              <ChevronDownIcon size={14} className="dod-chevron" />
+              <ChevronDownIcon size={14} className="rpt-chevron" />
             </label>
           </div>
 
-          <div className="dod-field">
-            <span className="dod-field-label">Aggregation</span>
-            <label className="dod-control">
+          <div className="rpt-field">
+            <span className="rpt-field-label">Aggregation</span>
+            <label className="rpt-control">
               <ClockIcon size={16} />
               <select value={aggregation} onChange={e => setAggregation(e.target.value)}>
                 {AGGREGATIONS.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
               </select>
-              <ChevronDownIcon size={14} className="dod-chevron" />
+              <ChevronDownIcon size={14} className="rpt-chevron" />
             </label>
           </div>
 
-          <div className="dod-field">
-            <span className="dod-field-label">Hours</span>
-            <div className="dod-range">
-              <label className="dod-control">
+          <div className="rpt-field">
+            <span className="rpt-field-label">Hours</span>
+            <div className="rpt-range">
+              <label className="rpt-control">
                 <CalendarIcon size={15} />
-                <span className="dod-sr">First hour</span>
+                <span className="rpt-sr">First hour</span>
                 <select
                   value={String(startHour)}
                   onChange={e => {
@@ -643,9 +643,9 @@ const AdminV2ReportsDayOverDay = ({ patientId }) => {
                   {HOURS.map(h => <option key={h} value={String(h)}>{formatHourLabel(h)}</option>)}
                 </select>
               </label>
-              <span className="dod-range-sep">to</span>
-              <label className="dod-control">
-                <span className="dod-sr">Last hour</span>
+              <span className="rpt-range-sep">to</span>
+              <label className="rpt-control">
+                <span className="rpt-sr">Last hour</span>
                 <select
                   value={String(endHour)}
                   onChange={e => {
