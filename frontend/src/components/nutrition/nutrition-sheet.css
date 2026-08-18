@@ -196,6 +196,9 @@
 .nsheet-step {
   flex: 0 0 auto;
   width: 44px;
+  /* index.css puts padding: 0.6em 1.2em on every non-Tailwind button; without
+     this the padding eats the fixed width and the icon shrinks to nothing. */
+  padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -302,6 +305,9 @@
 .nsheet-scan {
   flex: 0 0 auto;
   width: 48px;
+  /* index.css puts padding: 0.6em 1.2em on every non-Tailwind button; without
+     this the padding eats the fixed width and the icon shrinks to nothing. */
+  padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;

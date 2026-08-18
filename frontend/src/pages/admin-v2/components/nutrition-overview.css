@@ -30,6 +30,9 @@
   flex: 0 0 auto;
   width: 40px;
   min-height: 40px;
+  /* index.css puts padding: 0.6em 1.2em on every non-Tailwind button; without
+     this the padding eats the fixed width and the icon shrinks to nothing. */
+  padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -446,6 +449,7 @@
 .novw-showall {
   width: 100%;
   min-height: 42px;
+  padding: 0;
   background: none;
   border: none;
   border-top: 1px solid var(--vc-line-hairline);
