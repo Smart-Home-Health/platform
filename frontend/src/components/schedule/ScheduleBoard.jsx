@@ -53,7 +53,7 @@ const ScheduleCard = ({ item }) => (
               {item.categoryLabel}
             </span>
           )}
-          {!item.categoryLabel && item.meta && <span className="sb-meta">{item.meta}</span>}
+          {item.meta && <span className="sb-meta">{item.meta}</span>}
           {item.prn && <span className="sb-prn-badge">PRN</span>}
         </div>
       )}
