@@ -480,3 +480,36 @@
 :root:not(.light) .admin-v2-schedule-progress-bar.success { background: var(--vc-state-complete); }
 :root:not(.light) .admin-v2-schedule-progress-bar.good { background: var(--vc-data-live); }
 :root:not(.light) .admin-v2-schedule-progress-bar.warning { background: var(--vc-state-due); }
+
+/* ---------- Medication stock bar (Overview / Manage entity cards) ---------- */
+:root:not(.light) .med-stock {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0 0.9rem 0.7rem;
+  font-family: var(--vc-font-mono);
+}
+:root:not(.light) .med-stock-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--vc-text-secondary);
+}
+:root:not(.light) .med-stock-label .med-stock-status { text-transform: uppercase; font-weight: 600; }
+:root:not(.light) .med-stock-label.low .med-stock-status { color: var(--vc-state-due); }
+:root:not(.light) .med-stock-label.ok .med-stock-status { color: var(--vc-state-complete); }
+:root:not(.light) .med-stock-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--vc-bg-raised);
+  overflow: hidden;
+}
+:root:not(.light) .med-stock-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--vc-state-complete);
+  transition: width 0.3s ease;
+}
+:root:not(.light) .med-stock-fill.low { background: var(--vc-state-due); }

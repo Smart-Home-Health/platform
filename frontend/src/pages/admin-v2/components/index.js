@@ -24,3 +24,5 @@ export { default as UpdateQuantityModal } from './UpdateQuantityModal';
 export { default as CareTaskCompleteModal } from './CareTaskCompleteModal';
 export { default as VentImportPanel } from './VentImportPanel';
 export { default as NutritionOverview } from './NutritionOverview';
+export { default as MedStockBar } from './MedStockBar';
+export { default as MedicationHistoryModal } from './MedicationHistoryModal';

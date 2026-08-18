@@ -29,6 +29,8 @@ import {
   XIcon
 } from '../../components/Icons';
 import { checkAdministrationWindow, formatDurationMinutes } from '../../utils/timezone';
+import ScheduleBoard from '../../components/schedule/ScheduleBoard';
+import { groupBySlot, recurrenceLabel } from '../../components/schedule/scheduleRollup';
 import {
   Dialog,
   DialogContent,
@@ -140,19 +142,22 @@ const AdminV2MedicationsSchedule = () => {
     setShowPatientModal(false);
   };
 
-  // Status helpers
-  const getStatusInfo = (status) => {
-    const statusMap = {
-      'on_time': { label: 'On Time', color: 'var(--sched-completed-border, #238636)', bg: 'var(--sched-completed-chip, rgba(35, 134, 54, 0.15))', border: 'var(--sched-completed-border, #238636)' },
-      'completed': { label: 'Completed', color: 'var(--sched-completed-border, #238636)', bg: 'var(--sched-completed-chip, rgba(35, 134, 54, 0.15))', border: 'var(--sched-completed-border, #238636)' },
-      'warning': { label: 'Warning', color: 'var(--sched-warning-border, #9e6a03)', bg: 'var(--sched-warning-chip, rgba(158, 106, 3, 0.15))', border: 'var(--sched-warning-border, #9e6a03)' },
-      'late_early': { label: 'Late/Early', color: 'var(--sched-late-border, #f85149)', bg: 'var(--sched-late-chip, rgba(248, 81, 73, 0.15))', border: 'var(--sched-late-border, #f85149)' },
-      'missed': { label: 'Missed', color: 'var(--sched-late-border, #f85149)', bg: 'var(--sched-late-chip, rgba(248, 81, 73, 0.15))', border: 'var(--sched-late-border, #f85149)' },
-      'upcoming': { label: 'Upcoming', color: 'var(--sched-pending-border, #1f6feb)', bg: 'var(--sched-pending-chip, rgba(31, 111, 235, 0.15))', border: 'var(--sched-pending-border, #1f6feb)' },
-      'ready': { label: 'Ready', color: 'var(--sched-ontime-border, #58a6ff)', bg: 'var(--sched-ontime-chip, rgba(88, 166, 255, 0.15))', border: 'var(--sched-ontime-border, #58a6ff)' },
-      'skipped': { label: 'Skipped', color: 'var(--muted-foreground)', bg: 'var(--sched-skipped-chip, rgba(139, 148, 158, 0.15))', border: 'var(--muted-foreground)' }
-    };
-    return statusMap[status] || statusMap.upcoming;
+  // Status → ScheduleBoard tone (one of the six vc-content.css --sched-* families)
+  const STATUS_TONE = {
+    ready: 'ontime',
+    upcoming: 'pending',
+    missed: 'late',
+    on_time: 'completed',
+    warning: 'warning',
+    late_early: 'late',
+  };
+
+  const getStatusTone = (item) => {
+    if (item.is_completed) {
+      if (item.actual_dose === 0) return 'skipped';
+      return STATUS_TONE[item.status] || 'completed';
+    }
+    return STATUS_TONE[item.status] || 'pending';
   };
 
   const getStatusText = (item) => {
@@ -179,46 +184,61 @@ const AdminV2MedicationsSchedule = () => {
     });
   };
 
-  // Group medications by day and time
-  const groupMedications = (medications) => {
-    const groups = {};
-    
-    medications.forEach(item => {
-      const dateObj = new Date(item.scheduled_time);
-      const dayKey = dateObj.toLocaleDateString(undefined, { 
-        weekday: 'long', 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric' 
+  // Raw item -> ScheduleBoard row. Actions are built here since only the page
+  // knows permissions and what each status can still do.
+  const toRow = (item) => {
+    const actions = [];
+    if (!item.is_completed && hasPermission('medications.update')) {
+      actions.push({
+        key: 'take',
+        label: item.status === 'missed' ? 'Take Now' : 'Mark Taken',
+        tone: 'primary',
+        onClick: () => handleMarkTaken(item),
       });
-      const timeStr = dateObj.toLocaleTimeString(undefined, { 
-        hour: 'numeric', 
-        minute: '2-digit', 
-        hour12: true 
-      });
-      
-      if (!groups[dayKey]) groups[dayKey] = {};
-      if (!groups[dayKey][timeStr]) groups[dayKey][timeStr] = [];
-      groups[dayKey][timeStr].push(item);
-    });
-    
-    return groups;
+      if (item.status === 'missed') {
+        actions.push({ key: 'skip', label: 'Skip', tone: 'ghost', onClick: () => handleSkip(item) });
+      }
+    }
+    if (item.is_completed && item.log_id && hasPermission('medications.update')) {
+      actions.push({ key: 'undo', label: 'Undo', tone: 'ghost', onClick: () => handleUndo(item) });
+    }
+
+    return {
+      id: `${item.schedule_id}-${item.scheduled_time}`,
+      title: item.medication_name,
+      meta: [`${item.dose_amount} ${item.dose_unit || 'units'}`, item.concentration].filter(Boolean).join(' · '),
+      scheduleLine: item.actual_time
+        ? `Taken at ${new Date(item.actual_time).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true })}`
+        : recurrenceLabel(item.description),
+      statusLabel: getStatusText(item),
+      statusTone: getStatusTone(item),
+      completed: item.is_completed,
+      actions,
+    };
   };
 
-  // Sort time slots
-  const sortTimeSlots = (times) => {
-    return times.sort((a, b) => {
-      const parseTime = (t) => {
-        const match = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
-        if (!match) return 0;
-        let [, h, m, ampm] = match;
-        let hour = parseInt(h, 10);
-        if (/pm/i.test(ampm) && hour !== 12) hour += 12;
-        if (/am/i.test(ampm) && hour === 12) hour = 0;
-        return hour * 60 + parseInt(m, 10);
-      };
-      return parseTime(a) - parseTime(b);
+  // Day (real calendar date, timezone-correct via scheduled_time) then time
+  // slot (reusing scheduleRollup.js's groupBySlot — the same grouping the live
+  // dashboard's dose panel uses).
+  const buildDayGroups = (items) => {
+    const days = new Map();
+    items.forEach((item) => {
+      const dayKey = new Date(item.scheduled_time).toLocaleDateString(undefined, {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+      });
+      if (!days.has(dayKey)) days.set(dayKey, { key: dayKey, date: new Date(item.scheduled_time), items: [] });
+      days.get(dayKey).items.push(item);
     });
+    return [...days.values()]
+      .sort((a, b) => a.date - b.date)
+      .map((day) => ({
+        key: day.key,
+        label: day.key,
+        slots: groupBySlot(day.items).map((slot) => ({
+          time: slot.time,
+          items: slot.items.map(toRow),
+        })),
+      }));
   };
 
   const handleMarkTaken = async (medication) => {
@@ -345,8 +365,7 @@ const AdminV2MedicationsSchedule = () => {
   }
 
   const filteredMeds = getFilteredMedications();
-  const groupedMeds = groupMedications(filteredMeds);
-  const sortedDays = Object.keys(groupedMeds).sort((a, b) => new Date(a) - new Date(b));
+  const dayGroups = buildDayGroups(filteredMeds);
 
   return (
     <AdminV2Layout>
@@ -420,152 +439,19 @@ const AdminV2MedicationsSchedule = () => {
             </div>
 
             {/* Schedule Content */}
-            {loading ? (
-              <div className="admin-v2-loading">Loading schedule...</div>
-            ) : error ? (
+            {error ? (
               <div className="tw"><Alert variant="destructive">{error}</Alert></div>
-            ) : filteredMeds.length === 0 ? (
-              <div className="admin-v2-empty-state">
-                <MedicationsIcon size={48} />
-                <h3>No Scheduled Medications</h3>
-                <p className="admin-v2-text-muted">
-                  {scheduledMedications.length === 0 
-                    ? 'No medications scheduled for today or yesterday'
-                    : 'No medications match the selected filters'}
-                </p>
-              </div>
             ) : (
-              <div className="admin-v2-schedule-list">
-                {sortedDays.map(dayKey => (
-                  <div key={dayKey} className="admin-v2-schedule-day">
-                    <div className="admin-v2-schedule-day-header">
-                      <h3>{dayKey}</h3>
-                    </div>
-                    
-                    {sortTimeSlots(Object.keys(groupedMeds[dayKey])).map(timeStr => (
-                      <div key={timeStr} className="admin-v2-schedule-time-group">
-                        <div className="admin-v2-schedule-time-header">
-                          <span className="admin-v2-schedule-time">{timeStr}</span>
-                          <span className="admin-v2-schedule-count-label">
-                            {groupedMeds[dayKey][timeStr].length} medication{groupedMeds[dayKey][timeStr].length !== 1 ? 's' : ''}
-                          </span>
-                        </div>
-                        
-                        <div className="admin-v2-schedule-items">
-                          {groupedMeds[dayKey][timeStr].map((item, idx) => {
-                            const statusInfo = getStatusInfo(item.status);
-                            const isCompleted = item.is_completed;
-                            
-                            return (
-                              <div 
-                                key={`${item.schedule_id}-${idx}`}
-                                className={`admin-v2-schedule-item ${isCompleted ? 'completed' : ''}`}
-                                style={{ 
-                                  borderLeftColor: statusInfo.border,
-                                  backgroundColor: statusInfo.bg
-                                }}
-                              >
-                                <div className="admin-v2-schedule-item-content">
-                                  <div className="admin-v2-schedule-item-main">
-                                    <span className="admin-v2-schedule-med-name">
-                                      {item.medication_name}
-                                      {item.concentration && (
-                                        <span className="admin-v2-schedule-concentration">
-                                          ({item.concentration})
-                                        </span>
-                                      )}
-                                    </span>
-                                    <span className="admin-v2-schedule-dose">
-                                      {item.dose_amount} {item.dose_unit || 'units'}
-                                    </span>
-                                  </div>
-                                  <div className="admin-v2-schedule-item-status">
-                                    <span 
-                                      className="admin-v2-schedule-status-badge"
-                                      style={{ 
-                                        backgroundColor: statusInfo.border,
-                                        color: '#fff'
-                                      }}
-                                    >
-                                      {getStatusText(item)}
-                                    </span>
-                                    {item.actual_time && (
-                                      <span className="admin-v2-schedule-actual-time">
-                                        Taken at {new Date(item.actual_time).toLocaleTimeString(undefined, { 
-                                          hour: 'numeric', 
-                                          minute: '2-digit', 
-                                          hour12: true 
-                                        })}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                                
-                                {!isCompleted && hasPermission('medications.update') && (
-                                  <div className="admin-v2-schedule-item-actions">
-                                    <button
-                                      className="admin-v2-btn admin-v2-btn-success admin-v2-btn-sm"
-                                      onClick={() => handleMarkTaken(item)}
-                                    >
-                                      {item.status === 'missed' ? 'Take Now' : 'Mark Taken'}
-                                    </button>
-                                    {item.status === 'missed' && (
-                                      <button
-                                        className="admin-v2-btn admin-v2-btn-sm"
-                                        onClick={() => handleSkip(item)}
-                                      >
-                                        Skip
-                                      </button>
-                                    )}
-                                  </div>
-                                )}
-                                {isCompleted && item.log_id && hasPermission('medications.update') && (
-                                  <div className="admin-v2-schedule-item-actions">
-                                    <button
-                                      className="admin-v2-btn admin-v2-btn-sm"
-                                      onClick={() => handleUndo(item)}
-                                    >
-                                      Undo
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
+              <ScheduleBoard
+                dayGroups={dayGroups}
+                loading={loading}
+                emptyText={
+                  scheduledMedications.length === 0
+                    ? 'No medications scheduled for today or yesterday'
+                    : 'No medications match the selected filters'
+                }
+              />
             )}
-
-            {/* Legend */}
-            <div className="admin-v2-schedule-legend">
-              <h4>Status Legend</h4>
-              <div className="admin-v2-legend-items">
-                <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: 'var(--sched-ontime-border, #58a6ff)' }}></span>
-                  <span>Ready to Take</span>
-                </div>
-                <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: 'var(--sched-pending-border, #1f6feb)' }}></span>
-                  <span>Upcoming</span>
-                </div>
-                <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: 'var(--sched-late-border, #f85149)' }}></span>
-                  <span>Missed</span>
-                </div>
-                <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: 'var(--sched-completed-border, #238636)' }}></span>
-                  <span>Completed</span>
-                </div>
-                <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: 'var(--muted-foreground)' }}></span>
-                  <span>Skipped</span>
-                </div>
-              </div>
-            </div>
           </>
         ) : (
           <div className="admin-v2-no-patient">

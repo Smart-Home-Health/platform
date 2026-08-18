@@ -29,6 +29,8 @@ import {
   XIcon
 } from '../../components/Icons';
 import { computeScheduleStatus } from '../../components/schedule/scheduleStatus';
+import ScheduleBoard from '../../components/schedule/ScheduleBoard';
+import { groupBySlot } from '../../components/schedule/scheduleRollup';
 import {
   checkAdministrationWindow,
   formatDurationMinutes,
@@ -171,15 +173,12 @@ const AdminV2NutritionSchedule = () => {
     });
   }, [scheduled]);
 
-  // Status display helpers (same palette as the meds schedule page)
-  const getStatusInfo = (bucket) => {
-    const statusMap = {
-      'completed': { label: 'Completed', color: 'var(--sched-completed-border, #238636)', bg: 'var(--sched-completed-chip, rgba(35, 134, 54, 0.15))', border: 'var(--sched-completed-border, #238636)' },
-      'missed': { label: 'Missed', color: 'var(--sched-late-border, #f85149)', bg: 'var(--sched-late-chip, rgba(248, 81, 73, 0.15))', border: 'var(--sched-late-border, #f85149)' },
-      'upcoming': { label: 'Upcoming', color: 'var(--sched-pending-border, #1f6feb)', bg: 'var(--sched-pending-chip, rgba(31, 111, 235, 0.15))', border: 'var(--sched-pending-border, #1f6feb)' },
-      'ready': { label: 'Ready', color: 'var(--sched-ontime-border, #58a6ff)', bg: 'var(--sched-ontime-chip, rgba(88, 166, 255, 0.15))', border: 'var(--sched-ontime-border, #58a6ff)' }
-    };
-    return statusMap[bucket] || statusMap.upcoming;
+  // Bucket -> ScheduleBoard tone
+  const BUCKET_TONE = {
+    ready: 'ontime',
+    upcoming: 'pending',
+    missed: 'late',
+    completed: 'completed',
   };
 
   const getStatusText = (item) => {
@@ -191,42 +190,49 @@ const AdminV2NutritionSchedule = () => {
 
   const filteredItems = items.filter(item => statusFilters[item._bucket]);
 
-  // Group by day and time (same shape as the meds schedule page)
-  const groupItems = (list) => {
-    const groups = {};
-    list.forEach(item => {
-      const dateObj = new Date(item.scheduled_time);
-      const dayKey = dateObj.toLocaleDateString(undefined, {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      });
-      const timeStr = dateObj.toLocaleTimeString(undefined, {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true
-      });
-      if (!groups[dayKey]) groups[dayKey] = {};
-      if (!groups[dayKey][timeStr]) groups[dayKey][timeStr] = [];
-      groups[dayKey][timeStr].push(item);
-    });
-    return groups;
-  };
+  // Raw (normalized) item -> ScheduleBoard row.
+  const toRow = (item) => ({
+    id: `${item.schedule_id ?? 'prn'}-${item.scheduled_time}`,
+    title: item.name,
+    meta: item._detail || undefined,
+    prn: item.is_prn,
+    scheduleLine: item.completed_at
+      ? `Completed at ${new Date(item.completed_at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true })}`
+      : undefined,
+    statusLabel: getStatusText(item),
+    statusTone: BUCKET_TONE[item._bucket] || 'pending',
+    completed: item._bucket === 'completed',
+    actions: (item._bucket !== 'completed' && !item.is_prn && hasPermission('nutrition.update'))
+      ? [{
+          key: 'complete',
+          label: item._bucket === 'missed' ? 'Complete Now' : 'Mark Complete',
+          tone: 'primary',
+          onClick: () => handleMarkCompleted(item),
+        }]
+      : [],
+  });
 
-  const sortTimeSlots = (times) => {
-    return times.sort((a, b) => {
-      const parseTime = (t) => {
-        const match = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
-        if (!match) return 0;
-        let [, h, m, ampm] = match;
-        let hour = parseInt(h, 10);
-        if (/pm/i.test(ampm) && hour !== 12) hour += 12;
-        if (/am/i.test(ampm) && hour === 12) hour = 0;
-        return hour * 60 + parseInt(m, 10);
-      };
-      return parseTime(a) - parseTime(b);
+  // Day (real calendar date) then time slot, reusing scheduleRollup.js's
+  // groupBySlot — the same grouping the live dashboard's dose panel uses.
+  const buildDayGroups = (list) => {
+    const days = new Map();
+    list.forEach((item) => {
+      const dayKey = new Date(item.scheduled_time).toLocaleDateString(undefined, {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+      });
+      if (!days.has(dayKey)) days.set(dayKey, { key: dayKey, date: new Date(item.scheduled_time), items: [] });
+      days.get(dayKey).items.push(item);
     });
+    return [...days.values()]
+      .sort((a, b) => a.date - b.date)
+      .map((day) => ({
+        key: day.key,
+        label: day.key,
+        slots: groupBySlot(day.items).map((slot) => ({
+          time: slot.time,
+          items: slot.items.map(toRow),
+        })),
+      }));
   };
 
   // ===== Complete scheduled item =====
@@ -302,8 +308,7 @@ const AdminV2NutritionSchedule = () => {
     );
   }
 
-  const grouped = groupItems(filteredItems);
-  const sortedDays = Object.keys(grouped).sort((a, b) => new Date(a) - new Date(b));
+  const dayGroups = buildDayGroups(filteredItems);
 
   return (
     <AdminV2Layout>
@@ -385,127 +390,20 @@ const AdminV2NutritionSchedule = () => {
             </div>
 
             {/* Schedule Content */}
-            {loading ? (
-              <div className="admin-v2-loading">Loading schedule...</div>
-            ) : error ? (
+            {error ? (
               <div className="tw"><Alert variant="destructive">{error}</Alert></div>
-            ) : filteredItems.length === 0 ? (
-              <div className="admin-v2-empty-state">
-                <NutritionIcon size={48} />
-                <h3>No Scheduled Nutrition</h3>
-                <p className="admin-v2-text-muted">
-                  {items.length === 0
-                    ? 'No nutrition scheduled for today or yesterday'
-                    : 'No items match the selected filters'}
-                </p>
-              </div>
             ) : (
-              <div className="admin-v2-schedule-list">
-                {sortedDays.map(dayKey => (
-                  <div key={dayKey} className="admin-v2-schedule-day">
-                    <div className="admin-v2-schedule-day-header">
-                      <h3>{dayKey}</h3>
-                    </div>
-
-                    {sortTimeSlots(Object.keys(grouped[dayKey])).map(timeStr => (
-                      <div key={timeStr} className="admin-v2-schedule-time-group">
-                        <div className="admin-v2-schedule-time-header">
-                          <span className="admin-v2-schedule-time">{timeStr}</span>
-                          <span className="admin-v2-schedule-count-label">
-                            {grouped[dayKey][timeStr].length} item{grouped[dayKey][timeStr].length !== 1 ? 's' : ''}
-                          </span>
-                        </div>
-
-                        <div className="admin-v2-schedule-items">
-                          {grouped[dayKey][timeStr].map((item, idx) => {
-                            const statusInfo = getStatusInfo(item._bucket);
-                            const isCompleted = item._bucket === 'completed';
-
-                            return (
-                              <div
-                                key={`${item.schedule_id ?? 'prn'}-${item.scheduled_time}-${idx}`}
-                                className={`admin-v2-schedule-item ${isCompleted ? 'completed' : ''}`}
-                                style={{
-                                  borderLeftColor: statusInfo.border,
-                                  backgroundColor: statusInfo.bg
-                                }}
-                              >
-                                <div className="admin-v2-schedule-item-content">
-                                  <div className="admin-v2-schedule-item-main">
-                                    <span className="admin-v2-schedule-med-name">
-                                      {item.name}
-                                    </span>
-                                    {item._detail && (
-                                      <span className="admin-v2-schedule-dose">
-                                        {item._detail}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="admin-v2-schedule-item-status">
-                                    <span
-                                      className="admin-v2-schedule-status-badge"
-                                      style={{
-                                        backgroundColor: statusInfo.border,
-                                        color: '#fff'
-                                      }}
-                                    >
-                                      {getStatusText(item)}
-                                    </span>
-                                    {item.completed_at && (
-                                      <span className="admin-v2-schedule-actual-time">
-                                        Completed at {new Date(item.completed_at).toLocaleTimeString(undefined, {
-                                          hour: 'numeric',
-                                          minute: '2-digit',
-                                          hour12: true
-                                        })}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-
-                                {!isCompleted && !item.is_prn && hasPermission('nutrition.update') && (
-                                  <div className="admin-v2-schedule-item-actions">
-                                    <button
-                                      className="admin-v2-btn admin-v2-btn-success admin-v2-btn-sm"
-                                      onClick={() => handleMarkCompleted(item)}
-                                    >
-                                      {item._bucket === 'missed' ? 'Complete Now' : 'Mark Complete'}
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
+              <ScheduleBoard
+                dayGroups={dayGroups}
+                loading={loading}
+                emptyText={
+                  items.length === 0
+                    ? 'No nutrition scheduled for today or yesterday'
+                    : 'No items match the selected filters'
+                }
+              />
             )}
 
-            {/* Legend */}
-            <div className="admin-v2-schedule-legend">
-              <h4>Status Legend</h4>
-              <div className="admin-v2-legend-items">
-                <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: 'var(--sched-ontime-border, #58a6ff)' }}></span>
-                  <span>Ready</span>
-                </div>
-                <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: 'var(--sched-pending-border, #1f6feb)' }}></span>
-                  <span>Upcoming</span>
-                </div>
-                <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: 'var(--sched-late-border, #f85149)' }}></span>
-                  <span>Missed</span>
-                </div>
-                <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: 'var(--sched-completed-border, #238636)' }}></span>
-                  <span>Completed</span>
-                </div>
-              </div>
-            </div>
           </>
         ) : (
           <div className="admin-v2-no-patient">
