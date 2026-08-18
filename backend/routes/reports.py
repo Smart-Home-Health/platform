@@ -976,7 +976,15 @@ async def weekly_summary(
             GROUP BY day ORDER BY day
         """), {"pid": patient_id, "start": utc_start, "end": utc_end}).all()
 
-        daily = [{"date": str(r.day), "avg": round(r.avg, 1)} for r in rows]
+        # Each day carries its own range, not just its mean: a week of 97%
+        # averages hides the night that dipped to 55, which is the thing the
+        # reader is looking for.
+        daily = [
+            {"date": str(r.day), "avg": round(r.avg, 1),
+             "low": round(float(r.lo), 1) if r.lo is not None else None,
+             "high": round(float(r.hi), 1) if r.hi is not None else None}
+            for r in rows
+        ]
         all_vals = [r.avg for r in rows if r.avg]
         vitals_result[key] = {
             "min": int(min(r.lo for r in rows)) if rows else None,
@@ -998,7 +1006,12 @@ async def weekly_summary(
         GROUP BY day ORDER BY day
     """), {"pid": patient_id, "start": utc_start, "end": utc_end}).all()
 
-    rr_daily = [{"date": str(r.day), "avg": round(r.avg, 1)} for r in rr_rows]
+    rr_daily = [
+        {"date": str(r.day), "avg": round(r.avg, 1),
+         "low": round(float(r.lo), 1) if r.lo is not None else None,
+         "high": round(float(r.hi), 1) if r.hi is not None else None}
+        for r in rr_rows
+    ]
     rr_vals = [r.avg for r in rr_rows if r.avg]
     vitals_result["respiratory_rate"] = {
         "min": round(min(r.lo for r in rr_rows), 1) if rr_rows else None,
@@ -1026,7 +1039,12 @@ async def weekly_summary(
             GROUP BY day ORDER BY day
         """), params).all()
 
-        daily = [{"date": str(r.day), "avg": round(r.avg, 1)} for r in rows]
+        daily = [
+            {"date": str(r.day), "avg": round(r.avg, 1),
+             "low": round(float(r.lo), 1) if r.lo is not None else None,
+             "high": round(float(r.hi), 1) if r.hi is not None else None}
+            for r in rows
+        ]
         vals = [r.avg for r in rows if r.avg]
         vitals_result[vtype] = {
             "min": round(min(r.lo for r in rows), 1) if rows else None,
