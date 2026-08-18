@@ -19,20 +19,9 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } fr
 import DynamicVitalsCard from "../components/DynamicVitalsCard";
 import ModalBase from "../components/ModalBase";
 import SettingsForm from "../components/SettingsForm";
-import {
-  SettingsIcon,
-  MinimalistVentIcon,
-  MinimalistPulseOxIcon,
-  HistoryIcon,
-  MedicationIcon,
-  NutritionIcon,
-  CareTasksIcon,
-  MessagesIcon,
-  CameraIcon,
-  VitalsCaptureIcon
-} from "../components/Icons";
 import TopBar from "../components/dashboard/TopBar";
 import CaptureVitalsModal from "../components/dashboard/CaptureVitalsModal";
+import DashboardNavDrawer from "../components/dashboard/DashboardNavDrawer";
 import { ModalDockProvider } from "../contexts/ModalDockContext";
 import { buildTopBarActions } from "../components/dashboard/topBarActions";
 import StatTile from "../components/dashboard/StatTile";
@@ -1070,72 +1059,18 @@ export default function Dashboard() {
         onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
       />
 
-      {/* Mobile Menu Overlay */}
-      {isMobile && isMobileMenuOpen && (
-        <div className="mobile-menu-overlay" onClick={() => setIsMobileMenuOpen(false)}>
-          <div className="mobile-menu" onClick={(e) => e.stopPropagation()}>
-            {/* Mirrors buildTopBarActions' order — this list is hand-written
-                because the drawer shows labels, not icon buttons. */}
-            <div className="mobile-menu-item" onClick={() => { handleCaptureClick(); setIsMobileMenuOpen(false); }}>
-              <VitalsCaptureIcon size={24} />
-              <span>Capture Vitals</span>
-            </div>
+      {/* Phone navigation. Rendered from the same action list as the top bar
+          (see DashboardNavDrawer) rather than a hand-written copy of it. */}
+      <DashboardNavDrawer
+        open={isMobile && isMobileMenuOpen}
+        onClose={() => setIsMobileMenuOpen(false)}
+        actions={topBarActions}
+        patientName={selectedPatient
+          ? [selectedPatient.first_name, selectedPatient.last_name].filter(Boolean).join(' ')
+          : null}
+        onSettings={handleSettingsClick}
+      />
 
-            <div className="mobile-menu-item" onClick={() => { handlePulseOxClick(); setIsMobileMenuOpen(false); }}>
-              <MinimalistPulseOxIcon />
-              <span>Alerts</span>
-              {pulseOxAlerts > 0 && <div className="mobile-badge">{pulseOxAlerts}</div>}
-            </div>
-            
-            <div className="mobile-menu-item" onClick={() => { handleMedicationClick(); setIsMobileMenuOpen(false); }}>
-              <MedicationIcon />
-              <span>Medications</span>
-              {medicationDueCount > 0 && <div className="mobile-badge">{medicationDueCount}</div>}
-            </div>
-
-            <div className="mobile-menu-item" onClick={() => { handleNutritionClick(); setIsMobileMenuOpen(false); }}>
-              <NutritionIcon />
-              <span>Nutrition</span>
-              {nutritionDueCount > 0 && <div className="mobile-badge">{nutritionDueCount}</div>}
-            </div>
-
-            <div className="mobile-menu-item" onClick={() => { handleCareTaskClick(); setIsMobileMenuOpen(false); }}>
-              <CareTasksIcon />
-              <span>Care Tasks</span>
-              {careTaskDueCount > 0 && <div className="mobile-badge">{careTaskDueCount}</div>}
-            </div>
-            
-            <div className="mobile-menu-item" onClick={() => { handleVentClick(); setIsMobileMenuOpen(false); }}>
-              <MinimalistVentIcon />
-              <span>Equipment</span>
-              {equipmentDueCount > 0 && <div className="mobile-badge">{equipmentDueCount}</div>}
-            </div>
-            
-            <div className="mobile-menu-item" onClick={() => { handleHistoryClick(); setIsMobileMenuOpen(false); }}>
-              <HistoryIcon />
-              <span>History</span>
-            </div>
-            
-            {hasCamera ? (
-              <div className="mobile-menu-item" onClick={() => { handleCameraClick(); setIsMobileMenuOpen(false); }}>
-                <CameraIcon />
-                <span>Live Camera</span>
-              </div>
-            ) : (
-              <div className="mobile-menu-item" onClick={() => { handleMessagesClick(); setIsMobileMenuOpen(false); }}>
-                <MessagesIcon />
-                <span>Messages</span>
-              </div>
-            )}
-            
-            <div className="mobile-menu-item" onClick={() => { handleSettingsClick(); setIsMobileMenuOpen(false); }}>
-              <SettingsIcon />
-              <span>Settings</span>
-            </div>
-          </div>
-        </div>
-      )}
-      
       {/* Compact vitals banner shown only while an auth modal is up on
           mobile, so the 3 large readings stay visible above the modal. */}
       {isMobile && authModalActive && (

@@ -1,0 +1,196 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Phone navigation for the live dashboard, shaped like the admin drawer: its
+ * own header, labelled groups, one row per destination.
+ *
+ * Rendered outside the `.tw` island, so box-sizing and the bare <button> paint
+ * are asserted; `:where()` keeps that reset at element specificity. */
+@import '../../styles/vc-tokens.css';
+
+.dn-overlay, .dn-overlay * { box-sizing: border-box; }
+:where(.dn-drawer) button {
+  font-family: var(--vc-font-mono);
+  padding: 0;
+  border: 1px solid transparent;
+  background: none;
+  color: inherit;
+}
+
+.dn-overlay {
+  position: fixed;
+  inset: 0;
+  /* Above the top bar hamburger (z 1001), which otherwise punches through the
+     scrim and overlaps the title. The drawer carries its own CLOSE. */
+  z-index: 1002;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.dn-drawer {
+  display: flex;
+  flex-direction: column;
+  width: min(320px, 88vw);
+  height: 100%;
+  max-height: 100dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  border-left: 1px solid var(--vc-line-strong);
+  background: var(--vc-bg-sheet);
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);
+  box-shadow: -12px 0 32px rgba(0, 0, 0, 0.5);
+}
+
+/* ---- header ---- */
+
+.dn-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: calc(env(safe-area-inset-top, 0px) + 0.7rem) 0.8rem 0.7rem;
+  border-bottom: 1px solid var(--vc-line-hairline);
+  background: var(--vc-bg-sheet);
+}
+.dn-close {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 36px;
+  padding: 0 0.65rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-surface);
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.dn-close:hover { color: var(--vc-text-primary); border-color: var(--vc-line-strong); }
+.dn-head-title {
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dn-head-sep { color: var(--vc-text-tertiary); margin: 0 0.15rem; }
+
+.dn-patient {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.7rem 0.9rem;
+  border-bottom: 1px solid var(--vc-line-hairline);
+}
+.dn-patient-label {
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.dn-patient-name {
+  font-family: var(--vc-font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+
+/* ---- groups ---- */
+
+.dn-groups { display: flex; flex-direction: column; padding: 0.4rem 0.5rem; }
+.dn-group { display: flex; flex-direction: column; padding: 0.35rem 0 0.45rem; }
+.dn-group + .dn-group {
+  border-top: 1px solid var(--vc-line-hairline);
+  margin-top: 0.25rem;
+  padding-top: 0.6rem;
+}
+.dn-group-label {
+  padding: 0 0.4rem 0.35rem;
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.dn-group-items { display: flex; flex-direction: column; gap: 0.15rem; }
+
+.dn-item {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 0.55rem;
+  border-radius: 8px;
+  color: var(--vc-text-primary);
+  font-family: var(--vc-font-mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-align: left;
+  cursor: pointer;
+}
+.dn-item:hover { background: var(--vc-bg-surface); }
+.dn-item.active {
+  background: color-mix(in srgb, var(--vc-data-live) 14%, transparent);
+  color: var(--vc-text-primary);
+}
+.dn-item-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  color: var(--vc-text-secondary);
+}
+.dn-item.active .dn-item-icon { color: var(--vc-data-live); }
+.dn-item-icon svg { width: 20px; height: 20px; }
+.dn-item-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* A count, not a klaxon: the badge keeps the top bar's red so the two agree,
+   but sized as a pill rather than the old 24px circle. */
+.dn-item-badge {
+  flex-shrink: 0;
+  min-width: 22px;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--vc-state-alert) 20%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vc-state-alert) 55%, transparent);
+  color: var(--vc-state-alert);
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
