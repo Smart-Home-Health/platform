@@ -359,3 +359,129 @@ def test_write_endpoints_require_permission(limited_client, method, path, payloa
     the writes were not."""
     resp = getattr(limited_client, method)(path, json=payload)
     assert resp.status_code == 403, f"{path} -> {resp.status_code}"
+
+
+# =====================
+# PLAN + COVERAGE
+# =====================
+
+def test_cron_daily_occurrences():
+    """Coverage sums a mixed set of schedules into one day, so a schedule that
+    does not fire daily has to contribute a fraction of one."""
+    from crud.nutrition_plan import daily_occurrences
+
+    assert daily_occurrences('0 7 * * *') == 1
+    # Three firing times is three events — the previous frontend maths ignored
+    # the hour field entirely and counted this once.
+    assert daily_occurrences('0 7,12,19 * * *') == 3
+    assert round(daily_occurrences('0 7 * * 1,3,5'), 3) == 0.429
+    assert round(daily_occurrences('30 8 1 * *'), 3) == 0.033
+    assert daily_occurrences('*/30 * * * *') == 48
+    assert daily_occurrences(None) == 0
+    assert daily_occurrences('nonsense') == 0
+
+
+def _schedule(db_session, patient, **kw):
+    from schemas.nutrition_schedule import NutritionSchedule
+    row = NutritionSchedule(
+        patient_id=patient.id,
+        schedule_type=kw.pop('schedule_type', 'meal'),
+        name=kw.pop('name', 'Feed'),
+        cron_expression=kw.pop('cron_expression', '0 7 * * *'),
+        **kw,
+    )
+    db_session.add(row)
+    db_session.commit()
+    return row
+
+
+def _goal(db_session, patient, **kw):
+    from schemas.nutrition_goal import NutritionGoal
+    from datetime import datetime, timezone
+    row = NutritionGoal(
+        patient_id=patient.id, is_active=True,
+        effective_date=datetime(2026, 1, 1, tzinfo=timezone.utc), **kw,
+    )
+    db_session.add(row)
+    db_session.commit()
+    return row
+
+
+def test_plan_returns_targets_schedules_and_coverage(admin_client, patient, db_session):
+    """One request for the whole plan. The goal used to be fetched separately
+    from the view that needed it, which is how it could come back missing."""
+    _goal(db_session, patient, water_ml_target=1710, calories_target=1575)
+    _schedule(db_session, patient, name='Morning Feed', default_amount=525,
+              default_amount_unit='ml', default_calories=525)
+
+    resp = admin_client.get(f"/api/nutrition/plan?patient_id={patient.id}")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+
+    assert body['goal']['water_ml_target'] == 1710
+    assert len(body['schedules']) == 1
+    # Coverage is about the plan, not the record — said explicitly.
+    assert body['basis'] == 'scheduled'
+
+    fluids = next(c for c in body['coverage'] if c['key'] == 'fluids')
+    assert fluids['scheduled'] == 525
+    assert fluids['goal'] == 1710
+    assert fluids['shortfall'] == 1185
+    assert fluids['covered'] is False
+
+
+def test_fluid_coverage_follows_the_unit_not_the_label(admin_client, patient, db_session):
+    """A meal of 525 mL is 525 mL of fluid. Gating on schedule_type meant tube
+    feeds and liquid meals counted toward neither total."""
+    _goal(db_session, patient, water_ml_target=1000, calories_target=1000)
+    _schedule(db_session, patient, schedule_type='meal', name='Liquid meal',
+              default_amount=525, default_amount_unit='ml', default_calories=525)
+    _schedule(db_session, patient, schedule_type='meal', name='Solid meal',
+              default_amount=200, default_amount_unit='grams', default_calories=300)
+
+    body = admin_client.get(f"/api/nutrition/plan?patient_id={patient.id}").json()
+    fluids = next(c for c in body['coverage'] if c['key'] == 'fluids')
+    calories = next(c for c in body['coverage'] if c['key'] == 'calories')
+
+    # Only the millilitre one is fluid...
+    assert fluids['scheduled'] == 525
+    # ...but calories are calories, whatever the schedule is called.
+    assert calories['scheduled'] == 825
+
+
+def test_coverage_reports_covered_once_the_goal_is_met(admin_client, patient, db_session):
+    _goal(db_session, patient, water_ml_target=500, calories_target=500)
+    _schedule(db_session, patient, default_amount=500, default_amount_unit='ml',
+              default_calories=500)
+
+    body = admin_client.get(f"/api/nutrition/plan?patient_id={patient.id}").json()
+    for metric in body['coverage']:
+        assert metric['covered'] is True, metric
+        assert metric['shortfall'] == 0
+        assert metric['percent'] == 100
+
+
+def test_plan_without_a_goal_reports_no_target(admin_client, patient, db_session):
+    """Scheduling something without a target set is legitimate — coverage just
+    has nothing to measure against."""
+    _schedule(db_session, patient, default_amount=300, default_amount_unit='ml')
+
+    body = admin_client.get(f"/api/nutrition/plan?patient_id={patient.id}").json()
+    assert body['goal'] is None
+    fluids = next(c for c in body['coverage'] if c['key'] == 'fluids')
+    assert fluids['scheduled'] == 300
+    assert fluids['goal'] is None
+    assert fluids['percent'] is None
+    assert fluids['covered'] is False
+
+
+def test_inactive_schedules_are_left_out_of_coverage(admin_client, patient, db_session):
+    _goal(db_session, patient, water_ml_target=1000)
+    _schedule(db_session, patient, name='On', default_amount=400, default_amount_unit='ml')
+    _schedule(db_session, patient, name='Off', default_amount=400,
+              default_amount_unit='ml', is_active=False)
+
+    body = admin_client.get(f"/api/nutrition/plan?patient_id={patient.id}").json()
+    fluids = next(c for c in body['coverage'] if c['key'] == 'fluids')
+    assert fluids['scheduled'] == 400
+    assert len(body['schedules']) == 1

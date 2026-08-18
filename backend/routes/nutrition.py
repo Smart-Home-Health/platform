@@ -21,6 +21,7 @@ import logging
 from db import get_db
 from dependencies import require_read_access, require_permission
 from sqlalchemy.exc import IntegrityError
+from crud.nutrition_plan import get_nutrition_plan
 from crud.nutrition_library import (
     list_nutrition_items, create_nutrition_item, update_nutrition_item, delete_nutrition_item,
     list_nutrition_presets, create_nutrition_preset, update_nutrition_preset,
@@ -464,6 +465,42 @@ def _preset_response(preset) -> dict:
                 "sort_order": c.sort_order,
             }
             for c in sorted(preset.components, key=lambda x: x.sort_order)
+        ],
+    }
+
+
+@router.get("/nutrition/plan")
+async def get_plan(
+    patient_id: int,
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access),
+):
+    """The nutrition plan in one request: targets, schedules, and coverage.
+
+    The plan view previously assembled this from several calls and did the
+    reconciliation client-side, which is how the current goal could be missing
+    on a view that needed it.
+
+    Coverage describes what is *scheduled*, not what was logged. And because
+    schedules carry no effective dating, it can only ever describe the plan as
+    it stands now — there is no past state to reconstruct.
+    """
+    plan = get_nutrition_plan(db, patient_id)
+    goal = plan['goal']
+    contributions = plan['schedule_contributions']
+
+    return {
+        "goal": NutritionGoalResponse.model_validate(goal).model_dump() if goal else None,
+        "coverage": plan['coverage'],
+        "basis": plan['basis'],
+        "schedules": [
+            {
+                **NutritionScheduleResponse.model_validate(s).model_dump(),
+                # What this schedule puts into the day, so the UI does not have
+                # to re-derive it from the cron string.
+                "daily": contributions.get(s.id, {}),
+            }
+            for s in plan['schedules']
         ],
     }
 
