@@ -71,11 +71,18 @@ export function rollupSchedule(items = []) {
     if (bucket === 'missed' || bucket === 'due') attention.push(item);
   }
 
+  // An unparseable scheduled_time would make the comparator return NaN, which
+  // leaves the sort order up to the engine. Undated items sort last here, the
+  // same place groupBySlot puts them.
+  const at = (item) => {
+    const t = item.scheduled_time ? new Date(item.scheduled_time).getTime() : NaN;
+    return Number.isNaN(t) ? Infinity : t;
+  };
   attention.sort((a, b) => {
     const aMissed = bucketFor(a.status) === 'missed';
     const bMissed = bucketFor(b.status) === 'missed';
     if (aMissed !== bMissed) return aMissed ? -1 : 1;
-    return new Date(a.scheduled_time) - new Date(b.scheduled_time);
+    return at(a) - at(b);
   });
 
   return {

@@ -275,11 +275,13 @@ export default function DoseScheduleView({
                           onClick={() => onSelect && onSelect(item)}
                         >
                           <th scope="row">
-                            <button
-                              type="button"
-                              className="ld-dose-rowbtn"
-                              onClick={() => onSelect && onSelect(item)}
-                            >
+                            {/* The button exists to make the row reachable by
+                                keyboard — a <tr> is not focusable. Its click
+                                (including the one Enter/Space synthesises)
+                                bubbles to the row's handler, so it deliberately
+                                carries none of its own; a second handler here
+                                would select twice per click. */}
+                            <button type="button" className="ld-dose-rowbtn">
                               {item.name}
                             </button>
                           </th>

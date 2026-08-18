@@ -169,6 +169,21 @@ describe('DoseScheduleView — expanded stop', () => {
     expect(dock.setExpanded).not.toHaveBeenCalled();
   });
 
+  it('selects once per click, not once per nested handler', () => {
+    // The name is a <button> so the row is keyboard-reachable, and the row
+    // itself is clickable. Only one of them may handle the click, or every
+    // selection fires twice and the host refetches twice.
+    const onSelect = vi.fn();
+    renderAt({ expanded: true }, { onSelect });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Propranolol' }));
+    expect(onSelect).toHaveBeenCalledTimes(1);
+
+    onSelect.mockClear();
+    fireEvent.click(screen.getByText('1 tablet'));   // a plain cell in the row
+    expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+
   it('marks the selected row', () => {
     const { container } = renderAt({ expanded: true }, { selectedId: 'propranolol' });
     const selected = container.querySelectorAll('tr.selected');

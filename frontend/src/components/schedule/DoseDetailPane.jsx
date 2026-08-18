@@ -24,7 +24,7 @@
 // re-implementing those here would be a second place to get them wrong.
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import config from '../../config';
+import config, { apiFetch } from '../../config';
 import { bucketFor, recurrenceLabel } from './scheduleRollup';
 import { ChevronRightIcon } from '../Icons';
 
@@ -86,15 +86,18 @@ export default function DoseDetailPane({
 
   // Filter by medication_id, not name: the name filter is a substring match,
   // so "Pro" would pull in every medication starting with it.
+  //
+  // apiFetch, not fetch: inside a cross-origin iframe (the Home Assistant
+  // embed) SameSite blocks the session cookie, and the wrapper falls back to
+  // the bearer token.
   useEffect(() => {
     if (!historyOpen || !medicationId || !patientId) return undefined;
     let cancelled = false;
     setHistoryError(false);
     (async () => {
       try {
-        const res = await fetch(
-          `${config.apiUrl}/api/medications/history?patient_id=${patientId}&medication_id=${medicationId}&limit=10`,
-          { credentials: 'include' }
+        const res = await apiFetch(
+          `${config.apiUrl}/api/medications/history?patient_id=${patientId}&medication_id=${medicationId}&limit=10`
         );
         if (cancelled) return;
         if (!res.ok) { setHistoryError(true); return; }

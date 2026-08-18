@@ -1079,8 +1079,10 @@ def get_medication_history(db: Session, limit=25, medication_name=None, start_da
             query = query.filter(MedicationLog.patient_id == patient_id)
         
         # Filter to one medication by id (exact; see the docstring on why this
-        # is not the same as filtering by name)
-        if medication_id:
+        # is not the same as filtering by name). Explicit None check rather
+        # than truthiness — the parameter is Optional[int], and "not provided"
+        # is the only case that should skip the filter.
+        if medication_id is not None:
             query = query.filter(MedicationLog.medication_id == medication_id)
 
         # Filter by medication name (partial match, case insensitive)

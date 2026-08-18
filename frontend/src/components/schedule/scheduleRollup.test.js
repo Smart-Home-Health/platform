@@ -101,6 +101,20 @@ describe('rollupSchedule', () => {
     expect(counts.given).toBe(1);
   });
 
+  it('orders undated items last instead of leaving it to the engine', () => {
+    // A NaN comparator makes the sort order implementation-defined, and
+    // groupBySlot explicitly keeps undated items — so they do occur.
+    const { needsAttention } = rollupSchedule([
+      { id: 'no-date', name: 'undated', status: 'due_on_time', scheduled_time: null },
+      dose('late', 'due_on_time', 16),
+      { id: 'bad-date', name: 'unparseable', status: 'due_on_time', scheduled_time: 'nope' },
+      dose('early', 'due_on_time', 8),
+    ]);
+    expect(needsAttention.slice(0, 2).map(i => i.name)).toEqual(['early', 'late']);
+    expect(needsAttention.slice(2).map(i => i.name).sort())
+      .toEqual(['undated', 'unparseable']);
+  });
+
   it('handles an empty day', () => {
     const { counts, total, needsAttention, lead } = rollupSchedule([]);
     expect(counts).toEqual({ given: 0, due: 0, missed: 0, skipped: 0 });
