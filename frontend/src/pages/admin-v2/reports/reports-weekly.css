@@ -258,10 +258,10 @@
   text-align: center;
 }
 
-/* Print: the summary is meant to be taken to an appointment, so drop the app
-   chrome and let the cards flow down the page. */
+/* Print: the summary is meant to be taken to an appointment. AdminV2.css drops
+   the app chrome (sidebar, headers, `.rpt-actions`); this drops what is left
+   that only exists to be pressed, and lets the cards use the page. */
 @media print {
-  .admin-v2-sidebar, .admin-v2-topbar, .rpt-actions, .wk-nav, .wk-link { display: none !important; }
+  .wk-nav, .wk-link { display: none !important; }
   .rpt { max-width: none; }
-  .rpt-card { break-inside: avoid; }
 }
