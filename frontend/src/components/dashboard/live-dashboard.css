@@ -414,11 +414,12 @@
     left: var(--ld-panel-left-wide, 0px);
   }
 
-  /* Undocked panels (the auth gates, `dock={false}`) still cover the board
-     below the top bar — an unlock prompt isn't something to work beside. */
+  /* Undocked panels (`dock={false}`) take the rest of the board, but still
+     start after the vitals column: the pulse ox keeps streaming while the
+     board is locked, so an unlock prompt must not cover live readings. */
   .live-dash .dashboard-modal-overlay:not(.docked):not(.mobile) {
     top: var(--ld-panel-top, 60px);
-    left: 0;
+    left: var(--ld-panel-left, 0px);
     right: 0;
     bottom: var(--ld-panel-bottom, 0px);
     width: auto;
