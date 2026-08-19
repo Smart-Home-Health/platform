@@ -24,6 +24,7 @@ from schemas.care_task import CareTask
 from schemas.care_task_schedule import CareTaskSchedule
 from schemas.care_task_log import CareTaskLog
 from nutrition_vocab import LOCATION_LABELS
+from care_task_vocab import is_nutrition_category
 from crud.patients import get_active_patient
 from utils.datetime_utils import (
     utc_now,
@@ -1422,3 +1423,66 @@ def get_nutrition_due_now_late_counts(db: Session, patient_id=None, tz=None):
         logger.error(f"Error getting due_now/late nutrition counts: {e}")
         return {'due_now': 0, 'late': 0}
 
+
+
+# =====================
+# CANONICAL CARE-TASK DAY ITEM
+# =====================
+
+def canonical_care_task_item(raw: dict) -> dict:
+    """One shape for "a care task on a day", whichever producer built it.
+
+    Three views render this — the care-tasks schedule board, the live
+    dashboard's care-task panel, and the combined daily schedule — over two
+    producers that used different names for the same fields:
+    ``care_task_name``/``is_completed``/``completed_time`` in one and
+    ``name``/``completed``/``completed_at`` in the other. Each view learned one
+    dialect, so a field added in one place stayed invisible in the others.
+
+    The ``name``/``completed`` spelling wins because the dashboard already
+    speaks it. ``is_nutrition`` is resolved here too, so no caller has to
+    re-guess it from the category name.
+    """
+    def pick(*keys, default=None):
+        for key in keys:
+            if key in raw and raw[key] is not None:
+                return raw[key]
+        return default
+
+    scheduled = pick('scheduled_time')
+    if hasattr(scheduled, 'isoformat'):
+        scheduled_iso = scheduled.isoformat()
+        hour, minute = scheduled.hour, scheduled.minute
+    else:
+        scheduled_iso, hour, minute = scheduled, None, None
+
+    completed_at = pick('completed_at', 'completed_time')
+    if hasattr(completed_at, 'isoformat'):
+        completed_at = completed_at.isoformat()
+
+    category_name = pick('category_name', 'care_task_category_name')
+
+    return {
+        'schedule_id': pick('schedule_id'),
+        'care_task_id': pick('care_task_id'),
+        'name': pick('name', 'care_task_name'),
+        'description': pick('description', 'care_task_description'),
+        'schedule_description': pick('schedule_description'),
+        'category_id': pick('category_id'),
+        'category_name': category_name,
+        'category_color': pick('category_color', 'care_task_category_color'),
+        'scheduled_time': scheduled_iso,
+        'hour': hour,
+        'minute': minute,
+        'completed': bool(pick('completed', 'is_completed', default=False)),
+        'status': pick('status'),
+        'completed_at': completed_at,
+        'completed_by': pick('completed_by', 'performed_by'),
+        'log_id': pick('log_id'),
+        'is_prn': bool(pick('is_prn', default=False)),
+        'is_yesterday': bool(pick('is_yesterday', default=False)),
+        # Resolved once, server-side, from the one keyword list.
+        'is_nutrition': is_nutrition_category(category_name),
+        'notes': pick('notes'),
+        'type': 'care_task',
+    }

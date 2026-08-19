@@ -29,6 +29,7 @@ from db import get_db
 from utils.datetime_utils import utc_now, resolve_tz_for_patient, local_day_bounds
 from models.schedule import CompleteItemRequest, BulkCompleteRequest
 from crud.scheduling import get_scheduled_medications, get_scheduled_care_tasks, get_scheduled_nutrition, get_due_and_upcoming_care_tasks_count
+from crud.scheduling import canonical_care_task_item
 from crud.nutrition import create_nutrition_intake, _publish_nutrition_mqtt, _publish_bathroom_mqtt
 from crud.users import create_audit_log
 from event_publisher import publish_due_counts_changed
@@ -234,27 +235,9 @@ async def get_daily_schedule(
             })
         
         for task in care_tasks:
-            result["care_tasks"].append({
-                "schedule_id": task["schedule_id"],
-                "care_task_id": task["care_task_id"],
-                "name": task["care_task_name"],
-                "description": task.get("care_task_description"),
-                "scheduled_time": task["scheduled_time"].isoformat(),
-                "hour": task["scheduled_time"].hour,
-                "minute": task["scheduled_time"].minute,
-                "notes": task.get("notes"),
-                "completed": task["completed"],
-                "status": task.get("status"),
-                "completed_at": task["completed_at"],
-                "completed_by": task["completed_by"],
-                "category_id": task.get("category_id"),
-                "category_name": task.get("category_name"),
-                "category_color": task.get("category_color"),
-                "is_prn": task.get("is_prn", False),
-                "log_id": task.get("log_id"),
-                "is_yesterday": task.get("is_yesterday", False),
-                "type": "care_task"
-            })
+            # One shape for a care-task day item, shared with the care-task
+            # endpoints so a field added in one place shows up in all of them.
+            result["care_tasks"].append(canonical_care_task_item(task))
         
         return result
         

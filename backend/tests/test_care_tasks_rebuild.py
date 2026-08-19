@@ -237,3 +237,88 @@ def test_completion_stats_keep_same_named_tasks_apart(admin_client, patient, db_
     rows = body if isinstance(body, list) else body.get('stats', body.get('tasks', []))
     ids = [r.get('task_id') for r in rows if r.get('task_name') == 'Repositioning']
     assert sorted(ids) == sorted([a, b]), rows
+
+
+# =====================
+# CANONICAL DAY SHAPE
+# =====================
+
+CANONICAL_KEYS = {
+    'schedule_id', 'care_task_id', 'name', 'description', 'schedule_description',
+    'category_id', 'category_name', 'category_color', 'scheduled_time', 'hour',
+    'minute', 'completed', 'status', 'completed_at', 'completed_by', 'log_id',
+    'is_prn', 'is_yesterday', 'is_nutrition', 'notes', 'type',
+}
+
+
+def test_canonical_item_reconciles_both_dialects():
+    """Two producers named the same fields differently, so each view learned
+    one dialect and missed anything added to the other."""
+    from crud.scheduling import canonical_care_task_item
+
+    at = datetime(2026, 8, 18, 8, 0, tzinfo=timezone.utc)
+    done = datetime(2026, 8, 18, 8, 5, tzinfo=timezone.utc)
+
+    old_style = canonical_care_task_item({
+        'schedule_id': 1, 'care_task_id': 2, 'care_task_name': 'Morning feed',
+        'care_task_description': 'via tube', 'care_task_category_name': 'Feeding',
+        'care_task_category_color': '#abc', 'scheduled_time': at,
+        'is_completed': True, 'completed_time': done, 'performed_by': 7,
+    })
+    new_style = canonical_care_task_item({
+        'schedule_id': 1, 'care_task_id': 2, 'name': 'Morning feed',
+        'description': 'via tube', 'category_name': 'Feeding',
+        'category_color': '#abc', 'scheduled_time': at,
+        'completed': True, 'completed_at': done, 'completed_by': 7,
+    })
+
+    assert old_style == new_style
+    assert set(old_style) == CANONICAL_KEYS
+    assert old_style['name'] == 'Morning feed'
+    assert old_style['completed'] is True
+    # Resolved server-side so no caller re-guesses it from the category name.
+    assert old_style['is_nutrition'] is True
+
+
+def test_canonical_item_defaults_are_safe():
+    from crud.scheduling import canonical_care_task_item
+
+    item = canonical_care_task_item({'care_task_id': 3, 'name': 'Repositioning'})
+    assert item['completed'] is False
+    assert item['is_prn'] is False
+    assert item['is_yesterday'] is False
+    assert item['is_nutrition'] is False
+    assert item['hour'] is None
+
+
+def test_day_endpoint_returns_canonical_items(admin_client, patient, db_session):
+    cat = _category(admin_client, name='Hygiene day')
+    task = _task(admin_client, patient, cat, name='Brush teeth')
+    _schedule(db_session, task, patient.id, cron='0 8 * * *')
+
+    resp = admin_client.get(f"/api/care-tasks/day?patient_id={patient.id}")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+
+    assert 'items' in body and 'counts' in body
+    assert body['counts']['total'] == len(body['items'])
+    for item in body['items']:
+        assert set(item) == CANONICAL_KEYS, set(item) ^ CANONICAL_KEYS
+
+
+def test_day_endpoint_requires_read_access(client, patient):
+    """This endpoint had no auth dependency while its siblings did."""
+    resp = client.get(f"/api/care-tasks/day?patient_id={patient.id}")
+    assert resp.status_code in (401, 403)
+
+
+def test_combined_schedule_speaks_the_same_shape(admin_client, patient, db_session):
+    """The dashboard reads care tasks from /api/schedule/daily; it must agree
+    with the care-task endpoints rather than carry its own spelling."""
+    cat = _category(admin_client, name='Hygiene combined')
+    task = _task(admin_client, patient, cat, name='Wash hands')
+    _schedule(db_session, task, patient.id, cron='0 9 * * *')
+
+    body = admin_client.get(f"/api/schedule/daily?patient_id={patient.id}").json()
+    for item in body.get('care_tasks', []):
+        assert set(item) == CANONICAL_KEYS, set(item) ^ CANONICAL_KEYS
