@@ -55,12 +55,17 @@ const readNutrition = (notes) => {
   }
 };
 
-/** Anything in notes that is a plain note rather than prefill JSON. */
+/** Anything in notes that is a plain note rather than prefill JSON.
+ *
+ * Rows written by the old Manage page carry the note under `custom_notes`;
+ * this form writes `note`. Both are read, so editing a schedule saved before
+ * the rebuild does not silently drop the note it was saved with.
+ */
 const readPlainNote = (notes) => {
   if (!notes) return '';
   try {
     const parsed = JSON.parse(notes);
-    return parsed?.note || '';
+    return parsed?.note || parsed?.custom_notes || '';
   } catch {
     return notes;
   }

@@ -204,8 +204,8 @@ const AdminV2CareTasksSchedule = () => {
       categoryColor: item.category_color,
       categoryLabel: item.category_name,
       prn: item.is_prn,
-      scheduleLine: item.completed_time
-        ? `Completed at ${new Date(item.completed_time).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true })}`
+      scheduleLine: item.completed_at
+        ? `Completed at ${new Date(item.completed_at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true })}`
         : undefined,
       statusLabel: getStatusText(item),
       statusTone: getStatusTone(item),

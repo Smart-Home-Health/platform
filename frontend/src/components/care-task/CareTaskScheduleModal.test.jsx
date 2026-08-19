@@ -101,6 +101,25 @@ describe('CareTaskScheduleModal', () => {
     expect(notes.nutrition.amount).toBe(250);
   });
 
+  it('keeps a note the old Manage page wrote under custom_notes', () => {
+    // Pre-rebuild rows spell it custom_notes. Reading only `note` meant editing
+    // such a schedule silently dropped what the caregiver had written.
+    const legacy = {
+      id: 12, care_task_id: 1, cron_expression: '0 8 * * *', description: 'Morning', active: true,
+      notes: JSON.stringify({
+        nutrition: { item_name: 'Peptamen', amount: 250, amount_unit: 'ml' },
+        custom_notes: 'Warm it first',
+      }),
+    };
+    const { onUpdate } = setup({ isNutritionTask: true, schedules: [legacy] });
+    fireEvent.click(screen.getByLabelText(/Edit Daily · 8:00 AM/));
+    fireEvent.click(screen.getByText('Notes'));
+    expect(screen.getByDisplayValue('Warm it first')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }));
+    expect(JSON.parse(onUpdate.mock.calls[0][1].notes).note).toBe('Warm it first');
+  });
+
   it('hides the write actions without permission', () => {
     setup({ canCreate: false, canUpdate: false, canDelete: false });
     expect(screen.queryByText('Add a schedule')).not.toBeInTheDocument();

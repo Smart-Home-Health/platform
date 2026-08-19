@@ -75,15 +75,26 @@ const AdminV2CareTasks = () => {
   const canUpdate = hasPermission('care_tasks.update');
   const canDelete = hasPermission('care_tasks.delete');
 
-  // Keep ?patient= and the shared patient context in step.
+  // ?patient= seeds the shared context on arrival — a deep link or the back
+  // button decides the patient.
   useEffect(() => {
     const fromUrl = searchParams.get('patient');
     if (fromUrl && patients.length > 0) {
       const match = patients.find((p) => String(p.id) === fromUrl);
       if (match && match.id !== contextPatient?.id) setContextPatient(match);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- URL->context sync is intentionally one-way
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-way URL→context sync; adding contextPatient would re-run on selection change and revert it to the stale URL param
   }, [searchParams, patients]);
+
+  // ...and a selection made anywhere else writes itself back, so the URL stays
+  // shareable. Both sibling tabs do this; without it this page's ?patient=
+  // goes stale as soon as the patient is switched from another surface.
+  useEffect(() => {
+    if (contextPatient && searchParams.get('patient') !== String(contextPatient.id)) {
+      setSearchParams({ patient: contextPatient.id });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-way context→URL sync; runs only when the selection changes
+  }, [contextPatient]);
 
   const fetchAll = useCallback(async () => {
     if (!selectedPatient) return;
