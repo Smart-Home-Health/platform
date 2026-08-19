@@ -15,120 +15,86 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useState, useEffect } from 'react';
+// Deliveries — every shipment for the selected patient.
+//
+// Grouped by whether the shipment is still moving: the ones you can act on
+// first, the ones that already landed underneath. The three counts at the top
+// name the states worth interrupting for, and each opens the list filtered to
+// what it counted rather than being a number with no way in.
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
-import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
-import {
-  PlusIcon,
-  EquipmentIcon,
-  ClockIcon,
-  ChevronRightIcon,
-  AlertIcon,
-  CopyIcon,
-  PackageIcon,
-  TrashIcon
-} from '../../components/Icons';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Alert } from '@/components/ui/alert';
-import { Field, FormRow } from '@/components/ui/field';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
+import { PlusIcon, PackageIcon, SearchIcon } from '../../components/Icons';
+import ShipmentCard from '../../components/shipment/ShipmentCard';
+import ShipmentDetailsModal from '../../components/shipment/ShipmentDetailsModal';
+import ChipGroup from '../../components/vc/ChipGroup';
 import { shipmentService } from '../../services/shipments';
+import { businessService } from '../../services/businesses';
+import {
+  STATUS_FILTERS, statusLabel, isOpen, needsAttention,
+} from '../../lib/shipmentStatus';
 import './AdminV2.css';
+import './components/shipments-page.css';
 
-const STATUS_OPTIONS = [
-  { value: '', label: 'All Statuses' },
-  { value: 'draft', label: 'Draft' },
-  { value: 'ordered', label: 'Ordered' },
-  { value: 'shipped', label: 'Shipped' },
-  { value: 'receiving', label: 'Receiving' },
-  { value: 'complete', label: 'Complete' },
-  { value: 'partial', label: 'Partial' },
-  { value: 'verified', label: 'Verified' },
-];
+const shortDate = (value) => (value
+  ? new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }).toUpperCase()
+  : null);
+
+/** Tracking numbers are long and the card is narrow; keep both ends. */
+const shortTracking = (value) => {
+  if (!value) return null;
+  return value.length > 12 ? `${value.slice(0, 4)}…${value.slice(-3)}` : value;
+};
 
 const AdminV2Shipments = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { 
-    patients, 
-    selectedPatient: contextPatient, 
-    selectPatient: setContextPatient,
-    loadingPatients 
+  const {
+    patients, selectedPatient: contextPatient,
+    selectPatient: setContextPatient, loadingPatients,
   } = useAdminPatient();
-  
+
   const selectedPatient = contextPatient;
-  
-  // Shipments state
+
   const [shipments, setShipments] = useState([]);
+  const [templates, setTemplates] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Standing orders ("usual order") state
-  const [templates, setTemplates] = useState([]);
-  const [creatingDelivery, setCreatingDelivery] = useState(false);
-  
-  // Filter state
   const [statusFilter, setStatusFilter] = useState('');
-  const [backorderFilter, setBackorderFilter] = useState('');
-  
-  // Modal states
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [formData, setFormData] = useState({
-    po_number: '',
-    order_number: '',
-    ship_date: '',
-    expected_delivery: '',
-    tracking_number: '',
-    ship_method: '',
-    warehouse_loc: '',
-    notes: ''
-  });
-  const [formError, setFormError] = useState(null);
-  const [saving, setSaving] = useState(false);
-  
-  // Businesses (suppliers) for dropdown
-  const [suppliers, setSuppliers] = useState([]);
-  const [selectedSupplierId, setSelectedSupplierId] = useState('');
+  const [search, setSearch] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
 
-  // Permission helper
+  const [createOpen, setCreateOpen] = useState(false);
+  const [creatingDelivery, setCreatingDelivery] = useState(false);
+  const [busy, setBusy] = useState(false);
+
   const hasPermission = (permission) => {
     if (!user) return false;
     if (user.is_system_admin) return true;
     return user.permissions?.includes(permission) || false;
   };
 
-  // Check URL params for patient ID
+  // The endpoints behind these all require shipments.*; the old page gated
+  // them on equipment.*, so a role with one and not the other saw buttons
+  // that 403'd, or none where they would have worked.
+  const canCreate = hasPermission('shipments.create');
+  const canUpdate = hasPermission('shipments.update');
+  const canDelete = hasPermission('shipments.delete');
+
   useEffect(() => {
     const patientId = searchParams.get('patient');
     if (patientId && patients.length > 0) {
-      const patient = patients.find(p => p.id === parseInt(patientId));
-      if (patient && patient.id !== contextPatient?.id) {
-        setContextPatient(patient);
-      }
+      const patient = patients.find((p) => p.id === parseInt(patientId, 10));
+      if (patient && patient.id !== contextPatient?.id) setContextPatient(patient);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-way URL→context sync; adding contextPatient would re-run on selection change and revert it to the stale URL param
   }, [searchParams, patients, loadingPatients]);
 
-  // Update URL when context patient changes
   useEffect(() => {
     if (contextPatient && searchParams.get('patient') !== String(contextPatient.id)) {
       setSearchParams({ patient: contextPatient.id });
@@ -136,545 +102,318 @@ const AdminV2Shipments = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-way context→URL sync; runs only when the selection changes
   }, [contextPatient]);
 
-  // Fetch data when patient is selected
-  useEffect(() => {
-    if (selectedPatient) {
-      fetchShipments();
-      fetchSuppliers();
-      fetchTemplates();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helpers are recreated each render; effect is keyed on patient change only
-  }, [selectedPatient, statusFilter, backorderFilter]);
-
-  const fetchShipments = async () => {
+  const fetchAll = useCallback(async () => {
     if (!selectedPatient) return;
-    
+    setLoading(true);
+    setError(null);
     try {
-      setLoading(true);
-      setError(null);
-      
-      const params = new URLSearchParams();
-      params.append('patient_id', selectedPatient.id.toString());
-      params.append('is_template', 'false'); // standing orders live in their own card
-      if (statusFilter) params.append('status', statusFilter);
-      if (backorderFilter === 'true') params.append('is_backorder', 'true');
-      if (backorderFilter === 'false') params.append('is_backorder', 'false');
-      
-      const response = await fetch(`${config.apiUrl}/api/shipments?${params.toString()}`, {
-        credentials: 'include'
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setShipments(data.shipments || []);
-      } else {
-        setError('Failed to load shipments');
-      }
+      const [list, templateList, supplierList] = await Promise.all([
+        shipmentService.listShipments({
+          patient_id: selectedPatient.id,
+          is_template: false,
+          status: statusFilter || undefined,
+        }),
+        shipmentService.listTemplates(selectedPatient.id),
+        businessService.listDmeSuppliers(),
+      ]);
+      setShipments(list.shipments || []);
+      setTemplates(templateList.shipments || []);
+      setSuppliers(supplierList);
     } catch (err) {
-      setError('Error connecting to server');
-      console.error('Error fetching shipments:', err);
+      setError(err.message);
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedPatient, statusFilter]);
 
-  const fetchSuppliers = async () => {
-    try {
-      const response = await fetch(`${config.apiUrl}/api/businesses?type=dme`, {
-        credentials: 'include'
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setSuppliers(data.businesses || data || []);
-      }
-    } catch (err) {
-      console.error('Error fetching suppliers:', err);
-    }
-  };
+  useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  const resetForm = () => {
-    setFormData({
-      po_number: '',
-      order_number: '',
-      ship_date: '',
-      expected_delivery: '',
-      tracking_number: '',
-      ship_method: '',
-      warehouse_loc: '',
-      notes: ''
-    });
-    setSelectedSupplierId('');
-    setFormError(null);
-  };
+  const supplierName = useCallback((shipment) => (
+    shipment.supplier_name
+      || suppliers.find((s) => s.id === shipment.supplier_id)?.name
+      || null
+  ), [suppliers]);
 
-  const handleCreateShipment = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    setFormError(null);
-    
-    try {
-      const payload = {
-        patient_id: selectedPatient.id,
-        supplier_id: selectedSupplierId ? parseInt(selectedSupplierId) : null,
-        ...formData
-      };
-      
-      const response = await fetch(`${config.apiUrl}/api/shipments`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload)
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setShowCreateModal(false);
-        resetForm();
-        // Navigate to the new shipment detail page
-        navigate(`/care/equipment/shipments/${data.id}?patient=${selectedPatient.id}`);
-      } else {
-        const errorData = await response.json();
-        setFormError(errorData.error || 'Failed to create shipment');
-      }
-    } catch {
-      setFormError('Error connecting to server');
-    } finally {
-      setSaving(false);
-    }
-  };
+  const openShipment = (id) => navigate(
+    `/care/equipment/shipments/${id}?patient=${selectedPatient.id}`,
+  );
 
-  // --- Standing orders ("usual order") ---
-  const fetchTemplates = async () => {
-    if (!selectedPatient) return;
-    try {
-      const data = await shipmentService.listTemplates(selectedPatient.id);
-      setTemplates(data.shipments || []);
-    } catch (err) {
-      console.error('Error fetching standing orders:', err);
-    }
-  };
+  // --- Counts. Derived from the loaded list, so they describe what is here. ---
+  const counts = useMemo(() => ({
+    open: shipments.filter(isOpen).length,
+    draft: shipments.filter((s) => s.status === 'draft').length,
+    attention: shipments.filter(needsAttention).length,
+  }), [shipments]);
+
+  const visible = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    if (!needle) return shipments;
+    return shipments.filter((s) => [
+      s.order_number, s.po_number, s.tracking_number, supplierName(s), `#${s.id}`,
+    ].some((field) => String(field || '').toLowerCase().includes(needle)));
+  }, [shipments, search, supplierName]);
+
+  const inProgress = visible.filter(isOpen);
+  const recent = visible.filter((s) => !isOpen(s));
+
+  // --- Actions ---
 
   const handleDeliveryArrived = async (templateId) => {
     setCreatingDelivery(true);
+    setError(null);
     try {
       const result = await shipmentService.createDeliveryFromTemplate(templateId);
-      if (result.success) {
-        navigate(`/care/equipment/shipments/${result.id}?patient=${selectedPatient.id}`);
-      } else {
-        alert(result.error || 'Failed to create delivery');
-      }
+      if (result.success) openShipment(result.id);
+      else setError(result.error || 'Failed to create delivery');
     } catch (err) {
-      alert(err.message);
+      setError(err.message);
     } finally {
       setCreatingDelivery(false);
     }
   };
 
-  // Turn a past delivery into the standing order: clone it (clears receipts,
-  // order numbers, quantities-received), then flag the clone as the template.
-  const handleSaveAsUsualOrder = async (shipmentId) => {
+  const handleCreate = async (payload) => {
+    setBusy(true);
     try {
-      const response = await fetch(`${config.apiUrl}/api/shipments/${shipmentId}/copy`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
+      const result = await shipmentService.createShipment({
+        ...payload, patient_id: selectedPatient.id,
       });
-      if (!response.ok) throw new Error('Failed to copy shipment');
-      const data = await response.json();
-      await shipmentService.patchShipment(data.id, { is_template: true });
-      fetchTemplates();
-    } catch (err) {
-      alert(err.message || 'Failed to save as usual order');
+      if (!result.success) throw new Error(result.error || 'Failed to create shipment');
+      setCreateOpen(false);
+      openShipment(result.id);
+    } finally {
+      setBusy(false);
     }
   };
 
-  const handleDeleteShipment = async (shipment) => {
+  const handleCopy = async (shipment) => {
+    try {
+      const result = await shipmentService.copyShipment(shipment.id);
+      if (result.success) openShipment(result.id);
+      else setError(result.error || 'Failed to copy shipment');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  // Turn a past delivery into the standing order: clone it (clearing receipts,
+  // order numbers and received quantities), then flag the clone as template.
+  const handleSaveAsUsual = async (shipment) => {
+    try {
+      const copy = await shipmentService.copyShipment(shipment.id);
+      if (!copy.success) throw new Error(copy.error || 'Failed to copy shipment');
+      await shipmentService.patchShipment(copy.id, { is_template: true });
+      fetchAll();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleDelete = async (shipment) => {
     const label = shipment.order_number || shipment.po_number || `#${shipment.id}`;
-    if (!window.confirm(`Delete draft ${label}? This can't be undone.`)) return;
+    if (!window.confirm(`Delete draft ${label}? This cannot be undone.`)) return;
     try {
       const result = await shipmentService.deleteShipment(shipment.id);
-      if (result.success) {
-        fetchShipments();
-      } else {
-        alert(result.error || 'Failed to delete');
-      }
+      if (result.success) fetchAll();
+      else setError(result.error || 'Failed to delete shipment');
     } catch (err) {
-      alert(err.message);
+      setError(err.message);
     }
   };
 
-  const handleCopyShipment = async (shipmentId) => {
-    try {
-      const response = await fetch(`${config.apiUrl}/api/shipments/${shipmentId}/copy`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        // Navigate to the new copied shipment
-        navigate(`/care/equipment/shipments/${data.id}?patient=${selectedPatient.id}`);
-      } else {
-        const errorData = await response.json();
-        alert(errorData.error || 'Failed to copy shipment');
-      }
-    } catch (err) {
-      console.error('Error copying shipment:', err);
-      alert('Error connecting to server');
+  // --- Card shaping. What is worth showing depends on where it is. ---
+
+  const detailsFor = (shipment) => {
+    if (shipment.status === 'draft') {
+      return [
+        { label: 'Updated', value: shortDate(shipment.updated_at) },
+        { label: 'Items', value: shipment.item_count ?? 0 },
+        { label: 'Type', value: shipment.is_backorder ? 'BACKORDER' : 'REGULAR' },
+      ];
     }
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return '-';
-    return new Date(dateString).toLocaleDateString();
-  };
-
-  const getStatusBadgeClass = (status) => {
-    switch (status) {
-      case 'draft': return 'admin-v2-badge-warning';
-      case 'ordered': return 'admin-v2-badge-secondary';
-      case 'shipped': return 'admin-v2-badge-info';
-      case 'receiving': return 'admin-v2-badge-warning';
-      case 'complete': return 'admin-v2-badge-success';
-      case 'partial': return 'admin-v2-badge-danger';
-      case 'verified': return 'admin-v2-badge-success';
-      default: return 'admin-v2-badge-secondary';
+    if (isOpen(shipment)) {
+      return [
+        { label: 'Expected', value: shortDate(shipment.expected_delivery) },
+        { label: 'Tracking', value: shortTracking(shipment.tracking_number) },
+        { label: 'Items', value: shipment.item_count ?? 0 },
+      ];
     }
+    return [
+      { label: 'Received', value: shortDate(shipment.actual_delivery || shipment.finalized_at) },
+      { label: 'Items', value: shipment.item_count ?? 0 },
+      { label: 'Type', value: shipment.is_backorder ? 'BACKORDER' : 'REGULAR' },
+    ];
   };
 
-  // Stats
-  const stats = {
-    total: shipments.length,
-    draft: shipments.filter(s => s.status === 'draft').length,
-    receiving: shipments.filter(s => s.status === 'receiving').length,
-    backorders: shipments.filter(s => s.is_backorder).length,
-    partial: shipments.filter(s => s.status === 'partial').length
+  const actionFor = (shipment) => {
+    if (shipment.status === 'draft') {
+      return { label: 'Continue draft', onClick: () => openShipment(shipment.id) };
+    }
+    if (isOpen(shipment)) {
+      return { label: 'Open delivery', onClick: () => openShipment(shipment.id) };
+    }
+    return { label: 'View receipt', onClick: () => openShipment(shipment.id) };
   };
 
-  // Loading state
+  const menuFor = (shipment) => {
+    const menu = [];
+    if (canCreate) menu.push({ label: 'Copy to new draft', onClick: () => handleCopy(shipment) });
+    if (canUpdate && !isOpen(shipment)) {
+      menu.push({ label: 'Save as usual order', onClick: () => handleSaveAsUsual(shipment) });
+    }
+    if (canDelete && shipment.status === 'draft') {
+      menu.push({ label: 'Delete draft', onClick: () => handleDelete(shipment), danger: true });
+    }
+    return menu;
+  };
+
+  const renderCard = (shipment) => (
+    <ShipmentCard
+      key={shipment.id}
+      shipment={shipment}
+      supplierName={supplierName(shipment)}
+      details={detailsFor(shipment)}
+      action={actionFor(shipment)}
+      menu={menuFor(shipment)}
+      showRail={isOpen(shipment) && shipment.status !== 'draft'}
+      onOpen={() => openShipment(shipment.id)}
+    />
+  );
+
   if (loadingPatients) {
+    return <AdminV2Layout><div className="admin-v2-loading">Loading patients…</div></AdminV2Layout>;
+  }
+
+  if (!selectedPatient) {
     return (
       <AdminV2Layout>
-        <div className="admin-v2-loading">Loading patients...</div>
+        <div className="admin-v2-loading">Select a patient from the sidebar</div>
       </AdminV2Layout>
     );
   }
 
   return (
     <AdminV2Layout>
-      <div className="admin-v2-page">
-        {selectedPatient ? (
-          <>
-            {/* Usual order — the zero-effort path when the monthly box shows up */}
-            {templates.length > 0 && (
-              <div className="admin-v2-info-banner">
-                <div className="admin-v2-info-content">
-                  <strong>Usual order{templates.length > 1 ? 's' : ''}</strong>
-                  <p>
-                    {templates.length === 1 && templates[0].supplier_name
-                      ? `Supplies from ${templates[0].supplier_name} arrive on a schedule. When the box shows up, start here.`
-                      : 'When the recurring box shows up, start here.'}
-                  </p>
-                </div>
-                <div className="tw flex flex-wrap gap-2">
-                  {templates.map((t) => (
-                    <React.Fragment key={t.id}>
-                      {hasPermission('equipment.create') && (
-                        <Button size="lg" onClick={() => handleDeliveryArrived(t.id)} disabled={creatingDelivery}>
-                          <PackageIcon size={16} /> {creatingDelivery ? 'One moment…' : `A delivery arrived${templates.length > 1 ? ` — ${t.supplier_name || t.order_number || `#${t.id}`}` : ' — start here'}`}
-                        </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        onClick={() => navigate(`/care/equipment/shipments/${t.id}?patient=${selectedPatient.id}`)}
-                      >
-                        View usual order
-                      </Button>
-                    </React.Fragment>
-                  ))}
-                </div>
-              </div>
-            )}
+      <div className="admin-v2-page sh-page">
+        {error && <div className="sh-error" role="alert">{error}</div>}
 
-            {/* Stats Row */}
-            <div className="admin-v2-summary-stats admin-v2-shipments-summary">
-              <div className="admin-v2-stat-card">
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(88, 166, 255, 0.15)' }}>
-                  <EquipmentIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.total}</h4>
-                  <p>Total Shipments</p>
-                </div>
-              </div>
-              <div className="admin-v2-stat-card">
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(187, 128, 9, 0.15)' }}>
-                  <ClockIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.draft}</h4>
-                  <p>Drafts</p>
-                </div>
-              </div>
-              <div className="admin-v2-stat-card">
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(158, 106, 3, 0.15)' }}>
-                  <ClockIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.receiving}</h4>
-                  <p>Receiving</p>
-                </div>
-              </div>
-              <div className="admin-v2-stat-card">
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(248, 81, 73, 0.15)' }}>
-                  <AlertIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.partial}</h4>
-                  <p>With Issues</p>
-                </div>
-              </div>
+        {/* The zero-effort path: the recurring box turned up, start here. */}
+        {templates.length > 0 && canCreate && (
+          <section className="sh-usual">
+            <h2 className="sh-usual-title">Usual order{templates.length > 1 ? 's' : ''}</h2>
+            <p className="sh-usual-note">
+              Supplies that arrive on a schedule. When the box shows up, start here.
+            </p>
+            <div className="sh-usual-actions">
+              {templates.map((t) => (
+                <button key={t.id} type="button" className="sh-btn primary"
+                        disabled={creatingDelivery}
+                        onClick={() => handleDeliveryArrived(t.id)}>
+                  <PackageIcon size={16} />
+                  {creatingDelivery ? 'One moment…' : (
+                    templates.length > 1
+                      ? `Arrived — ${supplierName(t) || t.order_number || `#${t.id}`}`
+                      : 'A delivery arrived'
+                  )}
+                </button>
+              ))}
+              {templates.map((t) => (
+                <button key={`view-${t.id}`} type="button" className="sh-btn ghost"
+                        onClick={() => openShipment(t.id)}>
+                  View usual order
+                </button>
+              ))}
             </div>
-
-            {/* Filter Bar */}
-            <div className="history-filter-bar">
-              <div className="history-filter-row">
-                <div className="history-filter-group">
-                  <label>Status</label>
-                  <select
-                    value={statusFilter}
-                    onChange={e => setStatusFilter(e.target.value)}
-                    className="history-filter-select"
-                  >
-                    {STATUS_OPTIONS.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
-                </div>
-                
-                <div className="history-filter-group">
-                  <label>Type</label>
-                  <select
-                    value={backorderFilter}
-                    onChange={e => setBackorderFilter(e.target.value)}
-                    className="history-filter-select"
-                  >
-                    <option value="">All Types</option>
-                    <option value="false">Regular</option>
-                    <option value="true">Backorder</option>
-                  </select>
-                </div>
-                
-                {hasPermission('equipment.create') && (
-                  <div className="tw" style={{ marginLeft: 'auto' }}>
-                    <Button onClick={() => { resetForm(); setShowCreateModal(true); }}>
-                      <PlusIcon size={16} /> New Shipment
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Shipments Table */}
-            {loading ? (
-              <div className="admin-v2-loading">Loading shipments...</div>
-            ) : error ? (
-              <div className="tw"><Alert variant="destructive">{error}</Alert></div>
-            ) : shipments.length === 0 ? (
-              <div className="admin-v2-empty-state">
-                <EquipmentIcon size={48} />
-                <h3>No Shipments Found</h3>
-                <p className="admin-v2-text-muted">Create a shipment to start tracking DME deliveries.</p>
-                {hasPermission('equipment.create') && (
-                  <div className="tw">
-                    <Button onClick={() => { resetForm(); setShowCreateModal(true); }}>
-                      <PlusIcon size={16} /> New Shipment
-                    </Button>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="admin-v2-table-container admin-v2-table-cards-wrap">
-                <table className="admin-v2-table admin-v2-table-cards">
-                  <thead>
-                    <tr>
-                      <th>Order #</th>
-                      <th>Supplier</th>
-                      <th>Order Date</th>
-                      <th>Status</th>
-                      <th>Items</th>
-                      <th>Type</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {shipments.map(shipment => (
-                      <tr 
-                        key={shipment.id}
-                        className="admin-v2-clickable-row"
-                        onClick={() => navigate(`/care/equipment/shipments/${shipment.id}?patient=${selectedPatient.id}`)}
-                      >
-                        <td className="admin-v2-cell-name">
-                          <strong>{shipment.order_number || shipment.po_number || `#${shipment.id}`}</strong>
-                        </td>
-                        <td data-label="Supplier">{shipment.supplier_name || '-'}</td>
-                        <td data-label="Order Date">{formatDate(shipment.order_date || shipment.ship_date)}</td>
-                        <td data-label="Status">
-                          <span className={`admin-v2-badge ${getStatusBadgeClass(shipment.status)}`}>
-                            {shipment.status}
-                          </span>
-                        </td>
-                        <td data-label="Items">{shipment.item_count || 0}</td>
-                        <td data-label="Type">
-                          {shipment.is_backorder ? (
-                            <span className="admin-v2-badge admin-v2-badge-warning">Backorder</span>
-                          ) : (
-                            <span className="admin-v2-badge admin-v2-badge-secondary">Regular</span>
-                          )}
-                        </td>
-                        <td className="admin-v2-cell-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                          {templates.length === 0 && ['complete', 'verified'].includes(shipment.status)
-                            && hasPermission('equipment.create') && (
-                            <button
-                              className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-secondary"
-                              onClick={(e) => { e.stopPropagation(); handleSaveAsUsualOrder(shipment.id); }}
-                              title="Save this as the usual order, so next month is one tap"
-                            >
-                              Save as usual order
-                            </button>
-                          )}
-                          <button
-                            className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-secondary"
-                            onClick={(e) => { e.stopPropagation(); handleCopyShipment(shipment.id); }}
-                            title="Copy Shipment"
-                          >
-                            <CopyIcon size={14} />
-                          </button>
-                          {shipment.status === 'draft' && hasPermission('equipment.delete') && (
-                            <button
-                              className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-secondary"
-                              onClick={(e) => { e.stopPropagation(); handleDeleteShipment(shipment); }}
-                              title="Delete this draft"
-                            >
-                              <TrashIcon size={14} />
-                            </button>
-                          )}
-                          <ChevronRightIcon size={16} />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
-        ) : (
-          <div className="admin-v2-loading">Select a patient from the sidebar</div>
+          </section>
         )}
 
-        {/* Create Shipment Dialog */}
-        <Dialog open={showCreateModal} onOpenChange={(o) => { if (!o) setShowCreateModal(false); }}>
-          <DialogContent className="sm:max-w-[640px]" aria-describedby={undefined}>
-            <DialogHeader>
-              <DialogTitle>New Shipment</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleCreateShipment} className="flex flex-col gap-4">
-              {formError && <Alert variant="destructive">{formError}</Alert>}
+        <div className="sh-head">
+          <h1 className="sh-title">Shipments</h1>
+          <div className="sh-head-actions">
+            <button type="button" className={`sh-btn ghost ${showSearch ? 'active' : ''}`}
+                    aria-label="Search shipments" aria-expanded={showSearch}
+                    onClick={() => { setShowSearch((v) => !v); if (showSearch) setSearch(''); }}>
+              <SearchIcon size={16} /> Search
+            </button>
+            {canCreate && (
+              <button type="button" className="sh-btn primary" onClick={() => setCreateOpen(true)}>
+                <PlusIcon size={16} /> New
+              </button>
+            )}
+          </div>
+        </div>
 
-              <Field label="Supplier (DME Provider)">
-                <Select
-                  value={selectedSupplierId || '__none__'}
-                  onValueChange={(v) => setSelectedSupplierId(v === '__none__' ? '' : v)}
-                >
-                  <SelectTrigger><SelectValue placeholder="-- Select Supplier --" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">-- Select Supplier --</SelectItem>
-                    {suppliers.map(s => (
-                      <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
+        {/* Each count filters to what it counted — a number you can act on. */}
+        <div className="sh-stats">
+          <button type="button" className="sh-stat" onClick={() => setStatusFilter('')}>
+            <span className="sh-stat-label">Open</span>
+            <span className="sh-stat-value tone-accent">{counts.open}</span>
+          </button>
+          <button type="button" className="sh-stat" onClick={() => setStatusFilter('draft')}>
+            <span className="sh-stat-label">Drafts</span>
+            <span className="sh-stat-value tone-due">{counts.draft}</span>
+          </button>
+          <button type="button" className="sh-stat"
+                  onClick={() => navigate(`/care/equipment/alerts?patient=${selectedPatient.id}`)}>
+            <span className="sh-stat-label">Needs attention</span>
+            <span className={`sh-stat-value ${counts.attention ? 'tone-alert' : 'tone-idle'}`}>
+              {counts.attention}
+            </span>
+          </button>
+        </div>
 
-              <FormRow>
-                <Field label="PO Number" htmlFor="ship-po">
-                  <Input
-                    id="ship-po"
-                    value={formData.po_number}
-                    onChange={e => setFormData({...formData, po_number: e.target.value})}
-                    placeholder="e.g., 55811"
-                  />
-                </Field>
-                <Field label="Order Number" htmlFor="ship-order">
-                  <Input
-                    id="ship-order"
-                    value={formData.order_number}
-                    onChange={e => setFormData({...formData, order_number: e.target.value})}
-                    placeholder="e.g., 1099274055"
-                  />
-                </Field>
-              </FormRow>
+        {showSearch && (
+          <div className="sh-search">
+            <SearchIcon size={16} />
+            <input type="text" value={search} autoFocus
+                   aria-label="Search shipments"
+                   placeholder="Order, PO, tracking or supplier"
+                   onChange={(e) => setSearch(e.target.value)} />
+          </div>
+        )}
 
-              <FormRow>
-                <Field label="Ship Date" htmlFor="ship-date">
-                  <Input
-                    id="ship-date"
-                    type="date"
-                    value={formData.ship_date}
-                    onChange={e => setFormData({...formData, ship_date: e.target.value})}
-                  />
-                </Field>
-                <Field label="Expected Delivery" htmlFor="ship-expected">
-                  <Input
-                    id="ship-expected"
-                    type="date"
-                    value={formData.expected_delivery}
-                    onChange={e => setFormData({...formData, expected_delivery: e.target.value})}
-                  />
-                </Field>
-              </FormRow>
+        <ChipGroup
+          options={[
+            { value: '', label: 'All' },
+            ...STATUS_FILTERS.map((s) => ({ value: s, label: statusLabel(s) })),
+          ]}
+          value={statusFilter}
+          onChange={setStatusFilter}
+          label="Status"
+          scroll
+        />
 
-              <FormRow>
-                <Field label="Tracking Number" htmlFor="ship-tracking">
-                  <Input
-                    id="ship-tracking"
-                    value={formData.tracking_number}
-                    onChange={e => setFormData({...formData, tracking_number: e.target.value})}
-                    placeholder="Tracking #"
-                  />
-                </Field>
-                <Field label="Ship Method" htmlFor="ship-method">
-                  <Input
-                    id="ship-method"
-                    value={formData.ship_method}
-                    onChange={e => setFormData({...formData, ship_method: e.target.value})}
-                    placeholder="e.g., FedEx-Ground"
-                  />
-                </Field>
-              </FormRow>
+        {loading ? (
+          <div className="admin-v2-loading">Loading shipments…</div>
+        ) : visible.length === 0 ? (
+          <div className="sh-empty">
+            <PackageIcon size={28} />
+            <p>{search || statusFilter ? 'Nothing matches that.' : 'No shipments yet.'}</p>
+          </div>
+        ) : (
+          <>
+            {inProgress.length > 0 && (
+              <section className="sh-group">
+                <h2 className="sh-group-title">In progress ({inProgress.length})</h2>
+                <div className="sh-list">{inProgress.map(renderCard)}</div>
+              </section>
+            )}
+            {recent.length > 0 && (
+              <section className="sh-group">
+                <h2 className="sh-group-title">Recent ({recent.length})</h2>
+                <div className="sh-list">{recent.map(renderCard)}</div>
+              </section>
+            )}
+          </>
+        )}
 
-              <Field label="Notes" htmlFor="ship-notes">
-                <Textarea
-                  id="ship-notes"
-                  value={formData.notes}
-                  onChange={e => setFormData({...formData, notes: e.target.value})}
-                  rows={2}
-                  placeholder="Optional notes"
-                />
-              </Field>
-
-              <DialogFooter>
-                <Button type="button" variant="secondary" onClick={() => setShowCreateModal(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={saving}>
-                  {saving ? 'Creating...' : 'Create & Add Items'}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+        <ShipmentDetailsModal
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+          suppliers={suppliers}
+          saving={busy}
+          onSave={handleCreate}
+        />
       </div>
     </AdminV2Layout>
   );
