@@ -225,6 +225,27 @@ describe('AdminV2ReportsOvernight', () => {
     expect(await screen.findByText('No pulse-ox readings in this window')).toBeInTheDocument();
   });
 
+  it('shows an episode with no end time without inventing a duration', async () => {
+    body = payload({
+      alerts: {
+        total: 2, total_duration_minutes: 3, longest_duration_minutes: 3, unclosed: 1,
+        items: [
+          { start_time: '2026-08-18T03:13:00Z', end_time: '2026-08-18T03:16:00Z',
+            duration_minutes: 3, spo2_min: 88, spo2_max: 95, bpm_min: 70, bpm_max: 90,
+            oxygen_used: false, oxygen_highest: null, unclosed: false },
+          { start_time: '2026-08-19T03:06:00Z', end_time: null,
+            duration_minutes: null, spo2_min: 81, spo2_max: 95, bpm_min: 70, bpm_max: 90,
+            oxygen_used: false, oxygen_highest: null, unclosed: true },
+        ],
+      },
+    });
+    setup();
+    // Both episodes listed, and the total says what it left out rather than
+    // quietly reading as the whole night.
+    expect(await screen.findByText(/2 episodes/)).toBeInTheDocument();
+    expect(screen.getByText(/1 never closed, not counted in the time/)).toBeInTheDocument();
+  });
+
   it('surfaces a failed report', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url) => {
       if (String(url).includes('/api/settings')) return { ok: true, json: async () => SETTINGS };

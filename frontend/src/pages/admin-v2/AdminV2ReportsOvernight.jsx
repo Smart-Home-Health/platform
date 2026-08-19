@@ -457,6 +457,12 @@ const AdminV2ReportsOvernight = () => {
             <div className="ovn-card-sub">
               {formatMinutes(data.alerts.total_duration_minutes)} across {eps.length}
               {eps.length === 1 ? ' episode' : ' episodes'} · longest {formatMinutes(data.alerts.longest_duration_minutes)}
+              {/* Episodes that never got an end time have no duration, so the
+                  figures above cover only the rest. Say so rather than let the
+                  total read as the whole night. */}
+              {data.alerts.unclosed > 0 && (
+                <> · {data.alerts.unclosed} never closed, not counted in the time</>
+              )}
             </div>
             <div className="rpt-table-wrap">
               <table className="rpt-table">
