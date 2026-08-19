@@ -417,6 +417,13 @@ export const PauseIcon = ({ size = 20 }) => (
   </svg>
 );
 
+export const PlayIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polygon points="6 4 20 12 6 20 6 4" />
+  </svg>
+);
+
 export const SearchIcon = ({ size = 20 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" 
        strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
