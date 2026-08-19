@@ -30,6 +30,32 @@ from crud.patients import get_or_create_default_patient
 logger = logging.getLogger('crud')
 
 
+# --- Account scoping ---
+#
+# The list queries have taken an account_id since accounts landed, but every
+# by-id operation looked equipment up on its primary key alone, so a supply
+# could be read, changed, received, counted, renamed or deleted from another
+# account by naming its id.
+#
+# Equipment genuinely has shared rows -- a supply with no account belongs to
+# everyone in a single-tenant install -- so the filter is "mine or shared",
+# matching get_equipment_list, rather than the strict equality the shipment
+# tables use.
+
+def _scope_equipment(query, account_id):
+    if account_id is None:
+        return query
+    return query.filter(or_(Equipment.account_id == account_id,
+                            Equipment.account_id.is_(None)))
+
+
+def _owned_equipment(db: Session, equipment_id, account_id=None):
+    """The supply, or None if it does not exist or belongs to another account."""
+    return _scope_equipment(
+        db.query(Equipment).filter(Equipment.id == equipment_id), account_id,
+    ).first()
+
+
 # --- Equipment CRUD ---
 def add_equipment_simple(db: Session, name, quantity=1, scheduled_replacement=True, last_changed=None, useful_days=None, patient_id=None,
                          account_id=None, item_number=None, description=None, category='equipment', tracking_level='item',
@@ -75,12 +101,12 @@ def add_equipment_simple(db: Session, name, quantity=1, scheduled_replacement=Tr
         return None
 
 
-def get_equipment(db: Session, equipment_id):
+def get_equipment(db: Session, equipment_id, account_id=None):
     """
     Get a specific equipment item by ID
     """
     try:
-        equipment = db.query(Equipment).filter(Equipment.id == equipment_id).first()
+        equipment = _owned_equipment(db, equipment_id, account_id)
         if equipment:
             return {
                 'id': equipment.id,
@@ -115,7 +141,7 @@ def get_equipment(db: Session, equipment_id):
         return None
 
 
-def update_equipment(db: Session, equipment_id, name=None, quantity=None, scheduled_replacement=None, last_changed=None, useful_days=None, patient_id=None,
+def update_equipment(db: Session, equipment_id, account_id=None, name=None, quantity=None, scheduled_replacement=None, last_changed=None, useful_days=None, patient_id=None,
                       item_number=None, description=None, category=None, tracking_level=None,
                       default_manufacturer=None, unit_of_measure=None, unit_size=None, unit_description=None,
                       reorder_point=None, par_level=None, storage_location=None):
@@ -123,7 +149,7 @@ def update_equipment(db: Session, equipment_id, name=None, quantity=None, schedu
     Update an equipment item
     """
     try:
-        equipment = db.query(Equipment).filter(Equipment.id == equipment_id).first()
+        equipment = _owned_equipment(db, equipment_id, account_id)
         if not equipment:
             return False
         
@@ -224,12 +250,12 @@ def list_equipment(db: Session, patient_id=None, shared_only=False, skip=0, limi
         return []
 
 
-def delete_equipment(db: Session, equipment_id):
+def delete_equipment(db: Session, equipment_id, account_id=None):
     """
     Delete an equipment item
     """
     try:
-        equipment = db.query(Equipment).filter(Equipment.id == equipment_id).first()
+        equipment = _owned_equipment(db, equipment_id, account_id)
         if not equipment:
             return False
         
@@ -339,11 +365,14 @@ def get_equipment_list(db: Session, patient_id: int = None, account_id: int = No
         return []
 
 
-def log_equipment_change(db: Session, equipment_id, changed_at, patient_id=None, notes=None, changed_by=None):
+def log_equipment_change(db: Session, equipment_id, changed_at, patient_id=None, notes=None, changed_by=None, account_id=None):
     """
     Log an equipment change and update the last_changed date
     """
     try:
+        if not _owned_equipment(db, equipment_id, account_id):
+            return False
+
         # Create change log entry
         change_log = EquipmentChangeLog(
             equipment_id=equipment_id,
@@ -356,7 +385,7 @@ def log_equipment_change(db: Session, equipment_id, changed_at, patient_id=None,
         db.add(change_log)
 
         # Update last_changed in equipment
-        equipment = db.query(Equipment).filter(Equipment.id == equipment_id).first()
+        equipment = _owned_equipment(db, equipment_id, account_id)
         if equipment:
             equipment.last_changed = changed_at
             equipment.updated_at = utc_now()
@@ -383,11 +412,14 @@ def log_equipment_change(db: Session, equipment_id, changed_at, patient_id=None,
         return False
 
 
-def get_equipment_change_history(db: Session, equipment_id):
+def get_equipment_change_history(db: Session, equipment_id, account_id=None):
     """
     Get change history for equipment
     """
     try:
+        if not _owned_equipment(db, equipment_id, account_id):
+            return []
+
         changes = db.query(EquipmentChangeLog).filter(
             EquipmentChangeLog.equipment_id == equipment_id
         ).order_by(EquipmentChangeLog.changed_at.desc()).all()
@@ -405,12 +437,12 @@ def get_equipment_change_history(db: Session, equipment_id):
         return []
 
 
-def receive_equipment(db: Session, equipment_id: int, amount: int = 1):
+def receive_equipment(db: Session, equipment_id: int, amount: int = 1, account_id=None):
     """
     Increase equipment quantity (receive new stock)
     """
     try:
-        equipment = db.query(Equipment).filter(Equipment.id == equipment_id).first()
+        equipment = _owned_equipment(db, equipment_id, account_id)
         if not equipment:
             return False
         
@@ -433,12 +465,12 @@ def receive_equipment(db: Session, equipment_id: int, amount: int = 1):
         return False
 
 
-def open_equipment(db: Session, equipment_id: int, amount: int = 1):
+def open_equipment(db: Session, equipment_id: int, amount: int = 1, account_id=None):
     """
     Decrease equipment quantity (open/use equipment) and log the action
     """
     try:
-        equipment = db.query(Equipment).filter(Equipment.id == equipment_id).first()
+        equipment = _owned_equipment(db, equipment_id, account_id)
         if not equipment:
             return False
         
@@ -701,14 +733,14 @@ def catalog_import(db: Session, items, account_id=None, patient_id=None, supplie
         return {'created': [], 'matched': [], 'errors': [{'index': None, 'reason': 'import failed'}]}
 
 
-def set_equipment_count(db: Session, equipment_id: int, quantity: int, note=None, counted_by=None):
+def set_equipment_count(db: Session, equipment_id: int, quantity: int, note=None, counted_by=None, account_id=None):
     """Physical stocktake: set the absolute on-hand quantity with an audit row.
 
     Unlike log_equipment_change this never touches last_changed — counting a
     shelf is not replacing an item.
     """
     try:
-        equipment = db.query(Equipment).filter(Equipment.id == equipment_id).first()
+        equipment = _owned_equipment(db, equipment_id, account_id)
         if not equipment:
             return None
         before = equipment.quantity or 0
@@ -736,9 +768,12 @@ def set_equipment_count(db: Session, equipment_id: int, quantity: int, note=None
         return None
 
 
-def get_equipment_count_history(db: Session, equipment_id: int, limit: int = 50):
+def get_equipment_count_history(db: Session, equipment_id: int, limit: int = 50, account_id=None):
     """Stocktake history for one supply, newest first."""
     try:
+        if not _owned_equipment(db, equipment_id, account_id):
+            return []
+
         counts = db.query(EquipmentCountLog).filter(
             EquipmentCountLog.equipment_id == equipment_id
         ).order_by(EquipmentCountLog.counted_at.desc()).limit(limit).all()
@@ -762,7 +797,7 @@ def get_equipment_count_history(db: Session, equipment_id: int, limit: int = 50)
 def add_equipment_alias(db: Session, equipment_id: int, item_number: str, supplier_id=None, raw_description=None, account_id=None):
     """Attach a provider item number to a supply. Returns the alias id, or None."""
     try:
-        equipment = db.query(Equipment).filter(Equipment.id == equipment_id).first()
+        equipment = _owned_equipment(db, equipment_id, account_id)
         if not equipment:
             return None
         item_number = (item_number or '').strip()
@@ -786,9 +821,12 @@ def add_equipment_alias(db: Session, equipment_id: int, item_number: str, suppli
         return None
 
 
-def delete_equipment_alias(db: Session, equipment_id: int, alias_id: int):
+def delete_equipment_alias(db: Session, equipment_id: int, alias_id: int, account_id=None):
     """Remove a provider alias from a supply."""
     try:
+        if not _owned_equipment(db, equipment_id, account_id):
+            return False
+
         alias = db.query(EquipmentProviderAlias).filter(
             EquipmentProviderAlias.id == alias_id,
             EquipmentProviderAlias.equipment_id == equipment_id,
