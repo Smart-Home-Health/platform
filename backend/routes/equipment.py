@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 
 from db import get_db
-from dependencies import get_optional_account_id, get_optional_user
+from dependencies import get_optional_account_id, get_optional_user, require_permission
 from models.equipment import (
     EquipmentCreate,
     EquipmentUpdate,
@@ -54,7 +54,7 @@ logger = logging.getLogger("app")
 router = APIRouter(prefix="/api/equipment", tags=["equipment"])
 
 
-@router.post("")
+@router.post("", dependencies=[Depends(require_permission("equipment.create"))])
 async def api_add_equipment(
     data: EquipmentCreate,
     db: Session = Depends(get_db),
@@ -78,15 +78,19 @@ async def api_add_equipment(
     return {"id": eid, "status": "success"}
 
 
-@router.get("", response_model=List[dict])
-async def api_get_equipment(patient_id: int = None, db: Session = Depends(get_db)):
+@router.get("", response_model=List[dict], dependencies=[Depends(require_permission("equipment.read"))])
+async def api_get_equipment(
+    patient_id: int = None,
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id),
+):
     """Get equipment list sorted by due next. Optionally filter by patient_id."""
-    return get_equipment_list(db, patient_id=patient_id)
+    return get_equipment_list(db, patient_id=patient_id, account_id=account_id)
 
 
 # NOTE: declared before the /{equipment_id} routes so the literal path
 # "catalog-import" is never parsed as an equipment id.
-@router.post("/catalog-import")
+@router.post("/catalog-import", dependencies=[Depends(require_permission("equipment.create"))])
 async def api_catalog_import(
     data: CatalogImportRequest,
     db: Session = Depends(get_db),
@@ -109,13 +113,18 @@ async def api_catalog_import(
     )
 
 
-@router.post("/{equipment_id}/change")
-async def api_log_equipment_change(equipment_id: int, data: EquipmentChangeLog, db: Session = Depends(get_db)):
+@router.post("/{equipment_id}/change", dependencies=[Depends(require_permission("equipment.change"))])
+async def api_log_equipment_change(
+    equipment_id: int,
+    data: EquipmentChangeLog,
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id),
+):
     """Log a change and update last_changed."""
-    
+
     # Check if equipment has scheduled replacement
-    from models import Equipment
-    equipment = db.query(Equipment).filter(Equipment.id == equipment_id).first()
+    from crud.equipment import _owned_equipment
+    equipment = _owned_equipment(db, equipment_id, account_id)
     if not equipment:
         return JSONResponse(status_code=404, content={"detail": "Equipment not found"})
     
@@ -140,54 +149,74 @@ async def api_log_equipment_change(equipment_id: int, data: EquipmentChangeLog, 
             "unit_of_measure": equipment.unit_of_measure,
         })
 
-    success = log_equipment_change(db, equipment_id, data.changed_at)
+    success = log_equipment_change(db, equipment_id, data.changed_at, account_id=account_id)
     return {"success": success}
 
 
-@router.get("/{equipment_id}/history")
-async def api_get_equipment_history(equipment_id: int, db: Session = Depends(get_db)):
+@router.get("/{equipment_id}/history", dependencies=[Depends(require_permission("equipment.read"))])
+async def api_get_equipment_history(
+    equipment_id: int,
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id),
+):
     """Get change history for equipment."""
-    return get_equipment_change_history(db, equipment_id)
+    return get_equipment_change_history(db, equipment_id, account_id=account_id)
 
 
-@router.post("/{equipment_id}/receive")
-async def api_receive_equipment(equipment_id: int, data: EquipmentQuantityChange, db: Session = Depends(get_db)):
+@router.post("/{equipment_id}/receive", dependencies=[Depends(require_permission("equipment.update"))])
+async def api_receive_equipment(
+    equipment_id: int,
+    data: EquipmentQuantityChange,
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id),
+):
     """Increase equipment quantity (receive new stock)."""
-    success = receive_equipment(db, equipment_id, data.amount)
+    success = receive_equipment(db, equipment_id, data.amount, account_id=account_id)
     return {"success": success}
 
 
-@router.post("/{equipment_id}/open")
-async def api_open_equipment(equipment_id: int, data: EquipmentQuantityChange, db: Session = Depends(get_db)):
+@router.post("/{equipment_id}/open", dependencies=[Depends(require_permission("equipment.update"))])
+async def api_open_equipment(
+    equipment_id: int,
+    data: EquipmentQuantityChange,
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id),
+):
     """Decrease equipment quantity (open/use equipment)."""
-    success = open_equipment(db, equipment_id, data.amount)
+    success = open_equipment(db, equipment_id, data.amount, account_id=account_id)
     return {"success": success}
 
 
-@router.post("/{equipment_id}/count")
+@router.post("/{equipment_id}/count", dependencies=[Depends(require_permission("equipment.update"))])
 async def api_set_equipment_count(
     equipment_id: int,
     data: EquipmentCountSet,
     db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id),
     current_user=Depends(get_optional_user),
 ):
     """Physical stocktake: set the absolute on-hand quantity (audited)."""
     result = set_equipment_count(
         db, equipment_id, data.quantity, note=data.note,
         counted_by=current_user.id if current_user else None,
+        account_id=account_id,
     )
     if result is None:
         return JSONResponse(status_code=404, content={"detail": "Equipment not found"})
     return result
 
 
-@router.get("/{equipment_id}/counts")
-async def api_get_equipment_count_history(equipment_id: int, db: Session = Depends(get_db)):
+@router.get("/{equipment_id}/counts", dependencies=[Depends(require_permission("equipment.read"))])
+async def api_get_equipment_count_history(
+    equipment_id: int,
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id),
+):
     """Stocktake history for one supply, newest first."""
-    return {"counts": get_equipment_count_history(db, equipment_id)}
+    return {"counts": get_equipment_count_history(db, equipment_id, account_id=account_id)}
 
 
-@router.post("/{equipment_id}/aliases")
+@router.post("/{equipment_id}/aliases", dependencies=[Depends(require_permission("equipment.update"))])
 async def api_add_equipment_alias(
     equipment_id: int,
     data: EquipmentAliasCreate,
@@ -205,34 +234,45 @@ async def api_add_equipment_alias(
     return {"id": alias_id, "status": "success"}
 
 
-@router.delete("/{equipment_id}/aliases/{alias_id}")
-async def api_delete_equipment_alias(equipment_id: int, alias_id: int, db: Session = Depends(get_db)):
+@router.delete("/{equipment_id}/aliases/{alias_id}", dependencies=[Depends(require_permission("equipment.update"))])
+async def api_delete_equipment_alias(
+    equipment_id: int,
+    alias_id: int,
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id),
+):
     """Remove a provider alias from a supply."""
-    success = delete_equipment_alias(db, equipment_id, alias_id)
+    success = delete_equipment_alias(db, equipment_id, alias_id, account_id=account_id)
     if not success:
         return JSONResponse(status_code=404, content={"detail": "Alias not found"})
     return {"status": "success"}
 
 
-@router.get("/history")
+@router.get("/history", dependencies=[Depends(require_permission("equipment.read"))])
 async def api_get_all_equipment_history(
     equipment_id: int = None,
     patient_id: int = None,
     start_date: str = None,
     end_date: str = None,
     limit: int = 100,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id),
 ):
     """Get change history for all equipment with optional filtering."""
     from schemas.equipment_change_log import EquipmentChangeLog as EquipmentChangeLogSchema
     from schemas.equipment import Equipment
-    from sqlalchemy import desc
-    
+    from sqlalchemy import desc, or_
+
     try:
         query = db.query(EquipmentChangeLogSchema).join(
             Equipment, EquipmentChangeLogSchema.equipment_id == Equipment.id
         )
-        
+
+        # The join already reaches equipment; scope it the way the list does.
+        if account_id is not None:
+            query = query.filter(or_(Equipment.account_id == account_id,
+                                     Equipment.account_id.is_(None)))
+
         if patient_id:
             query = query.filter(Equipment.patient_id == patient_id)
         
@@ -267,12 +307,18 @@ async def api_get_all_equipment_history(
         return {"history": [], "total": 0}
 
 
-@router.put("/{equipment_id}")
-async def api_update_equipment(equipment_id: int, data: EquipmentUpdate, db: Session = Depends(get_db)):
+@router.put("/{equipment_id}", dependencies=[Depends(require_permission("equipment.update"))])
+async def api_update_equipment(
+    equipment_id: int,
+    data: EquipmentUpdate,
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id),
+):
     """Update an equipment item."""
     success = update_equipment(
         db,
         equipment_id,
+        account_id=account_id,
         name=data.name,
         quantity=data.quantity,
         scheduled_replacement=data.scheduled_replacement,
@@ -295,16 +341,20 @@ async def api_update_equipment(equipment_id: int, data: EquipmentUpdate, db: Ses
     return {"status": "success"}
 
 
-@router.delete("/{equipment_id}")
-async def api_delete_equipment(equipment_id: int, db: Session = Depends(get_db)):
+@router.delete("/{equipment_id}", dependencies=[Depends(require_permission("equipment.delete"))])
+async def api_delete_equipment(
+    equipment_id: int,
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id),
+):
     """Delete an equipment item."""
-    success = delete_equipment(db, equipment_id)
+    success = delete_equipment(db, equipment_id, account_id=account_id)
     if not success:
         return JSONResponse(status_code=404, content={"detail": "Equipment not found or could not be deleted"})
     return {"status": "success"}
 
 
-@router.get("/due/count")
+@router.get("/due/count", dependencies=[Depends(require_permission("equipment.read"))])
 async def api_get_equipment_due_count(
     patient_id: Optional[int] = None,
     db: Session = Depends(get_db),
