@@ -179,7 +179,8 @@ def clear_external_alarm(db: Session, device_id):
 def update_monitoring_alert(db: Session, alert_id, end_time=None, end_data_id=None, spo2=None, bpm=None,
                            spo2_alarm_triggered=None, hr_alarm_triggered=None,
                            external_alarm_triggered=None, oxygen_used=None,
-                           oxygen_highest=None, oxygen_unit=None):
+                           oxygen_highest=None, oxygen_unit=None,
+                           end_source=None, end_time_superseded=None):
     """
     Update an existing monitoring alert
 
@@ -195,6 +196,8 @@ def update_monitoring_alert(db: Session, alert_id, end_time=None, end_data_id=No
         oxygen_used (int): Whether oxygen was used
         oxygen_highest (float): Highest oxygen level used
         oxygen_unit (str): Unit of oxygen measurement
+        end_source (str): How end_time was arrived at (see crud.alert_closure)
+        end_time_superseded (datetime): An end_time this call is replacing
 
     Returns:
         bool: True if successful, False otherwise
@@ -260,6 +263,12 @@ def update_monitoring_alert(db: Session, alert_id, end_time=None, end_data_id=No
         if oxygen_unit is not None:
             update_fields[MonitoringAlert.oxygen_unit] = oxygen_unit
 
+        if end_source is not None:
+            update_fields[MonitoringAlert.end_source] = end_source
+
+        if end_time_superseded is not None:
+            update_fields[MonitoringAlert.end_time_superseded] = end_time_superseded
+
         if not update_fields:
             logger.warning("No fields to update for alert")
             return True
@@ -270,6 +279,9 @@ def update_monitoring_alert(db: Session, alert_id, end_time=None, end_data_id=No
         logger.info(f"Updated monitoring alert #{alert_id}")
         return True
     except Exception as e:
+        # Without the rollback the session stays in an aborted transaction, so
+        # a single bad row would poison every later one in a sweep.
+        db.rollback()
         logger.error(f"Error updating monitoring alert: {e}")
         return False
 

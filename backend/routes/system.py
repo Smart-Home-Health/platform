@@ -60,6 +60,15 @@ class VacuumRequest(BaseModel):
     table: str | None = None
 
 
+class AlertClosureRequest(BaseModel):
+    # Preview by default: this rewrites clinical records, so the first call
+    # should always be one an operator can read before anything changes.
+    dry_run: bool = True
+    include_open: bool = True
+    include_closed: bool = True
+    limit: int | None = Field(None, ge=1, le=1000)
+
+
 @router.get("/health")
 def system_health_overview(
     db: Session = Depends(get_db),
@@ -94,6 +103,34 @@ def compress(
         return system_health.compress_old_chunks(db, body.table, body.older_than_days)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/maintenance/alert-closures")
+def alert_closures(
+    body: AlertClosureRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(_require_system_admin),
+):
+    """Reconstruct monitoring-alert end times from the pulse-ox stream.
+
+    Two populations: alerts still open that the live engine can no longer
+    reach, and alerts whose recorded end was stamped after the stream had
+    already gone quiet. Both are worked out from the stored samples; see
+    crud.alert_closure for the rule.
+    """
+    from crud import alert_closure
+
+    out = {"thresholds": alert_closure.load_thresholds(db)._asdict()}
+    if body.include_open:
+        out["open"] = alert_closure.sweep_open_alerts(
+            db, limit=body.limit or alert_closure.SWEEP_BATCH_LIMIT,
+            dry_run=body.dry_run,
+        )
+    if body.include_closed:
+        out["mis_closed"] = alert_closure.resweep_implausible_closures(
+            db, dry_run=body.dry_run, limit=body.limit,
+        )
+    return out
 
 
 @router.post("/maintenance/vacuum")

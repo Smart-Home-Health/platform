@@ -25,6 +25,13 @@ class MonitoringAlert(Base):
     patient_id = Column(Integer, ForeignKey('patients.id'), nullable=False)
     start_time = Column(TIMESTAMP(timezone=True), nullable=False)
     end_time = Column(TIMESTAMP(timezone=True))
+    # How end_time was arrived at: 'live_*' means the engine watched it happen,
+    # 'inferred_*' means it was reconstructed from the stored pulse-ox stream.
+    # NULL means the row was closed before provenance was tracked.
+    end_source = Column(String)
+    # The end_time a reconstruction replaced, kept so an overwritten clinical
+    # value is never simply lost.
+    end_time_superseded = Column(TIMESTAMP(timezone=True))
     start_data_id = Column(Integer)
     end_data_id = Column(Integer)
     acknowledged = Column(Boolean, default=False)

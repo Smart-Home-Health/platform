@@ -592,7 +592,7 @@ async def overnight_summary(
         SELECT id, start_time, end_time,
                spo2_min, spo2_max, bpm_min, bpm_max,
                spo2_alarm_triggered, hr_alarm_triggered,
-               oxygen_used, oxygen_highest, acknowledged
+               oxygen_used, oxygen_highest, acknowledged, end_source
         FROM monitoring_alerts
         WHERE patient_id = :pid
           AND start_time >= :start AND start_time < :end
@@ -637,6 +637,10 @@ async def overnight_summary(
             "end_time": a.end_time.isoformat() if a.end_time else None,
             "duration_minutes": duration,
             "unclosed": end_t is None,
+            # The end was reconstructed from the sensor stream rather than
+            # watched happening, so the duration is an estimate.
+            "end_inferred": bool(a.end_source) and a.end_source.startswith("inferred"),
+            "end_source": a.end_source,
             "spo2_min": a.spo2_min,
             "spo2_max": a.spo2_max,
             "bpm_min": a.bpm_min,
@@ -934,6 +938,9 @@ async def overnight_summary(
             # nothing to the durations above. Lets the UI say the totals cover
             # only part of the night instead of silently under-reporting.
             "unclosed": sum(1 for i in alert_items if i["unclosed"]),
+            # Of the episodes above, how many have an end we worked out after
+            # the fact. They do count toward the times, unlike unclosed ones.
+            "inferred": sum(1 for i in alert_items if i["end_inferred"]),
             "items": alert_items,
         },
         "oxygen": {
@@ -1286,6 +1293,7 @@ async def weekly_summary(
             -- months-old orphan is a wildly inflated total.
             SUM(EXTRACT(EPOCH FROM (end_time - start_time)) / 60)::float AS total_min,
             SUM(CASE WHEN end_time IS NULL THEN 1 ELSE 0 END) AS unclosed,
+            SUM(CASE WHEN end_source LIKE 'inferred%' THEN 1 ELSE 0 END) AS inferred,
             SUM(CASE WHEN spo2_alarm_triggered THEN 1 ELSE 0 END) AS spo2_alarms,
             SUM(CASE WHEN hr_alarm_triggered THEN 1 ELSE 0 END) AS hr_alarms,
             SUM(CASE WHEN external_alarm_triggered THEN 1 ELSE 0 END) AS ext_alarms
@@ -1303,6 +1311,7 @@ async def weekly_summary(
         "external": sum(r.ext_alarms for r in alert_summary_rows),
     }
     alert_unclosed = sum(r.unclosed for r in alert_summary_rows)
+    alert_inferred = sum(r.inferred for r in alert_summary_rows)
     alert_daily = [{"date": str(r.day), "count": r.cnt} for r in alert_summary_rows]
 
     # --- Equipment due ---
@@ -1371,6 +1380,7 @@ async def weekly_summary(
             "total": alert_total,
             "total_duration_minutes": round(alert_total_min, 1),
             "unclosed": alert_unclosed,
+            "inferred": alert_inferred,
             "by_type": alert_by_type,
             "daily_counts": alert_daily,
         },
