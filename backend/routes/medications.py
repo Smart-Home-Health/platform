@@ -300,10 +300,17 @@ async def apply_low_stock_days_bulk(data: BulkLowStockDaysRequest, db: Session =
 
 @router.put("/medications/{med_id}")
 async def update_medication_endpoint(med_id: int, data: MedicationUpdate, db: Session = Depends(get_db)):
-    """Update an existing medication."""
-    # Filter out None values
-    update_data = {k: v for k, v in data.model_dump().items() if v is not None}
-    
+    """Update an existing medication.
+
+    Uses exclude_unset rather than dropping None, so a field the caller
+    deliberately cleared is distinguishable from one they did not mention.
+    Dropping None meant the low-stock alert could be set but never turned off,
+    and a prescriber or pharmacy could be attached but never detached -- the
+    request succeeded, the value stayed, and the reloaded form showed the old
+    one back. Same rule the care-task and shipment routes already follow.
+    """
+    update_data = data.model_dump(exclude_unset=True)
+
     success = update_medication(db, med_id, **update_data)
     if not success:
         return JSONResponse(status_code=404, content={"detail": "Medication not found"})

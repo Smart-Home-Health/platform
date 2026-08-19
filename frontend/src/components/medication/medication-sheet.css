@@ -1,0 +1,262 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* The medication add/edit sheet. Uses the EntityModal form vocabulary
+ * (em-input, em-field, em-footer) and adds only what is specific here. */
+
+.ms-sub {
+  margin: -0.25rem 0 0.25rem;
+  font-size: 0.85rem;
+  color: var(--vc-text-secondary);
+}
+
+/* --- add: the step rail --- */
+
+.ms-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 9px;
+  background: var(--vc-bg-raised);
+}
+
+.ms-step {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 6px;
+  background: none;
+  border: 0;
+  border-radius: 7px;
+  color: var(--vc-text-secondary);
+  cursor: pointer;
+}
+.ms-step:hover { background: color-mix(in srgb, var(--vc-text-primary) 6%, transparent); }
+.ms-step.is-active {
+  background: color-mix(in srgb, var(--vc-data-live) 16%, transparent);
+  color: var(--vc-text-primary);
+}
+.ms-step:focus-visible {
+  outline: 2px solid var(--vc-data-live);
+  outline-offset: -2px;
+}
+
+.ms-step-num {
+  display: grid;
+  place-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border: 2px solid var(--vc-state-idle);
+  border-radius: 50%;
+  font-family: var(--vc-font-mono);
+  font-size: 0.68rem;
+}
+.ms-step.is-done .ms-step-num,
+.ms-step.is-active .ms-step-num {
+  border-color: var(--vc-data-live);
+  color: var(--vc-data-live);
+}
+.ms-step.is-active .ms-step-num {
+  background: var(--vc-data-live);
+  color: var(--vc-bg-base);
+}
+
+.ms-step-name {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+/* --- edit: the record it is about --- */
+
+.ms-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 9px;
+  background: var(--vc-bg-raised);
+}
+
+.ms-summary-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+
+.ms-summary-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--vc-text-primary);
+}
+
+.ms-summary-conc {
+  font-family: var(--vc-font-mono);
+  font-size: 0.8rem;
+  color: var(--vc-text-secondary);
+}
+
+.ms-summary-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.ms-tag {
+  padding: 3px 9px;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 999px;
+  font-family: var(--vc-font-mono);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+  white-space: nowrap;
+}
+.ms-tag.is-active {
+  border-color: var(--vc-state-complete);
+  color: var(--vc-state-complete);
+}
+.ms-tag.is-off {
+  border-color: var(--vc-text-tertiary);
+  color: var(--vc-text-tertiary);
+}
+
+.ms-section { display: flex; flex-direction: column; gap: 0.9rem; }
+
+.ms-section-title {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+
+/* --- changed marker --- */
+
+.ms-with-mark { position: relative; }
+
+/* Sits inside the field rather than beside it, so a marked row keeps the
+ * same height as an unmarked one and the form does not jump while typing. */
+.ms-changed {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--vc-state-due) 18%, transparent);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-state-due);
+  pointer-events: none;
+}
+
+/* A textarea is taller than one line, so pin the marker to the top of it. */
+.ms-with-mark:has(textarea) .ms-changed {
+  top: 10px;
+  transform: none;
+}
+
+/* Keep text clear of the marker. */
+.ms-with-mark:has(.ms-changed) .em-input { padding-right: 5.5rem; }
+
+/* --- notes, links, checks --- */
+
+.ms-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: -0.35rem 0 0;
+  font-size: 0.8rem;
+  color: var(--vc-text-secondary);
+}
+
+.ms-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  background: none;
+  border: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--vc-data-live);
+  cursor: pointer;
+}
+.ms-link:hover { text-decoration: underline; }
+
+.ms-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.87rem;
+  color: var(--vc-text-primary);
+  cursor: pointer;
+}
+.ms-check input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--vc-data-live);
+}
+
+/* --- warning --- */
+
+.ms-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 13px;
+  border: 1px solid color-mix(in srgb, var(--vc-state-due) 45%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--vc-state-due) 10%, transparent);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--vc-state-due);
+}
+.ms-warn span { color: var(--vc-text-primary); }
+
+/* --- footer status line --- */
+
+.ms-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+  border-top: 1px solid var(--vc-line-hairline);
+}
+
+.ms-required {
+  font-size: 0.75rem;
+  color: var(--vc-text-secondary);
+}
+.ms-required.is-missing { color: var(--vc-state-due); }
+.ms-required.is-dirty { color: var(--vc-state-due); font-weight: 600; }
+
+.ms-updated {
+  font-family: var(--vc-font-mono);
+  font-size: 0.7rem;
+  color: var(--vc-text-tertiary);
+}
