@@ -349,16 +349,20 @@ const AdminV2Layout = ({ children }) => {
     nav.scrollBy({ left: delta, behavior: 'smooth' });
   }, [location.pathname, topNavItems.length]);
 
-  // vc form skin (vc-forms.css) is opt-in per section while the rebuild rolls
-  // out. The class goes on <body> rather than the page wrapper so it also
-  // covers Radix's portalled Select/Dialog content. Widen this test as more
-  // sections are rebuilt.
+  // vc form skin (vc-forms.css) applies to the whole admin. It used to be an
+  // opt-in allowlist of routes while the rebuild rolled out, which left every
+  // un-listed section on stock shadcn geometry and the stock red destructive —
+  // the colours were already right everywhere (vc-content.css remaps the .tw
+  // islands globally), only the shape and typography stopped at the list.
+  //
+  // This layout is mounted by every /care page, so binding the class to its
+  // lifetime scopes the skin to the admin exactly. It goes on <body> rather
+  // than the page wrapper so it also reaches Radix's portalled Select/Dialog
+  // content, which renders outside the page tree.
   useEffect(() => {
-    const vcFormSkinPaths = ['/care/configuration', '/care/medications', '/care/nutrition'];
-    if (!vcFormSkinPaths.some((p) => location.pathname.startsWith(p))) return undefined;
     document.body.classList.add('vc-form-skin');
     return () => document.body.classList.remove('vc-form-skin');
-  }, [location.pathname]);
+  }, []);
 
   // Chevron scroll hints: shown at whichever edge has more tabs off-screen.
   const [navScroll, setNavScroll] = useState({ left: false, right: false });

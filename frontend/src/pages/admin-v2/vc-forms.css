@@ -20,12 +20,11 @@
  * primitives in src/components/ui (card, label, input, textarea, select,
  * button, badge, checkbox, alert, dialog).
  *
- * OPT-IN BY SECTION. AdminV2Layout puts `vc-form-skin` on <body> only while
- * the route is under /care/configuration, so the Configuration section reads
- * as bedside-monitor while every other admin section keeps today's look until
- * its own pass. The class lives on <body> (not a page wrapper) so it also
- * reaches Radix's portalled Select/Dialog content, which renders outside the
- * page tree. To bring a future section in, widen the route test in the layout.
+ * ADMIN-WIDE. AdminV2Layout puts `vc-form-skin` on <body> for as long as it is
+ * mounted, and every /care page mounts it, so the skin covers the whole admin.
+ * (It was an opt-in allowlist of routes while the rebuild rolled out.) The
+ * class lives on <body> (not a page wrapper) so it also reaches Radix's
+ * portalled Select/Dialog content, which renders outside the page tree.
  *
  * DARK THEME ONLY (scoped :root:not(.light)) — the vc aesthetic is dark by
  * design and the light theme keeps the stock shadcn palette.

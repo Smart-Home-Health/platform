@@ -95,10 +95,10 @@ Third-party data sources (Withings, manual entry, generic MQTT) implement `BaseI
 ### Frontend structure
 
 - `src/App.jsx` — routing and providers
-- `src/contexts/` — `AuthContext`, `PatientContext` (end-user patient selection), `AdminPatientContext` (admin's selected patient, separate from user-facing one)
+- `src/contexts/` — `AuthContext`, `AdminPatientContext` (the selected patient, shared by the admin pages and the live dashboard)
 - `src/pages/admin/` — **legacy** admin UI, still routed but being replaced
 - `src/pages/admin-v2/` — **current** admin UI; this is where new admin work goes
-- `src/services/` — small REST wrappers (patients, settings, users)
+- `src/services/` — small REST wrappers (settings, equipment, shipments, nutrition, care tasks, businesses)
 - `src/config.js` — exports `apiUrl`, `wsUrl`, and `apiFetch()`
 
 `config.js` resolves the API URL at runtime from `window.location.hostname` so the app works when accessed from a phone or other LAN device (e.g. `http://192.168.1.184:5173`). The CORS regex in `main.py` matches `localhost`, `127.0.0.1`, and RFC1918 ranges accordingly — keep that in sync if you change network assumptions.
