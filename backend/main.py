@@ -360,6 +360,12 @@ async def startup_event():
     asyncio.create_task(ha_listener_loop())
     logger.info("[main] Home Assistant listener started")
 
+    # 9. Close monitoring alerts the live engine can no longer reach (the
+    #    reader stopped, or this process restarted mid-episode).
+    from modules.alert_sweeper import alert_sweep_loop
+    asyncio.create_task(alert_sweep_loop())
+    logger.info("[main] Alert sweeper started")
+
     logger.info("[main] Event-driven system startup complete")
 
 

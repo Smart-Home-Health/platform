@@ -243,7 +243,30 @@ describe('AdminV2ReportsOvernight', () => {
     // Both episodes listed, and the total says what it left out rather than
     // quietly reading as the whole night.
     expect(await screen.findByText(/2 episodes/)).toBeInTheDocument();
-    expect(screen.getByText(/1 never closed, not counted in the time/)).toBeInTheDocument();
+    expect(screen.getByText(/1 still open, not counted in the time/)).toBeInTheDocument();
+  });
+
+  it('marks an episode whose end was worked out after the fact', async () => {
+    body = payload({
+      alerts: {
+        total: 2, total_duration_minutes: 4, longest_duration_minutes: 3, inferred: 1,
+        items: [
+          { start_time: '2026-08-18T03:13:00Z', end_time: '2026-08-18T03:16:00Z',
+            duration_minutes: 3, spo2_min: 88, spo2_max: 95, bpm_min: 70, bpm_max: 90,
+            oxygen_used: false, oxygen_highest: null, unclosed: false, end_inferred: false },
+          { start_time: '2026-08-19T03:06:00Z', end_time: '2026-08-19T03:07:00Z',
+            duration_minutes: 1, spo2_min: 81, spo2_max: 95, bpm_min: 70, bpm_max: 90,
+            oxygen_used: false, oxygen_highest: null, unclosed: false,
+            end_inferred: true, end_source: 'inferred_monitoring_ended' },
+        ],
+      },
+    });
+    setup();
+    // It counts toward the total, but the reader is told the number is an
+    // estimate and why.
+    expect(await screen.findByText(/1 ended by inference/)).toBeInTheDocument();
+    const estimated = screen.getByTitle(/the sensor stopped reporting/i);
+    expect(estimated.textContent).toMatch(/^\u2248/);
   });
 
   it('surfaces a failed report', async () => {

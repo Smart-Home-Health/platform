@@ -18,15 +18,19 @@
 State module - manages centralized application state and handles database operations.
 """
 import asyncio
-from datetime import datetime
 from typing import Dict, Any, Optional
 import logging
 
 from bus import EventBus
 from events import (
-    SensorUpdate, VitalSignRecorded, AlertTriggered, AlertResolved, 
+    SensorUpdate, VitalSignRecorded, AlertTriggered, AlertResolved,
     MedicationDue, CareTaskDue, EventSource
 )
+from crud.alert_closure import (
+    CONTINUITY_SECONDS, GAP_SECONDS, RECOVERY_SECONDS,
+    LIVE_GAP, LIVE_RECOVERY, classify_sample,
+)
+from utils.datetime_utils import make_utc, utc_now
 
 logger = logging.getLogger("state_module")
 
@@ -47,6 +51,10 @@ class StateModule:
         self.alert_thresholds_exceeded = False
         self.alert_start_data_id = None
         self.alert_recovery_start_time = None
+        # Last sample that carried an actual reading. The gap that ends a
+        # stranded alert is measured from here, not from the last sample of any
+        # kind, so that a probe streaming -1 counts as silence.
+        self.alert_last_valid_sample_time = None
         
         # Pulse ox data caching for alerts
         self.pulse_ox_cache = []
@@ -159,8 +167,10 @@ class StateModule:
             bpm = pulse_ox_data.get("bpm")
             perfusion = pulse_ox_data.get("perfusion")
 
-            # Cache the data
-            timestamp = datetime.now()
+            # Cache the data. Aware UTC: start_time is written with utc_now(),
+            # and a naive local end_time would disagree with it by the offset
+            # the moment this runs anywhere that is not on UTC.
+            timestamp = utc_now()
             data_point = {
                 "timestamp": timestamp,
                 "spo2": spo2,
@@ -211,32 +221,54 @@ class StateModule:
           ALARM → thresholds exceeded → ALARM (continue, reset recovery timer)
           ALARM → thresholds normal   → RECOVERING (start 30s timer)
           RECOVERING → thresholds exceeded → ALARM (cancel recovery)
-          RECOVERING → 30s elapsed        → IDLE (end alert)
+          RECOVERING → 30s continuous     → IDLE (end alert)
+          ALARM/RECOVERING → stream goes quiet → IDLE (end at last valid sample)
+
+        The recovery countdown insists on *continuous* samples. It used to
+        compare plain wall-clock between the first normal reading and any later
+        one, so a sensor that came off mid-recovery and returned hours later
+        satisfied "30 seconds have passed" on its first sample back, and the
+        episode went into the record as having lasted those hours.
         """
         try:
             def _load_thresholds():
-                from crud.settings import get_setting
+                from crud.alert_closure import load_thresholds
                 from state_manager import get_db_session
                 with get_db_session() as db:
-                    return (
-                        int(get_setting(db, 'min_spo2', 90)),
-                        int(get_setting(db, 'max_spo2', 100)),
-                        int(get_setting(db, 'min_bpm', 55)),
-                        int(get_setting(db, 'max_bpm', 155)),
-                    )
+                    return load_thresholds(db)
 
-            min_spo2, max_spo2, min_bpm, max_bpm = await asyncio.to_thread(_load_thresholds)
+            thresholds = await asyncio.to_thread(_load_thresholds)
+            kind = classify_sample(spo2, bpm, thresholds)
+            prev_valid = self.alert_last_valid_sample_time
 
-            is_disconnected = (spo2 == -1) or (bpm == -1)
+            # The stream went quiet. Whatever arrives now describes a later
+            # state of the world, not this episode, so close at the last thing
+            # we actually saw and let this sample be judged as if idle.
+            #
+            # This runs before the disconnected check on purpose: when a probe
+            # comes off, rows keep arriving at full cadence carrying -1, so the
+            # sample stream has no hole in it at all. Only the *valid* samples
+            # stop, which is why the gap is measured on those.
+            if (self.current_alert_id is not None and prev_valid is not None
+                    and (timestamp - prev_valid).total_seconds() > GAP_SECONDS):
+                logger.info(
+                    f"Alert {self.current_alert_id}: no valid samples for "
+                    f"{(timestamp - prev_valid).total_seconds():.0f}s, "
+                    f"ending at the last one"
+                )
+                await self._end_pulse_ox_alert(prev_valid, end_source=LIVE_GAP)
 
-            if is_disconnected:
-                # Don't start or end alerts while disconnected; just keep logging if active
+            if kind == "disconnected":
+                # No reading to judge. Deliberately does not advance
+                # alert_last_valid_sample_time, so a long probe-off eventually
+                # trips the gap above rather than sitting here forever. It does
+                # break any recovery in progress: a stretch we could not see is
+                # not evidence the patient stayed well.
+                self.alert_recovery_start_time = None
                 return
 
-            # Evaluate current thresholds
-            spo2_alarm = spo2 is not None and (spo2 < min_spo2 or spo2 > max_spo2)
-            bpm_alarm = bpm is not None and (bpm < min_bpm or bpm > max_bpm)
-            thresholds_exceeded = spo2_alarm or bpm_alarm
+            self.alert_last_valid_sample_time = timestamp
+            thresholds_exceeded = kind == "alarm"
 
             if self.current_alert_id is None:
                 # --- IDLE ---
@@ -250,15 +282,19 @@ class StateModule:
                     self.alert_recovery_start_time = None
                     self.event_data_points.append(data_point)
                 else:
-                    # Values normal — start or continue recovery countdown
-                    if self.alert_recovery_start_time is None:
+                    # Values normal — start or continue recovery countdown.
+                    # A hole in the stream restarts it: the stretch either side
+                    # is not one continuous run of normal readings.
+                    broken = (prev_valid is not None
+                              and (timestamp - prev_valid).total_seconds() > CONTINUITY_SECONDS)
+                    if self.alert_recovery_start_time is None or broken:
                         self.alert_recovery_start_time = timestamp
-                        logger.info(f"Alert {self.current_alert_id}: values normal, starting 30s recovery timer")
+                        logger.info(f"Alert {self.current_alert_id}: values normal, starting {RECOVERY_SECONDS}s recovery timer")
                     else:
                         elapsed = (timestamp - self.alert_recovery_start_time).total_seconds()
-                        if elapsed >= 30:
-                            logger.info(f"Alert {self.current_alert_id}: 30s recovery complete, ending alert")
-                            await self._end_pulse_ox_alert(timestamp)
+                        if elapsed >= RECOVERY_SECONDS:
+                            logger.info(f"Alert {self.current_alert_id}: {RECOVERY_SECONDS}s recovery complete, ending alert")
+                            await self._end_pulse_ox_alert(timestamp, end_source=LIVE_RECOVERY)
 
         except Exception as e:
             logger.error(f"Error checking pulse ox thresholds: {e}")
@@ -323,21 +359,28 @@ class StateModule:
         except Exception as e:
             logger.error(f"Error starting pulse ox alert: {e}")
 
-    async def _end_pulse_ox_alert(self, timestamp):
-        """End the current pulse oximeter alert."""
+    async def _end_pulse_ox_alert(self, timestamp, end_source=LIVE_RECOVERY):
+        """End the current pulse oximeter alert.
+
+        end_source records how we arrived at this end time, so a reader can
+        tell an episode we watched resolve from one we closed because the
+        sensor stopped reporting.
+        """
         try:
             from state_manager import get_db_session
             from crud.monitoring import update_monitoring_alert
 
             if self.current_alert_id:
                 alert_id = self.current_alert_id
+                end_time = make_utc(timestamp)
 
                 def _sync_end_alert():
                     with get_db_session() as db:
                         update_monitoring_alert(
                             db=db,
                             alert_id=alert_id,
-                            end_time=timestamp.isoformat(),
+                            end_time=end_time,
+                            end_source=end_source,
                         )
 
                 await asyncio.to_thread(_sync_end_alert)
@@ -351,7 +394,7 @@ class StateModule:
                 )
                 await self.event_bus.publish(alert_event, topic="alerts.resolved")
 
-                logger.info(f"Pulse ox alert {alert_id} automatically resolved (end_time set)")
+                logger.info(f"Pulse ox alert {alert_id} automatically resolved ({end_source})")
 
                 # Reset tracking
                 self.current_alert_id = None

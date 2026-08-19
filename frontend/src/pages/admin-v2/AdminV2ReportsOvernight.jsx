@@ -51,6 +51,15 @@ Chart.register(annotationPlugin);
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const EPISODE_PREVIEW = 2;
 
+// Why an episode's end had to be worked out afterwards. "Recovered" and "the
+// sensor stopped reporting" are different statements about the same number, so
+// the marker says which one it is rather than just flagging it as an estimate.
+const END_INFERRED_HINT = {
+  inferred_recovery: 'Ended when the readings had held steady — worked out from the sensor record',
+  inferred_monitoring_ended: 'Ended when the sensor stopped reporting, so the episode may have continued unseen',
+  inferred_no_data: 'No sensor readings for this episode, so no length could be established',
+};
+
 const toDateStr = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
@@ -461,7 +470,13 @@ const AdminV2ReportsOvernight = () => {
                   figures above cover only the rest. Say so rather than let the
                   total read as the whole night. */}
               {data.alerts.unclosed > 0 && (
-                <> · {data.alerts.unclosed} never closed, not counted in the time</>
+                <> · {data.alerts.unclosed} still open, not counted in the time</>
+              )}
+              {/* These do count toward the figures, but their end was worked
+                  out from the sensor record afterwards rather than watched
+                  happening, so the times are close rather than exact. */}
+              {data.alerts.inferred > 0 && (
+                <> · {data.alerts.inferred} ended by inference</>
               )}
             </div>
             <div className="rpt-table-wrap">
@@ -477,7 +492,11 @@ const AdminV2ReportsOvernight = () => {
                         {e.nadir != null ? `${e.nadir}%` : '—'}
                       </td>
                       <td>{e.bpm_min != null ? `${e.bpm_min}–${e.bpm_max}` : '—'}</td>
-                      <td>{formatMinutes(e.duration_minutes)}</td>
+                      {/* An inferred end is an estimate; mark it as one rather
+                          than let it sit next to measured durations unqualified. */}
+                      <td title={e.end_inferred ? END_INFERRED_HINT[e.end_source] : undefined}>
+                        {e.end_inferred ? '≈' : ''}{formatMinutes(e.duration_minutes)}
+                      </td>
                       <td className="rpt-muted">{e.oxygen_used ? `${e.oxygen_highest || ''}L` : '—'}</td>
                     </tr>
                   ))}
