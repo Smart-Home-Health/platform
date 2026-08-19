@@ -47,6 +47,8 @@ from crud.care_tasks import (
     get_care_task_completion_stats, get_overdue_care_tasks,
     get_care_task_adherence_overview, get_care_task_stats_by_user,
 )
+from care_task_vocab import is_nutrition_category
+from crud.scheduling import canonical_care_task_item
 from crud.scheduling import (
     add_care_task_schedule, get_care_task_schedules, get_all_care_task_schedules,
     update_care_task_schedule, delete_care_task_schedule, toggle_care_task_schedule_active,
@@ -126,10 +128,15 @@ async def get_inactive_care_tasks_endpoint(patient_id: int = None, db: Session =
 
 @router.put("/care-tasks/{task_id}", dependencies=[Depends(require_permission("care_tasks.update"))])
 async def update_care_task_endpoint(task_id: int, data: CareTaskUpdate, db: Session = Depends(get_db)):
-    """Update an existing care task"""
+    """Update an existing care task.
+
+    Uses exclude_unset rather than dropping None, so a field the caller
+    deliberately cleared reaches the update. Dropping None meant a category or
+    description could be set but never removed — the request looked identical
+    to one that simply did not mention the field.
+    """
     try:
-        # Filter out None values
-        update_data = {k: v for k, v in data.model_dump().items() if v is not None}
+        update_data = data.model_dump(exclude_unset=True)
         success = update_care_task(db, task_id, **update_data)
         if success:
             return {"status": "success"}
@@ -249,16 +256,65 @@ async def get_all_care_task_schedules_endpoint(active_only: bool = True, patient
         )
 
 
-@router.get("/care-task-schedules/daily")
-async def get_daily_care_task_schedule_endpoint(patient_id: int = None, db: Session = Depends(get_db)):
-    """Get daily care task schedule"""
+@router.get("/care-tasks/day")
+async def get_care_task_day(
+    patient_id: int = None,
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access),
+):
+    """Today's and yesterday's care tasks, in the canonical item shape.
+
+    THE endpoint for a care-task-only day view. The three views that render
+    this used to read two producers with different names for the same fields,
+    so each learned one dialect and a field added in one place stayed invisible
+    in the others. `is_nutrition` is resolved here rather than re-guessed from
+    the category name by each caller.
+    """
     try:
-        # If no patient_id provided, use current patient
         if patient_id is None:
             current_patient = get_current_patient(db)
             patient_id = current_patient.id if current_patient else None
-        
+
         schedule = get_daily_care_task_schedule(db, patient_id=patient_id)
+        items = [canonical_care_task_item(t)
+                 for t in schedule.get('scheduled_care_tasks', [])]
+
+        return {
+            'patient_id': patient_id,
+            'generated_at': schedule.get('generated_at'),
+            'items': items,
+            'counts': {
+                'total': len(items),
+                'completed': sum(1 for i in items if i['completed']),
+                'outstanding': sum(1 for i in items if not i['completed'] and not i['is_prn']),
+                'prn': sum(1 for i in items if i['is_prn']),
+            },
+        }
+    except Exception as e:
+        logger.error(f"Error getting care task day: {e}")
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
+
+@router.get("/care-task-schedules/daily")
+async def get_daily_care_task_schedule_endpoint(
+    patient_id: int = None,
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_read_access),
+):
+    """Deprecated: use /api/care-tasks/day.
+
+    Kept so nothing breaks mid-migration; it now emits the canonical items
+    alongside its original payload. It also gained the read dependency its
+    sibling endpoints already had.
+    """
+    try:
+        if patient_id is None:
+            current_patient = get_current_patient(db)
+            patient_id = current_patient.id if current_patient else None
+
+        schedule = get_daily_care_task_schedule(db, patient_id=patient_id)
+        schedule['items'] = [canonical_care_task_item(t)
+                             for t in schedule.get('scheduled_care_tasks', [])]
         return schedule
     except Exception as e:
         logger.error(f"Error getting daily care task schedule: {e}")
@@ -386,9 +442,8 @@ async def complete_care_task_schedule_endpoint(
             is_nutrition_task = False
             nutrition_data = None
             
-            if care_task and care_task.get('category_name'):
-                nutrition_keywords = ['nutrition', 'feeding', 'meal', 'food', 'drink', 'supplement']
-                is_nutrition_task = any(keyword in care_task['category_name'].lower() for keyword in nutrition_keywords)
+            if care_task:
+                is_nutrition_task = is_nutrition_category(care_task.get('category_name'))
             
             # Extract nutrition data from schedule notes if available
             if is_nutrition_task and schedule.get('notes'):
@@ -451,11 +506,7 @@ async def complete_care_task_ad_hoc_endpoint(
         if not log_id:
             return JSONResponse(status_code=500, content={"detail": "Failed to record care task"})
 
-        nutrition_keywords = ['nutrition', 'feeding', 'meal', 'food', 'drink', 'supplement']
-        is_nutrition_task = bool(
-            care_task.get('category_name')
-            and any(k in care_task['category_name'].lower() for k in nutrition_keywords)
-        )
+        is_nutrition_task = is_nutrition_category(care_task.get('category_name'))
         return {
             "id": log_id,
             "status": "success",

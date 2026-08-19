@@ -261,6 +261,7 @@
   white-space: nowrap;
 }
 .rpt-icon-btn {
+  padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;

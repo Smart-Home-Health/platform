@@ -117,13 +117,13 @@ const AdminV2CareTasksSchedule = () => {
       setError(null);
       
       const response = await fetch(
-        `${config.apiUrl}/api/care-task-schedules/daily?patient_id=${selectedPatient.id}`,
+        `${config.apiUrl}/api/care-tasks/day?patient_id=${selectedPatient.id}`,
         { credentials: 'include' }
       );
 
       if (response.ok) {
         const data = await response.json();
-        setScheduledTasks(data.scheduled_care_tasks || []);
+        setScheduledTasks(data.items || []);
       } else {
         setError('Failed to fetch schedule');
       }
@@ -166,7 +166,7 @@ const AdminV2CareTasksSchedule = () => {
   const getStatusTone = (item) => STATUS_TONE[item.status] || 'pending';
 
   const getStatusText = (item) => {
-    if (item.is_completed) {
+    if (item.completed) {
       return item.status === 'skipped' ? 'Skipped' : 'Completed';
     }
     return STATUS_LABEL[item.status] || item.status;
@@ -184,7 +184,10 @@ const AdminV2CareTasksSchedule = () => {
   // Raw item -> ScheduleBoard row.
   const toRow = (item) => {
     const actions = [];
-    if (!item.is_completed && hasPermission('care_tasks.update')) {
+    // The endpoints behind these require care_tasks.perform, not update:
+    // gating on update hid the buttons from users who could complete a
+    // task, and showed them to users whose click would 403.
+    if (!item.completed && hasPermission('care_tasks.perform')) {
       actions.push({
         key: 'complete',
         label: item.status === 'missed' ? 'Complete Now' : 'Mark Complete',
@@ -196,17 +199,17 @@ const AdminV2CareTasksSchedule = () => {
 
     return {
       id: `${item.schedule_id}-${item.scheduled_time}`,
-      title: item.care_task_name,
-      meta: item.care_task_description || undefined,
-      categoryColor: item.care_task_category_color,
-      categoryLabel: item.care_task_category_name,
+      title: item.name,
+      meta: item.description || undefined,
+      categoryColor: item.category_color,
+      categoryLabel: item.category_name,
       prn: item.is_prn,
-      scheduleLine: item.completed_time
-        ? `Completed at ${new Date(item.completed_time).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true })}`
+      scheduleLine: item.completed_at
+        ? `Completed at ${new Date(item.completed_at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true })}`
         : undefined,
       statusLabel: getStatusText(item),
       statusTone: getStatusTone(item),
-      completed: item.is_completed,
+      completed: item.completed,
       actions,
     };
   };
@@ -496,7 +499,7 @@ const AdminV2CareTasksSchedule = () => {
                   <Alert variant="warning">
                     <AlertTitle className="text-[#f0883e]">{heading}</AlertTitle>
                     <AlertDescription>
-                      <strong>{windowConfirm.task.care_task_name || windowConfirm.task.name}</strong> is scheduled for{' '}
+                      <strong>{windowConfirm.task.name}</strong> is scheduled for{' '}
                       <strong>{windowConfirm.check.scheduledLocal}</strong>
                       {' '}— that's <strong>{offsetText}</strong>.
                       {' '}Confirm this is intentional before marking it complete.

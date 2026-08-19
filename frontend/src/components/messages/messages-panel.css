@@ -364,6 +364,7 @@
 .mx-btn:disabled { opacity: 0.45; cursor: default; }
 
 .mx-link {
+  padding: 0;
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
@@ -550,6 +551,7 @@
   background: var(--vc-bg-base);
 }
 .mx-seg-btn {
+  padding: 0;
   flex: 1;
   min-height: 44px;
   display: inline-flex;
