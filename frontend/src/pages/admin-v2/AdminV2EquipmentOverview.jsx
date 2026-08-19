@@ -188,7 +188,7 @@ const AdminV2EquipmentOverview = () => {
               </button>
             )}
             {canManage && (
-              <button type="button" className="sh-btn" onClick={() => goto('/care/equipment/manage')}>
+              <button type="button" className="sh-btn" onClick={() => goto('/care/equipment/inventory')}>
                 <EquipmentIcon size={16} /> Manage
               </button>
             )}
@@ -197,7 +197,7 @@ const AdminV2EquipmentOverview = () => {
 
         {/* Each tile opens what it counted. */}
         <div className="eo-stats">
-          <button type="button" className="eo-stat" onClick={() => goto('/care/equipment/manage')}>
+          <button type="button" className="eo-stat" onClick={() => goto('/care/equipment/inventory')}>
             <EquipmentIcon size={22} />
             <span className="eo-stat-value">{counts.tracked}</span>
             <span className="eo-stat-label">Tracked</span>

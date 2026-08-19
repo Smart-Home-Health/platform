@@ -1,0 +1,136 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Supplies. Builds on the shipments/overview vocabulary (sh-btn, sh-search,
+ * eo-stat, eo-flag, sc-menu) rather than restating it. Dark-only. */
+
+/* The overview's tiles are buttons that filter; here they only report, so
+ * they must not look pressable. */
+:root:not(.light) .eo-stat.as-static {
+  cursor: default;
+  text-align: left;
+}
+:root:not(.light) .eo-stat.as-static:hover { background: none; }
+
+:root:not(.light) .sup-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+:root:not(.light) .sup-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 10px;
+  background: var(--vc-bg-surface);
+}
+
+/* A supply at or below its reorder point is the reason to open this page. */
+:root:not(.light) .sup-row.is-short {
+  border-color: color-mix(in srgb, var(--vc-state-due) 45%, transparent);
+}
+
+@media (max-width: 860px) {
+  :root:not(.light) .sup-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 10px;
+  }
+  :root:not(.light) .sup-flags { grid-column: 1 / -1; order: 3; }
+  :root:not(.light) .sup-actions { grid-column: 1 / -1; order: 4; justify-content: flex-start; }
+}
+
+:root:not(.light) .sup-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+:root:not(.light) .sup-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--vc-text-primary);
+  overflow-wrap: anywhere;
+}
+
+:root:not(.light) .sup-sub {
+  font-family: var(--vc-font-mono);
+  font-size: 0.73rem;
+  color: var(--vc-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+:root:not(.light) .sup-flags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+:root:not(.light) .sup-qty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  min-width: 64px;
+}
+
+:root:not(.light) .sup-qty-value {
+  font-family: var(--vc-font-mono);
+  font-size: 1.25rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  color: var(--vc-text-primary);
+}
+
+:root:not(.light) .sup-qty-label {
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+  white-space: nowrap;
+}
+
+:root:not(.light) .sup-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* --- the add/edit sheet --- */
+
+:root:not(.light) .sup-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.88rem;
+  color: var(--vc-text-primary);
+  cursor: pointer;
+}
+
+:root:not(.light) .sup-check input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--vc-data-live);
+}
