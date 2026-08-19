@@ -142,6 +142,13 @@ def test_alerts_exclude_other_accounts(admin_client, other_client, other_patient
 
 def test_shipment_alerts_by_id_across_accounts_is_empty(admin_client, other_client, other_patient):
     theirs = _make_shipment(other_client, other_patient)
+    item = _add_item(other_client, theirs)
+    # Give the shipment a real alert first, or an empty list proves nothing.
+    other_client.post(f"/api/shipments/{theirs}/receive",
+                      json=[{"shipment_item_id": item, "qty_received": 0}])
+    other_client.post(f"/api/shipments/{theirs}/finalize")
+    assert other_client.get(f"/api/shipments/{theirs}/alerts").json()["alerts"]
+
     assert admin_client.get(f"/api/shipments/{theirs}/alerts").json()["alerts"] == []
 
 
