@@ -128,10 +128,15 @@ async def get_inactive_care_tasks_endpoint(patient_id: int = None, db: Session =
 
 @router.put("/care-tasks/{task_id}", dependencies=[Depends(require_permission("care_tasks.update"))])
 async def update_care_task_endpoint(task_id: int, data: CareTaskUpdate, db: Session = Depends(get_db)):
-    """Update an existing care task"""
+    """Update an existing care task.
+
+    Uses exclude_unset rather than dropping None, so a field the caller
+    deliberately cleared reaches the update. Dropping None meant a category or
+    description could be set but never removed — the request looked identical
+    to one that simply did not mention the field.
+    """
     try:
-        # Filter out None values
-        update_data = {k: v for k, v in data.model_dump().items() if v is not None}
+        update_data = data.model_dump(exclude_unset=True)
         success = update_care_task(db, task_id, **update_data)
         if success:
             return {"status": "success"}

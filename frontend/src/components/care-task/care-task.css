@@ -195,3 +195,19 @@
   outline: none;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
 }
+
+.ct-cat-swatch-field { display: flex; flex-direction: column; gap: 0.35rem; }
+.ct-swatch { display: grid; place-content: center; color: var(--vc-bg-base); }
+
+.ct-cat-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-surface);
+  font-family: var(--vc-font-sans);
+  font-size: 12.5px;
+  color: var(--vc-text-secondary);
+}
