@@ -20,7 +20,6 @@ cookies.txt
 .env.docker
 docs/*
 !docs/refactor-orm-split.md
-!docs/alert-subsystem-handoff.md
 
 # Personal strategy/brainstorm notes — not for the repo
 remote-access-brainstorm.md
