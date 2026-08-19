@@ -39,6 +39,26 @@ export const equipmentService = {
     return asJson(response, 'Failed to fetch supplies');
   },
 
+  /** Change history across equipment, newest first. */
+  async changeHistory({ patientId = null, equipmentId = null, limit = 50 } = {}) {
+    const qs = new URLSearchParams();
+    if (patientId) qs.set('patient_id', patientId);
+    if (equipmentId) qs.set('equipment_id', equipmentId);
+    if (limit) qs.set('limit', limit);
+    const response = await apiFetch(`${config.apiUrl}/api/equipment/history?${qs}`);
+    return asJson(response, 'Failed to fetch equipment history');
+  },
+
+  /** Record a scheduled change. Refused with a 409 when tracked stock is out. */
+  async logChange(equipmentId, changedAt) {
+    const response = await apiFetch(`${config.apiUrl}/api/equipment/${equipmentId}/change`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ changed_at: changedAt }),
+    });
+    return asJson(response, 'Failed to record the change');
+  },
+
   async update(equipmentId, data) {
     const response = await apiFetch(`${config.apiUrl}/api/equipment/${equipmentId}`, {
       method: 'PUT',
