@@ -18,6 +18,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
+import MedicationSheet from '../../components/medication/MedicationSheet';
 import { PatientSelectorModal, MedStockBar } from './components';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
@@ -40,11 +41,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Label } from '@/components/ui/label';
 import { Alert } from '@/components/ui/alert';
-import { Field, FormRow } from '@/components/ui/field';
+import { Field } from '@/components/ui/field';
 import {
   Select,
   SelectTrigger,
@@ -54,194 +52,6 @@ import {
 } from '@/components/ui/select';
 import './AdminV2.css';
 
-const QUANTITY_UNITS = ['tablets', 'capsules', 'ml', 'mg', 'units', 'puffs', 'drops', 'patches'];
-const UNIT_LABELS = { tablets: 'Tablets', capsules: 'Capsules', ml: 'mL', mg: 'mg', units: 'Units', puffs: 'Puffs', drops: 'Drops', patches: 'Patches' };
-
-// Shared Create/Edit medication form body (edit adds the Status select). Module
-// scope so it isn't recreated each render — a nested component drops input focus.
-function MedicationFormFields({ formData, setFormData, providers, pharmacies, showStatus }) {
-  return (
-    <>
-      <FormRow>
-        <Field label="Medication Name" required htmlFor="med-name">
-          <Input
-            id="med-name"
-            value={formData.name}
-            onChange={e => setFormData({ ...formData, name: e.target.value })}
-            required
-            placeholder="e.g., Lisinopril"
-          />
-        </Field>
-        <Field label="Concentration" required htmlFor="med-concentration">
-          <Input
-            id="med-concentration"
-            value={formData.concentration}
-            onChange={e => setFormData({ ...formData, concentration: e.target.value })}
-            required
-            placeholder="e.g., 10mg"
-          />
-        </Field>
-      </FormRow>
-
-      <FormRow>
-        <Field label="Quantity" required htmlFor="med-quantity">
-          <Input
-            id="med-quantity"
-            type="number"
-            value={formData.quantity}
-            onChange={e => setFormData({ ...formData, quantity: parseFloat(e.target.value) || 0 })}
-            required
-            min="0"
-            step="0.25"
-          />
-        </Field>
-        <Field label="Unit" required>
-          <Select
-            value={formData.quantity_unit}
-            onValueChange={(v) => setFormData({ ...formData, quantity_unit: v })}
-          >
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {QUANTITY_UNITS.map(u => (
-                <SelectItem key={u} value={u}>{UNIT_LABELS[u]}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-      </FormRow>
-
-      <FormRow>
-        <Field label="Low Stock Alert At" htmlFor="med-low-stock-threshold">
-          <Input
-            id="med-low-stock-threshold"
-            type="number"
-            value={formData.low_stock_threshold ?? ''}
-            onChange={e => setFormData({
-              ...formData,
-              low_stock_threshold: e.target.value === '' ? null : parseFloat(e.target.value),
-            })}
-            min="0"
-            step="0.25"
-            placeholder="Leave blank to disable"
-          />
-        </Field>
-        <Field label="Alert Measured In">
-          <Select
-            value={formData.low_stock_threshold_type || 'quantity'}
-            onValueChange={(v) => setFormData({ ...formData, low_stock_threshold_type: v })}
-          >
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="quantity">Quantity on hand</SelectItem>
-              <SelectItem value="days">Days of supply left</SelectItem>
-            </SelectContent>
-          </Select>
-        </Field>
-      </FormRow>
-
-      <FormRow>
-        <Field label="Start Date" required htmlFor="med-start-date">
-          <Input
-            id="med-start-date"
-            type="date"
-            value={formData.start_date}
-            onChange={e => setFormData({ ...formData, start_date: e.target.value })}
-            required
-          />
-        </Field>
-        <Field label="Prescriber">
-          <Select
-            value={formData.prescriber_id ? String(formData.prescriber_id) : '__none__'}
-            onValueChange={(v) => setFormData({ ...formData, prescriber_id: v === '__none__' ? '' : v })}
-          >
-            <SelectTrigger><SelectValue placeholder="-- No Prescriber --" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__none__">-- No Prescriber --</SelectItem>
-              {providers.map(provider => (
-                <SelectItem key={provider.id} value={String(provider.id)}>
-                  {provider.title ? `${provider.title} ` : ''}{provider.first_name} {provider.last_name}
-                  {provider.specialty ? ` (${provider.specialty})` : ''}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-      </FormRow>
-
-      <Field label="Pharmacy">
-        <Select
-          value={formData.pharmacy_id ? String(formData.pharmacy_id) : '__none__'}
-          onValueChange={(v) => setFormData({ ...formData, pharmacy_id: v === '__none__' ? '' : v })}
-        >
-          <SelectTrigger><SelectValue placeholder="-- No Pharmacy --" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__none__">-- No Pharmacy --</SelectItem>
-            {pharmacies.map(pharmacy => (
-              <SelectItem key={pharmacy.id} value={String(pharmacy.id)}>
-                {pharmacy.name}{pharmacy.phone ? ` - ${pharmacy.phone}` : ''}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </Field>
-
-      <Field label="Instructions" required htmlFor="med-instructions">
-        <Textarea
-          id="med-instructions"
-          value={formData.instructions}
-          onChange={e => setFormData({ ...formData, instructions: e.target.value })}
-          placeholder="e.g., Take with food"
-          rows={2}
-          required
-        />
-      </Field>
-
-      <Field label="Notes" htmlFor="med-notes">
-        <Textarea
-          id="med-notes"
-          value={formData.notes}
-          onChange={e => setFormData({ ...formData, notes: e.target.value })}
-          placeholder="Additional notes..."
-          rows={2}
-        />
-      </Field>
-
-      <FormRow>
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="med-prn"
-            checked={formData.as_needed}
-            onCheckedChange={(c) => setFormData({ ...formData, as_needed: !!c })}
-          />
-          <Label htmlFor="med-prn">PRN (As Needed)</Label>
-        </div>
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="med-global"
-            checked={formData.is_global}
-            onCheckedChange={(c) => setFormData({ ...formData, is_global: !!c })}
-          />
-          <Label htmlFor="med-global">Global (Available to all patients)</Label>
-        </div>
-      </FormRow>
-
-      {showStatus && (
-        <Field label="Status">
-          <Select
-            value={formData.active ? 'active' : 'inactive'}
-            onValueChange={(v) => setFormData({ ...formData, active: v === 'active' })}
-          >
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="inactive">Inactive</SelectItem>
-            </SelectContent>
-          </Select>
-        </Field>
-      )}
-    </>
-  );
-}
 
 const AdminV2MedicationsManage = () => {
   const { user } = useAuth();
@@ -274,12 +84,11 @@ const AdminV2MedicationsManage = () => {
   const [pharmacies, setPharmacies] = useState([]);
 
   // Modal states
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showMedSheet, setShowMedSheet] = useState(false);
   const [showBulkLowStockModal, setShowBulkLowStockModal] = useState(false);
   const [bulkLowStockDays, setBulkLowStockDays] = useState(7);
   const [bulkLowStockSaving, setBulkLowStockSaving] = useState(false);
   const [bulkLowStockResult, setBulkLowStockResult] = useState(null);
-  const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [selectedMedication, setSelectedMedication] = useState(null);
@@ -296,22 +105,6 @@ const AdminV2MedicationsManage = () => {
   const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   // Form state
-  const [formData, setFormData] = useState({
-    name: '',
-    concentration: '',
-    quantity: 1,
-    quantity_unit: 'tablets',
-    low_stock_threshold: null,
-    low_stock_threshold_type: 'quantity',
-    instructions: '',
-    start_date: new Date().toISOString().split('T')[0],
-    as_needed: false,
-    notes: '',
-    active: true,
-    is_global: false,
-    prescriber_id: '',
-    pharmacy_id: ''
-  });
   const [formError, setFormError] = useState(null);
   const [saving, setSaving] = useState(false);
 
@@ -433,78 +226,46 @@ const AdminV2MedicationsManage = () => {
     setShowPatientModal(false);
   };
 
-  const handleCreateMedication = async (e) => {
-    e.preventDefault();
-    setFormError(null);
-    setSaving(true);
+  // One save path. The two handlers were the same coercion logic twice, and
+  // only the update one failed to map an array-shaped 422 -- rendering the
+  // raw objects as an Alert child, which React refuses.
+  const readError = (data, fallback) => (
+    Array.isArray(data?.detail)
+      ? data.detail.map((d) => d.msg).join(', ')
+      : (data?.detail || fallback)
+  );
 
-    try {
-      const payload = {
-        ...formData,
-        prescriber_id: formData.prescriber_id ? parseInt(formData.prescriber_id) : null,
-        pharmacy_id: formData.pharmacy_id ? parseInt(formData.pharmacy_id) : null,
-        is_patient_specific: !formData.is_global,
-        admin_patient_id: formData.is_global ? null : selectedPatient.id
-      };
-
-      const response = await fetch(`${config.apiUrl}/api/add/medication`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload)
-      });
-
-      if (response.ok) {
-        setShowCreateModal(false);
-        resetForm();
-        fetchMedications();
-      } else {
-        const data = await response.json();
-        if (Array.isArray(data.detail)) {
-          setFormError(data.detail.map(err => err.msg).join(', '));
-        } else {
-          setFormError(data.detail || 'Failed to create medication');
-        }
+  const handleSaveMedication = async (payload) => {
+    const creating = !selectedMedication;
+    const url = creating
+      ? `${config.apiUrl}/api/add/medication`
+      : `${config.apiUrl}/api/medications/${selectedMedication.id}`;
+    const body = creating
+      ? {
+        ...payload,
+        is_patient_specific: !payload.is_global,
+        admin_patient_id: payload.is_global ? null : selectedPatient.id,
       }
-    } catch {
-      setFormError('Error connecting to server');
-    } finally {
-      setSaving(false);
+      : payload;
+
+    const response = await fetch(url, {
+      method: creating ? 'POST' : 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      let data = null;
+      try { data = await response.json(); } catch { /* non-JSON body */ }
+      throw new Error(readError(data, creating
+        ? 'Failed to add the medication'
+        : 'Failed to save the medication'));
     }
-  };
 
-  const handleUpdateMedication = async (e) => {
-    e.preventDefault();
-    setFormError(null);
-    setSaving(true);
-
-    try {
-      const payload = {
-        ...formData,
-        prescriber_id: formData.prescriber_id ? parseInt(formData.prescriber_id) : null,
-        pharmacy_id: formData.pharmacy_id ? parseInt(formData.pharmacy_id) : null
-      };
-
-      const response = await fetch(`${config.apiUrl}/api/medications/${selectedMedication.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload)
-      });
-
-      if (response.ok) {
-        setShowEditModal(false);
-        resetForm();
-        fetchMedications();
-      } else {
-        const data = await response.json();
-        setFormError(data.detail || 'Failed to update medication');
-      }
-    } catch {
-      setFormError('Error connecting to server');
-    } finally {
-      setSaving(false);
-    }
+    setShowMedSheet(false);
+    setSelectedMedication(null);
+    fetchMedications();
   };
 
   const handleDeleteMedication = async () => {
@@ -558,24 +319,8 @@ const AdminV2MedicationsManage = () => {
 
   const openEditModal = (medication) => {
     setSelectedMedication(medication);
-    setFormData({
-      name: medication.name,
-      concentration: medication.concentration || '',
-      quantity: medication.quantity,
-      quantity_unit: medication.quantity_unit,
-      low_stock_threshold: medication.low_stock_threshold ?? null,
-      low_stock_threshold_type: medication.low_stock_threshold_type || 'quantity',
-      instructions: medication.instructions || '',
-      start_date: medication.start_date ? medication.start_date.split('T')[0] : new Date().toISOString().split('T')[0],
-      as_needed: medication.as_needed,
-      notes: medication.notes || '',
-      active: medication.active,
-      is_global: medication.is_global || false,
-      prescriber_id: medication.prescriber_id ? String(medication.prescriber_id) : '',
-      pharmacy_id: medication.pharmacy_id ? String(medication.pharmacy_id) : ''
-    });
     setFormError(null);
-    setShowEditModal(true);
+    setShowMedSheet(true);
   };
 
   const openDeleteModal = (medication) => {
@@ -728,29 +473,9 @@ const AdminV2MedicationsManage = () => {
   };
 
   const openCreateModal = () => {
-    resetForm();
-    setShowCreateModal(true);
-  };
-
-  const resetForm = () => {
-    setFormData({
-      name: '',
-      concentration: '',
-      quantity: 1,
-      quantity_unit: 'tablets',
-      low_stock_threshold: null,
-      low_stock_threshold_type: 'quantity',
-      instructions: '',
-      start_date: new Date().toISOString().split('T')[0],
-      as_needed: false,
-      notes: '',
-      active: true,
-      is_global: false,
-      prescriber_id: '',
-      pharmacy_id: ''
-    });
-    setFormError(null);
     setSelectedMedication(null);
+    setFormError(null);
+    setShowMedSheet(true);
   };
 
   // Permission-aware kebab menu for a medication card
@@ -926,27 +651,20 @@ const AdminV2MedicationsManage = () => {
           />
         )}
 
-        {/* Create Medication Modal */}
-        <Dialog open={showCreateModal} onOpenChange={(o) => { if (!o) setShowCreateModal(false); }}>
-          <DialogContent className="sm:max-w-[600px]" aria-describedby={undefined}>
-            <DialogHeader>
-              <DialogTitle>Add Medication</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleCreateMedication} className="flex flex-col gap-4">
-              {formError && <Alert variant="destructive">{formError}</Alert>}
-              <MedicationFormFields
-                formData={formData}
-                setFormData={setFormData}
-                providers={providers}
-                pharmacies={pharmacies}
-              />
-              <DialogFooter>
-                <Button type="button" variant="secondary" onClick={() => setShowCreateModal(false)}>Cancel</Button>
-                <Button type="submit" disabled={saving}>{saving ? 'Creating...' : 'Add Medication'}</Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+        <MedicationSheet
+          open={showMedSheet}
+          onOpenChange={(o) => { setShowMedSheet(o); if (!o) setSelectedMedication(null); }}
+          medication={selectedMedication}
+          providers={providers}
+          pharmacies={pharmacies}
+          scheduleCount={selectedMedication?.schedule_count
+            ?? (selectedMedication?.schedules || []).length}
+          onSave={handleSaveMedication}
+          onViewSchedules={() => {
+            setShowMedSheet(false);
+            openScheduleModal(selectedMedication);
+          }}
+        />
 
         {/* Bulk Low-Stock Alert Modal */}
         <Dialog open={showBulkLowStockModal} onOpenChange={(o) => { if (!o) setShowBulkLowStockModal(false); }}>
@@ -997,28 +715,6 @@ const AdminV2MedicationsManage = () => {
           </DialogContent>
         </Dialog>
 
-        {/* Edit Medication Modal */}
-        <Dialog open={showEditModal && !!selectedMedication} onOpenChange={(o) => { if (!o) setShowEditModal(false); }}>
-          <DialogContent className="sm:max-w-[600px]" aria-describedby={undefined}>
-            <DialogHeader>
-              <DialogTitle>Edit Medication{selectedMedication ? `: ${selectedMedication.name}` : ''}</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleUpdateMedication} className="flex flex-col gap-4">
-              {formError && <Alert variant="destructive">{formError}</Alert>}
-              <MedicationFormFields
-                formData={formData}
-                setFormData={setFormData}
-                providers={providers}
-                pharmacies={pharmacies}
-                showStatus
-              />
-              <DialogFooter>
-                <Button type="button" variant="secondary" onClick={() => setShowEditModal(false)}>Cancel</Button>
-                <Button type="submit" disabled={saving}>{saving ? 'Saving...' : 'Save Changes'}</Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
 
         {/* Delete Confirmation Modal */}
         <Dialog open={showDeleteModal && !!selectedMedication} onOpenChange={(o) => { if (!o) setShowDeleteModal(false); }}>
