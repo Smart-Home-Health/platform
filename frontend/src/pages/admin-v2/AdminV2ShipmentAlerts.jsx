@@ -15,78 +15,58 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useState, useEffect } from 'react';
+// What a delivery got wrong: short counts, damage, the wrong item, and what
+// the supplier still owes. Each one is either resolved or turned into a
+// follow-up order.
+//
+// The follow-up used to navigate to `result.shipment_id`, a key the endpoint
+// does not return -- it returns followup_shipment_id -- so a successful
+// follow-up landed on /shipments/undefined. Its supplier picker was inert
+// too: the request model takes alert_ids and nothing else, so the chosen
+// supplier was dropped on the floor. The follow-up inherits the supplier of
+// the shipment the alerts came from, which is what it always did.
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
-import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
-import {
-  AlertIcon,
-  CheckIcon,
-  PlusIcon
-} from '../../components/Icons';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Alert } from '@/components/ui/alert';
-import { Field } from '@/components/ui/field';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
+import { AlertIcon, CheckIcon, PackageIcon } from '../../components/Icons';
+import ChipGroup from '../../components/vc/ChipGroup';
+import { shipmentService } from '../../services/shipments';
 import './AdminV2.css';
+import './components/shipments-page.css';
 
-const ALERT_TYPE_OPTIONS = [
-  { value: '', label: 'All Types' },
+const ALERT_TYPES = [
+  { value: '', label: 'All' },
   { value: 'short', label: 'Short' },
-  { value: 'wrong_item', label: 'Wrong Item' },
+  { value: 'wrong_item', label: 'Wrong item' },
   { value: 'damaged', label: 'Damaged' },
   { value: 'extra', label: 'Extra' },
   { value: 'backorder', label: 'Backorder' },
 ];
 
+const TYPE_LABEL = Object.fromEntries(ALERT_TYPES.map((t) => [t.value, t.label]));
+
+const shortDate = (value) => (value ? new Date(value).toLocaleDateString() : '—');
+
 const AdminV2ShipmentAlerts = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
-  const { 
-    patients, 
-    selectedPatient: contextPatient, 
-    selectPatient: setContextPatient,
-    loadingPatients 
+  const {
+    patients, selectedPatient: contextPatient,
+    selectPatient: setContextPatient, loadingPatients,
   } = useAdminPatient();
-  
   const selectedPatient = contextPatient;
 
-  // Alerts data
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  
-  // Filters
+
   const [typeFilter, setTypeFilter] = useState('');
-  const [resolvedFilter, setResolvedFilter] = useState('false'); // Default to unresolved
-  
-  // Selection for follow-up order
-  const [selectedAlerts, setSelectedAlerts] = useState([]);
-  
-  // Follow-up modal
-  const [showFollowUpModal, setShowFollowUpModal] = useState(false);
-  const [creatingFollowUp, setCreatingFollowUp] = useState(false);
-  
-  // Suppliers
-  const [suppliers, setSuppliers] = useState([]);
-  const [selectedSupplierId, setSelectedSupplierId] = useState('');
+  const [showResolved, setShowResolved] = useState(false);
+  const [selected, setSelected] = useState([]);
+  const [creating, setCreating] = useState(false);
 
   const hasPermission = (permission) => {
     if (!user) return false;
@@ -94,19 +74,18 @@ const AdminV2ShipmentAlerts = () => {
     return user.permissions?.includes(permission) || false;
   };
 
-  // Set patient from URL
+  const canUpdate = hasPermission('shipments.update');
+  const canCreate = hasPermission('shipments.create');
+
   useEffect(() => {
     const patientId = searchParams.get('patient');
     if (patientId && patients.length > 0) {
-      const patient = patients.find(p => p.id === parseInt(patientId));
-      if (patient && patient.id !== contextPatient?.id) {
-        setContextPatient(patient);
-      }
+      const patient = patients.find((p) => p.id === parseInt(patientId, 10));
+      if (patient && patient.id !== contextPatient?.id) setContextPatient(patient);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-way URL→context sync; adding contextPatient would re-run on selection change and revert it to the stale URL param
-  }, [searchParams, patients]);
+  }, [searchParams, patients, loadingPatients]);
 
-  // Update URL when patient changes
   useEffect(() => {
     if (contextPatient && searchParams.get('patient') !== String(contextPatient.id)) {
       setSearchParams({ patient: contextPatient.id });
@@ -114,394 +93,180 @@ const AdminV2ShipmentAlerts = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-way context→URL sync; runs only when the selection changes
   }, [contextPatient]);
 
-  // Fetch data
-  useEffect(() => {
-    if (selectedPatient) {
-      fetchAlerts();
-      fetchSuppliers();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on patient change only
-  }, [selectedPatient, typeFilter, resolvedFilter]);
-
-  const fetchAlerts = async () => {
+  const fetchAlerts = useCallback(async () => {
     if (!selectedPatient) return;
-    
+    setLoading(true);
+    setError(null);
     try {
-      setLoading(true);
-      setError(null);
-      
-      const params = new URLSearchParams();
-      params.append('patient_id', selectedPatient.id.toString());
-      if (typeFilter) params.append('alert_type', typeFilter);
-      if (resolvedFilter) params.append('resolved', resolvedFilter);
-      
-      const response = await fetch(`${config.apiUrl}/api/shipments/alerts?${params.toString()}`, {
-        credentials: 'include'
+      const data = await shipmentService.listAlerts({
+        patient_id: selectedPatient.id,
+        alert_type: typeFilter || undefined,
+        // The endpoint reads this as the string 'true'; anything else means
+        // unresolved, so send it only when we actually want resolved ones.
+        resolved: showResolved ? 'true' : undefined,
       });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setAlerts(data.alerts || []);
-        setSelectedAlerts([]);
-      } else {
-        setError('Failed to load alerts');
-      }
+      setAlerts(data.alerts || []);
+      setSelected([]);
     } catch (err) {
-      setError('Error connecting to server');
-      console.error(err);
+      setError(err.message);
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedPatient, typeFilter, showResolved]);
 
-  const fetchSuppliers = async () => {
+  useEffect(() => { fetchAlerts(); }, [fetchAlerts]);
+
+  const visible = useMemo(
+    () => (showResolved ? alerts : alerts.filter((a) => !a.resolved)),
+    [alerts, showResolved],
+  );
+  const selectable = visible.filter((a) => !a.resolved);
+
+  const toggle = (alertId) => setSelected((prev) => (
+    prev.includes(alertId) ? prev.filter((x) => x !== alertId) : [...prev, alertId]
+  ));
+
+  const toggleAll = () => setSelected(
+    selected.length === selectable.length ? [] : selectable.map((a) => a.id),
+  );
+
+  const resolve = async (alertId) => {
     try {
-      const response = await fetch(`${config.apiUrl}/api/businesses?type=dme`, {
-        credentials: 'include'
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setSuppliers(data.businesses || data || []);
-      }
+      await shipmentService.resolveAlert(alertId);
+      fetchAlerts();
     } catch (err) {
-      console.error('Error fetching suppliers:', err);
+      setError(err.message);
     }
   };
 
-  const handleToggleSelect = (alertId) => {
-    setSelectedAlerts(prev => 
-      prev.includes(alertId) 
-        ? prev.filter(id => id !== alertId)
-        : [...prev, alertId]
-    );
-  };
-
-  const handleSelectAll = () => {
-    const unresolvedIds = alerts.filter(a => !a.resolved).map(a => a.id);
-    if (selectedAlerts.length === unresolvedIds.length) {
-      setSelectedAlerts([]);
-    } else {
-      setSelectedAlerts(unresolvedIds);
-    }
-  };
-
-  const handleCreateFollowUp = async () => {
-    if (selectedAlerts.length === 0) {
-      alert('Please select at least one alert');
-      return;
-    }
-    
-    setCreatingFollowUp(true);
-    
+  const createFollowup = async () => {
+    if (selected.length === 0) return;
+    setCreating(true);
+    setError(null);
     try {
-      const payload = {
-        alert_ids: selectedAlerts,
-        supplier_id: selectedSupplierId ? parseInt(selectedSupplierId) : null
-      };
-      
-      const response = await fetch(`${config.apiUrl}/api/shipments/alerts/create-followup`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload)
-      });
-      
-      if (response.ok) {
-        const result = await response.json();
-        setShowFollowUpModal(false);
-        
-        // Navigate to the new shipment
-        navigate(`/care/equipment/shipments/${result.shipment_id}?patient=${selectedPatient.id}`);
+      const result = await shipmentService.createFollowupOrder(selected);
+      if (result.success && result.followup_shipment_id) {
+        navigate(
+          `/care/equipment/shipments/${result.followup_shipment_id}?patient=${selectedPatient.id}`,
+        );
       } else {
-        const errData = await response.json();
-        alert(errData.error || 'Failed to create follow-up order');
+        setError(result.error || 'Failed to create the follow-up order');
       }
     } catch (err) {
-      console.error('Error creating follow-up:', err);
-      alert('Error connecting to server');
+      setError(err.message);
     } finally {
-      setCreatingFollowUp(false);
+      setCreating(false);
     }
   };
-
-  const handleResolveAlert = async (alertId) => {
-    try {
-      const response = await fetch(`${config.apiUrl}/api/shipments/alerts/${alertId}/resolve`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ resolution_notes: '' })
-      });
-      
-      if (response.ok) {
-        fetchAlerts();
-      } else {
-        const errData = await response.json();
-        alert(errData.error || 'Failed to resolve alert');
-      }
-    } catch (err) {
-      console.error('Error resolving alert:', err);
-    }
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return '-';
-    return new Date(dateString).toLocaleDateString();
-  };
-
-  const getAlertTypeBadgeClass = (type) => {
-    switch (type) {
-      case 'short': return 'admin-v2-badge-warning';
-      case 'wrong_item': return 'admin-v2-badge-danger';
-      case 'damaged': return 'admin-v2-badge-danger';
-      case 'extra': return 'admin-v2-badge-info';
-      case 'backorder': return 'admin-v2-badge-warning';
-      default: return 'admin-v2-badge-secondary';
-    }
-  };
-
-  // Same mapping as getAlertTypeBadgeClass, for the shadcn <Badge> in the dialog.
-  const getAlertTypeBadgeVariant = (type) => {
-    switch (type) {
-      case 'short': return 'warning';
-      case 'wrong_item': return 'danger';
-      case 'damaged': return 'danger';
-      case 'extra': return 'info';
-      case 'backorder': return 'warning';
-      default: return 'secondary';
-    }
-  };
-
-  // Stats
-  const unresolvedCount = alerts.filter(a => !a.resolved).length;
 
   if (loadingPatients) {
+    return <AdminV2Layout><div className="admin-v2-loading">Loading patients…</div></AdminV2Layout>;
+  }
+  if (!selectedPatient) {
     return (
       <AdminV2Layout>
-        <div className="admin-v2-loading">Loading patients...</div>
+        <div className="admin-v2-loading">Select a patient from the sidebar</div>
       </AdminV2Layout>
     );
   }
 
+  const unresolved = alerts.filter((a) => !a.resolved).length;
+
   return (
     <AdminV2Layout>
-      <div className="admin-v2-page">
-        {selectedPatient ? (
-          <>
-            {/* Stats Row */}
-            <div className="admin-v2-summary-stats admin-v2-alerts-summary">
-              <div className="admin-v2-stat-card">
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(248, 81, 73, 0.15)' }}>
-                  <AlertIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{unresolvedCount}</h4>
-                  <p>Unresolved Alerts</p>
-                </div>
-              </div>
-              <div className="admin-v2-stat-card">
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(46, 160, 67, 0.15)' }}>
-                  <CheckIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{alerts.filter(a => a.resolved).length}</h4>
-                  <p>Resolved</p>
-                </div>
-              </div>
-            </div>
+      <div className="admin-v2-page sh-page">
+        {error && <div className="sh-error" role="alert">{error}</div>}
 
-            {/* Filter Bar */}
-            <div className="history-filter-bar">
-              <div className="history-filter-row">
-                <div className="history-filter-group">
-                  <label>Alert Type</label>
-                  <select
-                    value={typeFilter}
-                    onChange={e => setTypeFilter(e.target.value)}
-                    className="history-filter-select"
-                  >
-                    {ALERT_TYPE_OPTIONS.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
-                </div>
-                
-                <div className="history-filter-group">
-                  <label>Status</label>
-                  <select
-                    value={resolvedFilter}
-                    onChange={e => setResolvedFilter(e.target.value)}
-                    className="history-filter-select"
-                  >
-                    <option value="">All</option>
-                    <option value="false">Unresolved</option>
-                    <option value="true">Resolved</option>
-                  </select>
-                </div>
-                
-                {hasPermission('equipment.create') && selectedAlerts.length > 0 && (
-                  <div className="tw" style={{ marginLeft: 'auto' }}>
-                    <Button onClick={() => setShowFollowUpModal(true)}>
-                      <PlusIcon size={16} /> Create Follow-Up Order ({selectedAlerts.length})
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Alerts Table */}
-            {loading ? (
-              <div className="admin-v2-loading">Loading alerts...</div>
-            ) : error ? (
-              <div className="tw"><Alert variant="destructive">{error}</Alert></div>
-            ) : alerts.length === 0 ? (
-              <div className="admin-v2-empty-state">
-                <CheckIcon size={48} />
-                <h3>No Alerts</h3>
-                <p className="admin-v2-text-muted">All shipments are looking good!</p>
-              </div>
-            ) : (
-              <div className="admin-v2-table-container admin-v2-table-cards-wrap">
-                <table className="admin-v2-table admin-v2-table-cards">
-                  <thead>
-                    <tr>
-                      <th style={{ width: '40px' }}>
-                        <input
-                          type="checkbox"
-                          checked={selectedAlerts.length === alerts.filter(a => !a.resolved).length && selectedAlerts.length > 0}
-                          onChange={handleSelectAll}
-                        />
-                      </th>
-                      <th>Type</th>
-                      <th>Item</th>
-                      <th>Shipment</th>
-                      <th style={{ textAlign: 'center' }}>Expected</th>
-                      <th style={{ textAlign: 'center' }}>Actual</th>
-                      <th>Created</th>
-                      <th>Status</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {alerts.map(alert => (
-                      <tr key={alert.id} className={alert.resolved ? 'admin-v2-row-muted' : ''}>
-                        <td data-label="Select" className="admin-v2-cell-select">
-                          {!alert.resolved && (
-                            <input
-                              type="checkbox"
-                              checked={selectedAlerts.includes(alert.id)}
-                              onChange={() => handleToggleSelect(alert.id)}
-                            />
-                          )}
-                        </td>
-                        <td data-label="Type">
-                          <span className={`admin-v2-badge ${getAlertTypeBadgeClass(alert.alert_type)}`}>
-                            {alert.alert_type?.replace('_', ' ')}
-                          </span>
-                        </td>
-                        <td className="admin-v2-cell-name">
-                          <strong>{alert.item_number || '-'}</strong>
-                          {alert.equipment_name && (
-                            <div className="admin-v2-text-muted">{alert.equipment_name}</div>
-                          )}
-                        </td>
-                        <td data-label="Shipment">
-                          <a
-                            href="#"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              navigate(`/care/equipment/shipments/${alert.shipment_id}?patient=${selectedPatient.id}`);
-                            }}
-                          >
-                            #{alert.shipment_id}
-                          </a>
-                          {alert.po_number && <div className="admin-v2-text-muted">PO: {alert.po_number}</div>}
-                        </td>
-                        <td data-label="Expected" style={{ textAlign: 'center' }}>{alert.expected_qty}</td>
-                        <td data-label="Actual" style={{ textAlign: 'center' }}>{alert.actual_qty}</td>
-                        <td data-label="Created">{formatDate(alert.created_at)}</td>
-                        <td data-label="Status">
-                          {alert.resolved ? (
-                            <span className="admin-v2-badge admin-v2-badge-success">Resolved</span>
-                          ) : (
-                            <span className="admin-v2-badge admin-v2-badge-warning">Open</span>
-                          )}
-                        </td>
-                        <td className="admin-v2-cell-actions">
-                          {!alert.resolved && hasPermission('equipment.update') && (
-                            <button
-                              className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-ghost"
-                              onClick={() => handleResolveAlert(alert.id)}
-                              title="Mark as resolved"
-                            >
-                              <CheckIcon size={14} />
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+        <div className="sh-head">
+          <h1 className="sh-title">Delivery problems</h1>
+          <div className="sh-head-actions">
+            <button type="button" className={`sh-btn ${showResolved ? 'active' : ''}`}
+                    aria-pressed={showResolved}
+                    onClick={() => setShowResolved((v) => !v)}>
+              {showResolved ? 'Hide resolved' : 'Show resolved'}
+            </button>
+            {canCreate && selected.length > 0 && (
+              <button type="button" className="sh-btn primary" disabled={creating}
+                      onClick={createFollowup}>
+                <PackageIcon size={16} />
+                {creating ? 'Creating…' : `Order the difference (${selected.length})`}
+              </button>
             )}
-          </>
+          </div>
+        </div>
+
+        <ChipGroup options={ALERT_TYPES} value={typeFilter} onChange={setTypeFilter}
+                   label="Problem" scroll />
+
+        {loading ? (
+          <div className="admin-v2-loading">Loading…</div>
+        ) : visible.length === 0 ? (
+          <div className="sh-empty">
+            <CheckIcon size={26} />
+            <p>{unresolved === 0 && !showResolved
+              ? 'Nothing outstanding — every delivery reconciled.'
+              : 'Nothing matches that.'}</p>
+          </div>
         ) : (
-          <div className="admin-v2-loading">Select a patient from the sidebar</div>
-        )}
+          <>
+            {canCreate && selectable.length > 0 && (
+              <label className="sa-selectall">
+                <input type="checkbox"
+                       checked={selected.length === selectable.length && selectable.length > 0}
+                       onChange={toggleAll} />
+                <span>Select all {selectable.length} outstanding</span>
+              </label>
+            )}
 
-        {/* Follow-Up Order Dialog */}
-        <Dialog open={showFollowUpModal} onOpenChange={(o) => { if (!o) setShowFollowUpModal(false); }}>
-          <DialogContent className="sm:max-w-[560px]" aria-describedby={undefined}>
-            <DialogHeader>
-              <DialogTitle>Create Follow-Up Order</DialogTitle>
-            </DialogHeader>
-            <div className="flex flex-col gap-4">
-              <p className="text-sm text-foreground">Create a new order for {selectedAlerts.length} alert(s)?</p>
+            <div className="sh-list">
+              {visible.map((a) => (
+                <article key={a.id} className={`sa-card ${a.resolved ? 'is-resolved' : ''}`}>
+                  <div className="sa-head">
+                    {canCreate && !a.resolved && (
+                      <input type="checkbox" aria-label={`Select ${TYPE_LABEL[a.alert_type] || a.alert_type} alert`}
+                             checked={selected.includes(a.id)} onChange={() => toggle(a.id)} />
+                    )}
+                    <AlertIcon size={16} />
+                    <span className="sa-type">{TYPE_LABEL[a.alert_type] || a.alert_type}</span>
+                    {a.resolved
+                      ? <span className="sa-tag resolved">Resolved</span>
+                      : <span className="sa-tag open">Outstanding</span>}
+                  </div>
 
-              <Field label="Supplier (optional)">
-                <Select
-                  value={selectedSupplierId || '__none__'}
-                  onValueChange={(v) => setSelectedSupplierId(v === '__none__' ? '' : v)}
-                >
-                  <SelectTrigger><SelectValue placeholder="-- Select Supplier --" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">-- Select Supplier --</SelectItem>
-                    {suppliers.map(s => (
-                      <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
+                  {a.notes && <p className="sa-notes">{a.notes}</p>}
 
-              <div className="flex flex-col gap-2">
-                <h4 className="text-sm font-semibold text-foreground">Selected Items:</h4>
-                <ul className="flex flex-col gap-1.5">
-                  {alerts
-                    .filter(a => selectedAlerts.includes(a.id))
-                    .map(a => (
-                      <li key={a.id} className="flex items-center gap-2 text-sm text-foreground">
-                        <Badge variant={getAlertTypeBadgeVariant(a.alert_type)}>
-                          {a.alert_type}
-                        </Badge>
-                        <span>
-                          {a.item_number || a.equipment_name || 'Item'} — Qty: {Math.abs(a.expected_qty - a.actual_qty)}
-                        </span>
-                      </li>
-                    ))
-                  }
-                </ul>
-              </div>
+                  <dl className="sa-facts">
+                    <div><dt>Expected</dt><dd>{a.expected_qty ?? '—'}</dd></div>
+                    <div><dt>Actual</dt><dd>{a.actual_qty ?? '—'}</dd></div>
+                    <div><dt>Raised</dt><dd>{shortDate(a.created_at)}</dd></div>
+                  </dl>
+
+                  <div className="sa-actions">
+                    <button type="button" className="sh-btn ghost"
+                            onClick={() => navigate(
+                              `/care/equipment/shipments/${a.shipment_id}?patient=${selectedPatient.id}`,
+                            )}>
+                      Open the delivery
+                    </button>
+                    {a.followup_shipment_id && (
+                      <button type="button" className="sh-btn ghost"
+                              onClick={() => navigate(
+                                `/care/equipment/shipments/${a.followup_shipment_id}?patient=${selectedPatient.id}`,
+                              )}>
+                        Open the follow-up
+                      </button>
+                    )}
+                    {canUpdate && !a.resolved && (
+                      <button type="button" className="sh-btn" onClick={() => resolve(a.id)}>
+                        <CheckIcon size={15} /> Mark resolved
+                      </button>
+                    )}
+                  </div>
+                </article>
+              ))}
             </div>
-            <DialogFooter>
-              <Button type="button" variant="secondary" onClick={() => setShowFollowUpModal(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleCreateFollowUp} disabled={creatingFollowUp}>
-                {creatingFollowUp ? 'Creating...' : 'Create Order'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+          </>
+        )}
       </div>
     </AdminV2Layout>
   );
