@@ -73,6 +73,74 @@ export const shipmentService = {
     return asJson(response, 'Failed to update shipment');
   },
 
+  async copyShipment(shipmentId) {
+    const response = await apiFetch(`${config.apiUrl}/api/shipments/${shipmentId}/copy`, {
+      method: 'POST',
+    });
+    return asJson(response, 'Failed to copy shipment');
+  },
+
+  // --- Items ---
+  async addItem(shipmentId, data) {
+    const response = await apiFetch(`${config.apiUrl}/api/shipments/${shipmentId}/items`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return asJson(response, 'Failed to add item');
+  },
+
+  // --- Receiving ---
+  async receiveItems(shipmentId, items) {
+    const response = await apiFetch(`${config.apiUrl}/api/shipments/${shipmentId}/receive`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(items),
+    });
+    return asJson(response, 'Failed to record receipt');
+  },
+
+  async finalizeShipment(shipmentId) {
+    const response = await apiFetch(`${config.apiUrl}/api/shipments/${shipmentId}/finalize`, {
+      method: 'POST',
+    });
+    return asJson(response, 'Failed to finalize shipment');
+  },
+
+  // --- Alerts ---
+  // These had no service entry at all; the alerts page hand-rolled every call.
+  async listAlerts(params = {}) {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') qs.set(k, v);
+    });
+    const response = await apiFetch(`${config.apiUrl}/api/shipments/alerts?${qs}`);
+    return asJson(response, 'Failed to fetch alerts');
+  },
+
+  async listShipmentAlerts(shipmentId) {
+    const response = await apiFetch(`${config.apiUrl}/api/shipments/${shipmentId}/alerts`);
+    return asJson(response, 'Failed to fetch alerts');
+  },
+
+  async resolveAlert(alertId, resolutionNotes = null) {
+    const response = await apiFetch(`${config.apiUrl}/api/shipments/alerts/${alertId}/resolve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resolution_notes: resolutionNotes }),
+    });
+    return asJson(response, 'Failed to resolve alert');
+  },
+
+  async createFollowupOrder(alertIds) {
+    const response = await apiFetch(`${config.apiUrl}/api/shipments/alerts/create-followup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ alert_ids: alertIds }),
+    });
+    return asJson(response, 'Failed to create follow-up order');
+  },
+
   // --- Standing orders ("usual order") ---
   async listTemplates(patientId) {
     return this.listShipments({ patient_id: patientId, is_template: true });

@@ -1,0 +1,249 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* The Deliveries list and the shipment detail page. Dark-only, matching the
+ * rest of the vc skin. */
+
+:root:not(.light) .sh-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+:root:not(.light) .sh-error {
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--vc-state-alert) 50%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--vc-state-alert) 12%, transparent);
+  color: var(--vc-text-primary);
+  font-size: 0.85rem;
+}
+
+/* --- head --- */
+
+:root:not(.light) .sh-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+:root:not(.light) .sh-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+
+:root:not(.light) .sh-head-actions { display: flex; gap: 8px; }
+
+/* --- buttons --- */
+
+:root:not(.light) .sh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 14px;
+  border-radius: 7px;
+  border: 1px solid var(--vc-line-strong);
+  background: transparent;
+  color: var(--vc-text-primary);
+  font-family: var(--vc-font-mono);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+:root:not(.light) .sh-btn:hover:not(:disabled) {
+  border-color: var(--vc-data-live);
+  color: var(--vc-data-live);
+}
+
+:root:not(.light) .sh-btn.primary {
+  background: var(--vc-data-live);
+  border-color: var(--vc-data-live);
+  color: var(--vc-bg-base);
+}
+:root:not(.light) .sh-btn.primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--vc-data-live) 85%, white);
+  color: var(--vc-bg-base);
+}
+
+:root:not(.light) .sh-btn.active {
+  border-color: var(--vc-data-live);
+  color: var(--vc-data-live);
+}
+
+:root:not(.light) .sh-btn:disabled { opacity: 0.55; cursor: default; }
+
+:root:not(.light) .sh-btn:focus-visible {
+  outline: 2px solid var(--vc-data-live);
+  outline-offset: 2px;
+}
+
+/* --- usual order --- */
+
+:root:not(.light) .sh-usual {
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--vc-data-live) 40%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--vc-data-live) 8%, var(--vc-bg-surface));
+}
+
+:root:not(.light) .sh-usual-title {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+
+:root:not(.light) .sh-usual-note {
+  margin: 4px 0 12px;
+  font-size: 0.85rem;
+  color: var(--vc-text-secondary);
+}
+
+:root:not(.light) .sh-usual-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* --- stat row --- */
+
+:root:not(.light) .sh-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 10px;
+  background: var(--vc-bg-surface);
+  overflow: hidden;
+}
+
+:root:not(.light) .sh-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 8px;
+  background: none;
+  border: 0;
+  border-left: 1px solid var(--vc-line-hairline);
+  cursor: pointer;
+}
+:root:not(.light) .sh-stat:first-child { border-left: 0; }
+:root:not(.light) .sh-stat:hover {
+  background: color-mix(in srgb, var(--vc-text-primary) 5%, transparent);
+}
+:root:not(.light) .sh-stat:focus-visible {
+  outline: 2px solid var(--vc-data-live);
+  outline-offset: -2px;
+}
+
+:root:not(.light) .sh-stat-label {
+  font-size: 0.62rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+  text-align: center;
+}
+
+:root:not(.light) .sh-stat-value {
+  font-family: var(--vc-font-mono);
+  font-size: 1.6rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+:root:not(.light) .sh-stat-value.tone-accent { color: var(--vc-data-live); }
+:root:not(.light) .sh-stat-value.tone-due { color: var(--vc-state-due); }
+:root:not(.light) .sh-stat-value.tone-alert { color: var(--vc-state-alert); }
+:root:not(.light) .sh-stat-value.tone-idle { color: var(--vc-text-tertiary); }
+
+/* --- search --- */
+
+:root:not(.light) .sh-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 7px;
+  background: var(--vc-bg-surface);
+  color: var(--vc-text-secondary);
+}
+
+:root:not(.light) .sh-search input {
+  flex: 1;
+  padding: 10px 0;
+  background: none;
+  border: 0;
+  color: var(--vc-text-primary);
+  font-size: 0.9rem;
+}
+:root:not(.light) .sh-search input:focus { outline: none; }
+:root:not(.light) .sh-search:focus-within { border-color: var(--vc-data-live); }
+
+/* --- groups --- */
+
+:root:not(.light) .sh-group-title {
+  margin: 0 0 10px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+
+:root:not(.light) .sh-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+:root:not(.light) .sh-group + .sh-group { margin-top: 20px; }
+
+/* --- empty --- */
+
+:root:not(.light) .sh-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 40px 20px;
+  border: 1px dashed var(--vc-line-strong);
+  border-radius: 10px;
+  color: var(--vc-text-secondary);
+}
+:root:not(.light) .sh-empty p { margin: 0; font-size: 0.9rem; }
+
+/* --- footnote --- */
+
+:root:not(.light) .sh-note {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--vc-text-tertiary);
+}
