@@ -28,6 +28,8 @@ export { default as NutritionPlanTab } from './NutritionPlanTab';
 export { default as GoalHistoryModal } from './GoalHistoryModal';
 export { default as NutritionHistoryModal } from './NutritionHistoryModal';
 export { default as CareTasksTab } from './CareTasksTab';
+export { default as CareTasksOverviewPanel } from './CareTasksOverviewPanel';
+export { default as CareTaskHistoryModal } from './CareTaskHistoryModal';
 export { default as MedicationDoseModal } from './MedicationDoseModal';
 export { default as UpdateQuantityModal } from './UpdateQuantityModal';
 export { default as CareTaskCompleteModal } from './CareTaskCompleteModal';

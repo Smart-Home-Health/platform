@@ -139,9 +139,8 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
     ],
     'care-tasks': [
       { path: '/care/care-tasks', label: 'Overview' },
-      { path: '/care/care-tasks/manage', label: 'Manage' },
+      { path: '/care/care-tasks/manage', label: 'Tasks' },
       { path: '/care/care-tasks/schedule', label: 'Schedule' },
-      { path: '/care/care-tasks/history', label: 'History' },
       ...(hasAnyPermission(['audit.read'])
         ? [{ path: '/care/schedule/undo-log', label: 'Undo' }] : []),
     ],

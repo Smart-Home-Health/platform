@@ -34,7 +34,6 @@ import AdminV2MedicationsSchedule from './pages/admin-v2/AdminV2MedicationsSched
 import AdminV2CareTasks from './pages/admin-v2/AdminV2CareTasks';
 import AdminV2CareTasksOverview from './pages/admin-v2/AdminV2CareTasksOverview';
 import AdminV2CareTasksSchedule from './pages/admin-v2/AdminV2CareTasksSchedule';
-import AdminV2CareTasksHistory from './pages/admin-v2/AdminV2CareTasksHistory';
 import AdminV2Equipment from './pages/admin-v2/AdminV2Equipment';
 import AdminV2EquipmentHistory from './pages/admin-v2/AdminV2EquipmentHistory';
 import AdminV2Shipments from './pages/admin-v2/AdminV2Shipments';
@@ -136,7 +135,8 @@ function AppContent() {
           <Route path="/care/care-tasks" element={<ProtectedRoute><Layout><AdminV2CareTasksOverview /></Layout></ProtectedRoute>} />
           <Route path="/care/care-tasks/manage" element={<ProtectedRoute><Layout><AdminV2CareTasks /></Layout></ProtectedRoute>} />
           <Route path="/care/care-tasks/schedule" element={<ProtectedRoute><Layout><AdminV2CareTasksSchedule /></Layout></ProtectedRoute>} />
-          <Route path="/care/care-tasks/history" element={<ProtectedRoute><Layout><AdminV2CareTasksHistory /></Layout></ProtectedRoute>} />
+          {/* History is a modal on the Overview now; the old path lands there. */}
+          <Route path="/care/care-tasks/history" element={<ProtectedRoute><Layout><AdminV2CareTasksOverview /></Layout></ProtectedRoute>} />
           <Route path="/care/equipment" element={<ProtectedRoute><Layout><AdminV2Equipment /></Layout></ProtectedRoute>} />
           <Route path="/care/equipment/history" element={<ProtectedRoute><Layout><AdminV2EquipmentHistory /></Layout></ProtectedRoute>} />
           <Route path="/care/equipment/shipments" element={<ProtectedRoute><Layout><AdminV2Shipments /></Layout></ProtectedRoute>} />
