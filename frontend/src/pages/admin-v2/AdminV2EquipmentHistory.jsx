@@ -173,7 +173,7 @@ const AdminV2EquipmentHistory = () => {
             {event.note ? ` · ${event.note}` : ''}
           </p>
           {event.equipmentId && (
-            <button type="button" className="eh-link" onClick={() => goto('/care/equipment/manage')}>
+            <button type="button" className="eh-link" onClick={() => goto('/care/equipment/inventory')}>
               View supply <ChevronRightIcon size={15} />
             </button>
           )}

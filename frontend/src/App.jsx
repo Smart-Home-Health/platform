@@ -34,7 +34,6 @@ import AdminV2MedicationsSchedule from './pages/admin-v2/AdminV2MedicationsSched
 import AdminV2CareTasks from './pages/admin-v2/AdminV2CareTasks';
 import AdminV2CareTasksOverview from './pages/admin-v2/AdminV2CareTasksOverview';
 import AdminV2CareTasksSchedule from './pages/admin-v2/AdminV2CareTasksSchedule';
-import AdminV2Equipment from './pages/admin-v2/AdminV2Equipment';
 import AdminV2EquipmentOverview from './pages/admin-v2/AdminV2EquipmentOverview';
 import AdminV2EquipmentHistory from './pages/admin-v2/AdminV2EquipmentHistory';
 import AdminV2Shipments from './pages/admin-v2/AdminV2Shipments';
@@ -139,8 +138,8 @@ function AppContent() {
           {/* History is a modal on the Overview now; the old path lands there. */}
           <Route path="/care/care-tasks/history" element={<ProtectedRoute><Layout><AdminV2CareTasksOverview /></Layout></ProtectedRoute>} />
           <Route path="/care/equipment" element={<ProtectedRoute><Layout><AdminV2EquipmentOverview /></Layout></ProtectedRoute>} />
-          {/* The catalogue the Overview's "Manage" opens; unchanged, just no longer the landing page. */}
-          <Route path="/care/equipment/manage" element={<ProtectedRoute><Layout><AdminV2Equipment /></Layout></ProtectedRoute>} />
+          {/* The catalogue merged into Supplies; the URL stays bookmarkable. */}
+          <Route path="/care/equipment/manage" element={<Navigate to="/care/equipment/inventory" replace />} />
           <Route path="/care/equipment/history" element={<ProtectedRoute><Layout><AdminV2EquipmentHistory /></Layout></ProtectedRoute>} />
           <Route path="/care/equipment/shipments" element={<ProtectedRoute><Layout><AdminV2Shipments /></Layout></ProtectedRoute>} />
           <Route path="/care/equipment/shipments/:id" element={<ProtectedRoute><Layout><AdminV2ShipmentDetail /></Layout></ProtectedRoute>} />
