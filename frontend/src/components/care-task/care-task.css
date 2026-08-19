@@ -211,3 +211,90 @@
   font-size: 12.5px;
   color: var(--vc-text-secondary);
 }
+
+/* ---------- dashboard: as-needed task picker ---------- */
+.ctm-group-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--vc-line-hairline);
+}
+.ctm-group-head h4 {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+.ctm-group-dot {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid var(--vc-line-strong);
+}
+.ctm-group-count {
+  flex-shrink: 0;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--vc-bg-raised);
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-text-secondary);
+}
+
+.ctm-group-list { display: flex; flex-direction: column; gap: 0.4rem; }
+
+.ctm-task {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  text-align: left;
+  background: var(--vc-bg-surface);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.ctm-task:hover { border-color: color-mix(in srgb, var(--vc-data-live) 50%, transparent); }
+.ctm-task:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
+}
+.ctm-task-text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.ctm-task-name {
+  font-family: var(--vc-font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--vc-text-primary);
+}
+.ctm-task-desc {
+  font-family: var(--vc-font-sans);
+  font-size: 12.5px;
+  line-height: 1.3;
+  color: var(--vc-text-secondary);
+}
+/* Completing is the affirmative action, so it takes the done tone rather than
+   a hardcoded green. */
+.ctm-task-action {
+  flex-shrink: 0;
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--vc-state-complete) 50%, transparent);
+  background: color-mix(in srgb, var(--vc-state-complete) 14%, transparent);
+  color: var(--vc-state-complete);
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}

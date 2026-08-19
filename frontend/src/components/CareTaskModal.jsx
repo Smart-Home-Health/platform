@@ -28,6 +28,7 @@ import PanelViewSwitcher from './section-panel/PanelViewSwitcher';
 import PrnPicker from './section-panel/PrnPicker';
 import { careTaskRows } from './section-panel/prnRows';
 import './section-panel/section-panel.css';
+import './care-task/care-task.css';
 import { computeScheduleStatus } from './schedule/scheduleStatus';
 import IntakeSheet from './nutrition/IntakeSheet';
 import {
@@ -131,7 +132,7 @@ const CareTaskModal = ({ onClose }) => {
         scheduled_time: item.scheduled_time,
         name: item.name,
         description: item.description,
-        category: item.category_name ? { name: item.category_name, color: item.category_color || '#6f42c1' } : null,
+        category: item.category_name ? { name: item.category_name, color: item.category_color || 'var(--vc-state-idle)' } : null,
         status,
         is_completed: status === 'completed' || status === 'skipped',
         is_yesterday: !!item.is_yesterday,
@@ -289,7 +290,7 @@ const CareTaskModal = ({ onClose }) => {
     for (const t of tasks) {
       const key = t.category_id ?? -1;
       if (!groups.has(key)) {
-        groups.set(key, { id: t.category_id, name: t.category_name || 'Uncategorized', color: t.category_color || '#6f42c1', tasks: [] });
+        groups.set(key, { id: t.category_id, name: t.category_name || 'Uncategorized', color: t.category_color || 'var(--vc-state-idle)', tasks: [] });
       }
       groups.get(key).tasks.push(t);
     }
@@ -385,24 +386,26 @@ const CareTaskModal = ({ onClose }) => {
                     <div>
                       {groupByCategory(activeTasks).map(group => (
                         <div key={group.id ?? 'uncat'} style={{ marginBottom: 24 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, paddingBottom: 6, borderBottom: `2px solid ${group.color}` }}>
-                            <span style={{ width: 14, height: 14, borderRadius: '50%', backgroundColor: group.color, boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
-                            <h4 style={{ margin: 0, color: 'var(--dash-text)', fontSize: 16, fontWeight: 700 }}>{group.name}</h4>
-                            <span style={{ fontSize: 12, color: 'var(--dash-text-muted)', fontWeight: 500, backgroundColor: 'var(--dash-surface-2)', padding: '2px 8px', borderRadius: 10 }}>{group.tasks.length}</span>
+                          {/* The category reads as a dot beside its name. It used
+                              to be a 5px stripe down each card and a rule under
+                              the heading, which left the grouping unreadable to
+                              anyone who cannot separate the hues. */}
+                          <div className="ctm-group-head">
+                            <span className="ctm-group-dot" style={{ backgroundColor: group.color }} />
+                            <h4>{group.name}</h4>
+                            <span className="ctm-group-count">{group.tasks.length}</span>
                           </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          <div className="ctm-group-list">
                             {group.tasks.map(task => (
-                              <button key={task.id} onClick={() => pickPrnTask(task)} style={{
-                                textAlign: 'left', backgroundColor: 'var(--dash-surface)', border: '1px solid var(--dash-border)',
-                                borderLeft: `5px solid ${group.color}`, borderRadius: 8, padding: '12px 14px',
-                                cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-                                display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
-                              }}>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ color: 'var(--dash-text)', fontWeight: 600, fontSize: 15, marginBottom: 2 }}>{task.name}</div>
-                                  {task.description && <div style={{ color: 'var(--dash-text-muted)', fontSize: 13, lineHeight: 1.3 }}>{task.description}</div>}
-                                </div>
-                                <span style={{ backgroundColor: '#28a745', color: '#fff', padding: '6px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, flexShrink: 0 }}>Mark Done</span>
+                              <button key={task.id} type="button" className="ctm-task"
+                                      onClick={() => pickPrnTask(task)}>
+                                <span className="ctm-task-text">
+                                  <span className="ctm-task-name">{task.name}</span>
+                                  {task.description && (
+                                    <span className="ctm-task-desc">{task.description}</span>
+                                  )}
+                                </span>
+                                <span className="ctm-task-action">Mark done</span>
                               </button>
                             ))}
                           </div>
