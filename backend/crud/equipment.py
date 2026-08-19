@@ -794,6 +794,54 @@ def get_equipment_count_history(db: Session, equipment_id: int, limit: int = 50,
         return []
 
 
+def get_recent_counts(db: Session, patient_id=None, account_id=None, limit: int = 100,
+                      start_date=None, end_date=None):
+    """Stocktakes across every supply, newest first.
+
+    The per-supply history has existed since the count log landed, but nothing
+    could ask "what stock was adjusted lately" without walking each supply in
+    turn. The history timeline needs exactly that, so this is the count log's
+    equivalent of the change log's global feed.
+
+    The supply's name and the person who counted are resolved here rather than
+    left as ids for the caller to look up one at a time.
+    """
+    try:
+        from models.users import User
+        query = (
+            db.query(EquipmentCountLog, Equipment.name, User.full_name)
+            .join(Equipment, EquipmentCountLog.equipment_id == Equipment.id)
+            .outerjoin(User, EquipmentCountLog.counted_by == User.id)
+        )
+        query = _scope_equipment(query, account_id)
+        if patient_id is not None:
+            query = query.filter(or_(Equipment.patient_id == patient_id,
+                                     Equipment.patient_id.is_(None)))
+        if start_date is not None:
+            query = query.filter(EquipmentCountLog.counted_at >= start_date)
+        if end_date is not None:
+            query = query.filter(EquipmentCountLog.counted_at <= end_date)
+
+        rows = query.order_by(EquipmentCountLog.counted_at.desc()).limit(limit).all()
+        return [
+            {
+                'id': c.id,
+                'equipment_id': c.equipment_id,
+                'equipment_name': name,
+                'quantity_before': c.quantity_before,
+                'quantity_after': c.quantity_after,
+                'note': c.note,
+                'counted_by': c.counted_by,
+                'counted_by_name': full_name,
+                'counted_at': c.counted_at.isoformat() if c.counted_at else None,
+            }
+            for c, name, full_name in rows
+        ]
+    except Exception as e:
+        logger.error(f"Error fetching recent counts: {e}")
+        return []
+
+
 def add_equipment_alias(db: Session, equipment_id: int, item_number: str, supplier_id=None, raw_description=None, account_id=None):
     """Attach a provider item number to a supply. Returns the alias id, or None."""
     try:

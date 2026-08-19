@@ -49,6 +49,15 @@ export const equipmentService = {
     return asJson(response, 'Failed to fetch equipment history');
   },
 
+  /** Stocktakes across every supply, newest first. */
+  async recentCounts({ patientId = null, limit = 100 } = {}) {
+    const qs = new URLSearchParams();
+    if (patientId) qs.set('patient_id', patientId);
+    if (limit) qs.set('limit', limit);
+    const response = await apiFetch(`${config.apiUrl}/api/equipment/counts?${qs}`);
+    return asJson(response, 'Failed to fetch stock activity');
+  },
+
   /** Record a scheduled change. Refused with a 409 when tracked stock is out. */
   async logChange(equipmentId, changedAt) {
     const response = await apiFetch(`${config.apiUrl}/api/equipment/${equipmentId}/change`, {

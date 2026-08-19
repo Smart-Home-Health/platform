@@ -46,7 +46,7 @@ from crud.equipment import (
     update_equipment, update_equipment_category, delete_equipment,
     delete_equipment_category, search_equipment, get_equipment_due_count,
     catalog_import, set_equipment_count, get_equipment_count_history,
-    add_equipment_alias, delete_equipment_alias
+    add_equipment_alias, delete_equipment_alias, get_recent_counts
 )
 
 logger = logging.getLogger("app")
@@ -113,12 +113,34 @@ async def api_catalog_import(
     )
 
 
+@router.get("/counts", dependencies=[Depends(require_permission("equipment.read"))])
+async def api_get_recent_counts(
+    patient_id: Optional[int] = None,
+    limit: int = 100,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id),
+):
+    """Stocktakes across every supply, newest first.
+
+    The sibling /{equipment_id}/counts answers "what happened to this supply";
+    this answers "what stock was adjusted lately", which the history timeline
+    needs without walking each supply in turn.
+    """
+    return {"counts": get_recent_counts(
+        db, patient_id=patient_id, account_id=account_id, limit=limit,
+        start_date=start_date, end_date=end_date,
+    )}
+
+
 @router.post("/{equipment_id}/change", dependencies=[Depends(require_permission("equipment.change"))])
 async def api_log_equipment_change(
     equipment_id: int,
     data: EquipmentChangeLog,
     db: Session = Depends(get_db),
     account_id: Optional[int] = Depends(get_optional_account_id),
+    current_user=Depends(get_optional_user),
 ):
     """Log a change and update last_changed."""
 
@@ -149,7 +171,12 @@ async def api_log_equipment_change(
             "unit_of_measure": equipment.unit_of_measure,
         })
 
-    success = log_equipment_change(db, equipment_id, data.changed_at, account_id=account_id)
+    # The column has always existed; nothing filled it, so every change in
+    # the log is unattributed and the history cannot say who did it.
+    success = log_equipment_change(
+        db, equipment_id, data.changed_at, account_id=account_id,
+        changed_by=current_user.id if current_user else None,
+    )
     return {"success": success}
 
 
@@ -286,18 +313,33 @@ async def api_get_all_equipment_history(
             query = query.filter(EquipmentChangeLogSchema.changed_at <= end_date)
         
         changes = query.order_by(desc(EquipmentChangeLogSchema.changed_at)).limit(limit).all()
-        
+
+        # Resolve the names once rather than a query per row: the previous
+        # loop re-fetched the equipment for every change, and left changed_by
+        # as a bare user id the caller could do nothing with.
+        from models.users import User
+        equipment_ids = {c.equipment_id for c in changes}
+        user_ids = {c.changed_by for c in changes if c.changed_by}
+        names = dict(
+            db.query(Equipment.id, Equipment.name)
+            .filter(Equipment.id.in_(equipment_ids)).all()
+        ) if equipment_ids else {}
+        users = dict(
+            db.query(User.id, User.full_name)
+            .filter(User.id.in_(user_ids)).all()
+        ) if user_ids else {}
+
         result = []
         for change in changes:
-            equipment = db.query(Equipment).filter(Equipment.id == change.equipment_id).first()
             result.append({
                 'id': change.id,
                 'equipment_id': change.equipment_id,
-                'equipment_name': equipment.name if equipment else 'Unknown',
+                'equipment_name': names.get(change.equipment_id, 'Unknown'),
                 'patient_id': change.patient_id,
                 'changed_at': change.changed_at.isoformat() if change.changed_at else None,
                 'notes': change.notes,
                 'changed_by': change.changed_by,
+                'changed_by_name': users.get(change.changed_by),
                 'created_at': change.created_at.isoformat() if change.created_at else None
             })
         
