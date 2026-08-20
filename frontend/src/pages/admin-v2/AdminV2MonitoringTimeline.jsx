@@ -32,6 +32,9 @@ import config, { apiFetch } from '../../config';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import { alarmsFor } from './reports/dayOverDay';
 import {
+  PLOT_GUTTER, PLOT_RPAD, CHROME, niceScale, thresholdLine, stackedChartOptions,
+} from './monitoringChart';
+import {
   ENV_LANES, ENV_METRIC_KEYS, buildEnvSpans, worstStatus, describeSpan,
   severityOf, directionOf,
 } from './timelineEnv';
@@ -51,12 +54,6 @@ import {
 import './monitoring-timeline.css';
 
 Chart.register(annotationPlugin, zoomPlugin);
-
-/* Chart.js is forced to this y-axis width so both charts' plot areas start at
- * the same x, and the lanes and scrubber are inset by the same amount. Must
- * match --mtl-gutter / --mtl-rpad in monitoring-timeline.css. */
-const PLOT_GUTTER = 52;
-const PLOT_RPAD = 12;
 
 /* Series colours are the vc-derived ramp the reports already use for these
  * same two vitals (reports/weekly.js), not the mockup's crimson/indigo: red on
@@ -112,15 +109,6 @@ const ENV_UNITS = {
   temperature: '°C', relative_humidity: '%', co2: ' ppm', pm25: ' µg/m³',
 };
 
-const CHROME = {
-  grid: 'rgba(255, 255, 255, 0.06)',
-  axis: '#6b7987',
-  text: '#9aa8b8',
-  band: 'rgba(240, 86, 60, 0.14)',
-  bandEdge: 'rgba(240, 86, 60, 0.35)',
-  threshold: 'rgba(154, 168, 184, 0.5)',
-};
-
 /* Local calendar date, not the UTC one. toISOString() rolls over at UTC
  * midnight, so west of Greenwich an evening visit asked the API for
  * tomorrow and got an empty day. */
@@ -160,26 +148,6 @@ const eventLabel = (type, item) => {
     case 'vitals': return `${item.vital_type} ${item.value}${item.unit || ''}`;
     default: return '';
   }
-};
-
-/* A y range that fits the data and lands on readable numbers. Charting the
- * raw min/max gave axes labelled 58.08 and 119.2; stepping out to a round
- * boundary costs a few pixels of headroom and makes the axis legible. */
-const niceScale = (lo, hi, minSpan, clampMax) => {
-  let min = lo;
-  let max = hi;
-  if (max - min < minSpan) {
-    const centre = (min + max) / 2;
-    min = centre - minSpan / 2;
-    max = centre + minSpan / 2;
-  }
-  const raw = (max - min) / 4;
-  const mag = 10 ** Math.floor(Math.log10(raw));
-  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((c) => c >= raw) ?? 10 * mag;
-  min = Math.max(0, Math.floor(min / step) * step);
-  max = Math.ceil(max / step) * step;
-  if (clampMax != null) max = Math.min(clampMax, max);
-  return { min, max, step };
 };
 
 const alertLabel = (a) => {
@@ -916,26 +884,8 @@ const SignalChart = ({
         drawTime: 'beforeDatasetsDraw',
       };
     });
-    const line = (value, text) => ({
-      type: 'line',
-      yMin: value,
-      yMax: value,
-      borderColor: CHROME.threshold,
-      borderWidth: 1,
-      borderDash: [5, 4],
-      label: {
-        display: true,
-        content: text,
-        position: 'start',
-        backgroundColor: 'transparent',
-        color: CHROME.axis,
-        font: { size: 10, family: "'IBM Plex Mono', monospace" },
-        padding: 0,
-        yAdjust: -8,
-      },
-    });
-    if (alarms?.low != null) annotations.low = line(alarms.low, `LOW ${alarms.low}`);
-    if (alarms?.high != null) annotations.high = line(alarms.high, `HIGH ${alarms.high}`);
+    if (alarms?.low != null) annotations.low = thresholdLine(alarms.low, `LOW ${alarms.low}`);
+    if (alarms?.high != null) annotations.high = thresholdLine(alarms.high, `HIGH ${alarms.high}`);
 
     const chart = new Chart(canvas.getContext('2d'), {
       type: 'line',
@@ -952,66 +902,11 @@ const SignalChart = ({
           spanGaps: false,
         }],
       },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: false,
-        events: [],                 // scrubbing is owned by the stack, not the canvas
-        layout: { padding: { right: PLOT_RPAD, top: 14, bottom: 0 } },
-        scales: {
-          x: {
-            type: 'time',
-            min: view?.min ?? bounds.start,
-            max: view?.max ?? bounds.end,
-            // No meridiem on minute ticks: at an hour wide they collided,
-            // and the scrubber pill already carries the full clock time.
-            time: { displayFormats: { minute: 'h:mm', hour: 'ha' } },
-            grid: { color: CHROME.grid, drawTicks: false },
-            border: { display: false },
-            ticks: {
-              display: showAxis,
-              color: CHROME.axis,
-              maxRotation: 0,
-              autoSkip: true,
-              autoSkipPadding: 16,
-              maxTicksLimit: 6,
-              font: { size: 10, family: "'IBM Plex Mono', monospace" },
-            },
-          },
-          y: {
-            min: yRange.min,
-            max: yRange.max,
-            grid: { color: CHROME.grid, drawTicks: false },
-            border: { display: false },
-            ticks: {
-              color: CHROME.axis,
-              stepSize: yRange.step,
-              maxTicksLimit: 6,
-              font: { size: 10, family: "'IBM Plex Mono', monospace" },
-            },
-            // Pin the axis width so this chart's plot area starts at exactly
-            // the same x as its sibling's and the lanes below.
-            afterFit: (scale) => { scale.width = PLOT_GUTTER; },
-          },
-        },
-        plugins: {
-          legend: { display: false },
-          tooltip: { enabled: false },
-          annotation: { annotations },
-          zoom: {
-            pan: { enabled: false },   // one-finger drag scrubs instead
-            zoom: {
-              wheel: { enabled: true },
-              pinch: { enabled: true },
-              mode: 'x',
-              onZoomComplete: ({ chart: c }) => {
-                onViewChangeRef.current({ min: c.scales.x.min, max: c.scales.x.max });
-              },
-            },
-            limits: { x: { min: bounds.start, max: bounds.end, minRange: MIN_RANGE_MS } },
-          },
-        },
-      },
+      options: stackedChartOptions({
+        view, bounds, yRange, showAxis, annotations,
+        minRangeMs: MIN_RANGE_MS,
+        onViewChange: (next) => onViewChangeRef.current(next),
+      }),
     });
     chartRef.current = chart;
     return () => { chart.destroy(); chartRef.current = null; };
