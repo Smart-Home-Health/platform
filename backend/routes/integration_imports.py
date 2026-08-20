@@ -716,6 +716,36 @@ async def vent_day(
     for entry in by_key.values():
         grouped.setdefault(entry["grouping"], []).append(entry)
 
+    # Which device messages each parameter's samples came from.
+    #
+    # A parameter key is not one measurement: VOCSN reports the same key from
+    # several messages, and they are not the same quantity. On a real day, I:E
+    # ratio arrives from message 7201 at 288 rows averaging -2 and from 7204 at
+    # 25 rows averaging 1619 — continuous standby telemetry and active
+    # ventilation, blended into one statistic by the grouping above. Half the
+    # parameters on that day (22 of 44) carry more than one message.
+    #
+    # Reporting the breakdown does not fix the blend, but it stops the page
+    # presenting a mixture as though it were a reading.
+    source_rows = db.execute(text("""
+        SELECT parameter_key, source_message_type AS mt, source_message_id AS mid,
+               COUNT(*) AS n
+        FROM vent_samples
+        WHERE patient_id = :pid
+          AND recorded_at >= :start AND recorded_at < :end
+          AND value_numeric IS NOT NULL
+        GROUP BY parameter_key, source_message_type, source_message_id
+    """), {"pid": patient_id, "start": start, "end": end}).all()
+    for r in source_rows:
+        entry = by_key.get(r.parameter_key)
+        if entry is None:
+            continue
+        entry.setdefault("sources", []).append(
+            {"message_type": r.mt, "message_id": r.mid, "n": int(r.n)})
+    for entry in by_key.values():
+        entry.setdefault("sources", [])
+        entry["sources"].sort(key=lambda s: -s["n"])
+
     # Day-level summary (counts, time range).
     summary_row = db.execute(text("""
         SELECT COUNT(*) AS total,

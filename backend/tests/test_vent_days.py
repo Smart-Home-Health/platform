@@ -60,13 +60,14 @@ def vent_patient(db_session, account, patient):
     return patient
 
 
-def _sample(db_session, patient, when, *, key="9408", suffix="50", value=25.0):
+def _sample(db_session, patient, when, *, key="9408", suffix="50", value=25.0,
+            msg_type="M", msg_id=6007):
     from schemas.vent_sample import VentSample
     db_session.add(VentSample(
         import_id=patient.vent_import_id, patient_id=patient.id,
         recorded_at_raw=when, recorded_at=when,
         parameter_key=key, parameter_suffix=suffix,
-        value_numeric=value, source_message_type="M", source_message_id=6007,
+        value_numeric=value, source_message_type=msg_type, source_message_id=msg_id,
     ))
 
 
@@ -141,3 +142,37 @@ def test_a_bad_date_is_rejected(admin_client, vent_patient):
     resp = admin_client.get(
         f"/api/integrations/patient/{vent_patient.id}/vent/day/19-08-2026")
     assert resp.status_code == 400
+
+
+def test_a_parameter_reports_the_messages_it_came_from(
+        admin_client, db_session, vent_patient):
+    """A parameter key is not one measurement. On real data, I:E ratio arrives
+    from message 7201 (continuous, averaging -2) and 7204 (active ventilation,
+    averaging 1619); the day statistic silently averages the two. The page
+    cannot unpick that, but it can stop presenting a blend as a reading."""
+    for i in range(3):
+        _sample(db_session, vent_patient, EVENING, value=-2.0, msg_id=7201)
+    _sample(db_session, vent_patient, EVENING, value=1619.0, msg_id=7204)
+    db_session.commit()
+
+    resp = admin_client.get(
+        f"/api/integrations/patient/{vent_patient.id}/vent/day/2026-08-19")
+    assert resp.status_code == 200
+    params = [p for g in resp.json()["groups"] for p in g["parameters"]]
+    entry = next(p for p in params if p["parameter_key"] == "9408")
+    # Biggest contributor first, so the dominant message reads as the headline.
+    assert [s["message_id"] for s in entry["sources"]] == [7201, 7204]
+    assert [s["n"] for s in entry["sources"]] == [3, 1]
+
+
+def test_a_single_message_parameter_says_so(admin_client, db_session, vent_patient):
+    _sample(db_session, vent_patient, EVENING, msg_id=7201)
+    _sample(db_session, vent_patient, LATE_EVENING, msg_id=7201)
+    db_session.commit()
+
+    resp = admin_client.get(
+        f"/api/integrations/patient/{vent_patient.id}/vent/day/2026-08-19")
+    params = [p for g in resp.json()["groups"] for p in g["parameters"]]
+    entry = next(p for p in params if p["parameter_key"] == "9408")
+    assert len(entry["sources"]) == 1
+    assert entry["sources"][0]["n"] == 2

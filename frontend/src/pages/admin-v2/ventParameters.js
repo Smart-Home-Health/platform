@@ -26,8 +26,8 @@
 //
 // What we can and cannot say about trust:
 //   We can flag *provenance* — no scale in the dictionary, no units, a
-//   parameter we have never seen, no median series, a percentile band that
-//   comes back inverted. We cannot flag *correctness*. PEEP #9404 carries a
+//   parameter we have never seen, no median series, or samples blended from
+//   more than one device message. We cannot flag *correctness*. PEEP #9404 carries a
 //   scale_factor of 1.0 and still reads 370 cmH2O; 1.0 is also the parser's
 //   fallback for unknown, so a "verified" badge would be green on a number
 //   that is plainly wrong. There is no verification step in this pipeline and
@@ -48,9 +48,16 @@ export const FLAGS = {
     label: 'No scale', tone: 'due',
     hint: 'The dictionary has no scale factor, so the value is in vendor units.',
   },
+  mixedSources: {
+    label: 'Mixed sources', tone: 'alert',
+    hint: 'Samples come from more than one device message — on this device that '
+      + 'means standby telemetry blended with active ventilation, so the value '
+      + 'is an average of two different things.',
+  },
   bandInverted: {
     label: 'Band inverted', tone: 'due',
-    hint: 'The 5th percentile came back above the 95th; shown low–high.',
+    hint: 'The 5th percentile averaged above the 95th over the day. Usually a '
+      + 'symptom of blended sources rather than anything the device did wrong.',
   },
   noUnits: {
     label: 'No units', tone: 'idle',
@@ -58,7 +65,8 @@ export const FLAGS = {
   },
 };
 
-const FLAG_ORDER = ['unknown', 'rawOnly', 'noScale', 'bandInverted', 'noUnits'];
+const FLAG_ORDER = ['unknown', 'mixedSources', 'rawOnly', 'noScale',
+  'bandInverted', 'noUnits'];
 
 const stat = (param, suffix) => param?.stats_by_suffix?.[suffix] ?? null;
 
@@ -84,9 +92,10 @@ export function headlineOf(param) {
 
 /** The 5th–95th percentile band, ordered low to high.
  *
- * Three of 44 parameters on a real day report p5 above p95, which printed as
- * "660.7 – 40.4" before this sorted them. Sorting keeps the range readable;
- * `inverted` keeps the fact that it happened.
+ * Three of 44 parameters on a real day average p5 above p95, which printed as
+ * "660.7 – 40.4" before this sorted them. That is almost always the blend of
+ * two device messages showing through rather than anything the device did, so
+ * sorting keeps the range readable and `inverted` keeps the symptom.
  */
 export function bandOf(param) {
   const p5 = stat(param, '5');
@@ -109,15 +118,24 @@ export function isUnknownParameter(param) {
     && String(param.display_label ?? '') === String(param.parameter_key ?? '');
 }
 
+/** How many distinct device messages fed this parameter's day. */
+export function sourceCount(param) {
+  return (param?.sources || []).length;
+}
+
 /** Every provenance flag that applies, worst first. */
 export function flagsFor(param) {
   if (!param) return [];
   const band = bandOf(param);
+  const mixed = sourceCount(param) > 1;
   const hit = {
     unknown: isUnknownParameter(param),
+    mixedSources: mixed,
     rawOnly: !stat(param, '50'),
     noScale: param.scale_factor == null,
-    bandInverted: Boolean(band?.inverted),
+    // An inverted band is nearly always the blend showing through. Saying both
+    // implies two problems where there is one, so the cause wins.
+    bandInverted: Boolean(band?.inverted) && !mixed,
     noUnits: !param.display_units,
   };
   // An unknown parameter is missing its units and scale by definition;

@@ -620,6 +620,7 @@ const PinnedTrend = ({ rows, series }) => {
 /* One parameter's day: the median line inside its 5th–95th percentile band. */
 const ParameterDetail = ({ row, patientId, date, onClose }) => {
   const { param, band, flags } = row;
+  const sources = param.sources || [];
   const [points, setPoints] = useState(null);
   const [loading, setLoading] = useState(true);
   const canvasRef = useRef(null);
@@ -710,7 +711,7 @@ const ParameterDetail = ({ row, patientId, date, onClose }) => {
             Device band, 5th to 95th percentile:{' '}
             <b>{formatValue(band.lo, param.precision)} – {formatValue(band.hi, param.precision)}</b>
             {param.display_units ? ` ${param.display_units}` : ''}
-            {band.inverted && ' — reported inverted by the device and shown low to high'}
+            {band.inverted && ' — averaged inverted over the day and shown low to high'}
           </p>
         )}
         <div style={{ height: 300, position: 'relative' }}>
@@ -726,6 +727,16 @@ const ParameterDetail = ({ row, patientId, date, onClose }) => {
           Line is the device&rsquo;s median for each sampling window; the shaded band is
           its 5th to 95th percentile over the same window.
         </p>
+        {sources.length > 1 && (
+          <p className="vnt-note" style={{ padding: 0 }}>
+            Blended from {sources.length} device messages
+            {' — '}
+            {sources.map((s) => `${s.message_type}/${s.message_id} (${s.n})`).join(', ')}.
+            These are not the same measurement: on this device the continuous
+            message keeps reporting through standby, so a plateau and a floor in
+            the same trace are two states, not a change in the patient.
+          </p>
+        )}
       </div>
     </EntityModal>
   );
