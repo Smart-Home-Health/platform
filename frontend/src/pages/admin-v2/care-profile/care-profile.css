@@ -306,6 +306,14 @@
   color: var(--ring);
 }
 .cp-tab:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+/* A tab or a button can be a Link; neither should pick up a link underline. */
+a.cp-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+a[data-slot='button'] { text-decoration: none; }
 
 /* Measurement rows put the status in its own column so the name and its range
  * summary stay on consecutive lines. */
