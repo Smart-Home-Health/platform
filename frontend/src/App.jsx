@@ -24,9 +24,7 @@ import UserSelectionPage from './pages/UserSelectionPage';
 import PasswordResetPage from './pages/PasswordResetPage';
 import Dashboard from './pages/Dashboard';
 import AdminV2Dashboard from './pages/admin-v2/AdminV2Dashboard';
-import AdminV2Users from './pages/admin-v2/AdminV2Users';
 import AdminV2UserDetail from './pages/admin-v2/AdminV2UserDetail';
-import AdminV2Roles from './pages/admin-v2/AdminV2Roles';
 import AdminV2RoleDetail from './pages/admin-v2/AdminV2RoleDetail';
 import AdminV2Medications from './pages/admin-v2/AdminV2Medications';
 import AdminV2MedicationsManage from './pages/admin-v2/AdminV2MedicationsManage';
@@ -41,8 +39,17 @@ import AdminV2ShipmentDetail from './pages/admin-v2/AdminV2ShipmentDetail';
 import AdminV2ShipmentAlerts from './pages/admin-v2/AdminV2ShipmentAlerts';
 import AdminV2Inventory from './pages/admin-v2/AdminV2Inventory';
 import AdminV2InventorySetup from './pages/admin-v2/AdminV2InventorySetup';
-import AdminV2Patients from './pages/admin-v2/AdminV2Patients';
-import AdminV2PatientDetail from './pages/admin-v2/AdminV2PatientDetail';
+import AdminV2Directory from './pages/admin-v2/directory/AdminV2Directory';
+import {
+  AdminV2CareProfileHub,
+  AdminV2CareProfileEdit,
+  AdminV2CareProfileFeatures,
+  AdminV2CareProfileMeasurements,
+  AdminV2CareProfileHardLimits,
+  AdminV2CareProfileHomeAssistant,
+  AdminV2CareProfileMqttTopics,
+  AdminV2CareProfileContext,
+} from './pages/admin-v2/care-profile';
 import AdminV2Providers from './pages/admin-v2/AdminV2Providers';
 import AdminV2Businesses from './pages/admin-v2/AdminV2Businesses';
 import AdminV2Schedule from './pages/admin-v2/AdminV2Schedule';
@@ -126,9 +133,11 @@ function AppContent() {
           
           {/* Care Routes - Protected */}
           <Route path="/care" element={<ProtectedRoute><Layout><AdminV2Dashboard /></Layout></ProtectedRoute>} />
-          <Route path="/care/users" element={<ProtectedRoute><Layout><AdminV2Users /></Layout></ProtectedRoute>} />
-          <Route path="/care/users/add" element={<ProtectedRoute><Layout><AdminV2Users /></Layout></ProtectedRoute>} />
-          <Route path="/care/users/roles" element={<ProtectedRoute><Layout><AdminV2Roles /></Layout></ProtectedRoute>} />
+          {/* Users and roles moved into Configuration > Directory; the old
+              paths stay bookmarkable. */}
+          <Route path="/care/users" element={<Navigate to="/care/configuration/users" replace />} />
+          <Route path="/care/users/add" element={<Navigate to="/care/configuration/users" replace />} />
+          <Route path="/care/users/roles" element={<Navigate to="/care/configuration/users/roles" replace />} />
           <Route path="/care/medications" element={<ProtectedRoute><Layout><AdminV2Medications /></Layout></ProtectedRoute>} />
           <Route path="/care/medications/schedule" element={<ProtectedRoute><Layout><AdminV2MedicationsSchedule /></Layout></ProtectedRoute>} />
           <Route path="/care/medications/manage" element={<ProtectedRoute><Layout><AdminV2MedicationsManage /></Layout></ProtectedRoute>} />
@@ -146,7 +155,7 @@ function AppContent() {
           <Route path="/care/equipment/inventory" element={<ProtectedRoute><Layout><AdminV2Inventory /></Layout></ProtectedRoute>} />
           <Route path="/care/equipment/inventory/setup" element={<ProtectedRoute><Layout><AdminV2InventorySetup /></Layout></ProtectedRoute>} />
           <Route path="/care/equipment/alerts" element={<ProtectedRoute><Layout><AdminV2ShipmentAlerts /></Layout></ProtectedRoute>} />
-          <Route path="/care/patients" element={<ProtectedRoute><Layout><AdminV2Patients /></Layout></ProtectedRoute>} />
+          <Route path="/care/patients" element={<Navigate to="/care/configuration/patients" replace />} />
           <Route path="/care/providers" element={<ProtectedRoute><Layout><AdminV2Providers /></Layout></ProtectedRoute>} />
           <Route path="/care/businesses" element={<ProtectedRoute><Layout><AdminV2Businesses /></Layout></ProtectedRoute>} />
           <Route path="/care/schedule" element={<ProtectedRoute><Layout><AdminV2Schedule /></Layout></ProtectedRoute>} />
@@ -206,16 +215,23 @@ function AppContent() {
           <Route path="/care/configuration/account" element={<ProtectedRoute><Layout><AdminV2AccountSettings /></Layout></ProtectedRoute>} />
           {/* Integrations moved under Profile as "Connections"; keep old URL working */}
           <Route path="/care/configuration/integrations" element={<Navigate to="/care/profile/connections" replace />} />
-          <Route path="/care/configuration/patients" element={<ProtectedRoute><Layout><AdminV2Patients /></Layout></ProtectedRoute>} />
-          <Route path="/care/configuration/patients/:patientId" element={<ProtectedRoute><Layout><AdminV2PatientDetail /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/patients" element={<ProtectedRoute><Layout><AdminV2Directory /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/patients/:patientId" element={<ProtectedRoute><Layout><AdminV2CareProfileHub /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/patients/:patientId/edit" element={<ProtectedRoute><Layout><AdminV2CareProfileEdit /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/patients/:patientId/features" element={<ProtectedRoute><Layout><AdminV2CareProfileFeatures /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/patients/:patientId/measurements" element={<ProtectedRoute><Layout><AdminV2CareProfileMeasurements /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/patients/:patientId/measurements/limits" element={<ProtectedRoute><Layout><AdminV2CareProfileHardLimits /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/patients/:patientId/home-assistant" element={<ProtectedRoute><Layout><AdminV2CareProfileHomeAssistant /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/patients/:patientId/home-assistant/topics" element={<ProtectedRoute><Layout><AdminV2CareProfileMqttTopics /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/patients/:patientId/context" element={<ProtectedRoute><Layout><AdminV2CareProfileContext /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/mqtt" element={<ProtectedRoute><Layout><AdminV2Mqtt /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/backup" element={<ProtectedRoute><Layout><AdminV2Backup /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/system-health" element={<ProtectedRoute><Layout><AdminV2SystemHealth /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/security" element={<ProtectedRoute><Layout><AdminV2Security /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/environment" element={<ProtectedRoute><Layout><AdminV2Environment /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/home-assistant" element={<ProtectedRoute><Layout><AdminV2HomeAssistant /></Layout></ProtectedRoute>} />
-          <Route path="/care/configuration/users" element={<ProtectedRoute><Layout><AdminV2Users /></Layout></ProtectedRoute>} />
-          <Route path="/care/configuration/users/roles" element={<ProtectedRoute><Layout><AdminV2Roles /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/users" element={<ProtectedRoute><Layout><AdminV2Directory /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/users/roles" element={<ProtectedRoute><Layout><AdminV2Directory /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/users/roles/:roleId" element={<ProtectedRoute><Layout><AdminV2RoleDetail /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/users/:userId" element={<ProtectedRoute><Layout><AdminV2UserDetail /></Layout></ProtectedRoute>} />
 

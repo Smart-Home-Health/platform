@@ -190,12 +190,26 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
       { path: '/care/configuration', label: 'General' },
       ...(isSystemAdmin
         ? [{ path: '/care/configuration/account', label: 'Account' }] : []),
-      ...(hasAnyPermission(['patients.read', 'patients.create', 'patients.update', 'patients.delete'])
-        ? [{ path: '/care/configuration/patients', label: 'Patients' }] : []),
-      ...(hasAnyPermission(['users.read', 'users.create', 'users.update', 'users.delete'])
-        ? [{ path: '/care/configuration/users', label: 'Users' }] : []),
-      ...(hasAnyPermission(['roles.read', 'roles.create', 'roles.update', 'roles.delete', 'users.read'])
-        ? [{ path: '/care/configuration/users/roles', label: 'Roles' }] : []),
+      // Care profiles, users and roles are one Directory page with three
+      // tabbed routes; the tab bar entry points at the first one the user can
+      // read, and stays lit on any of them.
+      ...(hasAnyPermission([
+        'patients.read', 'patients.create', 'patients.update', 'patients.delete',
+        'users.read', 'users.create', 'users.update', 'users.delete',
+        'roles.read', 'roles.create', 'roles.update', 'roles.delete',
+      ])
+        ? [{
+          path: hasAnyPermission(['patients.read', 'patients.create', 'patients.update', 'patients.delete'])
+            ? '/care/configuration/patients'
+            : hasAnyPermission(['users.read', 'users.create', 'users.update', 'users.delete'])
+              ? '/care/configuration/users'
+              : '/care/configuration/users/roles',
+          label: 'Directory',
+          matchPaths: [
+            '/care/configuration/patients',
+            '/care/configuration/users',
+          ],
+        }] : []),
       { path: '/care/configuration/mqtt', label: 'MQTT' },
       { path: '/care/configuration/home-assistant', label: 'Home Assistant' },
       { path: '/care/configuration/environment', label: 'Environment' },
@@ -411,6 +425,12 @@ const AdminV2Layout = ({ children }) => {
     return location.pathname === path;
   };
 
+  // A top-nav entry that fronts several routes (Directory) stays lit on all of
+  // them, including their detail pages.
+  const isTopNavActive = (item) => (item.matchPaths
+    ? item.matchPaths.some((p) => location.pathname.startsWith(p))
+    : isExactMatch(item.path));
+
   const visibleNavItems = (hasReadAccess
     ? sideNavItems.filter(item => {
         if (!item.requiredPermissions) return true;
@@ -446,7 +466,7 @@ const AdminV2Layout = ({ children }) => {
   };
 
   const activeNavLabel = visibleNavItems.find((item) => isActiveLink(item.path))?.label || 'Dashboard';
-  const activeSubNavLabel = topNavItems.find((item) => isExactMatch(item.path))?.label || null;
+  const activeSubNavLabel = topNavItems.find((item) => isTopNavActive(item))?.label || null;
 
   return (
     <div className={`admin-v2-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${mobileMenuOpen ? 'mobile-menu-open' : ''}`}>
@@ -697,7 +717,7 @@ const AdminV2Layout = ({ children }) => {
                   <Link
                     key={item.path}
                     to={getNavUrl(item.path)}
-                    className={`admin-v2-topnav-link ${isExactMatch(item.path) ? 'active' : ''}`}
+                    className={`admin-v2-topnav-link ${isTopNavActive(item) ? 'active' : ''}`}
                   >
                     {item.label}
                   </Link>

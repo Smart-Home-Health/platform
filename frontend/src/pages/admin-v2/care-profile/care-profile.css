@@ -1,0 +1,464 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Care-profile hub + section chrome (Configuration → Care Profiles).
+ *
+ * Lives inside `.tw`, so every colour here reads the shadcn semantic vars —
+ * which vc-content.css already remaps to the bedside palette in dark. That
+ * keeps one stylesheet honest in both themes; the only dark-only rule is the
+ * mono/uppercase lettering, which the light admin theme does not use. */
+@import '../../../styles/vc-tokens.css';
+
+/* ---------- Shared lettering ---------- */
+.cp-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.cp-title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+.cp-name {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--foreground);
+  overflow-wrap: anywhere;
+}
+:root:not(.light) .cp-eyebrow,
+:root:not(.light) .cp-title,
+:root:not(.light) .cp-name,
+:root:not(.light) .cp-row-title,
+:root:not(.light) .cp-meta-label,
+:root:not(.light) .cp-count-value,
+:root:not(.light) .cp-count-label,
+:root:not(.light) .cp-action {
+  font-family: var(--vc-font-mono);
+}
+:root:not(.light) .cp-title,
+:root:not(.light) .cp-name,
+:root:not(.light) .cp-row-title {
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+/* ---------- Identity card ---------- */
+.cp-identity {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+.cp-avatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 52px;
+  height: 52px;
+  border: 1px solid color-mix(in srgb, var(--ring) 55%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ring) 10%, transparent);
+  color: var(--ring);
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+.cp-subtitle {
+  margin: 0.3rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted-foreground);
+}
+.cp-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.7rem 1.25rem;
+}
+.cp-meta-label {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.cp-meta-value {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.9rem;
+  color: var(--foreground);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Setup counters ---------- */
+.cp-counts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+.cp-count {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--foreground) 4%, transparent);
+  min-width: 0;
+}
+.cp-count-icon { display: flex; color: var(--muted-foreground); }
+.cp-count-value {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--foreground);
+  line-height: 1;
+}
+.cp-count-label {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+/* ---------- Section rows ---------- */
+.cp-rows { display: flex; flex-direction: column; }
+.cp-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: flex-start;
+  gap: 0.9rem;
+  padding: 1rem;
+  border-top: 1px solid var(--border);
+  color: inherit;
+  text-decoration: none;
+  transition: background-color 0.15s ease;
+}
+.cp-row:first-child { border-top: 0; }
+.cp-row:hover { background: color-mix(in srgb, var(--foreground) 5%, transparent); }
+.cp-row:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+.cp-tile {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--muted-foreground);
+}
+.cp-row-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.cp-row-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+.cp-row-blurb {
+  margin: 0.3rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted-foreground);
+}
+.cp-facts {
+  margin: 0.3rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+}
+.cp-fact {
+  display: block;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--muted-foreground);
+}
+.cp-action {
+  display: inline-block;
+  margin-top: 0.35rem;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ring);
+}
+.cp-chevron {
+  align-self: center;
+  display: flex;
+  color: var(--muted-foreground);
+}
+
+/* Status tone: carried by the tile and the counter icon, never by a stripe. */
+.cp-tile[data-tone='success'],
+.cp-count[data-tone='success'] .cp-count-icon { border-color: color-mix(in srgb, var(--success) 60%, transparent); color: var(--success); }
+.cp-tile[data-tone='warning'],
+.cp-count[data-tone='warning'] .cp-count-icon { border-color: color-mix(in srgb, var(--warning) 65%, transparent); color: var(--warning); }
+.cp-tile[data-tone='danger'],
+.cp-count[data-tone='danger'] .cp-count-icon { border-color: color-mix(in srgb, var(--destructive) 60%, transparent); color: var(--destructive); }
+
+/* ---------- Measurements: stat strip, callout, tabs, rows ---------- */
+.cp-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.cp-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.65rem 0.5rem;
+  border-left: 1px solid var(--border);
+  text-align: center;
+  min-width: 0;
+}
+.cp-stat:first-child { border-left: 0; }
+.cp-stat-value {
+  font-size: 1.2rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--foreground);
+}
+.cp-stat-label {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.cp-stat[data-tone='warning'] .cp-stat-value,
+.cp-stat[data-tone='warning'] .cp-stat-label { color: var(--warning); }
+:root:not(.light) .cp-stat-value,
+:root:not(.light) .cp-stat-label { font-family: var(--vc-font-mono); }
+
+.cp-callout {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.55rem 0.85rem;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
+  color: var(--foreground);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+.cp-callout:hover { background: color-mix(in srgb, var(--warning) 16%, transparent); }
+.cp-callout-icon { display: flex; color: var(--warning); }
+.cp-callout-text { flex: 1; min-width: 0; font-size: 0.85rem; color: var(--warning); }
+:root:not(.light) .cp-callout-text { font-family: var(--vc-font-mono); }
+
+.cp-tabs {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+}
+.cp-tab {
+  padding: 0.45rem 0.5rem;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+:root:not(.light) .cp-tab { font-family: var(--vc-font-mono); }
+.cp-tab:hover { color: var(--foreground); }
+.cp-tab[aria-selected='true'] {
+  border-color: color-mix(in srgb, var(--ring) 55%, transparent);
+  background: color-mix(in srgb, var(--ring) 12%, transparent);
+  color: var(--ring);
+}
+.cp-tab:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+
+/* Measurement rows put the status in its own column so the name and its range
+ * summary stay on consecutive lines. */
+/* Name and status share the first line, the range summary sits under the name.
+ * On a phone the status keeps the first line and the summary takes the whole
+ * second one, so a row stays two lines wide-screen or not. */
+.cp-row-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'title status'
+    'summary status';
+  align-items: center;
+  column-gap: 1rem;
+  min-width: 0;
+}
+.cp-row-body > .cp-row-title { grid-area: title; }
+.cp-row-body > .cp-row-blurb,
+.cp-row-body > .cp-row-summary { grid-area: summary; }
+.cp-row-summary { display: block; min-width: 0; }
+/* A row whose summary runs to several lines: the tile and the status badge
+ * belong beside the name, not floating halfway down the facts. */
+.cp-row-body-stacked { align-items: start; }
+.cp-row.cp-row-stacked { align-items: flex-start; }
+.cp-row-body > .cp-row-status { grid-area: status; }
+.cp-row-title-plain {
+  display: block;
+  text-transform: none;
+  letter-spacing: normal;
+}
+:root:not(.light) .cp-row-title-plain {
+  font-family: inherit;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.cp-row-blurb { display: block; }
+
+/* Compact variant for list-heavy pages (measurements): a smaller tile, the
+ * status on one line, and enough padding to stay tappable without turning six
+ * measurements into a page and a half of scrolling. */
+.cp-row-compact {
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.55rem 0.85rem;
+}
+.cp-row-compact .cp-tile { width: 36px; height: 36px; border-radius: 9px; }
+.cp-row-compact .cp-row-title { font-size: 0.88rem; }
+.cp-row-compact .cp-row-blurb { margin-top: 0.05rem; font-size: 0.78rem; }
+.cp-row-compact .cp-row-status { flex-direction: row; align-items: center; gap: 0.45rem; }
+
+/* A row that is a button rather than a link. */
+.cp-row-button {
+  width: 100%;
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.cp-row-static { align-items: center; }
+.cp-row-main {
+  display: block;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.cp-row-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+.cp-status {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+:root:not(.light) .cp-status { font-family: var(--vc-font-mono); }
+.cp-status[data-tone='success'] { color: var(--success); }
+.cp-status[data-tone='warning'] { color: var(--warning); }
+.cp-status[data-tone='danger'] { color: var(--destructive); }
+
+.cp-limit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.85rem;
+  border-bottom: 1px solid var(--border);
+}
+.cp-limit-row:last-child { border-bottom: 0; }
+.cp-limit-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 6rem));
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+/* ---------- Advanced disclosure ---------- */
+.cp-advanced summary {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.75rem 0.85rem;
+  cursor: pointer;
+  list-style: none;
+  color: var(--foreground);
+}
+.cp-advanced summary::-webkit-details-marker { display: none; }
+.cp-advanced summary:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+.cp-advanced-marker { margin-left: auto; display: flex; color: var(--muted-foreground); transition: transform 0.15s ease; }
+.cp-advanced[open] .cp-advanced-marker { transform: rotate(180deg); }
+
+@media (max-width: 640px) {
+  .cp-row { padding: 0.9rem 0.75rem; gap: 0.7rem; }
+  .cp-row-compact { padding: 0.55rem 0.7rem; gap: 0.6rem; }
+  .cp-row-body {
+    grid-template-areas:
+      'title status'
+      'summary summary';
+    column-gap: 0.5rem;
+  }
+  .cp-row-compact .cp-row-status { gap: 0.3rem; }
+  .cp-row-compact .cp-status { font-size: 10px; }
+  .cp-tile { width: 44px; height: 44px; border-radius: 10px; }
+  .cp-avatar { width: 48px; height: 48px; font-size: 0.95rem; }
+  /* Keep the three counters on one line — stacked, they push the sections
+   * below the fold on a phone. */
+  .cp-counts { gap: 0.4rem; }
+  .cp-count { flex-direction: column; align-items: flex-start; gap: 0.3rem; padding: 0.55rem 0.5rem; }
+  .cp-count-label { font-size: 9px; letter-spacing: 0.06em; }
+  /* The four counts stay on one line on a phone — stacked two-by-two they
+   * pushed the measurements themselves off the screen. */
+  .cp-stat { padding: 0.55rem 0.25rem; }
+  .cp-stat-value { font-size: 1.05rem; }
+  .cp-stat-label { font-size: 8.5px; letter-spacing: 0.04em; }
+  /* Three tabs on a 430px phone, inside a padded card: shrink the lettering
+   * rather than let a two-word tab wrap and double the control's height. */
+  .cp-tab {
+    font-size: clamp(0.58rem, 2.5vw, 0.7rem);
+    letter-spacing: 0.02em;
+    padding: 0.5rem 0.2rem;
+  }
+  .cp-limit-row { flex-direction: column; align-items: stretch; gap: 0.5rem; }
+  .cp-limit-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

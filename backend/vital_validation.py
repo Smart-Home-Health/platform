@@ -56,6 +56,20 @@ DEFAULT_EXPECTED: Dict[Tuple[str, str], Tuple[Optional[float], Optional[float]]]
     ('weight', ''): (None, None),
 }
 
+# Display labels for the built-ins and their component fields. The UI has no
+# business title-casing keys ('spo2' -> 'Spo2'); the names live here with the
+# units so every surface reads the same.
+BUILTIN_LABELS: Dict[str, str] = {
+    'blood_pressure': 'Blood Pressure',
+    'heart_rate': 'Heart Rate',
+    'spo2': 'SpO2',
+    'temperature': 'Temperature',
+    'respiratory_rate': 'Respiratory Rate',
+    'weight': 'Weight',
+}
+
+FIELD_LABELS: Dict[str, str] = {'systolic': 'Systolic', 'diastolic': 'Diastolic'}
+
 # Built-in capture vitals: friendly unit + UCUM code + flattened name for
 # terminology.loinc_for (which expects VitalType values, not the DB's
 # vital_type+vital_group split).
@@ -77,7 +91,9 @@ def resolve_ranges(db: Session, patient_id: int) -> Dict[Tuple[str, str], dict]:
     """Merge patient_vital_ranges rows over the code defaults.
 
     Returns one entry per (vital_key, field_key) covering every built-in
-    vital and every custom definition for the patient. Custom vitals get no
+    vital and every custom definition for the patient. Each entry carries its
+    display label and unit so callers never have to title-case a key or keep
+    their own unit table. Custom vitals get no
     default bounds — a value we know nothing about is never blocked or
     warned on unless the care team configured a range for it.
     """
@@ -88,6 +104,8 @@ def resolve_ranges(db: Session, patient_id: int) -> Dict[Tuple[str, str], dict]:
             # row: it carries the required flag the components inherit.
             resolved[(vital_key, '')] = {
                 'vital_key': vital_key, 'field_key': '',
+                'label': BUILTIN_LABELS.get(vital_key, vital_key),
+                'unit': meta.get('unit'), 'builtin': True,
                 'expected_min': None, 'expected_max': None,
                 'implausible_min': None, 'implausible_max': None,
                 'required': False, 'source': 'default',
@@ -98,6 +116,9 @@ def resolve_ranges(db: Session, patient_id: int) -> Dict[Tuple[str, str], dict]:
             exp = DEFAULT_EXPECTED.get((vital_key, field_key), (None, None))
             resolved[(vital_key, field_key)] = {
                 'vital_key': vital_key, 'field_key': field_key,
+                'label': FIELD_LABELS.get(field_key) if field_key
+                         else BUILTIN_LABELS.get(vital_key, vital_key),
+                'unit': meta.get('unit'), 'builtin': True,
                 'expected_min': exp[0], 'expected_max': exp[1],
                 'implausible_min': imp[0], 'implausible_max': imp[1],
                 'required': False, 'source': 'default',
@@ -107,6 +128,8 @@ def resolve_ranges(db: Session, patient_id: int) -> Dict[Tuple[str, str], dict]:
             CustomVitalDefinition.patient_id == patient_id).all():
         resolved.setdefault((cd.name, ''), {
             'vital_key': cd.name, 'field_key': '',
+            'label': cd.display_label or cd.name,
+            'unit': cd.unit, 'builtin': False,
             'expected_min': None, 'expected_max': None,
             'implausible_min': None, 'implausible_max': None,
             'required': False, 'source': 'default',
@@ -115,7 +138,10 @@ def resolve_ranges(db: Session, patient_id: int) -> Dict[Tuple[str, str], dict]:
     for row in db.query(PatientVitalRange).filter(
             PatientVitalRange.patient_id == patient_id).all():
         key = (row.vital_key, row.field_key or '')
-        base = resolved.get(key, {'vital_key': row.vital_key, 'field_key': row.field_key or ''})
+        base = resolved.get(key, {
+            'vital_key': row.vital_key, 'field_key': row.field_key or '',
+            'label': row.vital_key, 'unit': None, 'builtin': False,
+        })
         imp_default = DEFAULT_IMPLAUSIBLE.get(key, (None, None))
         base.update({
             'expected_min': row.expected_min, 'expected_max': row.expected_max,
