@@ -21,6 +21,7 @@ import config from '../../config';
 import AdminV2Layout from './AdminV2Layout';
 import PatientFormFields from '../../components/PatientFormFields';
 import VitalRangesCard from '../../components/vitals/VitalRangesCard';
+import EnvRangesCard from '../../components/environment/EnvRangesCard';
 import CustomVitalsCard from '../../components/vitals/CustomVitalsCard';
 import { MQTT_SECTIONS, permOptionsForSection, permSelectClass } from './mqttConstants';
 import { ChevronLeftIcon } from '../../components/Icons';
@@ -388,6 +389,7 @@ export default function AdminV2PatientDetail() {
                             onChanged={() => setVitalConfigVersion((v) => v + 1)} />
           {/* Re-mount on custom-vital changes so the ranges list picks them up. */}
           <VitalRangesCard key={vitalConfigVersion} patientId={patientId} />
+          <EnvRangesCard patientId={patientId} />
         </div>
       </div>
     </AdminV2Layout>

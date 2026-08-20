@@ -145,3 +145,87 @@ def test_recent_history_patient_scoped(admin_client, db_session, account, pulse_
 
 def test_recent_history_requires_auth(client, patient):
     assert client.get(f"/api/monitoring/history/recent?patient_id={patient.id}").status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Timeline: the day view's alert list.
+# ---------------------------------------------------------------------------
+
+def _alert(db_session, account, patient, start, end=None, **kw):
+    from schemas.monitoring_alert import MonitoringAlert
+    a = MonitoringAlert(
+        account_id=account.id, patient_id=patient.id,
+        start_time=start, end_time=end, created_at=start, **kw,
+    )
+    db_session.add(a)
+    return a
+
+
+def test_timeline_returns_the_days_alerts(admin_client, db_session, account, patient):
+    from datetime import timedelta
+    day = datetime(2026, 3, 4, 12, 0, tzinfo=timezone.utc)
+    _alert(db_session, account, patient, day, day + timedelta(seconds=82),
+           spo2_alarm_triggered=True, spo2_min=88)
+    db_session.commit()
+
+    resp = admin_client.get(
+        f"/api/monitoring/timeline?patient_id={patient.id}&target_date=2026-03-04")
+    assert resp.status_code == 200
+    alerts = resp.json()["alerts"]
+    assert len(alerts) == 1
+    assert alerts[0]["spo2_alarm"] is True
+    assert alerts[0]["spo2_min"] == 88
+    assert alerts[0]["id"] is not None
+
+
+def test_timeline_leaves_an_open_alert_open(admin_client, db_session, account, patient):
+    day = datetime(2026, 3, 5, 9, 30, tzinfo=timezone.utc)
+    _alert(db_session, account, patient, day, None, hr_alarm_triggered=True)
+    db_session.commit()
+
+    resp = admin_client.get(
+        f"/api/monitoring/timeline?patient_id={patient.id}&target_date=2026-03-05")
+    assert resp.status_code == 200
+    alerts = resp.json()["alerts"]
+    assert len(alerts) == 1
+    # No synthesised end: the client needs the null to say "ongoing" rather
+    # than compute a duration that never happened.
+    assert alerts[0]["end"] is None
+
+
+def test_timeline_finds_an_old_day_behind_many_newer_alerts(
+        admin_client, db_session, account, patient):
+    """The day view used to take the 200 most recent alerts and filter to the
+    day afterwards, so a day sitting further back than that returned none."""
+    from datetime import timedelta
+    old_day = datetime(2026, 1, 2, 8, 0, tzinfo=timezone.utc)
+    _alert(db_session, account, patient, old_day, old_day + timedelta(minutes=1),
+           spo2_alarm_triggered=True)
+    # 250 newer alerts, all on other days.
+    newer = datetime(2026, 2, 1, 0, 0, tzinfo=timezone.utc)
+    for i in range(250):
+        _alert(db_session, account, patient, newer + timedelta(hours=i),
+               newer + timedelta(hours=i, minutes=1))
+    db_session.commit()
+
+    resp = admin_client.get(
+        f"/api/monitoring/timeline?patient_id={patient.id}&target_date=2026-01-02")
+    assert resp.status_code == 200
+    assert len(resp.json()["alerts"]) == 1
+
+
+def test_timeline_alerts_are_patient_scoped(admin_client, db_session, account, patient):
+    from crud.patients import create_patient
+    day = datetime(2026, 3, 6, 10, 0, tzinfo=timezone.utc)
+    other = create_patient(db_session, {
+        "first_name": "Other", "last_name": "Patient",
+        "account_id": account.id, "is_active": True,
+    })
+    db_session.commit()
+    _alert(db_session, account, other, day, day, spo2_alarm_triggered=True)
+    db_session.commit()
+
+    resp = admin_client.get(
+        f"/api/monitoring/timeline?patient_id={patient.id}&target_date=2026-03-06")
+    assert resp.status_code == 200
+    assert resp.json()["alerts"] == []

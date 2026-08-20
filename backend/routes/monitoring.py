@@ -429,32 +429,32 @@ async def get_timeline_data(
             'notes': v.notes
         } for v in vitals_query]
 
-        # 7. Monitoring alerts for that day
-        all_alerts = get_monitoring_alerts(
-            db, limit=200, include_acknowledged=True, patient_id=patient_id
-        )
-        alerts = []
-        for a in all_alerts:
-            start_time = a.get('start_time')
-            if start_time:
-                if isinstance(start_time, str):
-                    alert_dt = datetime.fromisoformat(start_time)
-                else:
-                    alert_dt = start_time
-                # Check if alert falls within local day boundaries (in UTC)
-                naive_alert = alert_dt.replace(tzinfo=None) if alert_dt.tzinfo else alert_dt
-                if start_dt <= naive_alert <= end_dt:
-                    end_time = a.get('end_time')
-                    alerts.append({
-                        'start': start_time.isoformat() if hasattr(start_time, 'isoformat') else start_time,
-                        'end': end_time.isoformat() if end_time and hasattr(end_time, 'isoformat') else end_time,
-                        'spo2_alarm': a.get('spo2_alarm_triggered', False),
-                        'hr_alarm': a.get('hr_alarm_triggered', False),
-                        'spo2_min': a.get('spo2_min'),
-                        'bpm_min': a.get('bpm_min'),
-                        'oxygen_used': a.get('oxygen_used', False),
-                        'acknowledged': a.get('acknowledged', False)
-                    })
+        # 7. Monitoring alerts for that day.
+        #
+        # Queried against the day bounds like every other stream above. This
+        # used to pull the 200 most recent alerts for the patient and filter
+        # them down afterwards, which quietly returned nothing for any day
+        # sitting further than 200 alerts back — the timeline then showed a
+        # busy day as having none.
+        from schemas.monitoring_alert import MonitoringAlert
+        alert_rows = db.query(MonitoringAlert).filter(
+            MonitoringAlert.patient_id == patient_id,
+            MonitoringAlert.start_time >= start_dt,
+            MonitoringAlert.start_time <= end_dt
+        ).order_by(MonitoringAlert.start_time.asc()).all()
+        alerts = [{
+            'id': a.id,
+            'start': a.start_time.isoformat() if a.start_time else None,
+            # Null end means still open. Never synthesise one — a fabricated
+            # end becomes a fabricated duration downstream.
+            'end': a.end_time.isoformat() if a.end_time else None,
+            'spo2_alarm': bool(a.spo2_alarm_triggered),
+            'hr_alarm': bool(a.hr_alarm_triggered),
+            'spo2_min': a.spo2_min,
+            'bpm_min': a.bpm_min,
+            'oxygen_used': bool(a.oxygen_used),
+            'acknowledged': bool(a.acknowledged),
+        } for a in alert_rows]
 
         return {
             'date': date_str,
