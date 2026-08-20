@@ -26,7 +26,7 @@
 //
 // What we can and cannot say about trust:
 //   We can flag *provenance* — no scale in the dictionary, no units, a
-//   parameter we have never seen, no median series, or samples blended from
+//   parameter we have never seen, no median series, or samples that arrived on
 //   more than one device message. We cannot flag *correctness*. PEEP #9404 carries a
 //   scale_factor of 1.0 and still reads 370 cmH2O; 1.0 is also the parser's
 //   fallback for unknown, so a "verified" badge would be green on a number
@@ -49,10 +49,11 @@ export const FLAGS = {
     hint: 'The dictionary has no scale factor, so the value is in vendor units.',
   },
   mixedSources: {
-    label: 'Mixed sources', tone: 'alert',
-    hint: 'Samples come from more than one device message — on this device that '
-      + 'means standby telemetry blended with active ventilation, so the value '
-      + 'is an average of two different things.',
+    label: 'Other sources dropped', tone: 'idle',
+    hint: 'This parameter arrived on more than one device message. Only the one '
+      + 'carrying it most often is counted here — the others are a different '
+      + 'measurement under the same key, and averaging them together is what '
+      + 'used to put the 5th percentile above the 95th.',
   },
   bandInverted: {
     label: 'Band inverted', tone: 'due',
@@ -118,9 +119,20 @@ export function isUnknownParameter(param) {
     && String(param.display_label ?? '') === String(param.parameter_key ?? '');
 }
 
-/** How many distinct device messages fed this parameter's day. */
+/** How many distinct device messages carried this parameter over the day.
+ * Only the first is counted in the statistics; see the API's `used` flag. */
 export function sourceCount(param) {
   return (param?.sources || []).length;
+}
+
+/** The message the day's numbers were actually computed from. */
+export function usedSource(param) {
+  return (param?.sources || []).find((s) => s.used) ?? null;
+}
+
+/** Messages present but not counted. */
+export function droppedSources(param) {
+  return (param?.sources || []).filter((s) => !s.used);
 }
 
 /** Every provenance flag that applies, worst first. */
@@ -133,9 +145,9 @@ export function flagsFor(param) {
     mixedSources: mixed,
     rawOnly: !stat(param, '50'),
     noScale: param.scale_factor == null,
-    // An inverted band is nearly always the blend showing through. Saying both
-    // implies two problems where there is one, so the cause wins.
-    bandInverted: Boolean(band?.inverted) && !mixed,
+    // Now that only one message is counted, an inversion that survives is
+    // worth reporting on its own rather than being explained away.
+    bandInverted: Boolean(band?.inverted),
     noUnits: !param.display_units,
   };
   // An unknown parameter is missing its units and scale by definition;

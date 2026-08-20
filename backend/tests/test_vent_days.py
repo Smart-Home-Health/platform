@@ -144,25 +144,59 @@ def test_a_bad_date_is_rejected(admin_client, vent_patient):
     assert resp.status_code == 400
 
 
-def test_a_parameter_reports_the_messages_it_came_from(
-        admin_client, db_session, vent_patient):
-    """A parameter key is not one measurement. On real data, I:E ratio arrives
-    from message 7201 (continuous, averaging -2) and 7204 (active ventilation,
-    averaging 1619); the day statistic silently averages the two. The page
-    cannot unpick that, but it can stop presenting a blend as a reading."""
-    for i in range(3):
-        _sample(db_session, vent_patient, EVENING, value=-2.0, msg_id=7201)
+def _day(admin_client, patient_id, date="2026-08-19"):
+    resp = admin_client.get(
+        f"/api/integrations/patient/{patient_id}/vent/day/{date}")
+    assert resp.status_code == 200
+    return {p["parameter_key"]: p
+            for g in resp.json()["groups"] for p in g["parameters"]}
+
+
+def test_only_the_dominant_message_is_counted(admin_client, db_session, vent_patient):
+    """A parameter key is not one measurement. VOCSN's column layout differs
+    per message, so all but one message's values land under the wrong key —
+    on real data that averaged a monitor stream reading 4 cmH2O together with
+    a counter, and printed 164. Only the message carrying the parameter most
+    often is counted."""
+    for _ in range(3):
+        _sample(db_session, vent_patient, EVENING, value=10.0, msg_id=7201)
     _sample(db_session, vent_patient, EVENING, value=1619.0, msg_id=7204)
     db_session.commit()
 
-    resp = admin_client.get(
-        f"/api/integrations/patient/{vent_patient.id}/vent/day/2026-08-19")
-    assert resp.status_code == 200
-    params = [p for g in resp.json()["groups"] for p in g["parameters"]]
-    entry = next(p for p in params if p["parameter_key"] == "9408")
-    # Biggest contributor first, so the dominant message reads as the headline.
+    entry = _day(admin_client, vent_patient.id)["9408"]
+    # 10, not the 412 that averaging in the counter would give.
+    assert entry["stats_by_suffix"]["50"]["mean"] == 10.0
+    assert entry["stats_by_suffix"]["50"]["n"] == 3
+
+
+def test_a_parameter_reports_what_was_used_and_what_was_dropped(
+        admin_client, db_session, vent_patient):
+    for _ in range(3):
+        _sample(db_session, vent_patient, EVENING, value=10.0, msg_id=7201)
+    _sample(db_session, vent_patient, EVENING, value=1619.0, msg_id=7204)
+    db_session.commit()
+
+    entry = _day(admin_client, vent_patient.id)["9408"]
     assert [s["message_id"] for s in entry["sources"]] == [7201, 7204]
+    assert [s["used"] for s in entry["sources"]] == [True, False]
+    # Dropping data silently would let a partial day read as a whole one.
     assert [s["n"] for s in entry["sources"]] == [3, 1]
+
+
+def test_the_series_is_drawn_from_the_same_message_as_the_number(
+        admin_client, db_session, vent_patient):
+    for _ in range(3):
+        _sample(db_session, vent_patient, EVENING, value=10.0, msg_id=7201)
+    _sample(db_session, vent_patient, LATE_EVENING, value=1619.0, msg_id=7204)
+    db_session.commit()
+
+    resp = admin_client.get(
+        f"/api/integrations/patient/{vent_patient.id}"
+        f"/vent/day/2026-08-19/parameter/9408")
+    assert resp.status_code == 200
+    values = [p["p50"] for p in resp.json()["points"]]
+    # The chart must not plot a source the headline excluded.
+    assert 1619.0 not in values
 
 
 def test_a_single_message_parameter_says_so(admin_client, db_session, vent_patient):

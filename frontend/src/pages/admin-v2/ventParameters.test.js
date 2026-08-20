@@ -21,7 +21,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   headlineOf, bandOf, flagsFor, needsReview, bandPosition, formatValue,
-  isUnknownParameter, rowsFrom, matchesQuery, sourceCount,
+  isUnknownParameter, rowsFrom, matchesQuery, sourceCount, usedSource,
+  droppedSources,
 } from './ventParameters';
 
 const param = (over = {}) => ({
@@ -216,46 +217,51 @@ describe('blended device messages', () => {
   // is what produced the square-wave trace and the apparent inversion.
   const blended = (over = {}) => param({
     sources: [
-      { message_type: 'M', message_id: 7201, n: 288 },
-      { message_type: 'M', message_id: 7204, n: 25 },
+      { message_type: 'M', message_id: 7201, n: 288, used: true },
+      { message_type: 'M', message_id: 7204, n: 25, used: false },
     ],
     ...over,
   });
 
   it('counts the messages behind a parameter', () => {
     expect(sourceCount(blended())).toBe(2);
-    expect(sourceCount(param({ sources: [{ message_type: 'M', message_id: 7201, n: 288 }] })))
-      .toBe(1);
+    expect(sourceCount(param({
+      sources: [{ message_type: 'M', message_id: 7201, n: 288, used: true }],
+    }))).toBe(1);
     // Absent entirely on an older payload — treated as nothing known, not as a blend.
     expect(sourceCount(param())).toBe(0);
   });
 
-  it('flags a blend as the worst thing about the parameter', () => {
-    const flags = flagsFor(blended());
-    expect(flags[0].key).toBe('mixedSources');
-    expect(flags[0].tone).toBe('alert');
-    expect(needsReview(blended())).toBe(true);
+  it('names which message the numbers came from and which were dropped', () => {
+    expect(usedSource(blended())).toMatchObject({ message_id: 7201, n: 288 });
+    expect(droppedSources(blended()).map((s) => s.message_id)).toEqual([7204]);
   });
 
-  it('does not also cry inversion when the blend explains it', () => {
-    // Saying both implies two problems where there is one.
-    const invertedAndBlended = blended({
+  it('reports the drop without calling it a review item', () => {
+    // The statistics are now from one coherent source, so this is a note about
+    // coverage rather than a reason to distrust the number.
+    const flags = flagsFor(blended());
+    expect(flags.map((f) => f.key)).toEqual(['mixedSources']);
+    expect(flags[0].tone).toBe('idle');
+    expect(needsReview(blended())).toBe(false);
+  });
+
+  it('still reports an inversion that survives the filtering', () => {
+    const stillInverted = blended({
       stats_by_suffix: {
         5: { n: 404, lo: -10, hi: 5000, mean: 1336 },
         50: { n: 182, lo: -5, hi: 1622, mean: 221 },
         95: { n: 186, lo: -4, hi: 406, mean: 61 },
       },
     });
-    const keys = flagsFor(invertedAndBlended).map((f) => f.key);
-    expect(keys).toContain('mixedSources');
-    expect(keys).not.toContain('bandInverted');
-    // The range is still ordered for display.
-    expect(bandOf(invertedAndBlended)).toMatchObject({ lo: 61, hi: 1336, inverted: true });
+    const keys = flagsFor(stillInverted).map((f) => f.key);
+    expect(keys).toContain('bandInverted');
+    expect(bandOf(stillInverted)).toMatchObject({ lo: 61, hi: 1336, inverted: true });
   });
 
   it('still reports an inversion that has no blend behind it', () => {
     const p = param({
-      sources: [{ message_type: 'M', message_id: 7201, n: 10 }],
+      sources: [{ message_type: 'M', message_id: 7201, n: 10, used: true }],
       stats_by_suffix: {
         5: { n: 9, lo: 0, hi: 900, mean: 660.7 },
         50: { n: 9, lo: 0, hi: 100, mean: 94.9 },
@@ -266,7 +272,9 @@ describe('blended device messages', () => {
   });
 
   it('says nothing about sources when there is only one', () => {
-    const single = param({ sources: [{ message_type: 'M', message_id: 7201, n: 288 }] });
+    const single = param({
+      sources: [{ message_type: 'M', message_id: 7201, n: 288, used: true }],
+    });
     expect(flagsFor(single)).toEqual([]);
   });
 });

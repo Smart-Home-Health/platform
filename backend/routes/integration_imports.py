@@ -500,6 +500,36 @@ def _infer_grouping(display_label: Optional[str], tag_name: Optional[str]) -> Op
     return None
 
 
+# One parameter key carries samples from several device messages, and they are
+# not the same measurement — VOCSN's column layout differs per message, so all
+# but one message's values land under the wrong keys. Restricting to the
+# message that carries the parameter most often keeps a parameter's day on one
+# coherent source instead of averaging a monitor stream with a settings
+# snapshot and a counter.
+#
+# Most rows wins because the real monitor stream reports on a fixed cadence
+# (288 times a day at five-minute intervals here) while the interlopers are
+# occasional. Ties break on type then id so the choice is stable between the
+# day view and the series behind it — they must agree, or the chart would plot
+# a different source from the number above it.
+_VENT_DOMINANT_MSG_CTE = """
+    WITH dominant_msg AS (
+        SELECT DISTINCT ON (parameter_key)
+               parameter_key, source_message_type, source_message_id
+        FROM (
+            SELECT parameter_key, source_message_type, source_message_id,
+                   COUNT(*) AS n
+            FROM vent_samples
+            WHERE patient_id = :pid
+              AND recorded_at >= :start AND recorded_at < :end
+              AND value_numeric IS NOT NULL
+            GROUP BY parameter_key, source_message_type, source_message_id
+        ) ranked
+        ORDER BY parameter_key, n DESC, source_message_type, source_message_id
+    )
+"""
+
+
 def _vent_day_bounds(db: Session, patient_id: int, date: str):
     """The UTC window covering one local day for this patient.
 
@@ -654,7 +684,7 @@ async def vent_day(
     # ~2000 mL, pressures max ~80 cmH2O) but well below the noise band.
     # If a legitimate counter ever exceeds 5000 we'll revisit; for now this
     # keeps the displayed min/avg/max honest.
-    rows = db.execute(text("""
+    rows = db.execute(text(_VENT_DOMINANT_MSG_CTE + """
         SELECT
             s.parameter_key,
             s.parameter_suffix,
@@ -670,6 +700,10 @@ async def vent_day(
             d.precision,
             d.tag_name
         FROM vent_samples s
+        JOIN dominant_msg m
+          ON m.parameter_key = s.parameter_key
+         AND m.source_message_type = s.source_message_type
+         AND m.source_message_id = s.source_message_id
         LEFT JOIN vent_parameter_dictionary d
           ON d.vendor = 'vocsn' AND d.parameter_key = s.parameter_key
         WHERE s.patient_id = :pid
@@ -744,7 +778,12 @@ async def vent_day(
             {"message_type": r.mt, "message_id": r.mid, "n": int(r.n)})
     for entry in by_key.values():
         entry.setdefault("sources", [])
-        entry["sources"].sort(key=lambda s: -s["n"])
+        entry["sources"].sort(key=lambda s: (-s["n"], s["message_type"], s["message_id"]))
+        # The first is the one the statistics above were computed from; the
+        # rest were dropped. Saying so lets the page report the loss rather
+        # than quietly showing a subset.
+        for i, src in enumerate(entry["sources"]):
+            src["used"] = (i == 0)
 
     # Day-level summary (counts, time range).
     summary_row = db.execute(text("""
@@ -797,20 +836,26 @@ async def vent_day_parameter_series(
         raise HTTPException(status_code=404, detail="No ventilator integration")
     day, start, end = _vent_day_bounds(db, patient_id, date)
 
-    rows = db.execute(text("""
+    # Same dominant-message restriction as the day view. If the two disagreed,
+    # the chart would plot a different source from the number that opened it.
+    rows = db.execute(text(_VENT_DOMINANT_MSG_CTE + """
         SELECT
-            recorded_at,
-            MAX(CASE WHEN parameter_suffix='50' THEN value_numeric END) AS p50,
-            MAX(CASE WHEN parameter_suffix='5'  THEN value_numeric END) AS p5,
-            MAX(CASE WHEN parameter_suffix='95' THEN value_numeric END) AS p95,
-            MAX(CASE WHEN parameter_suffix='N'  THEN value_numeric END) AS n_val
-        FROM vent_samples
-        WHERE patient_id = :pid AND parameter_key = :key
-          AND recorded_at >= :start AND recorded_at < :end
-          AND value_numeric IS NOT NULL
-          AND value_numeric BETWEEN -5000 AND 5000
-        GROUP BY recorded_at
-        ORDER BY recorded_at
+            s.recorded_at,
+            MAX(CASE WHEN s.parameter_suffix='50' THEN s.value_numeric END) AS p50,
+            MAX(CASE WHEN s.parameter_suffix='5'  THEN s.value_numeric END) AS p5,
+            MAX(CASE WHEN s.parameter_suffix='95' THEN s.value_numeric END) AS p95,
+            MAX(CASE WHEN s.parameter_suffix='N'  THEN s.value_numeric END) AS n_val
+        FROM vent_samples s
+        JOIN dominant_msg m
+          ON m.parameter_key = s.parameter_key
+         AND m.source_message_type = s.source_message_type
+         AND m.source_message_id = s.source_message_id
+        WHERE s.patient_id = :pid AND s.parameter_key = :key
+          AND s.recorded_at >= :start AND s.recorded_at < :end
+          AND s.value_numeric IS NOT NULL
+          AND s.value_numeric BETWEEN -5000 AND 5000
+        GROUP BY s.recorded_at
+        ORDER BY s.recorded_at
     """), {"pid": patient_id, "key": key, "start": start, "end": end}).all()
 
     meta = db.execute(text("""

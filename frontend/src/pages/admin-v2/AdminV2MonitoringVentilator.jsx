@@ -621,6 +621,8 @@ const PinnedTrend = ({ rows, series }) => {
 const ParameterDetail = ({ row, patientId, date, onClose }) => {
   const { param, band, flags } = row;
   const sources = param.sources || [];
+  const used = sources.find((s) => s.used) ?? null;
+  const dropped = sources.filter((s) => !s.used);
   const [points, setPoints] = useState(null);
   const [loading, setLoading] = useState(true);
   const canvasRef = useRef(null);
@@ -729,12 +731,11 @@ const ParameterDetail = ({ row, patientId, date, onClose }) => {
         </p>
         {sources.length > 1 && (
           <p className="vnt-note" style={{ padding: 0 }}>
-            Blended from {sources.length} device messages
-            {' — '}
-            {sources.map((s) => `${s.message_type}/${s.message_id} (${s.n})`).join(', ')}.
-            These are not the same measurement: on this device the continuous
-            message keeps reporting through standby, so a plateau and a floor in
-            the same trace are two states, not a change in the patient.
+            Counted from {used ? `${used.message_type}/${used.message_id}` : 'the main message'}
+            {used ? ` (${used.n} samples)` : ''}. Also present but not counted:{' '}
+            {dropped.map((s) => `${s.message_type}/${s.message_id} (${s.n})`).join(', ')}.
+            The same key means different things on different messages, so mixing
+            them produced a plateau and a floor in one trace.
           </p>
         )}
       </div>
