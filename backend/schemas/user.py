@@ -163,6 +163,21 @@ class UserWithPermissions(UserResponse):
     permissions: List[str] = []
 
 
+class UserActivityEntry(BaseModel):
+    """One recorded event on a user's account, as the user screen reads it.
+
+    Sourced from ``audit_logs`` only — there is no synthesised activity here.
+    ``actor_name`` is set when somebody *else* caused the entry (an
+    administrator resetting a password, say) and is None for the user's own
+    sign-in events.
+    """
+    id: int
+    action: str
+    timestamp: datetime
+    ip_address: Optional[str] = None
+    actor_name: Optional[str] = None
+
+
 class RoleListItem(BaseModel):
     """Simplified role for lists"""
     id: int

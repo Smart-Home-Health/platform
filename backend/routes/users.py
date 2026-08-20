@@ -20,10 +20,14 @@ Separate from auth routes which handle login/session management
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
+import json
 import logging
 
 from db import get_db
-from schemas.user import UserResponse, UserCreate, UserUpdate, UserListItem, AdminPasswordReset
+from schemas.user import (
+    UserResponse, UserCreate, UserUpdate, UserListItem, AdminPasswordReset,
+    UserActivityEntry,
+)
 from crud.users import (
     get_user_by_id, get_user_by_username, get_user_by_email,
     get_all_users, create_user, update_user, delete_user,
@@ -35,7 +39,7 @@ from crud.users import (
     assign_permission_to_role, set_force_password_reset, create_audit_log
 )
 from dependencies import get_current_user, require_permission, require_system_admin
-from models.users import User, Role, Permission
+from models.users import User, Role, Permission, AuditLog
 from schemas.patient import Patient, PatientAccess, AccessLevel
 
 logger = logging.getLogger(__name__)
@@ -524,6 +528,124 @@ def remove_user_role(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error removing role: {str(e)}"
         )
+
+
+# ==================== Activity ====================
+
+# Actions one user performs *on* another. They are written against the actor,
+# so the subject is only in the details JSON — under whichever key name the
+# endpoint that wrote it happened to use.
+TARGETED_AUDIT_ACTIONS = {
+    "user.created", "user.updated", "user.deleted",
+    "user.password_reset.forced", "user.password_reset.admin_set",
+    "role.assigned", "role.removed",
+}
+_TARGET_DETAIL_KEYS = (
+    "target_user_id", "updated_user_id", "new_user_id", "deleted_user_id", "user_id",
+)
+
+
+def _audit_subject_id(entry: AuditLog) -> Optional[int]:
+    """The user an audit entry is *about*, or None if its details don't say."""
+    if not entry.details:
+        return None
+    try:
+        payload = json.loads(entry.details)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    for key in _TARGET_DETAIL_KEYS:
+        if key in payload:
+            try:
+                return int(payload[key])
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+@router.get("/{user_id}/activity", response_model=List[UserActivityEntry])
+def get_user_activity(
+    user_id: int,
+    limit: int = 25,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Recorded activity for one user, read straight from ``audit_logs``.
+
+    Two kinds of row belong to a user: the ones written against them (sign-in,
+    PIN attempts, lockouts, their own password reset) and the ones an
+    administrator's action wrote against the *administrator* while naming this
+    user in the details. Rows of the second kind carry ``actor_name``.
+
+    Note that role and care-profile assignment changes made through this router
+    are not audited at all, so they will not appear.
+    """
+    if not (
+        current_user.id == user_id
+        or current_user.is_superuser
+        or current_user.has_permission("users.read")
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not permitted to view this user's activity"
+        )
+
+    user = get_user_by_id(db, user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    limit = max(1, min(limit, 200))
+
+    own = (
+        db.query(AuditLog)
+        .filter(AuditLog.user_id == user_id)
+        .order_by(AuditLog.timestamp.desc())
+        .limit(limit)
+        .all()
+    )
+    # An admin's own actions on *other* people are logged against them; those
+    # belong on the other person's page, not on this one.
+    own = [
+        e for e in own
+        if e.action not in TARGETED_AUDIT_ACTIONS or _audit_subject_id(e) in (None, user_id)
+    ]
+
+    by_others = [
+        e for e in (
+            db.query(AuditLog)
+            .filter(AuditLog.action.in_(TARGETED_AUDIT_ACTIONS))
+            .filter(AuditLog.user_id != user_id)
+            .order_by(AuditLog.timestamp.desc())
+            .limit(limit * 10)
+            .all()
+        )
+        if _audit_subject_id(e) == user_id
+    ]
+
+    actor_ids = {e.user_id for e in by_others if e.user_id}
+    actors = (
+        {u.id: u for u in db.query(User).filter(User.id.in_(actor_ids)).all()}
+        if actor_ids else {}
+    )
+
+    entries = sorted(own + by_others, key=lambda e: e.timestamp, reverse=True)[:limit]
+    return [
+        UserActivityEntry(
+            id=e.id,
+            action=e.action,
+            timestamp=e.timestamp,
+            ip_address=e.ip_address,
+            actor_name=(
+                actors[e.user_id].full_name or actors[e.user_id].username
+                if e.user_id in actors else None
+            ),
+        )
+        for e in entries
+    ]
 
 
 # ==================== Patient Assignment Endpoints ====================
