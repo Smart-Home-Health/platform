@@ -294,6 +294,30 @@ describe('personal patterns', () => {
     expect(screen.getByText(/2 analyses are|1 analysis is/)).toBeInTheDocument();
   });
 
+  it('names its own outcome on every cell, so the phone layout can drop the header', async () => {
+    await renderPage();
+    // Below 720px the grid reflows into one card per trigger and the header
+    // row goes away; a cell with no label would read as an orphaned
+    // "Collecting 20/24h", which is exactly what scrolling the table did.
+    const cells = [...document.querySelectorAll('.env-cell')];
+    expect(cells.length).toBeGreaterThan(0);
+    cells.forEach((td) => expect(td.getAttribute('data-label')).toBeTruthy());
+    expect(cells.map((td) => td.getAttribute('data-label')))
+      .toContain('Respiratory care events');
+  });
+
+  it('stops scrolling sideways on a phone rather than hiding the trigger', async () => {
+    // jsdom does not apply media queries, so the contract is read from source:
+    // the reflow and the sticky trigger are what keep a cell attached to its
+    // row at either width.
+    const css = readFileSync(resolve(__dirname, 'monitoring-environment.css'), 'utf8');
+    expect(css).toMatch(/@media \(max-width: 720px\)/);
+    expect(css).toMatch(/\.env-grid-wrap \{ overflow-x: visible; \}/);
+    expect(css).toMatch(/content: attr\(data-label\)/);
+    // …and on a wide screen the trigger column stays put instead.
+    expect(css).toMatch(/\.env-grid-trigger,[\s\S]*?position: sticky/);
+  });
+
   it('keeps the counted care tasks visible for the reader to check', async () => {
     await renderPage();
     const cell = screen.getByText('2.1×').closest('td');

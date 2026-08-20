@@ -468,7 +468,7 @@ const AdminV2MonitoringEnvironment = () => {
                       {row.estimated && <span>estimated metric</span>}
                     </td>
                     {grid.outcomes.map((o) => (
-                      <PatternCell key={o.key} card={row.cells[o.key]} />
+                      <PatternCell key={o.key} label={o.label} card={row.cells[o.key]} />
                     ))}
                   </tr>
                 ))}
@@ -657,17 +657,24 @@ const EventLane = ({ laneKey, items, view, onPick }) => {
 
 /* One trigger against one outcome. A cell either has a ratio, is still
  * gathering, or was never analysed — and those read differently on purpose. */
-const PatternCell = ({ card }) => {
+/* `data-label` carries the column name onto the cell itself. On a phone the
+ * grid reflows into one card per trigger, where the header row is gone and the
+ * cell has to say which outcome it is. */
+const PatternCell = ({ card, label }) => {
   const state = cellStateOf(card);
 
   if (state.kind === 'absent') {
-    return <td className="env-cell"><span className="env-cell-none">—</span></td>;
+    return (
+      <td className="env-cell" data-label={label}>
+        <span className="env-cell-none">—</span>
+      </td>
+    );
   }
 
   if (state.kind === 'collecting') {
     const p = state.progress;
     return (
-      <td className="env-cell">
+      <td className="env-cell" data-label={label}>
         <div className="env-collecting" title={state.message}>
           <span>
             {p ? `Collecting ${p.have}/${p.need}${p.unit}` : 'Not started'}
@@ -690,7 +697,8 @@ const PatternCell = ({ card }) => {
   ].filter(Boolean).join(' · ');
 
   return (
-    <td className={`env-cell ${state.kind === 'pattern' ? 'pattern' : ''}`} title={detail}>
+    <td className={`env-cell ${state.kind === 'pattern' ? 'pattern' : ''}`}
+        data-label={label} title={detail}>
       <span className="env-cell-ratio">{state.ratio.toFixed(1)}×</span>
       <span className="env-cell-verdict">
         {state.kind === 'pattern' ? 'Pattern observed' : 'No clear difference'}
