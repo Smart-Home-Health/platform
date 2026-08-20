@@ -1,0 +1,98 @@
+/* User detail chrome (Configuration → Directory → a user).
+ *
+ * Almost everything is care-profile.css: the identity card, the stat strip, the
+ * compact rows, the tabs and the tones are the same ones the care-profile hub
+ * uses, because it is the same kind of page. Only what a user screen adds on
+ * top lives here. Inside `.tw`, so every colour reads the shadcn semantic vars
+ * that vc-content.css remaps to the bedside palette in dark. */
+@import '../../../styles/vc-tokens.css';
+
+/* Three counts, not the measurements page's four. */
+.ud-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+.ud-identity-line { margin-top: -0.35rem; }
+
+/* The box that says a grant is on. A real checkbox cannot live inside the
+ * button that toggles it, so the button carries aria-pressed and this draws
+ * the state. */
+.ud-check {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-top: 0.1rem;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--primary-foreground);
+}
+.ud-check[data-on] {
+  border-color: color-mix(in srgb, var(--ring) 60%, transparent);
+  background: var(--ring);
+  color: var(--background);
+}
+.cp-row-button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.ud-badges { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+
+/* Why a row cannot be tapped, in the place its chevron would have been. */
+.ud-row-note {
+  align-self: center;
+  max-width: 8.5rem;
+  font-size: 0.7rem;
+  line-height: 1.3;
+  text-align: right;
+  color: var(--muted-foreground);
+}
+
+/* ---------- Activity rows ---------- */
+.ud-activity {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.55rem 0.85rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+.ud-activity:first-child { border-top: 0; }
+.ud-activity-dot {
+  width: 7px;
+  height: 7px;
+  margin-top: 0.4rem;
+  border-radius: 999px;
+  background: var(--muted-foreground);
+}
+.ud-activity-dot[data-tone='success'] { background: var(--success); }
+.ud-activity-dot[data-tone='warning'] { background: var(--warning); }
+.ud-activity-dot[data-tone='danger'] { background: var(--destructive); }
+.ud-activity-label { display: block; color: var(--foreground); overflow-wrap: anywhere; }
+/* An action with no wording of its own is shown verbatim, and reads as data. */
+.ud-activity-label[data-raw='true'] {
+  font-family: var(--vc-font-mono);
+  font-size: 0.8rem;
+  color: var(--muted-foreground);
+}
+.ud-activity-detail {
+  display: block;
+  margin-top: 0.1rem;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+.ud-activity-when {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+:root:not(.light) .ud-activity-when { font-family: var(--vc-font-mono); }
+
+.ud-danger summary .cp-eyebrow { color: var(--destructive); }
+
+@media (max-width: 640px) {
+  .ud-row-note { max-width: 6.5rem; font-size: 0.65rem; }
+  .ud-activity {
+    grid-template-columns: auto minmax(0, 1fr);
+    row-gap: 0.15rem;
+    padding: 0.55rem 0.7rem;
+  }
+  .ud-activity-when { grid-column: 2; }
+}

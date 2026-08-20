@@ -24,7 +24,10 @@ import UserSelectionPage from './pages/UserSelectionPage';
 import PasswordResetPage from './pages/PasswordResetPage';
 import Dashboard from './pages/Dashboard';
 import AdminV2Dashboard from './pages/admin-v2/AdminV2Dashboard';
-import AdminV2UserDetail from './pages/admin-v2/AdminV2UserDetail';
+import {
+  AdminV2UserAccess, AdminV2UserActivity, AdminV2UserDetail, AdminV2UserEdit,
+  AdminV2UserSecurity,
+} from './pages/admin-v2/users';
 import AdminV2RoleDetail from './pages/admin-v2/AdminV2RoleDetail';
 import AdminV2Medications from './pages/admin-v2/AdminV2Medications';
 import AdminV2MedicationsManage from './pages/admin-v2/AdminV2MedicationsManage';
@@ -234,6 +237,10 @@ function AppContent() {
           <Route path="/care/configuration/users/roles" element={<ProtectedRoute><Layout><AdminV2Directory /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/users/roles/:roleId" element={<ProtectedRoute><Layout><AdminV2RoleDetail /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/users/:userId" element={<ProtectedRoute><Layout><AdminV2UserDetail /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/users/:userId/edit" element={<ProtectedRoute><Layout><AdminV2UserEdit /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/users/:userId/access" element={<ProtectedRoute><Layout><AdminV2UserAccess /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/users/:userId/security" element={<ProtectedRoute><Layout><AdminV2UserSecurity /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/users/:userId/activity" element={<ProtectedRoute><Layout><AdminV2UserActivity /></Layout></ProtectedRoute>} />
 
           <Route path="/care/*" element={<ProtectedRoute><Layout><AdminV2Dashboard /></Layout></ProtectedRoute>} />
         </Routes>}
