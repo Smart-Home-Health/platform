@@ -156,7 +156,16 @@ describe('AdminV2ReportsOvernight', () => {
   it('drops the event markers off the chart when they are switched off', async () => {
     setup();
     await screen.findByText('Episodes');
-    const annotations = () => chartInstances[chartInstances.length - 2].config.options.plugins.annotation.annotations;
+    // Identify the chart by what is on it, not by where it landed in the
+    // construction order: indexing from the end raced the second chart's
+    // creation and picked up an undefined under CI load.
+    const annotated = () => chartInstances.filter(
+      (c) => c.config?.options?.plugins?.annotation?.annotations?.alarm);
+    await waitFor(() => expect(annotated().length).toBeGreaterThan(0));
+    const annotations = () => {
+      const charts = annotated();
+      return charts[charts.length - 1].config.options.plugins.annotation.annotations;
+    };
     expect(Object.keys(annotations()).some(k => k.startsWith('band'))).toBe(true);
     expect(annotations().alarm).toMatchObject({ yMin: 90 });
     fireEvent.click(screen.getByLabelText('Event markers'));
