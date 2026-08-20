@@ -64,6 +64,7 @@ from models.ha_identity import HASeenIdentity
 from models.custom_vital_definition import CustomVitalDefinition
 from models.patient_vital_range import PatientVitalRange
 from models.patient_env_range import PatientEnvRange
+from models.patient_vent_pin import PatientVentPin, PatientVentPinState
 from models.user_messages import UserMessage, UserMessageAcknowledgement
 from models.vent_ingested_files import VentIngestedFile
 
@@ -83,6 +84,7 @@ __all__ = [
     'CompleteItemRequest', 'BulkCompleteRequest', 'Organization', 'OrganizationMembership',
     'OrganizationType', 'PatientAccess', 'AccessLevel', 'Reader', 'CustomVitalDefinition',
     'PatientVitalRange', 'PatientEnvRange',
+    'PatientVentPin', 'PatientVentPinState',
     'UserMessage', 'UserMessageAcknowledgement', 'VentIngestedFile',
     'DMEShipment', 'DMEShipmentItem', 'DMEReceiptItem', 'DMEShipmentAlert', 'DMEShipmentDocument',
     'EnvironmentalObservation', 'HASeenIdentity', 'HAEntityMapping'

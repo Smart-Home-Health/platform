@@ -128,9 +128,12 @@ describe('AlertsHistory', () => {
 
   it('does not fetch the raw readings it will not draw', async () => {
     show(true);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    // Wait for the call being asserted, not for any call: the component fires
+    // several and the first to land is not reliably this one.
+    await waitFor(() => expect(
+      fetchMock.mock.calls.some(c => String(c[0]).includes('/history/analyze/')),
+    ).toBe(true));
     const urls = fetchMock.mock.calls.map(c => String(c[0]));
-    expect(urls.some(u => u.includes('/history/analyze/'))).toBe(true);
     expect(urls.some(u => u.includes('/history/raw/'))).toBe(false);
   });
 

@@ -15,100 +15,101 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useEffect, useMemo, useState } from 'react';
+// One ventilator day.
+//
+// A day carries ~44 parameters and the device has no opinion about which
+// matter, so the page is built around two answers to that: the care team's
+// pins lead, and everything else is one line per parameter rather than a
+// card. The previous version gave breath rate and a raw vendor counter the
+// same 250px card, which put the numbers anyone actually reads five screens
+// apart.
+//
+// On trust: see ventParameters.js. We flag where a number came from, never
+// whether it is right — there is no verification step in this pipeline and
+// the UI must not imply one.
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import Chart from 'chart.js/auto';
+import 'chartjs-adapter-date-fns';
+import config, { apiFetch } from '../../config';
+import EntityModal from '../../components/vc/EntityModal';
 import {
-  ResponsiveContainer, ComposedChart, CartesianGrid, XAxis, YAxis,
-  Tooltip, Area, Line,
-} from 'recharts';
-import config from '../../config';
-import { ChevronLeftIcon, ChevronRightIcon } from '../../components/Icons';
-import { useChartColors } from '../../hooks/useChartColors';
-import { Button } from '@/components/ui/button';
-import { Alert } from '@/components/ui/alert';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+  CalendarIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, StarIcon,
+} from '../../components/Icons';
+import { rowsFrom, matchesQuery, formatValue, bandPosition } from './ventParameters';
+import './monitoring-ventilator.css';
 
-const GROUP_COLORS = {
-  Ventilation: '#3b82f6',
-  Oxygen:      '#3fb950',
-  Cough:       '#f0883e',
-  Suction:     '#bb8009',
-  Nebulizer:   '#a371f7',
-  System:      '#6b7280',
-  Config:      '#6b7280',
-  Other:       '#6b7280',
+/* Group accents from the vc ramp, so a group reads as a category rather than
+ * a state. Unlisted groups fall back to the neutral dot. */
+const GROUP_ACCENT = {
+  Ventilation: '#4da7bd',
+  Oxygen: '#3fbf6a',
+  Cough: '#9b8cf0',
+  Suction: '#4dc3b3',
+  Nebulizer: '#d98cc4',
+  System: '#7f9fd4',
+  Config: '#a8c94a',
+  Other: '#6b7987',
 };
 
-const fmtDateLong = (iso) => {
-  if (!iso) return '';
-  const d = new Date(iso + 'T00:00:00');
-  return d.toLocaleDateString(undefined, {
-    weekday: 'long', month: 'short', day: 'numeric', year: 'numeric',
+/* Series colours for the pinned trend — the vc-derived ramp the reports use. */
+const SERIES_RAMP = ['#4da7bd', '#3fbf6a', '#9b8cf0', '#4dc3b3', '#7f9fd4', '#d98cc4', '#a8c94a'];
+
+const CHROME = {
+  grid: 'rgba(255, 255, 255, 0.06)',
+  axis: '#6b7987',
+  band: 'rgba(77, 167, 189, 0.16)',
+  line: '#4da7bd',
+};
+
+const VENDOR = 'vocsn';
+
+const fmtDay = (iso) => {
+  const [y, m, d] = String(iso).split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', {
+    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
   });
 };
-
-const fmtTime = (iso) => {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleTimeString(undefined, {
-    hour: 'numeric', minute: '2-digit', hour12: true,
-  });
-};
-
-const fmtNum = (v, precision) => {
-  if (v == null) return '—';
-  const p = (precision != null && precision >= 0) ? Math.min(precision, 4) : 2;
-  if (Math.abs(v) >= 1000) return v.toFixed(0);
-  return v.toFixed(p);
-};
+const fmtClock = (iso) => (iso
+  ? new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  : null);
 
 const AdminV2MonitoringVentilator = ({ patientId }) => {
-  const [daysLoading, setDaysLoading] = useState(true);
+  const [days, setDays] = useState([]);
   const [hasIntegration, setHasIntegration] = useState(true);
-  const [days, setDays] = useState([]);  // [{date, sample_count}]
+  const [daysLoading, setDaysLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(null);
-  const [dayLoading, setDayLoading] = useState(false);
   const [dayData, setDayData] = useState(null);
+  const [dayLoading, setDayLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Drill-down chart modal
-  const [detail, setDetail] = useState(null);   // { parameter, accent } when open
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailData, setDetailData] = useState(null);
-  const [detailError, setDetailError] = useState(null);
+  const [pins, setPins] = useState([]);
+  const [pinsSource, setPinsSource] = useState('default');
+  const [pinSeries, setPinSeries] = useState({});
 
-  // Fetch the days list once per patient.
+  const [query, setQuery] = useState('');
+  const [group, setGroup] = useState(null);
+  const [reviewOnly, setReviewOnly] = useState(false);
+  const [openGroups, setOpenGroups] = useState(null);
+  const [detail, setDetail] = useState(null);
+
+  /* ---------------- data ---------------- */
+
   useEffect(() => {
+    if (!patientId) return undefined;
     let cancelled = false;
+    setDaysLoading(true);
     (async () => {
-      setDaysLoading(true);
-      setError(null);
       try {
-        const res = await fetch(
-          `${config.apiUrl}/api/integrations/patient/${patientId}/vent/days`,
-          { credentials: 'include' }
-        );
-        if (!res.ok) throw new Error(`Failed to load days (${res.status})`);
-        const data = await res.json();
+        const res = await apiFetch(
+          `${config.apiUrl}/api/integrations/patient/${patientId}/vent/days`);
+        if (!res.ok) throw new Error('Could not load ventilator days.');
+        const body = await res.json();
         if (cancelled) return;
-        setHasIntegration(!!data.has_integration);
-        setDays(data.days || []);
-        // Default to most recent day with data.
-        if ((data.days || []).length > 0) {
-          setSelectedDate(data.days[0].date);
-        }
-      } catch (e) {
-        if (!cancelled) setError(e.message);
+        setHasIntegration(body.has_integration !== false);
+        setDays(body.days || []);
+        setSelectedDate(body.days?.[0]?.date ?? null);
+      } catch (err) {
+        if (!cancelled) setError(err.message);
       } finally {
         if (!cancelled) setDaysLoading(false);
       }
@@ -116,50 +117,20 @@ const AdminV2MonitoringVentilator = ({ patientId }) => {
     return () => { cancelled = true; };
   }, [patientId]);
 
-  // Fetch the drill-down series when a parameter is picked.
   useEffect(() => {
-    if (!detail || !selectedDate) {
-      setDetailData(null);
-      return;
-    }
+    if (!patientId || !selectedDate) return undefined;
     let cancelled = false;
+    setDayLoading(true);
+    setError(null);
     (async () => {
-      setDetailLoading(true);
-      setDetailError(null);
       try {
-        const res = await fetch(
-          `${config.apiUrl}/api/integrations/patient/${patientId}/vent/day/${selectedDate}/parameter/${detail.parameter.parameter_key}`,
-          { credentials: 'include' }
-        );
-        if (!res.ok) throw new Error(`Failed to load chart (${res.status})`);
-        const data = await res.json();
-        if (!cancelled) setDetailData(data);
-      } catch (e) {
-        if (!cancelled) setDetailError(e.message);
-      } finally {
-        if (!cancelled) setDetailLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [detail, selectedDate, patientId]);
-
-  // Fetch the selected day's stats.
-  useEffect(() => {
-    if (!selectedDate) return;
-    let cancelled = false;
-    (async () => {
-      setDayLoading(true);
-      setError(null);
-      try {
-        const res = await fetch(
-          `${config.apiUrl}/api/integrations/patient/${patientId}/vent/day/${selectedDate}`,
-          { credentials: 'include' }
-        );
-        if (!res.ok) throw new Error(`Failed to load day (${res.status})`);
-        const data = await res.json();
-        if (!cancelled) setDayData(data);
-      } catch (e) {
-        if (!cancelled) setError(e.message);
+        const res = await apiFetch(
+          `${config.apiUrl}/api/integrations/patient/${patientId}/vent/day/${selectedDate}`);
+        if (!res.ok) throw new Error('Could not load this day.');
+        const body = await res.json();
+        if (!cancelled) { setDayData(body); setOpenGroups(null); }
+      } catch (err) {
+        if (!cancelled) setError(err.message);
       } finally {
         if (!cancelled) setDayLoading(false);
       }
@@ -167,431 +138,609 @@ const AdminV2MonitoringVentilator = ({ patientId }) => {
     return () => { cancelled = true; };
   }, [patientId, selectedDate]);
 
-  // Day-list-aware prev/next/today helpers (skip empty dates).
-  const dateIndex = useMemo(() => {
-    const idx = days.findIndex(d => d.date === selectedDate);
-    return { idx, total: days.length };
-  }, [days, selectedDate]);
+  useEffect(() => {
+    if (!patientId) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch(
+          `${config.apiUrl}/api/integrations/patient/${patientId}/vent/pins?vendor=${VENDOR}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const body = await res.json();
+        if (!cancelled) {
+          setPins(body.parameter_keys || []);
+          setPinsSource(body.source || 'default');
+        }
+      } catch {
+        if (!cancelled) { setPins([]); setPinsSource('default'); }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [patientId]);
 
-  const goPrev = () => {
-    // newer = lower index (days sorted DESC). "Prev" in calendar sense = older = idx+1.
-    if (dateIndex.idx < days.length - 1) setSelectedDate(days[dateIndex.idx + 1].date);
-  };
-  const goNext = () => {
-    if (dateIndex.idx > 0) setSelectedDate(days[dateIndex.idx - 1].date);
-  };
-  const goNewest = () => {
-    if (days.length > 0) setSelectedDate(days[0].date);
+  /* ---------------- derived ---------------- */
+
+  const rows = useMemo(() => rowsFrom(dayData), [dayData]);
+  const byKey = useMemo(
+    () => Object.fromEntries(rows.map((r) => [r.param.parameter_key, r])), [rows]);
+
+  const pinnedRows = useMemo(
+    () => pins.map((key) => byKey[key]).filter(Boolean), [pins, byKey]);
+  // Pins that exist for the patient but produced nothing today: worth showing
+  // as absent rather than dropping, or a silent gap reads as a normal day.
+  const pinsMissingToday = useMemo(
+    () => pins.filter((key) => !byKey[key]), [pins, byKey]);
+
+  const reviewCount = rows.filter((r) => r.review).length;
+
+  const groupCounts = useMemo(() => {
+    const counts = new Map();
+    rows.forEach((r) => counts.set(r.group, (counts.get(r.group) || 0) + 1));
+    return [...counts.entries()].map(([name, count]) => ({ name, count }));
+  }, [rows]);
+
+  const visibleRows = useMemo(() => rows.filter((r) => (
+    (!group || r.group === group)
+    && (!reviewOnly || r.review)
+    && matchesQuery(r, query)
+  )), [rows, group, reviewOnly, query]);
+
+  const visibleGroups = useMemo(() => {
+    const out = [];
+    visibleRows.forEach((r) => {
+      let entry = out.find((g) => g.name === r.group);
+      if (!entry) { entry = { name: r.group, rows: [] }; out.push(entry); }
+      entry.rows.push(r);
+    });
+    return out;
+  }, [visibleRows]);
+
+  // Only the first group starts open; a filtered or searched list opens all,
+  // because a hit hidden inside a collapsed group looks like no hit at all.
+  const filtering = Boolean(query.trim() || group || reviewOnly);
+  const isOpen = useCallback((name, index) => {
+    if (filtering) return true;
+    if (openGroups === null) return index === 0;
+    return openGroups.includes(name);
+  }, [filtering, openGroups]);
+
+  const toggleGroup = (name) => {
+    setOpenGroups((prev) => {
+      const base = prev ?? (visibleGroups[0] ? [visibleGroups[0].name] : []);
+      return base.includes(name) ? base.filter((g) => g !== name) : [...base, name];
+    });
   };
 
-  if (daysLoading) {
-    return <div style={{ padding: 24, color: 'var(--muted-foreground)' }}>Loading ventilator data…</div>;
-  }
+  /* ---------------- pinned series ---------------- */
+
+  const pinKeysStr = pinnedRows.map((r) => r.param.parameter_key).join(',');
+  useEffect(() => {
+    if (!patientId || !selectedDate || !pinKeysStr) { setPinSeries({}); return undefined; }
+    let cancelled = false;
+    const keys = pinKeysStr.split(',');
+    (async () => {
+      const next = {};
+      await Promise.all(keys.map(async (key) => {
+        try {
+          const res = await apiFetch(`${config.apiUrl}/api/integrations/patient/`
+            + `${patientId}/vent/day/${selectedDate}/parameter/${key}`);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const body = await res.json();
+          next[key] = body.points || [];
+        } catch {
+          next[key] = [];
+        }
+      }));
+      if (!cancelled) setPinSeries(next);
+    })();
+    return () => { cancelled = true; };
+  }, [patientId, selectedDate, pinKeysStr]);
+
+  /* ---------------- pinning ---------------- */
+
+  const savePins = useCallback(async (keys) => {
+    setPins(keys);
+    setPinsSource('patient');
+    try {
+      await apiFetch(`${config.apiUrl}/api/integrations/patient/${patientId}/vent/pins`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vendor: VENDOR, parameter_keys: keys }),
+      });
+    } catch {
+      // The star is optimistic; a failed save leaves the page usable and the
+      // next load re-reads the server's answer.
+    }
+  }, [patientId]);
+
+  const togglePin = (key) => {
+    savePins(pins.includes(key) ? pins.filter((k) => k !== key) : [...pins, key]);
+  };
+
+  /* ---------------- day nav ---------------- */
+
+  const dayIndex = days.findIndex((d) => d.date === selectedDate);
+  const goto = (delta) => {
+    const next = days[dayIndex + delta];
+    if (next) setSelectedDate(next.date);
+  };
+
+  /* ---------------- render ---------------- */
+
+  if (daysLoading) return <div className="vnt"><p className="vnt-empty">Loading ventilator data…</p></div>;
+
   if (!hasIntegration) {
     return (
-      <div style={{
-        padding: 30, color: 'var(--muted-foreground)',
-        background: 'var(--secondary)',
-        border: '1px dashed var(--border)',
-        borderRadius: 8, textAlign: 'center',
-      }}>
-        <p style={{ margin: '0 0 8px 0', color: 'var(--foreground)', fontSize: 16, fontWeight: 600 }}>
-          No ventilator integration
-        </p>
-        <p style={{ margin: 0 }}>
-          Configure a Ventilator integration under <em>Configuration → Integrations</em> and upload a log export.
+      <div className="vnt">
+        <p className="vnt-setup">
+          This patient has no ventilator integration yet. Add one under
+          Configuration &rsaquo; Integrations to start importing device data.
         </p>
       </div>
     );
   }
+
   if (days.length === 0) {
     return (
-      <div style={{
-        padding: 30, color: 'var(--muted-foreground)',
-        background: 'var(--secondary)',
-        border: '1px dashed var(--border)',
-        borderRadius: 8, textAlign: 'center',
-      }}>
-        <p style={{ margin: '0 0 8px 0', color: 'var(--foreground)', fontSize: 16, fontWeight: 600 }}>
-          No vent samples yet
-        </p>
-        <p style={{ margin: 0 }}>
-          Upload a log export via the integration's <em>Logs</em> button to populate this view.
+      <div className="vnt">
+        <p className="vnt-setup">
+          No ventilator samples have been parsed yet. Upload a device export from
+          the integration&rsquo;s Logs panel.
         </p>
       </div>
     );
   }
 
+  const summary = dayData?.summary;
+  const covering = summary && (fmtClock(summary.first_at) && fmtClock(summary.last_at)
+    ? `${fmtClock(summary.first_at)} – ${fmtClock(summary.last_at)}`
+    : null);
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Date controls */}
-      <div className="tw" style={{
-        display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-        padding: '12px 14px',
-        background: 'var(--secondary)',
-        border: '1px solid var(--border)',
-        borderRadius: 10,
-      }}>
-        <Button
-          variant="secondary"
-          size="icon"
-          onClick={goPrev}
-          disabled={dateIndex.idx >= days.length - 1}
-          title="Older day with data"
-        ><ChevronLeftIcon size={16} /></Button>
-
-        <Select value={selectedDate || undefined} onValueChange={setSelectedDate}>
-          <SelectTrigger className="w-auto min-w-[260px] font-semibold"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {days.map(d => (
-              <SelectItem key={d.date} value={d.date}>
-                {fmtDateLong(d.date)} — {d.sample_count.toLocaleString()} samples
-              </SelectItem>
+    <div className="vnt">
+      <div className="vnt-daybar">
+        <button
+          type="button" className="vnt-navbtn" aria-label="Older day"
+          disabled={dayIndex >= days.length - 1} onClick={() => goto(1)}
+        >
+          <ChevronLeftIcon size={18} />
+        </button>
+        <span className="vnt-datepill">
+          {selectedDate ? fmtDay(selectedDate) : '—'}
+          <CalendarIcon size={16} />
+          <select
+            aria-label="Pick a day"
+            value={selectedDate ?? ''}
+            onChange={(e) => setSelectedDate(e.target.value)}
+          >
+            {days.map((d) => (
+              <option key={d.date} value={d.date}>
+                {fmtDay(d.date)} — {d.sample_count.toLocaleString()} samples
+              </option>
             ))}
-          </SelectContent>
-        </Select>
-
-        <Button
-          variant="secondary"
-          size="icon"
-          onClick={goNext}
-          disabled={dateIndex.idx <= 0}
-          title="Newer day with data"
-        ><ChevronRightIcon size={16} /></Button>
-
-        <Button
-          onClick={goNewest}
-          disabled={dateIndex.idx === 0}
-        >Newest</Button>
-
-        <span style={{ marginLeft: 'auto', color: 'var(--muted-foreground)', fontSize: 12 }}>
-          {dateIndex.idx + 1} of {dateIndex.total}
+          </select>
         </span>
+        <button
+          type="button" className="vnt-navbtn" aria-label="Newer day"
+          disabled={dayIndex <= 0} onClick={() => goto(-1)}
+        >
+          <ChevronRightIcon size={18} />
+        </button>
+        <button
+          type="button" className="vnt-navbtn"
+          disabled={dayIndex === 0} onClick={() => setSelectedDate(days[0].date)}
+        >
+          Newest
+        </button>
+        <span className="vnt-count">{dayIndex + 1} of {days.length}</span>
       </div>
 
-      {/* Vendor-encoding caveat — kept small so it doesn't dominate the page. */}
-      <div style={{
-        padding: '8px 12px', borderRadius: 6,
-        background: 'rgba(96,165,250,0.08)',
-        border: '1px solid rgba(96,165,250,0.25)',
-        color: 'var(--muted-foreground)', fontSize: 12, lineHeight: 1.4,
-      }}>
-        <strong style={{ color: 'var(--ring)' }}>Note:</strong> headline values use VOCSN's median (50th percentile) aggregate
-        to match the device's own report. Some parameters (e.g. PEEP, MAP, ambient pressure) may still
-        display in raw vendor units — we apply parameter-specific scaling as it's identified.
-      </div>
+      {error && <p className="vnt-error">{error}</p>}
 
-      {/* Day summary */}
-      {dayData?.summary && (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-          gap: 10,
-        }}>
-          <SummaryTile label="Date" value={fmtDateLong(dayData.date)} />
-          <SummaryTile
-            label="Total Samples"
-            value={dayData.summary.total_samples.toLocaleString()}
-          />
-          <SummaryTile
-            label="Parameters Active"
-            value={dayData.summary.parameter_count}
-          />
-          <SummaryTile
-            label="Time Range"
-            value={dayData.summary.first_at
-              ? `${fmtTime(dayData.summary.first_at)} → ${fmtTime(dayData.summary.last_at)}`
-              : '—'}
-          />
+      {summary && (
+        <div className="vnt-stats">
+          <div className="vnt-stat">
+            <span className="vnt-stat-head">Samples</span>
+            <span className="vnt-stat-value">{summary.total_samples.toLocaleString()}</span>
+          </div>
+          <div className="vnt-stat">
+            <span className="vnt-stat-head">Parameters</span>
+            <span className="vnt-stat-value">{summary.parameter_count}</span>
+          </div>
+          <div className="vnt-stat">
+            <span className="vnt-stat-head">Covering</span>
+            <span className="vnt-stat-value" style={{ fontSize: '1rem' }}>{covering || '—'}</span>
+            <span className="vnt-stat-note">first to last sample</span>
+          </div>
+          <button
+            type="button"
+            className={`vnt-stat ${reviewCount ? 'flagged' : 'clean'}`}
+            aria-pressed={reviewOnly}
+            onClick={() => setReviewOnly((v) => !v)}
+          >
+            <span className="vnt-stat-head">Needs review</span>
+            <span className="vnt-stat-value">{reviewCount}</span>
+            <span className="vnt-stat-note">
+              {reviewCount ? (reviewOnly ? 'showing only these' : 'tap to filter') : 'all described'}
+            </span>
+          </button>
         </div>
       )}
 
-      {dayLoading && (
-        <div style={{ padding: 24, color: 'var(--muted-foreground)', textAlign: 'center' }}>
-          Loading day…
-        </div>
+      {pinnedRows.length > 0 && (
+        <section className="vnt-card">
+          <div className="vnt-card-head">
+            <h3>Pinned</h3>
+            <span className="vnt-label">
+              {pinsSource === 'default' ? 'default set' : `${pins.length} chosen`}
+            </span>
+          </div>
+          <div className="vnt-pins">
+            {pinnedRows.map((row) => (
+              <PinnedCell key={row.param.parameter_key} row={row} />
+            ))}
+            {pinsMissingToday.map((key) => (
+              <div className="vnt-pin vnt-pin-missing" key={key}>
+                <span className="vnt-pin-name">#{key}</span>
+                <span className="vnt-pin-value">—</span>
+                <span className="vnt-pin-sub">no samples today</span>
+              </div>
+            ))}
+          </div>
+          <PinnedTrend rows={pinnedRows} series={pinSeries} />
+        </section>
       )}
 
-      {error && (
-        <div className="tw"><Alert variant="destructive">{error}</Alert></div>
-      )}
+      <div className="vnt-controls">
+        <input
+          className="vnt-search"
+          type="search"
+          placeholder="Search parameter or vendor ID"
+          aria-label="Search parameters"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <button
+          type="button" className="vnt-chip"
+          aria-pressed={group === null} onClick={() => setGroup(null)}
+        >
+          All
+          <span className="vnt-chip-count">{rows.length}</span>
+        </button>
+        {groupCounts.map((g) => (
+          <button
+            key={g.name} type="button" className="vnt-chip"
+            aria-pressed={group === g.name}
+            onClick={() => setGroup(group === g.name ? null : g.name)}
+          >
+            <span className="vnt-dot" style={{ '--grp': GROUP_ACCENT[g.name] }} />
+            {g.name}
+            <span className="vnt-chip-count">{g.count}</span>
+          </button>
+        ))}
+      </div>
 
-      {/* Grouped parameter cards */}
-      {!dayLoading && dayData?.groups?.map(group => {
-        const color = GROUP_COLORS[group.name] || GROUP_COLORS.Other;
-        return (
-          <div key={group.name} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              paddingBottom: 6,
-              borderBottom: `2px solid ${color}`,
-            }}>
-              <span style={{
-                width: 12, height: 12, borderRadius: '50%', background: color,
-              }} />
-              <h3 style={{ margin: 0, color: 'var(--foreground)', fontSize: 16, fontWeight: 700 }}>
-                {group.name}
-              </h3>
-              <span style={{
-                color: 'var(--muted-foreground)', fontSize: 12, marginLeft: 'auto',
-              }}>{group.parameters.length} parameter{group.parameters.length === 1 ? '' : 's'}</span>
-            </div>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-              gap: 8,
-            }}>
-              {group.parameters.map(p => (
-                <ParameterCard
-                  key={p.parameter_key}
-                  p={p}
-                  accent={color}
-                  onOpen={() => setDetail({ parameter: p, accent: color })}
+      {dayLoading && !dayData && <p className="vnt-empty">Loading the day…</p>}
+
+      {dayData && (
+        <section className="vnt-card">
+          {visibleGroups.length === 0 ? (
+            <p className="vnt-empty">No parameters match.</p>
+          ) : visibleGroups.map((g, i) => (
+            <div className="vnt-group" key={g.name}>
+              <button
+                type="button" className="vnt-group-head"
+                aria-expanded={isOpen(g.name, i)}
+                onClick={() => toggleGroup(g.name)}
+              >
+                <span className="vnt-dot" style={{ '--grp': GROUP_ACCENT[g.name] }} />
+                {g.name}
+                <span className="vnt-group-meta">
+                  {g.rows.length} {g.rows.length === 1 ? 'parameter' : 'parameters'}
+                </span>
+                <ChevronDownIcon
+                  size={15}
+                  style={{ transform: isOpen(g.name, i) ? 'rotate(180deg)' : 'none' }}
+                />
+              </button>
+              {isOpen(g.name, i) && g.rows.map((row) => (
+                <ParameterRow
+                  key={row.param.parameter_key}
+                  row={row}
+                  pinned={pins.includes(row.param.parameter_key)}
+                  onPin={() => togglePin(row.param.parameter_key)}
+                  onOpen={() => setDetail(row)}
                 />
               ))}
             </div>
-          </div>
-        );
-      })}
+          ))}
+          <p className="vnt-note">
+            Values are the average of the device&rsquo;s per-window medians for the day;
+            the range beside each is the lowest and highest of those medians, not the
+            day&rsquo;s extremes.
+          </p>
+        </section>
+      )}
 
       {detail && (
-        <ParameterDetailModal
-          detail={detail}
+        <ParameterDetail
+          row={detail}
+          patientId={patientId}
           date={selectedDate}
-          loading={detailLoading}
-          data={detailData}
-          error={detailError}
-          onClose={() => { setDetail(null); setDetailData(null); }}
+          onClose={() => setDetail(null)}
         />
       )}
     </div>
   );
 };
 
-// ---- small subcomponents ----
+/* One pinned parameter, big enough to read across a room. */
+const PinnedCell = ({ row }) => {
+  const { param, headline, review } = row;
+  const value = formatValue(headline?.value, param.precision);
+  return (
+    <div className={`vnt-pin${review ? ' review' : ''}`}>
+      <span className="vnt-pin-name" title={param.display_label}>{param.display_label}</span>
+      <span className="vnt-pin-value">
+        {value ?? '—'}
+        {value != null && param.display_units && <small>{param.display_units}</small>}
+      </span>
+      <span className="vnt-pin-sub">
+        {headline ? `${headline.n} samples` : 'no data'}
+        {headline?.basis === 'raw' && ' · raw'}
+      </span>
+    </div>
+  );
+};
 
-const SummaryTile = ({ label, value }) => (
-  <div style={{
-    background: 'var(--card)', borderRadius: 10,
-    border: '1px solid var(--border)',
-    padding: '10px 14px',
-  }}>
-    <div style={{
-      color: 'var(--muted-foreground)', fontSize: 11, fontWeight: 600,
-      textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4,
-    }}>{label}</div>
-    <div style={{ color: 'var(--foreground)', fontSize: 16, fontWeight: 700 }}>{value}</div>
-  </div>
-);
-
-const ParameterCard = ({ p, accent, onOpen }) => {
-  // VOCSN encodes statistical aggregates per sample window:
-  //   _50 = median, _5 = 5th percentile, _95 = 95th percentile,
-  //   _N  = period count / raw single-sample (not a clinical value).
-  // The vendor's own report plots median ± 5/95 band, so we do the same.
-  const median = p.stats_by_suffix['50'];
-  const p5 = p.stats_by_suffix['5'];
-  const p95 = p.stats_by_suffix['95'];
-  const raw = p.stats_by_suffix['N'] || p.stats_by_suffix[''];
-  const hasMedian = !!median;
-
-  // Headline uses median when present, else falls back to the raw _N column.
-  // Min/Max under it are the day's bounds on the median (not on raw samples).
-  const headline = hasMedian ? median : raw;
-  const fallbackLabel = hasMedian ? null : 'raw';
-  const lowBand = p5?.mean ?? p5?.lo;
-  const highBand = p95?.mean ?? p95?.hi;
-  const sampleCount = (median?.n) ?? (raw?.n) ?? p.total_samples;
+/* One parameter, one line. */
+const ParameterRow = ({ row, pinned, onPin, onOpen }) => {
+  const { param, headline, flags, review } = row;
+  const value = formatValue(headline?.value, param.precision);
+  const lo = formatValue(headline?.lo, param.precision);
+  const hi = formatValue(headline?.hi, param.precision);
+  const pos = bandPosition(headline?.value, headline?.lo, headline?.hi);
 
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      style={{
-        // Reset native <button> styling so the card renders identically.
-        font: 'inherit', color: 'inherit', cursor: 'pointer', textAlign: 'left',
-        appearance: 'none',
-        background: 'var(--card)',
-        border: '1px solid var(--border)',
-        borderLeft: `4px solid ${accent}`,
-        borderRadius: 10, padding: '10px 12px',
-        display: 'flex', flexDirection: 'column', gap: 6,
-        transition: 'border-color 0.15s, transform 0.05s',
-      }}
-      onMouseEnter={(e) => { e.currentTarget.style.borderColor = accent; }}
-      onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; }}
-      onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.99)'; }}
-      onMouseUp={(e) => { e.currentTarget.style.transform = ''; }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-        <span style={{ color: 'var(--foreground)', fontWeight: 600, fontSize: 14, lineHeight: 1.2 }}>
-          {p.display_label}
+    <div className={`vnt-row${review ? ' review' : ''}`}>
+        <button
+          type="button"
+          className="vnt-pinbtn"
+          aria-pressed={pinned}
+          aria-label={`${pinned ? 'Unpin' : 'Pin'} ${param.display_label}`}
+          onClick={onPin}
+        >
+          <StarIcon size={15} filled={pinned} />
+        </button>
+        <button type="button" className="vnt-row-name" onClick={onOpen}>
+          <span className="vnt-row-label">{param.display_label}</span>
+          <span className="vnt-row-key">#{param.parameter_key}</span>
+        </button>
+        <span className="vnt-row-value">
+          {value ?? '—'}
+          {value != null && param.display_units && <small>{param.display_units}</small>}
         </span>
-        <span style={{ color: 'var(--muted-foreground)', fontSize: 11 }}>#{p.parameter_key}</span>
-      </div>
-      {p.display_units && (
-        <span style={{ color: 'var(--muted-foreground)', fontSize: 11 }}>{p.display_units}</span>
-      )}
-
-      {headline && (
-        <div style={{
-          display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4,
-          marginTop: 2,
-        }}>
-          <MetricChip label="day low" value={fmtNum(headline.lo, p.precision)} />
-          <MetricChip
-            label={hasMedian ? 'median' : (fallbackLabel || 'value')}
-            value={fmtNum(headline.mean, p.precision)}
-            highlight
-          />
-          <MetricChip label="day high" value={fmtNum(headline.hi, p.precision)} />
-        </div>
-      )}
-
-      {hasMedian && (lowBand != null || highBand != null) && (
-        <div style={{
-          color: 'var(--muted-foreground)', fontSize: 11,
-          padding: '4px 6px', borderRadius: 4,
-          background: 'var(--secondary)',
-        }}>
-          5–95% typical:{' '}
-          <strong style={{ color: 'var(--foreground)' }}>
-            {fmtNum(lowBand, p.precision)} – {fmtNum(highBand, p.precision)}
-          </strong>
-        </div>
-      )}
-
-      <div style={{ color: 'var(--muted-foreground)', fontSize: 11, marginTop: 2, display: 'flex', justifyContent: 'space-between' }}>
-        <span>
-          {sampleCount.toLocaleString()} samples
-          {!hasMedian && (
-            <span style={{ marginLeft: 6, color: 'var(--warning)' }}>
-              (no median — showing raw _N)
+        <span className="vnt-row-range">{lo != null && hi != null ? `${lo}–${hi}` : ''}</span>
+        <span className="vnt-row-n">{headline?.n ?? param.total_samples}</span>
+        <span className="vnt-row-chev"><ChevronRightIcon size={14} /></span>
+        {pos != null && (
+          <span className="vnt-pos">
+            <span className="vnt-pos-mark" style={{ left: `${pos * 100}%` }} />
+            <span className="sr-only">
+              sits {Math.round(pos * 100)}% through its range for the day
             </span>
-          )}
-        </span>
-        <span style={{ color: accent, opacity: 0.7 }}>chart →</span>
-      </div>
-    </button>
+          </span>
+        )}
+        {flags.length > 0 && (
+          <span className="vnt-flags">
+            {flags.map((f) => (
+              <span key={f.key} className={`vnt-flag ${f.tone}`} title={f.hint}>{f.label}</span>
+            ))}
+          </span>
+        )}
+    </div>
   );
 };
 
-// Drill-down chart: line+band of one parameter over the selected day.
-const ParameterDetailModal = ({ detail, date, loading, data, error, onClose }) => {
-  const chart = useChartColors();
-  const { parameter, accent } = detail;
-  const chartData = useMemo(() => {
-    if (!data?.points) return [];
-    return data.points
-      .filter(p => p.p50 != null || p.p5 != null || p.p95 != null)
-      .map(p => ({
-        ts: new Date(p.ts).getTime(),
-        // Recharts Area needs separate keys for the band edges.
-        p50: p.p50,
-        p5:  p.p5,
-        p95: p.p95,
-        // For the band: render as [p5, p95] via a single dataKey returning an array.
-        band: (p.p5 != null && p.p95 != null) ? [p.p5, p.p95] : null,
-      }));
-  }, [data]);
+/* The pinned parameters on one time axis. Only pinned series are fetched, so
+ * this is a handful of requests rather than one per parameter on the page. */
+const PinnedTrend = ({ rows, series }) => {
+  const canvasRef = useRef(null);
+  const chartRef = useRef(null);
 
-  const fmtTickTime = (t) => new Date(t).toLocaleTimeString(undefined,
-    { hour: 'numeric', hour12: true });
-  const fmtTooltipTime = (t) => new Date(t).toLocaleString(undefined,
-    { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+  const datasets = useMemo(() => rows.map((row, i) => {
+    const key = row.param.parameter_key;
+    const points = (series[key] || [])
+      .filter((p) => p.p50 != null)
+      .map((p) => ({ x: new Date(p.ts).getTime(), y: p.p50 }));
+    return { key, label: row.param.display_label, points, axis: i === 0 ? 'y' : `y${i}` };
+  }).filter((d) => d.points.length > 0), [rows, series]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || datasets.length === 0) return undefined;
+    // Each parameter keeps its own hidden scale — minute volume in litres and
+    // breath rate per minute on one axis would flatten both to a line.
+    const scales = { x: {
+      type: 'time',
+      time: { displayFormats: { minute: 'h:mm', hour: 'ha' } },
+      grid: { color: CHROME.grid, drawTicks: false },
+      border: { display: false },
+      ticks: { color: CHROME.axis, maxRotation: 0, autoSkip: true, maxTicksLimit: 6,
+        font: { size: 10, family: "'IBM Plex Mono', monospace" } },
+    } };
+    datasets.forEach((d) => {
+      scales[d.axis] = { display: false, grid: { display: false } };
+    });
+
+    const chart = new Chart(canvas.getContext('2d'), {
+      type: 'line',
+      data: {
+        datasets: datasets.map((d, i) => ({
+          label: d.label,
+          data: d.points,
+          parsing: false,
+          yAxisID: d.axis,
+          borderColor: SERIES_RAMP[i % SERIES_RAMP.length],
+          borderWidth: 1.4,
+          pointRadius: 0,
+          tension: 0.15,
+        })),
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        interaction: { mode: 'index', intersect: false },
+        layout: { padding: { right: 8, top: 6 } },
+        scales,
+        plugins: {
+          legend: {
+            display: true, position: 'bottom',
+            labels: { usePointStyle: true, boxWidth: 6, color: CHROME.axis,
+              font: { size: 10, family: "'IBM Plex Mono', monospace" } },
+          },
+          tooltip: { enabled: true },
+        },
+      },
+    });
+    chartRef.current = chart;
+    return () => { chart.destroy(); chartRef.current = null; };
+  }, [datasets]);
+
+  if (datasets.length === 0) return null;
+  return (
+    <div className="vnt-plot">
+      <canvas ref={canvasRef} aria-label="Pinned parameters over the day" />
+    </div>
+  );
+};
+
+
+/* One parameter's day: the median line inside its 5th–95th percentile band. */
+const ParameterDetail = ({ row, patientId, date, onClose }) => {
+  const { param, band, flags } = row;
+  const sources = param.sources || [];
+  const used = sources.find((s) => s.used) ?? null;
+  const dropped = sources.filter((s) => !s.used);
+  const [points, setPoints] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      try {
+        const res = await apiFetch(`${config.apiUrl}/api/integrations/patient/`
+          + `${patientId}/vent/day/${date}/parameter/${param.parameter_key}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const body = await res.json();
+        if (!cancelled) setPoints(body.points || []);
+      } catch {
+        if (!cancelled) setPoints([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [patientId, date, param.parameter_key]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !points?.length) return undefined;
+    const at = (k) => points.filter((p) => p[k] != null)
+      .map((p) => ({ x: new Date(p.ts).getTime(), y: p[k] }));
+    const chart = new Chart(canvas.getContext('2d'), {
+      type: 'line',
+      data: {
+        datasets: [
+          // The band is drawn as p5 then p95 filling back to it: Chart.js has
+          // no range series, and two lines with fill:'-1' is the shape that
+          // does not need one.
+          { label: '5th percentile', data: at('p5'), parsing: false,
+            borderColor: 'transparent', pointRadius: 0 },
+          { label: '95th percentile', data: at('p95'), parsing: false,
+            borderColor: 'transparent', pointRadius: 0,
+            backgroundColor: CHROME.band, fill: '-1' },
+          { label: 'Median', data: at('p50'), parsing: false,
+            borderColor: CHROME.line, borderWidth: 1.6, pointRadius: 0, tension: 0.15 },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        interaction: { mode: 'index', intersect: false },
+        scales: {
+          x: {
+            type: 'time',
+            time: { displayFormats: { minute: 'h:mm', hour: 'ha' } },
+            grid: { color: CHROME.grid, drawTicks: false },
+            border: { display: false },
+            ticks: { color: CHROME.axis, maxRotation: 0, autoSkip: true, maxTicksLimit: 6,
+              font: { size: 10, family: "'IBM Plex Mono', monospace" } },
+          },
+          y: {
+            grid: { color: CHROME.grid, drawTicks: false },
+            border: { display: false },
+            ticks: { color: CHROME.axis, maxTicksLimit: 6,
+              font: { size: 10, family: "'IBM Plex Mono', monospace" } },
+          },
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: { enabled: true },
+        },
+      },
+    });
+    return () => chart.destroy();
+  }, [points]);
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent
-        className="sm:max-w-[820px]"
-        style={{ borderLeft: `5px solid ${accent}` }}
-        aria-describedby={undefined}
-      >
-        <DialogHeader>
-          <DialogTitle>
-            {parameter.display_label}
-            {parameter.display_units && (
-              <span style={{ color: 'var(--muted-foreground)', fontWeight: 500, fontSize: 14, marginLeft: 8 }}>
-                {parameter.display_units}
-              </span>
-            )}
-          </DialogTitle>
-          <div style={{ color: 'var(--muted-foreground)', fontSize: 12 }}>
-            {date} · #{parameter.parameter_key}
-          </div>
-        </DialogHeader>
-
-        {loading && (
-          <div style={{ padding: 30, color: 'var(--muted-foreground)', textAlign: 'center' }}>Loading…</div>
-        )}
-        {error && (
-          <Alert variant="destructive">{error}</Alert>
-        )}
-
-        {!loading && data && chartData.length === 0 && (
-          <div style={{
-            padding: 30, color: 'var(--muted-foreground)', textAlign: 'center',
-            background: 'var(--secondary)',
-            border: '1px dashed var(--border)',
-            borderRadius: 8, margin: '12px 0',
-          }}>No points to plot for this parameter on this day.</div>
-        )}
-
-        {!loading && chartData.length > 0 && (
-          <div style={{ marginTop: 12, padding: '4px 0' }}>
-            <ResponsiveContainer width="100%" height={320}>
-              <ComposedChart data={chartData} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />
-                <XAxis
-                  dataKey="ts"
-                  type="number"
-                  domain={['dataMin', 'dataMax']}
-                  tickFormatter={fmtTickTime}
-                  tick={{ fontSize: 10, fill: chart.axis }}
-                  minTickGap={40}
-                />
-                <YAxis tick={{ fontSize: 10, fill: chart.axis }} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: chart.cutout, border: `1px solid ${chart.grid}`, borderRadius: 8, color: chart.foreground }}
-                  labelFormatter={fmtTooltipTime}
-                  formatter={(value, name) => {
-                    if (Array.isArray(value)) return [`${value[0]} – ${value[1]}`, '5–95% band'];
-                    return [value, name === 'p50' ? 'median' : name];
-                  }}
-                />
-                <Area type="monotone" dataKey="band" stroke="none"
-                      fill={accent} fillOpacity={0.18} connectNulls />
-                <Line type="monotone" dataKey="p50" stroke={accent}
-                      strokeWidth={2} dot={false} connectNulls />
-              </ComposedChart>
-            </ResponsiveContainer>
-            <div style={{ color: 'var(--muted-foreground)', fontSize: 11, marginTop: 6 }}>
-              Line = median ({parameter.stats_by_suffix?.['50']?.n || 0} samples).
-              Shaded band = 5th–95th percentile.
-            </div>
+    <EntityModal open onOpenChange={(v) => { if (!v) onClose(); }} wide
+                 title={`${param.display_label} · #${param.parameter_key}`}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+        {flags.length > 0 && (
+          <div className="vnt-flags" style={{ gridColumn: 'auto', margin: 0 }}>
+            {flags.map((f) => (
+              <span key={f.key} className={`vnt-flag ${f.tone}`} title={f.hint}>{f.label}</span>
+            ))}
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+        {band && (
+          <p className="vnt-note" style={{ padding: 0 }}>
+            Device band, 5th to 95th percentile:{' '}
+            <b>{formatValue(band.lo, param.precision)} – {formatValue(band.hi, param.precision)}</b>
+            {param.display_units ? ` ${param.display_units}` : ''}
+            {band.inverted && ' — averaged inverted over the day and shown low to high'}
+          </p>
+        )}
+        <div style={{ height: 300, position: 'relative' }}>
+          {loading && <p className="vnt-empty">Loading…</p>}
+          {!loading && !points?.length && (
+            <p className="vnt-empty">No points to plot for this parameter on this day.</p>
+          )}
+          {!loading && points?.length > 0 && (
+            <canvas ref={canvasRef} aria-label={`${param.display_label} over the day`} />
+          )}
+        </div>
+        <p className="vnt-note" style={{ padding: 0 }}>
+          Line is the device&rsquo;s median for each sampling window; the shaded band is
+          its 5th to 95th percentile over the same window.
+        </p>
+        {sources.length > 1 && (
+          <p className="vnt-note" style={{ padding: 0 }}>
+            Counted from {used ? `${used.message_type}/${used.message_id}` : 'the main message'}
+            {used ? ` (${used.n} samples)` : ''}. Also present but not counted:{' '}
+            {dropped.map((s) => `${s.message_type}/${s.message_id} (${s.n})`).join(', ')}.
+            The same key means different things on different messages, so mixing
+            them produced a plateau and a floor in one trace.
+          </p>
+        )}
+      </div>
+    </EntityModal>
   );
 };
-
-const MetricChip = ({ label, value, highlight }) => (
-  <div style={{
-    background: highlight ? 'color-mix(in srgb, var(--success) 10%, transparent)' : 'var(--secondary)',
-    border: `1px solid ${highlight ? 'color-mix(in srgb, var(--success) 30%, transparent)' : 'var(--border)'}`,
-    borderRadius: 6, padding: '4px 6px',
-    textAlign: 'center',
-  }}>
-    <div style={{
-      color: 'var(--muted-foreground)', fontSize: 9, fontWeight: 600,
-      textTransform: 'uppercase', letterSpacing: 0.5,
-    }}>{label}</div>
-    <div style={{
-      color: highlight ? 'var(--success)' : 'var(--foreground)',
-      fontSize: 13, fontWeight: 700,
-    }}>{value}</div>
-  </div>
-);
 
 export default AdminV2MonitoringVentilator;

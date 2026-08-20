@@ -29,7 +29,7 @@ import logging
 import os
 import shutil
 import tarfile
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time as dtime, timedelta, timezone
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
@@ -49,8 +49,10 @@ from sqlalchemy.orm.attributes import flag_modified
 from db import SessionLocal
 from dependencies import get_db, require_permission
 from routes.auth import get_current_account_id, require_full_auth
+from utils.datetime_utils import resolve_tz_for_patient
 from schemas.integration import PatientIntegration
 from schemas.vent_import import VentImport
+from pydantic import BaseModel
 from integrations import get_integration
 
 logger = logging.getLogger("integrations.imports")
@@ -498,6 +500,58 @@ def _infer_grouping(display_label: Optional[str], tag_name: Optional[str]) -> Op
     return None
 
 
+# One parameter key carries samples from several device messages, and they are
+# not the same measurement — VOCSN's column layout differs per message, so all
+# but one message's values land under the wrong keys. Restricting to the
+# message that carries the parameter most often keeps a parameter's day on one
+# coherent source instead of averaging a monitor stream with a settings
+# snapshot and a counter.
+#
+# Most rows wins because the real monitor stream reports on a fixed cadence
+# (288 times a day at five-minute intervals here) while the interlopers are
+# occasional. Ties break on type then id so the choice is stable between the
+# day view and the series behind it — they must agree, or the chart would plot
+# a different source from the number above it.
+_VENT_DOMINANT_MSG_CTE = """
+    WITH dominant_msg AS (
+        SELECT DISTINCT ON (parameter_key)
+               parameter_key, source_message_type, source_message_id
+        FROM (
+            SELECT parameter_key, source_message_type, source_message_id,
+                   COUNT(*) AS n
+            FROM vent_samples
+            WHERE patient_id = :pid
+              AND recorded_at >= :start AND recorded_at < :end
+              AND value_numeric IS NOT NULL
+            GROUP BY parameter_key, source_message_type, source_message_id
+        ) ranked
+        ORDER BY parameter_key, n DESC, source_message_type, source_message_id
+    )
+"""
+
+
+def _vent_day_bounds(db: Session, patient_id: int, date: str):
+    """The UTC window covering one local day for this patient.
+
+    Ventilator days used to be UTC calendar days, which put a patient four
+    hours west of Greenwich into a "day" running 8pm to 8pm — the chart opened
+    at 20:00 and crossed midnight in the middle. Day boundaries come from the
+    account timezone everywhere else in this codebase and now here too.
+
+    The end is the next local midnight rather than start + 24h, so the 23- and
+    25-hour days either side of a DST change cover exactly their own hours,
+    and it is exclusive to match the `recorded_at < :end` the callers use.
+    """
+    try:
+        day = datetime.strptime(date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="date must be YYYY-MM-DD")
+    tz = resolve_tz_for_patient(db, patient_id)
+    start = datetime.combine(day, dtime.min, tzinfo=tz).astimezone(timezone.utc)
+    end = datetime.combine(day + timedelta(days=1), dtime.min, tzinfo=tz).astimezone(timezone.utc)
+    return day, start, end
+
+
 def _vent_integration_id(db: Session, patient_id: int, account_id: int) -> Optional[int]:
     """Return the active ventilator PatientIntegration.id for this patient,
     or None if the patient has no vent integration."""
@@ -580,17 +634,20 @@ async def vent_days(
     account_id: int = Depends(get_current_account_id),
 ):
     """List dates that have parsed vent samples (most recent first) so the
-    view can render a day picker. `date` is in UTC."""
+    view can render a day picker. Dates are the patient's local calendar
+    days — bucketing by UTC put a patient west of Greenwich into a day that
+    began at 8pm the evening before."""
     if not _vent_integration_id(db, patient_id, account_id):
         return {"has_integration": False, "days": []}
 
+    tz = str(resolve_tz_for_patient(db, patient_id))
     rows = db.execute(text("""
-        SELECT (recorded_at AT TIME ZONE 'UTC')::date AS day, COUNT(*) AS n
+        SELECT (recorded_at AT TIME ZONE :tz)::date AS day, COUNT(*) AS n
         FROM vent_samples
         WHERE patient_id = :pid
-        GROUP BY (recorded_at AT TIME ZONE 'UTC')::date
+        GROUP BY (recorded_at AT TIME ZONE :tz)::date
         ORDER BY day DESC
-    """), {"pid": patient_id}).all()
+    """), {"pid": patient_id, "tz": tz}).all()
     return {
         "has_integration": True,
         "days": [
@@ -618,12 +675,7 @@ async def vent_day(
     if not _vent_integration_id(db, patient_id, account_id):
         raise HTTPException(status_code=404, detail="No ventilator integration for patient")
 
-    try:
-        day = datetime.strptime(date, "%Y-%m-%d").date()
-    except ValueError:
-        raise HTTPException(status_code=400, detail="date must be YYYY-MM-DD")
-    start = datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc)
-    end = start + timedelta(days=1)
+    day, start, end = _vent_day_bounds(db, patient_id, date)
 
     # Outlier guard: VOCSN encodes "no reading" with uint16-ish sentinels
     # (43577, 21042, 16190, 5326 — likely bit-pattern encodings of NaN/error
@@ -632,7 +684,7 @@ async def vent_day(
     # ~2000 mL, pressures max ~80 cmH2O) but well below the noise band.
     # If a legitimate counter ever exceeds 5000 we'll revisit; for now this
     # keeps the displayed min/avg/max honest.
-    rows = db.execute(text("""
+    rows = db.execute(text(_VENT_DOMINANT_MSG_CTE + """
         SELECT
             s.parameter_key,
             s.parameter_suffix,
@@ -648,6 +700,10 @@ async def vent_day(
             d.precision,
             d.tag_name
         FROM vent_samples s
+        JOIN dominant_msg m
+          ON m.parameter_key = s.parameter_key
+         AND m.source_message_type = s.source_message_type
+         AND m.source_message_id = s.source_message_id
         LEFT JOIN vent_parameter_dictionary d
           ON d.vendor = 'vocsn' AND d.parameter_key = s.parameter_key
         WHERE s.patient_id = :pid
@@ -693,6 +749,41 @@ async def vent_day(
     grouped: Dict[str, list] = {}
     for entry in by_key.values():
         grouped.setdefault(entry["grouping"], []).append(entry)
+
+    # Which device messages each parameter's samples came from.
+    #
+    # A parameter key is not one measurement: VOCSN reports the same key from
+    # several messages, and they are not the same quantity. On a real day, I:E
+    # ratio arrives from message 7201 at 288 rows averaging -2 and from 7204 at
+    # 25 rows averaging 1619 — continuous standby telemetry and active
+    # ventilation, blended into one statistic by the grouping above. Half the
+    # parameters on that day (22 of 44) carry more than one message.
+    #
+    # Reporting the breakdown does not fix the blend, but it stops the page
+    # presenting a mixture as though it were a reading.
+    source_rows = db.execute(text("""
+        SELECT parameter_key, source_message_type AS mt, source_message_id AS mid,
+               COUNT(*) AS n
+        FROM vent_samples
+        WHERE patient_id = :pid
+          AND recorded_at >= :start AND recorded_at < :end
+          AND value_numeric IS NOT NULL
+        GROUP BY parameter_key, source_message_type, source_message_id
+    """), {"pid": patient_id, "start": start, "end": end}).all()
+    for r in source_rows:
+        entry = by_key.get(r.parameter_key)
+        if entry is None:
+            continue
+        entry.setdefault("sources", []).append(
+            {"message_type": r.mt, "message_id": r.mid, "n": int(r.n)})
+    for entry in by_key.values():
+        entry.setdefault("sources", [])
+        entry["sources"].sort(key=lambda s: (-s["n"], s["message_type"], s["message_id"]))
+        # The first is the one the statistics above were computed from; the
+        # rest were dropped. Saying so lets the page report the loss rather
+        # than quietly showing a subset.
+        for i, src in enumerate(entry["sources"]):
+            src["used"] = (i == 0)
 
     # Day-level summary (counts, time range).
     summary_row = db.execute(text("""
@@ -743,27 +834,28 @@ async def vent_day_parameter_series(
     chart can plot median + 5–95% band."""
     if not _vent_integration_id(db, patient_id, account_id):
         raise HTTPException(status_code=404, detail="No ventilator integration")
-    try:
-        day = datetime.strptime(date, "%Y-%m-%d").date()
-    except ValueError:
-        raise HTTPException(status_code=400, detail="date must be YYYY-MM-DD")
-    start = datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc)
-    end = start + timedelta(days=1)
+    day, start, end = _vent_day_bounds(db, patient_id, date)
 
-    rows = db.execute(text("""
+    # Same dominant-message restriction as the day view. If the two disagreed,
+    # the chart would plot a different source from the number that opened it.
+    rows = db.execute(text(_VENT_DOMINANT_MSG_CTE + """
         SELECT
-            recorded_at,
-            MAX(CASE WHEN parameter_suffix='50' THEN value_numeric END) AS p50,
-            MAX(CASE WHEN parameter_suffix='5'  THEN value_numeric END) AS p5,
-            MAX(CASE WHEN parameter_suffix='95' THEN value_numeric END) AS p95,
-            MAX(CASE WHEN parameter_suffix='N'  THEN value_numeric END) AS n_val
-        FROM vent_samples
-        WHERE patient_id = :pid AND parameter_key = :key
-          AND recorded_at >= :start AND recorded_at < :end
-          AND value_numeric IS NOT NULL
-          AND value_numeric BETWEEN -5000 AND 5000
-        GROUP BY recorded_at
-        ORDER BY recorded_at
+            s.recorded_at,
+            MAX(CASE WHEN s.parameter_suffix='50' THEN s.value_numeric END) AS p50,
+            MAX(CASE WHEN s.parameter_suffix='5'  THEN s.value_numeric END) AS p5,
+            MAX(CASE WHEN s.parameter_suffix='95' THEN s.value_numeric END) AS p95,
+            MAX(CASE WHEN s.parameter_suffix='N'  THEN s.value_numeric END) AS n_val
+        FROM vent_samples s
+        JOIN dominant_msg m
+          ON m.parameter_key = s.parameter_key
+         AND m.source_message_type = s.source_message_type
+         AND m.source_message_id = s.source_message_id
+        WHERE s.patient_id = :pid AND s.parameter_key = :key
+          AND s.recorded_at >= :start AND s.recorded_at < :end
+          AND s.value_numeric IS NOT NULL
+          AND s.value_numeric BETWEEN -5000 AND 5000
+        GROUP BY s.recorded_at
+        ORDER BY s.recorded_at
     """), {"pid": patient_id, "key": key, "start": start, "end": end}).all()
 
     meta = db.execute(text("""
@@ -813,3 +905,68 @@ async def calibrate_clock_clear(
     })
     updated = _apply_offset_to_existing_samples(db, integration_id, 0.0)
     return {"status": "cleared", "samples_updated": updated, "settings": pi.settings}
+
+
+# ---------------------------------------------------------------------------
+# Which ventilator parameters lead the page for this patient.
+# ---------------------------------------------------------------------------
+
+class VentPinsUpdate(BaseModel):
+    vendor: str = "vocsn"
+    parameter_keys: list[str] = []
+
+
+def _vent_patient_or_404(db: Session, patient_id: int, account_id):
+    """The vent reads answer for any patient in the account; the pin reads
+    have to as well, or a patient whose integration is briefly disabled loses
+    their pins rather than their data."""
+    from schemas.patient import Patient
+    q = db.query(Patient).filter(Patient.id == patient_id)
+    if account_id is not None:
+        q = q.filter((Patient.account_id == account_id) | (Patient.account_id.is_(None)))
+    patient = q.first()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    return patient
+
+
+@router.get(
+    "/patient/{patient_id}/vent/pins",
+    dependencies=[Depends(require_permission("monitoring.read"))],
+)
+async def get_vent_pins(
+    patient_id: int,
+    vendor: str = "vocsn",
+    db: Session = Depends(get_db),
+    current_user=Depends(require_full_auth),
+    account_id: int = Depends(get_current_account_id),
+):
+    """Pinned parameter keys in display order.
+
+    `source` is `default` for a patient nobody has configured and `patient`
+    once somebody has — including when they chose to pin nothing, which is a
+    real choice and not the same as never having looked.
+    """
+    from crud.vent_pins import resolve_vent_pins
+
+    _vent_patient_or_404(db, patient_id, account_id)
+    return {"patient_id": patient_id, **resolve_vent_pins(db, patient_id, vendor)}
+
+
+@router.put(
+    "/patient/{patient_id}/vent/pins",
+    dependencies=[Depends(require_permission("patients.update"))],
+)
+async def put_vent_pins(
+    patient_id: int,
+    body: VentPinsUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_full_auth),
+    account_id: int = Depends(get_current_account_id),
+):
+    from crud.vent_pins import resolve_vent_pins, set_vent_pins
+
+    _vent_patient_or_404(db, patient_id, account_id)
+    set_vent_pins(db, patient_id, body.vendor, body.parameter_keys,
+                  set_by=getattr(current_user, "id", None))
+    return {"patient_id": patient_id, **resolve_vent_pins(db, patient_id, body.vendor)}

@@ -19,7 +19,7 @@
 // vs seen-only fallback; import dialog wiring. Services and config mocked;
 // Radix dialogs rendered inline (portal/focus-trap noise).
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 
 // Radix (via ToggleList's Checkbox) probes element size; jsdom has no ResizeObserver.
 vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
@@ -95,6 +95,11 @@ const renderCard = async (props = {}) => {
     />
   );
   await waitFor(() => expect(getHaDirectory).toHaveBeenCalled());
+  // Waiting for the call is not waiting for the rows: the card renders from
+  // the resolved directory, so flush that resolution and the effects it runs
+  // before a test reaches for a button. Three tests below query synchronously
+  // straight after this, and under CI load one of them lost the race.
+  await act(async () => {});
 };
 
 describe('HAIdentitiesCard directory mode', () => {
