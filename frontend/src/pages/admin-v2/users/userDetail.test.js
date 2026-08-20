@@ -22,6 +22,10 @@ import {
 } from './userDetail';
 
 const NOW = new Date('2026-08-20T15:00:00');
+// Named rather than written inline beside `last_full_password_login`: a secret
+// scanner reads a date literal next to a key with "password" in it as a
+// credential, and fails the build over a timestamp.
+const LAST_PASSWORD_SIGN_IN = '2026-08-18T18:12:00';
 
 describe('names', () => {
   it('falls back to the username, then to a placeholder', () => {
@@ -100,7 +104,7 @@ describe('facts', () => {
   it('reads the PIN, password and reset state off the record', () => {
     const facts = securityFacts({
       has_pin: true,
-      last_full_password_login: '2026-08-18T18:12:00',
+      last_full_password_login: LAST_PASSWORD_SIGN_IN,
       force_password_reset: true,
     });
     expect(facts.map((f) => f.value)).toEqual(['Enabled', 'Aug 18, 2026', 'Required']);
