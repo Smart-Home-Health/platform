@@ -51,6 +51,7 @@ from dependencies import get_db, require_permission
 from routes.auth import get_current_account_id, require_full_auth
 from schemas.integration import PatientIntegration
 from schemas.vent_import import VentImport
+from pydantic import BaseModel
 from integrations import get_integration
 
 logger = logging.getLogger("integrations.imports")
@@ -813,3 +814,68 @@ async def calibrate_clock_clear(
     })
     updated = _apply_offset_to_existing_samples(db, integration_id, 0.0)
     return {"status": "cleared", "samples_updated": updated, "settings": pi.settings}
+
+
+# ---------------------------------------------------------------------------
+# Which ventilator parameters lead the page for this patient.
+# ---------------------------------------------------------------------------
+
+class VentPinsUpdate(BaseModel):
+    vendor: str = "vocsn"
+    parameter_keys: list[str] = []
+
+
+def _vent_patient_or_404(db: Session, patient_id: int, account_id):
+    """The vent reads answer for any patient in the account; the pin reads
+    have to as well, or a patient whose integration is briefly disabled loses
+    their pins rather than their data."""
+    from schemas.patient import Patient
+    q = db.query(Patient).filter(Patient.id == patient_id)
+    if account_id is not None:
+        q = q.filter((Patient.account_id == account_id) | (Patient.account_id.is_(None)))
+    patient = q.first()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    return patient
+
+
+@router.get(
+    "/patient/{patient_id}/vent/pins",
+    dependencies=[Depends(require_permission("monitoring.read"))],
+)
+async def get_vent_pins(
+    patient_id: int,
+    vendor: str = "vocsn",
+    db: Session = Depends(get_db),
+    current_user=Depends(require_full_auth),
+    account_id: int = Depends(get_current_account_id),
+):
+    """Pinned parameter keys in display order.
+
+    `source` is `default` for a patient nobody has configured and `patient`
+    once somebody has — including when they chose to pin nothing, which is a
+    real choice and not the same as never having looked.
+    """
+    from crud.vent_pins import resolve_vent_pins
+
+    _vent_patient_or_404(db, patient_id, account_id)
+    return {"patient_id": patient_id, **resolve_vent_pins(db, patient_id, vendor)}
+
+
+@router.put(
+    "/patient/{patient_id}/vent/pins",
+    dependencies=[Depends(require_permission("patients.update"))],
+)
+async def put_vent_pins(
+    patient_id: int,
+    body: VentPinsUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_full_auth),
+    account_id: int = Depends(get_current_account_id),
+):
+    from crud.vent_pins import resolve_vent_pins, set_vent_pins
+
+    _vent_patient_or_404(db, patient_id, account_id)
+    set_vent_pins(db, patient_id, body.vendor, body.parameter_keys,
+                  set_by=getattr(current_user, "id", None))
+    return {"patient_id": patient_id, **resolve_vent_pins(db, patient_id, body.vendor)}
