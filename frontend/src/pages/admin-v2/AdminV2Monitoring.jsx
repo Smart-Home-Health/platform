@@ -36,6 +36,17 @@ const AdminV2Monitoring = () => {
   const isInteractionsView = location.pathname.includes('/care/monitoring/interactions');
   const isEnvironmentView = location.pathname.includes('/care/monitoring/environment');
 
+  // The subtitle used to say "Alerts and pulse oximetry history" on every
+  // tab, including the two that show neither.
+  const subtitle = () => {
+    if (isVentilatorView) return 'Ventilator device data';
+    if (isTimelineView) return 'One day of readings and events';
+    if (isEnvironmentView) return 'Environmental readings and correlations';
+    if (isInteractionsView) return 'Interactions between readings and care';
+    if (isHistoryView) return 'Alert history';
+    return 'Alerts and pulse oximetry';
+  };
+
   const renderContent = () => {
     if (!selectedPatient) {
       return (
@@ -80,7 +91,7 @@ const AdminV2Monitoring = () => {
           <h1 className="admin-v2-page-title">Monitoring</h1>
           {selectedPatient && (
             <p className="admin-v2-page-subtitle">
-              Alerts and pulse oximetry history for {selectedPatient.first_name} {selectedPatient.last_name}
+              {subtitle()} for {selectedPatient.first_name} {selectedPatient.last_name}
             </p>
           )}
         </div>
