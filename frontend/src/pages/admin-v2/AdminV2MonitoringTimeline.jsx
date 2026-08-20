@@ -15,186 +15,292 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useState, useEffect, useRef, useCallback } from 'react';
+// Day timeline — one patient, one local day, bedside-monitor aesthetic.
+//
+// SpO2 and heart rate are separate stacked charts rather than one chart with
+// two y-axes. Two axes forced both series into a shared vertical space where
+// neither could be read at its own scale, and capped the page at two signals.
+// Split, each gets its own scale — and they still read as one instrument
+// because three things are shared: the time window, the scrubbed instant, and
+// the horizontal plot box (see PLOT_GUTTER).
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Chart from 'chart.js/auto';
 import 'chartjs-adapter-date-fns';
 import annotationPlugin from 'chartjs-plugin-annotation';
 import zoomPlugin from 'chartjs-plugin-zoom';
 import config, { apiFetch } from '../../config';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
+import { alarmsFor } from './reports/dayOverDay';
 import {
+  ENV_LANES, ENV_METRIC_KEYS, buildEnvSpans, worstStatus, describeSpan,
+  severityOf, directionOf,
+} from './timelineEnv';
+import {
+  CalendarIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  CalendarIcon,
+  ChevronDownIcon,
+  FilterIcon,
+  AlertIcon,
+  PillIcon,
+  CheckCircleIcon,
+  DropletIcon,
+  ToiletIcon,
+  VitalsIcon,
 } from '../../components/Icons';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Alert } from '@/components/ui/alert';
-import {
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
-} from '@/components/ui/select';
-import { useChartColors } from '../../hooks/useChartColors';
+import './monitoring-timeline.css';
 
 Chart.register(annotationPlugin, zoomPlugin);
 
-// Pulse-ox series that can be plotted. The chart has two y-axes, so at most
-// two may be active at once (first active = left axis, second = right).
-const VITAL_SERIES = {
+/* Chart.js is forced to this y-axis width so both charts' plot areas start at
+ * the same x, and the lanes and scrubber are inset by the same amount. Must
+ * match --mtl-gutter / --mtl-rpad in monitoring-timeline.css. */
+const PLOT_GUTTER = 52;
+const PLOT_RPAD = 12;
+
+/* Series colours are the vc-derived ramp the reports already use for these
+ * same two vitals (reports/weekly.js), not the mockup's crimson/indigo: red on
+ * a resting SpO2 trace spends the one colour this palette reserves for
+ * clinical concern, and the alert bands underneath it need that colour to
+ * mean something. */
+const SIGNALS = {
   spo2: {
-    label: 'SpO2', axisLabel: 'SpO2 (%)', color: '#e91e63',
-    fill: 'rgba(233, 30, 99, 0.1)', gridTint: 'rgba(233, 30, 99, 0.08)',
-    defaultMin: 90, defaultMax: 100, minPad: 1, clampMax: 100,
+    label: 'SpO2', axisLabel: 'SPO2 %', color: '#4da7bd',
+    alarmKey: 'spo2', unit: '%', decimals: 1,
+    defaultMin: 86, defaultMax: 100, minPad: 2, clampMax: 100,
   },
   bpm: {
-    label: 'BPM', axisLabel: 'BPM', color: '#3f51b5',
-    fill: 'rgba(63, 81, 181, 0.1)', gridTint: 'rgba(63, 81, 181, 0.08)',
-    defaultMin: 60, defaultMax: 120, minPad: 2, clampMax: null,
-  },
-  perfusion: {
-    label: 'Perfusion', axisLabel: 'Perfusion (PI)', color: '#00bcd4',
-    fill: 'rgba(0, 188, 212, 0.1)', gridTint: 'rgba(0, 188, 212, 0.08)',
-    defaultMin: 0, defaultMax: 5, minPad: 0.2, clampMax: null,
+    label: 'Heart Rate', axisLabel: 'HEART RATE BPM', color: '#3fbf6a',
+    alarmKey: 'heart_rate', unit: 'bpm', decimals: 0,
+    defaultMin: 55, defaultMax: 120, minPad: 4, clampMax: null,
   },
 };
-// Environmental series (home-level, from /api/environment/observations).
-// `dashed: true` marks estimated/derived metrics — rendered with a dashed
-// line to distinguish them from measured readings.
-// `metric`/`scope` select the observation stream; room-scoped series also
-// filter by the picked room (see roomLocation below).
-const ENV_SERIES = {
-  barometric_pressure: {
-    label: 'Pressure', axisLabel: 'Pressure (hPa)', color: '#8d6e63',
-    fill: 'rgba(141, 110, 99, 0.1)', gridTint: 'rgba(141, 110, 99, 0.08)',
-    defaultMin: 990, defaultMax: 1030, minPad: 1, clampMax: null, dashed: false,
-    metric: 'barometric_pressure', scope: 'outdoor',
-  },
-  pressure_delta_6h: {
-    label: 'Pressure Δ6h', axisLabel: 'Pressure change 6h (hPa)', color: '#a1887f',
-    fill: 'rgba(161, 136, 127, 0.1)', gridTint: 'rgba(161, 136, 127, 0.08)',
-    defaultMin: -5, defaultMax: 5, minPad: 0.5, clampMax: null, dashed: true,
-    metric: 'pressure_delta_6h', scope: 'outdoor',
-  },
-  relative_humidity: {
-    label: 'Humidity (out)', axisLabel: 'Outdoor humidity (%)', color: '#26a69a',
-    fill: 'rgba(38, 166, 154, 0.1)', gridTint: 'rgba(38, 166, 154, 0.08)',
-    defaultMin: 20, defaultMax: 80, minPad: 2, clampMax: 100, dashed: false,
-    metric: 'relative_humidity', scope: 'outdoor',
-  },
-  room_temperature: {
-    label: 'Room temp', axisLabel: 'Room temp (°C)', color: '#ef6c00',
-    fill: 'rgba(239, 108, 0, 0.1)', gridTint: 'rgba(239, 108, 0, 0.08)',
-    defaultMin: 15, defaultMax: 30, minPad: 0.5, clampMax: null, dashed: false,
-    metric: 'temperature', scope: 'room',
-  },
-  room_humidity: {
-    label: 'Room humidity', axisLabel: 'Room humidity (%)', color: '#00897b',
-    fill: 'rgba(0, 137, 123, 0.1)', gridTint: 'rgba(0, 137, 123, 0.08)',
-    defaultMin: 20, defaultMax: 80, minPad: 2, clampMax: 100, dashed: false,
-    metric: 'relative_humidity', scope: 'room',
-  },
-  co2: {
-    label: 'CO2', axisLabel: 'CO2 (ppm)', color: '#7e57c2',
-    fill: 'rgba(126, 87, 194, 0.1)', gridTint: 'rgba(126, 87, 194, 0.08)',
-    defaultMin: 400, defaultMax: 1200, minPad: 25, clampMax: null, dashed: false,
-    metric: 'co2', scope: 'room',
-  },
-  pm25: {
-    label: 'PM2.5', axisLabel: 'PM2.5 (µg/m³)', color: '#78909c',
-    fill: 'rgba(120, 144, 156, 0.1)', gridTint: 'rgba(120, 144, 156, 0.08)',
-    defaultMin: 0, defaultMax: 35, minPad: 1, clampMax: null, dashed: false,
-    metric: 'pm25', scope: 'room',
-  },
-};
-const SERIES = { ...VITAL_SERIES, ...ENV_SERIES };
-const MAX_ACTIVE_VITALS = 2;
+const SIGNAL_KEYS = ['spo2', 'bpm'];
 
-const EVENT_TYPES = {
-  medications: { label: 'Medications', color: '#2196F3', borderDash: [] },
-  care_tasks: { label: 'Care Tasks', color: '#4CAF50', borderDash: [] },
-  nutrition_intake: { label: 'Nutrition In', color: '#FF9800', borderDash: [] },
-  nutrition_output: { label: 'Nutrition Out', color: '#9C27B0', borderDash: [] },
-  vitals: { label: 'Vitals', color: '#009688', borderDash: [4, 4] },
-  alerts: { label: 'Alerts', color: '#F44336', borderDash: [] },
+/* Event lanes. Alerts keep the alert red because that is the role; the rest
+ * take the categorical ramp so a lane colour never reads as a state. */
+const LANES = {
+  alerts: { label: 'Alerts', color: '#f0563c', Icon: AlertIcon },
+  medications: { label: 'Meds', color: '#7f9fd4', Icon: PillIcon },
+  care_tasks: { label: 'Care', color: '#4dc3b3', Icon: CheckCircleIcon },
+  nutrition_intake: { label: 'Feeds', color: '#a8c94a', Icon: DropletIcon },
+  nutrition_output: { label: 'Output', color: '#d98cc4', Icon: ToiletIcon },
+  vitals: { label: 'Vitals', color: '#9b8cf0', Icon: VitalsIcon },
 };
+const LANE_KEYS = Object.keys(LANES);
+const COLLAPSED_LANES = 4;
 
-// Zoom presets in minutes
-const ZOOM_PRESETS = [
-  { label: '24h', minutes: 1440 },
-  { label: '6h', minutes: 360 },
-  { label: '1h', minutes: 60 },
-  { label: '30m', minutes: 30 },
-  { label: '15m', minutes: 15 },
+/* 1M is the floor because the timeline endpoint averages pulse-ox into
+ * one-minute buckets, so a narrower window cannot resolve anything further —
+ * it would just magnify the same points. Reading below a minute means going
+ * to /api/monitoring/history/raw, which is a different request. */
+const RANGES = [
+  { label: '24H', minutes: 1440 },
+  { label: '6H', minutes: 360 },
+  { label: '1H', minutes: 60 },
+  { label: '30M', minutes: 30 },
+  { label: '5M', minutes: 5 },
+  { label: '1M', minutes: 1 },
 ];
+const MIN_RANGE_MS = 60_000;
+
+/* Room readings are bucketed server-side; 15m is fine enough to place an
+ * excursion on a day view and coarse enough to stay one request. */
+const ENV_BUCKET = '15m';
+const ENV_BUCKET_MS = 15 * 60_000;
+const ENV_UNITS = {
+  temperature: '°C', relative_humidity: '%', co2: ' ppm', pm25: ' µg/m³',
+};
+
+const CHROME = {
+  grid: 'rgba(255, 255, 255, 0.06)',
+  axis: '#6b7987',
+  text: '#9aa8b8',
+  band: 'rgba(240, 86, 60, 0.14)',
+  bandEdge: 'rgba(240, 86, 60, 0.35)',
+  threshold: 'rgba(154, 168, 184, 0.5)',
+};
+
+/* Local calendar date, not the UTC one. toISOString() rolls over at UTC
+ * midnight, so west of Greenwich an evening visit asked the API for
+ * tomorrow and got an empty day. */
+const toApiDate = (d) => {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
+const isSameDay = (a, b) => a.toDateString() === b.toDateString();
+const clockTime = (d) =>
+  d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+const formatDuration = (ms) => {
+  const total = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h) return `${h}h ${m}m`;
+  if (m) return `${m}m ${s}s`;
+  return `${s}s`;
+};
+
+const eventLabel = (type, item) => {
+  switch (type) {
+    case 'medications': return `${item.name} ${item.dose}`.trim();
+    case 'care_tasks': return item.name;
+    case 'nutrition_intake':
+      return `${item.item_name}${item.amount ? ` ${item.amount}${item.amount_unit || ''}` : ''}`;
+    case 'nutrition_output': {
+      const parts = [item.output_type];
+      if (item.is_diaper) {
+        if (item.diaper_wetness) parts.push(item.diaper_wetness);
+        if (item.diaper_soiled) parts.push('soiled');
+      }
+      if (item.consistency) parts.push(item.consistency);
+      return parts.filter(Boolean).join(' · ');
+    }
+    case 'vitals': return `${item.vital_type} ${item.value}${item.unit || ''}`;
+    default: return '';
+  }
+};
+
+/* A y range that fits the data and lands on readable numbers. Charting the
+ * raw min/max gave axes labelled 58.08 and 119.2; stepping out to a round
+ * boundary costs a few pixels of headroom and makes the axis legible. */
+const niceScale = (lo, hi, minSpan, clampMax) => {
+  let min = lo;
+  let max = hi;
+  if (max - min < minSpan) {
+    const centre = (min + max) / 2;
+    min = centre - minSpan / 2;
+    max = centre + minSpan / 2;
+  }
+  const raw = (max - min) / 4;
+  const mag = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((c) => c >= raw) ?? 10 * mag;
+  min = Math.max(0, Math.floor(min / step) * step);
+  max = Math.ceil(max / step) * step;
+  if (clampMax != null) max = Math.min(clampMax, max);
+  return { min, max, step };
+};
+
+const alertLabel = (a) => {
+  if (a.spo2_alarm && a.hr_alarm) return 'SpO2 + HR alert';
+  if (a.spo2_alarm) return 'Low SpO2 alert';
+  if (a.hr_alarm) return 'Heart rate alert';
+  return 'Monitoring alert';
+};
 
 const AdminV2MonitoringTimeline = () => {
-  const chart = useChartColors();
   const { selectedPatient } = useAdminPatient();
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [timelineData, setTimelineData] = useState(null);
+  const [selectedDate, setSelectedDate] = useState(() => new Date());
+  const [data, setData] = useState(null);
+  const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [activePreset, setActivePreset] = useState('24h');
-  // Ordered list of active pulse-ox series (max 2 — one per y-axis).
-  const [activeVitals, setActiveVitals] = useState(['spo2', 'bpm']);
-  const [visibleLayers, setVisibleLayers] = useState({
-    medications: true,
-    care_tasks: true,
-    nutrition_intake: true,
-    nutrition_output: true,
-    vitals: true,
-    alerts: true,
-  });
 
-  const chartRef = useRef(null);
-  const chartInstance = useRef(null);
-  const chartContainerRef = useRef(null);
+  const [activeSignals, setActiveSignals] = useState(SIGNAL_KEYS);
+  const [lanesExpanded, setLanesExpanded] = useState(false);
+  const [rangeLabel, setRangeLabel] = useState('24H');
+  const [view, setView] = useState(null);       // { min, max } epoch ms
+  const [cursor, setCursor] = useState(null);   // scrubbed instant, epoch ms
 
-  const formatDateForApi = (date) => date.toISOString().split('T')[0];
-  const isToday = (date) => date.toDateString() === new Date().toDateString();
+  const stackRef = useRef(null);
+  const pointers = useRef(new Set());
 
-  const goToPreviousDay = () => {
-    const d = new Date(selectedDate);
-    d.setDate(d.getDate() - 1);
-    setSelectedDate(d);
-  };
-  const goToNextDay = () => {
-    const d = new Date(selectedDate);
-    d.setDate(d.getDate() + 1);
-    setSelectedDate(d);
-  };
-  const goToToday = () => setSelectedDate(new Date());
+  /* ---------------- data ---------------- */
 
-  const formatDisplayDate = (date) => {
-    return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
-  };
-
-  // Fetch timeline data
-  const fetchTimeline = useCallback(async () => {
-    if (!selectedPatient) return;
+  useEffect(() => {
+    if (!selectedPatient) return undefined;
+    let cancelled = false;
     setLoading(true);
     setError(null);
-    try {
-      const dateParam = formatDateForApi(selectedDate);
-      const response = await apiFetch(
-        `${config.apiUrl}/api/monitoring/timeline?patient_id=${selectedPatient.id}&target_date=${dateParam}`
-      );
-      if (!response.ok) throw new Error('Failed to fetch timeline data');
-      const data = await response.json();
-      setTimelineData(data);
-    } catch (err) {
-      console.error('Timeline fetch error:', err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+    (async () => {
+      try {
+        const res = await apiFetch(
+          `${config.apiUrl}/api/monitoring/timeline`
+          + `?patient_id=${selectedPatient.id}&target_date=${toApiDate(selectedDate)}`,
+        );
+        if (!res.ok) throw new Error('Could not load the timeline for this day.');
+        const body = await res.json();
+        if (!cancelled) setData(body);
+      } catch (err) {
+        if (!cancelled) setError(err.message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [selectedPatient, selectedDate]);
 
-  useEffect(() => { fetchTimeline(); }, [fetchTimeline]);
+  // Alarm limits for the threshold lines — the same account settings the live
+  // monitor alarms on. A failure just means no threshold line.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch(`${config.apiUrl}/api/settings`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const body = await res.json();
+        if (!cancelled) setSettings(body);
+      } catch {
+        if (!cancelled) setSettings({});
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
-  // Rooms seen in the data (scope=room locations), for the room picker.
-  // "" is a legitimate location (unspecified room) and renders as such.
+  /* ---------------- derived ---------------- */
+
+  // The day's bounds, and the instant the data actually runs out.
+  const bounds = useMemo(() => {
+    const base = data?.date ? new Date(`${data.date}T00:00:00`) : selectedDate;
+    const start = new Date(base);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setHours(23, 59, 59, 999);
+    return { start: start.getTime(), end: end.getTime() };
+  }, [data?.date, selectedDate]);
+
+  const lastSample = useMemo(() => {
+    const rows = data?.pulse_ox;
+    if (!rows?.length) return null;
+    return new Date(rows[rows.length - 1].ts).getTime();
+  }, [data]);
+
+  // Reset the window whenever the day changes.
+  useEffect(() => {
+    setView({ min: bounds.start, max: bounds.end });
+    setRangeLabel('24H');
+    setCursor(null);
+  }, [bounds.start, bounds.end]);
+
+  /* ---------------- room conditions ---------------- */
+
+  const [envRanges, setEnvRanges] = useState(null);
+  const [envSeries, setEnvSeries] = useState({});
   const [roomLocations, setRoomLocations] = useState([]);
   const [roomLocation, setRoomLocation] = useState(null);
+
+  useEffect(() => {
+    if (!selectedPatient) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch(
+          `${config.apiUrl}/api/environment/ranges?patient_id=${selectedPatient.id}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const body = await res.json();
+        if (!cancelled) {
+          setEnvRanges(Object.fromEntries((body.ranges || []).map((r) => [r.metric, r])));
+        }
+      } catch {
+        if (!cancelled) setEnvRanges({});
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedPatient]);
+
+  // Rooms that actually have readings. "" is a real location (unspecified
+  // room) and is offered as one.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -206,631 +312,829 @@ const AdminV2MonitoringTimeline = () => {
                                       .map((r) => r.location ?? ''))];
         if (cancelled) return;
         setRoomLocations(rooms);
-        // Default to the patient's configured care area when it has data,
-        // else keep a valid manual choice, else prefer a bedroom-ish name.
+        // Follow the patient's configured care area when it has data, else
+        // keep a still-valid manual pick, else guess at a bedroom.
         const careArea = selectedPatient?.care_area;
         setRoomLocation((prev) => {
           if (careArea && rooms.includes(careArea)) return careArea;
           if (prev !== null && rooms.includes(prev)) return prev;
           return rooms.find((l) => /bed|care/i.test(l)) ?? rooms[0] ?? null;
         });
-      } catch (err) {
-        console.error('Environment locations fetch failed:', err);
+      } catch {
+        if (!cancelled) setRoomLocations([]);
       }
     })();
     return () => { cancelled = true; };
-    // Re-run on patient switch (id, not just care_area — two patients can
-    // share a room name or both have none) so the default follows the
-    // newly selected patient instead of the previous one's manual choice.
   }, [selectedPatient?.id, selectedPatient?.care_area]);
 
-  // Environmental overlay data for the selected day, keyed by series key.
-  // Home-level (not patient-scoped); failure degrades to an empty series and
-  // never blocks the vitals chart.
-  const [envData, setEnvData] = useState({});
-  const activeEnvKeys = activeVitals.filter((k) => ENV_SERIES[k]);
-  const activeEnvKeysStr = activeEnvKeys.join(',');
-  const roomSeriesActive = activeEnvKeys.some((k) => ENV_SERIES[k].scope === 'room');
   useEffect(() => {
+    if (roomLocation === null) { setEnvSeries({}); return undefined; }
     let cancelled = false;
-    const keys = activeEnvKeysStr ? activeEnvKeysStr.split(',') : [];
-    if (keys.length === 0) {
-      setEnvData({});
-      return undefined;
-    }
-    const dateStr = formatDateForApi(selectedDate);
-    const dayStart = new Date(`${dateStr}T00:00:00`);
-    const dayEnd = new Date(`${dateStr}T23:59:59`);
+    const dayStart = new Date(bounds.start).toISOString();
+    const dayEnd = new Date(bounds.end).toISOString();
     (async () => {
       const next = {};
-      await Promise.all(keys.map(async (key) => {
+      await Promise.all(ENV_METRIC_KEYS.map(async (metric) => {
         try {
-          const cfg = ENV_SERIES[key];
           const params = new URLSearchParams({
-            metric: cfg.metric, scope: cfg.scope, bucket: '15m', limit: '500',
-            from: dayStart.toISOString(), to: dayEnd.toISOString(),
+            metric, scope: 'room', location: roomLocation,
+            bucket: ENV_BUCKET, limit: '500', from: dayStart, to: dayEnd,
           });
-          if (cfg.scope === 'room') {
-            if (roomLocation === null) { next[key] = []; return; }
-            params.set('location', roomLocation);
-          }
           const res = await apiFetch(
-            `${config.apiUrl}/api/environment/observations?${params}`
-          );
+            `${config.apiUrl}/api/environment/observations?${params}`);
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const rows = await res.json();
-          // Newest-first from the API; chart wants ascending
-          next[key] = rows.reverse().map((r) => ({ x: new Date(r.ts), y: r.avg }));
-        } catch (err) {
-          console.error(`Environment fetch failed for ${key}:`, err);
-          next[key] = [];
+          // Newest-first from the API; spans need ascending.
+          next[metric] = rows.slice().reverse()
+            .map((r) => ({ ts: new Date(r.ts).getTime(), value: r.avg }));
+        } catch {
+          next[metric] = [];
         }
       }));
-      if (!cancelled) setEnvData(next);
+      if (!cancelled) setEnvSeries(next);
     })();
     return () => { cancelled = true; };
-  }, [selectedDate, activeEnvKeysStr, roomLocation]);
+  }, [roomLocation, bounds.start, bounds.end]);
 
-  // Build event marker label
-  const getMarkerLabel = (type, item) => {
-    switch (type) {
-      case 'medications': return `${item.name} ${item.dose}`;
-      case 'care_tasks': return item.name;
-      case 'nutrition_intake': return `${item.item_name} (${item.amount}${item.amount_unit})`;
-      case 'nutrition_output': {
-        const parts = [item.output_type];
-        if (item.is_diaper) {
-          if (item.diaper_wetness) parts.push(item.diaper_wetness);
-          if (item.diaper_soiled) parts.push('soiled');
-        }
-        if (item.consistency) parts.push(item.consistency);
-        return parts.join(' / ');
+  const envLanes = useMemo(() => ENV_LANES.map((lane) => {
+    const spans = buildEnvSpans(
+      envSeries[lane.metric] || [], envRanges?.[lane.metric], ENV_BUCKET_MS,
+      { keepOk: lane.banded },
+    );
+    return { ...lane, spans, worst: worstStatus(spans) };
+  }), [envSeries, envRanges]);
+
+  const envFlagged = envLanes.filter((l) => l.worst !== 'ok').length;
+  const hasEnvData = ENV_METRIC_KEYS.some((k) => (envSeries[k] || []).length > 0);
+
+  const series = useMemo(() => {
+    const out = {};
+    SIGNAL_KEYS.forEach((key) => {
+      out[key] = (data?.pulse_ox || [])
+        .filter((p) => p[key] != null && p[key] !== -1)
+        .map((p) => ({ x: new Date(p.ts).getTime(), y: p[key] }));
+    });
+    return out;
+  }, [data]);
+
+  const stats = useMemo(() => {
+    const val = (key) => series[key]?.map((p) => p.y) ?? [];
+    const spo2 = val('spo2');
+    const bpm = val('bpm');
+    const avg = (a) => (a.length ? a.reduce((s, n) => s + n, 0) / a.length : null);
+    const eventTotal = LANE_KEYS
+      .filter((k) => k !== 'alerts')
+      .reduce((n, k) => n + (data?.[k]?.length || 0), 0);
+    return {
+      spo2Avg: avg(spo2), spo2Low: spo2.length ? Math.min(...spo2) : null,
+      bpmAvg: avg(bpm), bpmHigh: bpm.length ? Math.max(...bpm) : null,
+      alerts: data?.alerts?.length || 0,
+      events: eventTotal,
+    };
+  }, [series, data]);
+
+  // Every marker on every lane, normalised to one shape.
+  const laneItems = useMemo(() => {
+    const out = {};
+    LANE_KEYS.forEach((key) => {
+      if (key === 'alerts') {
+        out.alerts = (data?.alerts || [])
+          .filter((a) => a.start)
+          .map((a, i) => {
+            const start = new Date(a.start).getTime();
+            const end = a.end ? new Date(a.end).getTime() : null;
+            return {
+              id: `alerts-${i}`, type: 'alerts', ts: start, end,
+              label: alertLabel(a), alert: a,
+            };
+          });
+      } else {
+        out[key] = (data?.[key] || [])
+          .filter((it) => it.ts)
+          .map((it, i) => ({
+            id: `${key}-${i}`, type: key, ts: new Date(it.ts).getTime(),
+            label: eventLabel(key, it), item: it,
+          }));
       }
-      case 'vitals': return `${item.vital_type}: ${item.value}${item.unit || ''}`;
-      default: return '';
-    }
-  };
+    });
+    return out;
+  }, [data]);
 
-  // Apply a zoom preset centered on current view or current time
-  const applyZoomPreset = useCallback((minutes) => {
-    const chart = chartInstance.current;
-    if (!chart || !timelineData) return;
+  const lanesWithData = LANE_KEYS.filter((k) => (laneItems[k]?.length || 0) > 0);
+  const visibleLanes = lanesExpanded ? LANE_KEYS : LANE_KEYS.slice(0, COLLAPSED_LANES);
+  const hiddenWithData = lanesWithData.filter((k) => !visibleLanes.includes(k)).length;
 
-    const dateStr = timelineData.date;
-    const dayStart = new Date(`${dateStr}T00:00:00`).getTime();
-    const dayEnd = new Date(`${dateStr}T23:59:59`).getTime();
+  // Everything on one ordered list, for the activity panel.
+  const allEvents = useMemo(
+    () => LANE_KEYS.flatMap((k) => laneItems[k] || []).sort((a, b) => b.ts - a.ts),
+    [laneItems],
+  );
 
+  // The alert covering the scrubbed instant, if any.
+  const cursorAlert = useMemo(() => {
+    if (cursor == null) return null;
+    return (laneItems.alerts || []).find((a) => {
+      const end = a.end ?? Date.now();
+      return cursor >= a.ts && cursor <= end;
+    }) || null;
+  }, [cursor, laneItems]);
+
+  // Nearest pulse-ox minute to the cursor, for the readout.
+  const cursorSample = useMemo(() => {
+    if (cursor == null || !data?.pulse_ox?.length) return null;
+    let best = null;
+    let bestGap = Infinity;
+    data.pulse_ox.forEach((p) => {
+      const gap = Math.abs(new Date(p.ts).getTime() - cursor);
+      if (gap < bestGap) { bestGap = gap; best = p; }
+    });
+    // A minute either side; beyond that the readout would be inventing data.
+    return bestGap <= 90_000 ? best : null;
+  }, [cursor, data]);
+
+  const nearbyEvents = useMemo(() => {
+    if (cursor == null) return [];
+    return [...allEvents]
+      .sort((a, b) => Math.abs(a.ts - cursor) - Math.abs(b.ts - cursor))
+      .slice(0, 5)
+      .sort((a, b) => b.ts - a.ts);
+  }, [allEvents, cursor]);
+
+  /* ---------------- interaction ---------------- */
+
+  const applyRange = useCallback((minutes, label) => {
+    setRangeLabel(label);
     if (minutes >= 1440) {
-      // Full day - reset zoom
-      chart.resetZoom();
-      setActivePreset('24h');
+      setView({ min: bounds.start, max: bounds.end });
       return;
     }
+    const span = minutes * 60_000;
+    // Centre on the cursor if one is set, else the newest data, else now.
+    const centre = cursor ?? lastSample ?? Math.min(Date.now(), bounds.end);
+    let min = centre - span / 2;
+    let max = centre + span / 2;
+    if (min < bounds.start) { min = bounds.start; max = min + span; }
+    if (max > bounds.end) { max = bounds.end; min = Math.max(bounds.start, max - span); }
+    setView({ min, max });
+  }, [bounds, cursor, lastSample]);
 
-    const rangeMs = minutes * 60 * 1000;
+  // One finger scrubs; two are left to the zoom plugin's pinch.
+  const tsFromClientX = useCallback((clientX) => {
+    const el = stackRef.current;
+    if (!el || !view) return null;
+    const rect = el.getBoundingClientRect();
+    const width = rect.width - PLOT_GUTTER - PLOT_RPAD;
+    if (width <= 0) return null;
+    const frac = Math.min(1, Math.max(0, (clientX - rect.left - PLOT_GUTTER) / width));
+    return Math.round(view.min + frac * (view.max - view.min));
+  }, [view]);
 
-    // Center on current view center, or current time if today
-    let center;
-    const currentMin = chart.scales.x.min;
-    const currentMax = chart.scales.x.max;
-    if (isToday(selectedDate)) {
-      center = Date.now();
-    } else {
-      center = (currentMin + currentMax) / 2;
-    }
+  const onPointerDown = (e) => {
+    pointers.current.add(e.pointerId);
+    if (pointers.current.size > 1) return;
+    const ts = tsFromClientX(e.clientX);
+    if (ts != null) setCursor(ts);
+  };
+  const onPointerMove = (e) => {
+    if (pointers.current.size !== 1 || !pointers.current.has(e.pointerId)) return;
+    if (e.pointerType === 'mouse' && e.buttons === 0) return;
+    const ts = tsFromClientX(e.clientX);
+    if (ts != null) setCursor(ts);
+  };
+  const endPointer = (e) => { pointers.current.delete(e.pointerId); };
 
-    let newMin = center - rangeMs / 2;
-    let newMax = center + rangeMs / 2;
-
-    // Clamp to day boundaries
-    if (newMin < dayStart) {
-      newMin = dayStart;
-      newMax = dayStart + rangeMs;
-    }
-    if (newMax > dayEnd) {
-      newMax = dayEnd;
-      newMin = Math.max(dayStart, dayEnd - rangeMs);
-    }
-
-    chart.zoomScale('x', { min: newMin, max: newMax }, 'default');
-    chart.update('none');
-
-    // Find matching preset label
-    const preset = ZOOM_PRESETS.find(p => p.minutes === minutes);
-    setActivePreset(preset ? preset.label : null);
-  }, [timelineData, selectedDate]);
-
-  // Toggle a pulse-ox series. Tapping an inactive one when two are already
-  // active replaces the oldest selection, so a tap always takes effect.
-  const toggleVital = (key) => {
-    setActiveVitals(prev => {
-      if (prev.includes(key)) return prev.filter(k => k !== key);
-      if (prev.length < MAX_ACTIVE_VITALS) return [...prev, key];
-      return [...prev.slice(1), key];
+  const toggleSignal = (key) => {
+    setActiveSignals((prev) => {
+      if (!prev.includes(key)) return SIGNAL_KEYS.filter((k) => prev.includes(k) || k === key);
+      // Never leave the card with nothing in it.
+      if (prev.length === 1) return prev;
+      return prev.filter((k) => k !== key);
     });
   };
 
-  const handleResetZoom = useCallback(() => {
-    if (chartInstance.current) {
-      chartInstance.current.resetZoom();
-      setActivePreset('24h');
-    }
-  }, []);
+  const shownSignals = SIGNAL_KEYS.filter((k) => activeSignals.includes(k));
+  const cursorFrac = cursor != null && view && view.max > view.min
+    ? (cursor - view.min) / (view.max - view.min)
+    : null;
+  const cursorVisible = cursorFrac != null && cursorFrac >= 0 && cursorFrac <= 1;
 
-  // Build and render chart
-  useEffect(() => {
-    if (!timelineData || !chartRef.current) return;
-
-    if (chartInstance.current) {
-      chartInstance.current.destroy();
-      chartInstance.current = null;
-    }
-
-    const dateStr = timelineData.date;
-    const dayStart = new Date(`${dateStr}T00:00:00`);
-    const dayEnd = new Date(`${dateStr}T23:59:59`);
-
-    // Active series — pulse-ox metrics come from the timeline payload
-    // (filtering out -1 invalid/disconnected reads), environmental metrics
-    // from the per-day envData fetch. First active series takes the left
-    // y-axis, second the right. Estimated env metrics render dashed.
-    const vitalDatasets = [];
-    const vitalScales = {};
-    activeVitals.forEach((key, i) => {
-      const cfg = SERIES[key];
-      const data = ENV_SERIES[key]
-        ? (envData[key] || [])
-        : timelineData.pulse_ox
-            .filter(p => p[key] != null && p[key] !== -1)
-            .map(p => ({ x: new Date(p.ts), y: p[key] }));
-
-      // Static y-axis range from all data with small padding. Vitals never go
-      // below 0; pressure deltas legitimately do, so only clamp when the
-      // series can't be negative.
-      const min = data.length > 0 ? Math.min(...data.map(p => p.y)) : cfg.defaultMin;
-      const max = data.length > 0 ? Math.max(...data.map(p => p.y)) : cfg.defaultMax;
-      const pad = Math.max((max - min) * 0.05, cfg.minPad);
-      const axisId = `y_${key}`;
-      const allowNegative = key === 'pressure_delta_6h';
-      const roomSuffix = ENV_SERIES[key]?.scope === 'room' && roomLocation
-        ? ` — ${roomLocation}` : '';
-
-      vitalDatasets.push({
-        label: cfg.axisLabel + roomSuffix,
-        data,
-        borderColor: cfg.color,
-        backgroundColor: cfg.fill,
-        borderWidth: 1.5,
-        borderDash: cfg.dashed ? [6, 4] : [],
-        pointRadius: 0,
-        pointHitRadius: 5,
-        fill: false,
-        spanGaps: true,
-        yAxisID: axisId,
-        tension: 0.2,
-      });
-      vitalScales[axisId] = {
-        type: 'linear',
-        position: i === 0 ? 'left' : 'right',
-        min: allowNegative ? min - pad : Math.max(0, min - pad),
-        max: cfg.clampMax != null ? Math.min(cfg.clampMax, max + pad) : max + pad,
-        title: { display: true, text: cfg.axisLabel, color: cfg.color, font: { size: 12 } },
-        ticks: { color: cfg.color },
-        grid: i === 0 ? { color: cfg.gridTint } : { drawOnChartArea: false },
-      };
-    });
-
-    // Build annotation lines for events
-    const annotations = {};
-
-    const addEventAnnotations = (type, items) => {
-      if (!visibleLayers[type]) return;
-      const cfg = EVENT_TYPES[type];
-      items.forEach((item, i) => {
-        const ts = new Date(item.ts);
-        const label = getMarkerLabel(type, item);
-        annotations[`${type}_${i}`] = {
-          type: 'line',
-          xMin: ts,
-          xMax: ts,
-          borderColor: cfg.color,
-          borderWidth: 2,
-          borderDash: cfg.borderDash,
-          label: {
-            display: true,
-            content: label.length > 30 ? label.substring(0, 28) + '...' : label,
-            position: 'start',
-            backgroundColor: cfg.color,
-            color: '#fff',
-            font: { size: 10, weight: 'bold' },
-            padding: { top: 2, bottom: 2, left: 4, right: 4 },
-            borderRadius: 3,
-            rotation: -90,
-            yAdjust: -10,
-          },
-        };
-      });
-    };
-
-    addEventAnnotations('medications', timelineData.medications);
-    addEventAnnotations('care_tasks', timelineData.care_tasks);
-    addEventAnnotations('nutrition_intake', timelineData.nutrition_intake);
-    addEventAnnotations('nutrition_output', timelineData.nutrition_output);
-    addEventAnnotations('vitals', timelineData.vitals);
-
-    // Alert periods as box annotations
-    if (visibleLayers.alerts) {
-      timelineData.alerts.forEach((alert, i) => {
-        if (alert.start) {
-          const start = new Date(alert.start);
-          const end = alert.end ? new Date(alert.end) : new Date(start.getTime() + 60000);
-          annotations[`alert_box_${i}`] = {
-            type: 'box',
-            xMin: start,
-            xMax: end,
-            backgroundColor: 'rgba(244, 67, 54, 0.15)',
-            borderColor: 'rgba(244, 67, 54, 0.4)',
-            borderWidth: 1,
-            label: {
-              display: true,
-              content: `Alert${alert.spo2_alarm ? ' SpO2' : ''}${alert.hr_alarm ? ' HR' : ''}`,
-              position: 'start',
-              backgroundColor: 'rgba(244, 67, 54, 0.8)',
-              color: '#fff',
-              font: { size: 9 },
-              padding: 2,
-            },
-          };
-        }
-      });
-    }
-
-    const ctx = chartRef.current.getContext('2d');
-    chartInstance.current = new Chart(ctx, {
-      type: 'line',
-      data: {
-        datasets: vitalDatasets,
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: {
-          mode: 'index',
-          intersect: false,
-        },
-        scales: {
-          x: {
-            type: 'time',
-            min: dayStart,
-            max: dayEnd,
-            time: {
-              displayFormats: {
-                minute: 'h:mm a',
-                hour: 'ha',
-              },
-              tooltipFormat: 'h:mm:ss a',
-            },
-            title: { display: true, text: 'Time', font: { size: 12 }, color: chart.axis },
-            grid: { color: chart.grid },
-            ticks: { maxRotation: 0, font: { size: 11 }, color: chart.axis, autoSkip: true, maxTicksLimit: 24 },
-          },
-          ...vitalScales,
-        },
-        plugins: {
-          legend: {
-            position: 'top',
-            labels: { usePointStyle: true, padding: 15, font: { size: 12 }, color: chart.foreground },
-          },
-          tooltip: {
-            callbacks: {
-              title: (items) => {
-                if (items[0]) {
-                  const d = new Date(items[0].parsed.x);
-                  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
-                }
-                return '';
-              },
-            },
-          },
-          annotation: { annotations },
-          zoom: {
-            pan: {
-              enabled: true,
-              mode: 'x',
-              modifierKey: null,
-            },
-            zoom: {
-              wheel: { enabled: true, modifierKey: null },
-              pinch: { enabled: true },
-              mode: 'x',
-              onZoom: () => setActivePreset(null),
-            },
-            limits: {
-              x: { min: dayStart.getTime(), max: dayEnd.getTime(), minRange: 5 * 60 * 1000 },
-            },
-          },
-        },
-      },
-    });
-
-    setActivePreset('24h');
-
-    return () => {
-      if (chartInstance.current) {
-        chartInstance.current.destroy();
-        chartInstance.current = null;
-      }
-    };
-  }, [timelineData, envData, visibleLayers, selectedDate, activeVitals, roomLocation, chart.grid, chart.axis, chart.foreground]);
-
-  const toggleLayer = (key) => {
-    setVisibleLayers(prev => ({ ...prev, [key]: !prev[key] }));
-  };
-
-  // Event counts for summary
-  const getEventCount = (type) => {
-    if (!timelineData) return 0;
-    return (timelineData[type] || []).length;
-  };
+  /* ---------------- render ---------------- */
 
   if (!selectedPatient) {
-    return (
-      <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted-foreground)' }}>
-        Select a patient from the sidebar to view the timeline.
-      </div>
-    );
+    return <div className="mtl"><p className="mtl-empty">Select a patient to see their day.</p></div>;
   }
 
+  const today = new Date();
+  const onToday = isSameDay(selectedDate, today);
+  const shiftDay = (days) => {
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() + days);
+    if (d > today && !isSameDay(d, today)) return;
+    setSelectedDate(d);
+  };
+
   return (
-    <div style={{ padding: '0' }}>
-      {/* Date Navigation - matches /care/schedule */}
-      <div className="admin-v2-schedule-nav tw">
-        <Button variant="secondary" size="icon" onClick={goToPreviousDay} title="Previous Day">
-          <ChevronLeftIcon size={20} />
-        </Button>
-
-        <div className="admin-v2-schedule-date">
-          <CalendarIcon size={18} />
-          <span>{formatDisplayDate(selectedDate)}</span>
-          {isToday(selectedDate) && (
-            <span className="admin-v2-today-badge">Today</span>
-          )}
-        </div>
-
-        <Button variant="secondary" size="icon" onClick={goToNextDay} title="Next Day">
-          <ChevronRightIcon size={20} />
-        </Button>
-
-        {!isToday(selectedDate) && (
-          <Button variant="secondary" size="sm" className="ml-4" onClick={goToToday}>
-            Go to Today
-          </Button>
-        )}
-
-        <Input
-          type="date"
-          value={formatDateForApi(selectedDate)}
-          onChange={(e) => setSelectedDate(new Date(e.target.value + 'T12:00:00'))}
-          className="w-auto"
-        />
-      </div>
-
-      {/* Event Layer Toggles + Zoom Controls */}
-      <div style={{
-        display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: '1rem',
-        padding: '0.75rem 1rem', background: 'var(--card)', borderRadius: 8, border: '1px solid var(--border)',
-        alignItems: 'center', justifyContent: 'space-between',
-      }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-          {/* Dataset toggles (max 2 active — one per y-axis). Dashed borders
-              mark estimated/derived environmental metrics. */}
-          {Object.entries(VITAL_SERIES).map(([key, cfg]) => (
-            <SeriesChip key={key} seriesKey={key} cfg={cfg}
-                        active={activeVitals.includes(key)} onToggle={toggleVital} />
-          ))}
-          <span style={{ width: 1, height: 20, background: 'var(--border)', display: 'inline-block' }} />
-          <span style={{ fontSize: 11, color: 'var(--muted-foreground)' }}>Env:</span>
-          {Object.entries(ENV_SERIES).map(([key, cfg]) => (
-            <SeriesChip key={key} seriesKey={key} cfg={cfg}
-                        active={activeVitals.includes(key)} onToggle={toggleVital}
-                        noData={activeVitals.includes(key) && (envData[key] || []).length === 0} />
-          ))}
-          {/* Room picker for room-scoped series; rooms come from observed data */}
-          {roomSeriesActive && roomLocations.length > 0 && (
-            <span className="tw">
-              <Select value={roomLocation === '' ? '__unspecified__' : (roomLocation ?? undefined)}
-                      onValueChange={(v) => setRoomLocation(v === '__unspecified__' ? '' : v)}>
-                <SelectTrigger className="h-7 w-auto min-w-[110px] text-xs">
-                  <SelectValue placeholder="Room…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {roomLocations.map((loc) => (
-                    <SelectItem key={loc || '__unspecified__'} value={loc || '__unspecified__'}>
-                      {loc || '(unspecified)'}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </span>
-          )}
-
-          <span style={{ width: 1, height: 20, background: 'var(--border)', display: 'inline-block' }} />
-
-          {/* Event marker toggles */}
-          {Object.entries(EVENT_TYPES).map(([key, cfg]) => (
-            <button
-              key={key}
-              onClick={() => toggleLayer(key)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                padding: '5px 12px', borderRadius: 16, fontSize: 12, fontWeight: 600,
-                border: `2px solid ${cfg.color}`,
-                background: visibleLayers[key] ? cfg.color : 'transparent',
-                color: visibleLayers[key] ? '#fff' : cfg.color,
-                cursor: 'pointer', transition: 'all 0.15s',
-                opacity: visibleLayers[key] ? 1 : 0.6,
-              }}
-            >
-              <span style={{
-                width: 8, height: 8, borderRadius: '50%',
-                background: visibleLayers[key] ? '#fff' : cfg.color,
-                display: 'inline-block'
-              }} />
-              {cfg.label}
-              {timelineData && <span style={{ opacity: 0.8, marginLeft: 2 }}>({getEventCount(key)})</span>}
-            </button>
-          ))}
-        </div>
-
-        {/* Zoom presets */}
-        <div className="tw" style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-          <span style={{ fontSize: 11, color: 'var(--muted-foreground)', marginRight: 4 }}>Zoom:</span>
-          {ZOOM_PRESETS.map(p => (
-            <Button
-              key={p.label}
-              size="sm"
-              variant={activePreset === p.label ? 'default' : 'secondary'}
-              onClick={() => applyZoomPreset(p.minutes)}
-            >
-              {p.label}
-            </Button>
-          ))}
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={handleResetZoom}
-            title="Reset zoom to full day"
-          >
-            Reset
-          </Button>
-        </div>
-      </div>
-
-      {/* Zoom hint */}
-      <div style={{ fontSize: 11, color: 'var(--muted-foreground)', marginBottom: 8, paddingLeft: 4 }}>
-        Scroll to zoom &middot; Click and drag to pan
-      </div>
-
-      {/* Chart */}
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: 60, color: 'var(--muted-foreground)' }}>Loading timeline data...</div>
-      ) : error ? (
-        <div className="tw" style={{ padding: '0 0 1rem' }}><Alert variant="destructive">{error}</Alert></div>
-      ) : !timelineData ? (
-        <div style={{ textAlign: 'center', padding: 60, color: 'var(--muted-foreground)' }}>No data available.</div>
-      ) : (
-        <div
-          ref={chartContainerRef}
-          style={{
-            border: '1px solid var(--border)', borderRadius: 8, background: 'var(--card)',
-            padding: '12px 8px',
-            height: 440,
-            position: 'relative',
-          }}
+    <div className="mtl">
+      <div className="mtl-datenav">
+        <button type="button" className="mtl-navbtn" onClick={() => shiftDay(-1)} aria-label="Previous day">
+          <ChevronLeftIcon size={18} />
+        </button>
+        <button
+          type="button"
+          className={`mtl-navbtn${onToday ? ' on' : ''}`}
+          onClick={() => setSelectedDate(new Date())}
         >
-          <canvas ref={chartRef} />
-        </div>
-      )}
+          Today
+        </button>
+        <button
+          type="button"
+          className="mtl-navbtn"
+          onClick={() => shiftDay(1)}
+          disabled={onToday}
+          aria-label="Next day"
+        >
+          <ChevronRightIcon size={18} />
+        </button>
+        <span className="mtl-datepill">
+          {selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+          <CalendarIcon size={16} />
+          <input
+            type="date"
+            aria-label="Pick a date"
+            max={toApiDate(today)}
+            value={toApiDate(selectedDate)}
+            onChange={(e) => {
+              if (!e.target.value) return;
+              const [y, m, d] = e.target.value.split('-').map(Number);
+              setSelectedDate(new Date(y, m - 1, d));
+            }}
+          />
+        </span>
+      </div>
 
-      {/* Event Details Summary */}
-      {timelineData && !loading && (
-        <div style={{ marginTop: '1rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
-          {visibleLayers.medications && timelineData.medications.length > 0 && (
-            <EventSummaryCard title="Medications" color={EVENT_TYPES.medications.color} items={timelineData.medications.map(m => ({
-              time: new Date(m.ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-              text: `${m.name} - ${m.dose}`,
-              subtext: m.status !== 'on-time' ? m.status : null,
-            }))} />
-          )}
-          {visibleLayers.care_tasks && timelineData.care_tasks.length > 0 && (
-            <EventSummaryCard title="Care Tasks" color={EVENT_TYPES.care_tasks.color} items={timelineData.care_tasks.map(t => ({
-              time: new Date(t.ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-              text: t.name,
-              subtext: t.category || null,
-            }))} />
-          )}
-          {visibleLayers.nutrition_intake && timelineData.nutrition_intake.length > 0 && (
-            <EventSummaryCard title="Nutrition In" color={EVENT_TYPES.nutrition_intake.color} items={timelineData.nutrition_intake.map(n => ({
-              time: new Date(n.ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-              text: `${n.item_name} - ${n.amount}${n.amount_unit}`,
-              subtext: n.calories ? `${n.calories} cal` : null,
-            }))} />
-          )}
-          {visibleLayers.nutrition_output && timelineData.nutrition_output.length > 0 && (
-            <EventSummaryCard title="Nutrition Out" color={EVENT_TYPES.nutrition_output.color} items={timelineData.nutrition_output.map(o => ({
-              time: new Date(o.ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-              text: getMarkerLabel('nutrition_output', o),
-              subtext: o.notes || null,
-            }))} />
-          )}
-          {visibleLayers.vitals && timelineData.vitals.length > 0 && (
-            <EventSummaryCard title="Vitals" color={EVENT_TYPES.vitals.color} items={timelineData.vitals.map(v => ({
-              time: new Date(v.ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-              text: `${v.vital_type}${v.vital_group ? ` (${v.vital_group})` : ''}: ${v.value}${v.unit || ''}`,
-              subtext: v.notes || null,
-            }))} />
-          )}
-          {visibleLayers.alerts && timelineData.alerts.length > 0 && (
-            <EventSummaryCard title="Alerts" color={EVENT_TYPES.alerts.color} items={timelineData.alerts.map(a => ({
-              time: new Date(a.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-              text: `${a.spo2_alarm ? 'SpO2 Alarm' : ''}${a.hr_alarm ? 'HR Alarm' : ''}${!a.spo2_alarm && !a.hr_alarm ? 'Alert' : ''}`,
-              subtext: a.acknowledged ? 'Acknowledged' : 'Unacknowledged',
-            }))} />
-          )}
+      <div className="mtl-head">
+        <h2>Day timeline</h2>
+        <p>
+          12:00 AM &mdash; {onToday ? 'now' : '11:59 PM'}
+          {lastSample != null && ` · Live data through ${clockTime(new Date(lastSample))}`}
+          {lastSample == null && !loading && ' · No pulse-ox data this day'}
+        </p>
+      </div>
+
+      <div className="mtl-stats">
+        <div className="mtl-stat">
+          <span className="mtl-stat-head" style={{ color: SIGNALS.spo2.color }}>SpO2</span>
+          <dl className="mtl-stat-rows">
+            <div className="mtl-stat-row">
+              <dt>Avg</dt>
+              <dd>{stats.spo2Avg == null ? <span className="mtl-stat-empty">—</span>
+                : <>{stats.spo2Avg.toFixed(1)}<small>%</small></>}</dd>
+            </div>
+            <div className="mtl-stat-row">
+              <dt>Low</dt>
+              <dd>{stats.spo2Low == null ? <span className="mtl-stat-empty">—</span>
+                : <>{stats.spo2Low}<small>%</small></>}</dd>
+            </div>
+          </dl>
         </div>
+        <div className="mtl-stat">
+          <span className="mtl-stat-head" style={{ color: SIGNALS.bpm.color }}>Heart rate</span>
+          <dl className="mtl-stat-rows">
+            <div className="mtl-stat-row">
+              <dt>Avg</dt>
+              <dd>{stats.bpmAvg == null ? <span className="mtl-stat-empty">—</span>
+                : <>{Math.round(stats.bpmAvg)}<small>bpm</small></>}</dd>
+            </div>
+            <div className="mtl-stat-row">
+              <dt>High</dt>
+              <dd>{stats.bpmHigh == null ? <span className="mtl-stat-empty">—</span>
+                : <>{Math.round(stats.bpmHigh)}</>}</dd>
+            </div>
+          </dl>
+        </div>
+        <div className="mtl-stat">
+          <span className="mtl-stat-head" style={{ color: LANES.alerts.color }}>Alerts</span>
+          <span className="mtl-stat-big" style={{ color: LANES.alerts.color }}>{stats.alerts}</span>
+        </div>
+        <div className="mtl-stat">
+          <span className="mtl-stat-head" style={{ color: 'var(--vc-data-live)' }}>Events</span>
+          <span className="mtl-stat-big" style={{ color: 'var(--vc-data-live)' }}>{stats.events}</span>
+        </div>
+      </div>
+
+      <div className="mtl-controls">
+        <span className="mtl-chip" aria-disabled="true">
+          <FilterIcon size={15} />
+          Signals
+          <span className="mtl-chip-count">{shownSignals.length}</span>
+        </span>
+        {SIGNAL_KEYS.map((key) => (
+          <button
+            key={key}
+            type="button"
+            className="mtl-sig"
+            style={{ '--sig': SIGNALS[key].color }}
+            aria-pressed={activeSignals.includes(key)}
+            onClick={() => toggleSignal(key)}
+          >
+            <span className="mtl-sig-dot" />
+            {SIGNALS[key].label}
+          </button>
+        ))}
+        <span className="mtl-spacer" />
+        <button
+          type="button"
+          className="mtl-chip accent"
+          onClick={() => setLanesExpanded((v) => !v)}
+          aria-expanded={lanesExpanded}
+        >
+          Events
+          <span className="mtl-chip-count">{lanesWithData.length}</span>
+          <ChevronDownIcon size={15} style={{ transform: lanesExpanded ? 'rotate(180deg)' : 'none' }} />
+        </button>
+      </div>
+
+      <div className="mtl-ranges" role="group" aria-label="Time range">
+        {RANGES.map((r) => (
+          <button
+            key={r.label}
+            type="button"
+            className={`mtl-range${rangeLabel === r.label ? ' on' : ''}`}
+            aria-pressed={rangeLabel === r.label}
+            onClick={() => applyRange(r.minutes, r.label)}
+          >
+            {r.label}
+          </button>
+        ))}
+      </div>
+
+      {error && <p className="mtl-error">{error}</p>}
+
+      {loading && !data && <p className="mtl-empty">Loading the day…</p>}
+
+      {data && (
+        <>
+          <section className="mtl-card">
+            <div className="mtl-card-head"><h3>Signals</h3></div>
+            <div
+              className="mtl-stack"
+              ref={stackRef}
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={endPointer}
+              onPointerCancel={endPointer}
+              onPointerLeave={endPointer}
+            >
+              {shownSignals.map((key, i) => (
+                <SignalChart
+                  key={key}
+                  signalKey={key}
+                  points={series[key]}
+                  view={view}
+                  bounds={bounds}
+                  alerts={laneItems.alerts}
+                  alarms={alarmsFor(SIGNALS[key].alarmKey, settings)}
+                  cursor={cursor}
+                  showAxis={i === shownSignals.length - 1}
+                  onViewChange={(next) => { setView(next); setRangeLabel(null); }}
+                />
+              ))}
+
+              <div className="mtl-lanes">
+                <div className="mtl-lanes-title">Event lanes</div>
+                {visibleLanes.map((key) => (
+                  <EventLane
+                    key={key}
+                    laneKey={key}
+                    items={laneItems[key] || []}
+                    view={view}
+                    cursor={cursor}
+                    onPick={setCursor}
+                  />
+                ))}
+                {(hiddenWithData > 0 || lanesExpanded) && (
+                  <button type="button" className="mtl-more" onClick={() => setLanesExpanded((v) => !v)}>
+                    <ChevronDownIcon
+                      size={14}
+                      style={{ transform: lanesExpanded ? 'rotate(180deg)' : 'none' }}
+                    />
+                    {lanesExpanded ? 'Fewer lanes' : `+${LANE_KEYS.length - COLLAPSED_LANES} more`}
+                  </button>
+                )}
+              </div>
+
+              <div className="mtl-lanes mtl-envlanes">
+                <div className="mtl-lanes-title">
+                  <span>Room conditions</span>
+                  {roomLocations.length > 1 && (
+                    <select
+                      className="mtl-roompick"
+                      aria-label="Room"
+                      value={roomLocation ?? ''}
+                      onChange={(e) => setRoomLocation(e.target.value)}
+                    >
+                      {roomLocations.map((loc) => (
+                        <option key={loc || '__none__'} value={loc}>
+                          {loc || 'Unspecified room'}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                {!hasEnvData ? (
+                  <p className="mtl-lane-note">No room readings for this day.</p>
+                ) : (
+                  <>
+                    {envLanes.map((lane) => (
+                      <EnvLane key={lane.metric} lane={lane} view={view} />
+                    ))}
+                    <p className="mtl-lane-note">
+                      {envFlagged === 0
+                        ? 'In range all day.'
+                        : `${envFlagged} of ${envLanes.length} out of range at some point.`}
+                    </p>
+                  </>
+                )}
+              </div>
+
+
+              {cursorVisible && (
+                <div className="mtl-plotbox">
+                  <div className="mtl-scrub" style={{ left: `${cursorFrac * 100}%` }}>
+                    <span className="mtl-scrub-pill">{clockTime(new Date(cursor))}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+
+          <p className="mtl-hint">Drag to inspect · pinch or scroll to zoom</p>
+
+          <section className="mtl-detail">
+            <div className="mtl-detail-main">
+              <div className="mtl-detail-top">
+                <span className="mtl-detail-time">
+                  {cursor == null ? '—' : clockTime(new Date(cursor))}
+                </span>
+                {cursorAlert && (
+                  <span className={`mtl-badge${cursorAlert.end ? '' : ' ongoing'}`}>
+                    {cursorAlert.end ? alertLabel(cursorAlert.alert) : 'Alert ongoing'}
+                  </span>
+                )}
+              </div>
+
+              {cursor == null ? (
+                <p className="mtl-detail-foot" style={{ border: 'none', margin: 0, paddingTop: 0 }}>
+                  Drag across the charts to read a moment.
+                </p>
+              ) : (
+                <>
+                  <dl className="mtl-readout">
+                    <div>
+                      <dt style={{ color: SIGNALS.spo2.color }}>SpO2</dt>
+                      <dd>{cursorSample?.spo2 != null
+                        ? <>{cursorSample.spo2}<small>%</small></>
+                        : <span className="mtl-stat-empty">—</span>}</dd>
+                    </div>
+                    <div>
+                      <dt style={{ color: SIGNALS.bpm.color }}>Heart rate</dt>
+                      <dd>{cursorSample?.bpm != null
+                        ? <>{Math.round(cursorSample.bpm)}<small>bpm</small></>
+                        : <span className="mtl-stat-empty">—</span>}</dd>
+                    </div>
+                    <div>
+                      <dt style={{ color: 'var(--vc-text-secondary)' }}>Perfusion</dt>
+                      <dd>{cursorSample?.perfusion != null
+                        ? cursorSample.perfusion
+                        : <span className="mtl-stat-empty">—</span>}</dd>
+                    </div>
+                  </dl>
+                  {cursorAlert && (
+                    <p className="mtl-detail-foot">
+                      {cursorAlert.end
+                        ? <>Duration <b>{formatDuration(cursorAlert.end - cursorAlert.ts)}</b></>
+                        : <>Started <b>{clockTime(new Date(cursorAlert.ts))}</b> · still open</>}
+                      {cursorAlert.alert.spo2_min != null && <> · low <b>{cursorAlert.alert.spo2_min}%</b></>}
+                      {cursorAlert.alert.oxygen_used && <> · oxygen used</>}
+                    </p>
+                  )}
+                  {!cursorSample && (
+                    <p className="mtl-detail-foot">No pulse-ox reading within a minute of this time.</p>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div className="mtl-detail-side">
+              <span className="mtl-label">Around this time</span>
+              {cursor == null ? (
+                <p className="mtl-detail-foot" style={{ border: 'none', paddingTop: '0.4rem' }}>
+                  Nothing selected yet.
+                </p>
+              ) : nearbyEvents.length === 0 ? (
+                <p className="mtl-detail-foot" style={{ border: 'none', paddingTop: '0.4rem' }}>
+                  No events logged this day.
+                </p>
+              ) : (
+                <p className="mtl-detail-foot" style={{ border: 'none', paddingTop: '0.4rem' }}>
+                  <b>{nearbyEvents.length}</b> nearest {nearbyEvents.length === 1 ? 'entry' : 'entries'} listed below.
+                </p>
+              )}
+            </div>
+          </section>
+
+          <section className="mtl-activity">
+            <div className="mtl-activity-head">
+              <h3>{cursor == null ? 'Activity' : `Activity around ${clockTime(new Date(cursor))}`}</h3>
+              <span className="mtl-label">{allEvents.length} total</span>
+            </div>
+            {allEvents.length === 0 ? (
+              <p className="mtl-empty">Nothing was logged on this day.</p>
+            ) : (
+              (cursor == null ? allEvents.slice(0, 8) : nearbyEvents).map((ev) => {
+                const lane = LANES[ev.type];
+                const Icon = lane.Icon;
+                const on = cursor != null && Math.abs(ev.ts - cursor) < 60_000;
+                return (
+                  <button
+                    key={ev.id}
+                    type="button"
+                    className={`mtl-row${on ? ' on' : ''}`}
+                    style={{ '--lane': lane.color }}
+                    onClick={() => setCursor(ev.ts)}
+                  >
+                    <span className="mtl-row-icon"><Icon size={16} /></span>
+                    <span className="mtl-row-time">{clockTime(new Date(ev.ts))}</span>
+                    <span className="mtl-row-text">{ev.label}</span>
+                  </button>
+                );
+              })
+            )}
+          </section>
+        </>
       )}
     </div>
   );
 };
 
-// Toggle pill for a plottable series. Dashed border = estimated/derived
-// metric (matches the dashed chart line).
-const SeriesChip = ({ seriesKey, cfg, active, onToggle, noData = false }) => (
-  <button
-    onClick={() => onToggle(seriesKey)}
-    style={{
-      display: 'flex', alignItems: 'center', gap: 6,
-      padding: '5px 12px', borderRadius: 16, fontSize: 12, fontWeight: 600,
-      border: `2px ${cfg.dashed ? 'dashed' : 'solid'} ${cfg.color}`,
-      background: active ? cfg.color : 'transparent',
-      color: active ? '#fff' : cfg.color,
-      cursor: 'pointer', transition: 'all 0.15s',
-      opacity: active ? 1 : 0.6,
-    }}
-  >
-    <span style={{ width: 8, height: 8, borderRadius: '50%', background: active ? '#fff' : cfg.color, display: 'inline-block' }} />
-    {cfg.label}
-    {noData && <span style={{ opacity: 0.8, marginLeft: 2 }}>(no data)</span>}
-  </button>
-);
+/* One signal, one scale. Every chart on the page is this component, so the
+ * two can never drift apart in axis geometry or option shape. */
+const SignalChart = ({
+  signalKey, points, view, bounds, alerts, alarms, cursor, showAxis, onViewChange,
+}) => {
+  const cfg = SIGNALS[signalKey];
+  const canvasRef = useRef(null);
+  const chartRef = useRef(null);
+  const onViewChangeRef = useRef(onViewChange);
+  onViewChangeRef.current = onViewChange;
 
-// Compact card showing event list - dark theme
-const EventSummaryCard = ({ title, color, items }) => (
-  <div style={{
-    border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden',
-    background: 'var(--card)',
-  }}>
-    <div style={{
-      padding: '8px 12px', background: color, color: '#fff',
-      fontSize: 13, fontWeight: 700,
-    }}>
-      {title} ({items.length})
+  /* Y is fixed for the whole day rather than refitted to each window, so
+   * panning and zooming move across a stable scale instead of rescaling under
+   * the reader. niceScale only rounds the bounds outward, which is what keeps
+   * the ticks reading 85 / 90 / 95 instead of 85.8. */
+  const yRange = useMemo(() => {
+    if (!points.length) {
+      return niceScale(cfg.defaultMin, cfg.defaultMax, cfg.minPad, cfg.clampMax);
+    }
+    const ys = points.map((p) => p.y);
+    return niceScale(Math.min(...ys), Math.max(...ys), cfg.minPad, cfg.clampMax);
+  }, [points, cfg]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return undefined;
+
+    const annotations = {};
+    (alerts || []).forEach((a, i) => {
+      annotations[`band${i}`] = {
+        type: 'box',
+        xMin: a.ts,
+        xMax: a.end ?? bounds.end,
+        backgroundColor: CHROME.band,
+        borderColor: CHROME.bandEdge,
+        borderWidth: 0,
+        drawTime: 'beforeDatasetsDraw',
+      };
+    });
+    const line = (value, text) => ({
+      type: 'line',
+      yMin: value,
+      yMax: value,
+      borderColor: CHROME.threshold,
+      borderWidth: 1,
+      borderDash: [5, 4],
+      label: {
+        display: true,
+        content: text,
+        position: 'start',
+        backgroundColor: 'transparent',
+        color: CHROME.axis,
+        font: { size: 10, family: "'IBM Plex Mono', monospace" },
+        padding: 0,
+        yAdjust: -8,
+      },
+    });
+    if (alarms?.low != null) annotations.low = line(alarms.low, `LOW ${alarms.low}`);
+    if (alarms?.high != null) annotations.high = line(alarms.high, `HIGH ${alarms.high}`);
+
+    const chart = new Chart(canvas.getContext('2d'), {
+      type: 'line',
+      data: {
+        datasets: [{
+          label: cfg.axisLabel,
+          data: points,
+          parsing: false,
+          borderColor: cfg.color,
+          borderWidth: 1.4,
+          pointRadius: 0,
+          pointHitRadius: 0,
+          tension: 0.15,
+          spanGaps: false,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        events: [],                 // scrubbing is owned by the stack, not the canvas
+        layout: { padding: { right: PLOT_RPAD, top: 14, bottom: 0 } },
+        scales: {
+          x: {
+            type: 'time',
+            min: view?.min ?? bounds.start,
+            max: view?.max ?? bounds.end,
+            // No meridiem on minute ticks: at an hour wide they collided,
+            // and the scrubber pill already carries the full clock time.
+            time: { displayFormats: { minute: 'h:mm', hour: 'ha' } },
+            grid: { color: CHROME.grid, drawTicks: false },
+            border: { display: false },
+            ticks: {
+              display: showAxis,
+              color: CHROME.axis,
+              maxRotation: 0,
+              autoSkip: true,
+              autoSkipPadding: 16,
+              maxTicksLimit: 6,
+              font: { size: 10, family: "'IBM Plex Mono', monospace" },
+            },
+          },
+          y: {
+            min: yRange.min,
+            max: yRange.max,
+            grid: { color: CHROME.grid, drawTicks: false },
+            border: { display: false },
+            ticks: {
+              color: CHROME.axis,
+              stepSize: yRange.step,
+              maxTicksLimit: 6,
+              font: { size: 10, family: "'IBM Plex Mono', monospace" },
+            },
+            // Pin the axis width so this chart's plot area starts at exactly
+            // the same x as its sibling's and the lanes below.
+            afterFit: (scale) => { scale.width = PLOT_GUTTER; },
+          },
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: { enabled: false },
+          annotation: { annotations },
+          zoom: {
+            pan: { enabled: false },   // one-finger drag scrubs instead
+            zoom: {
+              wheel: { enabled: true },
+              pinch: { enabled: true },
+              mode: 'x',
+              onZoomComplete: ({ chart: c }) => {
+                onViewChangeRef.current({ min: c.scales.x.min, max: c.scales.x.max });
+              },
+            },
+            limits: { x: { min: bounds.start, max: bounds.end, minRange: MIN_RANGE_MS } },
+          },
+        },
+      },
+    });
+    chartRef.current = chart;
+    return () => { chart.destroy(); chartRef.current = null; };
+    // View is applied imperatively below so a pan doesn't rebuild the chart.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [points, alerts, alarms, bounds, showAxis, cfg, yRange]);
+
+  // Both charts follow one window. Guarded so the chart that raised the zoom
+  // doesn't get re-set to the value it just reported.
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || !view) return;
+    if (chart.scales.x.min === view.min && chart.scales.x.max === view.max) return;
+    chart.zoomScale('x', { min: view.min, max: view.max }, 'none');
+  }, [view]);
+
+  // The scrubbed point, drawn as a dot on this series.
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const anns = chart.options.plugins.annotation.annotations;
+    delete anns.cursor;
+    if (cursor != null && points.length) {
+      let best = null;
+      let gap = Infinity;
+      points.forEach((p) => {
+        const d = Math.abs(p.x - cursor);
+        if (d < gap) { gap = d; best = p; }
+      });
+      if (best && gap <= 90_000) {
+        anns.cursor = {
+          type: 'point',
+          xValue: best.x,
+          yValue: best.y,
+          radius: 4,
+          backgroundColor: cfg.color,
+          borderColor: CHROME.grid,
+          borderWidth: 1,
+        };
+      }
+    }
+    chart.update('none');
+  }, [cursor, points, cfg]);
+
+  return (
+    <div className={`mtl-chart${showAxis ? ' tall' : ''}`}>
+      <span className="mtl-chart-title" style={{ color: cfg.color }}>{cfg.axisLabel}</span>
+      <canvas ref={canvasRef} aria-label={`${cfg.label} over time`} />
     </div>
-    <div style={{ maxHeight: 200, overflowY: 'auto' }}>
-      {items.map((item, i) => (
-        <div key={i} style={{
-          padding: '6px 12px', fontSize: 12, borderBottom: '1px solid var(--secondary)',
-          display: 'flex', gap: 8, alignItems: 'baseline',
-        }}>
-          <span style={{ color: 'var(--muted-foreground)', whiteSpace: 'nowrap', fontWeight: 600, minWidth: 60 }}>{item.time}</span>
-          <span style={{ color: 'var(--foreground)' }}>
-            {item.text}
-            {item.subtext && <span style={{ color: 'var(--muted-foreground)', marginLeft: 4, fontSize: 11 }}>({item.subtext})</span>}
-          </span>
-        </div>
-      ))}
+  );
+};
+
+/* One row of markers, sharing the charts' time window and plot box. */
+const EventLane = ({ laneKey, items, view, cursor, onPick }) => {
+  const lane = LANES[laneKey];
+  const span = view ? view.max - view.min : 0;
+  const inWindow = span > 0
+    ? items.filter((it) => it.ts >= view.min && it.ts <= view.max)
+    : [];
+
+  return (
+    <div className="mtl-lane" style={{ '--lane': lane.color }}>
+      <span className="mtl-lane-name">{lane.label}</span>
+      <div className="mtl-lane-track">
+        {inWindow.length === 0 && <span className="mtl-lane-empty">—</span>}
+        {inWindow.map((it) => (
+          <button
+            key={it.id}
+            type="button"
+            className={`mtl-lane-mark${laneKey === 'alerts' ? ' alert' : ''}`
+              + (cursor != null && Math.abs(it.ts - cursor) < 60_000 ? ' on' : '')}
+            style={{ left: `${((it.ts - view.min) / span) * 100}%` }}
+            title={`${clockTime(new Date(it.ts))} — ${it.label}`}
+            aria-label={`${clockTime(new Date(it.ts))} ${it.label}`}
+            onClick={() => onPick(it.ts)}
+          />
+        ))}
+      </div>
     </div>
-  </div>
-);
+  );
+};
+
+/* One room metric across the window.
+ *
+ * Severity is the colour; direction is the position. A high excursion draws in
+ * the top half of the lane and a low one in the bottom half, so "too hot" and
+ * "too cold" are distinguishable without reading a glyph or relying on the
+ * colour alone. Banded lanes (PM2.5) fill the whole height because every band
+ * including the good one is worth seeing. */
+const EnvLane = ({ lane, view }) => {
+  const span = view ? view.max - view.min : 0;
+  const unit = ENV_UNITS[lane.metric] || '';
+  const visible = span > 0
+    ? lane.spans.filter((s) => s.to > view.min && s.from < view.max)
+    : [];
+
+  return (
+    <div className="mtl-lane">
+      <span className="mtl-lane-name">{lane.label}</span>
+      <div className="mtl-lane-track">
+        {visible.length === 0 && <span className="mtl-lane-empty">—</span>}
+        {visible.map((s) => {
+          const from = Math.max(s.from, view.min);
+          const to = Math.min(s.to, view.max);
+          const dir = directionOf(s.status);
+          const sev = severityOf(s.status);
+          return (
+            <span
+              key={`${s.from}-${s.status}`}
+              className={`mtl-env-span sev-${sev}${lane.banded ? ' banded' : ` dir-${dir}`}`}
+              style={{
+                left: `${((from - view.min) / span) * 100}%`,
+                width: `${Math.max(((to - from) / span) * 100, 0.4)}%`,
+              }}
+              title={`${clockTime(new Date(s.from))} — ${describeSpan(lane.label, s, unit)}`}
+            >
+              <span className="sr-only">{describeSpan(lane.label, s, unit)}</span>
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
 
 export default AdminV2MonitoringTimeline;

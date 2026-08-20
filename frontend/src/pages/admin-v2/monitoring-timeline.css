@@ -1,0 +1,688 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Day timeline — vc-native, dark by design in both app themes (same stance as
+ * symptom-log.css and clinical-summary.css). Tokens only, no raw hex.
+ *
+ * Alignment contract: the two signal charts, the event lanes and the scrubber
+ * all share one horizontal plot box. Chart.js is forced to a fixed y-axis
+ * width (--mtl-gutter) via scale.afterFit, and everything else is inset by the
+ * same gutter, so a time maps to the same x in all of them. Change the gutter
+ * here and in PLOT_GUTTER in the page — they must agree. */
+@import '../../styles/vc-tokens.css';
+
+.mtl {
+  --mtl-gutter: 52px;
+  --mtl-rpad: 12px;
+
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  color: var(--vc-text-primary);
+  font-family: var(--vc-font-sans);
+  font-variant-numeric: tabular-nums;
+}
+.mtl *,
+.mtl *::before,
+.mtl *::after {
+  /* The page lives outside the .tw preflight scope, where the UA default is
+     content-box — width:100% controls would overflow their cards. */
+  box-sizing: border-box;
+}
+
+.mtl-label {
+  font-family: var(--vc-font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+
+/* ---------- date nav ---------- */
+.mtl-datenav {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.mtl-navbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  height: 36px;
+  min-width: 36px;
+  padding: 0 0.7rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-surface);
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.mtl-navbtn:hover:not(:disabled) {
+  background: var(--vc-bg-raised);
+  color: var(--vc-text-primary);
+}
+.mtl-navbtn:disabled { opacity: 0.4; cursor: default; }
+.mtl-navbtn.on {
+  border-color: var(--vc-data-live);
+  color: var(--vc-data-live);
+}
+.mtl-datepill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 36px;
+  padding: 0 0.75rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-surface);
+  font-family: var(--vc-font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  color: var(--vc-text-primary);
+}
+/* The native picker sits invisibly over the pill so the whole pill is the
+   control, including its calendar glyph. */
+.mtl-datepill input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color-scheme: dark;
+}
+.mtl-datepill svg { color: var(--vc-text-secondary); flex-shrink: 0; }
+
+/* ---------- heading ---------- */
+.mtl-head h2 {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.mtl-head p {
+  margin: 0.15rem 0 0;
+  font-size: 0.82rem;
+  color: var(--vc-text-secondary);
+}
+
+/* ---------- stat strip ---------- */
+.mtl-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 10px;
+  background: var(--vc-bg-surface);
+  overflow: hidden;
+}
+.mtl-stat {
+  padding: 0.7rem 0.9rem;
+  border-right: 1px solid var(--vc-line-hairline);
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.mtl-stat:last-child { border-right: none; }
+.mtl-stat-head {
+  font-family: var(--vc-font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.mtl-stat-rows { display: flex; flex-direction: column; gap: 0.1rem; }
+.mtl-stat-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-family: var(--vc-font-mono);
+  font-size: 0.82rem;
+}
+.mtl-stat-row dt {
+  color: var(--vc-text-tertiary);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  min-width: 2.6em;
+}
+.mtl-stat-row dd { margin: 0; color: var(--vc-text-primary); font-weight: 600; }
+.mtl-stat-row dd small { font-weight: 400; color: var(--vc-text-secondary); }
+.mtl-stat-big {
+  font-family: var(--vc-font-mono);
+  font-size: 1.6rem;
+  font-weight: 600;
+  line-height: 1.1;
+}
+.mtl-stat-empty { color: var(--vc-text-tertiary); font-weight: 400; }
+
+@media (max-width: 620px) {
+  .mtl-stat { border-right: none; border-bottom: 1px solid var(--vc-line-hairline); }
+  .mtl-stat:last-child { border-bottom: none; }
+}
+
+/* ---------- control row ---------- */
+.mtl-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.mtl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  height: 38px;
+  padding: 0 0.8rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 9px;
+  background: var(--vc-bg-surface);
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.mtl-chip[aria-disabled='true'] { cursor: default; }
+.mtl-chip svg { flex-shrink: 0; }
+.mtl-chip-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 5px;
+  background: var(--vc-bg-raised);
+  color: var(--vc-text-primary);
+  font-size: 0.7rem;
+}
+.mtl-chip.accent .mtl-chip-count {
+  background: color-mix(in srgb, var(--vc-state-alert) 22%, transparent);
+  color: var(--vc-state-alert);
+}
+.mtl-spacer { flex: 1 1 auto; }
+
+/* Signal toggles carry their series colour as an inline --sig custom property
+   so one rule serves every series. */
+.mtl-sig {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 38px;
+  padding: 0 0.9rem;
+  border: 1px solid var(--sig, var(--vc-line-strong));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--sig, var(--vc-data-live)) 12%, transparent);
+  color: var(--sig, var(--vc-text-primary));
+  font-family: var(--vc-font-sans);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.mtl-sig[aria-pressed='false'] {
+  border-color: var(--vc-line-hairline);
+  background: transparent;
+  color: var(--vc-text-tertiary);
+}
+.mtl-sig-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+/* ---------- range segmented control ---------- */
+.mtl-ranges {
+  align-self: flex-end;
+  max-width: 100%;
+  display: inline-flex;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 9px;
+  background: var(--vc-bg-surface);
+  overflow: hidden;
+}
+/* Six cuts have to fit a phone, so they share the row evenly rather than each
+   claiming a comfortable width. */
+.mtl-range {
+  flex: 1 1 0;
+  min-width: 46px;
+  height: 34px;
+  padding: 0 0.4rem;
+  border: none;
+  border-right: 1px solid var(--vc-line-hairline);
+  background: transparent;
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+.mtl-range:last-child { border-right: none; }
+.mtl-range:hover { color: var(--vc-text-primary); }
+.mtl-range.on {
+  background: color-mix(in srgb, var(--vc-data-live) 20%, transparent);
+  color: var(--vc-data-live);
+}
+
+/* ---------- signals card ---------- */
+.mtl-card {
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 10px;
+  background: var(--vc-bg-surface);
+  overflow: hidden;
+}
+.mtl-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.9rem;
+}
+.mtl-card-head h3 {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+
+/* The stack that the scrubber spans: both charts plus the lanes. */
+.mtl-stack { position: relative; touch-action: pan-y; }
+
+.mtl-chart {
+  position: relative;
+  height: 168px;
+  padding: 0 0 0.2rem;
+}
+.mtl-chart.tall { height: 190px; }
+.mtl-chart-title {
+  position: absolute;
+  top: 2px;
+  left: var(--mtl-gutter);
+  z-index: 1;
+  font-family: var(--vc-font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+/* Scrubber: one line across the whole stack, positioned inside the shared
+   plot box so it lands on the same instant in both charts and every lane. */
+.mtl-plotbox {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--mtl-gutter);
+  right: var(--mtl-rpad);
+  pointer-events: none;
+}
+.mtl-scrub {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--vc-data-live);
+  transform: translateX(-0.5px);
+}
+.mtl-scrub-pill {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.15rem 0.45rem;
+  border-radius: 5px;
+  background: var(--vc-data-live);
+  color: var(--vc-bg-base);
+  font-family: var(--vc-font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ---------- event lanes ---------- */
+.mtl-lanes {
+  border-top: 1px solid var(--vc-line-hairline);
+  padding-top: 0.5rem;
+}
+.mtl-lanes-title {
+  padding: 0 0.9rem 0.35rem;
+  font-family: var(--vc-font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.mtl-lane {
+  display: flex;
+  align-items: stretch;
+  min-height: 34px;
+  border-top: 1px solid var(--vc-line-hairline);
+}
+.mtl-lane-name {
+  width: var(--mtl-gutter);
+  flex-shrink: 0;
+  padding-right: 0.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  font-family: var(--vc-font-mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: right;
+  line-height: 1.1;
+  color: var(--lane, var(--vc-text-secondary));
+}
+.mtl-lane-track {
+  position: relative;
+  flex: 1;
+  margin-right: var(--mtl-rpad);
+  border-left: 1px solid var(--vc-line-hairline);
+}
+.mtl-lane-mark {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: var(--lane, var(--vc-data-live));
+  cursor: pointer;
+}
+.mtl-lane-mark:hover,
+.mtl-lane-mark.on {
+  outline: 2px solid var(--vc-text-primary);
+  outline-offset: 1px;
+}
+/* Alerts get a triangle so the lane is still readable without its colour. */
+.mtl-lane-mark.alert {
+  border-radius: 0;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+.mtl-lane-empty {
+  position: absolute;
+  top: 50%;
+  left: 0.5rem;
+  transform: translateY(-50%);
+  font-size: 0.7rem;
+  color: var(--vc-text-tertiary);
+}
+.mtl-more {
+  width: 100%;
+  padding: 0.45rem 0.9rem;
+  border: none;
+  border-top: 1px solid var(--vc-line-hairline);
+  background: transparent;
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.mtl-more:hover { color: var(--vc-text-primary); }
+
+.mtl-hint {
+  font-size: 0.74rem;
+  color: var(--vc-text-tertiary);
+  padding-left: 0.15rem;
+}
+
+/* ---------- detail panel ---------- */
+.mtl-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 10px;
+  background: var(--vc-bg-surface);
+  overflow: hidden;
+}
+@media (max-width: 720px) {
+  .mtl-detail { grid-template-columns: minmax(0, 1fr); }
+}
+.mtl-detail-main { padding: 0.85rem 1rem; }
+.mtl-detail-side {
+  padding: 0.85rem 1rem;
+  border-left: 1px solid var(--vc-line-hairline);
+}
+@media (max-width: 720px) {
+  .mtl-detail-side { border-left: none; border-top: 1px solid var(--vc-line-hairline); }
+}
+.mtl-detail-top {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+.mtl-detail-time {
+  font-family: var(--vc-font-mono);
+  font-size: 1.3rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.mtl-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--vc-state-alert);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--vc-state-alert) 14%, transparent);
+  color: var(--vc-state-alert);
+  font-family: var(--vc-font-mono);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.mtl-badge.ongoing {
+  border-color: var(--vc-state-due);
+  background: color-mix(in srgb, var(--vc-state-due) 14%, transparent);
+  color: var(--vc-state-due);
+}
+.mtl-readout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1.6rem;
+  margin: 0;
+}
+.mtl-readout > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.3rem 0;
+}
+.mtl-readout dt {
+  font-family: var(--vc-font-mono);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.mtl-readout dd {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--vc-text-primary);
+}
+.mtl-readout dd small {
+  font-size: 0.7rem;
+  font-weight: 400;
+  color: var(--vc-text-secondary);
+  margin-left: 0.2rem;
+}
+.mtl-detail-foot {
+  margin: 0.6rem 0 0;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--vc-line-hairline);
+  font-size: 0.82rem;
+  color: var(--vc-text-secondary);
+}
+.mtl-detail-foot b { color: var(--vc-text-primary); font-weight: 600; }
+
+/* ---------- activity list ---------- */
+.mtl-activity { border: 1px solid var(--vc-line-hairline); border-radius: 10px; background: var(--vc-bg-surface); overflow: hidden; }
+.mtl-activity-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--vc-line-hairline);
+}
+.mtl-activity-head h3 {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.mtl-row {
+  display: grid;
+  grid-template-columns: 30px 74px minmax(0, 1fr);
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.5rem 0.9rem;
+  border: none;
+  border-bottom: 1px solid var(--vc-line-hairline);
+  background: transparent;
+  color: var(--vc-text-primary);
+  font-family: var(--vc-font-sans);
+  font-size: 0.86rem;
+  text-align: left;
+  cursor: pointer;
+}
+.mtl-row:last-child { border-bottom: none; }
+.mtl-row:hover { background: var(--vc-bg-raised); }
+.mtl-row.on { background: var(--vc-bg-raised); color: var(--vc-data-live); }
+.mtl-row-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--lane, var(--vc-text-secondary));
+}
+.mtl-row-time {
+  font-family: var(--vc-font-mono);
+  font-size: 0.78rem;
+  color: var(--vc-text-secondary);
+  white-space: nowrap;
+}
+.mtl-row.on .mtl-row-time { color: var(--vc-data-live); }
+.mtl-row-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- states ---------- */
+.mtl-empty {
+  padding: 2.5rem 1rem;
+  text-align: center;
+  color: var(--vc-text-secondary);
+  font-size: 0.9rem;
+}
+.mtl-error {
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--vc-state-alert);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--vc-state-alert) 12%, transparent);
+  color: var(--vc-text-primary);
+  font-size: 0.88rem;
+}
+
+/* ---------- room condition lanes ---------- */
+.mtl-lanes-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.mtl-roompick {
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 6px;
+  background: var(--vc-bg-raised);
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  text-transform: none;
+  padding: 0.15rem 0.3rem;
+}
+.mtl-lane-note {
+  margin: 0;
+  padding: 0.4rem 0.9rem 0.1rem;
+  font-size: 0.74rem;
+  color: var(--vc-text-tertiary);
+}
+
+/* Colour carries severity, vertical position carries direction — so a lane is
+   still readable in greyscale and by someone who cannot separate the hues. */
+.mtl-env-span {
+  position: absolute;
+  border-radius: 2px;
+  min-width: 2px;
+}
+.mtl-env-span.dir-high { top: 4px; height: 9px; }
+.mtl-env-span.dir-low { bottom: 4px; height: 9px; }
+.mtl-env-span.banded { top: 8px; height: 14px; border-radius: 0; }
+.mtl-env-span.sev-ok { background: color-mix(in srgb, var(--vc-state-complete) 55%, transparent); }
+.mtl-env-span.sev-caution { background: var(--vc-state-due); }
+.mtl-env-span.sev-critical { background: var(--vc-state-alert); }
+.mtl-env-span.sev-unknown { background: var(--vc-line-strong); }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
