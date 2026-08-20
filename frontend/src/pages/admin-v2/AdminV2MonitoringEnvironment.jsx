@@ -15,56 +15,73 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-// Monitoring → Environment (GH #49): multi-day environmental series with
-// clinical event markers, plus on-demand personal correlation cards.
-// Informational only — copy comes from the backend and makes no causal or
-// care-advice claims.
-import { useEffect, useRef, useState } from 'react';
+// Monitoring → Environment (GH #49): environmental series over days, with the
+// patient's clinical events beneath them, and the observational correlation
+// grid under that.
+//
+// Built on the same stack as the day timeline — one chart per metric sharing a
+// time window, event lanes inset by the same gutter (monitoringChart.js), so a
+// moment lands on the same x everywhere. That also retires the old two-metric
+// cap, which existed only because eight metrics were being squeezed onto one
+// chart's two y-axes.
+//
+// Informational only. The correlation copy comes from the backend and makes no
+// causal or care-advice claim, and nothing here should start making one.
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import Chart from 'chart.js/auto';
 import 'chartjs-adapter-date-fns';
 import annotationPlugin from 'chartjs-plugin-annotation';
 import zoomPlugin from 'chartjs-plugin-zoom';
 import config, { apiFetch } from '../../config';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
-import { useChartColors } from '../../hooks/useChartColors';
-import { Alert } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
-import { InfoIcon } from '../../components/Icons';
+import { InfoIcon, ClockIcon } from '../../components/Icons';
+import {
+  PLOT_GUTTER, PLOT_RPAD, niceScale, thresholdLine, stackedChartOptions,
+} from './monitoringChart';
+import { pivotCards, cellStateOf, stillCollecting } from './envPatterns';
+import './monitoring-environment.css';
 
 Chart.register(annotationPlugin, zoomPlugin);
 
-// Curated metrics shown as chips (subset of /api/environment/metrics; the
-// catalog's `derived` flag drives dashed styling — bucketed rows carry no
-// quality field). Max two active, one per y-axis.
-const DISPLAY_METRICS = [
-  'barometric_pressure', 'pressure_delta_6h', 'pressure_delta_24h',
-  'relative_humidity', 'temperature', 'pm25', 'aqi', 'pollen',
+/* Series colours from the vc-derived ramp the reports and the timeline use,
+ * so a metric reads as a category rather than a state. `dashed` marks a
+ * derived metric — a pressure delta is computed, not measured, and the line
+ * style says so without a legend. */
+const METRICS = {
+  barometric_pressure: { label: 'Pressure', unit: 'hPa', color: '#7f9fd4', signed: false },
+  pressure_delta_6h: { label: 'Δ Pressure 6h', unit: 'hPa', color: '#9b8cf0', signed: true, dashed: true },
+  pressure_delta_24h: { label: 'Δ Pressure 24h', unit: 'hPa', color: '#d98cc4', signed: true, dashed: true },
+  relative_humidity: { label: 'Humidity', unit: '%', color: '#4dc3b3', signed: false },
+  temperature: { label: 'Temperature', unit: '°C', color: '#f0a52e', signed: false },
+  pm25: { label: 'PM2.5', unit: 'µg/m³', color: '#a8c94a', signed: false },
+  aqi: { label: 'AQI', unit: '', color: '#4da7bd', signed: false },
+  pollen: { label: 'Pollen', unit: 'grains/m³', color: '#3fbf6a', signed: false },
+};
+const METRIC_KEYS = Object.keys(METRICS);
+
+/* Clinical events drawn beneath the series. Alerts keep the alert red because
+ * that is the role; the rest take the categorical ramp. */
+const STREAMS = {
+  spo2_alarms: { label: 'SpO2', color: '#f0563c' },
+  oxygen_use: { label: 'Oxygen', color: '#f0a52e' },
+  respiratory_care: { label: 'Care', color: '#4dc3b3' },
+  symptoms: { label: 'Symptoms', color: '#9b8cf0' },
+};
+const STREAM_KEYS = Object.keys(STREAMS);
+
+const RANGES = [
+  { label: '7D', days: 7 },
+  { label: '30D', days: 30 },
+  { label: '90D', days: 90 },
 ];
-const METRIC_COLORS = {
-  barometric_pressure: '#8d6e63',
-  pressure_delta_6h: '#a1887f',
-  pressure_delta_24h: '#795548',
-  relative_humidity: '#26a69a',
-  temperature: '#ef6c00',
-  pm25: '#7e57c2',
-  aqi: '#5c6bc0',
-  pollen: '#9ccc65',
-};
-const MAX_ACTIVE_METRICS = 2;
-// Metrics that legitimately go negative (never clamp their axis to 0)
-const SIGNED_METRICS = new Set(['pressure_delta_6h', 'pressure_delta_24h']);
 
-const EVENT_STREAMS = {
-  spo2_alarms: { color: '#F44336', style: 'box' },
-  oxygen_use: { color: '#FF9800', style: 'box' },
-  respiratory_care: { color: '#4CAF50', style: 'line' },
-  symptoms: { color: '#9C27B0', style: 'line' },
-};
+/* The four the strip leads with. Pressure carries its 6h delta as the change
+ * line beneath it, which is the reading a carer actually watches. */
+const NOW_METRICS = ['barometric_pressure', 'relative_humidity', 'pm25', 'temperature'];
 
-const RANGE_PRESETS = [7, 30, 60, 90];
-const WINDOW_PRESETS = [3, 6, 12, 24];
-const MAX_LABELED_ANNOTATIONS = 300;
-
+/* Verbatim from the pre-rebuild page. This is a clinical safety statement,
+ * not body copy — the second half in particular ("not a basis for care
+ * decisions") is the part a shorter version tends to drop. */
 const DISCLAIMER = (
   <>
     <strong>Informational only.</strong> This view shows when clinical events and
@@ -74,84 +91,104 @@ const DISCLAIMER = (
   </>
 );
 
+const fmtNum = (v, digits = 1) => (v == null || Number.isNaN(v) ? null : v.toFixed(digits));
+const fmtDay = (ms) => new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+const fmtStamp = (ms) => new Date(ms).toLocaleString('en-US', {
+  month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+});
+
 const AdminV2MonitoringEnvironment = () => {
-  const chartColors = useChartColors();
   const { selectedPatient } = useAdminPatient();
 
   const [rangeDays, setRangeDays] = useState(30);
-  const [metricsCatalog, setMetricsCatalog] = useState({});
+  const [catalog, setCatalog] = useState({});
   const [activeMetrics, setActiveMetrics] = useState(['barometric_pressure', 'pressure_delta_6h']);
-  const [envSeries, setEnvSeries] = useState({});
-  const [clinicalEvents, setClinicalEvents] = useState(null);
-  const [visibleStreams, setVisibleStreams] = useState({
-    spo2_alarms: true, oxygen_use: true, respiratory_care: true, symptoms: true,
-  });
+  const [series, setSeries] = useState({});
+  const [events, setEvents] = useState(null);
+  const [visibleStreams, setVisibleStreams] = useState(
+    Object.fromEntries(STREAM_KEYS.map((k) => [k, true])),
+  );
   const [seriesError, setSeriesError] = useState(null);
 
-  const [correlationWindow, setCorrelationWindow] = useState(null); // null = per-pair defaults
   const [correlations, setCorrelations] = useState(null);
   const [correlationsLoading, setCorrelationsLoading] = useState(false);
   const [correlationsError, setCorrelationsError] = useState(null);
 
-  const chartRef = useRef(null);
-  const chartInstance = useRef(null);
+  const [view, setView] = useState(null);
+  const [cursor, setCursor] = useState(null);
+  const stackRef = useRef(null);
+  const pointers = useRef(new Set());
 
-  // Catalog + locations once
+  const activeStr = activeMetrics.join(',');
+
+  /* ---------------- data ---------------- */
+
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
         const res = await apiFetch(`${config.apiUrl}/api/environment/metrics`);
-        if (res.ok) {
-          const list = await res.json();
-          setMetricsCatalog(Object.fromEntries(list.map((m) => [m.name, m])));
-        }
-      } catch (err) {
-        console.error('Environment catalog fetch failed:', err);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const body = await res.json();
+        // The API returns a list; key it so lookups are by metric name.
+        const keyed = Object.fromEntries(
+          (Array.isArray(body) ? body : []).map((m) => [m.name, m]));
+        if (!cancelled) setCatalog(keyed);
+      } catch {
+        if (!cancelled) setCatalog({});
       }
     })();
+    return () => { cancelled = true; };
   }, []);
 
-  // Env series + clinical events for the selected range (debounced)
-  const activeMetricsStr = activeMetrics.join(',');
+  // Recomputed only on range change: a `Date.now()` that moved every render
+  // would restart the window under the reader mid-drag.
+  const bounds = useMemo(() => {
+    const end = Date.now();
+    return { start: end - rangeDays * 24 * 3600 * 1000, end };
+  }, [rangeDays]);
+
+  useEffect(() => {
+    setView({ min: bounds.start, max: bounds.end });
+    setCursor(null);
+  }, [bounds.start, bounds.end]);
+
   useEffect(() => {
     if (!selectedPatient) return undefined;
     let cancelled = false;
+    // Debounced: toggling several metrics in a row should fetch once.
     const timer = setTimeout(async () => {
-      const to = new Date();
-      const from = new Date(to.getTime() - rangeDays * 24 * 3600 * 1000);
+      const from = new Date(bounds.start).toISOString();
+      const to = new Date(bounds.end).toISOString();
       setSeriesError(null);
       try {
-        const keys = activeMetricsStr ? activeMetricsStr.split(',') : [];
-        const series = {};
+        const keys = [...new Set([...activeStr.split(',').filter(Boolean), ...NOW_METRICS])];
+        const next = {};
         await Promise.all(keys.map(async (key) => {
           const params = new URLSearchParams({
-            metric: key, scope: 'outdoor', bucket: '1h', limit: '2500',
-            from: from.toISOString(), to: to.toISOString(),
+            metric: key, scope: 'outdoor', bucket: '1h', limit: '2500', from, to,
           });
-          const res = await apiFetch(`${config.apiUrl}/api/environment/observations?${params}`);
+          const res = await apiFetch(
+            `${config.apiUrl}/api/environment/observations?${params}`);
           if (!res.ok) throw new Error(`observations HTTP ${res.status}`);
-          series[key] = (await res.json()).reverse();
+          // Newest-first from the API; charts want ascending.
+          next[key] = (await res.json()).slice().reverse()
+            .map((r) => ({ x: new Date(r.ts).getTime(), y: r.avg }));
         }));
 
-        const evParams = new URLSearchParams({ from: from.toISOString(), to: to.toISOString() });
-        const evRes = await apiFetch(
-          `${config.apiUrl}/api/analysis/patients/${selectedPatient.id}/clinical-events?${evParams}`);
+        const evRes = await apiFetch(`${config.apiUrl}/api/analysis/patients/`
+          + `${selectedPatient.id}/clinical-events?${new URLSearchParams({ from, to })}`);
         if (!evRes.ok) throw new Error(`clinical-events HTTP ${evRes.status}`);
-        const events = await evRes.json();
+        const evBody = await evRes.json();
 
-        if (!cancelled) {
-          setEnvSeries(series);
-          setClinicalEvents(events);
-        }
+        if (!cancelled) { setSeries(next); setEvents(evBody); }
       } catch (err) {
-        console.error('Environment range fetch failed:', err);
         if (!cancelled) setSeriesError(err.message);
       }
     }, 300);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [selectedPatient, rangeDays, activeMetricsStr]);
+  }, [selectedPatient, bounds.start, bounds.end, activeStr]);
 
-  // Correlations (independent of the chart controls except range)
   useEffect(() => {
     if (!selectedPatient) return undefined;
     let cancelled = false;
@@ -160,9 +197,8 @@ const AdminV2MonitoringEnvironment = () => {
       setCorrelationsError(null);
       try {
         const params = new URLSearchParams({ days: String(Math.max(rangeDays, 7)) });
-        if (correlationWindow) params.set('window_hours', String(correlationWindow));
-        const res = await apiFetch(
-          `${config.apiUrl}/api/analysis/patients/${selectedPatient.id}/env-correlations?${params}`);
+        const res = await apiFetch(`${config.apiUrl}/api/analysis/patients/`
+          + `${selectedPatient.id}/env-correlations?${params}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const body = await res.json();
         if (!cancelled) setCorrelations(body);
@@ -173,379 +209,494 @@ const AdminV2MonitoringEnvironment = () => {
       }
     })();
     return () => { cancelled = true; };
-  }, [selectedPatient, rangeDays, correlationWindow]);
+  }, [selectedPatient, rangeDays]);
+
+  /* ---------------- derived ---------------- */
+
+  const shown = activeMetrics.filter((k) => METRICS[k]);
+
+  // The catalog is the source of truth for what a metric is called and what it
+  // is measured in; ours are only a fallback for a metric it has not heard of.
+  const labelOf = useCallback((key) => catalog[key]?.label || METRICS[key]?.label || key,
+    [catalog]);
+  const unitOf = useCallback((key) => catalog[key]?.unit ?? METRICS[key]?.unit ?? '',
+    [catalog]);
+  const isDerived = useCallback((key) => catalog[key]?.derived ?? METRICS[key]?.dashed ?? false,
+    [catalog]);
+
+  const latest = useMemo(() => {
+    const out = {};
+    NOW_METRICS.forEach((key) => {
+      const points = series[key] || [];
+      out[key] = points.length ? points[points.length - 1] : null;
+    });
+    const delta = series.pressure_delta_6h || [];
+    out.delta6h = delta.length ? delta[delta.length - 1] : null;
+    return out;
+  }, [series]);
+
+  const laneItems = useMemo(() => {
+    const out = {};
+    STREAM_KEYS.forEach((key) => {
+      out[key] = ((events?.events || {})[key] || [])
+        .map((ev, i) => ({
+          id: `${key}-${i}`,
+          ts: new Date(ev.ts).getTime(),
+          label: ev.label || STREAMS[key].label,
+        }))
+        .filter((it) => Number.isFinite(it.ts));
+    });
+    return out;
+  }, [events]);
+
+  const eventTotal = STREAM_KEYS
+    .filter((k) => visibleStreams[k])
+    .reduce((n, k) => n + (laneItems[k]?.length || 0), 0);
+
+  const grid = useMemo(() => pivotCards(correlations?.cards), [correlations]);
+  const collecting = useMemo(() => stillCollecting(correlations?.cards), [correlations]);
+
+  /* ---------------- interaction ---------------- */
+
+  const tsFromClientX = useCallback((clientX) => {
+    const el = stackRef.current;
+    if (!el || !view) return null;
+    const rect = el.getBoundingClientRect();
+    const width = rect.width - PLOT_GUTTER - PLOT_RPAD;
+    if (width <= 0) return null;
+    const frac = Math.min(1, Math.max(0, (clientX - rect.left - PLOT_GUTTER) / width));
+    return Math.round(view.min + frac * (view.max - view.min));
+  }, [view]);
+
+  const onPointerDown = (e) => {
+    pointers.current.add(e.pointerId);
+    if (pointers.current.size > 1) return;
+    const ts = tsFromClientX(e.clientX);
+    if (ts != null) setCursor(ts);
+  };
+  const onPointerMove = (e) => {
+    if (pointers.current.size !== 1 || !pointers.current.has(e.pointerId)) return;
+    if (e.pointerType === 'mouse' && e.buttons === 0) return;
+    const ts = tsFromClientX(e.clientX);
+    if (ts != null) setCursor(ts);
+  };
+  const endPointer = (e) => { pointers.current.delete(e.pointerId); };
 
   const toggleMetric = (key) => {
     setActiveMetrics((prev) => {
-      if (prev.includes(key)) return prev.filter((k) => k !== key);
-      if (prev.length < MAX_ACTIVE_METRICS) return [...prev, key];
-      return [...prev.slice(1), key];
+      if (!prev.includes(key)) return [...prev, key];
+      // Never leave the stack empty — an empty chart card reads as broken.
+      if (prev.length === 1) return prev;
+      return prev.filter((k) => k !== key);
     });
   };
 
-  const toggleStream = (key) => {
-    setVisibleStreams((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
+  const cursorFrac = cursor != null && view && view.max > view.min
+    ? (cursor - view.min) / (view.max - view.min) : null;
 
-  // Build chart
-  useEffect(() => {
-    if (!chartRef.current) return undefined;
-    if (chartInstance.current) {
-      chartInstance.current.destroy();
-      chartInstance.current = null;
-    }
-
-    const datasets = [];
-    const scales = {};
-    activeMetrics.forEach((key, i) => {
-      const rows = envSeries[key] || [];
-      const color = METRIC_COLORS[key] || '#888';
-      const dashed = Boolean(metricsCatalog[key]?.derived);
-      const unit = metricsCatalog[key]?.unit || '';
-      const label = metricsCatalog[key]?.label || key;
-      const axisId = `y_${key}`;
-
-      const avg = rows.map((r) => ({ x: new Date(r.ts), y: r.avg }));
-      const lows = rows.map((r) => ({ x: new Date(r.ts), y: r.min }));
-      const highs = rows.map((r) => ({ x: new Date(r.ts), y: r.max }));
-
-      // min/max band: invisible floor line + filled ceiling referencing it
-      datasets.push({
-        label: `${label} (min)`, data: lows, borderWidth: 0, pointRadius: 0,
-        fill: false, yAxisID: axisId, spanGaps: true, hidden: false,
-      });
-      datasets.push({
-        label: `${label} (max)`, data: highs, borderWidth: 0, pointRadius: 0,
-        fill: '-1', backgroundColor: `${color}22`, yAxisID: axisId, spanGaps: true,
-      });
-      datasets.push({
-        label: `${label}${unit ? ` (${unit})` : ''}`,
-        data: avg,
-        borderColor: color,
-        backgroundColor: `${color}22`,
-        borderWidth: 1.5,
-        borderDash: dashed ? [6, 4] : [],
-        pointRadius: 0,
-        pointHitRadius: 5,
-        fill: false,
-        spanGaps: true,
-        yAxisID: axisId,
-        tension: 0.2,
-      });
-
-      const values = avg.map((p) => p.y).filter((v) => v != null);
-      const lo = values.length ? Math.min(...values) : 0;
-      const hi = values.length ? Math.max(...values) : 1;
-      const pad = Math.max((hi - lo) * 0.08, 0.5);
-      scales[axisId] = {
-        type: 'linear',
-        position: i === 0 ? 'left' : 'right',
-        min: SIGNED_METRICS.has(key) ? lo - pad : Math.max(0, lo - pad),
-        max: hi + pad,
-        title: { display: true, text: `${label}${unit ? ` (${unit})` : ''}`, color, font: { size: 12 } },
-        ticks: { color },
-        grid: i === 0 ? { color: chartColors.grid } : { drawOnChartArea: false },
-      };
-    });
-
-    // Clinical event annotations
-    const annotations = {};
-    let annotationCount = 0;
-    if (clinicalEvents?.events) {
-      Object.entries(clinicalEvents.events).forEach(([stream, events]) => {
-        annotationCount += visibleStreams[stream] ? events.length : 0;
-      });
-      const showLabels = annotationCount <= MAX_LABELED_ANNOTATIONS;
-      Object.entries(clinicalEvents.events).forEach(([stream, events]) => {
-        if (!visibleStreams[stream]) return;
-        const cfg = EVENT_STREAMS[stream];
-        events.forEach((ev, i) => {
-          const start = new Date(ev.ts);
-          if (cfg.style === 'box') {
-            const end = ev.end_ts ? new Date(ev.end_ts) : new Date(start.getTime() + 30 * 60000);
-            annotations[`${stream}_${i}`] = {
-              type: 'box', xMin: start, xMax: end,
-              backgroundColor: `${cfg.color}26`, borderColor: `${cfg.color}66`, borderWidth: 1,
-            };
-          } else {
-            annotations[`${stream}_${i}`] = {
-              type: 'line', xMin: start, xMax: start,
-              borderColor: cfg.color, borderWidth: 1.5,
-              label: showLabels ? {
-                display: true, content: ev.label?.slice(0, 24) || stream,
-                position: 'start', backgroundColor: cfg.color, color: '#fff',
-                font: { size: 9 }, padding: 2, rotation: -90, yAdjust: -8,
-              } : undefined,
-            };
-          }
-        });
-      });
-    }
-
-    const ctx = chartRef.current.getContext('2d');
-    chartInstance.current = new Chart(ctx, {
-      type: 'line',
-      data: { datasets },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
-        scales: {
-          x: {
-            type: 'time',
-            time: { displayFormats: { hour: 'MMM d ha', day: 'MMM d' }, tooltipFormat: 'MMM d, h:mm a' },
-            grid: { color: chartColors.grid },
-            ticks: { maxRotation: 0, font: { size: 11 }, color: chartColors.axis, autoSkip: true, maxTicksLimit: 14 },
-          },
-          ...scales,
-        },
-        plugins: {
-          legend: {
-            position: 'top',
-            labels: {
-              usePointStyle: true, padding: 15, font: { size: 12 }, color: chartColors.foreground,
-              // Hide the band helper datasets from the legend
-              filter: (item) => !/\((min|max)\)$/.test(item.text),
-            },
-          },
-          annotation: { annotations },
-          zoom: {
-            pan: { enabled: true, mode: 'x' },
-            zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
-          },
-        },
-      },
-    });
-
-    return () => {
-      if (chartInstance.current) {
-        chartInstance.current.destroy();
-        chartInstance.current = null;
-      }
-    };
-  }, [envSeries, clinicalEvents, activeMetrics, visibleStreams, metricsCatalog,
-      chartColors.grid, chartColors.axis, chartColors.foreground]);
+  /* ---------------- render ---------------- */
 
   if (!selectedPatient) {
-    return (
-      <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted-foreground)' }}>
-        Select a patient from the sidebar to view environmental data.
-      </div>
-    );
+    return <div className="env"><p className="env-empty">Select a patient to see their environment.</p></div>;
   }
 
   return (
-    <div>
-      {/* Guardrail banner */}
-      <div className="tw" style={{ marginBottom: '1rem' }}>
-        <Alert variant="info">
-          <span style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-            <span style={{ flexShrink: 0, marginTop: 2 }} aria-hidden><InfoIcon size={16} /></span>
-            <span>{DISCLAIMER}</span>
+    <div className="env">
+      <section className="env-card">
+        <div className="env-card-head">
+          <h3>Outdoor conditions</h3>
+          <span className="env-label">
+            {latest.barometric_pressure
+              ? `updated ${fmtStamp(latest.barometric_pressure.x)}`
+              : 'no readings'}
           </span>
-        </Alert>
-      </div>
-
-      {/* Controls */}
-      <div style={{
-        display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: '1rem',
-        padding: '0.75rem 1rem', background: 'var(--card)', borderRadius: 8,
-        border: '1px solid var(--border)', alignItems: 'center', justifyContent: 'space-between',
-      }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-          {DISPLAY_METRICS.filter((k) => metricsCatalog[k]).map((key) => {
-            const active = activeMetrics.includes(key);
-            const color = METRIC_COLORS[key];
-            const dashed = Boolean(metricsCatalog[key]?.derived);
-            return (
-              <button
-                key={key}
-                onClick={() => toggleMetric(key)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  padding: '5px 12px', borderRadius: 16, fontSize: 12, fontWeight: 600,
-                  border: `2px ${dashed ? 'dashed' : 'solid'} ${color}`,
-                  background: active ? color : 'transparent',
-                  color: active ? '#fff' : color,
-                  cursor: 'pointer', transition: 'all 0.15s',
-                  opacity: active ? 1 : 0.6,
-                }}
-              >
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: active ? '#fff' : color, display: 'inline-block' }} />
-                {metricsCatalog[key]?.label || key}
-              </button>
-            );
-          })}
-
-          <span style={{ width: 1, height: 20, background: 'var(--border)', display: 'inline-block' }} />
-
-          {clinicalEvents && Object.keys(EVENT_STREAMS).map((stream) => {
-            const cfg = EVENT_STREAMS[stream];
-            const active = visibleStreams[stream];
-            const count = clinicalEvents.events?.[stream]?.length ?? 0;
-            return (
-              <button
-                key={stream}
-                onClick={() => toggleStream(stream)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  padding: '5px 12px', borderRadius: 16, fontSize: 12, fontWeight: 600,
-                  border: `2px solid ${cfg.color}`,
-                  background: active ? cfg.color : 'transparent',
-                  color: active ? '#fff' : cfg.color,
-                  cursor: 'pointer', transition: 'all 0.15s',
-                  opacity: active ? 1 : 0.6,
-                }}
-              >
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: active ? '#fff' : cfg.color, display: 'inline-block' }} />
-                {clinicalEvents.labels?.[stream] || stream} ({count})
-              </button>
-            );
-          })}
         </div>
-
-        <div className="tw" style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-          {/* Location placeholder: room selection ships with room-level
-              ingestion (GH #48); until then everything is outdoor scope. */}
-          <select
-            disabled
-            title="Room sensors not set up yet"
-            style={{
-              padding: '5px 8px', borderRadius: 6, fontSize: 12,
-              background: 'var(--secondary)', color: 'var(--muted-foreground)',
-              border: '1px solid var(--border)',
-            }}
-          >
-            <option>Outdoor (home)</option>
-          </select>
-          <span style={{ fontSize: 11, color: 'var(--muted-foreground)', margin: '0 4px' }}>Range:</span>
-          {RANGE_PRESETS.map((d) => (
-            <Button key={d} size="sm" variant={rangeDays === d ? 'default' : 'secondary'}
-                    onClick={() => setRangeDays(d)}>
-              {d}d
-            </Button>
+        <div className="env-now">
+          {NOW_METRICS.map((key) => (
+            <NowCell
+              key={key}
+              metricKey={key}
+              point={latest[key]}
+              delta={key === 'barometric_pressure' ? latest.delta6h : null}
+            />
           ))}
         </div>
-      </div>
+      </section>
 
-      {seriesError && (
-        <div className="tw" style={{ marginBottom: '1rem' }}>
-          <Alert variant="destructive">Failed to load environment data: {seriesError}</Alert>
-        </div>
-      )}
+      {seriesError && <p className="env-error">{seriesError}</p>}
 
-      {/* Chart */}
-      <div style={{
-        border: '1px solid var(--border)', borderRadius: 8, background: 'var(--card)',
-        padding: '12px 8px', height: 420, position: 'relative', marginBottom: '1.5rem',
-      }}>
-        <canvas ref={chartRef} />
-      </div>
-
-      {/* Correlation cards */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: '0.75rem' }}>
-        <h3 style={{ margin: 0, color: 'var(--foreground)', fontSize: '1.05rem' }}>
-          Personal patterns
-          <span style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', marginLeft: 8, fontWeight: 400 }}>
-            informational — last {correlations?.range?.days ?? rangeDays} days
-          </span>
-        </h3>
-        <div className="tw" style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-          <span style={{ fontSize: 11, color: 'var(--muted-foreground)', marginRight: 4 }}>Window:</span>
-          {WINDOW_PRESETS.map((w) => (
-            <Button key={w} size="sm" variant={correlationWindow === w ? 'default' : 'secondary'}
-                    onClick={() => setCorrelationWindow(correlationWindow === w ? null : w)}>
-              {w}h
-            </Button>
+      <div className="env-controls">
+        <div className="env-range" role="group" aria-label="Range">
+          {RANGES.map((r) => (
+            <button
+              key={r.label} type="button"
+              className={rangeDays === r.days ? 'on' : ''}
+              aria-pressed={rangeDays === r.days}
+              onClick={() => setRangeDays(r.days)}
+            >
+              {r.label}
+            </button>
           ))}
         </div>
+        <select
+          className="env-roompick"
+          disabled
+          title="Room sensors not set up yet"
+          aria-label="Scope"
+          value="outdoor"
+          onChange={() => {}}
+        >
+          <option value="outdoor">Outdoor</option>
+        </select>
+        <span className="env-spacer" />
+        <span className="env-label">{eventTotal} events</span>
       </div>
 
-      {correlationsLoading ? (
-        <div className="admin-v2-loading">Analyzing environmental patterns...</div>
-      ) : correlationsError ? (
-        <div className="tw"><Alert variant="destructive">Analysis failed: {correlationsError}</Alert></div>
-      ) : correlations ? (
-        <div className="admin-v2-cards-grid">
-          {correlations.cards.map((card) => (
-            <EnvCorrelationCard key={`${card.exposure.key}_${card.outcome.key}`} card={card} />
+      <div className="env-controls">
+        {METRIC_KEYS.filter((k) => catalog[k] || series[k]).map((key) => {
+          const cfg = METRICS[key];
+          const on = activeMetrics.includes(key);
+          const empty = on && (series[key] || []).length === 0;
+          return (
+            <button
+              key={key} type="button" className="env-chip"
+              style={{ '--sig': cfg.color }}
+              aria-pressed={on}
+              onClick={() => toggleMetric(key)}
+            >
+              <span className={`env-chip-dot${isDerived(key) ? ' dashed' : ''}`} />
+              {labelOf(key)}
+              {empty && <span className="env-chip-note">no data</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      <section className="env-card">
+        <div className="env-card-head">
+          <h3>Series &amp; events</h3>
+          <span className="env-label">{fmtDay(bounds.start)} – {fmtDay(bounds.end)}</span>
+        </div>
+        <div
+          className="env-stack"
+          ref={stackRef}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={endPointer}
+          onPointerCancel={endPointer}
+          onPointerLeave={endPointer}
+        >
+          {shown.map((key, i) => (
+            <MetricChart
+              key={key}
+              metricKey={key}
+              label={labelOf(key)}
+              unit={unitOf(key)}
+              derived={isDerived(key)}
+              points={series[key] || []}
+              view={view}
+              bounds={bounds}
+              cursor={cursor}
+              showAxis={i === shown.length - 1}
+              onViewChange={setView}
+            />
+          ))}
+
+          <div className="env-lanes">
+            <div className="env-lanes-title">Clinical events</div>
+            {STREAM_KEYS.filter((k) => visibleStreams[k]).map((key) => (
+              <EventLane
+                key={key} laneKey={key} items={laneItems[key] || []}
+                view={view} onPick={setCursor}
+              />
+            ))}
+          </div>
+
+          {cursorFrac != null && cursorFrac >= 0 && cursorFrac <= 1 && (
+            <div className="env-plotbox">
+              <div className="env-scrub" style={{ left: `${cursorFrac * 100}%` }}>
+                <span className="env-scrub-pill">{fmtStamp(cursor)}</span>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="env-controls" style={{ padding: '0.5rem 0.9rem 0.7rem' }}>
+          {STREAM_KEYS.map((key) => (
+            <button
+              key={key} type="button" className="env-chip"
+              style={{ '--sig': STREAMS[key].color }}
+              aria-pressed={visibleStreams[key]}
+              onClick={() => setVisibleStreams((p) => ({ ...p, [key]: !p[key] }))}
+            >
+              <span className="env-chip-dot" />
+              {STREAMS[key].label}
+              <span className="env-chip-note">{laneItems[key]?.length ?? 0}</span>
+            </button>
           ))}
         </div>
-      ) : null}
+      </section>
+
+      <p className="env-hint">Drag to inspect · pinch or scroll to zoom</p>
+
+      <section className="env-card">
+        <div className="env-card-head">
+          <h3>Personal patterns</h3>
+          <span className="env-label">{rangeDays}-day observational analysis</span>
+        </div>
+
+        {correlationsError && <p className="env-note">{correlationsError}</p>}
+        {correlationsLoading && !correlations && <p className="env-empty">Running the analysis…</p>}
+
+        {correlations && grid.rows.length === 0 && (
+          <p className="env-empty">No trigger and outcome pairs to analyse yet.</p>
+        )}
+
+        {grid.rows.length > 0 && (
+          <div className="env-grid-wrap">
+            <table className="env-grid">
+              <thead>
+                <tr>
+                  <th>Trigger</th>
+                  {grid.outcomes.map((o) => <th key={o.key}>{o.label}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {grid.rows.map((row) => (
+                  <tr key={row.key}>
+                    <td className="env-grid-trigger">
+                      <b>{row.label}</b>
+                      {row.estimated && <span>estimated metric</span>}
+                    </td>
+                    {grid.outcomes.map((o) => (
+                      <PatternCell key={o.key} card={row.cells[o.key]} />
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {collecting > 0 && (
+          <div className="env-foot">
+            <ClockIcon size={14} />
+            {collecting} {collecting === 1 ? 'analysis is' : 'analyses are'} still collecting data.
+          </div>
+        )}
+        <div className="env-foot">
+          <InfoIcon size={14} />
+          <span>{DISCLAIMER}</span>
+        </div>
+      </section>
     </div>
   );
 };
 
-// One (exposure, outcome) correlation card. All statistical wording comes
-// verbatim from the backend (guardrailed there); this component only lays it
-// out and never adds causal or advisory phrasing.
-const EnvCorrelationCard = ({ card }) => {
-  const ok = card.status === 'ok';
-  const distinct = ok && (card.ci_low > 1 || card.ci_high < 1);
-  const exposureColor = METRIC_COLORS[card.exposure.metric] || '#8d6e63';
-  const badge = ok
-    ? (distinct ? 'Pattern observed' : 'No clear difference')
-    : 'Not enough data yet';
+/* One current reading. Tone comes from the reading itself only where a public
+ * band exists for it; otherwise the value is shown plainly rather than
+ * coloured against a threshold nobody set. */
+const NowCell = ({ metricKey, point, delta }) => {
+  const cfg = METRICS[metricKey];
+  const value = point ? fmtNum(point.y, metricKey === 'pm25' ? 0 : 1) : null;
+
+  let tone = '';
+  let band = null;
+  if (metricKey === 'pm25' && point?.y != null) {
+    // US AQI breakpoints for PM2.5 — a published scale, not a patient bound.
+    // Per-patient thresholds live on the room metrics, which this outdoor
+    // strip is not showing.
+    if (point.y > 35) { tone = 'env-tone-critical'; band = 'unhealthy'; }
+    else if (point.y > 12) { tone = 'env-tone-caution'; band = 'moderate'; }
+    else { tone = 'env-tone-ok'; band = 'good'; }
+  }
 
   return (
-    <div className="admin-v2-card"
-         style={{ borderTop: `3px solid ${distinct ? exposureColor : 'transparent'}` }}>
-      <div className="admin-v2-card-header" style={{ borderBottom: 'none', paddingBottom: 0 }}>
-        <div>
-          <h3 style={{ fontSize: '0.9rem', margin: 0, color: 'var(--foreground)' }}>
-            {card.outcome.label}
-          </h3>
-          <span style={{ fontSize: '0.72rem', color: 'var(--muted-foreground)' }}>
-            near {card.exposure.label}
-            {card.exposure.quality === 'estimated' && ' (estimated)'}
-          </span>
-        </div>
-        <span className={`admin-v2-badge ${distinct ? 'admin-v2-badge-success' : 'admin-v2-badge-muted'}`}
-              style={{ fontSize: '0.7rem', whiteSpace: 'nowrap' }}>
-          {badge}
+    <div className={`env-now-cell ${tone}`}>
+      <span className="env-now-name">{cfg.label}</span>
+      <span className="env-now-value">
+        {value ?? '—'}
+        {value != null && cfg.unit && <small>{cfg.unit}</small>}
+      </span>
+      {band && <span className="env-now-sub">{band}</span>}
+      {delta?.y != null && (
+        <span className={`env-now-sub ${delta.y < 0 ? 'falling' : 'rising'}`}>
+          {delta.y > 0 ? '+' : ''}{fmtNum(delta.y, 1)} / 6h
         </span>
-      </div>
-      <div className="admin-v2-card-body" style={{ paddingTop: '0.5rem' }}>
-        {ok ? (
-          <>
-            <div style={{ textAlign: 'center', padding: '0.6rem 0' }}>
-              <span style={{
-                fontSize: '1.6rem', fontWeight: 700,
-                color: distinct ? exposureColor : 'var(--muted-foreground)',
-              }}>
-                {card.rate_ratio.toFixed(1)}×
-              </span>
-              <span style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)', marginLeft: 6 }}>
-                95% CI {card.ci_low.toFixed(1)}–{card.ci_high.toFixed(1)}
-              </span>
-            </div>
-            <p style={{ fontSize: '0.8rem', color: 'var(--foreground)', margin: '0 0 0.5rem' }}>
-              {card.message}
-            </p>
-            <div style={{
-              display: 'flex', justifyContent: 'space-between',
-              background: 'var(--secondary)', borderRadius: 6, padding: '0.45rem 0.75rem',
-              fontSize: '0.75rem', color: 'var(--muted-foreground)',
-            }}>
-              <span>{card.exposed_events} events in {card.exposed_hours}h exposed</span>
-              <span>{card.baseline_events} in {card.baseline_hours}h baseline</span>
-            </div>
-            {card.outcome.matched_sources?.length > 0 && (
-              <div style={{ fontSize: '0.7rem', color: 'var(--muted-foreground)', marginTop: '0.4rem' }}>
-                Counted tasks: {card.outcome.matched_sources.join(', ')}
-              </div>
-            )}
-          </>
-        ) : (
-          <p style={{
-            fontSize: '0.8rem', color: 'var(--muted-foreground)',
-            textAlign: 'center', padding: '1rem 0.25rem', margin: 0,
-          }}>
-            {card.message}
-          </p>
-        )}
+      )}
+      {!point && <span className="env-now-sub">no readings</span>}
+    </div>
+  );
+};
+
+/* One metric, one scale, sharing the stack's window. */
+const MetricChart = ({
+  metricKey, label, unit, derived, points, view, bounds, cursor, showAxis, onViewChange,
+}) => {
+  const cfg = METRICS[metricKey];
+  const canvasRef = useRef(null);
+  const chartRef = useRef(null);
+  const onViewChangeRef = useRef(onViewChange);
+  onViewChangeRef.current = onViewChange;
+
+  // Fixed for the whole range rather than refitted per window, so panning
+  // moves across a stable scale instead of rescaling under the reader.
+  const yRange = useMemo(() => {
+    if (!points.length) return niceScale(0, 1, 1, null, { clampMin: !cfg.signed });
+    const ys = points.map((p) => p.y).filter((y) => y != null);
+    if (!ys.length) return niceScale(0, 1, 1, null, { clampMin: !cfg.signed });
+    return niceScale(Math.min(...ys), Math.max(...ys), 1, null, { clampMin: !cfg.signed });
+  }, [points, cfg.signed]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return undefined;
+    const annotations = {};
+    // A delta metric's zero is the line that matters — above it pressure is
+    // rising, below it falling — so it is drawn rather than left to the grid.
+    if (cfg.signed) annotations.zero = thresholdLine(0, 'NO CHANGE');
+
+    const chart = new Chart(canvas.getContext('2d'), {
+      type: 'line',
+      data: {
+        datasets: [{
+          label,
+          data: points,
+          parsing: false,
+          borderColor: cfg.color,
+          borderWidth: 1.4,
+          borderDash: derived ? [5, 4] : [],
+          pointRadius: 0,
+          pointHitRadius: 0,
+          tension: 0.15,
+          spanGaps: false,
+        }],
+      },
+      options: stackedChartOptions({
+        view,
+        bounds,
+        yRange,
+        showAxis,
+        annotations,
+        timeFormats: { hour: 'ha', day: 'MMM d' },
+        minRangeMs: 6 * 3600 * 1000,
+        onViewChange: (next) => onViewChangeRef.current(next),
+      }),
+    });
+    chartRef.current = chart;
+    return () => { chart.destroy(); chartRef.current = null; };
+    // View is applied imperatively below so a zoom does not rebuild the chart.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [points, bounds, showAxis, cfg, yRange, label, derived]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || !view) return;
+    if (chart.scales.x.min === view.min && chart.scales.x.max === view.max) return;
+    chart.zoomScale('x', { min: view.min, max: view.max }, 'none');
+  }, [view]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const anns = chart.options.plugins.annotation.annotations;
+    delete anns.cursor;
+    if (cursor != null && points.length) {
+      let best = null;
+      let gap = Infinity;
+      points.forEach((p) => {
+        const d = Math.abs(p.x - cursor);
+        if (d < gap) { gap = d; best = p; }
+      });
+      // An hour either side; beyond that the dot would sit on nothing.
+      if (best && best.y != null && gap <= 3600 * 1000) {
+        anns.cursor = {
+          type: 'point', xValue: best.x, yValue: best.y,
+          radius: 3.5, backgroundColor: cfg.color,
+          borderColor: 'rgba(255,255,255,0.15)', borderWidth: 1,
+        };
+      }
+    }
+    chart.update('none');
+  }, [cursor, points, cfg]);
+
+  return (
+    <div className={`env-chart${showAxis ? ' tall' : ''}`}>
+      <span className="env-chart-title" style={{ color: cfg.color }}>
+        {label}
+        {unit && <small>{unit}</small>}
+      </span>
+      <canvas ref={canvasRef} aria-label={`${label} over time`} />
+    </div>
+  );
+};
+
+const EventLane = ({ laneKey, items, view, onPick }) => {
+  const lane = STREAMS[laneKey];
+  const span = view ? view.max - view.min : 0;
+  const inWindow = span > 0
+    ? items.filter((it) => it.ts >= view.min && it.ts <= view.max) : [];
+
+  return (
+    <div className="env-lane" style={{ '--lane': lane.color }}>
+      <span className="env-lane-name">{lane.label}</span>
+      <div className="env-lane-track">
+        {inWindow.length === 0 && <span className="env-lane-empty">—</span>}
+        {inWindow.map((it) => (
+          <button
+            key={it.id} type="button" className="env-lane-mark"
+            style={{ left: `${((it.ts - view.min) / span) * 100}%` }}
+            title={`${fmtStamp(it.ts)} — ${it.label}`}
+            aria-label={`${fmtStamp(it.ts)} ${it.label}`}
+            onClick={() => onPick(it.ts)}
+          />
+        ))}
       </div>
     </div>
+  );
+};
+
+/* One trigger against one outcome. A cell either has a ratio, is still
+ * gathering, or was never analysed — and those read differently on purpose. */
+const PatternCell = ({ card }) => {
+  const state = cellStateOf(card);
+
+  if (state.kind === 'absent') {
+    return <td className="env-cell"><span className="env-cell-none">—</span></td>;
+  }
+
+  if (state.kind === 'collecting') {
+    const p = state.progress;
+    return (
+      <td className="env-cell">
+        <div className="env-collecting" title={state.message}>
+          <span>
+            {p ? `Collecting ${p.have}/${p.need}${p.unit}` : 'Not started'}
+          </span>
+          <span className="env-bar">
+            <i style={{ width: `${p ? Math.min(100, (p.have / p.need) * 100) : 0}%` }} />
+          </span>
+          <span className="sr-only">{state.message}</span>
+        </div>
+      </td>
+    );
+  }
+
+  const counted = card.outcome?.matched_sources;
+  const detail = [
+    `95% CI ${state.ciLow.toFixed(1)}–${state.ciHigh.toFixed(1)}`,
+    `${card.exposed_events} in ${card.exposed_hours}h exposed`,
+    `${card.baseline_events} in ${card.baseline_hours}h baseline`,
+    counted?.length ? `counted: ${counted.join(', ')}` : null,
+  ].filter(Boolean).join(' · ');
+
+  return (
+    <td className={`env-cell ${state.kind === 'pattern' ? 'pattern' : ''}`} title={detail}>
+      <span className="env-cell-ratio">{state.ratio.toFixed(1)}×</span>
+      <span className="env-cell-verdict">
+        {state.kind === 'pattern' ? 'Pattern observed' : 'No clear difference'}
+      </span>
+      <span className="sr-only">{detail}. {card.message}</span>
+    </td>
   );
 };
 

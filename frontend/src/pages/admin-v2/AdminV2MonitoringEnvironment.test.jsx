@@ -18,8 +18,13 @@
 // Monitoring → Environment tab: range chart with clinical annotations,
 // dashed derived metrics, disabled room picker, and correlation cards with
 // honest insufficient-data states.
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, act, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, act, fireEvent, within } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const { chartInstances, apiFetchMock } = vi.hoisted(() => ({
   chartInstances: [],
@@ -30,10 +35,18 @@ vi.mock('chart.js/auto', () => {
   class MockChart {
     constructor(ctx, config) {
       this.config = config;
+      this.options = config.options;
+      // Charts are rebuilt on data change, so assertions have to look at the
+      // live ones rather than everything ever constructed.
+      this.destroyed = false;
+      this.scales = {
+        x: { min: config.options.scales.x.min, max: config.options.scales.x.max },
+      };
       chartInstances.push(this);
     }
-    destroy() {}
+    destroy() { this.destroyed = true; }
     resetZoom() {}
+    zoomScale(axis, { min, max }) { this.scales[axis] = { min, max }; }
     update() {}
   }
   MockChart.register = () => {};
@@ -115,14 +128,21 @@ const route = (url) => {
 };
 
 const renderPage = async () => {
-  await act(async () => {
-    render(<AdminV2MonitoringEnvironment />);
-    // Flush the 300ms debounce on the series fetch
-    await new Promise((r) => setTimeout(r, 350));
-  });
+  render(<AdminV2MonitoringEnvironment />);
+  // Drive the 300ms debounce on the series fetch rather than sleeping through
+  // it: advanceTimersByTimeAsync runs the timer and flushes the promises it
+  // starts, so the data has landed by the time the assertions run. A real
+  // sleep left that to chance and read an empty page.
+  await act(async () => { await vi.advanceTimersByTimeAsync(400); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(50); });
 };
 
 beforeEach(() => {
+  // The range window is computed from Date.now(), so the fixtures' July dates
+  // only fall inside it against a fixed clock. Only Date is faked — the
+  // 300ms debounce on the series fetch still has to run for real.
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-07-14T12:00:00Z'));
   chartInstances.length = 0;
   HTMLCanvasElement.prototype.getContext = vi.fn(() => ({}));
   // The page must use apiFetch (iframe bearer-token support), never raw
@@ -136,59 +156,162 @@ beforeEach(() => {
   }));
 });
 
-const latestChart = () => chartInstances[chartInstances.length - 1];
+afterEach(() => { vi.useRealTimers(); });
 
-describe('AdminV2MonitoringEnvironment', () => {
-  it('shows the informational disclaimer and metric/event chips', async () => {
+
+const chartFor = (label) => chartInstances
+  .filter((c) => !c.destroyed)
+  .find((c) => c.config.data.datasets[0]?.label === label);
+
+describe('the page keeps its clinical footing', () => {
+  it('states the full disclaimer, including that it is not a basis for care', async () => {
     await renderPage();
     expect(screen.getByText(/Informational only/)).toBeInTheDocument();
-    expect(screen.getByText(/not a basis for care decisions/)).toBeInTheDocument();
-    expect(await screen.findByRole('button', { name: /Barometric pressure/ })).toBeInTheDocument();
-    expect(await screen.findByRole('button', { name: /SpO2 alarms \(1\)/ })).toBeInTheDocument();
+    // The half a shorter rewrite tends to drop.
+    expect(screen.getByText(/not a basis for care\s+decisions/)).toBeInTheDocument();
+    expect(screen.getByText(/follow the care plan/)).toBeInTheDocument();
   });
 
-  it('derived metrics plot dashed; alert boxes land in the annotations', async () => {
+  it('says the scope is outdoor rather than leaving it assumed', async () => {
     await renderPage();
-    await waitFor(() => {
-      const chart = latestChart();
-      const delta = chart.config.data.datasets.find((d) => d.label === 'Pressure change over 6h (hPa)');
-      expect(delta.borderDash).toEqual([6, 4]);
-      const pressure = chart.config.data.datasets.find((d) => d.label === 'Barometric pressure (surface) (hPa)');
-      expect(pressure.borderDash).toEqual([]);
-      const annotations = chart.config.options.plugins.annotation.annotations;
-      expect(annotations.spo2_alarms_0.type).toBe('box');
-      expect(annotations.respiratory_care_0.type).toBe('line');
+    expect(screen.getByTitle('Room sensors not set up yet')).toBeDisabled();
+  });
+});
+
+describe('the metric stack', () => {
+  it('draws one chart per active metric, not one chart with two axes', async () => {
+    await renderPage();
+    const live = chartInstances.filter((c) => !c.destroyed);
+    expect(live).toHaveLength(2);
+    expect(live.map((c) => c.config.data.datasets[0].label).sort())
+      .toEqual(['Barometric pressure (surface)', 'Pressure change over 6h']);
+  });
+
+  it('is no longer capped at two metrics', async () => {
+    await renderPage();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Relative humidity/ }));
+      await vi.advanceTimersByTimeAsync(400);
     });
+    expect(chartInstances.filter((c) => !c.destroyed)).toHaveLength(3);
   });
 
-  it('renders an ok correlation card and an honest insufficient one', async () => {
+  it('refuses to empty the stack completely', async () => {
     await renderPage();
-    expect(await screen.findByText('2.1×')).toBeInTheDocument();
-    // Appears in both the stat line and the backend-built message
-    expect(screen.getAllByText(/95% CI 1.1–4.0/).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('Pattern observed')).toBeInTheDocument();
-    expect(screen.getByText(/Counted tasks: Cough Assist, Suction/)).toBeInTheDocument();
-    expect(screen.getByText('Not enough data yet')).toBeInTheDocument();
-    expect(screen.getByText(/2 of 5 needed/)).toBeInTheDocument();
+    for (const name of [/Pressure change over 6h/, /Barometric pressure/]) {
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name }));
+        await vi.advanceTimersByTimeAsync(400);
+      });
+    }
+    expect(chartInstances.filter((c) => !c.destroyed).length).toBeGreaterThanOrEqual(1);
   });
 
-  it('changing the range preset refetches with the new days', async () => {
+  it('dashes a derived metric and leaves a measured one solid', async () => {
+    await renderPage();
+    expect(chartFor('Pressure change over 6h').config.data.datasets[0].borderDash)
+      .toEqual([5, 4]);
+    expect(chartFor('Barometric pressure (surface)').config.data.datasets[0].borderDash)
+      .toEqual([]);
+  });
+
+  it('shares one time window and one plot gutter across the stack', async () => {
+    await renderPage();
+    const live = chartInstances.filter((c) => !c.destroyed);
+    const xs = live.map((c) => [c.config.options.scales.x.min, c.config.options.scales.x.max]);
+    expect(xs[0]).toEqual(xs[1]);
+    // The alignment contract the lanes and scrubber also inset by.
+    const widths = live.map((c) => {
+      const scale = { width: 0 };
+      c.config.options.scales.y.afterFit(scale);
+      return scale.width;
+    });
+    expect(widths).toEqual([52, 52]);
+    const css = readFileSync(resolve(__dirname, 'monitoring-environment.css'), 'utf8');
+    expect(css).toMatch(/--env-gutter:\s*52px/);
+  });
+
+  it('only the bottom chart draws time labels', async () => {
+    await renderPage();
+    const shown = chartInstances.filter((c) => !c.destroyed)
+      .map((c) => c.config.options.scales.x.ticks.display);
+    expect(shown).toEqual([false, true]);
+  });
+
+  it('marks the zero line on a metric that goes negative', async () => {
+    await renderPage();
+    const delta = chartFor('Pressure change over 6h');
+    expect(delta.config.options.plugins.annotation.annotations.zero).toMatchObject({ yMin: 0 });
+    expect(chartFor('Barometric pressure (surface)')
+      .config.options.plugins.annotation.annotations.zero).toBeUndefined();
+  });
+});
+
+describe('clinical events', () => {
+  it('puts each stream in its own lane under the charts', async () => {
+    await renderPage();
+    const lanes = [...document.querySelectorAll('.env-lane-name')].map((n) => n.textContent);
+    expect(lanes).toEqual(['SpO2', 'Oxygen', 'Care', 'Symptoms']);
+  });
+
+  it('places a marker per event and leaves an empty stream visibly empty', async () => {
+    await renderPage();
+    const lanes = [...document.querySelectorAll('.env-lane')];
+    expect(lanes[0].querySelectorAll('.env-lane-mark')).toHaveLength(1);
+    expect(lanes[1].querySelector('.env-lane-empty')).toBeTruthy();
+  });
+
+  it('a stream can be switched off', async () => {
+    await renderPage();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^SpO2/ }));
+    });
+    const lanes = [...document.querySelectorAll('.env-lane-name')].map((n) => n.textContent);
+    expect(lanes).not.toContain('SpO2');
+  });
+});
+
+describe('personal patterns', () => {
+  it('lays the pairs out as triggers by outcomes', async () => {
+    await renderPage();
+    const grid = screen.getByRole('table');
+    const headers = within(grid).getAllByRole('columnheader').map((h) => h.textContent);
+    expect(headers[0]).toBe('Trigger');
+    expect(headers).toContain('Respiratory care events');
+    expect(headers).toContain('Logged symptoms');
+  });
+
+  it('shows a ratio that cleared the interval as a pattern', async () => {
+    await renderPage();
+    expect(screen.getByText('2.1×')).toBeInTheDocument();
+    expect(screen.getByText('Pattern observed')).toBeInTheDocument();
+  });
+
+  it('says how far a still-collecting pair has got, not just that it is short', async () => {
+    await renderPage();
+    // The old page said "Not enough data yet" with no sense of progress.
+    expect(screen.getByText(/Collecting|Not started/)).toBeInTheDocument();
+    expect(screen.getByText(/2 analyses are|1 analysis is/)).toBeInTheDocument();
+  });
+
+  it('keeps the counted care tasks visible for the reader to check', async () => {
+    await renderPage();
+    const cell = screen.getByText('2.1×').closest('td');
+    expect(cell.getAttribute('title')).toContain('Cough Assist, Suction');
+    expect(cell.getAttribute('title')).toContain('95% CI 1.1–4.0');
+  });
+});
+
+describe('range', () => {
+  it('refetches the analysis for the chosen range', async () => {
     await renderPage();
     apiFetchMock.mockClear();
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: '90d' }));
-      await new Promise((r) => setTimeout(r, 350));
+      fireEvent.click(screen.getByRole('button', { name: '90D' }));
+      await vi.advanceTimersByTimeAsync(400);
     });
-    await waitFor(() => {
-      const corrCall = apiFetchMock.mock.calls
-        .map((c) => String(c[0])).find((u) => u.includes('/env-correlations'));
-      expect(corrCall).toContain('days=90');
-    });
-  });
-
-  it('room picker stays disabled while only outdoor data exists', async () => {
-    await renderPage();
-    const select = screen.getByTitle('Room sensors not set up yet');
-    expect(select).toBeDisabled();
+    const call = apiFetchMock.mock.calls
+      .map((c) => String(c[0])).find((u) => u.includes('/env-correlations'));
+    expect(call).toContain('days=90');
   });
 });
