@@ -98,6 +98,44 @@ def test_discovery_device_classes_and_suggested_area(fake_client):
     assert "dev_cla" not in spo2
 
 
+def test_entity_plan_matches_what_discovery_publishes(fake_client):
+    """The planner is what the UI counts entities with, so it has to agree with
+    the publisher — section for section, name for name."""
+    sections = PATIENT_ENTRY["settings"]["sections"]
+    plan = disc.entity_plan(sections)
+
+    assert disc.send_mqtt_discovery(fake_client)
+    published = {
+        topic.split("/")[2] for topic, payload, _ in fake_client.published if payload
+        # reader availability sensors are not section entities
+        if "_reader_" not in topic
+    }
+    planned = {f"shh_pat_ient_{suffix}" for _s, _t, suffix, _n in plan}
+    assert planned == published
+
+    # The expansions the count depends on.
+    by_section = {}
+    for section, _type, _suffix, _name in plan:
+        by_section[section] = by_section.get(section, 0) + 1
+    assert by_section["blood_pressure"] == 3
+    assert by_section["nutrition"] == 6
+    assert by_section["spo2"] == 1
+    assert "bathroom" not in by_section  # off
+    assert "bpm" not in by_section
+
+
+def test_entity_plan_expands_badge_counts_and_skips_unshared():
+    plan = disc.entity_plan({"meds_counts": "get", "care_task_counts": "off",
+                             "spo2": "set", "alarm1": "both"})
+    assert [(s, suffix) for s, _t, suffix, _n in plan] == [
+        ("meds_counts", "meds_due_now"),
+        ("meds_counts", "meds_late"),
+        ("alarm1", "alarm1"),
+    ]
+    # 'set' is HA writing to us; it publishes no sensor.
+    assert all(section != "spo2" for section, _t, _s, _n in plan)
+
+
 def test_discovery_prunes_disabled_sections(fake_client):
     disc.send_mqtt_discovery(fake_client)
     configs = _configs(fake_client)

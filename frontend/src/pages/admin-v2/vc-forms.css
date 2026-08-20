@@ -276,6 +276,28 @@
   box-shadow: 0 0 0 2px var(--vc-bg-base), 0 0 0 4px var(--vc-data-live);
 }
 
+/* ---------- Switch ---------- */
+/* The thumb is stock `bg-background`, which on the dark scale is nearly the
+ * same value as the track — it reads as a hole rather than a knob. */
+:root:not(.light) body.vc-form-skin [data-slot='switch'] {
+  background: var(--vc-bg-base);
+  border: 1px solid var(--vc-line-strong);
+}
+:root:not(.light) body.vc-form-skin [data-slot='switch'][data-state='checked'] {
+  background: var(--vc-data-live);
+  border-color: var(--vc-data-live);
+}
+:root:not(.light) body.vc-form-skin [data-slot='switch-thumb'] {
+  background: var(--vc-text-secondary);
+}
+:root:not(.light) body.vc-form-skin [data-slot='switch'][data-state='checked'] [data-slot='switch-thumb'] {
+  background: var(--vc-bg-base);
+}
+:root:not(.light) body.vc-form-skin [data-slot='switch']:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--vc-bg-base), 0 0 0 4px var(--vc-data-live);
+}
+
 /* ---------- Badges ---------- */
 /* The stock variants carry GitHub-palette hex; restate them on the vc scale
  * so a badge next to a skinned control belongs to the same system. */

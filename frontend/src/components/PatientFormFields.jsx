@@ -22,13 +22,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Field, FormRow } from '@/components/ui/field';
 import config, { apiFetch } from '../config';
 
-// Shared create/edit fields for a patient. Used by the Patients list (create
-// dialog) and the patient detail page (edit). `idPrefix` keeps field ids unique
-// when more than one instance could mount.
-export default function PatientFormFields({ formData, setFormData, idPrefix = 'pf' }) {
-  // Care-area suggestions: the user's HA areas (rooms) + rooms already seen
-  // in environmental data. Best-effort; the field stays free text.
-  const [careAreaOptions, setCareAreaOptions] = useState([]);
+// Care-area suggestions: the user's HA areas (rooms) + rooms already seen in
+// environmental data. Best-effort; the field stays free text.
+function useCareAreaOptions() {
+  const [options, setOptions] = useState([]);
   useEffect(() => {
     let cancelled = false;
     Promise.all([
@@ -40,11 +37,16 @@ export default function PatientFormFields({ formData, setFormData, idPrefix = 'p
       if (cancelled) return;
       const seen = locations.filter((l) => l.scope !== 'outdoor' && l.location)
                             .map((l) => l.location);
-      setCareAreaOptions([...new Set([...areas, ...seen])]);
+      setOptions([...new Set([...areas, ...seen])]);
     }).catch(() => {});
     return () => { cancelled = true; };
   }, []);
+  return options;
+}
 
+// Who the profile is. Split out so the care-profile pages can edit identity
+// and care context on separate screens while the create dialog shows both.
+export function IdentityFields({ formData, setFormData, idPrefix = 'pf' }) {
   return (
     <>
       <FormRow>
@@ -86,35 +88,57 @@ export default function PatientFormFields({ formData, setFormData, idPrefix = 'p
           />
         </Field>
       </FormRow>
+    </>
+  );
+}
 
-      <Field label="Care area (room)" htmlFor={`${idPrefix}-care-area`}>
-        <Input
-          id={`${idPrefix}-care-area`}
-          list={`${idPrefix}-care-area-options`}
-          value={formData.care_area || ''}
-          onChange={(e) => setFormData({ ...formData, care_area: e.target.value })}
-          placeholder="e.g. Bedroom"
-        />
-        <datalist id={`${idPrefix}-care-area-options`}>
-          {careAreaOptions.map((area) => (
-            <option key={area} value={area} />
-          ))}
-        </datalist>
-        <p className="text-xs text-muted-foreground">
-          The room this patient is cared for in — used to match room sensors
-          and Home Assistant areas.
-        </p>
-      </Field>
+export function CareAreaField({ formData, setFormData, idPrefix = 'pf' }) {
+  const careAreaOptions = useCareAreaOptions();
+  return (
+    <Field label="Care area (room)" htmlFor={`${idPrefix}-care-area`}>
+      <Input
+        id={`${idPrefix}-care-area`}
+        list={`${idPrefix}-care-area-options`}
+        value={formData.care_area || ''}
+        onChange={(e) => setFormData({ ...formData, care_area: e.target.value })}
+        placeholder="e.g. Bedroom"
+      />
+      <datalist id={`${idPrefix}-care-area-options`}>
+        {careAreaOptions.map((area) => (
+          <option key={area} value={area} />
+        ))}
+      </datalist>
+      <p className="text-xs text-muted-foreground">
+        The room this person is cared for in — used to match room sensors and
+        Home Assistant areas.
+      </p>
+    </Field>
+  );
+}
 
-      <Field label="Notes" htmlFor={`${idPrefix}-notes`}>
-        <Textarea
-          id={`${idPrefix}-notes`}
-          rows={3}
-          value={formData.notes}
-          onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-          placeholder="Any additional notes about the patient..."
-        />
-      </Field>
+export function NotesField({ formData, setFormData, idPrefix = 'pf', rows = 3, hint }) {
+  return (
+    <Field label="Notes" htmlFor={`${idPrefix}-notes`}>
+      <Textarea
+        id={`${idPrefix}-notes`}
+        rows={rows}
+        value={formData.notes}
+        onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+        placeholder="Anything the care team should know…"
+      />
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+    </Field>
+  );
+}
+
+// Shared create/edit fields for a care profile. Used by the profiles list
+// (create dialog); the profile pages compose the pieces above instead.
+export default function PatientFormFields({ formData, setFormData, idPrefix = 'pf' }) {
+  return (
+    <>
+      <IdentityFields formData={formData} setFormData={setFormData} idPrefix={idPrefix} />
+      <CareAreaField formData={formData} setFormData={setFormData} idPrefix={idPrefix} />
+      <NotesField formData={formData} setFormData={setFormData} idPrefix={idPrefix} />
 
       <label className="flex cursor-pointer items-center gap-2">
         <Checkbox

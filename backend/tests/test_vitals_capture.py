@@ -343,6 +343,28 @@ def test_ranges_include_custom_definitions(admin_client, patient):
     assert "peak_flow" in keys
 
 
+def test_ranges_carry_display_label_and_unit(admin_client, patient):
+    """The UI reads names and units off the range rows — it must not have to
+    title-case keys ('spo2' -> 'Spo2') or keep its own unit table."""
+    admin_client.post("/api/vitals/custom-definitions", json={
+        "patient_id": patient.id, "name": "peak flow", "unit": "L/min"})
+    resp = admin_client.get(f"/api/vitals/ranges?patient_id={patient.id}")
+    rows = {(r["vital_key"], r["field_key"]): r for r in resp.json()["ranges"]}
+
+    assert rows[("spo2", "")]["label"] == "SpO2"
+    assert rows[("spo2", "")]["unit"] == "%"
+    assert rows[("spo2", "")]["builtin"] is True
+    # Component rows name the component, not the parent vital.
+    assert rows[("blood_pressure", "systolic")]["label"] == "Systolic"
+    assert rows[("blood_pressure", "systolic")]["unit"] == "mmHg"
+    assert rows[("blood_pressure", "")]["label"] == "Blood Pressure"
+
+    custom = rows[("peak_flow", "")]
+    assert custom["label"] == "peak flow"
+    assert custom["unit"] == "L/min"
+    assert custom["builtin"] is False
+
+
 def test_custom_definition_mutations_require_permission(limited_client, patient):
     denied = limited_client.post("/api/vitals/custom-definitions", json={
         "patient_id": patient.id, "name": "mood", "unit": ""})

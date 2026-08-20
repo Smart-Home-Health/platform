@@ -577,6 +577,40 @@ export const FlameIcon = ({ size = 20 }) => (
   </svg>
 );
 
+export const ThermometerIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z" />
+  </svg>
+);
+
+export const LungsIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 4v9" />
+    <path d="M10 13c0 1.6-.1 3-.6 4.2-.4.9-1.3 1.5-2.3 1.5a2.6 2.6 0 0 1-2.6-2.7c.1-1.9.4-3.7 1-5.5.5-1.5 1.6-2.5 2.5-2.5.6 0 1 .6 1 1.4z" />
+    <path d="M14 13c0 1.6.1 3 .6 4.2.4.9 1.3 1.5 2.3 1.5a2.6 2.6 0 0 0 2.6-2.7c-.1-1.9-.4-3.7-1-5.5-.5-1.5-1.6-2.5-2.5-2.5-.6 0-1 .6-1 1.4z" />
+  </svg>
+);
+
+export const ScaleIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <path d="M7.5 12a4.5 4.5 0 0 1 9 0" />
+    <path d="M12 12 10.2 9.2" />
+  </svg>
+);
+
+export const WindIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12.8 19.6A2 2 0 1 0 14 16H2" />
+    <path d="M17.5 8a2.5 2.5 0 1 1 2 4H2" />
+    <path d="M9.8 4.4A2 2 0 1 1 11 8H2" />
+  </svg>
+);
+
 export const ToiletIcon = ({ size = 20 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" 
        strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
