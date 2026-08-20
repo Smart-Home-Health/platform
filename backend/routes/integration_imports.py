@@ -29,7 +29,7 @@ import logging
 import os
 import shutil
 import tarfile
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time as dtime, timedelta, timezone
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
@@ -49,6 +49,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from db import SessionLocal
 from dependencies import get_db, require_permission
 from routes.auth import get_current_account_id, require_full_auth
+from utils.datetime_utils import resolve_tz_for_patient
 from schemas.integration import PatientIntegration
 from schemas.vent_import import VentImport
 from pydantic import BaseModel
@@ -499,6 +500,28 @@ def _infer_grouping(display_label: Optional[str], tag_name: Optional[str]) -> Op
     return None
 
 
+def _vent_day_bounds(db: Session, patient_id: int, date: str):
+    """The UTC window covering one local day for this patient.
+
+    Ventilator days used to be UTC calendar days, which put a patient four
+    hours west of Greenwich into a "day" running 8pm to 8pm — the chart opened
+    at 20:00 and crossed midnight in the middle. Day boundaries come from the
+    account timezone everywhere else in this codebase and now here too.
+
+    The end is the next local midnight rather than start + 24h, so the 23- and
+    25-hour days either side of a DST change cover exactly their own hours,
+    and it is exclusive to match the `recorded_at < :end` the callers use.
+    """
+    try:
+        day = datetime.strptime(date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="date must be YYYY-MM-DD")
+    tz = resolve_tz_for_patient(db, patient_id)
+    start = datetime.combine(day, dtime.min, tzinfo=tz).astimezone(timezone.utc)
+    end = datetime.combine(day + timedelta(days=1), dtime.min, tzinfo=tz).astimezone(timezone.utc)
+    return day, start, end
+
+
 def _vent_integration_id(db: Session, patient_id: int, account_id: int) -> Optional[int]:
     """Return the active ventilator PatientIntegration.id for this patient,
     or None if the patient has no vent integration."""
@@ -581,17 +604,20 @@ async def vent_days(
     account_id: int = Depends(get_current_account_id),
 ):
     """List dates that have parsed vent samples (most recent first) so the
-    view can render a day picker. `date` is in UTC."""
+    view can render a day picker. Dates are the patient's local calendar
+    days — bucketing by UTC put a patient west of Greenwich into a day that
+    began at 8pm the evening before."""
     if not _vent_integration_id(db, patient_id, account_id):
         return {"has_integration": False, "days": []}
 
+    tz = str(resolve_tz_for_patient(db, patient_id))
     rows = db.execute(text("""
-        SELECT (recorded_at AT TIME ZONE 'UTC')::date AS day, COUNT(*) AS n
+        SELECT (recorded_at AT TIME ZONE :tz)::date AS day, COUNT(*) AS n
         FROM vent_samples
         WHERE patient_id = :pid
-        GROUP BY (recorded_at AT TIME ZONE 'UTC')::date
+        GROUP BY (recorded_at AT TIME ZONE :tz)::date
         ORDER BY day DESC
-    """), {"pid": patient_id}).all()
+    """), {"pid": patient_id, "tz": tz}).all()
     return {
         "has_integration": True,
         "days": [
@@ -619,12 +645,7 @@ async def vent_day(
     if not _vent_integration_id(db, patient_id, account_id):
         raise HTTPException(status_code=404, detail="No ventilator integration for patient")
 
-    try:
-        day = datetime.strptime(date, "%Y-%m-%d").date()
-    except ValueError:
-        raise HTTPException(status_code=400, detail="date must be YYYY-MM-DD")
-    start = datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc)
-    end = start + timedelta(days=1)
+    day, start, end = _vent_day_bounds(db, patient_id, date)
 
     # Outlier guard: VOCSN encodes "no reading" with uint16-ish sentinels
     # (43577, 21042, 16190, 5326 — likely bit-pattern encodings of NaN/error
@@ -744,12 +765,7 @@ async def vent_day_parameter_series(
     chart can plot median + 5–95% band."""
     if not _vent_integration_id(db, patient_id, account_id):
         raise HTTPException(status_code=404, detail="No ventilator integration")
-    try:
-        day = datetime.strptime(date, "%Y-%m-%d").date()
-    except ValueError:
-        raise HTTPException(status_code=400, detail="date must be YYYY-MM-DD")
-    start = datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc)
-    end = start + timedelta(days=1)
+    day, start, end = _vent_day_bounds(db, patient_id, date)
 
     rows = db.execute(text("""
         SELECT
