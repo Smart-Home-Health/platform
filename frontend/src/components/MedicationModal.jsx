@@ -31,15 +31,7 @@ import { rollupSchedule } from './schedule/scheduleRollup';
 import { checkAdministrationWindow, formatDurationMinutes, getCurrentLocalDateTime } from '../utils/timezone';
 import MedicationDoseModal from '../pages/admin-v2/components/MedicationDoseModal';
 import UpdateQuantityModal from '../pages/admin-v2/components/UpdateQuantityModal';
-import { Button } from '@/components/ui/button';
-import { Alert } from '@/components/ui/alert';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import ConfirmSheet from './vc/ConfirmSheet';
 
 const OFF_WINDOW_ERRORS = ['early_administration', 'late_administration', 'off_window_administration'];
 
@@ -325,9 +317,7 @@ const MedicationModal = ({ onClose }) => {
       }>
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           {!selectedPatient && (
-            <div className="tw" style={{ marginBottom: 16 }}>
-              <Alert variant="warning">No patient selected</Alert>
-            </div>
+            <div className="ld-dose-empty">No patient selected</div>
           )}
 
           <PanelViewSwitcher
@@ -379,26 +369,16 @@ const MedicationModal = ({ onClose }) => {
       </ModalBase>
 
       {/* Off-window confirm (single + bulk) */}
-      <Dialog open={windowConfirm.open} onOpenChange={(o) => { if (!o) closeWindowConfirm(); }}>
-        <DialogContent className="sm:max-w-[440px]" aria-describedby={undefined}>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <span className="flex h-7 w-7 items-center justify-center rounded-md bg-[rgba(240,136,62,0.2)] text-[#f0883e]">⚠</span>
-              {windowConfirm.title}
-            </DialogTitle>
-          </DialogHeader>
-          <Alert variant="warning">
-            <div className="mb-1.5 font-semibold text-[#f0883e]">{windowConfirm.heading}</div>
-            <div>{windowConfirm.detail}</div>
-          </Alert>
-          <DialogFooter>
-            <Button variant="secondary" onClick={closeWindowConfirm}>Cancel</Button>
-            <Button onClick={() => { const fn = windowConfirm.onConfirm; closeWindowConfirm(); fn && fn(); }}>
-              Administer Anyway
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmSheet
+        open={windowConfirm.open}
+        onOpenChange={(o) => { if (!o) closeWindowConfirm(); }}
+        title={windowConfirm.title}
+        confirmLabel="Administer anyway"
+        onConfirm={() => { const fn = windowConfirm.onConfirm; closeWindowConfirm(); fn && fn(); }}
+      >
+        <strong className="cs-lead">{windowConfirm.heading}</strong>
+        {windowConfirm.detail}
+      </ConfirmSheet>
 
       {/* PRN step 1: choose an as-needed med (step 2 is MedicationDoseModal) */}
       <PrnPicker

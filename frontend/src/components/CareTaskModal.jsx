@@ -37,6 +37,7 @@ import {
   getCurrentLocalDateTime,
   localDateTimeToUTC,
 } from '../utils/timezone';
+import ConfirmSheet from './vc/ConfirmSheet';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
 import { Input } from '@/components/ui/input';
@@ -315,9 +316,7 @@ const CareTaskModal = ({ onClose }) => {
       }>
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           {!selectedPatient && (
-            <div className="tw" style={{ marginBottom: 16 }}>
-              <Alert variant="warning">No patient selected</Alert>
-            </div>
+            <div className="ld-dose-empty">No patient selected</div>
           )}
 
           <PanelViewSwitcher
@@ -427,33 +426,21 @@ const CareTaskModal = ({ onClose }) => {
           ? `${formatDurationMinutes(Math.abs(windowConfirm.check.minutesOffset))} ago`
           : `${formatDurationMinutes(windowConfirm.check.minutesOffset)} from now`;
         return (
-          <Dialog open onOpenChange={(o) => { if (!o) closeWindowConfirm(); }}>
-            <DialogContent className="sm:max-w-[440px]" aria-describedby={undefined}>
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">
-                  <span className="flex h-7 w-7 items-center justify-center rounded-md bg-[rgba(240,136,62,0.2)] text-[#f0883e]">⚠</span>
-                  {title}
-                </DialogTitle>
-              </DialogHeader>
-              <Alert variant="warning">
-                <div className="mb-1.5 font-semibold text-[#f0883e]">{heading}</div>
-                <div>
-                  <strong>{windowConfirm.task.name}</strong> is scheduled for{' '}
-                  <strong>{windowConfirm.check.scheduledLocal}</strong> — that's <strong>{offsetText}</strong>.
-                </div>
-              </Alert>
-              <DialogFooter>
-                <Button variant="secondary" onClick={closeWindowConfirm}>Cancel</Button>
-                <Button onClick={async () => {
-                  const { task, note } = windowConfirm;
-                  closeWindowConfirm();
-                  await submitMarkCompleted(task, { earlyOverride: true, note });
-                }}>
-                  Complete Anyway
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <ConfirmSheet
+            open
+            onOpenChange={(o) => { if (!o) closeWindowConfirm(); }}
+            title={title}
+            confirmLabel="Complete anyway"
+            onConfirm={async () => {
+              const { task, note } = windowConfirm;
+              closeWindowConfirm();
+              await submitMarkCompleted(task, { earlyOverride: true, note });
+            }}
+          >
+            <strong className="cs-lead">{heading}</strong>
+            <strong>{windowConfirm.task.name}</strong> is scheduled for{' '}
+            <strong>{windowConfirm.check.scheduledLocal}</strong> — that&apos;s <strong>{offsetText}</strong>.
+          </ConfirmSheet>
         );
       })()}
 
