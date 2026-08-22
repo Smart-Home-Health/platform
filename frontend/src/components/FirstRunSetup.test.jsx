@@ -21,14 +21,21 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 
 const navigate = vi.fn();
-vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }));
+// AuthShell renders a <Link>, so keep the real router and only pin useNavigate.
+vi.mock('react-router-dom', async (importOriginal) => ({
+  ...(await importOriginal()),
+  useNavigate: () => navigate,
+}));
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({
     completeFirstRunSetup: vi.fn(async () => ({ success: true, data: { account_slug: 'test-family' } })),
   }),
 }));
 
+import { MemoryRouter } from 'react-router-dom';
 import FirstRunSetup from './FirstRunSetup';
+
+const renderPage = () => render(<MemoryRouter><FirstRunSetup /></MemoryRouter>);
 
 const baseStatus = {
   mode: 'off', ingress: false, behind_proxy: false, request_scheme: 'http',
@@ -69,7 +76,7 @@ beforeEach(() => {
 describe('FirstRunSetup secure-install step', () => {
   it('offers "Secure this install" after setup when HTTPS is unconfigured', async () => {
     stubSecurityStatus(baseStatus);
-    render(<FirstRunSetup />);
+    renderPage();
     await completeForm();
     await waitFor(() => expect(screen.getByText('Setup Complete!')).toBeInTheDocument());
     await waitFor(() =>
@@ -79,7 +86,7 @@ describe('FirstRunSetup secure-install step', () => {
 
   it('hides the offer under Home Assistant ingress', async () => {
     stubSecurityStatus({ ...baseStatus, ingress: true });
-    render(<FirstRunSetup />);
+    renderPage();
     await completeForm();
     await waitFor(() => expect(screen.getByText('Setup Complete!')).toBeInTheDocument());
     expect(screen.queryByText('Secure this install (recommended)')).not.toBeInTheDocument();
@@ -87,7 +94,7 @@ describe('FirstRunSetup secure-install step', () => {
 
   it('enters the wizard and can skip to the dashboard', async () => {
     stubSecurityStatus(baseStatus);
-    render(<FirstRunSetup />);
+    renderPage();
     await completeForm();
     await waitFor(() =>
       expect(screen.getByText('Secure this install (recommended)')).toBeInTheDocument());
