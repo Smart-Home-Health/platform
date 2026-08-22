@@ -15,61 +15,21 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-// Card-driven numeric keypad. The decimal key renders only when the active
-// field allows decimals (spec §4.1) and keypresses that would exceed the
-// field's digit budget are blocked at input time, not errored later.
-import { BackspaceIcon } from '../../../components/Icons';
+// Card-driven numeric keypad for the capture sheet: the shared vc Keypad with
+// the active field's digit budget applied (spec §4.1) — the decimal key shows
+// only when the field allows decimals, and keys that would overflow are
+// blocked at input time, not errored later.
+import Keypad from '../../../components/vc/Keypad';
 import { acceptKey } from '../vitalConfigs';
 
-const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
-
-export default function Keypad({ value, field, onKey, onBackspace }) {
-  const showDecimal = field.maxDecimals > 0;
+export default function CaptureKeypad({ value, field, onKey, onBackspace }) {
   return (
-    <div className="vc-keypad" role="group" aria-label="Number pad">
-      {KEYS.map((k) => (
-        <button
-          key={k}
-          type="button"
-          className="vc-key"
-          aria-label={k}
-          disabled={!acceptKey(value, k, field)}
-          onClick={() => onKey(k)}
-        >
-          {k}
-        </button>
-      ))}
-      {showDecimal ? (
-        <button
-          type="button"
-          className="vc-key"
-          aria-label="Decimal point"
-          disabled={!acceptKey(value, '.', field)}
-          onClick={() => onKey('.')}
-        >
-          .
-        </button>
-      ) : (
-        <span className="vc-key" aria-hidden="true" />
-      )}
-      <button
-        type="button"
-        className="vc-key"
-        aria-label="0"
-        disabled={!acceptKey(value, '0', field)}
-        onClick={() => onKey('0')}
-      >
-        0
-      </button>
-      <button
-        type="button"
-        className="vc-key"
-        aria-label="Backspace"
-        disabled={!value}
-        onClick={onBackspace}
-      >
-        <BackspaceIcon size={22} />
-      </button>
-    </div>
+    <Keypad
+      value={value}
+      onKey={onKey}
+      onBackspace={onBackspace}
+      canAccept={(k) => acceptKey(value, k, field)}
+      showDecimal={field.maxDecimals > 0}
+    />
   );
 }

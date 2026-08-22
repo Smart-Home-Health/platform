@@ -476,17 +476,6 @@
 .vc-hero.bp .vc-hero-field { font-size: 32px; }
 .vc-hero.bp .vc-hero-field.vc-placeholder { letter-spacing: 0.04em; }
 
-/* Caret */
-.vc-caret {
-  display: inline-block;
-  width: 2px;
-  height: 0.85em;
-  background: var(--vc-data-live);
-  margin-left: 2px;
-  vertical-align: baseline;
-  animation: vc-caret-blink 1.1s steps(1) infinite;
-}
-@keyframes vc-caret-blink { 50% { opacity: 0; } }
 
 /* Warning / block banners */
 .vc-band {
@@ -518,32 +507,7 @@
 }
 .vc-band.block .vc-band-title, .vc-band.block svg { color: var(--vc-state-alert); }
 
-/* ---------- Keypad ---------- */
-.vc-keypad {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1px;
-  background: var(--vc-line-hairline);
-  border: 1px solid var(--vc-line-hairline);
-  border-radius: 8px;
-  overflow: hidden;
-  margin: 0.4rem 0 0.8rem;
-}
-.vc-key {
-  background: var(--vc-bg-sheet);
-  border: none;
-  padding: 0;
-  color: var(--vc-text-primary);
-  font-family: var(--vc-font-mono);
-  font-size: 22px;
-  min-height: 52px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.vc-key:active { background: var(--vc-bg-raised); }
-.vc-key:disabled { color: var(--vc-text-tertiary); cursor: default; }
+/* Keypad + caret live in components/vc/keypad.css (shared with the PIN challenge). */
 
 /* Sheet actions */
 .vc-sheet-actions {
@@ -646,7 +610,6 @@
   .vc-sheet[data-state='open'],
   .vc-sheet-overlay[data-state='open'],
   .vc-toast { animation: vc-fade-in 1ms linear; }
-  .vc-caret { animation: none; }
 }
 
 /* ---- Docked in the live dashboard --------------------------------------
