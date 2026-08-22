@@ -93,6 +93,11 @@ import "./App.css";
 function AppContent() {
   const { isFirstRun, loading } = useAuth();
   const { showVKB } = useVirtualKeyboard();
+  // Dev-only preview of the first-run screens (`/?firstRun=1`) — the real
+  // gate is the backend's "no admin user yet"; this is stripped from prod.
+  const devFirstRun = import.meta.env.DEV
+    && typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).has('firstRun');
 
   if (loading) {
     return (
@@ -116,7 +121,7 @@ function AppContent() {
       <PinChallengeProvider>
       <Router basename={(typeof window !== 'undefined' && window.__BASE_PATH__) || undefined}>
         <IdleLockProvider>
-        {isFirstRun ? <FirstRunSetup /> : <Routes>
+        {(isFirstRun || devFirstRun) ? <FirstRunSetup /> : <Routes>
           {/* Public Routes */}
           <Route path="/" element={<Navigate to="/care" replace />} />
           <Route path="/login" element={<LoginPage />} />

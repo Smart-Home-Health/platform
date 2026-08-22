@@ -133,8 +133,11 @@
   color: var(--vc-text-secondary);
 }
 .au-input-wrap { position: relative; }
-.vc-auth input[type='password'],
-.vc-auth input[type='text'] {
+/* Scoped to the wrap (not .vc-auth) so an embedded .tw island — the
+ * SecuritySetupWizard on the first-run success path — keeps its own inputs. */
+.au-input-wrap input[type='password'],
+.au-input-wrap input[type='text'],
+.au-input-wrap input[type='email'] {
   width: 100%;
   padding: 0.85rem 2.9rem 0.85rem 0.95rem;
   border: 1px solid var(--vc-line-strong);
@@ -145,12 +148,13 @@
   font-size: 15px;
   letter-spacing: 0.03em;
 }
-.vc-auth input:focus {
+.au-input-wrap input:focus {
   outline: none;
   border-color: var(--vc-data-live);
   box-shadow: 0 0 0 1px var(--vc-data-live);
 }
-.vc-auth input::placeholder { color: var(--vc-text-tertiary); }
+.au-input-wrap input::placeholder { color: var(--vc-text-tertiary); }
+.au-input-wrap.plain input { padding-right: 0.95rem; }
 .au-eye {
   position: absolute;
   top: 50%;
@@ -506,4 +510,92 @@
   .au-brand { padding: 0.85rem 1rem; }
   .au-main { padding: 1.2rem 1rem 1.6rem; }
   .au-access { gap: 0.5rem; padding: 0.7rem 0.7rem; font-size: 11px; letter-spacing: 0.07em; }
+}
+
+/* ---- First-run setup + forced password reset ----
+ * Same shell as login; the additions below are the field grid, grouped
+ * sections, the account-password tip, the HA-identity notice, the account
+ * login-id block and the wizard embed. Kept tight: hairline groups, 0.6rem
+ * gaps, no nested cards. */
+.au-form.au-dense { gap: 0.7rem; }
+.au-group { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.3rem; }
+.au-group-label {
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--vc-line-hairline);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.au-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem 0.75rem;
+}
+.au-grid .au-span { grid-column: 1 / -1; }
+.au-field { display: flex; flex-direction: column; gap: 0.35rem; min-width: 0; }
+.au-field .au-hint { margin-top: 0; font-size: 12px; }
+.au-label-row { display: flex; align-items: center; gap: 0.4rem; }
+.au-label-row label { cursor: pointer; }
+.au-tip-wrap { position: relative; display: inline-flex; }
+.au-tip {
+  display: inline-grid;
+  place-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--vc-text-tertiary);
+  cursor: pointer;
+}
+.au-tip:hover,
+.au-tip[aria-expanded='true'] { color: var(--vc-data-live); }
+.au-tip-box {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 5;
+  width: min(320px, 80vw);
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 8px;
+  background: var(--vc-bg-sheet);
+  font-family: var(--vc-font-sans);
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.45;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--vc-text-secondary);
+}
+.au-tip-box strong { color: var(--vc-text-primary); }
+.au-notice {
+  margin-top: 1rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid color-mix(in srgb, var(--vc-state-complete) 55%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--vc-state-complete) 10%, transparent);
+  font-family: var(--vc-font-sans);
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--vc-text-primary);
+}
+.au-notice strong { font-weight: 600; }
+.au-slug {
+  margin-top: 1.4rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-surface);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.au-slug-label { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--vc-text-tertiary); }
+.au-slug-value { font-size: 22px; font-weight: 700; letter-spacing: 0.04em; color: var(--vc-data-live); word-break: break-all; }
+.au-slug-note { font-family: var(--vc-font-sans); font-size: 12.5px; color: var(--vc-text-secondary); }
+.au-actions { margin-top: 1.2rem; display: flex; flex-direction: column; gap: 0.6rem; }
+.au-embed { margin-top: 1.2rem; }
+@media (max-width: 480px) {
+  .au-grid { grid-template-columns: 1fr; }
 }

@@ -15,13 +15,21 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+// First-run setup: create the account and its first administrator. Rendered
+// by App instead of the router while the backend reports no admin user.
+// Three screens on the shared AuthShell: the form, the "Setup Complete!"
+// screen with the account login id, and the optional secure-install step
+// (SecuritySetupWizard — shared with Configuration → Security, left as is).
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import config, { apiFetch } from '../config';
 import SecuritySetupWizard from './SecuritySetupWizard';
-import logoImage from '../assets/logo2.png';
-import './FirstRunSetup.css';
+import AuthShell from '../pages/AuthShell';
+import { InfoIcon } from './Icons';
+import '../pages/auth.css';
+
+const slugify = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 
 export default function FirstRunSetup() {
   const navigate = useNavigate();
@@ -36,7 +44,7 @@ export default function FirstRunSetup() {
     pin: '',
     account_name: '',
     account_password: '',
-    confirmAccountPassword: ''
+    confirmAccountPassword: '',
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -55,13 +63,13 @@ export default function FirstRunSetup() {
         setHaIdentity(data.ha_identity);
         setFormData((prev) => ({
           ...prev,
-          username: prev.username || data.ha_identity.username
-            || (data.ha_identity.display_name || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''),
+          username: prev.username || data.ha_identity.username || slugify(data.ha_identity.display_name),
           full_name: prev.full_name || data.ha_identity.display_name || data.ha_identity.username || '',
         }));
       })
       .catch(() => {});
   }, []);
+
   // Optional "Secure this install" step, offered on the success screen.
   // Hidden under HA ingress (TLS already handled) or if status can't load.
   const [offerHttps, setOfferHttps] = useState(false);
@@ -78,19 +86,15 @@ export default function FirstRunSetup() {
   }, [setupComplete]);
 
   const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
+    setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
-    // Validation. Under HA ingress passwords are optional (the HA login is
-    // auto-linked and becomes the sign-in); when a field IS filled, it still
-    // has to be valid.
+    // Under HA ingress passwords are optional (the HA login is auto-linked
+    // and becomes the sign-in); when a field IS filled it still has to be valid.
     const accountPwSkipped = haIdentity && !formData.account_password && !formData.confirmAccountPassword;
     const userPwSkipped = haIdentity && !formData.password && !formData.confirmPassword;
 
@@ -104,7 +108,6 @@ export default function FirstRunSetup() {
         return;
       }
     }
-
     if (!userPwSkipped) {
       if (formData.password !== formData.confirmPassword) {
         setError('User passwords do not match');
@@ -115,31 +118,25 @@ export default function FirstRunSetup() {
         return;
       }
     }
-
     if (formData.pin && (formData.pin.length < 4 || formData.pin.length > 8)) {
       setError('PIN must be between 4 and 8 digits');
       return;
     }
-
     if (formData.pin && !/^\d+$/.test(formData.pin)) {
       setError('PIN must contain only numbers');
       return;
     }
 
     setLoading(true);
-
-    const setupData = {
+    const result = await completeFirstRunSetup({
       username: formData.username,
       password: formData.password || null,
       full_name: formData.full_name,
       email: formData.email || null,
       pin: formData.pin || null,
       account_name: formData.account_name || null,
-      account_password: formData.account_password || null
-    };
-
-    const result = await completeFirstRunSetup(setupData);
-
+      account_password: formData.account_password || null,
+    });
     if (!result.success) {
       setError(result.error);
       setLoading(false);
@@ -150,274 +147,179 @@ export default function FirstRunSetup() {
     }
   };
 
-  const handleContinue = () => {
-    navigate('/care', { replace: true });
-  };
+  const handleContinue = () => navigate('/care', { replace: true });
 
-  // Show success screen with account slug
-  if (setupComplete) {
-    if (showHttpsWizard) {
-      return (
-        <div className="first-run-page">
-          <div className="first-run-logo">
-            <img src={logoImage} alt="Smart Home Health Logo" />
-            <span>Smart Home Health</span>
-          </div>
-          <div className="first-run-card">
-            <div className="first-run-header">
-              <h1>Secure this install</h1>
-              <p>Optional — encrypts connections from phones, tablets, and other devices</p>
-            </div>
-            <SecuritySetupWizard onFinished={handleContinue} />
-            <button
-              type="button"
-              className="link-button"
-              style={{ marginTop: '1rem', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', color: 'inherit' }}
-              onClick={handleContinue}
-            >
-              Skip for now — you can do this later in Configuration → Security
-            </button>
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div className="first-run-page">
-        <div className="first-run-logo">
-          <img src={logoImage} alt="Smart Home Health Logo" />
-          <span>Smart Home Health</span>
-        </div>
-        <div className="first-run-card">
-          <div className="first-run-header">
-            <h1>Setup Complete!</h1>
-            <p>Your account has been created successfully</p>
-          </div>
-
-          <div className="success-info">
-            <div className="account-slug-display">
-              <label>Your Account Login ID:</label>
-              <div className="slug-value">{accountSlug}</div>
-              <small>Use this to log into your account in the future</small>
-            </div>
-
-            {offerHttps && (
-              <button
-                className="submit-button"
-                onClick={() => setShowHttpsWizard(true)}
-              >
-                Secure this install (recommended)
-              </button>
-            )}
-            <button
-              className="submit-button"
-              onClick={handleContinue}
-            >
-              Continue to Dashboard
-            </button>
-          </div>
-        </div>
+  // A labelled input. `name` attributes stay exactly as the backend expects.
+  const field = ({ id, label, hint, span = false, type = 'text', ...input }) => (
+    <div className={`au-field${span ? ' au-span' : ''}`}>
+      <label className="au-label" htmlFor={id}>{label}</label>
+      <div className="au-input-wrap plain">
+        <input type={type} id={id} name={id} value={formData[id]} onChange={handleChange} {...input} />
       </div>
+      {hint && <span className="au-hint">{hint}</span>}
+    </div>
+  );
+
+  if (setupComplete && showHttpsWizard) {
+    return (
+      <AuthShell>
+        <div className="au-eyebrow">First run · Step 2 of 2</div>
+        <h1 className="au-title">Secure this install</h1>
+        <p className="au-subtitle">Optional — encrypts connections from phones, tablets and other devices.</p>
+        <div className="au-embed">
+          <SecuritySetupWizard onFinished={handleContinue} />
+        </div>
+        <div className="au-footer">
+          <button type="button" className="au-toggle" onClick={handleContinue}>
+            Skip for now — you can do this later in Configuration → Security
+          </button>
+        </div>
+      </AuthShell>
     );
   }
 
-  return (
-    <div className="first-run-page">
-      <div className="first-run-logo">
-        <img src={logoImage} alt="Smart Home Health Logo" />
-        <span>Smart Home Health</span>
-      </div>
-      <div className="first-run-card">
-        <div className="first-run-header">
-          <h1>Welcome to Smart Home Health</h1>
-          <p>Let's set up your account and administrator profile</p>
+  if (setupComplete) {
+    return (
+      <AuthShell>
+        <div className="au-eyebrow">First run</div>
+        <h1 className="au-title">Setup Complete!</h1>
+        <p className="au-subtitle">Your account has been created successfully.</p>
+
+        <div className="au-slug">
+          <span className="au-slug-label">Your account login id</span>
+          <span className="au-slug-value">{accountSlug}</span>
+          <span className="au-slug-note">Use this to log into your account in the future.</span>
         </div>
 
-        {haIdentity && (
-          <div className="info-message" style={{ margin: '0 0 1rem', padding: '0.75rem 1rem', borderRadius: '8px', background: 'rgba(35,134,54,0.12)', border: '1px solid rgba(35,134,54,0.4)' }}>
-            Setting up as <strong>{haIdentity.display_name || haIdentity.username}</strong> from
-            Home Assistant — this profile will be linked to your HA login, so opening the app
-            from the sidebar signs you in automatically. Passwords are optional here: they're
-            only needed for access outside Home Assistant (like a shared wall tablet), and an
-            administrator can set them later.
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="first-run-form">
-          {error && (
-            <div className="error-message">
-              {error}
-            </div>
+        <div className="au-actions">
+          {offerHttps && (
+            <button type="button" className="au-primary" onClick={() => setShowHttpsWizard(true)}>
+              Secure this install (recommended)
+            </button>
           )}
+          <button type="button" className={offerHttps ? 'au-account-btn' : 'au-primary'} onClick={handleContinue}>
+            Continue to Dashboard
+          </button>
+        </div>
+      </AuthShell>
+    );
+  }
 
-          <div className="form-grid">
-            <div className="form-group">
-              <label htmlFor="account_name">Account Name (Optional)</label>
-              <input
-                type="text"
-                id="account_name"
-                name="account_name"
-                value={formData.account_name}
-                onChange={handleChange}
-                placeholder="Smith Family"
-              />
-              <small className="form-hint">
-                Name for your account (defaults to your full name)
-              </small>
-            </div>
+  const req = (label) => (haIdentity ? `${label} (optional)` : label);
 
-            <div className="form-group">
-              <label htmlFor="account_password">
-                {haIdentity ? 'Account Password (Optional)' : 'Account Password *'}
-                <span
-                  className="info-icon-wrap"
-                  onMouseEnter={() => setShowAccountPwTip(true)}
-                  onMouseLeave={() => setShowAccountPwTip(false)}
-                  onClick={() => setShowAccountPwTip(prev => !prev)}
-                >
-                  <span className="info-icon">i</span>
+  return (
+    <AuthShell>
+      <div className="au-eyebrow">First run</div>
+      <h1 className="au-title">Welcome to Smart Home Health</h1>
+      <p className="au-subtitle">Set up the account and its administrator profile.</p>
+
+      {haIdentity && (
+        <div className="au-notice">
+          Setting up as <strong>{haIdentity.display_name || haIdentity.username}</strong> from
+          Home Assistant — this profile will be linked to your HA login, so opening the app
+          from the sidebar signs you in automatically. Passwords are optional here: they're
+          only needed for access outside Home Assistant (like a shared wall tablet), and an
+          administrator can set them later.
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="au-form au-dense">
+        {error && <div className="au-error">{error}</div>}
+
+        <div className="au-group">
+          <div className="au-group-label">Account</div>
+          <div className="au-grid">
+            {field({
+              id: 'account_name', label: 'Account name (optional)', span: true,
+              placeholder: 'Smith Family', hint: 'Defaults to your full name',
+            })}
+            <div className="au-field">
+              <div className="au-label au-label-row">
+                <label htmlFor="account_password">{req('Account password')}</label>
+                <span className="au-tip-wrap">
+                  <button
+                    type="button"
+                    className="au-tip"
+                    aria-label="About the account password"
+                    aria-expanded={showAccountPwTip}
+                    onMouseEnter={() => setShowAccountPwTip(true)}
+                    onMouseLeave={() => setShowAccountPwTip(false)}
+                    onClick={() => setShowAccountPwTip((prev) => !prev)}
+                  >
+                    <InfoIcon size={14} />
+                  </button>
                   {showAccountPwTip && (
-                    <div className="tooltip-box">
-                      This password serves as your account's encryption key and protects all stored health data. Without it, the application operates in write-only mode — you can record new entries using your user password, but existing data remains encrypted and inaccessible until the account password is provided. <strong>If this password is lost, encrypted data cannot be recovered.</strong> Please store it somewhere safe.
+                    <div className="au-tip-box" role="tooltip">
+                      This password is your account's encryption key and protects all stored
+                      health data. Without it the app runs write-only — you can record new
+                      entries with your user password, but existing data stays encrypted until
+                      the account password is entered. <strong>If it is lost, encrypted data
+                      cannot be recovered.</strong> Store it somewhere safe.
                     </div>
                   )}
                 </span>
-              </label>
-              <input
-                type="password"
-                id="account_password"
-                name="account_password"
-                value={formData.account_password}
-                onChange={handleChange}
-                required={!haIdentity}
-                minLength={formData.account_password ? 8 : undefined}
-                placeholder={haIdentity ? 'Optional — for access outside Home Assistant' : 'Minimum 8 characters'}
-              />
-              <small className="form-hint">
+              </div>
+              <div className="au-input-wrap plain">
+                <input
+                  type="password"
+                  id="account_password"
+                  name="account_password"
+                  value={formData.account_password}
+                  onChange={handleChange}
+                  required={!haIdentity}
+                  minLength={formData.account_password ? 8 : undefined}
+                  placeholder={haIdentity ? 'Optional — for access outside Home Assistant' : 'Minimum 8 characters'}
+                />
+              </div>
+              <span className="au-hint">
                 {haIdentity
                   ? 'Unlocks full viewing on shared/LAN devices — skip it and set it later under Configuration → Account'
                   : 'Encryption key for your account data — store this securely'}
-              </small>
+              </span>
             </div>
-
-            <div className="form-group">
-              <label htmlFor="confirmAccountPassword">{haIdentity ? 'Confirm Account Password' : 'Confirm Account Password *'}</label>
-              <input
-                type="password"
-                id="confirmAccountPassword"
-                name="confirmAccountPassword"
-                value={formData.confirmAccountPassword}
-                onChange={handleChange}
-                required={!haIdentity || !!formData.account_password}
-                minLength={formData.account_password ? 8 : undefined}
-                placeholder="Re-enter account password"
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="full_name">Full Name *</label>
-              <input
-                type="text"
-                id="full_name"
-                name="full_name"
-                value={formData.full_name}
-                onChange={handleChange}
-                required
-                placeholder="John Doe"
-                autoFocus
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="username">Username *</label>
-              <input
-                type="text"
-                id="username"
-                name="username"
-                value={formData.username}
-                onChange={handleChange}
-                required
-                minLength={3}
-                placeholder="admin"
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="email">Email (Optional)</label>
-              <input
-                type="email"
-                id="email"
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                placeholder="admin@example.com"
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="pin">PIN (Optional - for quick login)</label>
-              <input
-                type="text"
-                id="pin"
-                name="pin"
-                value={formData.pin}
-                onChange={handleChange}
-                pattern="\d{4,8}"
-                placeholder="4-8 digit PIN"
-                maxLength={8}
-              />
-              <small className="form-hint">
-                Set a PIN for quick re-authentication after entering your password
-              </small>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="password">{haIdentity ? 'User Password (Optional)' : 'User Password *'}</label>
-              <input
-                type="password"
-                id="password"
-                name="password"
-                value={formData.password}
-                onChange={handleChange}
-                required={!haIdentity}
-                minLength={formData.password ? 8 : undefined}
-                placeholder={haIdentity ? 'Optional — you sign in with Home Assistant' : 'Minimum 8 characters'}
-              />
-              <small className="form-hint">
-                {haIdentity
-                  ? 'Only needed to sign in outside Home Assistant — can be set later from user management'
-                  : 'Password for your user profile'}
-              </small>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="confirmPassword">{haIdentity ? 'Confirm User Password' : 'Confirm User Password *'}</label>
-              <input
-                type="password"
-                id="confirmPassword"
-                name="confirmPassword"
-                value={formData.confirmPassword}
-                onChange={handleChange}
-                required={!haIdentity || !!formData.password}
-                minLength={formData.password ? 8 : undefined}
-                placeholder="Re-enter user password"
-              />
-            </div>
+            {field({
+              id: 'confirmAccountPassword', label: haIdentity ? 'Confirm account password' : 'Confirm account password',
+              type: 'password', placeholder: 'Re-enter account password',
+              required: !haIdentity || !!formData.account_password,
+              minLength: formData.account_password ? 8 : undefined,
+            })}
           </div>
-
-          <button
-            type="submit"
-            className="submit-button"
-            disabled={loading}
-          >
-            {loading ? 'Creating Account...' : 'Create Account & Administrator'}
-          </button>
-        </form>
-
-        <div className="first-run-footer">
-          <p>This will create your account and an administrator profile with full system access</p>
         </div>
+
+        <div className="au-group">
+          <div className="au-group-label">Administrator</div>
+          <div className="au-grid">
+            {field({ id: 'full_name', label: 'Full name', placeholder: 'John Doe', required: true, autoFocus: true })}
+            {field({ id: 'username', label: 'Username', placeholder: 'admin', required: true, minLength: 3 })}
+            {field({ id: 'email', label: 'Email (optional)', type: 'email', placeholder: 'admin@example.com' })}
+            {field({
+              id: 'pin', label: 'PIN (optional)', placeholder: '4–8 digits', maxLength: 8, pattern: '\\d{4,8}',
+              inputMode: 'numeric', hint: 'Quick re-authentication after entering your password',
+            })}
+            {field({
+              id: 'password', label: req('User password'), type: 'password',
+              required: !haIdentity, minLength: formData.password ? 8 : undefined,
+              placeholder: haIdentity ? 'Optional — you sign in with Home Assistant' : 'Minimum 8 characters',
+              hint: haIdentity
+                ? 'Only needed to sign in outside Home Assistant — can be set later from user management'
+                : 'Password for your user profile',
+            })}
+            {field({
+              id: 'confirmPassword', label: 'Confirm user password', type: 'password',
+              placeholder: 'Re-enter user password',
+              required: !haIdentity || !!formData.password, minLength: formData.password ? 8 : undefined,
+            })}
+          </div>
+        </div>
+
+        <button type="submit" className="au-primary" disabled={loading}>
+          {loading ? 'Creating account…' : 'Create account & administrator'}
+        </button>
+      </form>
+
+      <div className="au-footer">
+        <p className="au-footnote">Creates the account and an administrator profile with full access</p>
       </div>
-    </div>
+    </AuthShell>
   );
 }
