@@ -154,7 +154,56 @@
   border-color: var(--vc-data-live);
   box-shadow: 0 0 0 1px var(--vc-data-live);
 }
-.pc-input.pin { text-align: center; font-size: 20px; letter-spacing: 0.5em; }
+
+/* PIN entry: masked slots over the shared vc keypad (components/vc/keypad.css). */
+.pc-pin { display: flex; flex-direction: column; }
+.pc-pin-slots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 52px;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 8px;
+  background: var(--vc-bg-base);
+}
+.pc-pin-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 32px;
+  border-bottom: 2px solid var(--vc-line-hairline);
+  font-family: var(--vc-font-mono);
+  font-size: 18px;
+  line-height: 1;
+  color: var(--vc-text-primary);
+}
+.pc-pin-slot.filled { border-bottom-color: var(--vc-text-secondary); }
+.pc-pin-slot.active { border-bottom-color: var(--vc-data-live); }
+/* the minimum: a hairline after the fourth slot */
+.pc-pin-slot.min { margin-right: 0.35rem; position: relative; }
+.pc-pin-slot.min::after {
+  content: '';
+  position: absolute;
+  right: -0.35rem;
+  top: 4px;
+  bottom: 4px;
+  width: 1px;
+  background: var(--vc-line-hairline);
+}
+.pc-pin-hint {
+  margin-top: 0.35rem;
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+  text-align: center;
+}
+.pc-pin .vc-keypad { margin: 0.6rem 0 0; }
+.pc-pin .vc-key { min-height: 48px; font-size: 20px; }
 
 .pc-actions {
   display: flex;

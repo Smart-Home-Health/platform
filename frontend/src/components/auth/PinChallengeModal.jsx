@@ -18,8 +18,12 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import ModalBase from '../ModalBase';
+import Keypad from '../vc/Keypad';
 import { useAuth } from '../../contexts/AuthContext';
 import './pin-challenge.css';
+
+export const PIN_MIN = 4;
+export const PIN_MAX = 8;
 
 /**
  * Global PIN re-auth challenge. Two steps:
@@ -81,9 +85,12 @@ export default function PinChallengeModal({ open, onSuccess, onCancel }) {
     setError(null);
   };
 
+  const pinReady = pin.length >= PIN_MIN;
+  const canSubmit = !submitting && (requirePassword ? !!password : pinReady);
+
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!selected) return;
+    e?.preventDefault?.();
+    if (!selected || !canSubmit) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -102,10 +109,35 @@ export default function PinChallengeModal({ open, onSuccess, onCancel }) {
       } else {
         setError(result.error || 'Authentication failed');
       }
+    } catch (err) {
+      // selectUser throws on a non-2xx (a wrong PIN is a 401): show it, and
+      // clear the PIN so the next attempt starts clean.
+      setError(err?.message || 'Authentication failed');
+      setPin('');
     } finally {
       setSubmitting(false);
     }
   };
+
+  const pinMode = !!selected && !requirePassword;
+  const typeDigit = (d) => setPin((p) => (p.length < PIN_MAX ? p + d : p));
+  const eraseDigit = () => setPin((p) => p.slice(0, -1));
+
+  // There is no text field in PIN mode (the pad + masked slots are the
+  // input), so a hardware keyboard is wired here: digits, Backspace, Enter.
+  useEffect(() => {
+    if (!open || !pinMode) return undefined;
+    const onKeyDown = (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (/^[0-9]$/.test(e.key)) { e.preventDefault(); typeDigit(e.key); }
+      else if (e.key === 'Backspace') { e.preventDefault(); eraseDigit(); }
+      else if (e.key === 'Enter') { e.preventDefault(); handleSubmit(); }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+    // handleSubmit closes over pin/selected/submitting via state; re-bind on change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, pinMode, pin, selected, submitting, requirePassword, password]);
 
   if (!open) return null;
 
@@ -167,19 +199,41 @@ export default function PinChallengeModal({ open, onSuccess, onCancel }) {
                 />
               </div>
             ) : (
-              <div>
-                <label className="pc-label" htmlFor="pc-pin">PIN</label>
-                <input
-                  id="pc-pin"
-                  type="password"
-                  className="pc-input pin"
-                  inputMode="numeric"
+              <div className="pc-pin">
+                <span className="pc-label" id="pc-pin-label">PIN</span>
+                {/* Masked slots: a dot per entered digit, the caret on the next,
+                    a hairline after the fourth for the minimum. The value is
+                    never in the DOM; the live region reads the count. */}
+                <div
+                  className="pc-pin-slots"
+                  role="status"
+                  aria-live="polite"
+                  aria-labelledby="pc-pin-label"
+                  aria-label={`PIN: ${pin.length} of ${PIN_MAX} digits entered`}
+                  data-testid="pc-pin-slots"
+                >
+                  {Array.from({ length: PIN_MAX }, (_, i) => {
+                    const filled = i < pin.length;
+                    const active = i === pin.length;
+                    return (
+                      <span
+                        key={i}
+                        className={`pc-pin-slot${filled ? ' filled' : ''}${active ? ' active' : ''}${i === PIN_MIN - 1 ? ' min' : ''}`}
+                        aria-hidden="true"
+                      >
+                        {filled ? '\u25CF' : ''}
+                        {active && <span className="vc-caret" />}
+                      </span>
+                    );
+                  })}
+                </div>
+                <span className="pc-pin-hint">{PIN_MIN}–{PIN_MAX} digits</span>
+                <Keypad
                   value={pin}
-                  onChange={(e) => setPin(e.target.value)}
-                  maxLength={8}
-                  pattern="\d*"
-                  autoFocus
-                  required
+                  onKey={typeDigit}
+                  onBackspace={eraseDigit}
+                  canAccept={() => pin.length < PIN_MAX}
+                  className="pc-keypad"
                 />
               </div>
             )}
@@ -195,7 +249,7 @@ export default function PinChallengeModal({ open, onSuccess, onCancel }) {
                 <button
                   type="submit"
                   className="pc-btn primary"
-                  disabled={submitting || (requirePassword ? !password : !pin)}
+                  disabled={!canSubmit}
                 >{submitting ? 'Verifying…' : 'Verify'}</button>
               </div>
             </div>
