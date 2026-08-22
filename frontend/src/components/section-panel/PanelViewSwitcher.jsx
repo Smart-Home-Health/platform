@@ -24,12 +24,15 @@
 // skinned from the vc tokens; the menu portals to <body>, so the vc class rides
 // along on SelectContent rather than being inherited.
 import * as SelectPrimitive from '@radix-ui/react-select';
-import { ChevronDownIcon, CheckIcon, CalendarIcon, ClipboardListIcon } from '../Icons';
+import { ChevronDownIcon, CheckIcon, CalendarIcon, ClipboardListIcon, PackageIcon, HistoryIcon } from '../Icons';
 import './section-panel.css';
 
+// Keyed by view value; a view without an entry simply renders without an icon.
 const VIEW_ICON = {
   scheduled: CalendarIcon,
   active: ClipboardListIcon,
+  supplies: PackageIcon,
+  history: HistoryIcon,
 };
 
 /**

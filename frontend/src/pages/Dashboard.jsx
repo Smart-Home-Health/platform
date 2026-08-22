@@ -1235,10 +1235,9 @@ export default function Dashboard() {
 
       {/* Equipment Modal */}
       {isVentModalOpen && (
-        <EquipmentModal 
-          isOpen={isVentModalOpen} 
-          onClose={() => { setIsVentModalOpen(false); fetchEquipmentDueCount(); }} 
-          equipmentDueCount={equipmentDueCount} 
+        <EquipmentModal
+          isOpen={isVentModalOpen}
+          onClose={() => { setIsVentModalOpen(false); fetchEquipmentDueCount(); }}
         />
       )}
 
