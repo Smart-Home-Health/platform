@@ -20,8 +20,10 @@ import Hls from 'hls.js';
 import ModalBase from './ModalBase';
 import ZoomableVideo from './ZoomableVideo';
 import { API_BASE_URL } from '../config';
-import { Button } from '@/components/ui/button';
-import { Alert } from '@/components/ui/alert';
+import './section-panel/section-panel.css';
+import './schedule/schedule-panel.css';
+import './vc/entity-card.css';
+import './camera/camera-panel.css';
 
 /**
  * Modal that plays the live Frigate stream for a patient.
@@ -106,26 +108,27 @@ export default function CameraLiveModal({ patientId, patientName, onClose }) {
     };
   }, [info]);
 
-  const title = patientName ? `${patientName} — Live` : 'Live Camera';
+  const title = (
+    <span className="mp-modal-title">
+      <span>Live camera</span>
+      <span className="mp-modal-title-sub">{patientName ? `${patientName} · Live` : 'Live'}</span>
+    </span>
+  );
 
   return (
     <ModalBase isOpen={true} onClose={onClose} title={title}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div className="cam-panel">
         {info?.camera && (
-          <div style={{ color: 'var(--dash-text-muted)', fontSize: 13 }}>
-            Camera: <strong style={{ color: 'var(--dash-text)' }}>{info.camera}</strong>
+          <div className="cam-meta">
+            Camera: <strong>{info.camera}</strong>
             {info.live_mode ? <span> &middot; {info.live_mode.toUpperCase()}</span> : null}
           </div>
         )}
 
-        {error && (
-          <div className="tw"><Alert variant="destructive">{error}</Alert></div>
-        )}
+        {error && <div className="em-error">{error}</div>}
 
         {loading ? (
-          <div style={{ textAlign: 'center', padding: 30, color: 'var(--dash-text-muted)' }}>
-            Loading stream…
-          </div>
+          <div className="ld-dose-empty">Loading stream…</div>
         ) : info?.live_url ? (
           <ZoomableVideo
             videoRef={videoRef}
@@ -133,20 +136,16 @@ export default function CameraLiveModal({ patientId, patientName, onClose }) {
             playsInline
             muted
             controls
-            containerStyle={{ maxHeight: '70vh', borderRadius: 8 }}
+            containerStyle={{ maxHeight: '70vh', borderRadius: 4 }}
           />
         ) : !error ? (
-          <div style={{ textAlign: 'center', padding: 30, color: 'var(--dash-text-muted)' }}>
-            No stream available
-          </div>
+          <div className="ld-dose-empty">No stream available</div>
         ) : null}
 
         {info?.snapshot_url && (
-          <div className="tw">
-            <Button asChild variant="link" className="h-auto self-start p-0 text-xs">
-              <a href={info.snapshot_url} target="_blank" rel="noopener noreferrer">Open snapshot</a>
-            </Button>
-          </div>
+          <a className="ld-dose-linkbtn" href={info.snapshot_url} target="_blank" rel="noopener noreferrer">
+            Open snapshot
+          </a>
         )}
       </div>
     </ModalBase>

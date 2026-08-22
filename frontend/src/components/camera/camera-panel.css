@@ -15,26 +15,17 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-/* ConfirmSheet — body copy + the destructive confirm variant. The panel,
- * footer and buttons come from entity-card.css (EntityModal). */
+/* Live camera modal body. Empty/error states and the snapshot link reuse
+ * the panel vocabulary (ld-dose-empty, em-error, ld-dose-linkbtn). */
 @import '../../styles/vc-tokens.css';
 
-.cs-form { gap: 0.6rem; }
-.cs-body {
-  margin: 0;
-  font-family: var(--vc-font-sans);
-  font-size: 13px;
-  line-height: 1.45;
+.cam-panel { display: flex; flex-direction: column; gap: 0.6rem; }
+.cam-meta {
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--vc-text-secondary);
 }
-.cs-body strong { color: var(--vc-text-primary); font-weight: 600; }
-/* First line of an attention confirm (off-window etc.) — amber, never red */
-.cs-body .cs-lead { display: block; margin-bottom: 0.3rem; color: var(--vc-state-due); }
-
-.em-submit.destructive {
-  background: color-mix(in srgb, var(--vc-state-alert) 40%, var(--vc-bg-surface));
-  border-color: color-mix(in srgb, var(--vc-state-alert) 50%, transparent);
-}
-.em-submit.destructive:hover {
-  border-color: color-mix(in srgb, var(--vc-state-alert) 70%, transparent);
-}
+.cam-meta strong { color: var(--vc-text-primary); font-weight: 600; }
+.cam-panel .ld-dose-linkbtn { margin-left: 0; align-self: flex-start; text-decoration: none; }

@@ -34,15 +34,7 @@ import { rollupSchedule } from './schedule/scheduleRollup';
 import PanelViewSwitcher from './section-panel/PanelViewSwitcher';
 import './section-panel/section-panel.css';
 import { computeScheduleStatus } from './schedule/scheduleStatus';
-import { Button } from '@/components/ui/button';
-import { Alert } from '@/components/ui/alert';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import ConfirmSheet from './vc/ConfirmSheet';
 // Pull in AdminV2 styles so the shared Intake/Output modals render correctly
 // when this component is mounted from the live dashboard (which doesn't
 // otherwise load admin-v2 CSS). Vite dedupes with admin pages that also import it.
@@ -255,9 +247,7 @@ const NutritionModal = ({ onClose }) => {
       }>
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           {!selectedPatient && (
-            <div className="tw" style={{ marginBottom: 16 }}>
-              <Alert variant="warning">No patient selected</Alert>
-            </div>
+            <div className="ld-dose-empty">No patient selected</div>
           )}
 
           {/* Two entry points rather than one PRN: intake and output are
@@ -327,63 +317,41 @@ const NutritionModal = ({ onClose }) => {
           : `${formatDurationMinutes(windowConfirm.check.minutesOffset)} from now`;
         const close = () => setWindowConfirm({ open: false, item: null, note: undefined, check: null });
         return (
-          <Dialog open onOpenChange={(o) => { if (!o) close(); }}>
-            <DialogContent className="sm:max-w-[440px]" aria-describedby={undefined}>
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">
-                  <span className="flex h-7 w-7 items-center justify-center rounded-md bg-[rgba(240,136,62,0.2)] text-[#f0883e]">⚠</span>
-                  {title}
-                </DialogTitle>
-              </DialogHeader>
-              <Alert variant="warning">
-                <div className="mb-1.5 font-semibold text-[#f0883e]">{heading}</div>
-                <div>
-                  <strong>{windowConfirm.item.name}</strong> is scheduled for{' '}
-                  <strong>{windowConfirm.check.scheduledLocal}</strong> — that's{' '}
-                  <strong>{offsetText}</strong>.
-                </div>
-              </Alert>
-              <DialogFooter>
-                <Button variant="secondary" onClick={close}>Cancel</Button>
-                <Button
-                  onClick={async () => {
-                    const { item, note } = windowConfirm;
-                    close();
-                    await submitComplete(item, { earlyOverride: true, note });
-                  }}
-                >Complete Anyway</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <ConfirmSheet
+            open
+            onOpenChange={(o) => { if (!o) close(); }}
+            title={title}
+            confirmLabel="Complete anyway"
+            onConfirm={async () => {
+              const { item, note } = windowConfirm;
+              close();
+              await submitComplete(item, { earlyOverride: true, note });
+            }}
+          >
+            <strong className="cs-lead">{heading}</strong>
+            <strong>{windowConfirm.item.name}</strong> is scheduled for{' '}
+            <strong>{windowConfirm.check.scheduledLocal}</strong> — that&apos;s{' '}
+            <strong>{offsetText}</strong>.
+          </ConfirmSheet>
         );
       })()}
 
       {/* Off-window confirm for a whole slot */}
-      <Dialog open={bulkConfirm.open} onOpenChange={(o) => { if (!o) setBulkConfirm({ open: false, items: [], count: 0 }); }}>
-        <DialogContent className="sm:max-w-[440px]" aria-describedby={undefined}>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <span className="flex h-7 w-7 items-center justify-center rounded-md bg-[rgba(240,136,62,0.2)] text-[#f0883e]">⚠</span>
-              Confirm Off-Window Completion
-            </DialogTitle>
-          </DialogHeader>
-          <Alert variant="warning">
-            <div className="mb-1.5 font-semibold text-[#f0883e]">Some items are outside their window</div>
-            <div>
-              {bulkConfirm.count} item{bulkConfirm.count === 1 ? ' is' : 's are'} outside the
-              administration window. Record them anyway?
-            </div>
-          </Alert>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setBulkConfirm({ open: false, items: [], count: 0 })}>Cancel</Button>
-            <Button onClick={async () => {
-              const items = bulkConfirm.items;
-              setBulkConfirm({ open: false, items: [], count: 0 });
-              await submitBulk(items, { earlyOverride: true });
-            }}>Record Anyway</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmSheet
+        open={bulkConfirm.open}
+        onOpenChange={(o) => { if (!o) setBulkConfirm({ open: false, items: [], count: 0 }); }}
+        title="Confirm off-window completion"
+        confirmLabel="Record anyway"
+        onConfirm={async () => {
+          const items = bulkConfirm.items;
+          setBulkConfirm({ open: false, items: [], count: 0 });
+          await submitBulk(items, { earlyOverride: true });
+        }}
+      >
+        <strong className="cs-lead">Some items are outside their window</strong>
+        {bulkConfirm.count} item{bulkConfirm.count === 1 ? ' is' : 's are'} outside the
+        administration window. Record them anyway?
+      </ConfirmSheet>
 
       {/* Shared AdminV2 intake form */}
       <IntakeSheet
