@@ -15,55 +15,45 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+// Live-dashboard Settings panel — only what a caregiver adjusts at the board:
+// what the dashboard shows, and the SpO₂ / heart-rate alert thresholds.
+// Admin-only settings live under /care/configuration.
+//
+// Same bones as the other docked panels: ModalBase with the two-line
+// mp-modal-title, a PanelViewSwitcher between the two views, and the dock
+// context deciding whether field rows sit side by side or stack.
 import { useState } from 'react';
 import DashboardSettings from './settings/DashboardSettings';
 import ThresholdSettings from './settings/ThresholdSettings';
 import ModalBase from './ModalBase';
-import { Button } from '@/components/ui/button';
+import PanelViewSwitcher from './section-panel/PanelViewSwitcher';
+import { useModalDock } from '../contexts/ModalDockContext';
+import './settings/settings-panel.css';
 
-/**
- * Live dashboard Settings modal — exposes only Dashboard and Thresholds.
- * Admin-only panels (MQTT, Patients, Users, Dev, Admin) live in /admin-v2.
- */
-const SettingsForm = ({ onClose }) => {
-  const [activeTab, setActiveTab] = useState('dashboard');
+const VIEWS = [
+  { value: 'dashboard', label: 'Dashboard', sublabel: 'Tiles and charts' },
+  { value: 'thresholds', label: 'Thresholds', sublabel: 'SpO₂ and heart-rate alerts' },
+];
 
-  const tabBtn = (key, label) => (
-    <Button
-      size="sm"
-      variant={activeTab === key ? 'default' : 'secondary'}
-      onClick={() => setActiveTab(key)}
-    >
-      {label}
-    </Button>
-  );
+export default function SettingsForm({ onClose }) {
+  const [view, setView] = useState('dashboard');
+  const { docked, expanded } = useModalDock();
+  const wide = docked && expanded;
+  const current = VIEWS.find((v) => v.value === view) || VIEWS[0];
 
   return (
     <ModalBase isOpen={true} onClose={onClose} title={
-      <div className="tw" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            {tabBtn('dashboard', 'Dashboard')}
-            {tabBtn('thresholds', 'Thresholds')}
-          </div>
-        </div>
-      </div>
+      <span className="mp-modal-title">
+        <span>Settings</span>
+        <span className="mp-modal-title-sub">Live board · {current.label}</span>
+      </span>
     }>
-      <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ flex: 1, overflow: 'auto' }}>
-          <div style={{
-            backgroundColor: 'var(--dash-surface)',
-            borderRadius: '12px',
-            padding: '16px',
-            border: '1px solid var(--dash-border-strong)'
-          }}>
-            {activeTab === 'dashboard' && <DashboardSettings />}
-            {activeTab === 'thresholds' && <ThresholdSettings />}
-          </div>
+      <div className={`st-panel ${wide ? 'wide' : 'narrow'}`}>
+        <PanelViewSwitcher views={VIEWS} value={view} onChange={setView} />
+        <div className="st-scroll">
+          {view === 'thresholds' ? <ThresholdSettings /> : <DashboardSettings />}
         </div>
       </div>
     </ModalBase>
   );
-};
-
-export default SettingsForm;
+}
