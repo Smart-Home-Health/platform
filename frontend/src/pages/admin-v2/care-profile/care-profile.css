@@ -68,20 +68,6 @@
   align-items: flex-start;
   gap: 1rem;
 }
-.cp-avatar {
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  width: 52px;
-  height: 52px;
-  border: 1px solid color-mix(in srgb, var(--ring) 55%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--ring) 10%, transparent);
-  color: var(--ring);
-  font-size: 1.1rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-}
 .cp-subtitle {
   margin: 0.3rem 0 0;
   font-size: 0.85rem;
@@ -449,7 +435,6 @@ a[data-slot='button'] { text-decoration: none; }
   .cp-row-compact .cp-row-status { gap: 0.3rem; }
   .cp-row-compact .cp-status { font-size: 10px; }
   .cp-tile { width: 44px; height: 44px; border-radius: 10px; }
-  .cp-avatar { width: 48px; height: 48px; font-size: 0.95rem; }
   /* Keep the three counters on one line — stacked, they push the sections
    * below the fold on a phone. */
   .cp-counts { gap: 0.4rem; }

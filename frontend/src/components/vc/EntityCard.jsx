@@ -33,6 +33,7 @@ import { MoreVerticalIcon } from '../Icons';
 import './entity-card.css';
 
 export default function EntityCard({
+  avatar,            // a ready avatar node (e.g. <PersonAvatar/>) — wins over the two below
   initials,          // avatar initials (string) — or pass `icon` instead
   icon,              // avatar icon node (e.g. <PlugIcon/>)
   title,
@@ -59,9 +60,11 @@ export default function EntityCard({
   return (
     <article className={`ec-card ${inactive ? 'inactive' : ''}`}>
       <header className="ec-head">
-        <span className="ec-avatar" aria-hidden="true">
-          {icon || initials}
-        </span>
+        {avatar || (
+          <span className="ec-avatar" aria-hidden="true">
+            {icon || initials}
+          </span>
+        )}
         <div className="ec-head-text">
           <h3 className="ec-title">{title}</h3>
           {(badges.length > 0 || tag) && (

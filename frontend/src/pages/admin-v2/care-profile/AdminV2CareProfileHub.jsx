@@ -35,7 +35,9 @@ import {
   STATUS_META, careContextSummary, featuresSummary, homeAssistantSummary,
   measurementsSummary, setupTotals,
 } from './careProfileSections';
-import { ageFrom, formatDate, formatDateTime, fullName, initialsOf } from './careProfileFormat';
+import { ageFrom, formatDate, formatDateTime, fullName } from './careProfileFormat';
+import AvatarEditor from '../components/AvatarEditor';
+import { useAdminPatient } from '../../../contexts/AdminPatientContext';
 import { MQTT_SECTIONS } from '../mqttConstants';
 import '../AdminV2.css';
 import './care-profile.css';
@@ -79,6 +81,7 @@ export default function AdminV2CareProfileHub() {
     useCareProfile(patientId, { mqtt: true, measurements: true });
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
+  const { refreshPatients } = useAdminPatient();
 
   const flash = (msg) => { setNotice(msg); setTimeout(() => setNotice(''), 3000); };
 
@@ -175,7 +178,8 @@ export default function AdminV2CareProfileHub() {
           <Card>
             <CardContent className="flex flex-col gap-4 p-4 sm:p-4">
               <div className="cp-identity">
-                <span className="cp-avatar" aria-hidden>{initialsOf(patient)}</span>
+                <AvatarEditor kind="patient" person={patient} name={fullName(patient)}
+                              onError={setError} onNotice={flash} onChange={refreshPatients} />
                 <div className="flex min-w-0 flex-1 flex-col">
                   <h1 className="cp-name">{fullName(patient)}</h1>
                   <p className="cp-subtitle">

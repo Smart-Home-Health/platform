@@ -47,6 +47,7 @@ import {
 import '../AdminV2.css';
 import '../care-profile/care-profile.css';
 import './directory.css';
+import PersonAvatar from '../../../components/vc/PersonAvatar';
 
 const TAB_ICONS = { profiles: PatientsIcon, users: UsersIcon, roles: ShieldIcon };
 
@@ -247,9 +248,11 @@ export default function AdminV2Directory() {
                 ) : (
                   visible.map((row) => (
                     <Link key={row.key} className="cp-row cp-row-compact" to={row.to}>
-                      <span className="dir-avatar" aria-hidden>
-                        {row.initials || <ShieldIcon size={16} />}
-                      </span>
+                      {row.avatar ? (
+                        <PersonAvatar {...row.avatar} size={36} decorative />
+                      ) : (
+                        <span className="dir-avatar" aria-hidden><ShieldIcon size={16} /></span>
+                      )}
                       <span className="cp-row-body">
                         <span className="cp-row-title cp-row-title-plain">{row.title}</span>
                         <span className="cp-row-status">

@@ -50,6 +50,10 @@ class PatientUpdate(BaseModel):
 
 class PatientResponse(PatientBase):
     id: int
+    # Generated-avatar seed override + photo filename (see schemas/avatar.py).
+    # Response-only: neither is set through the create/update forms.
+    avatar_seed: Optional[str] = None
+    avatar_photo: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     

@@ -18,6 +18,7 @@
 // How care went over a window: the headline adherence figure, then where the
 // misses were, by task and by person. The record behind it opens as a modal.
 import SegmentedControl from '../../../components/vc/SegmentedControl';
+import PersonAvatar from '../../../components/vc/PersonAvatar';
 import { CheckIcon, ClockIcon, HistoryIcon, UsersIcon, XIcon } from '../../../components/Icons';
 import './care-tasks-page.css';
 
@@ -131,7 +132,12 @@ export default function CareTasksOverviewPanel({
               <ul className="cto-rows">
                 {perUser.map((row) => (
                   <li key={row.user_id ?? row.user_name} className="cto-row">
-                    <span className="cto-row-icon"><UsersIcon size={15} /></span>
+                    {row.user_id ? (
+                      <PersonAvatar kind="user" id={row.user_id} seed={row.avatar_seed}
+                                    photo={row.avatar_photo} size={28} decorative className="cto-row-avatar" />
+                    ) : (
+                      <span className="cto-row-icon"><UsersIcon size={15} /></span>
+                    )}
                     <span className="cto-row-text">
                       <span className="cto-row-name">{row.user_name || 'Unattributed'}</span>
                       <span className="cto-row-meta">

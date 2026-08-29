@@ -64,6 +64,7 @@ mkdir -p "${APPDATA}"
 export INTEGRATIONS_DATA_DIR="${APPDATA}"
 export FRIGATE_CLIPS_DIR="${APPDATA}/clips"
 export EPIC_DOCS_DIR="${APPDATA}/epic_docs"
+export PHOTOS_DIR="${APPDATA}/avatars"
 
 # --- First-run init of the bundled cluster -----------------------------------
 if [ ! -s "${PGDATA}/PG_VERSION" ]; then

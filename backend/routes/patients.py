@@ -13,12 +13,16 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
+import uuid
 
+import avatar_store
 from db import get_db
-from dependencies import require_read_access, get_current_account_id, get_current_user
+from dependencies import require_read_access, get_current_account_id, get_current_user, require_permission
+from schemas.avatar import AvatarState
 from crud.patients import (
     get_patient, get_patients, create_patient, update_patient,
     deactivate_patient, activate_patient, get_active_patient,
@@ -228,3 +232,92 @@ def initialize_default_patient(db: Session = Depends(get_db)):
         )
     
     return patient
+
+
+# ==================== Avatars ====================
+# Same shape as the user avatar routes (routes/users.py), scoped by patient
+# visibility: a caregiver without a PatientAccess grant gets 404, not 403, so
+# the endpoint does not confirm the patient exists.
+
+def _visible_patient_or_404(db: Session, current_user: User, patient_id: int) -> Patient:
+    allowed_ids = get_visible_patient_ids(db, current_user)
+    patient = get_patient(db, patient_id) if (allowed_ids is None or patient_id in allowed_ids) else None
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    return patient
+
+
+@router.post("/{patient_id}/avatar/shuffle", response_model=AvatarState)
+def shuffle_patient_avatar(
+    patient_id: int,
+    current_user: User = Depends(require_permission("patients.update")),
+    db: Session = Depends(get_db)
+):
+    """Re-roll the generated avatar (new random seed)"""
+    patient = _visible_patient_or_404(db, current_user, patient_id)
+    patient.avatar_seed = str(uuid.uuid4())
+    db.commit()
+    db.refresh(patient)
+    return AvatarState(avatar_seed=patient.avatar_seed, avatar_photo=patient.avatar_photo)
+
+
+@router.put("/{patient_id}/avatar/photo", response_model=AvatarState)
+async def upload_patient_avatar_photo(
+    patient_id: int,
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_permission("patients.update")),
+    db: Session = Depends(get_db)
+):
+    """Replace the profile photo (JPEG/PNG, 2 MB max; the browser pre-crops to 256px)"""
+    patient = _visible_patient_or_404(db, current_user, patient_id)
+    content = await file.read()
+    if len(content) > avatar_store.MAX_AVATAR_BYTES:
+        raise HTTPException(status_code=413, detail="Photo too large (2 MB max)")
+    media_type = avatar_store.sniff_image(content)
+    if not media_type:
+        raise HTTPException(status_code=415, detail="Only JPEG or PNG photos are supported")
+    previous = patient.avatar_photo
+    patient.avatar_photo = avatar_store.save_avatar("patient", patient.id, content, media_type)
+    db.commit()
+    db.refresh(patient)
+    avatar_store.delete_avatar("patient", patient.id, previous)
+    return AvatarState(avatar_seed=patient.avatar_seed, avatar_photo=patient.avatar_photo)
+
+
+@router.delete("/{patient_id}/avatar/photo", response_model=AvatarState)
+def delete_patient_avatar_photo(
+    patient_id: int,
+    current_user: User = Depends(require_permission("patients.update")),
+    db: Session = Depends(get_db)
+):
+    """Remove the profile photo; the generated avatar shows again"""
+    patient = _visible_patient_or_404(db, current_user, patient_id)
+    previous = patient.avatar_photo
+    patient.avatar_photo = None
+    db.commit()
+    avatar_store.delete_avatar("patient", patient.id, previous)
+    return AvatarState(avatar_seed=patient.avatar_seed, avatar_photo=None)
+
+
+@router.get("/{patient_id}/avatar/photo/{filename}")
+def get_patient_avatar_photo(
+    patient_id: int,
+    filename: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Serve the profile photo. Visible to whoever can list the patient
+    (allowed in restricted mode, like GET /api/patients)."""
+    patient = _visible_patient_or_404(db, current_user, patient_id)
+    if (
+        not patient.avatar_photo
+        or not avatar_store.FILENAME_RE.match(filename)
+        or filename != patient.avatar_photo
+    ):
+        raise HTTPException(status_code=404, detail="Photo not found")
+    path = avatar_store.avatar_path("patient", patient.id, patient.avatar_photo)
+    return FileResponse(
+        path,
+        media_type=avatar_store.media_type_for(patient.avatar_photo),
+        headers={"Cache-Control": avatar_store.AVATAR_CACHE_CONTROL},
+    )

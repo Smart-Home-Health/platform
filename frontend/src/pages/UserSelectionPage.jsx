@@ -25,6 +25,7 @@ import {
   BackArrowIcon,
 } from '../components/Icons';
 import AuthShell from './AuthShell';
+import PersonAvatar from '../components/vc/PersonAvatar';
 import './auth.css';
 
 // Credential chips shown next to clinical roles on the picker cards.
@@ -33,9 +34,6 @@ const ROLE_ABBREVIATIONS = {
   'licensed practical nurse': 'LPN',
   'certified nursing assistant': 'CNA',
 };
-
-const initialsOf = (name) =>
-  name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
 
 export default function UserSelectionPage() {
   const navigate = useNavigate();
@@ -204,7 +202,8 @@ export default function UserSelectionPage() {
                   className="user-card"
                   onClick={() => handleUserSelect(user)}
                 >
-                  <span className="au-avatar" aria-hidden="true">{initialsOf(name)}</span>
+                  <PersonAvatar kind="user" id={user.id} seed={user.avatar_seed}
+                                photo={user.avatar_photo} size={52} decorative />
                   <span className="au-user-info">
                     <span className="au-user-name">{name}</span>
                     <span className="au-user-roles">
@@ -224,9 +223,8 @@ export default function UserSelectionPage() {
       ) : (
         <form onSubmit={handleSubmit} className="au-form">
           <div className="au-selected">
-            <span className="au-avatar large" aria-hidden="true">
-              {initialsOf(selectedUser.full_name || selectedUser.username)}
-            </span>
+            <PersonAvatar kind="user" id={selectedUser.id} seed={selectedUser.avatar_seed}
+                          photo={selectedUser.avatar_photo} size={64} decorative />
             <span className="au-user-name">{selectedUser.full_name || selectedUser.username}</span>
             <button
               type="button"

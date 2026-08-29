@@ -61,9 +61,6 @@ export function tabForPath(pathname = '') {
   return 'profiles';
 }
 
-const initials = (...parts) =>
-  parts.filter(Boolean).map((p) => p[0]).join('').toUpperCase().slice(0, 2) || '—';
-
 const DATE_STYLE = { month: 'short', day: 'numeric', year: 'numeric' };
 
 const formatDate = (value) => {
@@ -123,7 +120,7 @@ export function profileRows(patients = []) {
     return {
       id: p.id,
       key: `profile-${p.id}`,
-      initials: initials(p.first_name, p.last_name),
+      avatar: { kind: 'patient', id: p.id, seed: p.avatar_seed, photo: p.avatar_photo },
       title: [p.first_name, p.last_name].filter(Boolean).join(' ') || 'Care profile',
       meta: [
         dob ? `DOB ${dob}` : 'DOB not added',
@@ -146,7 +143,7 @@ export function userRows(users = [], now = new Date()) {
     return {
       id: u.id,
       key: `user-${u.id}`,
-      initials: initials(...(u.full_name || u.username || '').split(' ')),
+      avatar: { kind: 'user', id: u.id, seed: u.avatar_seed, photo: u.avatar_photo },
       title: u.full_name || u.username,
       meta: [`@${u.username}`, seen ? `Last seen ${seen}` : 'Never signed in'].join(' · '),
       status: u.is_active
@@ -184,7 +181,7 @@ export function roleRows(roles = [], users = null) {
     return {
       id: r.id,
       key: `role-${r.id}`,
-      initials: null,
+      avatar: null,
       title: r.display_name || r.name,
       meta: parts.join(' · '),
       status: r.is_active === false

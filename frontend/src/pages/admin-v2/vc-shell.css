@@ -128,12 +128,6 @@
   border-color: color-mix(in srgb, var(--vc-state-due) 50%, transparent);
   color: var(--vc-state-due);
 }
-:root:not(.light) .admin-v2-patient-dropdown-avatar {
-  background: var(--vc-bg-surface);
-  border: 1px solid var(--vc-line-strong);
-  color: var(--vc-data-live);
-  font-family: var(--vc-font-mono);
-}
 :root:not(.light) .admin-v2-patient-dropdown-info .name {
   font-family: var(--vc-font-mono);
   font-size: 12.5px;
@@ -155,9 +149,6 @@
 }
 :root:not(.light) .admin-v2-patient-dropdown-item.selected .name {
   color: var(--vc-data-live);
-}
-:root:not(.light) .admin-v2-patient-dropdown-item.selected .admin-v2-patient-dropdown-avatar {
-  border-color: color-mix(in srgb, var(--vc-data-live) 55%, transparent);
 }
 :root:not(.light) .admin-v2-patient-dropdown-loading,
 :root:not(.light) .admin-v2-patient-dropdown-empty {

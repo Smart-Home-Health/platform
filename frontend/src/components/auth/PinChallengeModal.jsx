@@ -19,6 +19,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import ModalBase from '../ModalBase';
 import Keypad from '../vc/Keypad';
+import PersonAvatar from '../vc/PersonAvatar';
 import { useAuth } from '../../contexts/AuthContext';
 import './pin-challenge.css';
 
@@ -169,6 +170,8 @@ export default function PinChallengeModal({ open, onSuccess, onCancel }) {
                     className="pc-user"
                     onClick={() => handlePickUser(u)}
                   >
+                    <PersonAvatar kind="user" id={u.id} seed={u.avatar_seed}
+                                  photo={u.avatar_photo} size={32} decorative />
                     <span className="pc-user-name">{u.full_name || u.username}</span>
                     {u.requires_full_password && (
                       <span className="pc-user-note">Password</span>
@@ -181,8 +184,12 @@ export default function PinChallengeModal({ open, onSuccess, onCancel }) {
         ) : (
           <form onSubmit={handleSubmit} className="pc-form">
             <div className="pc-chosen">
-              <span className="pc-chosen-label">Signing in as</span>
-              <span className="pc-chosen-name">{selected.full_name || selected.username}</span>
+              <PersonAvatar kind="user" id={selected.id} seed={selected.avatar_seed}
+                            photo={selected.avatar_photo} size={40} decorative />
+              <span className="pc-chosen-text">
+                <span className="pc-chosen-label">Signing in as</span>
+                <span className="pc-chosen-name">{selected.full_name || selected.username}</span>
+              </span>
             </div>
 
             {requirePassword ? (

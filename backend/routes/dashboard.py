@@ -131,6 +131,8 @@ async def get_dashboard_summary(
                 "first_name": patient.first_name,
                 "last_name": patient.last_name,
                 "name": f"{patient.first_name} {patient.last_name}",
+                "avatar_seed": patient.avatar_seed,
+                "avatar_photo": patient.avatar_photo,
                 "date_of_birth": patient.date_of_birth.isoformat() if patient.date_of_birth else None,
                 "room": None,
                 "is_active": patient.is_active,

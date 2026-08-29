@@ -21,6 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import PersonAvatar from '../../../components/vc/PersonAvatar';
 
 /**
  * Reusable patient selector modal for Admin V2 pages
@@ -34,10 +35,6 @@ const PatientSelectorModal = ({
   loading = false,
   title = 'Select Patient'
 }) => {
-  const getInitials = (firstName, lastName) => {
-    return `${firstName?.[0] || ''}${lastName?.[0] || ''}`.toUpperCase();
-  };
-
   // Until a patient is chosen the modal is a hard gate: ignoring onOpenChange
   // blocks Escape/outside-click, and the built-in X is hidden via CSS.
   const canClose = !!selectedPatient;
@@ -65,9 +62,8 @@ const PatientSelectorModal = ({
                 className={`admin-v2-patient-selector-item ${selectedPatient?.id === patient.id ? 'selected' : ''}`}
                 onClick={() => onSelectPatient(patient)}
               >
-                <div className="admin-v2-patient-avatar">
-                  {getInitials(patient.first_name, patient.last_name)}
-                </div>
+                <PersonAvatar kind="patient" id={patient.id} seed={patient.avatar_seed}
+                              photo={patient.avatar_photo} size={48} decorative />
                 <div className="admin-v2-patient-selector-info">
                   <span className="admin-v2-patient-name">
                     {patient.first_name} {patient.last_name}
