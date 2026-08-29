@@ -208,7 +208,7 @@ export default function DoseDetailPane({
 
       <div className="ld-dose-detail-actions">
         <span className="ld-dose-detail-label">Other actions</span>
-        {!done && onSkip && (
+        {!done && onSkip && item.can_skip !== false && (
           <button
             type="button"
             className="ld-dose-action"

@@ -94,11 +94,25 @@ def schedule_daily_contribution(schedule: NutritionSchedule) -> dict:
     # of 525 mL is 525 mL of fluid, and a meal measured in grams is none. The
     # previous maths gated this on schedule_type == 'hydration', so tube feeds
     # and liquid meals counted toward neither total.
-    measured = to_ml(schedule.default_amount, schedule.default_amount_unit)
-    fluid_ml = measured * occurrences if measured else 0.0
+    if schedule.components:
+        # Multi-item mix: sum the components, calories from each component's
+        # saved item facts.
+        fluid_per_firing = 0.0
+        calories_per_firing = 0.0
+        for comp in schedule.components:
+            measured = to_ml(comp.amount, comp.amount_unit)
+            if measured:
+                fluid_per_firing += measured
+            if comp.item is not None and comp.item.calories_per_unit is not None:
+                calories_per_firing += float(comp.item.calories_per_unit) * comp.amount
+        fluid_ml = fluid_per_firing * occurrences
+        calories = calories_per_firing * occurrences
+    else:
+        measured = to_ml(schedule.default_amount, schedule.default_amount_unit)
+        fluid_ml = measured * occurrences if measured else 0.0
 
-    # Calories are calories, whatever the schedule is called.
-    calories = (schedule.default_calories or 0) * occurrences
+        # Calories are calories, whatever the schedule is called.
+        calories = (schedule.default_calories or 0) * occurrences
 
     return {
         'occurrences': occurrences,

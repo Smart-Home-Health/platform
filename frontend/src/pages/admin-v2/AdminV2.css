@@ -9590,3 +9590,10 @@ body.printing-schedule .admin-v2-schedule-prn-add {
     color: #000;
   }
 }
+/* Skipped flush follow-up — decided against, not forgotten. */
+.admin-v2-schedule-item.skipped {
+  opacity: 0.55;
+}
+.admin-v2-schedule-item.skipped .admin-v2-schedule-item-name {
+  text-decoration: line-through;
+}

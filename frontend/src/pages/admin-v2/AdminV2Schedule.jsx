@@ -19,6 +19,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
 import { PatientSelectorModal, IntakeSheet, OutputSheet, MedicationDoseModal, UpdateQuantityModal, CareTaskCompleteModal } from './components';
+import IntakeItemsEditor from '../../components/nutrition/IntakeItemsEditor';
+import { nutritionService } from '../../services/nutrition';
+import {
+  feedTarget, makeItemRow, rowFromScheduleComponent, rowIsValid, rowToItemPayload,
+} from '../../components/nutrition/intakeItemRows';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
@@ -45,14 +50,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
-import { Field, FormRow } from '@/components/ui/field';
+import { Field } from '@/components/ui/field';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import './AdminV2.css';
@@ -109,6 +107,14 @@ const AdminV2Schedule = () => {
     amount: '',
     amount_unit: '',
     item_name: ''
+  });
+  // Nutrition completion is multi-item: the feed's component mix (or its
+  // single legacy default) as editable rows, adjusted per feed.
+  const [completeItems, setCompleteItems] = useState([]);
+
+  // Post-feed flush follow-up: run (log the water) or skip (recorded).
+  const [flushModal, setFlushModal] = useState({
+    open: false, item: null, amount: '', notes: '', busy: false, error: null,
   });
 
   // PRN / Quick-log modal state
@@ -317,7 +323,27 @@ const AdminV2Schedule = () => {
       amount_unit: item.default_amount_unit || '',
       item_name: item.default_item || item.name || ''
     });
-    
+
+    // Nutrition: the feed's expected mix (or its single default) as rows.
+    if (type === 'nutrition') {
+      // Mirrors backend SCHEDULE_TYPE_TO_ITEM_TYPE for the legacy single row.
+      const scheduleItemType = {
+        meal: 'food', snack: 'food', hydration: 'liquid',
+        supplement: 'supplement', tube_feed: 'tube_feed',
+      }[item.schedule_type] || 'liquid';
+      setCompleteItems(
+        item.components?.length
+          ? item.components.map(rowFromScheduleComponent)
+          : [makeItemRow({
+              itemName: item.default_item || item.name || '',
+              itemType: scheduleItemType,
+              amount: item.default_amount != null ? String(item.default_amount) : '',
+              amountUnit: item.default_amount_unit || 'ml',
+              calories: item.default_calories != null ? String(item.default_calories) : '',
+            })],
+      );
+    }
+
     setShowCompleteModal(true);
   };
 
@@ -411,12 +437,9 @@ const AdminV2Schedule = () => {
           ...(type === 'medication' && {
             dose_amount: item.dose_amount,
             dose_unit: item.dose_unit
-          }),
-          ...(type === 'nutrition' && {
-            amount: item.default_amount,
-            amount_unit: item.default_amount_unit,
-            item_name: item.default_item
           })
+          // Nutrition sends no item fields: the backend expands each feed's
+          // component mix (or its legacy single default) itself.
         }));
         
         const response = await fetch(`${config.apiUrl}/api/schedule/complete/bulk`, {
@@ -439,6 +462,10 @@ const AdminV2Schedule = () => {
             })
           }));
           setShowCompleteModal(false);
+          // Any flush-flagged feed in the batch queued a follow-up row.
+          if (type === 'nutrition' && items.some(i => i.flush_components?.length)) {
+            fetchSchedule();
+          }
         } else {
           const data = await response.json().catch(() => ({}));
           alert(data.detail || 'Failed to record completion.');
@@ -464,9 +491,9 @@ const AdminV2Schedule = () => {
               dose_unit: completeFormData.dose_unit
             }),
             ...(type === 'nutrition' && {
-              amount: completeFormData.amount,
-              amount_unit: completeFormData.amount_unit,
-              item_name: completeFormData.item_name
+              // The full mix as adjusted in the dialog — one intake row per
+              // item, grouped server-side under one event.
+              items: completeItems.map(rowToItemPayload)
             })
           })
         });
@@ -487,6 +514,11 @@ const AdminV2Schedule = () => {
               )
             }));
             setShowCompleteModal(false);
+            // A flush-flagged feed queued a follow-up row server-side;
+            // refetch so it appears at its computed time.
+            if (type === 'nutrition' && (result.flush_followup || item.flush_components?.length)) {
+              fetchSchedule();
+            }
           } else {
             alert(result.error || 'Failed to record completion.');
           }
@@ -505,6 +537,42 @@ const AdminV2Schedule = () => {
   // Legacy handlers that now open modal (keeping for backwards compatibility if needed)
   const handleCompleteItem = (type, item) => {
     openCompleteModal(type, item);
+  };
+
+  // ---- Post-feed flush follow-up ----
+
+  const openFlushModal = (item) => setFlushModal({
+    open: true,
+    item,
+    amount: item.default_amount != null ? String(item.default_amount) : '',
+    notes: '',
+    busy: false,
+    error: null,
+  });
+
+  const closeFlushModal = () => setFlushModal((m) => ({ ...m, open: false }));
+
+  const submitFlush = async (skip) => {
+    const { item, amount, notes } = flushModal;
+    if (!item?.followup_id) return;
+    setFlushModal((m) => ({ ...m, busy: true, error: null }));
+    try {
+      if (skip) {
+        await nutritionService.skipFlush(item.followup_id, {
+          notes: notes || undefined, user_id: user?.id || undefined,
+        });
+      } else {
+        await nutritionService.completeFlush(item.followup_id, {
+          amount: amount ? Number(amount) : undefined,
+          notes: notes || undefined,
+          user_id: user?.id || undefined,
+        });
+      }
+      setFlushModal((m) => ({ ...m, open: false, busy: false }));
+      fetchSchedule();
+    } catch (err) {
+      setFlushModal((m) => ({ ...m, busy: false, error: err.message }));
+    }
   };
 
   const handleCompleteHour = (hour, type) => {
@@ -1003,19 +1071,32 @@ const AdminV2Schedule = () => {
                               )}
                               {nutritionByHour[hour].map((item, idx) => {
                                 // PRN intakes/outputs have no schedule_id — key off log_id.
-                                const rowId = item.schedule_id ?? `prn-${item.intake_type || 'intake'}-${item.log_id}`;
+                                // Flush follow-ups key off their own id.
+                                const isFlush = item.row_kind === 'flush';
+                                const rowId = isFlush
+                                  ? `flush-${item.followup_id}`
+                                  : (item.schedule_id ?? `prn-${item.intake_type || 'intake'}-${item.log_id}`);
                                 const itemKey = `nutrition-${rowId}-${item.scheduled_time}`;
                                 const isPrn = !!item.is_prn;
                                 const isOutput = item.intake_type === 'output';
+                                const isSkipped = !!item.skipped;
+                                const isActionable = !item.completed && !isPrn && !isSkipped;
                                 return (
                                   <React.Fragment key={`nutr-${rowId}-${idx}`}>
                                     {idx > 0 && <div className="admin-v2-schedule-divider" />}
                                     <div
-                                      className={`admin-v2-schedule-item ${item.completed ? 'completed' : 'clickable'} ${completing[itemKey] ? 'completing' : ''}`}
-                                      onClick={(e) => { e.stopPropagation(); if (!item.completed && !isPrn) handleCompleteItem('nutrition', item); }}
+                                      className={`admin-v2-schedule-item ${item.completed ? 'completed' : (isActionable ? 'clickable' : '')} ${isSkipped ? 'skipped' : ''} ${completing[itemKey] ? 'completing' : ''}`}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (!isActionable) return;
+                                        if (isFlush) openFlushModal(item);
+                                        else handleCompleteItem('nutrition', item);
+                                      }}
                                       role="button"
-                                      tabIndex={item.completed || isPrn ? -1 : 0}
-                                      title={isPrn ? (isOutput ? 'Output logged ad-hoc' : 'Intake logged ad-hoc') : undefined}
+                                      tabIndex={isActionable ? 0 : -1}
+                                      title={isPrn ? (isOutput ? 'Output logged ad-hoc' : 'Intake logged ad-hoc')
+                                        : isFlush ? 'Post-feed flush — run or skip'
+                                          : undefined}
                                     >
                                       <div className="admin-v2-schedule-item-header">
                                         {(() => {
@@ -1036,7 +1117,29 @@ const AdminV2Schedule = () => {
                                             {isOutput ? 'PRN Out' : 'PRN In'}
                                           </span>
                                         )}
-                                        {(item.default_amount || item.default_item) && (
+                                        {isFlush && (
+                                          <span
+                                            className="admin-v2-badge admin-v2-badge-prn admin-v2-badge-prn-in"
+                                            title="Post-feed water flush"
+                                          >
+                                            Flush
+                                          </span>
+                                        )}
+                                        {isSkipped && (
+                                          <span className="admin-v2-badge" title="Deliberately not run">
+                                            Skipped
+                                          </span>
+                                        )}
+                                        {item.components?.length ? (
+                                          <span
+                                            className="admin-v2-schedule-item-dose"
+                                            title={item.components.map((c) => `${c.item_name} ${c.amount} ${c.amount_unit}`).join(' + ')}
+                                          >
+                                            {item.components.length > 1
+                                              ? `${item.components.length} items`
+                                              : `${item.components[0].item_name} ${item.components[0].amount} ${item.components[0].amount_unit || ''}`}
+                                          </span>
+                                        ) : (item.default_amount || item.default_item) && (
                                           <span className="admin-v2-schedule-item-dose">
                                             {item.default_item && <span>{item.default_item}</span>}
                                             {item.default_amount && (
@@ -1264,43 +1367,30 @@ const AdminV2Schedule = () => {
               </Field>
             )}
 
-            {/* Nutrition-specific fields */}
+            {/* Nutrition: the feed's mix as editable rows — adjust amounts,
+                drop what was refused, add the extra juice that was given. */}
             {completeModalData.type === 'nutrition' && !completeModalData.isBulk && (
               <>
-                <Field label="Item Name">
-                  <Input
-                    type="text"
-                    value={completeFormData.item_name}
-                    onChange={e => setCompleteFormData({...completeFormData, item_name: e.target.value})}
-                    placeholder="What was consumed?"
-                  />
-                </Field>
-                <FormRow>
-                  <Field label="Amount">
-                    <Input
-                      type="number"
-                      step="0.1"
-                      value={completeFormData.amount}
-                      onChange={e => setCompleteFormData({...completeFormData, amount: e.target.value})}
-                      placeholder="Amount"
-                    />
-                  </Field>
-                  <Field label="Unit">
-                    <Select
-                      value={completeFormData.amount_unit || undefined}
-                      onValueChange={v => setCompleteFormData({...completeFormData, amount_unit: v})}
-                    >
-                      <SelectTrigger><SelectValue placeholder="Select..." /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ml">ml</SelectItem>
-                        <SelectItem value="oz">oz</SelectItem>
-                        <SelectItem value="cups">cups</SelectItem>
-                        <SelectItem value="grams">grams</SelectItem>
-                        <SelectItem value="servings">servings</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                </FormRow>
+                <IntakeItemsEditor
+                  patient={selectedPatient}
+                  items={completeItems}
+                  onChange={setCompleteItems}
+                  title="What was given"
+                  // The feed's planned totals: a live "given / target, N to go"
+                  // panel tracks the mix while amounts are adjusted.
+                  target={feedTarget(completeModalData.items[0])}
+                  targetLabel={completeModalData.items[0]?.name}
+                  idPrefix="complete"
+                />
+                {completeModalData.items[0]?.flush_components?.length > 0 && (
+                  <div className="rounded-md bg-secondary p-3 text-sm text-muted-foreground">
+                    {completeModalData.items[0].flush_components
+                      .map((c) => `${c.item_name} (${c.amount} ${c.amount_unit})`)
+                      .join(' + ')}{' '}
+                    will be scheduled as a flush after this feed — based on the
+                    tube-feed rate, or one hour if no rate is set.
+                  </div>
+                )}
               </>
             )}
 
@@ -1387,6 +1477,9 @@ const AdminV2Schedule = () => {
                 const hasEarly = statuses.some(s => s === 'early');
                 const hasLate = statuses.some(s => s === 'late');
                 const isOffWindow = hasEarly || hasLate;
+                const nutritionInvalid = completeModalData.type === 'nutrition'
+                  && !completeModalData.isBulk
+                  && (completeItems.length === 0 || !completeItems.every(rowIsValid));
                 const saving = Object.values(completing).some(v => v);
                 const label = saving
                   ? 'Saving...'
@@ -1401,7 +1494,7 @@ const AdminV2Schedule = () => {
                   <Button
                     type="button"
                     onClick={handleSubmitCompletion}
-                    disabled={saving}
+                    disabled={saving || nutritionInvalid}
                     className={isOffWindow ? 'bg-[#bb8009] text-[var(--background)] hover:bg-[#bb8009]/90' : undefined}
                   >
                     {label}
@@ -1585,6 +1678,60 @@ const AdminV2Schedule = () => {
           task={careTaskModalTask}
           defaultDateTime={careTaskModalDefaultDt}
         />
+
+        {/* Post-feed flush: run it (logs the water) or skip it (recorded —
+            smoothie-heavy mixes already carry enough water). */}
+        <Dialog open={flushModal.open} onOpenChange={(o) => { if (!o) closeFlushModal(); }}>
+          <DialogContent className="sm:max-w-[420px]" aria-describedby={undefined}>
+            <DialogHeader>
+              <DialogTitle>{flushModal.item?.name || 'Water flush'}</DialogTitle>
+            </DialogHeader>
+
+            {flushModal.error && (
+              <div className="tw"><Alert variant="destructive">{flushModal.error}</Alert></div>
+            )}
+
+            <Field label={`Amount (${flushModal.item?.default_amount_unit || 'ml'})`}>
+              <Input
+                type="number"
+                step="any"
+                min="0"
+                value={flushModal.amount}
+                onChange={(e) => setFlushModal((m) => ({ ...m, amount: e.target.value }))}
+              />
+            </Field>
+
+            <Field label="Notes (optional)">
+              <Textarea
+                rows={2}
+                value={flushModal.notes}
+                onChange={(e) => setFlushModal((m) => ({ ...m, notes: e.target.value }))}
+                placeholder="Anything worth passing on..."
+              />
+            </Field>
+
+            <DialogFooter>
+              <Button type="button" variant="secondary" onClick={closeFlushModal}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={flushModal.busy}
+                onClick={() => submitFlush(true)}
+              >
+                Skip — not needed
+              </Button>
+              <Button
+                type="button"
+                disabled={flushModal.busy || !Number(flushModal.amount)}
+                onClick={() => submitFlush(false)}
+              >
+                {flushModal.busy ? 'Saving...' : 'Run flush'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </AdminV2Layout>
   );

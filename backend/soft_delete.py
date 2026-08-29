@@ -39,10 +39,12 @@ from schemas.medication_log import MedicationLog
 from schemas.nutrition_intake import NutritionIntake
 from schemas.nutrition_output import NutritionOutput
 from schemas.care_task_log import CareTaskLog
+from schemas.nutrition_flush_followup import NutritionFlushFollowup
 
 logger = logging.getLogger("app")
 
-_SOFT_DELETE_MODELS = (MedicationLog, NutritionIntake, NutritionOutput, CareTaskLog)
+_SOFT_DELETE_MODELS = (MedicationLog, NutritionIntake, NutritionOutput, CareTaskLog,
+                       NutritionFlushFollowup)
 
 _registered = False
 

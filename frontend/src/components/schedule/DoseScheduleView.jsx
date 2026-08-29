@@ -208,7 +208,11 @@ export default function DoseScheduleView({
                                 {labels.primary}
                               </button>
                             )}
-                            {onSkip && (
+                            {/* can_skip narrows the view-wide handler to rows
+                                that are actually skippable (nutrition flush
+                                follow-ups); callers that never set it keep
+                                their skip button on every row. */}
+                            {onSkip && item.can_skip !== false && (
                               <button
                                 type="button"
                                 className="ld-dose-btn ghost"

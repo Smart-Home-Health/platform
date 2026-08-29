@@ -61,3 +61,75 @@ class NutritionSchedule(Base):
     
     # Relationships
     patient = relationship('Patient', foreign_keys=[patient_id])
+    components = relationship(
+        'NutritionScheduleComponent',
+        back_populates='schedule',
+        cascade='all, delete-orphan',
+        order_by='NutritionScheduleComponent.sort_order',
+    )
+
+
+class NutritionScheduleComponent(Base):
+    """One item of a scheduled feed's default mix.
+
+    Mirrors NutritionPresetComponent: completing the schedule expands each
+    component into its own nutrition_intake row sharing an event_group_id.
+    Schedules without components fall back to the legacy default_* columns.
+    """
+    __tablename__ = 'nutrition_schedule_components'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    schedule_id = Column(Integer, ForeignKey('nutrition_schedules.id', ondelete='CASCADE'), nullable=False, index=True)
+    item_id = Column(Integer, ForeignKey('nutrition_items.id', ondelete='CASCADE'), nullable=False)
+
+    amount = Column(Float, nullable=False)
+    amount_unit = Column(String(50), nullable=False)
+
+    # Tube-feed delivery, when this component is a feed.
+    feed_route = Column(String(20), nullable=True)
+    rate_ml_per_hr = Column(Float, nullable=True)
+    duration_minutes = Column(Float, nullable=True)
+
+    # Post-feed water flush: not logged with the meal — completing the feed
+    # spawns a follow-up event due after the feed has run.
+    is_flush = Column(Boolean, default=False, nullable=False)
+
+    sort_order = Column(Integer, default=0, nullable=False)
+
+    schedule = relationship('NutritionSchedule', back_populates='components')
+    item = relationship('NutritionItem', foreign_keys=[item_id])
+
+    # Denormalized from the saved item so Pydantic's from_attributes picks
+    # them up directly and the completion form can prefill names and scaled
+    # facts without a second request.
+    @property
+    def item_name(self):
+        return self.item.name if self.item else None
+
+    @property
+    def item_type(self):
+        return self.item.item_type if self.item else None
+
+    @property
+    def calories_per_unit(self):
+        return self.item.calories_per_unit if self.item else None
+
+    @property
+    def protein_per_unit(self):
+        return self.item.protein_per_unit if self.item else None
+
+    @property
+    def carbs_per_unit(self):
+        return self.item.carbs_per_unit if self.item else None
+
+    @property
+    def fat_per_unit(self):
+        return self.item.fat_per_unit if self.item else None
+
+    @property
+    def fiber_per_unit(self):
+        return self.item.fiber_per_unit if self.item else None
+
+    @property
+    def sodium_per_unit(self):
+        return self.item.sodium_per_unit if self.item else None

@@ -11,6 +11,11 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* iOS Safari inflates small text ("text autosizing") without this, blowing
+     the compact mono labels up past their layout and pushing dialogs wider
+     than the phone. Render the sizes as designed. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 /* Scoped with :not(:where(.tw *)) so the legacy app keeps these link styles at
