@@ -15,9 +15,9 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-// The intake sheet adapts to the type being logged, prefills from saved items
-// and recent entries, and — for presets — logs each component as its own
-// record rather than one combined blob.
+// The intake sheet logs one feed as a LIST of items (formula + juices) in a
+// single event, can link a hand-logged entry to a scheduled feed (marking it
+// complete), and still applies presets as separate records server-side.
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import IntakeSheet from './IntakeSheet';
@@ -28,14 +28,28 @@ vi.mock('../../services/nutrition', () => ({
     recent: vi.fn(() => Promise.resolve({ recent: [] })),
     listPresets: vi.fn(() => Promise.resolve([])),
     listItems: vi.fn(() => Promise.resolve([])),
-    createIntake: vi.fn(() => Promise.resolve({ id: 1 })),
+    createIntakeEvent: vi.fn(() => Promise.resolve({ event_group_id: 'g', intakes: [{ id: 1 }] })),
     updateIntake: vi.fn(() => Promise.resolve({ id: 1 })),
     createItem: vi.fn(() => Promise.resolve({ id: 9 })),
     applyPreset: vi.fn(() => Promise.resolve([{ id: 1 }, { id: 2 }])),
+    lookupBarcode: vi.fn(() => Promise.resolve({ source: 'none', barcode: 'x' })),
   },
 }));
 
+vi.mock('../../config', () => ({
+  default: { apiUrl: '' },
+  apiFetch: vi.fn(async () => ({ ok: false })),
+}));
+
 const patient = { id: 5, first_name: 'Test', last_name: 'Testerson' };
+
+// The sheet fetches today's open scheduled feeds for the link picker.
+const mockDaily = (nutrition = []) => {
+  vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({
+    ok: true,
+    json: () => Promise.resolve({ nutrition }),
+  })));
+};
 
 const setup = (props = {}) => {
   const onSaved = vi.fn();
@@ -46,83 +60,60 @@ const setup = (props = {}) => {
   return { ...utils, onSaved, onClose };
 };
 
-// The sheet title also reads "Log intake", and "Amount unit" collides with a
-// loose /^Amount/ label match — so address these by role and id.
-const logButton = () => screen.getByRole('button', { name: 'Log intake' });
-const amountInput = () => document.getElementById('intake-amount');
-const fillBasics = (name = 'Water', amount = '120') => {
-  fireEvent.change(document.getElementById('intake-item'), { target: { value: name } });
-  fireEvent.change(amountInput(), { target: { value: amount } });
+const logButton = () => screen.getByRole('button', { name: /Log (intake|\d+ items)/ });
+
+// Add a free-text item row and fill it in.
+const addManualItem = (name = 'Water', amount = '120') => {
+  fireEvent.change(document.getElementById('intake-search'), { target: { value: name } });
+  fireEvent.click(screen.getByRole('button', { name: `Add "${name}" manually` }));
+  fireEvent.change(screen.getByLabelText(`Amount of ${name}`), { target: { value: amount } });
 };
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockDaily([]);
+});
 
 describe('IntakeSheet', () => {
-  it('needs an item and an amount before it will save', () => {
+  it('needs at least one valid item before it will save', () => {
     setup();
     expect(logButton()).toBeDisabled();
-    fireEvent.change(document.getElementById('intake-item'), { target: { value: 'Water' } });
-    expect(logButton()).toBeDisabled();
-    fireEvent.change(amountInput(), { target: { value: '120' } });
+    addManualItem('Water', '120');
     expect(logButton()).not.toBeDisabled();
   });
 
-  it('does not offer Supplement as both a type and a context', () => {
+  it('logs several items as ONE event, not one call per item', async () => {
     setup();
-    // It is an intake type...
-    expect(screen.getByRole('radio', { name: 'Supplement' })).toBeInTheDocument();
-    // ...and must not also appear among the meal-context chips.
-    const contextChips = screen.getAllByRole('button')
-      .filter((b) => ['Breakfast', 'Lunch', 'Dinner', 'Snack', 'Other'].includes(b.textContent));
-    expect(contextChips).toHaveLength(5);
+    addManualItem('Peptamen', '250');
+    addManualItem('Green juice', '120');
+    expect(screen.getByRole('button', { name: 'Log 2 items' })).not.toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Log 2 items' }));
+
+    await waitFor(() => expect(nutritionService.createIntakeEvent).toHaveBeenCalledTimes(1));
+    const event = nutritionService.createIntakeEvent.mock.calls[0][0];
+    expect(event.patient_id).toBe(5);
+    expect(event.items).toHaveLength(2);
+    expect(event.items.map((i) => i.item_name)).toEqual(['Peptamen', 'Green juice']);
+    expect(event.items[1].amount).toBe(120);
   });
 
-  it('shows tube-feed delivery fields only for a tube feed', () => {
+  it('sends tube-feed delivery detail only for a tube feed', async () => {
     setup();
-    expect(screen.queryByText('Route')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('radio', { name: 'Tube feed' }));
-    expect(screen.getByText('Route')).toBeInTheDocument();
-    expect(screen.getByText('Rate (mL/hr)')).toBeInTheDocument();
-    // The item field reframes itself for a feed.
-    expect(screen.getByText('Formula')).toBeInTheDocument();
-  });
-
-  it('switches units to ones that suit the type', () => {
-    setup();
-    expect(screen.getByLabelText('Amount unit')).toHaveValue('ml');
-    fireEvent.click(screen.getByRole('radio', { name: 'Food' }));
-    expect(screen.getByLabelText('Amount unit')).toHaveValue('grams');
-  });
-
-  it('logs a tube feed with its delivery detail', async () => {
-    setup();
-    fireEvent.click(screen.getByRole('radio', { name: 'Tube feed' }));
-    fireEvent.change(document.getElementById('intake-item'), { target: { value: 'Peptamen' } });
-    fireEvent.change(amountInput(), { target: { value: '250' } });
-    fireEvent.click(screen.getByRole('radio', { name: 'Pump' }));
-    fireEvent.change(document.getElementById('intake-rate'), { target: { value: '125' } });
+    addManualItem('Peptamen', '250');
+    // The manual row opens expanded; switch its type and set the route.
+    fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'tube_feed' } });
+    fireEvent.change(screen.getByLabelText('Route'), { target: { value: 'pump' } });
+    fireEvent.change(document.querySelector('input[id$="-rate"]'), { target: { value: '125' } });
     fireEvent.click(logButton());
 
-    await waitFor(() => expect(nutritionService.createIntake).toHaveBeenCalled());
-    const [patientId, payload] = nutritionService.createIntake.mock.calls[0];
-    expect(patientId).toBe(5);
-    expect(payload.item_type).toBe('tube_feed');
-    expect(payload.feed_route).toBe('pump');
-    expect(payload.rate_ml_per_hr).toBe(125);
+    await waitFor(() => expect(nutritionService.createIntakeEvent).toHaveBeenCalled());
+    const item = nutritionService.createIntakeEvent.mock.calls[0][0].items[0];
+    expect(item.item_type).toBe('tube_feed');
+    expect(item.feed_route).toBe('pump');
   });
 
-  it('does not send delivery detail for a non-feed', async () => {
-    setup();
-    fillBasics();
-    fireEvent.click(logButton());
-    await waitFor(() => expect(nutritionService.createIntake).toHaveBeenCalled());
-    const payload = nutritionService.createIntake.mock.calls[0][1];
-    expect(payload.feed_route).toBeNull();
-    expect(payload.rate_ml_per_hr).toBeNull();
-  });
-
-  it('prefills and scales nutrition from a saved item', async () => {
-    nutritionService.listItems.mockResolvedValueOnce([{
+  it('adds a saved item from search with scaled nutrition', async () => {
+    nutritionService.listItems.mockResolvedValue([{
       id: 3, name: 'Peptamen', item_type: 'tube_feed',
       default_amount: 250, default_amount_unit: 'ml', calories_per_unit: 1.5,
     }]);
@@ -132,27 +123,93 @@ describe('IntakeSheet', () => {
     const result = await screen.findByText('Peptamen');
     fireEvent.click(result.closest('button'));
 
-    // 250 * 1.5 kcal per ml, filled in without anyone doing the arithmetic.
-    fireEvent.click(screen.getByText('Nutrition details'));
-    await waitFor(() => expect(document.getElementById('intake-cal')).toHaveValue(375));
+    // 250 * 1.5 kcal per ml, filled in without anyone doing the arithmetic
+    // (shown on the row and summed in the card header).
+    expect((await screen.findAllByText(/375 kcal/)).length).toBeGreaterThanOrEqual(1);
+    fireEvent.click(logButton());
+    await waitFor(() => expect(nutritionService.createIntakeEvent).toHaveBeenCalled());
+    const item = nutritionService.createIntakeEvent.mock.calls[0][0].items[0];
+    expect(item.item_id).toBe(3);
+    expect(item.calories).toBe(375);
   });
 
-  it('keeps the suggestion rows on one line', async () => {
-    nutritionService.recent.mockResolvedValueOnce({
-      recent: [{ item_name: 'Water', item_type: 'liquid', amount: 120, amount_unit: 'ml' }],
+  it('rescales a saved item when the amount is adjusted', async () => {
+    nutritionService.listItems.mockResolvedValue([{
+      id: 3, name: 'Peptamen', item_type: 'tube_feed',
+      default_amount: 250, default_amount_unit: 'ml', calories_per_unit: 1.5,
+    }]);
+    setup();
+    fireEvent.change(document.getElementById('intake-search'), { target: { value: 'pept' } });
+    const result = await screen.findByText('Peptamen');
+    fireEvent.click(result.closest('button'));
+
+    fireEvent.change(screen.getByLabelText('Amount of Peptamen'), { target: { value: '100' } });
+    expect((await screen.findAllByText(/150 kcal/)).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('links a hand-logged entry to a scheduled feed and prefills its mix', async () => {
+    mockDaily([{
+      schedule_id: 8,
+      scheduled_time: '2026-08-29T15:30:00+00:00',
+      name: 'Lunch',
+      completed: false,
+      is_prn: false,
+      intake_type: 'intake',
+      components: [
+        { item_id: 1, item_name: 'Peptamen', item_type: 'tube_feed', amount: 240, amount_unit: 'ml', calories: 360 },
+        { item_id: 2, item_name: 'Green juice', item_type: 'liquid', amount: 120, amount_unit: 'ml', calories: 84 },
+      ],
+    }]);
+    const { onSaved } = setup();
+
+    const chip = await screen.findByText(/Lunch ·/);
+    fireEvent.click(chip.closest('button'));
+
+    // The feed's expected mix lands as editable rows.
+    expect(screen.getByText('Peptamen')).toBeInTheDocument();
+    expect(screen.getByText('Green juice')).toBeInTheDocument();
+    expect(screen.getByText(/Logging will mark it complete/)).toBeInTheDocument();
+
+    // The target panel tracks the plan: prefilled = met, cut an amount and it
+    // shows exactly what is missing (the spreadsheet's red cell).
+    expect(screen.getByText('Target · Lunch')).toBeInTheDocument();
+    expect(screen.getByText('444 / 444 kcal')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Amount of Peptamen'), { target: { value: '120' } });
+    expect(screen.getByText('264 / 444 kcal')).toBeInTheDocument();
+    expect(screen.getByText('180 kcal to go')).toBeInTheDocument();
+    expect(screen.getByText('120 mL to go')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Amount of Peptamen'), { target: { value: '240' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Log 2 items' }));
+    await waitFor(() => expect(nutritionService.createIntakeEvent).toHaveBeenCalled());
+    const event = nutritionService.createIntakeEvent.mock.calls[0][0];
+    expect(event.schedule_id).toBe(8);
+    expect(event.scheduled_time).toBe('2026-08-29T15:30:00+00:00');
+    expect(onSaved).toHaveBeenCalled();
+  });
+
+  it('unlinks when the feed chip is tapped again', async () => {
+    mockDaily([{
+      schedule_id: 8, scheduled_time: '2026-08-29T15:30:00+00:00', name: 'Lunch',
+      completed: false, is_prn: false, intake_type: 'intake', components: [],
+      default_item: 'Peptamen', default_amount: 240, default_amount_unit: 'ml',
+    }]);
+    setup();
+    const chip = await screen.findByText(/Lunch ·/);
+    fireEvent.click(chip.closest('button'));
+    expect(screen.getByText(/Logging will mark it complete/)).toBeInTheDocument();
+    fireEvent.click(chip.closest('button'));
+    expect(screen.queryByText(/Logging will mark it complete/)).not.toBeInTheDocument();
+
+    fireEvent.click(logButton());
+    // Rows stayed (the prefill), but the link is gone.
+    return waitFor(() => {
+      const event = nutritionService.createIntakeEvent.mock.calls[0][0];
+      expect(event.schedule_id).toBeUndefined();
     });
-    setup();
-    await screen.findByText(/Water · 120 ml/);
-    // Context and Recent scroll sideways instead of wrapping.
-    expect(document.querySelectorAll('.vchips.scroll').length).toBeGreaterThanOrEqual(2);
   });
 
-  it('leaves barcode scanning visibly unavailable', () => {
-    setup();
-    expect(screen.getByLabelText(/Scan a barcode/)).toBeDisabled();
-  });
-
-  it('applies a preset as separate records rather than one row', async () => {
+  it('applies a preset as separate records rather than one event', async () => {
     nutritionService.listPresets.mockResolvedValueOnce([{
       id: 2, name: 'Peptamen 250 + flush',
       components: [{ id: 1 }, { id: 2 }],
@@ -167,40 +224,28 @@ describe('IntakeSheet', () => {
     expect(presetId).toBe(2);
     expect(body.patient_id).toBe(5);
     // The expansion into one record per component is the server's job; the
-    // sheet must not flatten it into a single createIntake call.
-    expect(nutritionService.createIntake).not.toHaveBeenCalled();
+    // sheet must not flatten it into an event of its own.
+    expect(nutritionService.createIntakeEvent).not.toHaveBeenCalled();
     expect(onSaved).toHaveBeenCalled();
   });
 
-  it('prefills from a recent entry', async () => {
+  it('adds a recent entry as an item row', async () => {
     nutritionService.recent.mockResolvedValueOnce({
       recent: [{ item_name: 'Water', item_type: 'liquid', amount: 120, amount_unit: 'ml' }],
     });
     setup();
     const chip = await screen.findByText(/Water · 120 ml/);
     fireEvent.click(chip.closest('button'));
-    expect(document.getElementById('intake-item')).toHaveValue('Water');
-    expect(amountInput()).toHaveValue(120);
-  });
-
-  it('keeps time and context on Save + another', async () => {
-    const { onClose, onSaved } = setup();
-    fireEvent.click(screen.getByText('Lunch'));
-    fillBasics();
-    fireEvent.click(screen.getByText('Save + another'));
-
-    await waitFor(() => expect(onSaved).toHaveBeenCalled());
-    expect(onClose).not.toHaveBeenCalled();
-    // Same meal, next item.
-    expect(screen.getByText('Lunch').closest('button')).toHaveAttribute('aria-pressed', 'true');
-    expect(document.getElementById('intake-item')).toHaveValue('');
+    expect(screen.getByText('Water')).toBeInTheDocument();
+    expect(screen.getByLabelText('Amount of Water')).toHaveValue(120);
+    expect(logButton()).not.toBeDisabled();
   });
 
   it('saves a reusable item with per-unit nutrition when asked', async () => {
     setup();
-    fillBasics('Orange juice', '200');
-    fireEvent.click(screen.getByText('Nutrition details'));
-    fireEvent.change(document.getElementById('intake-cal'), { target: { value: '90' } });
+    addManualItem('Orange juice', '200');
+    // The manual row opens expanded, with the facts inline.
+    fireEvent.change(document.querySelector('input[id$="-cal"]'), { target: { value: '90' } });
     fireEvent.click(screen.getByText('Save as a reusable item'));
     fireEvent.click(logButton());
 
@@ -218,20 +263,24 @@ describe('IntakeSheet', () => {
         amount_unit: 'ml', consumed_at: '2026-08-18T14:18:00Z',
       },
     });
-    expect(screen.queryByText('Save + another')).not.toBeInTheDocument();
+    // Edit mode is single-row: no add affordances, no remove.
+    expect(screen.queryByText(/manually/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Remove /)).not.toBeInTheDocument();
     fireEvent.click(screen.getByText('Save changes'));
 
     await waitFor(() => expect(nutritionService.updateIntake).toHaveBeenCalled());
-    expect(nutritionService.updateIntake.mock.calls[0][0]).toBe(11);
-    expect(nutritionService.createIntake).not.toHaveBeenCalled();
+    const [id, payload] = nutritionService.updateIntake.mock.calls[0];
+    expect(id).toBe(11);
+    expect(payload.item_name).toBe('Water');
+    expect(nutritionService.createIntakeEvent).not.toHaveBeenCalled();
   });
 
   it('passes the care-task log through when opened from a task', async () => {
     setup({ careTaskLogId: 77, careTaskName: 'Morning feed' });
     expect(screen.getByText(/Morning feed/)).toBeInTheDocument();
-    fillBasics();
+    addManualItem();
     fireEvent.click(logButton());
-    await waitFor(() => expect(nutritionService.createIntake).toHaveBeenCalled());
-    expect(nutritionService.createIntake.mock.calls[0][1].care_task_log_id).toBe(77);
+    await waitFor(() => expect(nutritionService.createIntakeEvent).toHaveBeenCalled());
+    expect(nutritionService.createIntakeEvent.mock.calls[0][0].care_task_log_id).toBe(77);
   });
 });

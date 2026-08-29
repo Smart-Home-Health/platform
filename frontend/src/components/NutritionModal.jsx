@@ -31,6 +31,7 @@ import DoseScheduleView from './schedule/DoseScheduleView';
 import DoseDetailPane from './schedule/DoseDetailPane';
 import { NUTRITION_LABELS } from './schedule/scheduleLabels';
 import { rollupSchedule } from './schedule/scheduleRollup';
+import { nutritionService } from '../services/nutrition';
 import PanelViewSwitcher from './section-panel/PanelViewSwitcher';
 import './section-panel/section-panel.css';
 import { computeScheduleStatus } from './schedule/scheduleStatus';
@@ -96,8 +97,9 @@ const NutritionModal = ({ onClose }) => {
         detail.push(`${item.default_amount}${item.default_amount_unit ? ' ' + item.default_amount_unit : ''}`);
       }
       if (item.default_calories != null) detail.push(`${item.default_calories} kcal`);
+      const isFlush = item.row_kind === 'flush';
       return {
-        id: `${item.schedule_id}-${item.scheduled_time}`,
+        id: isFlush ? `flush-${item.followup_id}` : `${item.schedule_id}-${item.scheduled_time}`,
         scheduled_time: item.scheduled_time,
         name: item.name,
         description: item.description,
@@ -106,12 +108,16 @@ const NutritionModal = ({ onClose }) => {
         status: computeScheduleStatus(item),
         is_completed: !!item.completed,
         is_yesterday: !!item.is_yesterday,
+        // Only the post-feed flush follow-up is skippable from here.
+        can_skip: isFlush,
         _raw: item,
       };
     });
   }, [scheduled]);
 
-  const itemKey = (raw) => `${raw?.schedule_id ?? 'prn'}-${raw?.scheduled_time}`;
+  const itemKey = (raw) => (raw?.row_kind === 'flush'
+    ? `flush-${raw.followup_id}`
+    : `${raw?.schedule_id ?? 'prn'}-${raw?.scheduled_time}`);
   const selectedItem = useMemo(
     () => scheduledItems.find(i => itemKey(i._raw) === selectedId) || null,
     [scheduledItems, selectedId]
@@ -134,8 +140,38 @@ const NutritionModal = ({ onClose }) => {
     }];
   }, [scheduledItems]);
 
+  // ===== Post-feed flush follow-up =====
+  const runFlushRow = async (item, note) => {
+    try {
+      await nutritionService.completeFlush(item.followup_id, {
+        notes: note || undefined, user_id: user?.id || undefined,
+      });
+      fetchSchedule();
+    } catch (err) {
+      console.error('Error running flush:', err);
+      alert(err.message || 'Failed to record the flush');
+    }
+  };
+
+  const skipFlushRow = async (item, note) => {
+    try {
+      await nutritionService.skipFlush(item.followup_id, {
+        notes: note || undefined, user_id: user?.id || undefined,
+      });
+      fetchSchedule();
+    } catch (err) {
+      console.error('Error skipping flush:', err);
+      alert(err.message || 'Failed to skip the flush');
+    }
+  };
+
   // ===== Complete scheduled item =====
   const submitComplete = async (item, { earlyOverride = false, note } = {}) => {
+    // Flush follow-ups have their own one-tap Run path.
+    if (item.row_kind === 'flush') {
+      await runFlushRow(item, note);
+      return;
+    }
     try {
       const res = await fetch(`${config.apiUrl}/api/schedule/complete/nutrition`, {
         method: 'POST',
@@ -189,8 +225,16 @@ const NutritionModal = ({ onClose }) => {
   // schedule and publishes the due-count change just as the single path does.
   // It pre-flights the whole batch against the administration window, so one
   // confirmation covers the slot instead of one dialog per item.
-  const submitBulk = async (items, { earlyOverride = false } = {}) => {
-    if (!selectedPatient || items.length === 0) return;
+  const submitBulk = async (allItems, { earlyOverride = false } = {}) => {
+    if (!selectedPatient || allItems.length === 0) return;
+    // Flush follow-ups do not go through the cron completion endpoint —
+    // "record all" runs them via their own path.
+    const flushRows = allItems.filter(i => i.row_kind === 'flush');
+    const items = allItems.filter(i => i.row_kind !== 'flush');
+    for (const flush of flushRows) {
+      await runFlushRow(flush);
+    }
+    if (items.length === 0) return;
     try {
       const res = await fetch(`${config.apiUrl}/api/schedule/complete/bulk`, {
         method: 'POST',
@@ -276,6 +320,7 @@ const NutritionModal = ({ onClose }) => {
                 onSelect={(item) => setSelectedId(item ? itemKey(item._raw) : null)}
                 onRecord={(item, opts) => submitComplete(item._raw, opts)}
                 onRecordAll={(items) => submitBulk(items.map(i => i._raw))}
+                onSkip={(item, opts) => skipFlushRow(item._raw, opts?.note)}
                 detail={(
                   <DoseDetailPane
                     item={selectedItem}
@@ -297,6 +342,7 @@ const NutritionModal = ({ onClose }) => {
                       note: row.notes,
                     })}
                     onRecord={(item, opts) => submitComplete(item._raw, opts)}
+                    onSkip={(item, opts) => skipFlushRow(item._raw, opts?.note)}
                   />
                 )}
               />

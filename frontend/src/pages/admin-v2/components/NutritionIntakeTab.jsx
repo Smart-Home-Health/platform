@@ -67,10 +67,30 @@ export default function NutritionIntakeTab({
     });
   }, [intakes, search, typeFilter]);
 
-  const menuFor = (intake) => {
+  // Rows of one multi-item feed share an event_group_id; the size lets a row
+  // say which feed it belongs to and offer deleting the whole thing.
+  const groupSizes = useMemo(() => {
+    const sizes = new Map();
+    for (const intake of intakes) {
+      if (!intake.event_group_id) continue;
+      sizes.set(intake.event_group_id, (sizes.get(intake.event_group_id) || 0) + 1);
+    }
+    return sizes;
+  }, [intakes]);
+
+  const menuFor = (intake, groupSize) => {
     const items = [];
     if (canUpdate) items.push({ label: 'Edit', onClick: () => onEdit(intake) });
-    if (canDelete) items.push({ label: 'Delete', onClick: () => onDelete(intake), danger: true });
+    if (canDelete) {
+      items.push({ label: 'Delete', onClick: () => onDelete(intake), danger: true });
+      if (groupSize > 1) {
+        items.push({
+          label: `Delete whole feed (${groupSize} items)`,
+          onClick: () => onDelete({ ...intake, wholeEvent: true }),
+          danger: true,
+        });
+      }
+    }
     return items;
   };
 
@@ -124,10 +144,14 @@ export default function NutritionIntakeTab({
           <h3 className="admin-v2-section-title">Intake · {visible.length}</h3>
           <div className="ec-grid">
             {visible.map((intake) => {
+              const groupSize = intake.event_group_id
+                ? (groupSizes.get(intake.event_group_id) || 0)
+                : 0;
               const badges = [
                 INTAKE_TYPE_LABELS[intake.item_type] || intake.item_type,
                 intake.meal_type,
                 intake.feed_route,
+                groupSize > 1 ? `Feed · ${groupSize} items` : null,
               ].filter(Boolean);
 
               const details = [
@@ -164,7 +188,7 @@ export default function NutritionIntakeTab({
                   title={intake.item_name}
                   badges={badges}
                   details={details}
-                  menu={menuFor(intake)}
+                  menu={menuFor(intake, groupSize)}
                 >
                   {intake.notes && <p className="ec-note">{intake.notes}</p>}
                 </EntityCard>

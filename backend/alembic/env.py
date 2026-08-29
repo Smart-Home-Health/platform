@@ -65,7 +65,8 @@ from schemas.care_task_log import CareTaskLog
 from schemas.nutrition_intake import NutritionIntake
 from schemas.nutrition_goal import NutritionGoal
 from schemas.nutrition_output import NutritionOutput
-from schemas.nutrition_schedule import NutritionSchedule
+from schemas.nutrition_schedule import NutritionSchedule, NutritionScheduleComponent
+from schemas.nutrition_flush_followup import NutritionFlushFollowup
 from schemas.nutrition_item import NutritionItem
 from schemas.nutrition_preset import NutritionPreset, NutritionPresetComponent
 from schemas.setting import Setting
