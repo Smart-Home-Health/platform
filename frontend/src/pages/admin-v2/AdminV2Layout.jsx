@@ -61,6 +61,7 @@ import './vc-shell.css';
 import './vc-content.css';
 import './vc-forms.css';
 import ConnectionChip from '../../components/ConnectionChip';
+import PersonAvatar from '../../components/vc/PersonAvatar';
 import useConnectionStatus from '../../hooks/useConnectionStatus';
 
 // Side navigation, grouped into labeled sections (mockup: Overview /
@@ -310,11 +311,6 @@ const AdminV2Layout = ({ children }) => {
     return age;
   };
 
-  // Get initials from patient
-  const getInitials = (patient) => {
-    return `${patient.first_name?.[0] || ''}${patient.last_name?.[0] || ''}`.toUpperCase();
-  };
-
   // Handle patient selection - update context and URL if on a patient-specific page
   const handleSelectPatient = (patient) => {
     selectPatient(patient);
@@ -524,9 +520,8 @@ const AdminV2Layout = ({ children }) => {
           >
             {selectedPatient ? (
               <>
-                <div className="admin-v2-patient-selector-avatar">
-                  {getInitials(selectedPatient)}
-                </div>
+                <PersonAvatar kind="patient" id={selectedPatient.id} seed={selectedPatient.avatar_seed}
+                              photo={selectedPatient.avatar_photo} size={36} decorative />
                 <div className="admin-v2-patient-selector-details">
                   <span className="admin-v2-patient-selector-name">
                     {selectedPatient.first_name} {selectedPatient.last_name}
@@ -585,9 +580,8 @@ const AdminV2Layout = ({ children }) => {
                       className={`admin-v2-patient-dropdown-item ${selectedPatient?.id === patient.id ? 'selected' : ''}`}
                       onClick={() => handleSelectPatient(patient)}
                     >
-                      <div className="admin-v2-patient-dropdown-avatar">
-                        {getInitials(patient)}
-                      </div>
+                      <PersonAvatar kind="patient" id={patient.id} seed={patient.avatar_seed}
+                                    photo={patient.avatar_photo} size={32} decorative />
                       <div className="admin-v2-patient-dropdown-info">
                         <span className="name">{patient.first_name} {patient.last_name}</span>
                         <span className="age">
@@ -608,9 +602,9 @@ const AdminV2Layout = ({ children }) => {
         {/* Collapsed Patient Avatar */}
         {sidebarCollapsed && selectedPatient && (
           <div className="admin-v2-patient-collapsed" title={`${selectedPatient.first_name} ${selectedPatient.last_name}`}>
-            <div className="admin-v2-patient-selector-avatar">
-              {getInitials(selectedPatient)}
-            </div>
+            <PersonAvatar kind="patient" id={selectedPatient.id} seed={selectedPatient.avatar_seed}
+                          photo={selectedPatient.avatar_photo} size={36}
+                          name={`${selectedPatient.first_name} ${selectedPatient.last_name}`} />
           </div>
         )}
         

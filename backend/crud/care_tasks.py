@@ -583,6 +583,10 @@ def get_care_task_stats_by_user(db: Session, days=30, patient_id=None):
                 stats[key] = {
                     'user_id': key or None,
                     'name': label,
+                    # The panel reads user_name; keep `name` for older callers.
+                    'user_name': label,
+                    'avatar_seed': user.avatar_seed if user else None,
+                    'avatar_photo': user.avatar_photo if user else None,
                     'completed': 0,
                     'on_time': 0,
                     'late': 0,

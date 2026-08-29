@@ -37,6 +37,7 @@ import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/alert';
 import './AdminV2.css';
 import './vc-dashboard.css'; // bedside-monitor skin (dark theme only)
+import PersonAvatar from '../../components/vc/PersonAvatar';
 
 // Calculate age from DOB
 const calculateAge = (dob) => {
@@ -48,15 +49,6 @@ const calculateAge = (dob) => {
     age--;
   }
   return age;
-};
-
-// Get initials from name
-const getInitials = (name) => {
-  return name
-    .split(' ')
-    .map(part => part[0])
-    .join('')
-    .toUpperCase();
 };
 
 const AdminV2Dashboard = () => {
@@ -288,9 +280,8 @@ const AdminV2Dashboard = () => {
               <div key={patient.id} className="admin-v2-patient-card">
                 <div className="admin-v2-patient-header">
                   <div className="admin-v2-patient-header-top">
-                    <div className="admin-v2-patient-avatar">
-                      {getInitials(patient.name)}
-                    </div>
+                    <PersonAvatar kind="patient" id={patient.id} seed={patient.avatar_seed}
+                                  photo={patient.avatar_photo} size={48} decorative />
                     <div className="admin-v2-patient-info">
                       <h3 className="admin-v2-patient-name">{patient.name}</h3>
                       <p className="admin-v2-patient-meta">

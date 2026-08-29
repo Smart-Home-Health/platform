@@ -150,6 +150,8 @@ class UserResponse(UserBase):
     last_activity: Optional[datetime] = None
     last_full_password_login: Optional[datetime] = None
     preferences: Optional[dict] = None
+    avatar_seed: Optional[str] = None
+    avatar_photo: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     roles: List[RoleResponse] = []
@@ -198,6 +200,8 @@ class UserListItem(BaseModel):
     roles: List[RoleListItem] = []
     created_at: Optional[datetime] = None
     last_login: Optional[datetime] = None
+    avatar_seed: Optional[str] = None
+    avatar_photo: Optional[str] = None
     
     class Config:
         from_attributes = True

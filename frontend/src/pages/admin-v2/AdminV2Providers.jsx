@@ -29,6 +29,7 @@ import {
 } from '../../components/Icons';
 import EntityCard from '../../components/vc/EntityCard';
 import EntityToolbar from '../../components/vc/EntityToolbar';
+import PersonAvatar from '../../components/vc/PersonAvatar';
 import EntityModal, { EmField, EmRow, EmSelect } from '../../components/vc/EntityModal';
 import './AdminV2.css';
 
@@ -380,7 +381,7 @@ const AdminV2Providers = () => {
                 {filteredProviders.map((provider) => (
                   <EntityCard
                     key={provider.id}
-                    initials={`${provider.first_name?.[0] || ''}${provider.last_name?.[0] || ''}`}
+                    avatar={<PersonAvatar kind="provider" id={provider.id} size={46} decorative />}
                     title={[provider.title, provider.first_name, provider.last_name].filter(Boolean).join(' ')}
                     badges={[typeLabel(provider.provider_type)]}
                     tag={provider.is_primary ? { label: 'Primary' } : undefined}

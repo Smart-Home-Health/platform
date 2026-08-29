@@ -17,11 +17,16 @@
 User management routes for CRUD operations on users
 Separate from auth routes which handle login/session management
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import json
 import logging
+import uuid
+
+import avatar_store
+from schemas.avatar import AvatarState
 
 from db import get_db
 from schemas.user import (
@@ -38,7 +43,7 @@ from crud.users import (
     create_permission, update_permission, delete_permission,
     assign_permission_to_role, set_force_password_reset, create_audit_log
 )
-from dependencies import get_current_user, require_permission, require_system_admin
+from dependencies import get_current_account_id, get_current_user, require_permission, require_system_admin
 from models.users import User, Role, Permission, AuditLog
 from schemas.patient import Patient, PatientAccess, AccessLevel
 
@@ -74,7 +79,9 @@ def list_users(
             force_password_reset=u.force_password_reset,
             roles=[{"id": r.id, "name": r.name, "display_name": r.display_name} for r in u.roles],
             created_at=u.created_at,
-            last_login=u.last_login
+            last_login=u.last_login,
+            avatar_seed=u.avatar_seed,
+            avatar_photo=u.avatar_photo,
         )
         # Attach patient_ids as extra field
         item_dict = item.model_dump()
@@ -888,3 +895,98 @@ def delete_role(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error deleting role: {str(e)}"
         )
+
+
+# ==================== Avatars ====================
+# Generated avatars need no storage until an administrator shuffles one; photos
+# live on disk under PHOTOS_DIR (avatar_store.py). These endpoints are gated on
+# their own rather than riding on PUT /api/users/{id}.
+
+def _user_or_404(db: Session, user_id: int) -> User:
+    user = get_user_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+
+@router.post("/{user_id}/avatar/shuffle", response_model=AvatarState)
+def shuffle_user_avatar(
+    user_id: int,
+    current_user: User = Depends(require_permission("users.update")),
+    db: Session = Depends(get_db)
+):
+    """Re-roll the generated avatar (new random seed)"""
+    user = _user_or_404(db, user_id)
+    user.avatar_seed = str(uuid.uuid4())
+    db.commit()
+    db.refresh(user)
+    return AvatarState(avatar_seed=user.avatar_seed, avatar_photo=user.avatar_photo)
+
+
+@router.put("/{user_id}/avatar/photo", response_model=AvatarState)
+async def upload_user_avatar_photo(
+    user_id: int,
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_permission("users.update")),
+    db: Session = Depends(get_db)
+):
+    """Replace the profile photo (JPEG/PNG, 2 MB max; the browser pre-crops to 256px)"""
+    user = _user_or_404(db, user_id)
+    content = await file.read()
+    if len(content) > avatar_store.MAX_AVATAR_BYTES:
+        raise HTTPException(status_code=413, detail="Photo too large (2 MB max)")
+    media_type = avatar_store.sniff_image(content)
+    if not media_type:
+        raise HTTPException(status_code=415, detail="Only JPEG or PNG photos are supported")
+    previous = user.avatar_photo
+    user.avatar_photo = avatar_store.save_avatar("user", user.id, content, media_type)
+    db.commit()
+    db.refresh(user)
+    avatar_store.delete_avatar("user", user.id, previous)
+    return AvatarState(avatar_seed=user.avatar_seed, avatar_photo=user.avatar_photo)
+
+
+@router.delete("/{user_id}/avatar/photo", response_model=AvatarState)
+def delete_user_avatar_photo(
+    user_id: int,
+    current_user: User = Depends(require_permission("users.update")),
+    db: Session = Depends(get_db)
+):
+    """Remove the profile photo; the generated avatar shows again"""
+    user = _user_or_404(db, user_id)
+    previous = user.avatar_photo
+    user.avatar_photo = None
+    db.commit()
+    avatar_store.delete_avatar("user", user.id, previous)
+    return AvatarState(avatar_seed=user.avatar_seed, avatar_photo=None)
+
+
+@router.get("/{user_id}/avatar/photo/{filename}")
+def get_user_avatar_photo(
+    user_id: int,
+    filename: str,
+    account_id: int = Depends(get_current_account_id),
+    db: Session = Depends(get_db)
+):
+    """Serve the profile photo.
+
+    Account-level auth (not a user session) on purpose: the login picker shows
+    the household's faces before anyone has signed in. Only users of the same
+    account are visible, and only the filename currently on the row is served —
+    the path is built from the DB value, never from the URL.
+    """
+    user = get_user_by_id(db, user_id)
+    if (
+        not user
+        or user.account_id != account_id
+        or not user.avatar_photo
+        or not avatar_store.FILENAME_RE.match(filename)
+        or filename != user.avatar_photo
+    ):
+        raise HTTPException(status_code=404, detail="Photo not found")
+    path = avatar_store.avatar_path("user", user.id, user.avatar_photo)
+    return FileResponse(
+        path,
+        media_type=avatar_store.media_type_for(user.avatar_photo),
+        headers={"Cache-Control": avatar_store.AVATAR_CACHE_CONTROL},
+    )

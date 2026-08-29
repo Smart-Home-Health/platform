@@ -562,7 +562,9 @@ def get_account_users(
             has_pin=bool(user.pin_hash),
             requires_full_password=user.needs_full_password(),
             ha_linked=bool(user.ha_user_id),
-            roles=[{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles]
+            roles=[{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles],
+            avatar_seed=user.avatar_seed,
+            avatar_photo=user.avatar_photo,
         )
         for user in users
     ]
@@ -1371,7 +1373,9 @@ def list_users(
             force_password_reset=user.force_password_reset,
             roles=[{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles],
             created_at=user.created_at,
-            last_login=user.last_login
+            last_login=user.last_login,
+            avatar_seed=user.avatar_seed,
+            avatar_photo=user.avatar_photo,
         )
         for user in users
     ]

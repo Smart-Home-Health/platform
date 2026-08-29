@@ -352,20 +352,6 @@
   cursor: pointer;
 }
 .vc-auth .user-card:hover { border-color: var(--vc-line-strong); background: var(--vc-bg-raised); }
-.au-avatar {
-  flex-shrink: 0;
-  display: grid;
-  place-content: center;
-  width: 52px;
-  height: 52px;
-  border: 1px solid var(--vc-data-live);
-  border-radius: 10px;
-  color: var(--vc-data-live);
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-}
-.au-avatar.large { width: 64px; height: 64px; font-size: 22px; }
 .au-user-info { flex: 1; min-width: 0; }
 .au-user-name {
   font-size: 16px;

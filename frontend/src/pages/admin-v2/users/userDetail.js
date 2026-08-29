@@ -21,16 +21,6 @@
 
 export const displayName = (user) => user?.full_name || user?.username || 'User';
 
-export const initialsOf = (user) => {
-  const source = user?.full_name || user?.username || '';
-  const parts = source.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '—';
-  const letters = parts.length === 1
-    ? parts[0].slice(0, 1)
-    : `${parts[0][0]}${parts[parts.length - 1][0]}`;
-  return letters.toUpperCase();
-};
-
 export const formatDate = (value) => {
   if (!value) return null;
   const d = new Date(value);

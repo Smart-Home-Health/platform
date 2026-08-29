@@ -18,7 +18,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   accessCounts, accountFacts, displayName, formatDate, formatDateTime, identityLine,
-  initialsOf, lastSeen, profileNamesFor, securityFacts,
+  lastSeen, profileNamesFor, securityFacts,
 } from './userDetail';
 
 const NOW = new Date('2026-08-20T15:00:00');
@@ -32,13 +32,6 @@ describe('names', () => {
     expect(displayName({ full_name: 'Marshall Reed' })).toBe('Marshall Reed');
     expect(displayName({ username: 'marshall' })).toBe('marshall');
     expect(displayName(null)).toBe('User');
-  });
-
-  it('builds initials from the first and last word only', () => {
-    expect(initialsOf({ full_name: 'Marshall Reed' })).toBe('MR');
-    expect(initialsOf({ full_name: 'Ana Maria de Souza' })).toBe('AS');
-    expect(initialsOf({ full_name: 'Marshall' })).toBe('M');
-    expect(initialsOf({})).toBe('—');
   });
 });
 

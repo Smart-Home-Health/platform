@@ -16,24 +16,20 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 import { EditIcon } from '../../../components/Icons';
+import PersonAvatar from '../../../components/vc/PersonAvatar';
 
 /**
  * Reusable patient header component for Admin V2 pages
  * Displays patient avatar, name, and change patient button
  */
 const PatientHeader = ({ patient, onChangePatient }) => {
-  const getInitials = (firstName, lastName) => {
-    return `${firstName?.[0] || ''}${lastName?.[0] || ''}`.toUpperCase();
-  };
-
   if (!patient) return null;
 
   return (
     <div className="schedule-patient-header">
       <div className="schedule-patient-info">
-        <div className="schedule-patient-avatar">
-          {getInitials(patient.first_name, patient.last_name)}
-        </div>
+        <PersonAvatar kind="patient" id={patient.id} seed={patient.avatar_seed}
+                      photo={patient.avatar_photo} size={48} decorative />
         <div className="schedule-patient-name-row">
           <h2>{patient.first_name} {patient.last_name}</h2>
           <button 

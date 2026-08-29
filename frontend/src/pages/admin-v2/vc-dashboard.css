@@ -73,11 +73,6 @@
   border-radius: 12px;
   box-shadow: none;
 }
-:root:not(.light) .admin-v2-patient-avatar {
-  background: var(--vc-bg-raised);
-  color: var(--vc-data-live);
-  font-family: var(--vc-font-mono);
-}
 :root:not(.light) .admin-v2-patient-name {
   font-family: var(--vc-font-mono);
   font-size: 14px;

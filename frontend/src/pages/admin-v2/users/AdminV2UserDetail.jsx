@@ -35,8 +35,9 @@ import {
 } from '@/components/ui/dialog';
 import useUserRecord, { deleteUser, updateUser } from './useUserRecord';
 import UserTabs from './UserTabs';
+import AvatarEditor from '../components/AvatarEditor';
 import {
-  displayName, formatDate, identityLine, initialsOf, lastSeen, profileNamesFor,
+  displayName, formatDate, identityLine, lastSeen, profileNamesFor,
 } from './userDetail';
 import {
   accessSection, accountSection, activitySection, securitySection, userStats,
@@ -187,7 +188,8 @@ export default function AdminV2UserDetail() {
           <Card>
             <CardContent className="flex flex-col gap-3 p-4 sm:p-4">
               <div className="cp-identity">
-                <span className="cp-avatar" aria-hidden>{initialsOf(user)}</span>
+                <AvatarEditor kind="user" person={user} name={displayName(user)}
+                              onError={setError} onNotice={flash} />
                 <div className="flex min-w-0 flex-1 flex-col">
                   <h1 className="cp-name">{displayName(user)}</h1>
                   <p className="cp-subtitle">@{user?.username}</p>

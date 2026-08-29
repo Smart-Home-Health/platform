@@ -20,9 +20,6 @@
 export const fullName = (patient) =>
   [patient?.first_name, patient?.last_name].filter(Boolean).join(' ') || 'Care profile';
 
-export const initialsOf = (patient) =>
-  `${patient?.first_name?.[0] || ''}${patient?.last_name?.[0] || ''}`.toUpperCase() || '—';
-
 // A date of birth is a calendar date, not an instant: formatting it through a
 // parsed Date shifts it a day west of UTC. Read the calendar parts instead, so
 // "2010-12-05" is Dec 5 whether or not the API sends a zone.
