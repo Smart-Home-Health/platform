@@ -150,6 +150,42 @@ def test_explicit_duration_on_the_logged_row_wins(admin_client, patient, flush_i
     assert abs((due - consumed) - timedelta(minutes=90)) < timedelta(seconds=5)
 
 
+def test_duration_math_does_not_require_the_tube_feed_type(admin_client, patient):
+    """Items saved from labels are often typed 'liquid', and the whole mix
+    runs through the pump — volume and rate must not be gated on tube_feed."""
+    formula = admin_client.post("/api/nutrition/items", json={
+        "patient_id": patient.id, "name": "Peptamen 1.0 Unflavored",
+        "item_type": "liquid", "default_amount": 400, "default_amount_unit": "ml",
+        "calories_per_unit": 1.0,
+    }).json()
+    water = admin_client.post("/api/nutrition/items", json={
+        "patient_id": patient.id, "name": "Flush water", "item_type": "liquid",
+        "default_amount": 60, "default_amount_unit": "ml",
+    }).json()
+    when = _now_utc()
+    sched = admin_client.post("/api/nutrition/schedules", json={
+        "patient_id": patient.id, "schedule_type": "meal", "name": "Liquid lunch",
+        "cron_expression": f"{when.minute} {when.hour} * * *",
+        "components": [
+            {"item_id": formula["id"], "amount": 400, "amount_unit": "ml",
+             "rate_ml_per_hr": 600, "sort_order": 0},
+            {"item_id": water["id"], "amount": 60, "amount_unit": "ml",
+             "is_flush": True, "sort_order": 1},
+        ],
+    }).json()
+
+    admin_client.post("/api/schedule/complete/nutrition", json={
+        "schedule_id": sched["id"], "scheduled_time": when.isoformat(),
+        "patient_id": patient.id,
+    })
+    followup = _followups(admin_client, patient)[0]
+    rows = admin_client.get(f"/api/patients/{patient.id}/nutrition-intake").json()
+    due = datetime.fromisoformat(followup["due_at"])
+    consumed = datetime.fromisoformat(rows[0]["consumed_at"])
+    # 400 mL at 600 mL/hr = 40 minutes, even though nothing is typed tube_feed.
+    assert abs((due - consumed) - timedelta(minutes=40)) < timedelta(seconds=5)
+
+
 def test_bulk_completion_spawns_too(admin_client, patient, flush_items):
     body, when = _flush_schedule(admin_client, patient, flush_items)
 

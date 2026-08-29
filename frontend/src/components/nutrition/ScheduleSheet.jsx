@@ -93,6 +93,10 @@ export default function ScheduleSheet({ open, onClose, onSave, editing, saving, 
   // The feed's default mix — one saved item per row. When present, it wins
   // over the single default fields; completion prefills from it.
   const [mixItems, setMixItems] = useState([]);
+  // One pump, one rate: how fast the mix runs, which is what times the
+  // post-feed flush (volume ÷ rate after the feed is marked done). Stored on
+  // the first non-flush component.
+  const [feedRate, setFeedRate] = useState('');
   const [localError, setLocalError] = useState(null);
 
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
@@ -107,10 +111,13 @@ export default function ScheduleSheet({ open, onClose, onSave, editing, saving, 
       setDayOfMonth(1);
       setTime('08:00');
       setMixItems([]);
+      setFeedRate('');
       return;
     }
 
     setMixItems((editing.components || []).map(rowFromComponentResponse));
+    const rated = (editing.components || []).find((c) => !c.is_flush && c.rate_ml_per_hr);
+    setFeedRate(rated?.rate_ml_per_hr != null ? String(rated.rate_ml_per_hr) : '');
 
     setForm({
       ...emptyForm(),
@@ -203,7 +210,15 @@ export default function ScheduleSheet({ open, onClose, onSave, editing, saving, 
       default_amount_unit: isCare ? null : form.default_amount_unit,
       default_calories: isCare ? null : numberOrNull(form.default_calories),
       // The multi-item mix replaces the whole stored list ([] clears it).
-      components: isCare ? [] : mixItems.map((row, i) => rowToComponentPayload(row, i)),
+      // The feed rate rides the first non-flush component; the backend scans
+      // every component for a rate when timing the flush.
+      components: isCare ? [] : (() => {
+        const comps = mixItems.map((row, i) => rowToComponentPayload(row, i));
+        const rate = numberOrNull(feedRate);
+        const main = comps.find((c) => !c.is_flush);
+        if (rate && main) main.rate_ml_per_hr = rate;
+        return comps;
+      })(),
       create_care_task: form.create_care_task,
       reminder_minutes_before: numberOrNull(form.reminder_minutes_before) ?? 0,
       instructions: form.instructions || null,
@@ -325,10 +340,31 @@ export default function ScheduleSheet({ open, onClose, onSave, editing, saving, 
               title="Feed mix"
               idPrefix="sched-mix"
             />
+            {mixItems.some((r) => r.isFlush) && (
+              <EmField label="Feed rate (mL/hr)" optional htmlFor="sched-rate">
+                <input
+                  id="sched-rate"
+                  className="em-input"
+                  type="number"
+                  min="0"
+                  step="any"
+                  inputMode="decimal"
+                  placeholder="e.g. 600"
+                  value={feedRate}
+                  onChange={(e) => setFeedRate(e.target.value)}
+                />
+                <p className="nsheet-note">
+                  Times the flush: it comes due mix volume ÷ rate after the
+                  feed is marked done (one hour when no rate is set). The rate
+                  can still be adjusted per feed at completion.
+                </p>
+              </EmField>
+            )}
             <p className="nsheet-note">
               The feed mix prefills the completion form; amounts can be adjusted
               per feed. Items come from the saved-item library so calories and
-              macros are counted automatically.
+              macros are counted automatically. Flag the water as the post-feed
+              flush and it is scheduled after the feed instead of logged with it.
             </p>
           </>
         )}

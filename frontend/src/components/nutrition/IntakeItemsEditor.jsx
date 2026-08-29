@@ -127,7 +127,14 @@ export default function IntakeItemsEditor({
     setScanNotice(null);
   };
 
-  const removeRow = (key) => onChange(items.filter((row) => row.key !== key));
+  const removeRow = (key) => {
+    const remaining = items.filter((row) => row.key !== key);
+    // A one-item mix cannot have a flush (the meal itself would vanish);
+    // clear an orphaned flag when a deletion leaves a single row.
+    onChange(remaining.length < 2
+      ? remaining.map((row) => (row.isFlush ? { ...row, isFlush: false } : row))
+      : remaining);
+  };
 
   // One flush per feed: flagging a row clears the flag on the others.
   const setFlush = (key, value) => {
@@ -305,7 +312,9 @@ export default function IntakeItemsEditor({
               </div>
             )}
 
-            {allowFlushToggle && row.itemType === 'liquid' && (
+            {/* Offered only once the mix has a meal AND something to flush
+                with — flagging the only item would leave nothing to log. */}
+            {allowFlushToggle && row.itemType === 'liquid' && items.length >= 2 && (
               <label className="nitems-flush-toggle">
                 <input
                   type="checkbox"

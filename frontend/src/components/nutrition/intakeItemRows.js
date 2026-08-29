@@ -219,16 +219,18 @@ export function rowIsValid(row) {
 
 /** A row as the API's intake item shape. */
 export function rowToItemPayload(row) {
-  const isTube = row.itemType === 'tube_feed';
   return {
     item_id: row.itemId ?? null,
     item_name: String(row.itemName || '').trim(),
     item_type: row.itemType,
     amount: numberOrNull(row.amount),
     amount_unit: row.amountUnit,
-    feed_route: isTube && row.feedRoute ? row.feedRoute : null,
-    rate_ml_per_hr: isTube ? numberOrNull(row.rateMlPerHr) : null,
-    duration_minutes: isTube ? numberOrNull(row.durationMinutes) : null,
+    // Delivery detail is not gated on the tube_feed type: for a tube-fed
+    // patient the whole mix runs through the pump, and items are not always
+    // typed tube_feed — the rate is what times the post-feed flush.
+    feed_route: row.feedRoute || null,
+    rate_ml_per_hr: numberOrNull(row.rateMlPerHr),
+    duration_minutes: numberOrNull(row.durationMinutes),
     calories: numberOrNull(row.calories),
     protein_grams: numberOrNull(row.protein),
     carbs_grams: numberOrNull(row.carbs),
@@ -240,15 +242,14 @@ export function rowToItemPayload(row) {
 
 /** A row as a schedule/preset component payload. */
 export function rowToComponentPayload(row, sortOrder) {
-  const isTube = row.itemType === 'tube_feed';
   return {
     is_flush: !!row.isFlush,
     item_id: row.itemId,
     amount: numberOrNull(row.amount),
     amount_unit: row.amountUnit,
-    feed_route: isTube && row.feedRoute ? row.feedRoute : null,
-    rate_ml_per_hr: isTube ? numberOrNull(row.rateMlPerHr) : null,
-    duration_minutes: isTube ? numberOrNull(row.durationMinutes) : null,
+    feed_route: row.feedRoute || null,
+    rate_ml_per_hr: numberOrNull(row.rateMlPerHr),
+    duration_minutes: numberOrNull(row.durationMinutes),
     sort_order: sortOrder,
   };
 }

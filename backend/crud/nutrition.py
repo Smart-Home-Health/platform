@@ -1310,21 +1310,23 @@ FLUSH_FALLBACK_DURATION_MINUTES = 60.0
 def _feed_duration_minutes(rows: List[dict], schedule: NutritionSchedule) -> float:
     """How long the feed runs, for scheduling the flush after it.
 
-    Precedence: an explicit duration on a logged tube-feed row wins; else
-    total tube-feed volume divided by the pump rate (rate from the logged
-    rows, falling back to the schedule's components); else a fixed fallback
-    so the flush always comes due eventually.
+    Precedence: an explicit duration on a logged row wins; else the whole
+    mix's fluid volume divided by the pump rate — for a tube-fed patient the
+    formula AND the juices all run through the pump, and items are not
+    always typed tube_feed, so neither sum nor rate is gated on the type.
+    Rate falls back from the logged rows to the schedule's components; with
+    no rate anywhere, a fixed fallback keeps the flush coming due.
     """
-    tube_rows = [r for r in rows if r.get('item_type') == 'tube_feed']
-
-    explicit = [r['duration_minutes'] for r in tube_rows
+    explicit = [r['duration_minutes'] for r in rows
                 if r.get('duration_minutes') not in (None, 0)]
     if explicit:
         return float(max(explicit))
 
-    total_ml = sum(_intake_amount_to_ml(r.get('amount'), r.get('amount_unit'))
-                   for r in tube_rows)
-    rate = next((r['rate_ml_per_hr'] for r in tube_rows
+    # to_ml refuses non-volume units (grams, servings), so food rows add no
+    # run time — only what actually flows through the pump counts.
+    total_ml = sum(to_ml(r.get('amount'), r.get('amount_unit')) or 0
+                   for r in rows)
+    rate = next((r['rate_ml_per_hr'] for r in rows
                  if r.get('rate_ml_per_hr') not in (None, 0)), None)
     if rate is None:
         rate = next((c.rate_ml_per_hr for c in schedule.components

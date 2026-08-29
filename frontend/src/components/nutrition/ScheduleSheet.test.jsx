@@ -70,6 +70,50 @@ describe('ScheduleSheet', () => {
     expect(payload.components).toEqual([]);
   });
 
+  it('offers no flush toggle for a single-item mix', () => {
+    setup({
+      editing: {
+        id: 9,
+        schedule_type: 'meal',
+        name: 'Lunch',
+        cron_expression: '30 15 * * *',
+        components: [
+          { id: 1, item_id: 11, item_name: 'Peptamen', item_type: 'liquid', amount: 525, amount_unit: 'ml', sort_order: 0 },
+        ],
+      },
+    });
+
+    // One item: nothing to flush against (flagging the only item would
+    // leave the meal empty), so neither the toggle nor the rate appear.
+    expect(screen.queryByText(/Post-feed flush/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Feed rate/)).not.toBeInTheDocument();
+  });
+
+  it('sends the feed rate on the non-flush component to time the flush', () => {
+    const { onSave } = setup({
+      editing: {
+        id: 10,
+        schedule_type: 'meal',
+        name: 'Dinner',
+        cron_expression: '0 22 * * *',
+        components: [
+          { id: 2, item_id: 11, item_name: 'Peptamen', item_type: 'liquid', amount: 525, amount_unit: 'ml', sort_order: 0 },
+          { id: 3, item_id: 12, item_name: 'Water', item_type: 'liquid', amount: 60, amount_unit: 'ml', is_flush: true, sort_order: 1 },
+        ],
+      },
+    });
+    expect(screen.getAllByText(/Post-feed flush/).length).toBeGreaterThanOrEqual(1);
+    fireEvent.change(screen.getByLabelText(/Feed rate/), { target: { value: '600' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    const payload = onSave.mock.calls.at(-1)[0];
+    const main = payload.components.find((c) => !c.is_flush);
+    const flush = payload.components.find((c) => c.is_flush);
+    // The rate rides the non-flush component; the flush keeps its amount.
+    expect(main.rate_ml_per_hr).toBe(600);
+    expect(flush.amount).toBe(60);
+  });
+
   it('edits a schedule with a feed mix and sends the whole component list', () => {
     const { onSave } = setup({
       editing: {
