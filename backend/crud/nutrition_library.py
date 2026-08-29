@@ -73,6 +73,106 @@ def list_nutrition_items(db: Session, patient_id: Optional[int] = None,
     return q.order_by(NutritionItem.name.asc()).limit(limit).all()
 
 
+def find_nutrition_item_by_barcode(db: Session, barcode: str,
+                                   patient_id: Optional[int] = None) -> Optional[NutritionItem]:
+    """A saved item matching a scanned barcode, scoped like the item search."""
+    account_id = _account_id_for_patient(db, patient_id)
+    return (_visible_items_query(db, account_id, patient_id)
+            .filter(NutritionItem.barcode == barcode)
+            .first())
+
+
+# =====================
+# BARCODE LOOKUP (OpenFoodFacts)
+# =====================
+
+OFF_PRODUCT_URL = "https://world.openfoodfacts.org/api/v2/product/{code}.json"
+OFF_FIELDS = "product_name,brands,nutriments,serving_quantity,serving_quantity_unit,quantity"
+OFF_TIMEOUT_SECONDS = 5.0
+# OpenFoodFacts asks API users to identify themselves.
+OFF_USER_AGENT = "SmartHomeHealthHub/1.0 (AGPL-3.0)"
+
+
+def _off_per_unit(value_per_100) -> Optional[float]:
+    """OFF nutriments are per 100 g/ml; our items are per ONE g/ml."""
+    if value_per_100 is None:
+        return None
+    try:
+        return round(float(value_per_100) / 100.0, 6)
+    except (TypeError, ValueError):
+        return None
+
+
+def lookup_openfoodfacts(barcode: str) -> Optional[dict]:
+    """Look an unknown barcode up on OpenFoodFacts.
+
+    Returns a NutritionItemCreate-shaped suggestion dict the caregiver can
+    save as a new library item, or None when the product is unknown or the
+    lookup fails (offline hub, timeout) -- callers treat both as "enter
+    manually", never as an error.
+    """
+    import httpx
+
+    try:
+        resp = httpx.get(
+            OFF_PRODUCT_URL.format(code=barcode),
+            params={"fields": OFF_FIELDS},
+            timeout=OFF_TIMEOUT_SECONDS,
+            headers={"User-Agent": OFF_USER_AGENT},
+        )
+        if resp.status_code != 200:
+            return None
+        payload = resp.json()
+    except Exception as e:
+        logger.warning(f"OpenFoodFacts lookup failed for {barcode}: {e}")
+        return None
+
+    if payload.get("status") != 1 or not payload.get("product"):
+        return None
+    product = payload["product"]
+    nutriments = product.get("nutriments") or {}
+
+    name = (product.get("product_name") or '').strip()
+    if not name:
+        return None
+
+    # Liquid vs food: trust the serving unit, then the package quantity
+    # string ("450 ml"). Serving-sized default so one unit stays 1 g/ml.
+    serving_unit = (product.get("serving_quantity_unit") or '').strip().lower()
+    quantity_text = (product.get("quantity") or '').strip().lower()
+    is_liquid = serving_unit in ('ml', 'l', 'cl') or 'ml' in quantity_text or quantity_text.endswith('l')
+    unit = 'ml' if is_liquid else 'g'
+
+    try:
+        default_amount = float(product.get("serving_quantity")) or 100.0
+    except (TypeError, ValueError):
+        default_amount = 100.0
+
+    calories = _off_per_unit(nutriments.get("energy-kcal_100g"))
+    if calories is None:
+        # Some products only carry energy in kJ.
+        kj = _off_per_unit(nutriments.get("energy_100g"))
+        calories = round(kj / 4.184, 6) if kj is not None else None
+
+    # OFF reports sodium in grams; intake rows track milligrams.
+    sodium_g = _off_per_unit(nutriments.get("sodium_100g"))
+
+    return {
+        "name": name,
+        "brand": (product.get("brands") or '').split(',')[0].strip() or None,
+        "item_type": 'liquid' if is_liquid else 'food',
+        "default_amount": default_amount,
+        "default_amount_unit": unit,
+        "calories_per_unit": calories,
+        "protein_per_unit": _off_per_unit(nutriments.get("proteins_100g")),
+        "carbs_per_unit": _off_per_unit(nutriments.get("carbohydrates_100g")),
+        "fat_per_unit": _off_per_unit(nutriments.get("fat_100g")),
+        "fiber_per_unit": _off_per_unit(nutriments.get("fiber_100g")),
+        "sodium_per_unit": round(sodium_g * 1000, 6) if sodium_g is not None else None,
+        "barcode": barcode,
+    }
+
+
 def get_nutrition_item(db: Session, item_id: int) -> Optional[NutritionItem]:
     return db.query(NutritionItem).filter(NutritionItem.id == item_id).first()
 

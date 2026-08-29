@@ -47,6 +47,14 @@ export const nutritionService = {
     return asJson(response, 'Failed to log intake');
   },
 
+  // One feed with several items (formula + juices), written as its rows in a
+  // single transaction sharing an event_group_id. Passing schedule_id +
+  // scheduled_time marks the matching scheduled feed complete.
+  async createIntakeEvent(event) {
+    const response = await jsonPost(`${config.apiUrl}/api/nutrition/intake/event`, event);
+    return asJson(response, 'Failed to log intake');
+  },
+
   async updateIntake(intakeId, data) {
     const response = await jsonPost(
       `${config.apiUrl}/api/nutrition-intake/${intakeId}`, data, 'PUT',
@@ -54,8 +62,10 @@ export const nutritionService = {
     return asJson(response, 'Failed to update intake');
   },
 
-  async deleteIntake(intakeId) {
-    const response = await apiFetch(`${config.apiUrl}/api/nutrition-intake/${intakeId}`, {
+  // wholeEvent also removes the sibling rows of the same logged feed.
+  async deleteIntake(intakeId, { wholeEvent = false } = {}) {
+    const qs = wholeEvent ? '?whole_event=true' : '';
+    const response = await apiFetch(`${config.apiUrl}/api/nutrition-intake/${intakeId}${qs}`, {
       method: 'DELETE',
     });
     return asJson(response, 'Failed to delete intake');
@@ -117,6 +127,17 @@ export const nutritionService = {
     return asJson(response, 'Failed to remove item');
   },
 
+  // Resolve a scanned barcode: a saved library item wins; unknown codes fall
+  // through to OpenFoodFacts as a save-able suggestion. A miss (or offline
+  // hub) is source 'none', never an error.
+  async lookupBarcode(barcode, patientId) {
+    const qs = patientId ? `?patient_id=${patientId}` : '';
+    const response = await apiFetch(
+      `${config.apiUrl}/api/nutrition/items/barcode/${encodeURIComponent(barcode)}${qs}`,
+    );
+    return asJson(response, 'Barcode lookup failed');
+  },
+
   // ---------- presets ----------
   async listPresets(patientId) {
     const qs = patientId ? `?patient_id=${patientId}` : '';
@@ -142,6 +163,23 @@ export const nutritionService = {
       `${config.apiUrl}/api/nutrition/presets/${presetId}/apply`, data,
     );
     return asJson(response, 'Failed to apply preset');
+  },
+
+  // ---------- flush follow-ups ----------
+  // Run a queued post-feed flush (logs the water as a liquid intake)...
+  async completeFlush(followupId, data = {}) {
+    const response = await jsonPost(
+      `${config.apiUrl}/api/nutrition/flush/${followupId}/complete`, data,
+    );
+    return asJson(response, 'Failed to record the flush');
+  },
+
+  // ...or record that it was deliberately not needed today.
+  async skipFlush(followupId, data = {}) {
+    const response = await jsonPost(
+      `${config.apiUrl}/api/nutrition/flush/${followupId}/skip`, data,
+    );
+    return asJson(response, 'Failed to skip the flush');
   },
 
   // ---------- recent ----------

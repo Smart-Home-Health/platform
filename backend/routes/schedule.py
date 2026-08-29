@@ -18,6 +18,7 @@ Schedule routes - Daily schedule view combining medications, nutrition schedules
 """
 import json
 import logging
+import uuid
 from datetime import datetime, date, timedelta, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, Body, Request
@@ -30,7 +31,15 @@ from utils.datetime_utils import utc_now, resolve_tz_for_patient, local_day_boun
 from models.schedule import CompleteItemRequest, BulkCompleteRequest
 from crud.scheduling import get_scheduled_medications, get_scheduled_care_tasks, get_scheduled_nutrition, get_due_and_upcoming_care_tasks_count
 from crud.scheduling import canonical_care_task_item
-from crud.nutrition import create_nutrition_intake, _publish_nutrition_mqtt, _publish_bathroom_mqtt
+from crud.nutrition import (
+    create_nutrition_intake_event,
+    maybe_spawn_flush_followup,
+    schedule_components_as_intake_items,
+    schedule_flush_components,
+    sync_flush_followups_on_void,
+    _publish_nutrition_mqtt,
+    _publish_bathroom_mqtt,
+)
 from crud.users import create_audit_log
 from event_publisher import publish_due_counts_changed
 from dependencies import get_current_user, require_permission
@@ -219,6 +228,13 @@ async def get_daily_schedule(
                 "default_amount": nutr.get("default_amount"),
                 "default_amount_unit": nutr.get("default_amount_unit"),
                 "default_calories": nutr.get("default_calories"),
+                "components": nutr.get("components") or [],
+                # 'schedule' | 'flush' | 'prn' | 'output' — flush rows are the
+                # one-off post-feed follow-ups with Run/Skip affordances.
+                "row_kind": nutr.get("row_kind", "schedule"),
+                "followup_id": nutr.get("followup_id"),
+                "skipped": nutr.get("skipped", False),
+                "flush_components": nutr.get("flush_components") or [],
                 "scheduled_time": nutr["scheduled_time"].isoformat(),
                 "hour": nutr["scheduled_time"].hour,
                 "minute": nutr["scheduled_time"].minute,
@@ -348,6 +364,40 @@ async def complete_medication(
         return {"success": False, "error": str(e)}
 
 
+def _nutrition_completion_rows(schedule, data: CompleteItemRequest):
+    """What a nutrition completion actually logs, in priority order:
+    explicit `items` from the client, else the schedule's component mix, else
+    the legacy single default. Shared by the single and bulk paths so they
+    cannot drift.
+
+    Returns None for a care-activity schedule (diaper check etc.) that
+    records no intake at all.
+    """
+    if data.items:
+        return [part.model_dump() for part in data.items]
+
+    if schedule.components:
+        rows = schedule_components_as_intake_items(schedule)
+        if rows:
+            return rows
+
+    # Normalize schedule_type onto the intake vocabulary. Assigning it
+    # straight through used to write schedule words ('meal', 'hydration')
+    # into item_type, bypassing validation. A care activity that produces
+    # no food or fluid maps to None and creates no intake row at all.
+    item_type = item_type_for_schedule_type(schedule.schedule_type)
+    if item_type is None:
+        return None
+
+    return [{
+        'item_name': data.item_name or schedule.default_item_name or schedule.name,
+        'item_type': item_type,
+        'amount': data.amount if data.amount is not None else (schedule.default_amount or 0),
+        'amount_unit': data.amount_unit or schedule.default_amount_unit or 'servings',
+        'calories': schedule.default_calories,
+    }]
+
+
 @router.post("/complete/nutrition")
 async def complete_nutrition(
     data: CompleteItemRequest,
@@ -383,41 +433,58 @@ async def complete_nutrition(
         if not schedule:
             return {"success": False, "error": "Schedule not found"}
         
-        # Use provided values or fall back to schedule defaults
-        item_name = data.item_name or schedule.default_item_name or schedule.name
-        amount = data.amount if data.amount is not None else (schedule.default_amount or 0)
-        amount_unit = data.amount_unit or schedule.default_amount_unit or 'servings'
-        
-        # Normalize schedule_type onto the intake vocabulary. Assigning it
-        # straight through used to write schedule words ('meal', 'hydration')
-        # into item_type, bypassing validation. A care activity that produces
-        # no food or fluid maps to None and creates no intake row at all.
-        item_type = item_type_for_schedule_type(schedule.schedule_type)
-        if item_type is None:
+        # Resolve what this feed actually logs: explicit items from the
+        # client, else the schedule's component mix, else the legacy single
+        # default. None means a care activity that records no intake.
+        rows = _nutrition_completion_rows(schedule, data)
+        if rows is None:
             return {
                 "success": True,
                 "intake_id": None,
                 "detail": "Care activity schedule; no intake recorded.",
             }
 
-        # Create via the dedicated nutrition module so MQTT/HA publishing and the
-        # due-count badge fire (the direct NutritionIntake(...) path skipped them).
-        intake = create_nutrition_intake(db, {
-            "schedule_id": data.schedule_id,
-            "item_name": item_name,
-            "item_type": item_type,
-            "meal_type": SCHEDULE_TYPE_TO_MEAL_TYPE.get(
+        # Create via the dedicated nutrition module so MQTT/HA publishing and
+        # the due-count badge fire; one event = N rows sharing event_group_id.
+        intakes = create_nutrition_intake_event(
+            db,
+            data.patient_id,
+            rows,
+            consumed_at=completed_at,
+            meal_type=SCHEDULE_TYPE_TO_MEAL_TYPE.get(
                 (schedule.schedule_type or '').strip().lower()
             ),
-            "amount": amount,
-            "amount_unit": amount_unit,
-            "calories": schedule.default_calories,
-            "consumed_at": completed_at,
-            "scheduled_time": scheduled_dt,
-            "notes": data.notes,
-        }, patient_id=data.patient_id)
+            notes=data.notes,
+            recorded_by=data.user_id,
+            schedule_id=data.schedule_id,
+            scheduled_time=scheduled_dt,
+        )
 
-        return {"success": True, "intake_id": intake.id}
+        # A flush-flagged schedule queued a follow-up in the same transaction;
+        # hand it back so the client can show the new due row immediately.
+        followup = None
+        from schemas.nutrition_flush_followup import NutritionFlushFollowup
+        spawned = db.query(NutritionFlushFollowup).filter(
+            NutritionFlushFollowup.source_event_group_id == intakes[0].event_group_id,
+        ).first()
+        if spawned is not None:
+            followup = {
+                "id": spawned.id,
+                "due_at": spawned.due_at.isoformat(),
+                "item_name": spawned.item_name,
+                "amount": spawned.amount,
+                "amount_unit": spawned.amount_unit,
+                "status": spawned.status,
+            }
+
+        return {
+            "success": True,
+            # First row's id keeps the pre-multi-item response shape working.
+            "intake_id": intakes[0].id,
+            "intake_ids": [i.id for i in intakes],
+            "event_group_id": intakes[0].event_group_id,
+            "flush_followup": followup,
+        }
     except Exception as e:
         logger.error(f"Error completing nutrition: {e}")
         db.rollback()
@@ -680,30 +747,57 @@ async def complete_bulk(
                 
                 schedule = db.query(NutritionSchedule).filter(NutritionSchedule.id == item.schedule_id).first()
                 if schedule:
-                    item_name = item.item_name or schedule.default_item_name or schedule.name
-                    amount = item.amount if item.amount is not None else (schedule.default_amount or 0)
-                    amount_unit = item.amount_unit or schedule.default_amount_unit or 'servings'
-                    
-                    bulk_item_type = item_type_for_schedule_type(schedule.schedule_type)
-                    if bulk_item_type is None:
+                    rows = _nutrition_completion_rows(schedule, item)
+                    if rows is None:
                         # Care activity, not an intake -- see the single path.
                         continue
 
-                    intake = NutritionIntake(
-                        patient_id=item.patient_id,
-                        schedule_id=item.schedule_id,
-                        item_name=item_name,
-                        item_type=bulk_item_type,
-                        amount=amount,
-                        amount_unit=amount_unit,
-                        calories=schedule.default_calories,
-                        consumed_at=completed_at,
-                        scheduled_time=scheduled_dt,
-                        notes=item.notes,
-                        created_at=utc_now(),
-                        updated_at=utc_now()
+                    # One event per feed: every row of the mix shares a group
+                    # id. Rows are added to the shared bulk transaction rather
+                    # than through create_nutrition_intake_event so the whole
+                    # bulk completion stays one commit with one MQTT publish.
+                    group_id = str(uuid.uuid4())
+                    meal_type = SCHEDULE_TYPE_TO_MEAL_TYPE.get(
+                        (schedule.schedule_type or '').strip().lower()
                     )
-                    db.add(intake)
+                    for row in rows:
+                        intake = NutritionIntake(
+                            patient_id=item.patient_id,
+                            schedule_id=item.schedule_id,
+                            event_group_id=group_id,
+                            item_id=row.get('item_id'),
+                            item_name=row['item_name'],
+                            item_type=row['item_type'],
+                            amount=row['amount'],
+                            amount_unit=row['amount_unit'],
+                            feed_route=row.get('feed_route'),
+                            rate_ml_per_hr=row.get('rate_ml_per_hr'),
+                            duration_minutes=row.get('duration_minutes'),
+                            calories=row.get('calories'),
+                            protein_grams=row.get('protein_grams'),
+                            carbs_grams=row.get('carbs_grams'),
+                            fat_grams=row.get('fat_grams'),
+                            fiber_grams=row.get('fiber_grams'),
+                            sodium_mg=row.get('sodium_mg'),
+                            meal_type=meal_type,
+                            consumed_at=completed_at,
+                            scheduled_time=scheduled_dt,
+                            notes=item.notes,
+                            created_at=utc_now(),
+                            updated_at=utc_now()
+                        )
+                        db.add(intake)
+                    # A flush-flagged schedule queues its follow-up inside the
+                    # same bulk transaction.
+                    maybe_spawn_flush_followup(
+                        db, schedule,
+                        patient_id=item.patient_id,
+                        group_id=group_id,
+                        rows=rows,
+                        consumed_at=completed_at,
+                        feed_scheduled_time=scheduled_dt,
+                        recorded_by=item.user_id,
+                    )
                     results["nutrition"].append({"schedule_id": item.schedule_id, "success": True})
             except Exception as e:
                 results["nutrition"].append({"schedule_id": item.schedule_id, "success": False, "error": str(e)})
@@ -856,16 +950,36 @@ async def undo_completion(
             intake = db.query(NutritionIntake).filter(NutritionIntake.id == int(log_id)).first()
             if not intake:
                 return JSONResponse(status_code=404, content={"detail": "Nutrition intake not found"})
-            intake.voided_at = now
-            intake.voided_by = uid
+            # Un-completing a feed means the whole feed: void every row of the
+            # logged event (a multi-item mix), not just the one the board
+            # happened to reference. The soft-delete filter already excludes
+            # previously voided siblings.
+            siblings = [intake]
+            if intake.event_group_id:
+                siblings = db.query(NutritionIntake).filter(
+                    NutritionIntake.event_group_id == intake.event_group_id,
+                    NutritionIntake.patient_id == intake.patient_id,
+                ).all()
+            voided_ids = []
+            for row in siblings:
+                row.voided_at = now
+                row.voided_by = uid
+                voided_ids.append(row.id)
+            # Undoing a feed voids its queued flush; undoing a logged flush
+            # restores the follow-up to pending.
+            flush_sync = sync_flush_followups_on_void(
+                db, [intake.event_group_id], uid, now)
             _record_undo_audit(db, request, current_user, item_type, log_id, {
                 "primary_id": intake.id,
+                "voided_ids": voided_ids,
                 "item_name": intake.item_name,
                 "patient_id": intake.patient_id,
                 "amount": intake.amount,
                 "amount_unit": intake.amount_unit,
                 "scheduled_time": intake.scheduled_time.isoformat() if intake.scheduled_time else None,
                 "consumed_at": intake.consumed_at.isoformat() if intake.consumed_at else None,
+                "flush_followups_voided": flush_sync["voided"],
+                "flush_followups_restored": flush_sync["restored"],
             })
             db.commit()
             # Real-time badge: undo restores the feed to "due".

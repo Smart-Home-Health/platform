@@ -382,6 +382,11 @@
   max-width: 560px;
   max-height: calc(100dvh - 3rem);
   overflow-y: auto;
+  /* overflow-y:auto alone makes overflow-x compute to auto as well, turning
+     the whole dialog into a sideways scroller the moment any child runs one
+     pixel wide — on iOS that pans the entire sheet. Never wanted in a modal;
+     rows that need to scroll (chips) own their overflow-x themselves. */
+  overflow-x: hidden;
   background: var(--vc-bg-sheet);
   border: 1px solid var(--vc-line-strong);
   border-radius: 12px;

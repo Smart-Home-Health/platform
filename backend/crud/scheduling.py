@@ -1076,8 +1076,18 @@ def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset
 
         scheduled_nutrition = []
 
+        from crud.nutrition import schedule_components_as_intake_items, schedule_flush_components
+
         for schedule in schedules:
             try:
+                # The feed's component mix, as ready-to-log item dicts with
+                # scaled facts, so the completion form can prefill without a
+                # second request. Computed once per schedule, shared by every
+                # firing of it. Flush-flagged components surface separately —
+                # they are given after the feed, not with it.
+                components = schedule_components_as_intake_items(schedule)
+                flush_comps = schedule_flush_components(schedule)
+
                 # Walk croniter forward from just before the local-day window in UTC.
                 base_time = local_start_utc - timedelta(hours=1)
                 cron = croniter(schedule.cron_expression, base_time)
@@ -1101,6 +1111,7 @@ def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset
                         'default_amount': schedule.default_amount,
                         'default_amount_unit': schedule.default_amount_unit,
                         'default_calories': schedule.default_calories,
+                        'components': components,
                         # Real UTC datetime — the frontend converts to local
                         # for display and hour/minute bucketing.
                         'scheduled_time': next_time_utc,
@@ -1114,6 +1125,10 @@ def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset
                         'is_prn': False,
                         'intake_type': 'intake',
                         'log_id': log.id if log else None,
+                        'row_kind': 'schedule',
+                        'followup_id': None,
+                        'skipped': False,
+                        'flush_components': flush_comps,
                     })
             except Exception as cron_error:
                 logger.error(f"Error processing nutrition cron expression {schedule.cron_expression}: {cron_error}")
@@ -1157,6 +1172,64 @@ def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset
                 'is_prn': True,
                 'intake_type': 'intake',
                 'log_id': intake.id,
+                'row_kind': 'prn',
+                'followup_id': None,
+                'skipped': False,
+            })
+
+        # One-off post-feed flush follow-ups whose due time falls in the
+        # local-day window (the soft-delete filter hides voided ones). Board
+        # state comes from the followup row itself — its logged intake
+        # carries no scheduled_time, so cron matching never sees it.
+        from schemas.nutrition_flush_followup import NutritionFlushFollowup
+
+        followups = db.query(NutritionFlushFollowup).filter(
+            NutritionFlushFollowup.patient_id == patient_id,
+            NutritionFlushFollowup.due_at >= local_start_utc,
+            NutritionFlushFollowup.due_at < local_end_utc,
+        ).all()
+
+        # The undo button needs a real intake log_id; one row of the flush's
+        # logged event is enough (undo fans out over the group).
+        completed_groups = [f.completed_intake_group_id for f in followups
+                            if f.completed_intake_group_id]
+        flush_log_ids = {}
+        if completed_groups:
+            for gid, min_id in (
+                db.query(NutritionIntake.event_group_id, func.min(NutritionIntake.id))
+                .filter(NutritionIntake.event_group_id.in_(completed_groups))
+                .group_by(NutritionIntake.event_group_id)
+                .all()
+            ):
+                flush_log_ids[gid] = min_id
+
+        for f in followups:
+            due = f.due_at if f.due_at.tzinfo else f.due_at.replace(tzinfo=timezone.utc)
+            completed_at = f.completed_at
+            if completed_at is not None and completed_at.tzinfo is None:
+                completed_at = completed_at.replace(tzinfo=timezone.utc)
+            scheduled_nutrition.append({
+                'schedule_id': f.schedule_id,
+                'name': f"{f.schedule.name} flush" if f.schedule else (f.item_name or 'Water flush'),
+                'schedule_type': 'hydration',
+                'default_item_name': f.item_name,
+                'default_amount': f.amount,
+                'default_amount_unit': f.amount_unit,
+                'default_calories': None,
+                'components': [],
+                'scheduled_time': due,
+                'instructions': None,
+                'notes': f.notes,
+                'cron_expression': None,
+                'completed': f.status == 'completed',
+                'completed_at': completed_at.isoformat() if (f.status == 'completed' and completed_at) else None,
+                'completed_by': f.completed_by if f.status == 'completed' else None,
+                'is_prn': False,
+                'intake_type': 'intake',
+                'log_id': flush_log_ids.get(f.completed_intake_group_id),
+                'row_kind': 'flush',
+                'followup_id': f.id,
+                'skipped': f.status == 'skipped',
             })
 
         prn_outputs = db.query(NutritionOutput).filter(
@@ -1215,6 +1288,9 @@ def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset
                 'intake_type': 'output',
                 'log_id': output.id,
                 'output_type': output.output_type,
+                'row_kind': 'output',
+                'followup_id': None,
+                'skipped': False,
                 # Carry the source row so merge can reach diaper flag + amounts.
                 '_source': output,
             })
@@ -1270,6 +1346,9 @@ def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset
                 'intake_type': 'output',
                 'log_id': f"mixed-{'-'.join(str(i) for i in ids)}",
                 'output_type': 'mixed_diaper' if location == 'diaper' else 'mixed_output',
+                'row_kind': 'output',
+                'followup_id': None,
+                'skipped': False,
             })
 
         return sorted(scheduled_nutrition, key=lambda x: x['scheduled_time'])
@@ -1342,7 +1421,7 @@ def get_nutrition_schedule_counts(db: Session, patient_id=None, tz=None):
             # overlapping per-UTC-date fetches.
             if not (bounds['yesterday_start_utc'] <= scheduled_time < bounds['today_end_utc']):
                 continue
-            key = (item.get('schedule_id'), scheduled_time)
+            key = (item.get('schedule_id'), scheduled_time, item.get('followup_id'))
             if key in seen:
                 continue
             seen.add(key)
@@ -1350,6 +1429,9 @@ def get_nutrition_schedule_counts(db: Session, patient_id=None, tz=None):
             if item.get('is_prn'):
                 continue
             if item.get('completed'):
+                continue
+            # An explicitly skipped flush is decided, not due.
+            if item.get('skipped'):
                 continue
 
             diff_seconds = (scheduled_time - now).total_seconds()
@@ -1402,7 +1484,7 @@ def get_nutrition_due_now_late_counts(db: Session, patient_id=None, tz=None):
 
             if not (bounds['yesterday_start_utc'] <= scheduled_time < bounds['today_end_utc']):
                 continue
-            key = (item.get('schedule_id'), scheduled_time)
+            key = (item.get('schedule_id'), scheduled_time, item.get('followup_id'))
             if key in seen:
                 continue
             seen.add(key)
@@ -1410,6 +1492,9 @@ def get_nutrition_due_now_late_counts(db: Session, patient_id=None, tz=None):
             if item.get('is_prn'):
                 continue
             if item.get('completed'):
+                continue
+            # An explicitly skipped flush is decided, not due.
+            if item.get('skipped'):
                 continue
 
             diff_seconds = (scheduled_time - now).total_seconds()

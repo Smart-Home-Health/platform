@@ -22,8 +22,9 @@ import { nutritionService } from '../../services/nutrition';
 import { FLUID_ITEM_TYPES } from '../../components/nutrition/intakeVocab';
 import {
   PatientHeader, PatientSelectorModal, IntakeSheet, OutputSheet, NutritionOverview,
-  NutritionPlanTab, GoalHistoryModal, NutritionHistoryModal,
+  NutritionPlanTab, NutritionItemsTab, GoalHistoryModal, NutritionHistoryModal,
 } from './components';
+import ItemSheet from '../../components/nutrition/ItemSheet';
 import ScheduleSheet from '../../components/nutrition/ScheduleSheet';
 import GoalSheet from '../../components/nutrition/GoalSheet';
 import config from '../../config';
@@ -71,6 +72,7 @@ const AdminV2Nutrition = () => {
     if (path.includes('/nutrition/plan')) return 'plan';
     if (path.includes('/nutrition/schedules')) return 'plan';
     if (path.includes('/nutrition/goals')) return 'plan';
+    if (path.includes('/nutrition/items')) return 'items';
     return 'overview'; // default — /care/nutrition lands here
   };
   
@@ -95,6 +97,9 @@ const AdminV2Nutrition = () => {
   const [overviewDate, setOverviewDate] = useState(new Date());
   const [dailyIntakes, setDailyIntakes] = useState([]);
   const [dailyOutputs, setDailyOutputs] = useState([]);
+
+  // Items-tab state — the saved-item library this patient logs against.
+  const [libraryItems, setLibraryItems] = useState([]);
   
   // Reference data
   const [outputTypes, setOutputTypes] = useState({});
@@ -103,6 +108,7 @@ const AdminV2Nutrition = () => {
   // Modal states
   const [showIntakeModal, setShowIntakeModal] = useState(false);
   const [showOutputModal, setShowOutputModal] = useState(false);
+  const [showItemModal, setShowItemModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [showGoalModal, setShowGoalModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -261,6 +267,10 @@ const AdminV2Nutrition = () => {
           setCurrentGoal(body.goal || null);
         }
         if (goalsRes.ok) setGoals(await goalsRes.json());
+      } else if (activeTab === 'items') {
+        setLibraryItems(await nutritionService.listItems({
+          patientId: selectedPatient.id, limit: 200,
+        }));
       }
     } catch (err) {
       console.error('Error fetching data:', err);
@@ -287,10 +297,19 @@ const AdminV2Nutrition = () => {
   // ========================
   // OUTPUT HANDLERS
   // ========================
-  
+
   const openOutputModal = (output = null) => {
     setEditingItem(output);
     setShowOutputModal(true);
+  };
+
+  // ========================
+  // ITEM LIBRARY HANDLERS
+  // ========================
+
+  const openItemModal = (item = null) => {
+    setEditingItem(item);
+    setShowItemModal(true);
   };
 
   // ========================
@@ -404,7 +423,9 @@ const AdminV2Nutrition = () => {
       let url;
       switch (deleteType) {
         case 'intake':
-          url = `${config.apiUrl}/api/nutrition-intake/${deletingItem.id}`;
+          url = `${config.apiUrl}/api/nutrition-intake/${deletingItem.id}`
+            // Deleting the whole feed removes every row of the logged event.
+            + (deletingItem.wholeEvent ? '?whole_event=true' : '');
           break;
         case 'output':
           url = `${config.apiUrl}/api/nutrition/outputs/${deletingItem.id}`;
@@ -414,6 +435,10 @@ const AdminV2Nutrition = () => {
           break;
         case 'goal':
           url = `${config.apiUrl}/api/nutrition/goals/${deletingItem.id}`;
+          break;
+        case 'item':
+          // Soft deactivate — intakes already logged against it are untouched.
+          url = `${config.apiUrl}/api/nutrition/items/${deletingItem.id}`;
           break;
         default:
           return;
@@ -617,6 +642,20 @@ const AdminV2Nutrition = () => {
                 formatDate={formatDate}
               />
             )}
+
+            {/* ITEMS TAB — the saved-item library logging draws from */}
+            {activeTab === 'items' && (
+              <NutritionItemsTab
+                items={libraryItems}
+                loading={loading}
+                canCreate={hasPermission('nutrition.create')}
+                canUpdate={hasPermission('nutrition.update')}
+                canDelete={hasPermission('nutrition.delete')}
+                onAdd={() => openItemModal()}
+                onEdit={openItemModal}
+                onDelete={(item) => openDeleteModal(item, 'item')}
+              />
+            )}
           </>
         )}
       </div>
@@ -654,6 +693,14 @@ const AdminV2Nutrition = () => {
         editing={editingItem}
       />
 
+      <ItemSheet
+        open={showItemModal}
+        onClose={() => { setShowItemModal(false); setEditingItem(null); }}
+        onSaved={fetchData}
+        patient={selectedPatient}
+        editing={showItemModal ? editingItem : null}
+      />
+
 
       <ScheduleSheet
         open={showScheduleModal}
@@ -662,6 +709,7 @@ const AdminV2Nutrition = () => {
         editing={editingItem}
         saving={saving}
         error={formError}
+        patient={selectedPatient}
       />
 
       <GoalSheet

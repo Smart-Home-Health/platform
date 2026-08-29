@@ -34,6 +34,10 @@ import { ClockIcon, FoodIcon, LiquidIcon, SnackIcon, SupplementIcon } from '../I
 import {
   localTimeToUTC, localTimeAndDaysToUTC, utcCronToLocalDaysAndTime,
 } from '../../utils/timezone';
+import IntakeItemsEditor from './IntakeItemsEditor';
+import {
+  rowFromComponentResponse, rowIsValid, rowToComponentPayload,
+} from './intakeItemRows';
 import './nutrition-sheet.css';
 
 // Schedules that put food or fluid into the patient...
@@ -80,12 +84,15 @@ const numberOrNull = (value) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-export default function ScheduleSheet({ open, onClose, onSave, editing, saving, error }) {
+export default function ScheduleSheet({ open, onClose, onSave, editing, saving, error, patient }) {
   const [form, setForm] = useState(emptyForm);
   const [mode, setMode] = useState('daily');
   const [days, setDays] = useState([1, 2, 3, 4, 5]);
   const [dayOfMonth, setDayOfMonth] = useState(1);
   const [time, setTime] = useState('08:00');
+  // The feed's default mix — one saved item per row. When present, it wins
+  // over the single default fields; completion prefills from it.
+  const [mixItems, setMixItems] = useState([]);
   const [localError, setLocalError] = useState(null);
 
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
@@ -99,8 +106,11 @@ export default function ScheduleSheet({ open, onClose, onSave, editing, saving, 
       setDays([1, 2, 3, 4, 5]);
       setDayOfMonth(1);
       setTime('08:00');
+      setMixItems([]);
       return;
     }
+
+    setMixItems((editing.components || []).map(rowFromComponentResponse));
 
     setForm({
       ...emptyForm(),
@@ -159,8 +169,10 @@ export default function ScheduleSheet({ open, onClose, onSave, editing, saving, 
     return `${utc.minute} ${utc.hour} * * *`;
   };
 
+  const mixValid = mixItems.every((row) => rowIsValid(row) && row.itemId);
   const canSave = !!form.name.trim() && !saving
-    && !(mode === 'weekly' && days.length === 0);
+    && !(mode === 'weekly' && days.length === 0)
+    && (isCare || mixValid);
 
   const summary = useMemo(() => {
     const when = mode === 'daily'
@@ -190,6 +202,8 @@ export default function ScheduleSheet({ open, onClose, onSave, editing, saving, 
       default_amount: isCare ? null : numberOrNull(form.default_amount),
       default_amount_unit: isCare ? null : form.default_amount_unit,
       default_calories: isCare ? null : numberOrNull(form.default_calories),
+      // The multi-item mix replaces the whole stored list ([] clears it).
+      components: isCare ? [] : mixItems.map((row, i) => rowToComponentPayload(row, i)),
       create_care_task: form.create_care_task,
       reminder_minutes_before: numberOrNull(form.reminder_minutes_before) ?? 0,
       instructions: form.instructions || null,
@@ -296,8 +310,29 @@ export default function ScheduleSheet({ open, onClose, onSave, editing, saving, 
           </EmField>
         </section>
 
-        {/* Only a nutrition schedule has anything to prefill. */}
+        {/* Only a nutrition schedule has anything to prefill. The feed mix
+            is the multi-item default (formula + juices); the single default
+            fields below stay for schedules without one. */}
         {!isCare && (
+          <>
+            <IntakeItemsEditor
+              patient={patient}
+              items={mixItems}
+              onChange={setMixItems}
+              requireSavedItem
+              showFacts={false}
+              allowFlushToggle
+              title="Feed mix"
+              idPrefix="sched-mix"
+            />
+            <p className="nsheet-note">
+              The feed mix prefills the completion form; amounts can be adjusted
+              per feed. Items come from the saved-item library so calories and
+              macros are counted automatically.
+            </p>
+          </>
+        )}
+        {!isCare && mixItems.length === 0 && (
           <section className="nsheet-card">
             <header className="nsheet-card-head"><h4>Defaults when logged</h4></header>
             <EmField label="Item" optional htmlFor="sched-item">

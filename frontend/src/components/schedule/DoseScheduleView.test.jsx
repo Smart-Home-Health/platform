@@ -130,6 +130,25 @@ describe('DoseScheduleView — narrow stop', () => {
     expect(within(given).queryByRole('button', { name: /skip/i })).toBeNull();
   });
 
+  it('can_skip narrows the view-wide skip to specific rows', () => {
+    // The nutrition modal passes onSkip for flush follow-ups only; a row
+    // with can_skip: false must not grow the button. Rows that never set
+    // can_skip keep it (the meds/care-task callers stay untouched).
+    const items = [
+      { ...ITEMS[0], can_skip: false },
+      { ...ITEMS[1], can_skip: true },
+    ];
+    const onSkip = vi.fn();
+    const { container } = render(
+      <ModalDockProvider value={{ docked: true, expanded: false, toggleExpand: vi.fn(), setExpanded: vi.fn() }}>
+        <DoseScheduleView items={items} onSkip={onSkip} />
+      </ModalDockProvider>
+    );
+    expect(within(container).queryByRole('button', { name: /Skip Briviact/i })).toBeNull();
+    fireEvent.click(within(container).getByRole('button', { name: /Skip Propranolol/i }));
+    expect(onSkip).toHaveBeenCalledWith(expect.objectContaining({ name: 'Propranolol' }));
+  });
+
   it('record all is offered per time band, and only what still needs doing', () => {
     const onRecordAll = vi.fn();
     renderAt({ expanded: false }, { onRecordAll });

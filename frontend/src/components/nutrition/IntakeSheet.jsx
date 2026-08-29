@@ -15,39 +15,33 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-// THE intake logging sheet. Replaces three separate implementations that had
-// drifted apart: the admin IntakeModal, the live dashboard's own form, and the
-// 997-line care-task NutritionTrackingModal.
+// THE intake logging sheet. One feed is a LIST of items — formula plus a
+// varying mix of juices and smoothies — logged together as one event whose
+// rows share an event_group_id, so fluid and calorie math still sees each
+// item separately.
 //
-// The body adapts to the intake type:
-//   liquid     - item, volume, optional nutrition
-//   food       - item, servings/grams, nutrition
-//   supplement - item, count/scoop, optional nutrition
-//   tube feed  - formula, volume, bolus/pump/gravity, rate or duration, flush
+// A hand-logged feed can also be linked to a scheduled feed: pick the feed
+// and the entry records against it, marking it complete on the schedule
+// board — no second "mark complete" step, no duplicate entry.
 //
 // Presets cover repeated combinations ("Peptamen 250 mL + 60 mL flush, pump").
-// Applying one writes a separate intake record per component, grouped — the
-// feed and its flush stay distinct so fluid totals keep meaning something.
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import EntityModal, { EmField } from '../vc/EntityModal';
-import SegmentedControl from '../vc/SegmentedControl';
+// Applying one writes a separate intake record per component, grouped.
+import { useEffect, useMemo, useState } from 'react';
+import EntityModal from '../vc/EntityModal';
 import ChipGroup from '../vc/ChipGroup';
 import DisclosureRow from '../vc/DisclosureRow';
 import WhenRow from './WhenRow';
+import config from '../../config';
 import { nutritionService } from '../../services/nutrition';
 import {
-  BarcodeIcon, BreakfastIcon, DinnerIcon, FoodIcon, LiquidIcon, LunchIcon,
-  MinusIcon, MoreHorizontalIcon, PlusIcon, SnackIcon, SupplementIcon, TubeIcon,
+  BreakfastIcon, DinnerIcon, LinkIcon, LunchIcon, MoreHorizontalIcon, SnackIcon,
 } from '../Icons';
-import { INTAKE_TYPES, UNITS_FOR_TYPE, describeIntake, scaleNutrition } from './intakeVocab';
+import IntakeItemsEditor from './IntakeItemsEditor';
+import {
+  feedTarget, makeItemRow, rowFromScheduleComponent, rowIsValid, rowToItemPayload,
+  saveRowsAsItems,
+} from './intakeItemRows';
 import './nutrition-sheet.css';
-
-const TYPE_ICONS = {
-  liquid: <LiquidIcon size={20} />,
-  food: <FoodIcon size={20} />,
-  supplement: <SupplementIcon size={20} />,
-  tube_feed: <TubeIcon size={20} />,
-};
 
 // Meal context is optional and separate from the intake type. "Supplement"
 // deliberately does not appear here as well as in the type list.
@@ -59,29 +53,6 @@ const CONTEXTS = [
   { value: 'other', label: 'Other', icon: <MoreHorizontalIcon size={16} /> },
 ];
 
-const emptyForm = (when) => ({
-  itemType: 'liquid',
-  mealType: null,
-  itemId: null,
-  itemName: '',
-  amount: '',
-  amountUnit: 'ml',
-  consumedAt: when,
-  // tube feed
-  feedRoute: '',
-  rateMlPerHr: '',
-  durationMinutes: '',
-  // nutrition
-  calories: '',
-  protein: '',
-  carbs: '',
-  fat: '',
-  fiber: '',
-  sodium: '',
-  notes: '',
-  saveAsItem: false,
-});
-
 const toLocalInput = (value) => {
   const d = value ? new Date(value) : new Date();
   const pad = (n) => String(n).padStart(2, '0');
@@ -89,56 +60,78 @@ const toLocalInput = (value) => {
     + `T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
-const numberOrNull = (value) => {
-  const trimmed = String(value ?? '').trim();
-  if (!trimmed) return null;
-  const parsed = Number(trimmed);
-  return Number.isFinite(parsed) ? parsed : null;
+const feedTimeLabel = (iso) => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  let hours = d.getHours();
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  const suffix = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12 === 0 ? 12 : hours % 12;
+  return `${hours}:${minutes} ${suffix}`;
+};
+
+/** One editor row from an existing intake record (edit mode). */
+const rowFromExisting = (record) => makeItemRow({
+  itemId: record.item_id ?? null,
+  itemName: record.item_name || '',
+  itemType: record.item_type || 'liquid',
+  amount: record.amount != null ? String(record.amount) : '',
+  amountUnit: record.amount_unit || 'ml',
+  feedRoute: record.feed_route || '',
+  rateMlPerHr: record.rate_ml_per_hr != null ? String(record.rate_ml_per_hr) : '',
+  durationMinutes: record.duration_minutes != null ? String(record.duration_minutes) : '',
+  calories: record.calories != null ? String(record.calories) : '',
+  protein: record.protein_grams != null ? String(record.protein_grams) : '',
+  carbs: record.carbs_grams != null ? String(record.carbs_grams) : '',
+  fat: record.fat_grams != null ? String(record.fat_grams) : '',
+  fiber: record.fiber_grams != null ? String(record.fiber_grams) : '',
+  sodium: record.sodium_mg != null ? String(record.sodium_mg) : '',
+});
+
+/** Prefill rows from a scheduled feed's component mix (or single default). */
+const rowsFromFeed = (feed) => {
+  if (feed.components?.length) return feed.components.map(rowFromScheduleComponent);
+  if (feed.default_item || feed.default_amount != null) {
+    return [makeItemRow({
+      itemName: feed.default_item || feed.name || '',
+      itemType: 'liquid',
+      amount: feed.default_amount != null ? String(feed.default_amount) : '',
+      amountUnit: feed.default_amount_unit || 'ml',
+      calories: feed.default_calories != null ? String(feed.default_calories) : '',
+    })];
+  }
+  return [];
 };
 
 export default function IntakeSheet({
   open, onClose, onSaved, patient, editing, defaultDateTime,
   careTaskLogId, careTaskName,
 }) {
-  const [form, setForm] = useState(() => emptyForm(toLocalInput(defaultDateTime)));
+  const [mealType, setMealType] = useState(null);
+  const [consumedAt, setConsumedAt] = useState(() => toLocalInput(defaultDateTime));
+  const [notes, setNotes] = useState('');
+  const [items, setItems] = useState([]);
   const [recent, setRecent] = useState([]);
   const [presets, setPresets] = useState([]);
-  const [search, setSearch] = useState('');
-  const [results, setResults] = useState([]);
+  const [feeds, setFeeds] = useState([]);          // today's open scheduled feeds
+  const [linkedFeed, setLinkedFeed] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
-  const [savedCount, setSavedCount] = useState(0);
-
-  const set = useCallback((patch) => setForm((f) => ({ ...f, ...patch })), []);
 
   useEffect(() => {
     if (!open) return;
     setError(null);
-    setSavedCount(0);
-    setSearch('');
-    setResults([]);
+    setLinkedFeed(null);
     if (editing) {
-      setForm({
-        ...emptyForm(toLocalInput(editing.consumed_at)),
-        itemType: editing.item_type || 'liquid',
-        mealType: editing.meal_type || null,
-        itemId: editing.item_id ?? null,
-        itemName: editing.item_name || '',
-        amount: editing.amount != null ? String(editing.amount) : '',
-        amountUnit: editing.amount_unit || 'ml',
-        feedRoute: editing.feed_route || '',
-        rateMlPerHr: editing.rate_ml_per_hr != null ? String(editing.rate_ml_per_hr) : '',
-        durationMinutes: editing.duration_minutes != null ? String(editing.duration_minutes) : '',
-        calories: editing.calories != null ? String(editing.calories) : '',
-        protein: editing.protein_grams != null ? String(editing.protein_grams) : '',
-        carbs: editing.carbs_grams != null ? String(editing.carbs_grams) : '',
-        fat: editing.fat_grams != null ? String(editing.fat_grams) : '',
-        fiber: editing.fiber_grams != null ? String(editing.fiber_grams) : '',
-        sodium: editing.sodium_mg != null ? String(editing.sodium_mg) : '',
-        notes: editing.notes || '',
-      });
+      setMealType(editing.meal_type || null);
+      setConsumedAt(toLocalInput(editing.consumed_at));
+      setNotes(editing.notes || '');
+      setItems([rowFromExisting(editing)]);
     } else {
-      setForm(emptyForm(toLocalInput(defaultDateTime)));
+      setMealType(null);
+      setConsumedAt(toLocalInput(defaultDateTime));
+      setNotes('');
+      setItems([]);
     }
   }, [open, editing, defaultDateTime]);
 
@@ -157,67 +150,42 @@ export default function IntakeSheet({
     return () => { cancelled = true; };
   }, [open, patient, editing]);
 
-  // Item search over the saved library.
+  // Today's still-open scheduled feeds, for the link picker. A hand-logged
+  // entry linked to one records against it and marks it complete.
   useEffect(() => {
-    if (!open || !patient) return undefined;
-    const term = search.trim();
-    if (!term) { setResults([]); return undefined; }
+    if (!open || !patient || editing || careTaskLogId) return;
     let cancelled = false;
-    const timer = setTimeout(() => {
-      nutritionService.listItems({ patientId: patient.id, search: term, limit: 8 })
-        .then((items) => { if (!cancelled) setResults(items); })
-        .catch(() => { if (!cancelled) setResults([]); });
-    }, 200);
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [search, open, patient]);
-
-  const isTubeFeed = form.itemType === 'tube_feed';
-  const units = UNITS_FOR_TYPE[form.itemType] || UNITS_FOR_TYPE.liquid;
-
-  const summary = useMemo(() => describeIntake(form), [form]);
-  const canSave = !!form.itemName.trim() && numberOrNull(form.amount) !== null && !saving;
-
-  const chooseType = (itemType) => {
-    const nextUnits = UNITS_FOR_TYPE[itemType] || UNITS_FOR_TYPE.liquid;
-    set({
-      itemType,
-      // Keep the current unit if it still makes sense for the new type.
-      amountUnit: nextUnits.includes(form.amountUnit) ? form.amountUnit : nextUnits[0],
-      ...(itemType === 'tube_feed' ? {} : { feedRoute: '', rateMlPerHr: '', durationMinutes: '' }),
-    });
-  };
-
-  // Picking a saved item fills the amount and scales its per-unit nutrition.
-  const chooseItem = (item) => {
-    const amount = item.default_amount ?? numberOrNull(form.amount) ?? '';
-    const unit = item.default_amount_unit || form.amountUnit;
-    set({
-      itemId: item.id,
-      itemName: item.name,
-      itemType: item.item_type || form.itemType,
-      amount: amount === '' ? '' : String(amount),
-      amountUnit: unit,
-      ...scaleNutrition(item, Number(amount) || 0),
-    });
-    setSearch('');
-    setResults([]);
-  };
+    const today = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const dateParam = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+    const tz = -today.getTimezoneOffset();
+    fetch(
+      `${config.apiUrl}/api/schedule/daily?patient_id=${patient.id}&target_date=${dateParam}&tz_offset_minutes=${tz}`,
+      { credentials: 'include' },
+    )
+      .then((res) => (res.ok ? res.json() : { nutrition: [] }))
+      .then((data) => {
+        if (cancelled) return;
+        setFeeds((data.nutrition || []).filter(
+          (row) => row.schedule_id && !row.completed && !row.is_prn
+            && row.intake_type !== 'output'
+            // Flush follow-ups have their own Run flow; linking a hand-log
+            // to one would double-complete it.
+            && row.row_kind !== 'flush',
+        ));
+      })
+      .catch(() => { if (!cancelled) setFeeds([]); });
+    return () => { cancelled = true; };
+  }, [open, patient, editing, careTaskLogId]);
 
   const applyRecent = (option) => {
     const entry = option.entry;
-    set({
-      itemId: null,
+    setItems((prev) => [...prev, makeItemRow({
       itemName: entry.item_name,
-      itemType: entry.item_type || form.itemType,
+      itemType: entry.item_type || 'liquid',
       amount: entry.amount != null ? String(entry.amount) : '',
-      amountUnit: entry.amount_unit || form.amountUnit,
-    });
-  };
-
-  const stepAmount = (delta) => {
-    const current = numberOrNull(form.amount) ?? 0;
-    const next = Math.max(0, current + delta);
-    set({ amount: String(next) });
+      amountUnit: entry.amount_unit || 'ml',
+    })]);
   };
 
   const applyPreset = async (option) => {
@@ -227,8 +195,8 @@ export default function IntakeSheet({
     try {
       await nutritionService.applyPreset(option.preset.id, {
         patient_id: patient.id,
-        consumed_at: new Date(form.consumedAt).toISOString(),
-        meal_type: form.mealType || undefined,
+        consumed_at: new Date(consumedAt).toISOString(),
+        meal_type: mealType || undefined,
         care_task_log_id: careTaskLogId || undefined,
       });
       onSaved?.();
@@ -240,78 +208,49 @@ export default function IntakeSheet({
     }
   };
 
-  const buildPayload = () => ({
-    item_id: form.itemId,
-    item_name: form.itemName.trim(),
-    item_type: form.itemType,
-    amount: numberOrNull(form.amount),
-    amount_unit: form.amountUnit,
-    consumed_at: new Date(form.consumedAt).toISOString(),
-    meal_type: form.mealType || null,
-    feed_route: isTubeFeed && form.feedRoute ? form.feedRoute : null,
-    rate_ml_per_hr: isTubeFeed ? numberOrNull(form.rateMlPerHr) : null,
-    duration_minutes: isTubeFeed ? numberOrNull(form.durationMinutes) : null,
-    calories: numberOrNull(form.calories),
-    protein_grams: numberOrNull(form.protein),
-    carbs_grams: numberOrNull(form.carbs),
-    fat_grams: numberOrNull(form.fat),
-    fiber_grams: numberOrNull(form.fiber),
-    sodium_mg: numberOrNull(form.sodium),
-    notes: form.notes || null,
-    ...(careTaskLogId ? { care_task_log_id: careTaskLogId } : {}),
-  });
+  const feedKey = (feed) => `${feed.schedule_id}|${feed.scheduled_time}`;
 
-  const maybeSaveItem = async () => {
-    if (!form.saveAsItem || form.itemId) return;
-    const amount = numberOrNull(form.amount) || 1;
-    const per = (value) => {
-      const total = numberOrNull(value);
-      return total === null ? null : Number((total / amount).toFixed(4));
-    };
-    try {
-      await nutritionService.createItem({
-        patient_id: patient.id,
-        name: form.itemName.trim(),
-        item_type: form.itemType,
-        default_amount: amount,
-        default_amount_unit: form.amountUnit,
-        calories_per_unit: per(form.calories),
-        protein_per_unit: per(form.protein),
-        carbs_per_unit: per(form.carbs),
-        fat_per_unit: per(form.fat),
-        fiber_per_unit: per(form.fiber),
-        sodium_per_unit: per(form.sodium),
-      });
-    } catch {
-      // A duplicate name is not worth losing the logged intake over.
-    }
+  const chooseFeed = (key) => {
+    if (!key) { setLinkedFeed(null); return; }
+    const feed = feeds.find((f) => feedKey(f) === key);
+    if (!feed) return;
+    setLinkedFeed(feed);
+    // An empty sheet takes the feed's expected mix as its starting point.
+    if (items.length === 0) setItems(rowsFromFeed(feed));
   };
 
-  const submit = async (event, andAnother = false) => {
+  const canSave = items.length > 0 && items.every(rowIsValid) && !saving;
+
+  const submit = async (event) => {
     event.preventDefault();
     if (!patient || !canSave) return;
     setSaving(true);
     setError(null);
     try {
       if (editing) {
-        await nutritionService.updateIntake(editing.id, buildPayload());
+        await nutritionService.updateIntake(editing.id, {
+          ...rowToItemPayload(items[0]),
+          consumed_at: new Date(consumedAt).toISOString(),
+          meal_type: mealType || null,
+          notes: notes || null,
+        });
       } else {
-        await nutritionService.createIntake(patient.id, buildPayload());
-        await maybeSaveItem();
+        await nutritionService.createIntakeEvent({
+          patient_id: patient.id,
+          consumed_at: new Date(consumedAt).toISOString(),
+          meal_type: mealType || null,
+          notes: notes || null,
+          ...(careTaskLogId ? { care_task_log_id: careTaskLogId } : {}),
+          ...(linkedFeed ? {
+            schedule_id: linkedFeed.schedule_id,
+            scheduled_time: linkedFeed.scheduled_time,
+          } : {}),
+          items: items.map(rowToItemPayload),
+        });
+        await saveRowsAsItems(items, patient.id);
       }
       onSaved?.();
-      if (andAnother) {
-        // Same meal, next item: keep the time and context.
-        setForm((f) => ({
-          ...emptyForm(f.consumedAt),
-          itemType: f.itemType,
-          amountUnit: f.amountUnit,
-          mealType: f.mealType,
-        }));
-        setSavedCount((n) => n + 1);
-      } else {
-        onClose?.();
-      }
+      onClose?.();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -319,14 +258,15 @@ export default function IntakeSheet({
     }
   };
 
-  if (!patient) return null;
+  const itemCount = items.length;
+  const submitLabel = useMemo(() => {
+    if (saving) return 'Saving…';
+    if (editing) return 'Save changes';
+    if (itemCount > 1) return `Log ${itemCount} items`;
+    return 'Log intake';
+  }, [saving, editing, itemCount]);
 
-  const amountLabel = {
-    liquid: 'Volume',
-    food: 'Amount',
-    supplement: 'Amount',
-    tube_feed: 'Volume',
-  }[form.itemType] || 'Amount';
+  if (!patient) return null;
 
   return (
     <EntityModal
@@ -334,31 +274,18 @@ export default function IntakeSheet({
       onOpenChange={(next) => { if (!next) onClose?.(); }}
       title={editing ? 'Edit intake' : 'Log intake'}
     >
-      <form className="em-form nsheet" onSubmit={(e) => submit(e, false)}>
+      <form className="em-form nsheet" onSubmit={submit}>
         <p className="nsheet-sub">
           {careTaskName
             ? `Recording against ${careTaskName}.`
-            : 'Add food, fluid, supplement, or tube feeding.'}
+            : 'Add food, fluids, supplements, or a tube feeding — several items in one go.'}
         </p>
         {error && <div className="em-error">{error}</div>}
-        {savedCount > 0 && (
-          <div className="em-success">
-            {savedCount} {savedCount === 1 ? 'item' : 'items'} logged. Ready for the next one.
-          </div>
-        )}
 
         <WhenRow
           id="intake-when"
-          value={form.consumedAt}
-          onChange={(v) => set({ consumedAt: v })}
-        />
-
-        <SegmentedControl
-          label="Intake type"
-          required
-          options={INTAKE_TYPES.map((t) => ({ ...t, icon: TYPE_ICONS[t.value] }))}
-          value={form.itemType}
-          onChange={chooseType}
+          value={consumedAt}
+          onChange={setConsumedAt}
         />
 
         <ChipGroup
@@ -366,9 +293,31 @@ export default function IntakeSheet({
           optional
           scroll
           options={CONTEXTS}
-          value={form.mealType}
-          onChange={(mealType) => set({ mealType })}
+          value={mealType}
+          onChange={setMealType}
         />
+
+        {!editing && !careTaskLogId && feeds.length > 0 && (
+          <ChipGroup
+            label="Scheduled feed"
+            hint="Linking marks the feed complete."
+            optional
+            scroll
+            options={feeds.map((f) => ({
+              value: feedKey(f),
+              label: `${f.name} · ${feedTimeLabel(f.scheduled_time)}`,
+              icon: <LinkIcon size={14} />,
+            }))}
+            value={linkedFeed ? feedKey(linkedFeed) : null}
+            onChange={chooseFeed}
+          />
+        )}
+        {linkedFeed && (
+          <p className="nsheet-note nsheet-linked">
+            Linked to {linkedFeed.name} · {feedTimeLabel(linkedFeed.scheduled_time)}.
+            Logging will mark it complete. Tap the chip again to unlink.
+          </p>
+        )}
 
         {!editing && presets.length > 0 && (
           <ChipGroup
@@ -389,7 +338,7 @@ export default function IntakeSheet({
         {!editing && recent.length > 0 && (
           <ChipGroup
             label="Recent"
-            hint="Tap to prefill."
+            hint="Tap to add as an item."
             mode="action"
             scroll
             options={recent.map((r, i) => ({
@@ -401,249 +350,36 @@ export default function IntakeSheet({
           />
         )}
 
-        <section className="nsheet-card">
-          <header className="nsheet-card-head"><h4>Item</h4></header>
-
-          <EmField label={isTubeFeed ? 'Formula' : 'Item'} required htmlFor="intake-item">
-            <input
-              id="intake-item"
-              className="em-input"
-              value={form.itemName}
-              placeholder={isTubeFeed ? 'e.g. Peptamen' : 'e.g. Water, Apple'}
-              onChange={(e) => set({ itemName: e.target.value, itemId: null })}
-              required
-            />
-          </EmField>
-
-          <EmField label="Search saved items" optional htmlFor="intake-search">
-            <div className="nsheet-search">
-              <input
-                id="intake-search"
-                className="em-input"
-                value={search}
-                placeholder="Search saved items"
-                onChange={(e) => setSearch(e.target.value)}
-              />
-              {/* Barcode lookup is not wired up yet — the scan dialogs exist
-                  but nothing maps a barcode to a nutrition item. */}
-              <button
-                type="button"
-                className="nsheet-scan"
-                disabled
-                title="Barcode scanning is not available yet"
-                aria-label="Scan a barcode (not available yet)"
-              >
-                <BarcodeIcon size={20} />
-              </button>
-            </div>
-          </EmField>
-
-          {results.length > 0 && (
-            <div className="nsheet-results">
-              {results.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className="nsheet-result"
-                  onClick={() => chooseItem(item)}
-                >
-                  <span className="nsheet-result-icon">
-                    {TYPE_ICONS[item.item_type] || <LiquidIcon size={18} />}
-                  </span>
-                  <span className="nsheet-result-text">
-                    <span className="nsheet-result-name">{item.name}</span>
-                    <span className="nsheet-result-meta">
-                      {[
-                        item.item_type?.replace('_', ' '),
-                        item.default_amount
-                          ? `${item.default_amount} ${item.default_amount_unit || ''}`.trim()
-                          : null,
-                        item.calories_per_unit ? `${item.calories_per_unit}/unit kcal` : 'no nutrition profile',
-                      ].filter(Boolean).join(' · ')}
-                    </span>
-                  </span>
-                  <span className="nsheet-result-add"><PlusIcon size={18} /></span>
-                </button>
-              ))}
-            </div>
-          )}
-
-          <EmField label={amountLabel} required htmlFor="intake-amount">
-            <div className="nsheet-amount">
-              <input
-                id="intake-amount"
-                className="em-input"
-                type="number"
-                min="0"
-                step="any"
-                inputMode="decimal"
-                value={form.amount}
-                onChange={(e) => set({ amount: e.target.value })}
-                required
-              />
-              <select
-                className="em-input nsheet-unit"
-                aria-label="Amount unit"
-                value={form.amountUnit}
-                onChange={(e) => set({ amountUnit: e.target.value })}
-              >
-                {units.map((u) => <option key={u} value={u}>{u}</option>)}
-              </select>
-              <button type="button" className="nsheet-step" aria-label="Decrease amount"
-                      onClick={() => stepAmount(-10)}>
-                <MinusIcon size={18} />
-              </button>
-              <button type="button" className="nsheet-step" aria-label="Increase amount"
-                      onClick={() => stepAmount(10)}>
-                <PlusIcon size={18} />
-              </button>
-            </div>
-          </EmField>
-        </section>
-
-        {/* Tube feed — delivery detail. The water flush is logged as its own
-            entry (or as part of a preset), not squeezed in here. */}
-        {isTubeFeed && (
-          <section className="nsheet-card">
-            <header className="nsheet-card-head"><h4>Delivery</h4></header>
-            <SegmentedControl
-              label="Route"
-              optional
-              options={[
-                { value: 'bolus', label: 'Bolus' },
-                { value: 'pump', label: 'Pump' },
-                { value: 'gravity', label: 'Gravity' },
-              ]}
-              value={form.feedRoute}
-              onChange={(feedRoute) => set({ feedRoute })}
-            />
-            <div className="nsheet-amount">
-              <EmField label="Rate (mL/hr)" optional htmlFor="intake-rate">
-                <input
-                  id="intake-rate"
-                  className="em-input"
-                  type="number"
-                  min="0"
-                  step="any"
-                  inputMode="decimal"
-                  value={form.rateMlPerHr}
-                  onChange={(e) => set({ rateMlPerHr: e.target.value })}
-                />
-              </EmField>
-              <EmField label="Duration (min)" optional htmlFor="intake-duration">
-                <input
-                  id="intake-duration"
-                  className="em-input"
-                  type="number"
-                  min="0"
-                  step="any"
-                  inputMode="decimal"
-                  value={form.durationMinutes}
-                  onChange={(e) => set({ durationMinutes: e.target.value })}
-                />
-              </EmField>
-            </div>
-          </section>
-        )}
-
-        {!!summary.title && (
-          <div className="nsheet-summary">
-            <span className="nsheet-summary-icon">
-              {TYPE_ICONS[form.itemType] || <LiquidIcon size={18} />}
-            </span>
-            <div className="nsheet-summary-text">
-              <strong>{summary.title}</strong>
-              {summary.detail && <span>{summary.detail}</span>}
-            </div>
-          </div>
-        )}
-
-        <DisclosureRow
-          label="Nutrition details"
-          optional
-          summary="Calories, protein, carbs, fat, sodium"
-        >
-          <div className="nsheet-amount">
-            <EmField label="Calories" htmlFor="intake-cal">
-              <input id="intake-cal" className="em-input" type="number" min="0" step="any"
-                     inputMode="decimal" value={form.calories}
-                     onChange={(e) => set({ calories: e.target.value })} />
-            </EmField>
-            <EmField label="Protein (g)" htmlFor="intake-protein">
-              <input id="intake-protein" className="em-input" type="number" min="0" step="any"
-                     inputMode="decimal" value={form.protein}
-                     onChange={(e) => set({ protein: e.target.value })} />
-            </EmField>
-          </div>
-          <div className="nsheet-amount">
-            <EmField label="Carbs (g)" htmlFor="intake-carbs">
-              <input id="intake-carbs" className="em-input" type="number" min="0" step="any"
-                     inputMode="decimal" value={form.carbs}
-                     onChange={(e) => set({ carbs: e.target.value })} />
-            </EmField>
-            <EmField label="Fat (g)" htmlFor="intake-fat">
-              <input id="intake-fat" className="em-input" type="number" min="0" step="any"
-                     inputMode="decimal" value={form.fat}
-                     onChange={(e) => set({ fat: e.target.value })} />
-            </EmField>
-          </div>
-          <div className="nsheet-amount">
-            <EmField label="Fiber (g)" htmlFor="intake-fiber">
-              <input id="intake-fiber" className="em-input" type="number" min="0" step="any"
-                     inputMode="decimal" value={form.fiber}
-                     onChange={(e) => set({ fiber: e.target.value })} />
-            </EmField>
-            <EmField label="Sodium (mg)" htmlFor="intake-sodium">
-              <input id="intake-sodium" className="em-input" type="number" min="0" step="any"
-                     inputMode="decimal" value={form.sodium}
-                     onChange={(e) => set({ sodium: e.target.value })} />
-            </EmField>
-          </div>
-        </DisclosureRow>
+        <IntakeItemsEditor
+          patient={patient}
+          items={items}
+          onChange={setItems}
+          maxItems={editing ? 1 : null}
+          // Linked to a scheduled feed: show its planned totals and what the
+          // mix is still missing while it is being built.
+          target={linkedFeed ? feedTarget(linkedFeed) : null}
+          targetLabel={linkedFeed?.name}
+          idPrefix="intake"
+        />
 
         <DisclosureRow
           label="Notes"
           optional
-          summary={form.notes ? form.notes.slice(0, 60) : undefined}
+          summary={notes ? notes.slice(0, 60) : undefined}
         >
           <textarea
             className="em-input"
             rows={3}
             placeholder="Anything worth passing on"
-            value={form.notes}
-            onChange={(e) => set({ notes: e.target.value })}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
           />
         </DisclosureRow>
 
-        {!editing && !form.itemId && (
-          <label className="nsheet-switch-row">
-            <span className="nsheet-switch-text">
-              <strong>Save as a reusable item</strong>
-              <span>Makes future logging faster</span>
-            </span>
-            <input
-              type="checkbox"
-              className="em-check"
-              checked={form.saveAsItem}
-              onChange={(e) => set({ saveAsItem: e.target.checked })}
-            />
-          </label>
-        )}
-
         <div className="em-footer">
           <button type="button" className="em-cancel" onClick={onClose}>Cancel</button>
-          {!editing && (
-            <button
-              type="button"
-              className="em-cancel nsheet-another"
-              disabled={!canSave}
-              onClick={(e) => submit(e, true)}
-            >
-              Save + another
-            </button>
-          )}
           <button type="submit" className="em-submit" disabled={!canSave}>
-            {saving ? 'Saving…' : (editing ? 'Save changes' : 'Log intake')}
+            {submitLabel}
           </button>
         </div>
       </form>

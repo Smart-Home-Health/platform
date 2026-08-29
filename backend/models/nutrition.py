@@ -54,9 +54,47 @@ class NutritionIntakeCreate(BaseModel):
     fiber_grams: Optional[float] = Field(None, ge=0)
     sodium_mg: Optional[float] = Field(None, ge=0)
     consumed_at: Optional[datetime] = None
+    # Link back to the scheduled feed this intake fulfils. A linked intake
+    # marks the occurrence complete on the schedule board.
+    schedule_id: Optional[int] = None
+    scheduled_time: Optional[datetime] = None
     meal_type: Optional[str] = Field(None, pattern="^(breakfast|lunch|dinner|snack|other|supplement)$")
     notes: Optional[str] = None
     recorded_by: Optional[int] = None
+
+
+class NutritionIntakeItemPart(BaseModel):
+    """One item of a multi-item intake event (a feed's formula, a juice...)."""
+    item_id: Optional[int] = None
+    item_name: str = Field(..., min_length=1, max_length=200)
+    item_type: str = Field(..., pattern="^(food|liquid|supplement|tube_feed)$")
+    amount: float = Field(..., gt=0)
+    amount_unit: str = Field(..., min_length=1, max_length=50)
+    feed_route: Optional[str] = Field(None, pattern="^(bolus|pump|gravity)$")
+    rate_ml_per_hr: Optional[float] = Field(None, ge=0)
+    duration_minutes: Optional[float] = Field(None, ge=0)
+    # When absent and item_id is set, facts are scaled server-side from the
+    # saved item's per-unit values.
+    calories: Optional[float] = Field(None, ge=0)
+    protein_grams: Optional[float] = Field(None, ge=0)
+    carbs_grams: Optional[float] = Field(None, ge=0)
+    fat_grams: Optional[float] = Field(None, ge=0)
+    fiber_grams: Optional[float] = Field(None, ge=0)
+    sodium_mg: Optional[float] = Field(None, ge=0)
+
+
+class NutritionIntakeEventCreate(BaseModel):
+    """One feed, written as N intake rows sharing an event_group_id."""
+    patient_id: int
+    consumed_at: Optional[datetime] = None
+    meal_type: Optional[str] = Field(None, pattern="^(breakfast|lunch|dinner|snack|other|supplement)$")
+    notes: Optional[str] = None
+    care_task_log_id: Optional[int] = None
+    recorded_by: Optional[int] = None
+    # Optional link to the scheduled feed this event fulfils.
+    schedule_id: Optional[int] = None
+    scheduled_time: Optional[datetime] = None
+    items: List[NutritionIntakeItemPart] = Field(..., min_length=1)
 
 
 class NutritionIntakeUpdate(BaseModel):
@@ -84,6 +122,8 @@ class NutritionIntakeResponse(BaseModel):
     id: int
     patient_id: int
     care_task_log_id: Optional[int]
+    schedule_id: Optional[int] = None
+    scheduled_time: Optional[datetime] = None
     event_group_id: Optional[str] = None
     item_id: Optional[int] = None
     item_name: str
@@ -108,6 +148,11 @@ class NutritionIntakeResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class NutritionIntakeEventResponse(BaseModel):
+    event_group_id: str
+    intakes: List[NutritionIntakeResponse]
 
 
 # =====================
@@ -305,6 +350,37 @@ class NutritionOutputResponse(BaseModel):
 SCHEDULE_TYPES = ['meal', 'hydration', 'snack', 'supplement', 'diaper_check', 'bathroom_assist', 'catheter_care']
 
 
+class NutritionScheduleComponentBase(BaseModel):
+    """One item of a scheduled feed's default mix."""
+    item_id: int
+    amount: float = Field(..., gt=0)
+    amount_unit: str = Field(..., min_length=1, max_length=50)
+    feed_route: Optional[str] = Field(None, pattern="^(bolus|pump|gravity)$")
+    rate_ml_per_hr: Optional[float] = Field(None, ge=0)
+    duration_minutes: Optional[float] = Field(None, ge=0)
+    # Post-feed water flush: not logged with the meal; completing the feed
+    # spawns a follow-up due after the feed has run.
+    is_flush: bool = False
+    sort_order: int = 0
+
+
+class NutritionScheduleComponentResponse(NutritionScheduleComponentBase):
+    id: int
+    # Denormalized from the saved item so the completion form can prefill
+    # names and scaled facts without a second request.
+    item_name: Optional[str] = None
+    item_type: Optional[str] = None
+    calories_per_unit: Optional[float] = None
+    protein_per_unit: Optional[float] = None
+    carbs_per_unit: Optional[float] = None
+    fat_per_unit: Optional[float] = None
+    fiber_per_unit: Optional[float] = None
+    sodium_per_unit: Optional[float] = None
+
+    class Config:
+        from_attributes = True
+
+
 class NutritionScheduleCreate(BaseModel):
     """Create nutrition schedule"""
     patient_id: int
@@ -315,6 +391,9 @@ class NutritionScheduleCreate(BaseModel):
     default_amount: Optional[float] = None
     default_amount_unit: Optional[str] = None
     default_calories: Optional[float] = None
+    # Multi-item feed mix; when set, completion expands one intake row per
+    # component and the default_* fields above are ignored.
+    components: Optional[List[NutritionScheduleComponentBase]] = None
     is_active: bool = True
     create_care_task: bool = True
     reminder_minutes_before: Optional[int] = 15
@@ -331,6 +410,8 @@ class NutritionScheduleUpdate(BaseModel):
     default_amount: Optional[float] = None
     default_amount_unit: Optional[str] = None
     default_calories: Optional[float] = None
+    # When present, replaces the whole component list ([] clears it).
+    components: Optional[List[NutritionScheduleComponentBase]] = None
     is_active: Optional[bool] = None
     create_care_task: Optional[bool] = None
     reminder_minutes_before: Optional[int] = None
@@ -349,6 +430,7 @@ class NutritionScheduleResponse(BaseModel):
     default_amount: Optional[float]
     default_amount_unit: Optional[str]
     default_calories: Optional[float]
+    components: List[NutritionScheduleComponentResponse] = []
     is_active: bool
     create_care_task: bool
     reminder_minutes_before: Optional[int]
@@ -447,6 +529,59 @@ class NutritionItemResponse(NutritionItemBase):
 
     class Config:
         from_attributes = True
+
+
+class NutritionFlushFollowupResponse(BaseModel):
+    """A post-feed flush follow-up, as the board and endpoints hand it out."""
+    id: int
+    patient_id: int
+    schedule_id: Optional[int]
+    feed_scheduled_time: Optional[datetime] = None
+    source_event_group_id: str
+    item_id: Optional[int] = None
+    item_name: str
+    amount: float
+    amount_unit: str
+    due_at: datetime
+    status: str
+    completed_intake_group_id: Optional[str] = None
+    completed_at: Optional[datetime] = None
+    completed_by: Optional[int] = None
+    notes: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class FlushCompleteRequest(BaseModel):
+    """Run the flush — logs the water as a liquid intake."""
+    amount: Optional[float] = Field(None, gt=0)
+    amount_unit: Optional[str] = Field(None, min_length=1, max_length=50)
+    completed_at: Optional[datetime] = None
+    notes: Optional[str] = None
+    user_id: Optional[int] = None
+
+
+class FlushSkipRequest(BaseModel):
+    """Skip the flush — an explicit "not needed", kept distinct from forgot."""
+    notes: Optional[str] = None
+    user_id: Optional[int] = None
+
+
+class NutritionBarcodeLookupResponse(BaseModel):
+    """Result of a barcode scan.
+
+    source 'library'       -> item is a saved nutrition item, ready to log.
+    source 'openfoodfacts' -> suggestion holds NutritionItemCreate-shaped
+                              fields for a new item the caregiver can save.
+    source 'none'          -> nothing found (or lookup offline); enter manually.
+    """
+    source: str = Field(..., pattern="^(library|openfoodfacts|none)$")
+    barcode: str
+    item: Optional[NutritionItemResponse] = None
+    suggestion: Optional[dict] = None
 
 
 # =====================

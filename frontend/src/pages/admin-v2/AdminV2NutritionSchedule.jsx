@@ -32,6 +32,7 @@ import {
   ToiletIcon
 } from '../../components/Icons';
 import { computeScheduleStatus } from '../../components/schedule/scheduleStatus';
+import { nutritionService } from '../../services/nutrition';
 import ScheduleBoard from '../../components/schedule/ScheduleBoard';
 import { groupBySlot } from '../../components/schedule/scheduleRollup';
 import {
@@ -185,6 +186,7 @@ const AdminV2NutritionSchedule = () => {
   };
 
   const getStatusText = (item) => {
+    if (item._status === 'skipped') return 'Skipped';
     if (item._bucket === 'completed') return item.is_prn ? 'PRN Logged' : 'Completed';
     if (item._bucket === 'missed') return 'Missed';
     if (item._bucket === 'ready') return 'Ready';
@@ -193,9 +195,47 @@ const AdminV2NutritionSchedule = () => {
 
   const filteredItems = items.filter(item => statusFilters[item._bucket]);
 
+  // Post-feed flush follow-ups have their own actions: Run (logs the water)
+  // and Skip (recorded — the mix already carried enough water today).
+  const runFlush = async (item) => {
+    try {
+      await nutritionService.completeFlush(item.followup_id, { user_id: user?.id || undefined });
+      fetchSchedule();
+    } catch (err) {
+      console.error('Error running flush:', err);
+    }
+  };
+
+  const skipFlush = async (item) => {
+    try {
+      await nutritionService.skipFlush(item.followup_id, { user_id: user?.id || undefined });
+      fetchSchedule();
+    } catch (err) {
+      console.error('Error skipping flush:', err);
+    }
+  };
+
+  const rowActions = (item) => {
+    if (item._bucket === 'completed' || item.is_prn || !hasPermission('nutrition.update')) return [];
+    if (item.row_kind === 'flush') {
+      return [
+        { key: 'run', label: 'Run Flush', tone: 'primary', onClick: () => runFlush(item) },
+        { key: 'skip', label: 'Skip', tone: 'ghost', onClick: () => skipFlush(item) },
+      ];
+    }
+    return [{
+      key: 'complete',
+      label: item._bucket === 'missed' ? 'Complete Now' : 'Mark Complete',
+      tone: 'primary',
+      onClick: () => handleMarkCompleted(item),
+    }];
+  };
+
   // Raw (normalized) item -> ScheduleBoard row.
   const toRow = (item) => ({
-    id: `${item.schedule_id ?? 'prn'}-${item.scheduled_time}`,
+    id: item.row_kind === 'flush'
+      ? `flush-${item.followup_id}`
+      : `${item.schedule_id ?? 'prn'}-${item.scheduled_time}`,
     title: item.name,
     meta: item._detail || undefined,
     prn: item.is_prn,
@@ -203,16 +243,9 @@ const AdminV2NutritionSchedule = () => {
       ? `Completed at ${new Date(item.completed_at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true })}`
       : undefined,
     statusLabel: getStatusText(item),
-    statusTone: BUCKET_TONE[item._bucket] || 'pending',
+    statusTone: item._status === 'skipped' ? 'skipped' : (BUCKET_TONE[item._bucket] || 'pending'),
     completed: item._bucket === 'completed',
-    actions: (item._bucket !== 'completed' && !item.is_prn && hasPermission('nutrition.update'))
-      ? [{
-          key: 'complete',
-          label: item._bucket === 'missed' ? 'Complete Now' : 'Mark Complete',
-          tone: 'primary',
-          onClick: () => handleMarkCompleted(item),
-        }]
-      : [],
+    actions: rowActions(item),
   });
 
   // Day (real calendar date) then time slot, reusing scheduleRollup.js's

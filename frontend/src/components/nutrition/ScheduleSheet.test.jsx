@@ -67,6 +67,37 @@ describe('ScheduleSheet', () => {
     expect(payload.default_amount).toBeNull();
     expect(payload.default_calories).toBeNull();
     expect(payload.default_item_name).toBeNull();
+    expect(payload.components).toEqual([]);
+  });
+
+  it('edits a schedule with a feed mix and sends the whole component list', () => {
+    const { onSave } = setup({
+      editing: {
+        id: 8,
+        schedule_type: 'meal',
+        name: 'Lunch',
+        cron_expression: '30 15 * * *',
+        components: [
+          { id: 1, item_id: 11, item_name: 'Peptamen', item_type: 'tube_feed', amount: 240, amount_unit: 'ml', sort_order: 0, calories_per_unit: 1.5 },
+          { id: 2, item_id: 12, item_name: 'Green juice', item_type: 'liquid', amount: 120, amount_unit: 'ml', sort_order: 1, calories_per_unit: 0.7 },
+        ],
+      },
+    });
+
+    // The mix prefills as rows, and the legacy single-default card gives way.
+    expect(screen.getByText('Feed mix')).toBeInTheDocument();
+    expect(screen.getByText('Peptamen')).toBeInTheDocument();
+    expect(screen.queryByText('Defaults when logged')).not.toBeInTheDocument();
+
+    // Adjust one amount, then save: the payload carries the whole list.
+    fireEvent.change(screen.getByLabelText('Amount of Green juice'), { target: { value: '150' } });
+    fireEvent.click(saveButton());
+
+    const payload = onSave.mock.calls[0][0];
+    expect(payload.components).toEqual([
+      expect.objectContaining({ item_id: 11, amount: 240, amount_unit: 'ml', sort_order: 0 }),
+      expect.objectContaining({ item_id: 12, amount: 150, amount_unit: 'ml', sort_order: 1 }),
+    ]);
   });
 
   it('builds a daily cron from the chosen time', () => {
