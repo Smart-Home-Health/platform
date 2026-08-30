@@ -687,6 +687,15 @@ select.em-input {
   margin: 0.25rem -1rem -1rem;
   padding: 0.7rem 1rem calc(0.7rem + env(safe-area-inset-bottom));
 }
+/* A link dressed as a form button keeps the button geometry. */
+a.em-cancel,
+a.em-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
 /* A footer action pushed to the left edge (a Back step button). */
 .em-footer .em-cancel.start {
   margin-right: auto;
