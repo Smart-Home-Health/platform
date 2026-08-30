@@ -40,19 +40,8 @@ import {
   UndoIcon
 } from '../../components/Icons';
 import { getCurrentLocalDateTime, localDateTimeToUTC, checkAdministrationWindow, formatDurationMinutes } from '../../utils/timezone';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Field } from '@/components/ui/field';
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
+import EntityModal, { EmField } from '../../components/vc/EntityModal';
+import '../../components/vc/entity-card.css';
 import './AdminV2.css';
 import './vc-schedule.css'; // bedside-monitor skin (dark theme only)
 
@@ -1319,58 +1308,51 @@ const AdminV2Schedule = () => {
         )}
 
         {/* Completion Confirmation Dialog */}
-        <Dialog open={showCompleteModal} onOpenChange={(o) => { if (!o) setShowCompleteModal(false); }}>
-          <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-[480px]" aria-describedby={undefined}>
-            <DialogHeader>
-              <DialogTitle>
-                {completeModalData.isBulk
-                  ? `Complete ${completeModalData.items.length} ${completeModalData.type === 'medication' ? 'Medication' : completeModalData.type === 'nutrition' ? 'Nutrition' : 'Care Task'}${completeModalData.items.length > 1 ? 's' : ''}`
-                  : `Complete ${completeModalData.type === 'medication' ? 'Medication' : completeModalData.type === 'nutrition' ? 'Nutrition' : 'Care Task'}`
-                }
-              </DialogTitle>
-            </DialogHeader>
-
-            {/* Item Summary */}
-            <div className="rounded-md bg-secondary p-4">
+        <EntityModal
+          open={showCompleteModal}
+          onOpenChange={(o) => { if (!o) setShowCompleteModal(false); }}
+          title={completeModalData.isBulk
+            ? `Complete ${completeModalData.items.length} ${completeModalData.type === 'medication' ? 'Medication' : completeModalData.type === 'nutrition' ? 'Nutrition' : 'Care Task'}${completeModalData.items.length > 1 ? 's' : ''}`
+            : `Complete ${completeModalData.type === 'medication' ? 'Medication' : completeModalData.type === 'nutrition' ? 'Nutrition' : 'Care Task'}`}
+        >
+          <div className="em-form">
+            <div className="sch-summary">
               {completeModalData.items.map((item, idx) => (
-                <div
-                  key={idx}
-                  className={`flex items-center justify-between ${idx > 0 ? 'mt-2 border-t border-border pt-2' : ''}`}
-                >
-                  <span className="font-medium">{item.name}</span>
-                  <span className="text-sm text-muted-foreground">
-                    Scheduled: {String(item.hour).padStart(2, '0')}:{String(item.minute).padStart(2, '0')}
+                <div key={idx} className="sch-summary-row">
+                  <span className="sch-summary-name">{item.name}</span>
+                  <span className="sch-summary-when">
+                    Scheduled {String(item.hour).padStart(2, '0')}:{String(item.minute).padStart(2, '0')}
                   </span>
                 </div>
               ))}
             </div>
 
-            {/* Completion Time */}
-            <Field label="Completed At" required hint="Adjust if completed at a different time">
-              <Input
+            <EmField label="Completed At" required htmlFor="sch-completed-at"
+                     hint="Adjust if completed at a different time">
+              <input
+                id="sch-completed-at"
+                className="em-input"
                 type="datetime-local"
                 value={completeFormData.completed_at}
-                onChange={e => setCompleteFormData({...completeFormData, completed_at: e.target.value})}
+                onChange={e => setCompleteFormData({ ...completeFormData, completed_at: e.target.value })}
               />
-            </Field>
+            </EmField>
 
-            {/* Medication-specific fields */}
             {completeModalData.type === 'medication' && !completeModalData.isBulk && (
-              <Field label="Dose Amount">
-                <div className="flex items-center gap-2">
-                  <Input
+              <EmField label="Dose Amount" htmlFor="sch-dose">
+                <span className="sch-dose">
+                  <input
+                    id="sch-dose"
+                    className="em-input"
                     type="number"
                     step="0.1"
                     value={completeFormData.dose_amount}
-                    onChange={e => setCompleteFormData({...completeFormData, dose_amount: e.target.value})}
+                    onChange={e => setCompleteFormData({ ...completeFormData, dose_amount: e.target.value })}
                     placeholder="Amount given"
-                    className="flex-1"
                   />
-                  <span className="shrink-0 text-sm text-muted-foreground">
-                    {completeFormData.dose_unit || 'units'}
-                  </span>
-                </div>
-              </Field>
+                  <span className="sch-dose-unit">{completeFormData.dose_unit || 'units'}</span>
+                </span>
+              </EmField>
             )}
 
             {/* Nutrition: the feed's mix as editable rows — adjust amounts,
@@ -1389,26 +1371,27 @@ const AdminV2Schedule = () => {
                   idPrefix="complete"
                 />
                 {completeModalData.items[0]?.flush_components?.length > 0 && (
-                  <div className="rounded-md bg-secondary p-3 text-sm text-muted-foreground">
+                  <p className="sch-note">
                     {completeModalData.items[0].flush_components
                       .map((c) => `${c.item_name} (${c.amount} ${c.amount_unit})`)
                       .join(' + ')}{' '}
                     will be scheduled as a flush after this feed — based on the
                     tube-feed rate, or one hour if no rate is set.
-                  </div>
+                  </p>
                 )}
               </>
             )}
 
-            {/* Notes */}
-            <Field label="Notes (optional)">
-              <Textarea
+            <EmField label="Notes (optional)" htmlFor="sch-notes">
+              <textarea
+                id="sch-notes"
+                className="em-input"
                 value={completeFormData.notes}
-                onChange={e => setCompleteFormData({...completeFormData, notes: e.target.value})}
+                onChange={e => setCompleteFormData({ ...completeFormData, notes: e.target.value })}
                 placeholder="Any additional notes..."
                 rows={2}
               />
-            </Field>
+            </EmField>
 
             {/* Off-window (early or late) administration warning */}
             {(() => {
@@ -1432,13 +1415,13 @@ const AdminV2Schedule = () => {
                 const direction = kind === 'early' ? 'before' : 'after';
                 return (
                   <>
-                    <div className="mb-1.5">
+                    <p className="sch-warn-body">
                       {group.length === 1
                         ? `You are about to log this ${typeLabel} more than 1 hour ${direction} its scheduled time.`
                         : `${group.length} items are being logged more than 1 hour ${direction} their scheduled time.`}
                       {' '}Giving a {typeLabel} {kind} can be unsafe. Confirm this is intentional before continuing.
-                    </div>
-                    <ul className="mb-2 list-disc pl-5 text-xs">
+                    </p>
+                    <ul className="sch-warn-list">
                       {group.map(({ item, check }, idx) => (
                         <li key={`${kind}-${idx}`}>
                           <strong>{item.name}</strong> — scheduled {check.scheduledLocal}
@@ -1455,24 +1438,18 @@ const AdminV2Schedule = () => {
                   ? 'Warning: early administration'
                   : 'Warning: late administration';
               return (
-                <Alert variant="warning">
-                  <AlertTitle className="text-[#f0883e]">{headerText}</AlertTitle>
-                  <AlertDescription>
-                    {renderGroup(earlyItems, 'early')}
-                    {renderGroup(lateItems, 'late')}
-                  </AlertDescription>
-                </Alert>
+                <div className="sch-warn" role="alert">
+                  <p className="sch-warn-title">{headerText}</p>
+                  {renderGroup(earlyItems, 'early')}
+                  {renderGroup(lateItems, 'late')}
+                </div>
               );
             })()}
 
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setShowCompleteModal(false)}
-              >
+            <div className="em-footer">
+              <button type="button" className="em-cancel" onClick={() => setShowCompleteModal(false)}>
                 Cancel
-              </Button>
+              </button>
               {(() => {
                 const completedAtUtc = completeFormData.completed_at
                   ? localDateTimeToUTC(completeFormData.completed_at)
@@ -1497,59 +1474,50 @@ const AdminV2Schedule = () => {
                         ? 'Confirm Late Administration'
                         : 'Mark Complete';
                 return (
-                  <Button
+                  <button
                     type="button"
+                    className={`em-submit${isOffWindow ? ' warn' : ''}`}
                     onClick={handleSubmitCompletion}
                     disabled={saving || nutritionInvalid}
-                    className={isOffWindow ? 'bg-[#bb8009] text-[var(--background)] hover:bg-[#bb8009]/90' : undefined}
                   >
                     {label}
-                  </Button>
+                  </button>
                 );
               })()}
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            </div>
+          </div>
+        </EntityModal>
 
         {/* PRN / Quick-log Dialog */}
-        <Dialog open={prnModal.open} onOpenChange={(o) => { if (!o) closePrnModal(); }}>
-          <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-[480px]" aria-describedby={undefined}>
-            <DialogHeader>
-              <DialogTitle>
-                {prnModal.type === 'medication' && 'Log PRN Medication'}
-                {prnModal.type === 'nutrition' && 'Log Nutrition'}
-                {prnModal.type === 'care-task' && 'Log Care Task'}
-                {prnModal.hour != null && (
-                  <span className="ml-2 text-sm font-normal text-muted-foreground">
-                    — {formatHour(prnModal.hour)}
-                  </span>
-                )}
-              </DialogTitle>
-            </DialogHeader>
-
-            {prnError && <Alert variant="destructive">{prnError}</Alert>}
+        <EntityModal
+          open={prnModal.open}
+          onOpenChange={(o) => { if (!o) closePrnModal(); }}
+          title={
+            <>
+              {prnModal.type === 'medication' && 'Log PRN Medication'}
+              {prnModal.type === 'nutrition' && 'Log Nutrition'}
+              {prnModal.type === 'care-task' && 'Log Care Task'}
+              {prnModal.hour != null && ` — ${formatHour(prnModal.hour)}`}
+            </>
+          }
+        >
+          <div className="em-form">
+            {prnError && <p className="em-error" role="alert">{prnError}</p>}
 
             {/* ───────────── Medication ───────────── */}
             {prnModal.type === 'medication' && prnModal.mode === 'pick' && (
               prnMedsLoading ? (
-                <p className="text-sm text-muted-foreground">Loading PRN medications...</p>
+                <p className="sch-empty">Loading PRN medications…</p>
               ) : prnMeds.length === 0 ? (
-                <p className="py-2 text-center text-muted-foreground">
-                  No PRN (as-needed) medications for this patient.
-                </p>
+                <p className="sch-empty">No PRN (as-needed) medications for this patient.</p>
               ) : (
-                <div className="flex flex-col gap-2">
+                <div className="cfg-picklist">
                   {prnMeds.map(med => (
-                    <Button
-                      key={med.id}
-                      type="button"
-                      variant="secondary"
-                      className="h-auto w-full justify-between whitespace-normal px-4 py-3 text-left"
-                      onClick={() => pickPrnMed(med)}
-                    >
-                      <span className="flex min-w-0 flex-col">
-                        <strong>{med.name}</strong>
-                        <span className="text-xs font-normal text-muted-foreground">
+                    <button key={med.id} type="button" className="cfg-pick"
+                            onClick={() => pickPrnMed(med)}>
+                      <span className="cfg-pick-main">
+                        <span className="cfg-pick-name">{med.name}</span>
+                        <span className="sch-pick-sub">
                           {med.concentration ? `${med.concentration} • ` : ''}
                           Last given: {med.last_administered
                             ? new Date(med.last_administered).toLocaleString(undefined, {
@@ -1558,8 +1526,8 @@ const AdminV2Schedule = () => {
                             : 'never'}
                         </span>
                       </span>
-                      <Badge className="ml-2 shrink-0">Give</Badge>
-                    </Button>
+                      <span className="cfg-pick-meta">Give</span>
+                    </button>
                   ))}
                 </div>
               )
@@ -1567,70 +1535,47 @@ const AdminV2Schedule = () => {
 
             {/* ───────────── Nutrition ───────────── */}
             {prnModal.type === 'nutrition' && prnModal.mode === 'pick' && (
-              <div className="grid grid-cols-2 gap-4">
-                <Button
-                  type="button"
-                  className="h-auto flex-col gap-2 py-6"
-                  onClick={() => { closePrnModal(); setShowPrnIntakeModal(true); }}
-                >
-                  <NutritionIcon size={24} />
-                  <span>Log Intake</span>
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="h-auto flex-col gap-2 py-6"
-                  onClick={() => { closePrnModal(); setShowPrnOutputModal(true); }}
-                >
-                  <NutritionIcon size={24} />
-                  <span>Log Output</span>
-                </Button>
+              <div className="sch-choices">
+                <button type="button" className="sch-choice primary"
+                        onClick={() => { closePrnModal(); setShowPrnIntakeModal(true); }}>
+                  <NutritionIcon size={22} />
+                  Log Intake
+                </button>
+                <button type="button" className="sch-choice"
+                        onClick={() => { closePrnModal(); setShowPrnOutputModal(true); }}>
+                  <NutritionIcon size={22} />
+                  Log Output
+                </button>
               </div>
             )}
 
             {/* ───────────── Care tasks ───────────── */}
             {prnModal.type === 'care-task' && prnModal.mode === 'pick' && (
               prnCareTasksLoading ? (
-                <p className="text-sm text-muted-foreground">Loading care tasks...</p>
+                <p className="sch-empty">Loading care tasks…</p>
               ) : prnCareTasks.length === 0 ? (
-                <div className="flex flex-col items-center gap-2 py-4 text-muted-foreground">
-                  <TasksIcon size={48} />
-                  <p>No active care tasks for this patient.</p>
-                </div>
+                <p className="sch-empty">No active care tasks for this patient.</p>
               ) : (
-                <div className="flex flex-col gap-4">
+                <div>
                   {groupCareTasksByCategory(prnCareTasks).map(group => (
-                    <div key={group.id ?? 'uncat'}>
-                      <div
-                        className="mb-1.5 flex items-center gap-2 text-xs font-bold uppercase tracking-wide"
-                        style={{ color: group.color }}
-                      >
-                        <span
-                          className="h-2.5 w-2.5 rounded-full"
-                          style={{ backgroundColor: group.color }}
-                        />
+                    <div key={group.id ?? 'uncat'} className="sch-group">
+                      {/* Category colour rides on the dot, not a stripe. */}
+                      <div className="sch-group-head">
+                        <span className="sch-dot" style={{ backgroundColor: group.color }} aria-hidden="true" />
                         {group.name}
                       </div>
-                      <div className="flex flex-col gap-2">
+                      <div className="cfg-picklist">
                         {group.tasks.map(task => (
-                          <Button
-                            key={task.id}
-                            type="button"
-                            variant="secondary"
-                            className="h-auto w-full justify-between whitespace-normal px-4 py-3 text-left"
-                            style={{ borderLeft: `4px solid ${group.color}` }}
-                            onClick={() => pickPrnCareTask(task)}
-                          >
-                            <span className="flex min-w-0 flex-col">
-                              <strong>{task.name}</strong>
+                          <button key={task.id} type="button" className="cfg-pick"
+                                  onClick={() => pickPrnCareTask(task)}>
+                            <span className="cfg-pick-main">
+                              <span className="cfg-pick-name">{task.name}</span>
                               {task.description && (
-                                <span className="text-xs font-normal leading-snug text-muted-foreground">
-                                  {task.description}
-                                </span>
+                                <span className="sch-pick-sub">{task.description}</span>
                               )}
                             </span>
-                            <Badge className="ml-2 shrink-0">Log</Badge>
-                          </Button>
+                            <span className="cfg-pick-meta">Log</span>
+                          </button>
                         ))}
                       </div>
                     </div>
@@ -1639,13 +1584,11 @@ const AdminV2Schedule = () => {
               )
             )}
 
-            <DialogFooter>
-              <Button type="button" variant="secondary" onClick={closePrnModal}>
-                Close
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            <div className="em-footer">
+              <button type="button" className="em-cancel" onClick={closePrnModal}>Close</button>
+            </div>
+          </div>
+        </EntityModal>
         {/* Shared sub-modals launched from the PRN flow */}
         <IntakeSheet
           open={showPrnIntakeModal}
@@ -1687,72 +1630,64 @@ const AdminV2Schedule = () => {
 
         {/* Post-feed flush: run it (logs the water) or skip it (recorded —
             smoothie-heavy mixes already carry enough water). */}
-        <Dialog open={flushModal.open} onOpenChange={(o) => { if (!o) closeFlushModal(); }}>
-          <DialogContent className="sm:max-w-[420px]" aria-describedby={undefined}>
-            <DialogHeader>
-              <DialogTitle>{flushModal.item?.name || 'Water flush'}</DialogTitle>
-            </DialogHeader>
-
-            {flushModal.error && (
-              <div className="tw"><Alert variant="destructive">{flushModal.error}</Alert></div>
-            )}
+        <EntityModal
+          open={flushModal.open}
+          onOpenChange={(o) => { if (!o) closeFlushModal(); }}
+          title={flushModal.item?.name || 'Water flush'}
+        >
+          <div className="em-form">
+            {flushModal.error && <p className="em-error" role="alert">{flushModal.error}</p>}
 
             {flushModal.item?.fluid_dynamic && flushModal.item?.water_plan && (
               // The suggestion shows its work so a caregiver can sanity-check
               // it against the day before pouring.
-              <div className="tw">
-                <div className="rounded-md bg-secondary p-3 text-sm text-muted-foreground">
-                  {flushModal.item.suggested_amount > 0
-                    ? `Suggested ${flushModal.item.suggested_amount} mL of the queued ${flushModal.item.default_amount ?? '—'}: `
-                    : 'Fluid goal already met — skip? '}
-                  target {flushModal.item.water_plan.target_ml} mL,
-                  logged {flushModal.item.water_plan.logged_ml},
-                  {' '}{flushModal.item.water_plan.expected_food_ml} still coming from feeds.
-                </div>
-              </div>
+              <p className="sch-note">
+                {flushModal.item.suggested_amount > 0
+                  ? `Suggested ${flushModal.item.suggested_amount} mL of the queued ${flushModal.item.default_amount ?? '—'}: `
+                  : 'Fluid goal already met — skip? '}
+                target {flushModal.item.water_plan.target_ml} mL,
+                logged {flushModal.item.water_plan.logged_ml},
+                {' '}{flushModal.item.water_plan.expected_food_ml} still coming from feeds.
+              </p>
             )}
 
-            <Field label={`Amount (${flushModal.item?.default_amount_unit || 'ml'})`}>
-              <Input
+            <EmField label={`Amount (${flushModal.item?.default_amount_unit || 'ml'})`} htmlFor="sch-flush-amount">
+              <input
+                id="sch-flush-amount"
+                className="em-input"
                 type="number"
                 step="any"
                 min="0"
                 value={flushModal.amount}
                 onChange={(e) => setFlushModal((m) => ({ ...m, amount: e.target.value }))}
               />
-            </Field>
+            </EmField>
 
-            <Field label="Notes (optional)">
-              <Textarea
+            <EmField label="Notes (optional)" htmlFor="sch-flush-notes">
+              <textarea
+                id="sch-flush-notes"
+                className="em-input"
                 rows={2}
                 value={flushModal.notes}
                 onChange={(e) => setFlushModal((m) => ({ ...m, notes: e.target.value }))}
                 placeholder="Anything worth passing on..."
               />
-            </Field>
+            </EmField>
 
-            <DialogFooter>
-              <Button type="button" variant="secondary" onClick={closeFlushModal}>
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={flushModal.busy}
-                onClick={() => submitFlush(true)}
-              >
+            <div className="em-footer">
+              <button type="button" className="em-cancel" onClick={closeFlushModal}>Cancel</button>
+              <button type="button" className="em-cancel" disabled={flushModal.busy}
+                      onClick={() => submitFlush(true)}>
                 Skip — not needed
-              </Button>
-              <Button
-                type="button"
-                disabled={flushModal.busy || !Number(flushModal.amount)}
-                onClick={() => submitFlush(false)}
-              >
+              </button>
+              <button type="button" className="em-submit"
+                      disabled={flushModal.busy || !Number(flushModal.amount)}
+                      onClick={() => submitFlush(false)}>
                 {flushModal.busy ? 'Saving...' : 'Run flush'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+              </button>
+            </div>
+          </div>
+        </EntityModal>
       </div>
     </AdminV2Layout>
   );

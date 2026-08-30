@@ -508,6 +508,10 @@ body.ld-nutrition-docked.ld-nutrition-wide .em-panel { left: var(--ld-panel-left
 
 .em-input {
   width: 100%;
+  /* The field primitive owns its own box model: it is used outside .em-panel
+     (settings pages, vitals history), and hosts that do not set border-box
+     otherwise get a 100%-wide input overflowing its cell by its own padding. */
+  box-sizing: border-box;
   background: var(--vc-bg-raised);
   border: 1px solid var(--vc-line-hairline);
   border-radius: 8px;
@@ -530,6 +534,40 @@ body.ld-nutrition-docked.ld-nutrition-wide .em-panel { left: var(--ld-panel-left
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
 }
 textarea.em-input { min-height: 0; resize: vertical; padding: 0.6rem 0.75rem; }
+
+/* Date/time controls.
+ *
+ * 1. They size to their content rather than stretching: a full-width
+ *    datetime field reads as a mostly-empty box with the value adrift in it.
+ * 2. WebKit CENTRES the value inside date/time inputs unless
+ *    ::-webkit-date-and-time-value is told otherwise. tailwind.css does this
+ *    for `.tw` subtrees; vc surfaces live outside it, so the same
+ *    normalization has to exist here or every migrated date field regresses.
+ */
+.em-input[type="date"],
+.em-input[type="time"],
+.em-input[type="datetime-local"],
+.em-input[type="month"],
+.em-input[type="week"] {
+  width: auto;
+  max-width: 100%;
+  /* The field wrappers are flex columns, so `width: auto` alone still gets
+     stretched to the full cross-size — opt out of the stretch as well. */
+  align-self: flex-start;
+  -webkit-appearance: none;
+  appearance: none;
+  /* Dark native picker chrome, everywhere rather than per page. */
+  color-scheme: dark;
+}
+.em-input::-webkit-date-and-time-value { min-height: 1lh; text-align: left; }
+.em-input::-webkit-datetime-edit { display: inline-flex; padding: 0; }
+.em-input::-webkit-datetime-edit-fields-wrapper { padding: 0; }
+.em-input::-webkit-datetime-edit-year-field,
+.em-input::-webkit-datetime-edit-month-field,
+.em-input::-webkit-datetime-edit-day-field,
+.em-input::-webkit-datetime-edit-hour-field,
+.em-input::-webkit-datetime-edit-minute-field,
+.em-input::-webkit-datetime-edit-meridiem-field { padding-block: 0; }
 .em-select-wrap { position: relative; display: block; }
 .em-select-wrap svg {
   position: absolute;

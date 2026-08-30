@@ -19,10 +19,16 @@
 /* Bedside-monitor ("vc") skin for the Schedule page. DARK THEME ONLY —
  * scoped :root:not(.light), same convention as vc-shell/vc-dashboard.
  *
- * Semantics: in the 3-column grid the COLUMN identifies the category, so the
- * per-type rainbow (salmon meds / green nutrition / purple tasks) neutralizes
- * to state roles — complete green, NOW marker cyan, idle grays. Green stays
- * the "done" signal only. */
+ * Semantics: state colour is reserved for state — complete green, NOW marker
+ * cyan, idle grays. Green stays the "done" signal only.
+ *
+ * Category identity rides on the group's left stripe (owner's call: on a
+ * wall-mounted screen the colour is what makes "what still needs doing"
+ * readable at a glance). The stripe colours come from the AVATAR/identity
+ * palette in vc-tokens.css, not the semantic state roles — that palette exists
+ * precisely so an identity can never be misread as an alert, and it keeps
+ * nutrition off the completion green. Care tasks override the stripe per
+ * category with their own configured colour. */
 @import '../../styles/vc-tokens.css';
 
 /* ---------- Date nav ---------- */
@@ -124,15 +130,25 @@
   color: var(--vc-data-live);
 }
 
-/* ---------- Item groups: column position carries the category ---------- */
-:root:not(.light) .admin-v2-schedule-group,
-:root:not(.light) .admin-v2-schedule-group.medication,
-:root:not(.light) .admin-v2-schedule-group.nutrition,
-:root:not(.light) .admin-v2-schedule-group.care-task {
+/* ---------- Item groups ---------- */
+:root:not(.light) .admin-v2-schedule-group {
   background: var(--vc-bg-raised);
   border: 1px solid var(--vc-line-hairline);
   border-left: 3px solid var(--vc-line-strong);
   border-radius: 8px;
+}
+/* Category identity on the stripe. Terracotta and sage are identity hues, far
+   enough from --vc-state-complete that a nutrition group never reads as done. */
+:root:not(.light) .admin-v2-schedule-group.medication {
+  border-left-color: var(--vc-avatar-terracotta);
+}
+:root:not(.light) .admin-v2-schedule-group.nutrition {
+  border-left-color: var(--vc-avatar-sage);
+}
+/* Care tasks keep the neutral stripe here; each task overrides it inline with
+   its own category colour. */
+:root:not(.light) .admin-v2-schedule-group.care-task {
+  border-left-color: var(--vc-line-strong);
 }
 
 /* ---------- Items ---------- */
@@ -253,4 +269,164 @@
 :root:not(.light) .admin-v2-schedule-nav .admin-v2-btn:not(.admin-v2-btn-primary):hover {
   border-color: var(--vc-line-strong);
   background: var(--vc-bg-raised);
+}
+
+/* ---------- Schedule modals (complete / PRN / flush) ----------
+ * Converted off shadcn Dialog+Field+Input onto EntityModal + the shared em-*
+ * field vocabulary, so the inputs match the rest of the vc surfaces. These
+ * classes are unscoped (like the em-* set they sit beside) because the modal
+ * renders in a Radix portal outside the page's theme-scoped subtree. */
+
+/* The items being completed, listed above the form. */
+.sch-summary {
+  display: flex;
+  flex-direction: column;
+  background: var(--vc-bg-raised);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 4px;
+  padding: 0.5rem 0.6rem;
+}
+.sch-summary-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--vc-line-hairline);
+}
+.sch-summary-row:last-child { border-bottom: none; }
+.sch-summary-name {
+  font-family: var(--vc-font-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--vc-text-primary);
+}
+.sch-summary-when {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-text-secondary);
+  white-space: nowrap;
+}
+
+/* An explanatory block inside a modal (flush suggestion, flush-after note). */
+.sch-note {
+  margin: 0;
+  background: var(--vc-bg-raised);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 4px;
+  padding: 0.5rem 0.6rem;
+  font-family: var(--vc-font-sans);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--vc-text-secondary);
+}
+
+/* Off-window (early/late) administration warning. Amber, never red: this
+ * needs confirmation, it is not a clinical alarm. */
+.sch-warn {
+  border: 1px solid color-mix(in srgb, var(--vc-state-due) 55%, transparent);
+  background: color-mix(in srgb, var(--vc-state-due) 10%, transparent);
+  border-radius: 4px;
+  padding: 0.55rem 0.7rem;
+}
+.sch-warn-title {
+  margin: 0 0 0.3rem;
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-state-due);
+}
+.sch-warn-body {
+  margin: 0;
+  font-family: var(--vc-font-sans);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--vc-text-primary);
+}
+.sch-warn-list {
+  margin: 0.3rem 0 0.5rem;
+  padding-left: 1.1rem;
+  font-size: 11.5px;
+  color: var(--vc-text-secondary);
+}
+.sch-warn-list:last-child { margin-bottom: 0; }
+/* The confirm button when the completion is off-window. */
+.em-submit.warn {
+  background: color-mix(in srgb, var(--vc-state-due) 30%, var(--vc-bg-surface));
+  border-color: color-mix(in srgb, var(--vc-state-due) 60%, transparent);
+  color: var(--vc-text-primary);
+}
+.em-submit.warn:hover { border-color: var(--vc-state-due); }
+
+/* Dose amount plus its unit. */
+.sch-dose { display: flex; align-items: center; gap: 0.5rem; }
+.sch-dose .em-input { flex: 1 1 auto; min-width: 0; }
+.sch-dose-unit {
+  flex: 0 0 auto;
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+
+/* PRN picker: category groups of pickable rows. */
+.sch-group { display: flex; flex-direction: column; gap: 0.35rem; }
+.sch-group + .sch-group { margin-top: 0.6rem; }
+/* Category colour rides on a dot, never a stripe down the row edge. */
+.sch-group-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.sch-dot { width: 8px; height: 8px; border-radius: 999px; flex: 0 0 auto; }
+.sch-pick-sub {
+  font-family: var(--vc-font-sans);
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--vc-text-tertiary);
+  white-space: normal;
+}
+/* Two big choices (log intake / log output). */
+.sch-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+.sch-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 84px;
+  padding: 0.6rem;
+  background: transparent;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 4px;
+  color: var(--vc-text-primary);
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.sch-choice:hover { border-color: var(--vc-data-live); color: var(--vc-data-live); }
+.sch-choice.primary {
+  background: color-mix(in srgb, var(--vc-data-live) 45%, var(--vc-bg-surface));
+  border-color: color-mix(in srgb, var(--vc-data-live) 45%, transparent);
+}
+.sch-empty {
+  margin: 0;
+  padding: 1.2rem 0.8rem;
+  text-align: center;
+  font-family: var(--vc-font-sans);
+  font-size: 13px;
+  color: var(--vc-text-tertiary);
 }

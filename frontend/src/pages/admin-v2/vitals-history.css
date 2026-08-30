@@ -201,8 +201,10 @@
 .vhist-date .em-input {
   min-height: 40px;
   font-family: var(--vc-font-mono);
-  /* Gives the native date picker its dark chrome. */
-  color-scheme: dark;
+  /* Fill the range column here — the shared rule sizes date inputs to their
+     content, which leaves a ragged edge in this two-up grid. */
+  width: 100%;
+  align-self: stretch;
 }
 
 /* ---------- at a glance ---------- */
