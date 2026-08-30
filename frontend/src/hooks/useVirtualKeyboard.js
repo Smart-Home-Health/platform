@@ -19,8 +19,23 @@ import { useEffect, useState } from 'react';
 
 const STORAGE_KEY = 'vkb';
 
+// The live dashboard runs on wall-mounted touchscreens with no physical
+// keyboard (kiosk Chrome has no OS on-screen keyboard on Linux), so the
+// in-app keyboard defaults ON there. Checked at mount only — the wall unit
+// boots straight into /live; client-side navigation into /live picks the
+// default up on the next reload. ?vkb=0 still wins, persistently.
+const onLiveDashboard = () => {
+  const base = (typeof window !== 'undefined' && window.__BASE_PATH__) || '';
+  return typeof window !== 'undefined'
+    && window.location.pathname.startsWith(`${base}/live`);
+};
+
 function readFlag() {
-  return typeof window !== 'undefined' && window.localStorage.getItem(STORAGE_KEY) === '1';
+  if (typeof window === 'undefined') return false;
+  const stored = window.localStorage.getItem(STORAGE_KEY);
+  if (stored === '1') return true;
+  if (stored === '0') return false;
+  return onLiveDashboard();
 }
 
 export function useVirtualKeyboard() {
@@ -34,7 +49,9 @@ export function useVirtualKeyboard() {
       window.localStorage.setItem(STORAGE_KEY, '1');
       setShowVKB(true);
     } else if (vkbParam === '0') {
-      window.localStorage.removeItem(STORAGE_KEY);
+      // Store the refusal rather than clearing: clearing would re-enable the
+      // /live route default on the next load.
+      window.localStorage.setItem(STORAGE_KEY, '0');
       setShowVKB(false);
     }
 

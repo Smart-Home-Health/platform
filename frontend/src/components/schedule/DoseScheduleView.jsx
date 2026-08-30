@@ -86,6 +86,8 @@ export default function DoseScheduleView({
   onSkip,
   onRecordAll,
   detail = null,
+  // A wider side track for panels whose detail hosts a full form (nutrition).
+  detailWide = false,
 }) {
   const { docked, expanded, setExpanded } = useModalDock();
   // Side-by-side needs room, which only the expanded dock stop has. A phone is
@@ -238,7 +240,7 @@ export default function DoseScheduleView({
   }
 
   return (
-    <div className="ld-dose-panel wide">
+    <div className={`ld-dose-panel wide${detailWide ? ' detail-wide' : ''}`}>
       <div className="ld-dose-main">
         <div className="ld-dose-tiles">
           {BUCKETS.map((bucket) => (

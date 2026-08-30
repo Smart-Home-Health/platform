@@ -65,6 +65,37 @@ describe('is_flush round-trip', () => {
   });
 });
 
+describe('rowsFromScheduleRow', () => {
+  it('maps the component mix when the schedule has one', async () => {
+    const { rowsFromScheduleRow } = await import('./intakeItemRows');
+    const rows = rowsFromScheduleRow({
+      schedule_type: 'meal',
+      components: [
+        { item_id: 1, item_name: 'Peptamen', item_type: 'tube_feed', amount: 240, amount_unit: 'ml', calories: 360 },
+        { item_id: 2, item_name: 'Juice', item_type: 'liquid', amount: 120, amount_unit: 'ml', calories: 84 },
+      ],
+    });
+    expect(rows.map((r) => r.itemName)).toEqual(['Peptamen', 'Juice']);
+    expect(rows[0].itemType).toBe('tube_feed');
+  });
+
+  it('derives the legacy single row item type from the schedule type', async () => {
+    const { rowsFromScheduleRow } = await import('./intakeItemRows');
+    const base = { default_item: 'Something', default_amount: 100, default_amount_unit: 'ml' };
+    expect(rowsFromScheduleRow({ ...base, schedule_type: 'meal' })[0].itemType).toBe('food');
+    expect(rowsFromScheduleRow({ ...base, schedule_type: 'hydration' })[0].itemType).toBe('liquid');
+    expect(rowsFromScheduleRow({ ...base, schedule_type: 'supplement' })[0].itemType).toBe('supplement');
+    expect(rowsFromScheduleRow({ ...base, schedule_type: 'tube_feed' })[0].itemType).toBe('tube_feed');
+    // Unknown types stay pourable.
+    expect(rowsFromScheduleRow({ ...base, schedule_type: 'mystery' })[0].itemType).toBe('liquid');
+  });
+
+  it('returns nothing for a row with no mix and no defaults', async () => {
+    const { rowsFromScheduleRow } = await import('./intakeItemRows');
+    expect(rowsFromScheduleRow({ schedule_type: 'meal', components: [] })).toEqual([]);
+  });
+});
+
 describe('rowsTotals', () => {
   it('tracks what the mix being built delivers', () => {
     const totals = rowsTotals([

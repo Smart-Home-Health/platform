@@ -623,6 +623,16 @@
   max-width: none;
   background: none;
   gap: 0;
+  /* Fill the dock so the rows scroll in their own middle section and the
+     Save footer's margin-top:auto actually pins it. */
+  height: 100%;
+}
+.vitals-capture.vc-docked .vc-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 .vitals-capture.vc-docked .vc-encounter,
 .vitals-capture.vc-docked .vc-resume { margin-left: 0; margin-right: 0; }

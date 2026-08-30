@@ -53,6 +53,15 @@ export default function EntityModal({ open, onOpenChange, title, wide = false, c
         <DialogPrimitive.Content
           className={`em-panel ${wide ? 'wide' : ''}`}
           aria-describedby={undefined}
+          // Taps on the in-app on-screen keyboard are input, not a request
+          // to dismiss — without this, Radix treats them as outside
+          // interactions and closes the dialog under the caregiver's finger.
+          onPointerDownOutside={(e) => {
+            if (e.target?.closest?.('.vkb-root')) e.preventDefault();
+          }}
+          onInteractOutside={(e) => {
+            if (e.target?.closest?.('.vkb-root')) e.preventDefault();
+          }}
         >
           <div className="em-head">
             <DialogPrimitive.Title className="em-title">{title}</DialogPrimitive.Title>

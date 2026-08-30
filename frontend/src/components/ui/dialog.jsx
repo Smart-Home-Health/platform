@@ -42,6 +42,14 @@ const DialogContent = React.forwardRef(function DialogContent({ className, child
       <DialogPrimitive.Content
         ref={ref}
         data-slot="dialog-content"
+        // Taps on the in-app on-screen keyboard are input, not a request to
+        // dismiss — Radix would otherwise close the dialog under the finger.
+        onPointerDownOutside={(e) => {
+          if (e.target?.closest?.('.vkb-root')) e.preventDefault();
+        }}
+        onInteractOutside={(e) => {
+          if (e.target?.closest?.('.vkb-root')) e.preventDefault();
+        }}
         className={cn(
           // grid-cols-1 = minmax(0,1fr): without the minmax(0,...) the implicit
           // auto column sizes to the widest child's min-content, so long

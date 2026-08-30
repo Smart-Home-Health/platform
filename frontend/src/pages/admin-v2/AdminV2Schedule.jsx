@@ -22,7 +22,7 @@ import { PatientSelectorModal, IntakeSheet, OutputSheet, MedicationDoseModal, Up
 import IntakeItemsEditor from '../../components/nutrition/IntakeItemsEditor';
 import { nutritionService } from '../../services/nutrition';
 import {
-  feedTarget, makeItemRow, rowFromScheduleComponent, rowIsValid, rowToItemPayload,
+  feedTarget, rowIsValid, rowToItemPayload, rowsFromScheduleRow,
 } from '../../components/nutrition/intakeItemRows';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
@@ -326,22 +326,7 @@ const AdminV2Schedule = () => {
 
     // Nutrition: the feed's expected mix (or its single default) as rows.
     if (type === 'nutrition') {
-      // Mirrors backend SCHEDULE_TYPE_TO_ITEM_TYPE for the legacy single row.
-      const scheduleItemType = {
-        meal: 'food', snack: 'food', hydration: 'liquid',
-        supplement: 'supplement', tube_feed: 'tube_feed',
-      }[item.schedule_type] || 'liquid';
-      setCompleteItems(
-        item.components?.length
-          ? item.components.map(rowFromScheduleComponent)
-          : [makeItemRow({
-              itemName: item.default_item || item.name || '',
-              itemType: scheduleItemType,
-              amount: item.default_amount != null ? String(item.default_amount) : '',
-              amountUnit: item.default_amount_unit || 'ml',
-              calories: item.default_calories != null ? String(item.default_calories) : '',
-            })],
-      );
+      setCompleteItems(rowsFromScheduleRow(item));
     }
 
     setShowCompleteModal(true);

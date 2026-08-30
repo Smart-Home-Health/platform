@@ -213,6 +213,33 @@ export function rowFromComponentResponse(component) {
   });
 }
 
+// Mirrors backend SCHEDULE_TYPE_TO_ITEM_TYPE for the legacy single-row prefill.
+const SCHEDULE_ITEM_TYPE = {
+  meal: 'food',
+  snack: 'food',
+  hydration: 'liquid',
+  supplement: 'supplement',
+  tube_feed: 'tube_feed',
+};
+
+/** Editor rows for a daily-board schedule row: the component mix when the
+ *  schedule has one, else its legacy single default. THE prefill for every
+ *  completion form — the admin dialog, the dashboard pane, and the Log
+ *  Intake feed link all seed from here so they cannot drift. */
+export function rowsFromScheduleRow(row) {
+  if (row.components?.length) return row.components.map(rowFromScheduleComponent);
+  if (row.default_item || row.default_amount != null) {
+    return [makeItemRow({
+      itemName: row.default_item || row.name || '',
+      itemType: SCHEDULE_ITEM_TYPE[row.schedule_type] || 'liquid',
+      amount: row.default_amount != null ? String(row.default_amount) : '',
+      amountUnit: row.default_amount_unit || 'ml',
+      calories: row.default_calories != null ? String(row.default_calories) : '',
+    })];
+  }
+  return [];
+}
+
 export function rowIsValid(row) {
   return !!String(row.itemName || '').trim() && numberOrNull(row.amount) !== null;
 }
