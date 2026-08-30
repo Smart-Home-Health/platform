@@ -21,8 +21,8 @@ import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import { HistoryIcon, RefreshIcon, UndoIcon } from '../../components/Icons';
-import { Button } from '@/components/ui/button';
 import './AdminV2.css';
+import './settings/settings-page.css';
 
 // Maps the backend item_type to a friendly label.
 const TYPE_LABELS = {
@@ -93,39 +93,37 @@ const AdminV2ScheduleUndoLog = () => {
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
-        <div className="admin-v2-page-header">
-          <p className="admin-v2-text-muted" style={{ margin: 0 }}>
+        <div className="cfg-toolbar">
+          <p className="cfg-pagehead-desc">
             Every undone dose, feed, or care task — who reversed it and when. Undone items
             are kept (soft-deleted), not erased.
           </p>
-          <div className="tw">
-            <Button
-              onClick={fetchEntries}
-              disabled={loading || !canView}
-              title="Refresh"
-            >
-              <RefreshIcon size={16} /> Refresh
-            </Button>
-          </div>
+          <button
+            type="button"
+            className="cfg-ghost"
+            onClick={fetchEntries}
+            disabled={loading || !canView}
+            title="Refresh"
+          >
+            <RefreshIcon size={16} /> Refresh
+          </button>
         </div>
 
         {!canView ? (
-          <div className="admin-v2-empty-container">
-            <HistoryIcon size={48} className="admin-v2-empty-icon" />
+          <div className="cfg-nopatient">
+            <HistoryIcon size={48} />
             <p>You do not have permission to view the undo log (requires audit access).</p>
           </div>
         ) : error ? (
-          <div className="admin-v2-empty-container">
+          <div className="cfg-nopatient">
             <p>{error}</p>
-            <div className="tw">
-              <Button variant="secondary" onClick={fetchEntries}>Retry</Button>
-            </div>
+            <button type="button" className="cfg-ghost" onClick={fetchEntries}>Retry</button>
           </div>
         ) : loading ? (
-          <div className="admin-v2-loading">Loading undo log...</div>
+          <p className="cfg-loading">Loading undo log...</p>
         ) : entries.length === 0 ? (
-          <div className="admin-v2-empty-container">
-            <UndoIcon size={48} className="admin-v2-empty-icon" />
+          <div className="cfg-nopatient">
+            <UndoIcon size={48} />
             <p>No undos recorded yet.</p>
           </div>
         ) : (

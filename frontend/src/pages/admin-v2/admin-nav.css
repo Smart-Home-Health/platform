@@ -1,3 +1,4 @@
+@import '../../styles/vc-tokens.css';
 /*
  * Smart Home Health
  * Copyright (C) 2026 John Carty
@@ -28,7 +29,7 @@
   padding: 0.25rem 0.5rem 0.5rem;
 }
 .admin-v2-nav-group + .admin-v2-nav-group {
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--vc-line-hairline);
   margin-top: 0.25rem;
   padding-top: 0.6rem;
 }
@@ -37,7 +38,7 @@
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--muted-foreground);
+  color: var(--vc-text-secondary);
   padding: 0 0.5rem 0.35rem;
 }
 .admin-v2-sidebar.collapsed .admin-v2-nav-group-label { display: none; }
@@ -53,7 +54,7 @@
   align-items: center;
   gap: 0.3rem;
   font-size: 11px;
-  color: var(--muted-foreground);
+  color: var(--vc-text-secondary);
 }
 .admin-v2-patient-selector-status::before {
   content: '';
@@ -63,7 +64,7 @@
   background: currentColor;
   flex-shrink: 0;
 }
-.admin-v2-patient-selector-status.active { color: var(--success); }
+.admin-v2-patient-selector-status.active { color: var(--vc-state-complete); }
 
 /* ---------- Mobile page header pieces ---------- */
 .admin-v2-mobile-menu-caption {
@@ -89,7 +90,7 @@
 }
 .admin-v2-mobile-header-sub {
   font-size: 11px;
-  color: var(--muted-foreground);
+  color: var(--vc-text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -126,7 +127,7 @@
     align-items: center;
     gap: 0.9rem;
     padding: 0.65rem 1rem;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--vc-line-hairline);
     flex-shrink: 0;
   }
   .admin-v2-drawer-close {
@@ -136,12 +137,12 @@
     justify-content: center;
     gap: 2px;
     background: transparent;
-    border: 1px solid var(--border);
+    border: 1px solid var(--vc-line-hairline);
     border-radius: 8px;
     padding: 0.4rem 0.6rem;
     min-width: 52px;
     min-height: 48px;
-    color: var(--foreground);
+    color: var(--vc-text-primary);
     cursor: pointer;
   }
   .admin-v2-drawer-close-caption {
@@ -155,9 +156,9 @@
     font-weight: 600;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: var(--foreground);
+    color: var(--vc-text-primary);
   }
-  .admin-v2-drawer-title-sep { color: var(--muted-foreground); margin: 0 0.3rem; }
+  .admin-v2-drawer-title-sep { color: var(--vc-text-secondary); margin: 0 0.3rem; }
 
   /* Two-column item grid inside groups */
   .admin-v2-nav-group { padding: 0.4rem 1rem 0.6rem; }

@@ -345,9 +345,7 @@ const AdminV2Implants = () => {
     return (
       <AdminV2Layout>
         <div className="admin-v2-page">
-          <div className="admin-v2-empty-state">
-            <p>Please select a patient to manage implants.</p>
-          </div>
+          <p className="cfg-empty">Please select a patient to manage implants.</p>
         </div>
       </AdminV2Layout>
     );
