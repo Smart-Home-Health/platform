@@ -30,12 +30,24 @@ const onLiveDashboard = () => {
     && window.location.pathname.startsWith(`${base}/live`);
 };
 
+// iOS and Android pop their own keyboard the moment an input focuses, so the
+// route default would stack two keyboards on a phone opening /live. The
+// default is for the kiosk (Linux Chrome has no OS on-screen keyboard);
+// suppress it where the OS brings one. An explicit ?vkb=1 still wins.
+const hasNativeOnScreenKeyboard = () => {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  if (/iPhone|iPad|iPod|Android/i.test(ua)) return true;
+  // iPadOS 13+ reports itself as a Mac; the touch points give it away.
+  return /Mac/.test(ua) && (navigator.maxTouchPoints || 0) > 1;
+};
+
 function readFlag() {
   if (typeof window === 'undefined') return false;
   const stored = window.localStorage.getItem(STORAGE_KEY);
   if (stored === '1') return true;
   if (stored === '0') return false;
-  return onLiveDashboard();
+  return onLiveDashboard() && !hasNativeOnScreenKeyboard();
 }
 
 export function useVirtualKeyboard() {
