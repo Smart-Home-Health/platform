@@ -430,3 +430,74 @@
   font-size: 13px;
   color: var(--vc-text-tertiary);
 }
+
+/* Dose history rows (MedicationHistoryModal): flat cards, state colour on the
+ * status text only. */
+.sch-hist {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.sch-hist-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  background: var(--vc-bg-raised);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 4px;
+  padding: 0.5rem 0.6rem;
+}
+.sch-hist-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.sch-hist-when {
+  font-family: var(--vc-font-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--vc-text-primary);
+}
+.sch-hist-badge {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 4px;
+  padding: 0.1rem 0.35rem;
+  white-space: nowrap;
+}
+.sch-hist-badge.success { color: var(--vc-state-complete); }
+.sch-hist-badge.warning { color: var(--vc-state-due); }
+.sch-hist-badge.danger { color: var(--vc-state-alert); }
+.sch-hist-badge.muted { color: var(--vc-text-tertiary); }
+.sch-hist-meta { display: flex; gap: 1.5rem; }
+.sch-hist-item { display: flex; flex-direction: column; gap: 0.15rem; }
+.sch-hist-label {
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.sch-hist-val {
+  font-family: var(--vc-font-sans);
+  font-size: 12.5px;
+  color: var(--vc-text-primary);
+}
+.sch-hist-val.dim { color: var(--vc-text-tertiary); }
+.sch-hist-note {
+  margin: 0;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--vc-line-hairline);
+  font-family: var(--vc-font-sans);
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--vc-text-secondary);
+}

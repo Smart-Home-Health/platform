@@ -17,17 +17,8 @@
  */
 import { useEffect, useState } from 'react';
 import config from '../../../config';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Field } from '@/components/ui/field';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import EntityModal, { EmField } from '../../../components/vc/EntityModal';
+import '../vc-schedule.css';
 
 /**
  * Hard gate shown when an administration is refused because the medication's
@@ -84,26 +75,29 @@ const UpdateQuantityModal = ({ info, onClose, onUpdated }) => {
     }
   };
 
-  // Parent gates mounting (`{qtyGate.open && ...}`), so the Dialog is always open.
+  // Parent gates mounting (`{qtyGate.open && ...}`), so the modal is always open.
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose?.(); }}>
-      <DialogContent className="sm:max-w-[440px]" aria-describedby={undefined}>
-        <DialogHeader>
-          <DialogTitle>Out of Stock — {info.medication_name}</DialogTitle>
-        </DialogHeader>
+    <EntityModal
+      open
+      onOpenChange={(o) => { if (!o) onClose?.(); }}
+      title={`Out of Stock — ${info.medication_name}`}
+    >
+      <div className="em-form">
+        {error && <div className="em-error">{error}</div>}
 
-        {error && <Alert variant="destructive">{error}</Alert>}
-
-        <Alert variant="destructive">
-          <AlertDescription>
+        <div className="sch-warn" role="alert">
+          <p className="sch-warn-title">Update quantity to continue</p>
+          <p className="sch-warn-body">
             Only <strong>{info.current_quantity ?? 0} {unit}</strong> on hand, but this dose
-            needs <strong>{info.requested_dose} {unit}</strong>. Update the on-hand quantity to continue —
-            the dose can’t be recorded until you do.
-          </AlertDescription>
-        </Alert>
+            needs <strong>{info.requested_dose} {unit}</strong>. The dose can’t be recorded
+            until the on-hand quantity is updated.
+          </p>
+        </div>
 
-        <Field label={`New on-hand quantity${unit ? ` (${unit})` : ''}`} required>
-          <Input
+        <EmField label={`New on-hand quantity${unit ? ` (${unit})` : ''}`} required htmlFor="qty-new">
+          <input
+            id="qty-new"
+            className="em-input"
             type="number"
             step="0.1"
             min="0"
@@ -113,22 +107,23 @@ const UpdateQuantityModal = ({ info, onClose, onUpdated }) => {
             onKeyDown={e => { if (e.key === 'Enter' && valid && !saving) handleSave(); }}
             placeholder="Enter current count on hand"
           />
-        </Field>
+        </EmField>
 
-        <DialogFooter>
-          <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>
+        <div className="em-footer">
+          <button type="button" className="em-cancel" onClick={onClose} disabled={saving}>
             Cancel
-          </Button>
-          <Button
+          </button>
+          <button
             type="button"
+            className="em-submit"
             onClick={handleSave}
             disabled={saving || !valid}
           >
             {saving ? 'Saving...' : 'Update & Continue'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </button>
+        </div>
+      </div>
+    </EntityModal>
   );
 };
 

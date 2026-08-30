@@ -36,6 +36,7 @@ vi.mock('react-router-dom', () => ({ useSearchParams: () => [new URLSearchParams
 vi.mock('../../config', () => ({ default: { apiUrl: '' } }));
 
 import AdminV2Schedule from './AdminV2Schedule';
+import { UpdateQuantityModal, CareTaskCompleteModal } from './components';
 
 // The page filters /api/admin/medications/active down to as_needed.
 const PRN_MEDS = [
@@ -95,6 +96,53 @@ describe('AdminV2Schedule modals', () => {
     // footer: the action button is the vc cancel, not a shadcn Button.
     const footer = document.querySelector('.em-footer');
     expect(within(footer).getByRole('button', { name: 'Close' })).toHaveClass('em-cancel');
+  });
+
+  it('opens the PRN dose modal on EntityModal with em fields', async () => {
+    routes = [['/admin/medications/active', PRN_MEDS]];
+    stubFetch();
+    await renderPage();
+    await openPrn(/PRN/i);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Acetaminophen/ }));
+    });
+
+    expect(screen.getByText('Record Dose — Acetaminophen')).toBeInTheDocument();
+    // The shared MedicationDoseModal is off shadcn Dialog entirely.
+    expect(document.querySelector('[data-slot="dialog-content"]')).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/Dose Amount/)).toHaveClass('em-input');
+    const footer = document.querySelector('.em-footer');
+    expect(within(footer).getByRole('button', { name: 'Record Administration' }))
+      .toHaveClass('em-submit');
+  });
+
+  it('logs a PRN care task through the vc complete modal', () => {
+    render(
+      <CareTaskCompleteModal
+        open onClose={() => {}} onSaved={() => {}} patient={{ id: 5 }}
+        task={{ id: 3, name: 'Reposition', description: 'Turn to left side',
+                category_name: 'Comfort', category_color: '#7fb39a' }}
+      />
+    );
+    expect(screen.getByText('Log Care Task — Reposition')).toBeInTheDocument();
+    expect(document.querySelector('[data-slot="dialog-content"]')).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/Completed At/)).toHaveClass('em-input');
+    // Category colour rides on a dot inside the modal, not a coloured pill.
+    expect(document.querySelector('.em-panel .sch-dot')).toBeTruthy();
+  });
+
+  it('renders the out-of-stock gate as a vc modal with an amber warning', () => {
+    render(
+      <UpdateQuantityModal
+        info={{ medication_id: 1, medication_name: 'Acetaminophen',
+                current_quantity: 2, quantity_unit: 'mL', requested_dose: 5 }}
+        onClose={() => {}} onUpdated={() => {}}
+      />
+    );
+    expect(screen.getByText('Out of Stock — Acetaminophen')).toBeInTheDocument();
+    expect(document.querySelector('[data-slot="dialog-content"]')).not.toBeInTheDocument();
+    expect(document.querySelector('.em-panel .sch-warn')).toBeTruthy();
+    expect(screen.getByLabelText(/New on-hand quantity/)).toHaveClass('em-input');
   });
 
   it('puts the care-task category colour on a dot, not a left stripe', async () => {
