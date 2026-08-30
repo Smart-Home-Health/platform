@@ -26,10 +26,7 @@ import {
 } from '../../../components/Icons';
 import config, { apiFetch } from '../../../config';
 import AdminV2Layout from '../AdminV2Layout';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Alert } from '@/components/ui/alert';
+import { CfgSection, CfgGroup, CfgBadge } from '../settings/CfgSection';
 import useCareProfile from './useCareProfile';
 import {
   STATUS_META, careContextSummary, featuresSummary, homeAssistantSummary,
@@ -39,13 +36,14 @@ import { ageFrom, formatDate, formatDateTime, fullName } from './careProfileForm
 import AvatarEditor from '../components/AvatarEditor';
 import { useAdminPatient } from '../../../contexts/AdminPatientContext';
 import { MQTT_SECTIONS } from '../mqttConstants';
+import '../../../components/vc/entity-card.css';
 import '../AdminV2.css';
 import './care-profile.css';
 
 const SetupCount = ({ icon, value, label, tone }) => (
   <div className="cp-count" data-tone={value > 0 ? tone : undefined}>
     <span className="cp-count-icon" aria-hidden>{icon}</span>
-    <div className="min-w-0">
+    <div className="cp-count-text">
       <span className="cp-count-value">{value}</span>
       <span className="cp-count-label">{label}</span>
     </div>
@@ -60,7 +58,7 @@ const SectionRow = ({ section }) => {
       <span className="cp-row-body cp-row-body-stacked">
         <span className="cp-row-title">{section.title}</span>
         <span className="cp-row-status">
-          <Badge variant={meta.tone}>{meta.label}</Badge>
+          <span className="cp-status" data-tone={meta.tone}>{meta.label}</span>
         </span>
         <span className="cp-row-summary">
           <span className="cp-row-blurb">{section.blurb}</span>
@@ -106,7 +104,7 @@ export default function AdminV2CareProfileHub() {
   if (loading) {
     return (
       <AdminV2Layout>
-        <div className="admin-v2-page"><div className="admin-v2-loading">Loading care profile…</div></div>
+        <div className="admin-v2-page"><p className="cfg-loading">Loading care profile…</p></div>
       </AdminV2Layout>
     );
   }
@@ -158,70 +156,60 @@ export default function AdminV2CareProfileHub() {
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
-        <div className="tw flex flex-col gap-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <Link
-              to="/care/configuration/patients"
-              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-            >
-              <ChevronLeftIcon size={16} /> Care profiles
+        <div className="cfg">
+          <div className="cfg-crumb">
+            <Link to="/care/configuration/patients" className="cfg-back">
+              <ChevronLeftIcon size={14} /> Care profiles
             </Link>
-            <Badge variant={patient?.is_active ? 'success' : 'secondary'}>
+            <CfgBadge tone={patient?.is_active ? 'ok' : undefined}>
               {patient?.is_active ? 'Active' : 'Inactive'}
-            </Badge>
+            </CfgBadge>
           </div>
 
-          {error && <Alert variant="destructive" role="alert">{error}</Alert>}
-          {notice && <Alert variant="success" role="status">{notice}</Alert>}
+          {error && <p className="em-error" role="alert">{error}</p>}
+          {notice && <p className="em-success" role="status">{notice}</p>}
 
           {/* Who this profile is */}
-          <Card>
-            <CardContent className="flex flex-col gap-4 p-4 sm:p-4">
-              <div className="cp-identity">
-                <AvatarEditor kind="patient" person={patient} name={fullName(patient)}
-                              onError={setError} onNotice={flash} onChange={refreshPatients} />
-                <div className="flex min-w-0 flex-1 flex-col">
-                  <h1 className="cp-name">{fullName(patient)}</h1>
-                  <p className="cp-subtitle">
-                    Home care profile · Record ID {patient?.id ?? patientId}
-                    {patient?.medical_record_number ? ` · MRN ${patient.medical_record_number}` : ''}
-                  </p>
-                </div>
-                <Button variant="secondary" size="sm" asChild>
-                  <Link to={`${base}/edit`}>Edit profile</Link>
-                </Button>
+          <section className="cfg-card cp-card-pad">
+            <div className="cp-identity">
+              <AvatarEditor kind="patient" person={patient} name={fullName(patient)}
+                            onError={setError} onNotice={flash} onChange={refreshPatients} />
+              <div className="cp-identity-name">
+                <h1 className="cp-name">{fullName(patient)}</h1>
+                <p className="cp-subtitle">
+                  Home care profile · Record ID {patient?.id ?? patientId}
+                  {patient?.medical_record_number ? ` · MRN ${patient.medical_record_number}` : ''}
+                </p>
               </div>
+              <Link className="cfg-ghost" to={`${base}/edit`}>Edit profile</Link>
+            </div>
 
-              <div className="cp-meta border-t border-border pt-3">
-                <div>
-                  <span className="cp-meta-label">Date of birth</span>
-                  <span className="cp-meta-value">
-                    {formatDate(patient?.date_of_birth)}
-                    {age !== null ? ` (${age})` : ''}
-                  </span>
-                </div>
-                <div>
-                  <span className="cp-meta-label">Care area</span>
-                  <span className="cp-meta-value">{patient?.care_area || 'Not linked'}</span>
-                </div>
-                <div>
-                  <span className="cp-meta-label">Last updated</span>
-                  <span className="cp-meta-value">{formatDateTime(patient?.updated_at)}</span>
-                </div>
-                <div>
-                  <span className="cp-meta-label">Added</span>
-                  <span className="cp-meta-value">{formatDateTime(patient?.created_at)}</span>
-                </div>
+            <div className="cp-meta cp-divide">
+              <div>
+                <span className="cp-meta-label">Date of birth</span>
+                <span className="cp-meta-value">
+                  {formatDate(patient?.date_of_birth)}
+                  {age !== null ? ` (${age})` : ''}
+                </span>
               </div>
-            </CardContent>
-          </Card>
+              <div>
+                <span className="cp-meta-label">Care area</span>
+                <span className="cp-meta-value">{patient?.care_area || 'Not linked'}</span>
+              </div>
+              <div>
+                <span className="cp-meta-label">Last updated</span>
+                <span className="cp-meta-value">{formatDateTime(patient?.updated_at)}</span>
+              </div>
+              <div>
+                <span className="cp-meta-label">Added</span>
+                <span className="cp-meta-value">{formatDateTime(patient?.created_at)}</span>
+              </div>
+            </div>
+          </section>
 
           {/* Setup */}
-          <Card>
-            <CardHeader className="p-4 sm:p-4">
-              <CardTitle className="cp-eyebrow">Profile setup</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-3 p-4 sm:p-4">
+          <CfgSection title="Profile setup">
+            <CfgGroup>
               <div className="cp-counts">
                 <SetupCount icon={<CheckCircleIcon size={18} />} value={totals.ready}
                             label={totals.ready === 1 ? 'Section ready' : 'Sections ready'}
@@ -232,35 +220,35 @@ export default function AdminV2CareProfileHub() {
                             label={totals.errors === 1 ? 'Error' : 'Errors'} tone="danger" />
               </div>
 
-              <div className="cp-rows rounded-lg border border-border">
+              <div className="cp-rows boxed">
                 {sections.map((section) => <SectionRow key={section.id} section={section} />)}
               </div>
-            </CardContent>
-          </Card>
+            </CfgGroup>
+          </CfgSection>
 
           {/* Advanced */}
-          <Card>
+          <section className="cfg-card">
             <details className="cp-advanced">
               <summary>
                 <span className="cp-eyebrow">Advanced</span>
                 <span className="cp-advanced-marker" aria-hidden><ChevronDownIcon size={16} /></span>
               </summary>
-              <div className="flex flex-col gap-3 border-t border-border p-4 pt-3">
-                <p className="text-sm text-muted-foreground">
+              <div className="cp-advanced-body">
+                <p className="cfg-fine">
                   Deactivating hides this profile from day-to-day screens. Nothing recorded
                   against it is deleted, and it can be turned back on here at any time.
                 </p>
-                <Button
-                  className="w-fit"
-                  variant={patient?.is_active ? 'destructive' : 'secondary'}
+                <button
+                  type="button"
+                  className={patient?.is_active ? 'em-danger' : 'em-cancel'}
                   onClick={toggleActive}
                   disabled={busy}
                 >
                   {patient?.is_active ? 'Deactivate profile' : 'Activate profile'}
-                </Button>
+                </button>
               </div>
             </details>
-          </Card>
+          </section>
         </div>
       </div>
     </AdminV2Layout>

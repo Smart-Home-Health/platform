@@ -19,13 +19,9 @@
 // lives on each measurement's vital-level row; this is the one place to see
 // them side by side.
 import { useEffect, useState } from 'react';
-import {
-  Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Alert } from '@/components/ui/alert';
+import EntityModal from '../../../../components/vc/EntityModal';
 import { rowPayload, saveRanges } from './rangeApi';
+import '../care-profile.css';
 
 export default function CompletionRulesDialog({
   patientId, rows, open, onOpenChange, onSaved,
@@ -63,51 +59,47 @@ export default function CompletionRulesDialog({
   const count = Object.values(required).filter(Boolean).length;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[520px]">
-        <DialogHeader>
-          <DialogTitle>Completion rules</DialogTitle>
-          <DialogDescription>
-            A capture encounter is complete once every required reading is in. Anything
-            unticked can still be recorded — it just is not waited for.
-          </DialogDescription>
-        </DialogHeader>
+    <EntityModal open={open} onOpenChange={onOpenChange} title="Completion rules">
+      <form onSubmit={save} className="em-form">
+        <p className="em-hint">
+          A capture encounter is complete once every required reading is in. Anything
+          unticked can still be recorded — it just is not waited for.
+        </p>
 
-        <form onSubmit={save} className="flex flex-col gap-4">
-          {error && <Alert variant="destructive" role="alert">{error}</Alert>}
+        {error && <div className="em-error" role="alert">{error}</div>}
 
-          <div className="divide-y divide-border/60 rounded-lg border border-border">
-            {rows.map((r) => (
-              <label
-                key={r.key}
-                className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2"
-              >
-                <span className="min-w-0">
-                  <span className="block text-sm text-foreground">{r.label}</span>
-                  <span className="block text-xs text-muted-foreground">{r.summary}</span>
-                </span>
-                <Checkbox
-                  checked={Boolean(required[r.key])}
-                  onCheckedChange={(v) => setRequired((prev) => ({ ...prev, [r.key]: v === true }))}
-                />
-              </label>
-            ))}
-          </div>
+        <div className="cp-rows boxed">
+          {rows.map((r) => (
+            <label key={r.key} className="em-check-row cp-rule-row">
+              <input
+                type="checkbox"
+                className="em-check"
+                checked={Boolean(required[r.key])}
+                onChange={(e) => setRequired((prev) => ({ ...prev, [r.key]: e.target.checked }))}
+              />
+              <span className="em-check-label">
+                {r.label}
+                <span className="cp-row-blurb">{r.summary}</span>
+              </span>
+            </label>
+          ))}
+        </div>
 
-          <p className="text-sm text-muted-foreground">
-            {count === 0
-              ? 'No readings required — an encounter can be saved with any of them.'
-              : `${count} ${count === 1 ? 'reading' : 'readings'} required per encounter.`}
-          </p>
+        <p className="em-hint">
+          {count === 0
+            ? 'No readings required — an encounter can be saved with any of them.'
+            : `${count} ${count === 1 ? 'reading' : 'readings'} required per encounter.`}
+        </p>
 
-          <DialogFooter>
-            <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save rules'}</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        <div className="em-footer">
+          <button type="button" className="em-cancel" onClick={() => onOpenChange(false)}>
+            Cancel
+          </button>
+          <button type="submit" className="em-submit" disabled={saving}>
+            {saving ? 'Saving…' : 'Save rules'}
+          </button>
+        </div>
+      </form>
+    </EntityModal>
   );
 }

@@ -453,3 +453,77 @@ a[data-slot='button'] { text-decoration: none; }
   .cp-limit-row { flex-direction: column; align-items: stretch; gap: 0.5rem; }
   .cp-limit-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* Hard-limits row lettering (name over its source line). */
+.cp-limit-name { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+
+/* Padded card body + dividers for the hub pages (cfg-card provides the box). */
+.cp-card-pad { display: flex; flex-direction: column; gap: 0.75rem; padding: 0.85rem; }
+.cp-divide { border-top: 1px solid var(--vc-line-hairline); padding-top: 0.75rem; }
+.cp-identity-name { display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; }
+.cp-count-text { min-width: 0; }
+.cp-rows.boxed {
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.cp-advanced-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+  border-top: 1px solid var(--vc-line-hairline);
+  padding: 0.85rem;
+}
+
+/* Tab panel column and a spread row (text left, action right). */
+.cp-panel { display: flex; flex-direction: column; gap: 0.9rem; }
+.cp-spread {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.cp-spread-text { min-width: 0; }
+/* One labelled bounds pair inside the measurement editor. */
+.cp-bounds { display: flex; flex-direction: column; gap: 0.5rem; }
+/* Completion-rule rows: hairline-divided check rows inside the boxed list. */
+.cp-rule-row {
+  padding: 0.5rem 0.7rem;
+  border-top: 1px solid var(--vc-line-hairline);
+}
+.cp-rule-row:first-child { border-top: 0; }
+/* Inline action rows; .end pushes them to the right edge. */
+.cp-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.cp-actions.end { justify-content: flex-end; }
+/* Generic hairline-divided spread row inside a boxed list. */
+.cp-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.7rem;
+  border-top: 1px solid var(--vc-line-hairline);
+}
+.cp-list-row:first-child { border-top: 0; }
+.cp-list-main { min-width: 0; }
+.cp-list-mono {
+  display: block;
+  font-family: var(--vc-font-mono);
+  font-size: 0.72rem;
+  color: var(--vc-text-secondary);
+  overflow-wrap: anywhere;
+}
+/* Scrolling body for a long list inside a modal. */
+.cp-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+/* Broker connection line: tile beside its status text. */
+.cp-conn { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.cp-conn-text { flex: 1 1 0; min-width: 0; }
+.cp-list-row .em-select-wrap { flex: 0 0 auto; min-width: 8rem; }

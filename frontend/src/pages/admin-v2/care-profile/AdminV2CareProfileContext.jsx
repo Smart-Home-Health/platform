@@ -20,8 +20,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { CareAreaField, NotesField } from '../../../components/PatientFormFields';
-import { Card, CardContent, CardFooter } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { CfgSection, CfgGroup } from '../settings/CfgSection';
 import CareProfileSection from './CareProfileSection';
 import { STATUS_META, careContextSummary } from './careProfileSections';
 import useCareProfile, { updateCareProfile } from './useCareProfile';
@@ -71,9 +70,16 @@ export default function AdminV2CareProfileContext() {
       error={error}
       notice={notice}
     >
-      <form onSubmit={save}>
-        <Card>
-          <CardContent className="flex flex-col gap-4">
+      <CfgSection
+        title="Room and notes"
+        actions={
+          <button type="submit" form="cp-ctx-form" className="em-submit" disabled={saving}>
+            {saving ? 'Saving…' : 'Save care context'}
+          </button>
+        }
+      >
+        <CfgGroup>
+          <form id="cp-ctx-form" className="cfg-form" onSubmit={save}>
             <CareAreaField formData={form} setFormData={setForm} idPrefix="cp-ctx" />
             <NotesField
               formData={form}
@@ -82,14 +88,9 @@ export default function AdminV2CareProfileContext() {
               rows={6}
               hint="Shown with this profile across the app — routines, preferences, anything a caregiver arriving today would want to know."
             />
-          </CardContent>
-          <CardFooter className="justify-start">
-            <Button type="submit" disabled={saving}>
-              {saving ? 'Saving…' : 'Save care context'}
-            </Button>
-          </CardFooter>
-        </Card>
-      </form>
+          </form>
+        </CfgGroup>
+      </CfgSection>
     </CareProfileSection>
   );
 }

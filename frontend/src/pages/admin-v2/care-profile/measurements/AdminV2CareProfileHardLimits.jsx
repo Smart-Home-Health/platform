@@ -22,11 +22,6 @@
 // day-to-day job never runs into them.
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Card, CardContent, CardFooter } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Alert } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import CareProfileSection from '../CareProfileSection';
 import useCareProfile from '../useCareProfile';
 import { buildMeasurementRows } from './measurementRows';
@@ -96,59 +91,56 @@ export default function AdminV2CareProfileHardLimits() {
       error={error}
       notice={notice}
     >
-      <Alert>
+      <p className="cfg-note">
         A reading outside these bounds is rejected on capture — it is treated as a typo
         or a bad device read, not as a clinical finding. The defaults are device and
         physics limits; clear a field to go back to the default.
-      </Alert>
+      </p>
 
       <form onSubmit={save}>
-        <Card>
-          <CardContent className="flex flex-col gap-0 p-0">
-            {boundRows.map((r) => (
-              <div key={keyOf(r)} className="cp-limit-row">
-                <div className="min-w-0">
-                  <span className="block text-sm text-foreground">
-                    {r.field_key ? `${r.group} — ${r.label}` : r.group}
-                  </span>
-                  <span className="block text-xs text-muted-foreground">
-                    {r.source === 'patient' ? 'Set for this profile' : 'Default limits'}
-                    {r.unit ? ` · ${r.unit}` : ''}
-                  </span>
-                </div>
-                <div className="cp-limit-fields">
-                  <Input
-                    type="number"
-                    step="any"
-                    inputMode="decimal"
-                    aria-label={`${r.group}${r.field_key ? ` ${r.label}` : ''} lowest plausible value`}
-                    value={valueOf(r, 'implausible_min')}
-                    onChange={(e) => setValue(r, 'implausible_min', e.target.value)}
-                  />
-                  <Input
-                    type="number"
-                    step="any"
-                    inputMode="decimal"
-                    aria-label={`${r.group}${r.field_key ? ` ${r.label}` : ''} highest plausible value`}
-                    value={valueOf(r, 'implausible_max')}
-                    onChange={(e) => setValue(r, 'implausible_max', e.target.value)}
-                  />
-                </div>
+        <section className="cfg-card">
+          {boundRows.map((r) => (
+            <div key={keyOf(r)} className="cp-limit-row">
+              <div className="cp-limit-name">
+                <span className="cp-row-title cp-row-title-plain">
+                  {r.field_key ? `${r.group} — ${r.label}` : r.group}
+                </span>
+                <span className="cp-row-blurb">
+                  {r.source === 'patient' ? 'Set for this profile' : 'Default limits'}
+                  {r.unit ? ` · ${r.unit}` : ''}
+                </span>
               </div>
-            ))}
-          </CardContent>
-          <CardFooter className="flex-wrap justify-between gap-3">
-            <span className="text-sm text-muted-foreground">
+              <div className="cp-limit-fields">
+                <input
+                  className="em-input"
+                  type="number"
+                  step="any"
+                  inputMode="decimal"
+                  aria-label={`${r.group}${r.field_key ? ` ${r.label}` : ''} lowest plausible value`}
+                  value={valueOf(r, 'implausible_min')}
+                  onChange={(e) => setValue(r, 'implausible_min', e.target.value)}
+                />
+                <input
+                  className="em-input"
+                  type="number"
+                  step="any"
+                  inputMode="decimal"
+                  aria-label={`${r.group}${r.field_key ? ` ${r.label}` : ''} highest plausible value`}
+                  value={valueOf(r, 'implausible_max')}
+                  onChange={(e) => setValue(r, 'implausible_max', e.target.value)}
+                />
+              </div>
+            </div>
+          ))}
+          <footer className="cfg-foot spread">
+            <span className="cfg-fine">
               {dirty ? 'Unsaved changes' : 'Lowest and highest plausible value'}
             </span>
-            <div className="flex items-center gap-3">
-              {!dirty && <Badge variant="muted">No changes</Badge>}
-              <Button type="submit" disabled={saving || !dirty}>
-                {saving ? 'Saving…' : 'Save hard limits'}
-              </Button>
-            </div>
-          </CardFooter>
-        </Card>
+            <button type="submit" className="em-submit" disabled={saving || !dirty}>
+              {saving ? 'Saving…' : 'Save hard limits'}
+            </button>
+          </footer>
+        </section>
       </form>
     </CareProfileSection>
   );

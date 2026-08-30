@@ -19,16 +19,9 @@
 // rows (systolic / diastolic) because that is where its bounds live; every
 // other vital is a single pair of numbers.
 import { useEffect, useState } from 'react';
-import {
-  Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Alert } from '@/components/ui/alert';
-import { Field, FormRow } from '@/components/ui/field';
-import { Textarea } from '@/components/ui/textarea';
+import EntityModal, { EmField, EmRow } from '../../../../components/vc/EntityModal';
 import { numOrNull, rowPayload, saveRanges } from './rangeApi';
+import '../care-profile.css';
 
 const text = (v) => (v === null || v === undefined ? '' : String(v));
 
@@ -103,77 +96,82 @@ export default function MeasurementEditorDialog({ patientId, row, open, onOpenCh
   if (!row) return null;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[520px]">
-        <DialogHeader>
-          <DialogTitle>{row.label}</DialogTitle>
-          <DialogDescription>
-            Readings outside the expected range are flagged on capture and asked about
-            before they are saved. Leave a field blank for no bound.
-          </DialogDescription>
-        </DialogHeader>
+    <EntityModal open={open} onOpenChange={onOpenChange} title={row.label}>
+      <form onSubmit={save} className="em-form">
+        <p className="em-hint">
+          Readings outside the expected range are flagged on capture and asked about
+          before they are saved. Leave a field blank for no bound.
+        </p>
 
-        <form onSubmit={save} className="flex flex-col gap-4">
-          {error && <Alert variant="destructive" role="alert">{error}</Alert>}
+        {error && <div className="em-error" role="alert">{error}</div>}
 
-          {editable.map((r) => {
-            const fieldKey = r.field_key || '';
-            const id = `meas-${row.key}-${fieldKey || 'value'}`;
-            const value = bounds[fieldKey] || { min: '', max: '' };
-            return (
-              <div key={id} className="flex flex-col gap-2">
-                {row.components.length > 0 && (
-                  <h4 className="text-sm font-semibold text-foreground">{r.label || fieldKey}</h4>
-                )}
-                <FormRow>
-                  <Field label={`Expected min${row.unit ? ` (${row.unit})` : ''}`} htmlFor={`${id}-min`}>
-                    <Input
-                      id={`${id}-min`}
-                      type="number"
-                      step="any"
-                      inputMode="decimal"
-                      value={value.min}
-                      onChange={(e) => setBound(fieldKey, 'min', e.target.value)}
-                    />
-                  </Field>
-                  <Field label={`Expected max${row.unit ? ` (${row.unit})` : ''}`} htmlFor={`${id}-max`}>
-                    <Input
-                      id={`${id}-max`}
-                      type="number"
-                      step="any"
-                      inputMode="decimal"
-                      value={value.max}
-                      onChange={(e) => setBound(fieldKey, 'max', e.target.value)}
-                    />
-                  </Field>
-                </FormRow>
-              </div>
-            );
-          })}
+        {editable.map((r) => {
+          const fieldKey = r.field_key || '';
+          const id = `meas-${row.key}-${fieldKey || 'value'}`;
+          const value = bounds[fieldKey] || { min: '', max: '' };
+          return (
+            <div key={id} className="cp-bounds">
+              {row.components.length > 0 && (
+                <h4 className="cp-eyebrow">{r.label || fieldKey}</h4>
+              )}
+              <EmRow>
+                <EmField label={`Expected min${row.unit ? ` (${row.unit})` : ''}`} htmlFor={`${id}-min`}>
+                  <input
+                    id={`${id}-min`}
+                    className="em-input"
+                    type="number"
+                    step="any"
+                    inputMode="decimal"
+                    value={value.min}
+                    onChange={(e) => setBound(fieldKey, 'min', e.target.value)}
+                  />
+                </EmField>
+                <EmField label={`Expected max${row.unit ? ` (${row.unit})` : ''}`} htmlFor={`${id}-max`}>
+                  <input
+                    id={`${id}-max`}
+                    className="em-input"
+                    type="number"
+                    step="any"
+                    inputMode="decimal"
+                    value={value.max}
+                    onChange={(e) => setBound(fieldKey, 'max', e.target.value)}
+                  />
+                </EmField>
+              </EmRow>
+            </div>
+          );
+        })}
 
-          <label className="flex w-fit cursor-pointer items-center gap-2">
-            <Checkbox checked={required} onCheckedChange={(v) => setRequired(v === true)} />
-            <span className="text-sm text-foreground">Required to complete an encounter</span>
-          </label>
+        <label className="em-check-row">
+          <input
+            type="checkbox"
+            className="em-check"
+            checked={required}
+            onChange={(e) => setRequired(e.target.checked)}
+          />
+          <span className="em-check-label">Required to complete an encounter</span>
+        </label>
 
-          <Field label="Note (optional)" htmlFor={`meas-${row.key}-note`}>
-            <Textarea
-              id={`meas-${row.key}-note`}
-              rows={2}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Why these bounds — who asked for them, when they were reviewed…"
-            />
-          </Field>
+        <EmField label="Note" optional htmlFor={`meas-${row.key}-note`}>
+          <textarea
+            id={`meas-${row.key}-note`}
+            className="em-input"
+            rows={2}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Why these bounds — who asked for them, when they were reviewed…"
+          />
+        </EmField>
 
-          <DialogFooter>
-            <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save measurement'}</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        <div className="em-footer">
+          <button type="button" className="em-cancel" onClick={() => onOpenChange(false)}>
+            Cancel
+          </button>
+          <button type="submit" className="em-submit" disabled={saving}>
+            {saving ? 'Saving…' : 'Save measurement'}
+          </button>
+        </div>
+      </form>
+    </EntityModal>
   );
 }

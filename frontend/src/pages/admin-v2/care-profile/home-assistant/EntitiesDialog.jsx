@@ -17,11 +17,10 @@
  */
 // What this profile actually publishes to Home Assistant, straight from the
 // discovery planner — one row per entity, grouped by the section it came from.
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
-} from '@/components/ui/dialog';
-import { Badge } from '@/components/ui/badge';
+import EntityModal from '../../../../components/vc/EntityModal';
+import { CfgBadge } from '../../settings/CfgSection';
 import { MQTT_SECTIONS } from '../../mqttConstants';
+import '../care-profile.css';
 
 const labelOf = (id) => MQTT_SECTIONS.find((s) => s.id === id)?.label || id;
 
@@ -32,42 +31,37 @@ export default function EntitiesDialog({ entities, patientName, open, onOpenChan
   }, {});
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[520px]">
-        <DialogHeader>
-          <DialogTitle>Published entities</DialogTitle>
-          <DialogDescription>
-            {entities?.length
-              ? `Home Assistant sees ${entities.length} ${entities.length === 1 ? 'entity' : 'entities'} for this profile.`
-              : 'Nothing is published for this profile yet.'}
-          </DialogDescription>
-        </DialogHeader>
+    <EntityModal open={open} onOpenChange={onOpenChange} title="Published entities">
+      <div className="em-form">
+        <p className="em-hint">
+          {entities?.length
+            ? `Home Assistant sees ${entities.length} ${entities.length === 1 ? 'entity' : 'entities'} for this profile.`
+            : 'Nothing is published for this profile yet.'}
+        </p>
 
-        <div className="flex max-h-[60vh] flex-col gap-4 overflow-y-auto">
+        <div className="cp-scroll">
           {Object.entries(bySection).map(([section, rows]) => (
-            <div key={section} className="flex flex-col gap-1">
+            <div key={section} className="cp-bounds">
               <h4 className="cp-eyebrow">{labelOf(section)}</h4>
-              <div className="divide-y divide-border/60 rounded-lg border border-border">
+              <div className="cp-rows boxed">
                 {rows.map((entity) => (
-                  <div key={entity.key} className="flex items-center justify-between gap-3 px-3 py-2">
-                    <span className="min-w-0">
-                      <span className="block text-sm text-foreground">
+                  <div key={entity.key} className="cp-list-row">
+                    <span className="cp-list-main">
+                      <span className="cp-row-title cp-row-title-plain">
                         {patientName ? `${patientName} ${entity.name}` : entity.name}
                       </span>
-                      <span className="block font-mono text-xs text-muted-foreground">
-                        {entity.key}
-                      </span>
+                      <span className="cp-list-mono">{entity.key}</span>
                     </span>
-                    <Badge variant="muted">
+                    <CfgBadge>
                       {entity.type === 'binary_sensor' ? 'Binary sensor' : 'Sensor'}
-                    </Badge>
+                    </CfgBadge>
                   </div>
                 ))}
               </div>
             </div>
           ))}
         </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </EntityModal>
   );
 }

@@ -23,14 +23,10 @@ import { Link, useParams } from 'react-router-dom';
 import config, { apiFetch } from '../../../../config';
 import {
   AlertIcon, ChevronRightIcon, DropletIcon, HeartIcon, LeafIcon, LockIcon, LungsIcon,
-  PlusIcon, ScaleIcon, ThermometerIcon, TrashIcon, VitalsIcon, WindIcon,
+  ScaleIcon, ThermometerIcon, TrashIcon, VitalsIcon, WindIcon,
 } from '../../../../components/Icons';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Alert } from '@/components/ui/alert';
-import { Input } from '@/components/ui/input';
-import { Field, FormRow } from '@/components/ui/field';
+import { EmField, EmRow } from '../../../../components/vc/EntityModal';
+import { CfgBadge } from '../../settings/CfgSection';
 import CareProfileSection from '../CareProfileSection';
 import useCareProfile from '../useCareProfile';
 import {
@@ -78,7 +74,7 @@ const MeasurementRow = ({ icon, title, summary, status, badge, onClick }) => (
       <span className="cp-row-title cp-row-title-plain">{title}</span>
       <span className="cp-row-status">
         <span className="cp-status" data-tone={status.tone}>{status.label}</span>
-        {badge && <Badge variant="outline">{badge}</Badge>}
+        {badge && <CfgBadge>{badge}</CfgBadge>}
       </span>
       <span className="cp-row-blurb">{summary}</span>
     </span>
@@ -177,8 +173,7 @@ export default function AdminV2CareProfileMeasurements() {
       notice={notice}
     >
       {/* Summary */}
-      <Card>
-        <CardContent className="flex flex-col gap-0 p-0">
+      <section className="cfg-card">
           <div className="cp-stats">
             <Stat value={counts.standard} label="Standard" />
             <Stat value={counts.custom} label="Custom" />
@@ -198,8 +193,7 @@ export default function AdminV2CareProfileMeasurements() {
               <span className="cp-chevron" aria-hidden><ChevronRightIcon size={16} /></span>
             </button>
           )}
-        </CardContent>
-      </Card>
+      </section>
 
       {/* Tabs */}
       <div className="cp-tabs" role="tablist" aria-label="Measurement groups">
@@ -221,13 +215,12 @@ export default function AdminV2CareProfileMeasurements() {
 
       {tab === 'vitals' && (
         <div id="cp-panel-vitals" role="tabpanel" aria-labelledby="cp-tab-vitals"
-             className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+             className="cp-panel">
+          <div className="cfg-listgroup-head">
             <h2 className="cp-eyebrow">Standard vitals</h2>
-            <p className="text-xs text-muted-foreground">Tap a measurement to edit.</p>
+            <p className="cfg-fine">Tap a measurement to edit.</p>
           </div>
-          <Card>
-            <CardContent className="cp-rows p-0">
+          <section className="cfg-card cp-rows">
               {vitalRows.map((row) => {
                 const Icon = VITAL_ICONS[row.key] || VitalsIcon;
                 return (
@@ -242,28 +235,27 @@ export default function AdminV2CareProfileMeasurements() {
                   />
                 );
               })}
-            </CardContent>
-          </Card>
+          </section>
 
           {/* Completion rules */}
-          <Card>
-            <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4 sm:p-4">
-              <div className="min-w-0">
+          <section className="cfg-card cp-card-pad">
+            <div className="cp-spread">
+              <div className="cp-spread-text">
                 <h3 className="cp-eyebrow">Completion rules</h3>
-                <p className="mt-1 text-sm text-foreground">{completion.headline}</p>
-                <p className="text-xs text-muted-foreground">{completion.detail}</p>
+                <p className="cp-meta-value">{completion.headline}</p>
+                <p className="cfg-fine">{completion.detail}</p>
               </div>
-              <Button variant="secondary" size="sm" onClick={() => setRulesOpen(true)}>
+              <button type="button" className="cfg-ghost" onClick={() => setRulesOpen(true)}>
                 Edit requirements
-              </Button>
-            </CardContent>
-          </Card>
+              </button>
+            </div>
+          </section>
 
           {/* Hard limits */}
-          <Card>
+          <section className="cfg-card">
             <Link className="cp-row cp-row-compact" to={`${base}/measurements/limits`}>
               <span className="cp-tile" aria-hidden><LockIcon size={18} /></span>
-              <div className="min-w-0">
+              <div className="cp-spread-text">
                 <h3 className="cp-row-title">Advanced · hard limits</h3>
                 <p className="cp-row-blurb">
                   The values a reading can never plausibly take.
@@ -271,22 +263,21 @@ export default function AdminV2CareProfileMeasurements() {
               </div>
               <span className="cp-chevron" aria-hidden><ChevronRightIcon size={18} /></span>
             </Link>
-          </Card>
+          </section>
         </div>
       )}
 
       {tab === 'room' && (
         <div id="cp-panel-room" role="tabpanel" aria-labelledby="cp-tab-room"
-             className="flex flex-col gap-4">
-          <div className="flex flex-col gap-0.5">
+             className="cp-panel">
+          <div>
             <h2 className="cp-eyebrow">Room conditions</h2>
-            <p className="text-xs text-muted-foreground">
+            <p className="cfg-fine">
               When to flag the room on this profile&rsquo;s timeline. Caution is worth
               noticing; critical is worth acting on.
             </p>
           </div>
-          <Card>
-            <CardContent className="cp-rows p-0">
+          <section className="cfg-card cp-rows">
               {roomRows.map((metric) => {
                 const Icon = ROOM_ICONS[metric.key] || LeafIcon;
                 return (
@@ -302,17 +293,16 @@ export default function AdminV2CareProfileMeasurements() {
                   />
                 );
               })}
-            </CardContent>
-          </Card>
+          </section>
         </div>
       )}
 
       {tab === 'custom' && (
         <div id="cp-panel-custom" role="tabpanel" aria-labelledby="cp-tab-custom"
-             className="flex flex-col gap-4">
-          <div className="flex flex-col gap-0.5">
+             className="cp-panel">
+          <div>
             <h2 className="cp-eyebrow">Custom measurements</h2>
-            <p className="text-xs text-muted-foreground">
+            <p className="cfg-fine">
               Extra readings to capture for this profile — peak flow, blood glucose,
               anything the care team tracks. They appear on the capture screen beside
               the standard vitals.
@@ -320,8 +310,7 @@ export default function AdminV2CareProfileMeasurements() {
           </div>
 
           {customRows.length > 0 && (
-            <Card>
-              <CardContent className="cp-rows p-0">
+            <section className="cfg-card cp-rows">
                 {customRows.map((row) => (
                   <div key={row.key} className="cp-row cp-row-static cp-row-compact">
                     <span className="cp-tile" data-tone={statusOf(row).tone} aria-hidden>
@@ -334,13 +323,13 @@ export default function AdminV2CareProfileMeasurements() {
                         <span className="cp-status" data-tone={statusOf(row).tone}>
                           {statusOf(row).label}
                         </span>
-                        <Badge variant="outline">{row.required ? 'Required' : 'Optional'}</Badge>
+                        <CfgBadge>{row.required ? 'Required' : 'Optional'}</CfgBadge>
                       </span>
                       <span className="cp-row-blurb">{row.summary}</span>
                     </button>
                     <button
                       type="button"
-                      className="admin-v2-action-btn admin-v2-action-btn-delete"
+                      className="cfg-iconbtn danger"
                       aria-label={`Remove ${row.label}`}
                       onClick={() => removeCustomVital(row)}
                     >
@@ -348,58 +337,54 @@ export default function AdminV2CareProfileMeasurements() {
                     </button>
                   </div>
                 ))}
-              </CardContent>
-            </Card>
+            </section>
           )}
 
-          <Card>
-            <CardContent>
-              <form onSubmit={addCustomVital} className="flex flex-col gap-4">
-                <FormRow>
-                  <Field label="Name" htmlFor="cp-custom-name" required>
-                    <Input
-                      id="cp-custom-name"
-                      value={newVital.name}
-                      onChange={(e) => setNewVital((p) => ({ ...p, name: e.target.value }))}
-                      placeholder="Peak flow"
-                    />
-                  </Field>
-                  <Field label="Unit" htmlFor="cp-custom-unit">
-                    <Input
-                      id="cp-custom-unit"
-                      value={newVital.unit}
-                      onChange={(e) => setNewVital((p) => ({ ...p, unit: e.target.value }))}
-                      placeholder="L/min"
-                    />
-                  </Field>
-                </FormRow>
-                <Button
+          <section className="cfg-card cp-card-pad">
+            <form onSubmit={addCustomVital} className="cfg-form">
+              <EmRow>
+                <EmField label="Name" htmlFor="cp-custom-name" required>
+                  <input
+                    id="cp-custom-name"
+                    className="em-input"
+                    value={newVital.name}
+                    onChange={(e) => setNewVital((p) => ({ ...p, name: e.target.value }))}
+                    placeholder="Peak flow"
+                  />
+                </EmField>
+                <EmField label="Unit" htmlFor="cp-custom-unit">
+                  <input
+                    id="cp-custom-unit"
+                    className="em-input"
+                    value={newVital.unit}
+                    onChange={(e) => setNewVital((p) => ({ ...p, unit: e.target.value }))}
+                    placeholder="L/min"
+                  />
+                </EmField>
+              </EmRow>
+              <div className="cp-actions">
+                <button
                   type="submit"
-                  className="w-fit gap-1.5"
+                  className="em-submit"
                   disabled={addingVital || !newVital.name.trim()}
                 >
-                  <PlusIcon size={16} />
                   {addingVital ? 'Adding…' : 'Add measurement'}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
+                </button>
+              </div>
+            </form>
+          </section>
 
           {customRows.length === 0 && (
-            <Alert>
+            <p className="cfg-note">
               No custom measurements yet. Standard vitals are always available.
-            </Alert>
+            </p>
           )}
         </div>
       )}
 
-      <div className="flex flex-wrap justify-end gap-3">
-        <Button variant="secondary" asChild>
-          <Link to={base}>Back to profile</Link>
-        </Button>
-        <Button asChild>
-          <Link to={base}>Done</Link>
-        </Button>
+      <div className="cp-actions end">
+        <Link className="em-cancel" to={base}>Back to profile</Link>
+        <Link className="em-submit" to={base}>Done</Link>
       </div>
 
       <MeasurementEditorDialog
