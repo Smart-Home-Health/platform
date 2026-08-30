@@ -62,8 +62,14 @@ const setup = (props = {}) => {
 
 const logButton = () => screen.getByRole('button', { name: /Log (intake|\d+ items)/ });
 
-// Add a free-text item row and fill it in.
+// Item search now lives in the full-screen picker.
+const openPicker = () =>
+  fireEvent.click(screen.getByRole('button', { name: /Add items|Add or remove items/ }));
+
+// Add a free-text item row through the picker and fill it in. Manual entry
+// commits and closes the picker, so the amount is edited on the form.
 const addManualItem = (name = 'Water', amount = '120') => {
+  openPicker();
   fireEvent.change(document.getElementById('intake-search'), { target: { value: name } });
   fireEvent.click(screen.getByRole('button', { name: `Add "${name}" manually` }));
   fireEvent.change(screen.getByLabelText(`Amount of ${name}`), { target: { value: amount } });
@@ -118,10 +124,12 @@ describe('IntakeSheet', () => {
       default_amount: 250, default_amount_unit: 'ml', calories_per_unit: 1.5,
     }]);
     setup();
+    openPicker();
     fireEvent.change(document.getElementById('intake-search'), { target: { value: 'pept' } });
 
     const result = await screen.findByText('Peptamen');
     fireEvent.click(result.closest('button'));
+    fireEvent.click(screen.getByRole('button', { name: /Done · 1 item/ }));
 
     // 250 * 1.5 kcal per ml, filled in without anyone doing the arithmetic
     // (shown on the row and summed in the card header).
@@ -139,9 +147,11 @@ describe('IntakeSheet', () => {
       default_amount: 250, default_amount_unit: 'ml', calories_per_unit: 1.5,
     }]);
     setup();
+    openPicker();
     fireEvent.change(document.getElementById('intake-search'), { target: { value: 'pept' } });
     const result = await screen.findByText('Peptamen');
     fireEvent.click(result.closest('button'));
+    fireEvent.click(screen.getByRole('button', { name: /Done · 1 item/ }));
 
     fireEvent.change(screen.getByLabelText('Amount of Peptamen'), { target: { value: '100' } });
     expect((await screen.findAllByText(/150 kcal/)).length).toBeGreaterThanOrEqual(1);

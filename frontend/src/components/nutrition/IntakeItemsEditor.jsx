@@ -21,25 +21,22 @@
 // schedule Complete Nutrition dialog, and (item-only) the schedule sheet's
 // feed mix.
 //
-// Items come from three places: the saved-item search, a barcode scan (saved
-// items win; unknown codes fall through to OpenFoodFacts as a save-able
-// suggestion), or free text. Rows built from a saved item or a suggestion
-// carry per-unit facts and rescale when the amount changes.
-//
-// Scanning needs no dialog: the Bluetooth scanner is a keyboard wedge, so
-// the barcode button just reveals an input — focus it, pull the trigger,
-// and the wedge types the code + Enter, which fires the lookup.
-import { useEffect, useMemo, useRef, useState } from 'react';
+// Finding items is separated from configuring them: "Add items" opens the
+// full-screen ItemPickerSheet (search, recents, barcode, manual entry, one
+// tap per item); this form shows each selected item as a compact row and
+// expands only the one being edited. Rows built from a saved item or a
+// barcode suggestion carry per-unit facts and rescale when the amount
+// changes. Totals and target progress sit below the list.
+import { useMemo, useState } from 'react';
 import { EmField } from '../vc/EntityModal';
-import { nutritionService } from '../../services/nutrition';
+import ItemPickerSheet from './ItemPickerSheet';
 import {
-  BarcodeIcon, CheckIcon, ChevronDownIcon, FoodIcon, LiquidIcon, PlusIcon,
+  CheckIcon, ChevronDownIcon, FoodIcon, LiquidIcon, PlusIcon,
   SupplementIcon, TrashIcon, TubeIcon,
 } from '../Icons';
 import { INTAKE_TYPES, UNITS_FOR_TYPE } from './intakeVocab';
 import {
-  factString, makeItemRow, numberOrNull, rowFromSavedItem, rowFromSuggestion,
-  rowIsValid, rowsTotals, scaledFacts,
+  factString, numberOrNull, rowIsValid, rowsTotals, scaledFacts,
 } from './intakeItemRows';
 import './nutrition-sheet.css';
 
@@ -48,23 +45,6 @@ const TYPE_ICONS = {
   food: <FoodIcon size={16} />,
   supplement: <SupplementIcon size={16} />,
   tube_feed: <TubeIcon size={16} />,
-};
-
-// Water is a given — nobody should have to author it. The search always
-// offers it; picking it creates the real library item on the spot (zero
-// facts, counts toward fluids by unit) so it also works where a saved item
-// id is required, like a schedule component.
-const BUILTIN_WATER = {
-  name: 'Water',
-  item_type: 'liquid',
-  default_amount: 60,
-  default_amount_unit: 'ml',
-  calories_per_unit: 0,
-  protein_per_unit: 0,
-  carbs_per_unit: 0,
-  fat_per_unit: 0,
-  fiber_per_unit: 0,
-  sodium_per_unit: 0,
 };
 
 export default function IntakeItemsEditor({
@@ -85,45 +65,11 @@ export default function IntakeItemsEditor({
   targetLabel = null,
   idPrefix = 'nitems',
 }) {
-  const [search, setSearch] = useState('');
-  const [results, setResults] = useState([]);
+  // Deliberately NOT auto-opened: the hosts' one-tap quick paths (presets,
+  // recents, feed links) sit on the form, and a modal picker would bury
+  // them on every open.
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [expanded, setExpanded] = useState(() => new Set());
-  const [scanOpen, setScanOpen] = useState(false);
-  const [scanCode, setScanCode] = useState('');
-  const [scanNotice, setScanNotice] = useState(null);
-  const [scanBusy, setScanBusy] = useState(false);
-  const searchRef = useRef(null);
-  const scanRef = useRef(null);
-
-  // The revealed barcode field grabs focus so the very next trigger pull
-  // lands in it.
-  useEffect(() => {
-    if (scanOpen) scanRef.current?.focus();
-  }, [scanOpen]);
-
-  // Auto-lookup: a scanner types 8+ digits in a burst; when the field goes
-  // quiet the code is looked up even if the scanner sent no terminator
-  // (wedges differ — Enter, Tab, or nothing).
-  useEffect(() => {
-    const code = scanCode.trim();
-    if (code.length < 8 || !/^\d+$/.test(code)) return undefined;
-    const timer = setTimeout(() => handleBarcode(code), 350);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleBarcode is recreated each render; keying on the code is the debounce contract
-  }, [scanCode]);
-
-  useEffect(() => {
-    if (!patient) return undefined;
-    const term = search.trim();
-    if (!term) { setResults([]); return undefined; }
-    let cancelled = false;
-    const timer = setTimeout(() => {
-      nutritionService.listItems({ patientId: patient.id, search: term, limit: 8 })
-        .then((found) => { if (!cancelled) setResults(found); })
-        .catch(() => { if (!cancelled) setResults([]); });
-    }, 200);
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [search, patient]);
 
   const setRow = (key, patch) => {
     onChange(items.map((row) => {
@@ -137,20 +83,14 @@ export default function IntakeItemsEditor({
     }));
   };
 
-  const addRow = (row) => {
-    onChange([...items, row]);
-    setSearch('');
-    setResults([]);
-    setScanNotice(null);
-  };
+  // A one-item mix cannot have a flush (the meal itself would vanish);
+  // clear an orphaned flag whenever an edit leaves a single row.
+  const normalize = (rows) => (rows.length < 2
+    ? rows.map((row) => (row.isFlush ? { ...row, isFlush: false } : row))
+    : rows);
 
   const removeRow = (key) => {
-    const remaining = items.filter((row) => row.key !== key);
-    // A one-item mix cannot have a flush (the meal itself would vanish);
-    // clear an orphaned flag when a deletion leaves a single row.
-    onChange(remaining.length < 2
-      ? remaining.map((row) => (row.isFlush ? { ...row, isFlush: false } : row))
-      : remaining);
+    onChange(normalize(items.filter((row) => row.key !== key)));
   };
 
   // One flush per feed: flagging a row clears the flag on the others.
@@ -169,77 +109,13 @@ export default function IntakeItemsEditor({
     });
   };
 
-  const addFreeText = () => {
-    const row = makeItemRow({ itemName: search.trim() });
-    addRow(row);
-    setExpanded((prev) => new Set(prev).add(row.key));
-  };
-
-  // Offered while the term reads like "water" and the library has no Water
-  // of its own yet.
-  const builtinWaterOffered = (() => {
-    const term = search.trim().toLowerCase();
-    return term.length > 0
-      && 'water'.startsWith(term)
-      && !results.some((item) => item.name.trim().toLowerCase() === 'water');
-  })();
-
-  const addBuiltinWater = async () => {
-    let item = null;
-    try {
-      item = await nutritionService.createItem({
-        patient_id: patient?.id ?? null,
-        ...BUILTIN_WATER,
-      });
-    } catch {
-      // Already exists (or a race): fall back to the saved one.
-      try {
-        const found = await nutritionService.listItems({
-          patientId: patient?.id, search: 'water', limit: 8,
-        });
-        item = found.find((i) => i.name.trim().toLowerCase() === 'water') || null;
-      } catch { /* handled below */ }
-    }
-    if (item) addRow(rowFromSavedItem(item));
-    else setScanNotice('Could not add Water — try adding it manually.');
-  };
-
-  const handleBarcode = async (code) => {
-    const barcode = String(code || '').trim();
-    if (!barcode) return;
-    setScanCode('');
-    setScanBusy(true);
-    setScanNotice(null);
-    try {
-      const result = await nutritionService.lookupBarcode(barcode, patient?.id);
-      if (result.source === 'library' && result.item) {
-        addRow(rowFromSavedItem(result.item));
-      } else if (result.source === 'openfoodfacts' && result.suggestion) {
-        if (requireSavedItem) {
-          // A schedule component needs a real library item; save it now.
-          try {
-            const item = await nutritionService.createItem({
-              patient_id: patient?.id ?? null,
-              ...result.suggestion,
-            });
-            addRow(rowFromSavedItem(item));
-          } catch {
-            setScanNotice('Found the product but could not save it to the library.');
-          }
-        } else {
-          addRow(rowFromSuggestion(result.suggestion));
-          setScanNotice('New product from the barcode database — check the amount, it will be saved for next time.');
-        }
-      } else {
-        setScanNotice(`No match for barcode ${barcode}. Enter the item manually.`);
-      }
-    } catch {
-      setScanNotice('Barcode lookup failed. Enter the item manually.');
-    } finally {
-      setScanBusy(false);
-      // Ready for the next bottle — consecutive trigger pulls just work.
-      scanRef.current?.focus();
-    }
+  // The picker hands back the whole selection; a manual row comes with its
+  // key so it opens for configuring right away.
+  const applyPicker = (rows, { expandKey } = {}) => {
+    const limited = maxItems != null ? rows.slice(0, maxItems) : rows;
+    onChange(normalize(limited));
+    if (expandKey) setExpanded((prev) => new Set(prev).add(expandKey));
+    setPickerOpen(false);
   };
 
   const canAdd = maxItems == null || items.length < maxItems;
@@ -277,7 +153,7 @@ export default function IntakeItemsEditor({
       </header>
 
       {items.length === 0 && (
-        <p className="nsheet-note">Nothing added yet. Search, scan, or enter an item.</p>
+        <p className="nsheet-note">Nothing added yet.</p>
       )}
 
       {items.map((row) => {
@@ -547,124 +423,25 @@ export default function IntakeItemsEditor({
       )}
 
       {canAdd && (
-      <EmField
-        label={requireSavedItem ? 'Add a saved item' : 'Add an item'}
-        htmlFor={`${idPrefix}-search`}
-      >
-        <div className="nsheet-search">
-          <input
-            id={`${idPrefix}-search`}
-            ref={searchRef}
-            className="em-input"
-            value={search}
-            placeholder="Search saved items"
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <button
-            type="button"
-            className="nsheet-scan"
-            title={scanOpen ? 'Hide the barcode field' : 'Scan a barcode'}
-            aria-label={scanOpen ? 'Hide the barcode field' : 'Scan a barcode'}
-            aria-expanded={scanOpen}
-            disabled={scanBusy}
-            onClick={() => { setScanOpen((v) => !v); setScanNotice(null); }}
-          >
-            <BarcodeIcon size={20} />
-          </button>
-        </div>
-      </EmField>
-      )}
-
-      {canAdd && scanOpen && (
-        <EmField label="Barcode" htmlFor={`${idPrefix}-scan`}>
-          <div className="nsheet-search">
-            <input
-              id={`${idPrefix}-scan`}
-              ref={scanRef}
-              className="em-input"
-              value={scanCode}
-              placeholder="Scan or type the UPC"
-              inputMode="numeric"
-              autoComplete="off"
-              // The wedge scanner types on its own; popping the on-screen
-              // keyboard over the panel mid-scan is pure noise.
-              data-vkb-ignore="true"
-              onChange={(e) => setScanCode(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  handleBarcode(e.target.value);
-                }
-              }}
-            />
-            <button
-              type="button"
-              className="nsheet-lookup"
-              disabled={scanBusy || !scanCode.trim()}
-              onClick={() => handleBarcode(scanCode)}
-            >
-              Look up
-            </button>
-          </div>
-        </EmField>
-      )}
-
-      {scanNotice && <p className="nsheet-note nitems-scan-notice">{scanNotice}</p>}
-      {scanBusy && <p className="nsheet-note">Looking up barcode…</p>}
-
-      {canAdd && (results.length > 0 || builtinWaterOffered) && (
-        <div className="nsheet-results">
-          {builtinWaterOffered && (
-            <button
-              type="button"
-              className="nsheet-result"
-              onClick={addBuiltinWater}
-            >
-              <span className="nsheet-result-icon"><LiquidIcon size={18} /></span>
-              <span className="nsheet-result-text">
-                <span className="nsheet-result-name">Water</span>
-                <span className="nsheet-result-meta">
-                  built-in · counts toward fluids · no calories
-                </span>
-              </span>
-              <span className="nsheet-result-add"><PlusIcon size={18} /></span>
-            </button>
-          )}
-          {results.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className="nsheet-result"
-              onClick={() => addRow(rowFromSavedItem(item))}
-            >
-              <span className="nsheet-result-icon">
-                {TYPE_ICONS[item.item_type] || <LiquidIcon size={18} />}
-              </span>
-              <span className="nsheet-result-text">
-                <span className="nsheet-result-name">{item.name}</span>
-                <span className="nsheet-result-meta">
-                  {[
-                    item.item_type?.replace('_', ' '),
-                    item.default_amount
-                      ? `${item.default_amount} ${item.default_amount_unit || ''}`.trim()
-                      : null,
-                    item.calories_per_unit ? `${item.calories_per_unit}/unit kcal` : 'no nutrition profile',
-                  ].filter(Boolean).join(' · ')}
-                </span>
-              </span>
-              <span className="nsheet-result-add"><PlusIcon size={18} /></span>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {canAdd && !requireSavedItem && (
-        <button type="button" className="nitems-add-manual" onClick={addFreeText}>
+        <button
+          type="button"
+          className="nitems-open-picker"
+          onClick={() => setPickerOpen(true)}
+        >
           <PlusIcon size={16} />
-          {search.trim() ? `Add "${search.trim()}" manually` : 'Add an item manually'}
+          {items.length ? 'Add or remove items' : 'Add items'}
         </button>
       )}
 
+      <ItemPickerSheet
+        open={pickerOpen}
+        onCancel={() => setPickerOpen(false)}
+        onDone={applyPicker}
+        patient={patient}
+        items={items}
+        requireSavedItem={requireSavedItem}
+        idPrefix={idPrefix}
+      />
     </section>
   );
 }
