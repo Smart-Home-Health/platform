@@ -94,6 +94,10 @@ const rowFromExisting = (record) => makeItemRow({
 export default function IntakeForm({
   active, onClose, onSaved, patient, editing, defaultDateTime,
   careTaskLogId, careTaskName,
+  // A daily-board row to complete: the form opens already linked to it with
+  // its expected mix as the starting rows — the schedule pages' "Complete
+  // Now" lands here instead of a bare submit.
+  prefillFeed,
 }) {
   const [mealType, setMealType] = useState(null);
   const [consumedAt, setConsumedAt] = useState(() => toLocalInput(defaultDateTime));
@@ -119,9 +123,14 @@ export default function IntakeForm({
       setMealType(null);
       setConsumedAt(toLocalInput(defaultDateTime));
       setNotes('');
-      setItems([]);
+      if (prefillFeed) {
+        setLinkedFeed(prefillFeed);
+        setItems(rowsFromScheduleRow(prefillFeed));
+      } else {
+        setItems([]);
+      }
     }
-  }, [active, editing, defaultDateTime]);
+  }, [active, editing, defaultDateTime, prefillFeed]);
 
   // Recent combinations and presets back the one-tap prefill rows.
   useEffect(() => {
@@ -198,9 +207,17 @@ export default function IntakeForm({
 
   const feedKey = (feed) => `${feed.schedule_id}|${feed.scheduled_time}`;
 
+  // The prefill row may be yesterday's occurrence, which the today-only
+  // fetch above does not return — keep its chip visible so the link can be
+  // seen and undone.
+  const feedOptions = (prefillFeed
+    && !feeds.some((f) => feedKey(f) === feedKey(prefillFeed)))
+    ? [prefillFeed, ...feeds]
+    : feeds;
+
   const chooseFeed = (key) => {
     if (!key) { setLinkedFeed(null); return; }
-    const feed = feeds.find((f) => feedKey(f) === key);
+    const feed = feedOptions.find((f) => feedKey(f) === key);
     if (!feed) return;
     setLinkedFeed(feed);
     // An empty sheet takes the feed's expected mix as its starting point.
@@ -280,13 +297,13 @@ export default function IntakeForm({
           onChange={setMealType}
         />
 
-        {!editing && !careTaskLogId && feeds.length > 0 && (
+        {!editing && !careTaskLogId && feedOptions.length > 0 && (
           <ChipGroup
             label="Scheduled feed"
             hint="Linking marks the feed complete."
             optional
             scroll
-            options={feeds.map((f) => ({
+            options={feedOptions.map((f) => ({
               value: feedKey(f),
               label: `${f.name} · ${feedTimeLabel(f.scheduled_time)}`,
               icon: <LinkIcon size={14} />,

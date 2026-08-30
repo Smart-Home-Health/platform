@@ -27,7 +27,6 @@ import {
   ClockIcon,
   CheckIcon,
   XIcon,
-  AlertIcon,
   LiquidIcon,
   ToiletIcon
 } from '../../components/Icons';
@@ -35,16 +34,11 @@ import { computeScheduleStatus } from '../../components/schedule/scheduleStatus'
 import { nutritionService } from '../../services/nutrition';
 import ScheduleBoard from '../../components/schedule/ScheduleBoard';
 import { groupBySlot } from '../../components/schedule/scheduleRollup';
-import {
-  checkAdministrationWindow,
-  formatDurationMinutes,
-  getCurrentLocalDateTime,
-} from '../../utils/timezone';
+import { getCurrentLocalDateTime } from '../../utils/timezone';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
-  DialogFooter,
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -81,8 +75,9 @@ const AdminV2NutritionSchedule = () => {
     completed: false
   });
 
-  // Off-window confirm (mirrors the live nutrition modal)
-  const [windowConfirm, setWindowConfirm] = useState({ open: false, item: null, check: null });
+  // Completing an item opens the full intake form pre-linked to the row —
+  // amounts adjustable, mix prefilled — never a bare submit.
+  const [completeFeed, setCompleteFeed] = useState(null);
 
   // PRN flow: 'pick' opens the choice screen; 'intake'/'output' delegate to
   // the shared AdminV2 modal of the same name.
@@ -169,7 +164,13 @@ const AdminV2NutritionSchedule = () => {
       else bucket = 'upcoming'; // 'pending'
       const detail = [];
       if (item.default_item) detail.push(item.default_item);
-      if (item.default_amount != null) {
+      if (item.fluid_dynamic && !item.completed && item.suggested_amount != null) {
+        // Dynamic water spot: the amount is computed from what is left of
+        // the daily fluid target, so show that instead of the nominal.
+        detail.push(item.suggested_amount > 0
+          ? `suggested ${item.suggested_amount} ${item.default_amount_unit || 'ml'}`
+          : 'goal met — skip?');
+      } else if (item.default_amount != null) {
         detail.push(`${item.default_amount}${item.default_amount_unit ? ' ' + item.default_amount_unit : ''}`);
       }
       if (item.default_calories != null) detail.push(`${item.default_calories} kcal`);
@@ -272,48 +273,19 @@ const AdminV2NutritionSchedule = () => {
   };
 
   // ===== Complete scheduled item =====
-  const submitComplete = async (item, earlyOverride = false) => {
-    try {
-      const res = await fetch(`${config.apiUrl}/api/schedule/complete/nutrition`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          schedule_id: item.schedule_id,
-          scheduled_time: item.scheduled_time,
-          patient_id: selectedPatient.id,
-          user_id: user?.id || null,
-          completed_at: null,
-          notes: 'Completed via admin schedule',
-          early_override: earlyOverride,
-        }),
-      });
-      if (res.ok) {
-        fetchSchedule();
-        return;
-      }
-      const errorData = await res.json().catch(() => ({}));
-      const offWindow = res.status === 409 && (
-        errorData.error === 'early_administration' ||
-        errorData.error === 'late_administration' ||
-        errorData.error === 'off_window_administration'
-      );
-      if (offWindow && !earlyOverride) {
-        setWindowConfirm({
-          open: true,
-          item,
-          check: checkAdministrationWindow(item.scheduled_time),
-        });
-        return;
-      }
-      alert(errorData.detail || errorData.error || 'Failed to mark as completed');
-    } catch (err) {
-      console.error('Error completing nutrition item:', err);
-      alert('Error connecting to server');
-    }
-  };
+  // Opens the shared intake form pre-linked to the occurrence (mix
+  // prefilled, target tracked, time and note editable). Logging the event
+  // marks the feed complete — no separate confirm dialog; the filled form
+  // IS the deliberate act, and its editable time records when the feed
+  // actually ran.
+  const handleMarkCompleted = (item) => setCompleteFeed(item);
 
-  const handleMarkCompleted = (item) => submitComplete(item, false);
+  const closeComplete = () => setCompleteFeed(null);
+
+  const onCompleteSaved = () => {
+    closeComplete();
+    fetchSchedule();
+  };
 
   // ===== PRN entry =====
   const openPrnPicker = () => {
@@ -465,48 +437,15 @@ const AdminV2NutritionSchedule = () => {
           />
         )}
 
-        {/* Off-window confirm */}
-        {windowConfirm.open && windowConfirm.item && windowConfirm.check && (() => {
-          const isLate = windowConfirm.check.status === 'late';
-          const title = isLate ? 'Confirm Late Completion' : 'Confirm Early Completion';
-          const heading = isLate
-            ? 'This nutrition item was scheduled earlier'
-            : 'This nutrition item is scheduled later';
-          const offsetText = isLate
-            ? `${formatDurationMinutes(Math.abs(windowConfirm.check.minutesOffset))} ago`
-            : `${formatDurationMinutes(windowConfirm.check.minutesOffset)} from now`;
-          const close = () => setWindowConfirm({ open: false, item: null, check: null });
-          return (
-            <Dialog open onOpenChange={(o) => { if (!o) close(); }}>
-              <DialogContent className="sm:max-w-[440px]" aria-describedby={undefined}>
-                <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2">
-                    <span className="nsched-warn-badge"><AlertIcon size={16} /></span>
-                    {title}
-                  </DialogTitle>
-                </DialogHeader>
-                <Alert variant="warning">
-                  <div className="nsched-warn-heading">{heading}</div>
-                  <div>
-                    <strong>{windowConfirm.item.name}</strong> is scheduled for{' '}
-                    <strong>{windowConfirm.check.scheduledLocal}</strong> — that's{' '}
-                    <strong>{offsetText}</strong>.
-                  </div>
-                </Alert>
-                <DialogFooter>
-                  <Button variant="secondary" onClick={close}>Cancel</Button>
-                  <Button
-                    onClick={async () => {
-                      const item = windowConfirm.item;
-                      close();
-                      await submitComplete(item, true);
-                    }}
-                  >Complete Anyway</Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          );
-        })()}
+        {/* Complete a scheduled item: the shared intake form, pre-linked
+            to the tapped occurrence with its mix as the starting rows. */}
+        <IntakeSheet
+          open={!!completeFeed}
+          onClose={closeComplete}
+          onSaved={onCompleteSaved}
+          patient={selectedPatient}
+          prefillFeed={completeFeed}
+        />
 
         {/* PRN pick: intake vs output */}
         <Dialog open={prnMode === 'pick'} onOpenChange={(o) => { if (!o) closePrn(); }}>

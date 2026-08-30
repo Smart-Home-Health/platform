@@ -24,14 +24,14 @@ import IntakeForm from './IntakeForm';
 
 export default function IntakeSheet({
   open, onClose, onSaved, patient, editing, defaultDateTime,
-  careTaskLogId, careTaskName,
+  careTaskLogId, careTaskName, prefillFeed,
 }) {
   if (!patient) return null;
   return (
     <EntityModal
       open={open}
       onOpenChange={(next) => { if (!next) onClose?.(); }}
-      title={editing ? 'Edit intake' : 'Log intake'}
+      title={editing ? 'Edit intake' : (prefillFeed ? `Complete ${prefillFeed.name}` : 'Log intake')}
     >
       <IntakeForm
         active={open}
@@ -42,6 +42,7 @@ export default function IntakeSheet({
         defaultDateTime={defaultDateTime}
         careTaskLogId={careTaskLogId}
         careTaskName={careTaskName}
+        prefillFeed={prefillFeed}
       />
     </EntityModal>
   );
