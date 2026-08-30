@@ -446,3 +446,89 @@
 .al-rowbtn:hover { color: var(--vc-data-live); }
 .al-actions-col { white-space: nowrap; text-align: right; }
 .al-btn.sm { min-height: 28px; font-size: 9.5px; padding: 0 0.55rem; flex: none; }
+
+/* ---------- Detail extras: charts, footage, acknowledge form ---------- */
+.al-loading { padding: 2rem 0; text-align: center; color: var(--vc-text-secondary); font-size: 12.5px; }
+.al-nodata {
+  border: 1px dashed var(--vc-line-strong);
+  border-radius: 4px;
+  padding: 1.5rem;
+  text-align: center;
+  color: var(--vc-text-secondary);
+  font-size: 12.5px;
+}
+.al-charts { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.al-chart {
+  height: 16rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 4px;
+  background: var(--vc-bg-surface);
+  padding: 0.75rem;
+}
+.al-footage {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 4px;
+  background: var(--vc-bg-surface);
+  padding: 0.75rem;
+}
+.al-footage-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.al-footage-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--vc-text-primary);
+}
+.al-footage-size { font-weight: 400; color: var(--vc-text-secondary); }
+.al-noclip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  border: 1px dashed var(--vc-line-strong);
+  border-radius: 4px;
+  background: var(--vc-bg-raised);
+  padding: 1.5rem;
+  color: var(--vc-text-secondary);
+  font-size: 12.5px;
+}
+.al-detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  border-top: 1px solid var(--vc-line-hairline);
+  padding-top: 0.75rem;
+}
+.al-ack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 4px;
+  background: var(--vc-bg-surface);
+  padding: 0.85rem;
+}
+.al-ack h4 {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+.al-ack-desc { margin: 0; font-size: 12.5px; color: var(--vc-text-secondary); }
+.al-ack-o2row { display: flex; gap: 0.5rem; }
+.al-ack-o2row .em-input { flex: 1 1 auto; min-width: 0; }
+.al-ack-o2row .em-select-wrap { flex: 0 0 7rem; }
+a.al-btn { text-decoration: none; display: inline-flex; align-items: center; }

@@ -16,30 +16,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-/* vc skin for RecordVitalsForm.
- *
- * The form was written for the admin pages and still carries their class
- * names (`admin-v2-settings-card`, `vital-input-card`, ...). Its only caller
- * now is the dashboard's Quick Add sheet, where those admin rules render a
- * light card on the dark board.
- *
- * Rather than rename the markup, this re-skins those classes under a single
- * `.vc-vitals-form` root. Every selector is deliberately two classes deep so
- * it outranks the one-class AdminV2.css rules regardless of import order —
- * App.css and AdminV2.css both load after component CSS. */
+/* vc skin for RecordVitalsForm (the dashboard's Quick Add sheet). Fully off
+ * AdminV2.css now — every class here is owned by this file, scoped under the
+ * `.vc-vitals-form` root, and reads the vc tokens directly. */
 @import '../../styles/vc-tokens.css';
 
 .vc-vitals-form, .vc-vitals-form * { box-sizing: border-box; }
-
-.vc-vitals-form.admin-v2-vitals-content { padding: 0; background: none; }
-
-.vc-vitals-form .admin-v2-settings-card {
-  padding: 0;
-  border: none;
-  border-radius: 0;
-  background: none;
-  box-shadow: none;
-}
 
 /* ---- date/time header ---- */
 
@@ -149,7 +131,7 @@
 
 /* ---- notes + actions ---- */
 
-.vc-vitals-form .admin-v2-input {
+.vc-vitals-form .vf-datetime-input {
   width: 100%;
   min-height: 46px;
   padding: 0.55rem 0.7rem;
@@ -160,12 +142,12 @@
   font-family: var(--vc-font-sans);
   font-size: 16px;
 }
-.vc-vitals-form .admin-v2-input:focus {
+.vc-vitals-form .vf-datetime-input:focus {
   outline: none;
   border-color: var(--vc-data-live);
   box-shadow: 0 0 0 1px var(--vc-data-live);
 }
-.vc-vitals-form .admin-v2-input::placeholder { color: var(--vc-text-tertiary); }
+.vc-vitals-form .vf-datetime-input::placeholder { color: var(--vc-text-tertiary); }
 
 .vc-vitals-form .vitals-form-actions {
   display: flex;
@@ -191,4 +173,28 @@
   border-color: var(--vc-line-hairline);
   background: var(--vc-bg-raised);
   color: var(--vc-text-primary);
+}
+
+/* ---- status, notes and submit (post-shadcn) ---- */
+.vc-vitals-form .vf-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.vc-vitals-form .vf-row .em-input { flex: 1 1 140px; min-width: 0; }
+.vc-vitals-form .vf-error-text {
+  margin: 0.4rem 0 0;
+  font-size: 11.5px;
+  color: var(--vc-state-alert);
+}
+.vc-vitals-form .vf-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1.2rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 4px;
+  background: var(--vc-bg-raised);
+  padding: 0.75rem;
 }

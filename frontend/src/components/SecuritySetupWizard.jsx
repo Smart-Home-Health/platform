@@ -18,14 +18,13 @@
 // Guided HTTPS setup, shared by Configuration → Security and the first-run
 // flow. Three paths: DuckDNS + Let's Encrypt (guided, recommended), an
 // external reverse proxy, or uploading an existing certificate. Self-contained
-// (.tw root) so it renders correctly outside the admin-v2 shell too.
+// (own sw-* stylesheet + em-* vocabulary) so it renders correctly outside the
+// admin-v2 shell too.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import config, { apiFetch } from '../config';
 import { canonicalHttpsUrl, generateSubdomain } from '../lib/httpsSetup';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Alert } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
+import './vc/entity-card.css';
+import './security-wizard.css';
 import {
   ShieldIcon, KeyIcon, WifiIcon, CheckIcon, InfoIcon, RefreshIcon, BackArrowIcon,
   CopyIcon,
@@ -82,51 +81,48 @@ async function copyText(text) {
 }
 
 const PathCard = ({ icon: Icon, title, badge, description, onClick }) => (
-  <button
-    type="button"
-    onClick={onClick}
-    className="flex w-full items-start gap-3 rounded-lg border border-border bg-secondary/40 p-4 text-left transition-colors hover:border-primary hover:bg-secondary"
-  >
-    <span className="mt-0.5 text-muted-foreground" aria-hidden>{Icon && <Icon size={22} />}</span>
-    <span className="flex flex-col gap-1">
-      <span className="flex items-center gap-2 font-medium text-foreground">
+  <button type="button" onClick={onClick} className="sw-path">
+    <span className="sw-path-icon" aria-hidden>{Icon && <Icon size={22} />}</span>
+    <span className="sw-path-body">
+      <span className="sw-path-title">
         {title}
-        {badge && <Badge variant="info">{badge}</Badge>}
+        {badge && <span className="sw-badge">{badge}</span>}
       </span>
-      <span className="text-sm text-muted-foreground">{description}</span>
+      <span className="sw-path-desc">{description}</span>
     </span>
   </button>
 );
 
 const DnsRebindNotice = () => (
-  <Alert variant="info">
-    <strong>If the new address doesn't load:</strong> some routers block public
-    names that point at home-network addresses ("DNS rebind protection"). Look
+  <p className="sw-note">
+    <strong>If the new address doesn&apos;t load:</strong> some routers block public
+    names that point at home-network addresses (&quot;DNS rebind protection&quot;). Look
     for that setting in your router and allow <code>duckdns.org</code>, or keep
     using the regular HTTP address on devices where it happens.
-  </Alert>
+  </p>
 );
 
 const SuccessCard = ({ url, onDone, doneLabel }) => (
-  <div className="space-y-4">
-    <Alert variant="success">
-      <span className="flex items-center gap-2">
-        <CheckIcon size={18} />
-        HTTPS is set up. Your secure address is ready.
-      </span>
-    </Alert>
+  <div className="sw-stack">
+    <div className="em-success" role="status">
+      HTTPS is set up. Your secure address is ready.
+    </div>
     {url && (
-      <div className="rounded-lg border border-border bg-secondary/40 p-4 text-center">
-        <div className="text-xs uppercase tracking-wide text-muted-foreground">Secure address</div>
-        <a href={url} target="_blank" rel="noreferrer" className="text-lg font-semibold text-primary break-all">{url}</a>
-        <p className="mt-2 text-sm text-muted-foreground">
+      <div className="sw-addr">
+        <div className="sw-addr-label">Secure address</div>
+        <a href={url} target="_blank" rel="noreferrer">{url}</a>
+        <p>
           Use this address anywhere you want the connection encrypted — phones,
           tablets, or away from home. The regular address keeps working too.
         </p>
       </div>
     )}
     <DnsRebindNotice />
-    {onDone && <Button onClick={onDone}>{doneLabel || 'Done'}</Button>}
+    {onDone && (
+      <div className="sw-actions">
+        <button type="button" className="em-submit" onClick={onDone}>{doneLabel || 'Done'}</button>
+      </div>
+    )}
   </div>
 );
 
@@ -284,29 +280,25 @@ const SecuritySetupWizard = ({ onFinished }) => {
 
   if (status?.ingress) {
     return (
-      <div className="tw">
-        <Alert variant="info">
-          This install runs inside Home Assistant, which already provides a
-          secure (HTTPS) connection — there is nothing to set up here.
-        </Alert>
-      </div>
+      <p className="sw-note">
+        This install runs inside Home Assistant, which already provides a
+        secure (HTTPS) connection — there is nothing to set up here.
+      </p>
     );
   }
 
   const errorBox = error && (
-    <Alert variant="destructive" data-testid="wizard-error">
-      <div className="space-y-1">
-        {error.error_code && ERROR_HELP[error.error_code] && <div>{ERROR_HELP[error.error_code]}</div>}
-        <div className="text-sm opacity-90">{error.error}</div>
-      </div>
-    </Alert>
+    <div className="em-error" role="alert" data-testid="wizard-error">
+      {error.error_code && ERROR_HELP[error.error_code] && <div>{ERROR_HELP[error.error_code]}</div>}
+      <div>{error.error}</div>
+    </div>
   );
 
   return (
-    <div className="tw space-y-4" data-testid="security-wizard">
+    <div className="sw" data-testid="security-wizard">
       {step === 'choose' && (
-        <div className="space-y-3">
-          <p className="text-sm text-muted-foreground">
+        <div className="sw-stack">
+          <p className="sw-path-desc">
             A secure (HTTPS) address keeps your connection encrypted, so health
             data never crosses the network in the clear. Pick the option that
             fits:
@@ -334,12 +326,12 @@ const SecuritySetupWizard = ({ onFinished }) => {
       )}
 
       {step === 'duckdns' && (
-        <form onSubmit={startDuckdns} className="space-y-4">
+        <form onSubmit={startDuckdns} className="sw-stack">
           {errorBox}
-          <div className="rounded-lg border border-border bg-secondary/40 p-4 text-sm text-muted-foreground space-y-2">
-            <p className="font-medium text-foreground">Before you start (2 minutes):</p>
-            <ol className="list-decimal space-y-1 pl-5">
-              <li>Go to <a className="text-primary" href="https://www.duckdns.org" target="_blank" rel="noreferrer">duckdns.org</a> and sign in (Google/GitHub works).</li>
+          <div className="sw-note">
+            <p className="sw-strong" style={{ margin: 0 }}>Before you start (2 minutes):</p>
+            <ol>
+              <li>Go to <a className="sw-link" href="https://www.duckdns.org" target="_blank" rel="noreferrer">duckdns.org</a> and sign in (Google/GitHub works).</li>
               <li>
                 Add a subdomain — use the suggested name below (tap Copy, then
                 paste it there) or pick your own. It becomes your secure address.
@@ -347,11 +339,12 @@ const SecuritySetupWizard = ({ onFinished }) => {
               <li>Copy the <strong>token</strong> shown at the top of the page.</li>
             </ol>
           </div>
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-foreground" htmlFor="duckdns-subdomain">DuckDNS subdomain</label>
-            <div className="flex items-center gap-2">
-              <Input
+          <div className="sw-field">
+            <label className="em-label" htmlFor="duckdns-subdomain">DuckDNS subdomain</label>
+            <div className="sw-field-row">
+              <input
                 id="duckdns-subdomain"
+                className="em-input"
                 value={subdomain}
                 onChange={(e) => setSubdomain(e.target.value)}
                 placeholder="myhome"
@@ -360,23 +353,23 @@ const SecuritySetupWizard = ({ onFinished }) => {
                 spellCheck={false}
                 required
               />
-              <span className="whitespace-nowrap text-sm text-muted-foreground">.duckdns.org</span>
-              <Button
+              <span className="sw-suffix">.duckdns.org</span>
+              <button
                 type="button"
-                variant="secondary"
+                className="em-cancel"
                 onClick={copySubdomain}
-                className="gap-1.5 whitespace-nowrap"
                 aria-label="Copy subdomain"
               >
                 {copied ? <CheckIcon size={16} /> : <CopyIcon size={16} />}
                 {copied ? 'Copied' : 'Copy'}
-              </Button>
+              </button>
             </div>
           </div>
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-foreground" htmlFor="duckdns-token">DuckDNS token</label>
-            <Input
+          <div className="sw-field">
+            <label className="em-label" htmlFor="duckdns-token">DuckDNS token</label>
+            <input
               id="duckdns-token"
+              className="em-input"
               value={token}
               onChange={(e) => setToken(e.target.value)}
               placeholder="e.g. 6a7b8c9d-1234-5678-9abc-def012345678"
@@ -388,65 +381,69 @@ const SecuritySetupWizard = ({ onFinished }) => {
           </div>
           <button
             type="button"
-            className="text-sm text-muted-foreground underline"
+            className="sw-linklike"
             onClick={() => setShowAdvanced((v) => !v)}
           >
             {showAdvanced ? 'Hide advanced options' : 'Advanced options'}
           </button>
           {showAdvanced && (
-            <div className="space-y-3 rounded-lg border border-border p-4">
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-foreground" htmlFor="https-port">Published HTTPS port</label>
-                <Input
+            <div className="sw-advanced">
+              <div className="sw-field">
+                <label className="em-label" htmlFor="https-port">Published HTTPS port</label>
+                <input
                   id="https-port"
+                  className="em-input"
                   type="number"
                   min="1"
                   max="65535"
                   value={publicPort}
                   onChange={(e) => setPublicPort(e.target.value)}
                 />
-                <p className="text-xs text-muted-foreground">
+                <p className="em-hint">
                   The port your secure address uses (APP_HTTPS_PORT in Docker; 443 gives a portless URL).
                 </p>
               </div>
-              <label className="flex items-center gap-2 text-sm text-foreground">
+              <label className="em-check-row">
                 <input
                   type="checkbox"
+                  className="em-check"
                   checked={staging}
                   onChange={(e) => setStaging(e.target.checked)}
                 />
-                Use Let&apos;s Encrypt staging (test certificate, not trusted by browsers)
+                <span className="em-check-label">
+                  Use Let&apos;s Encrypt staging (test certificate, not trusted by browsers)
+                </span>
               </label>
             </div>
           )}
-          <div className="flex items-center gap-2">
-            <Button type="button" variant="secondary" onClick={backToChoose} className="gap-1.5">
+          <div className="sw-actions">
+            <button type="button" className="em-cancel" onClick={backToChoose}>
               <BackArrowIcon size={16} /> Back
-            </Button>
-            <Button type="submit" disabled={busy}>
+            </button>
+            <button type="submit" className="em-submit" disabled={busy}>
               {busy ? 'Starting…' : 'Get my certificate'}
-            </Button>
+            </button>
           </div>
         </form>
       )}
 
       {step === 'duckdns-progress' && (
-        <div className="space-y-3" data-testid="duckdns-progress">
-          <p className="text-sm text-muted-foreground">
+        <div className="sw-stack" data-testid="duckdns-progress">
+          <p className="sw-path-desc">
             Setting up your certificate — this normally takes a few minutes.
             You can leave this page; setup continues in the background.
           </p>
-          <ul className="space-y-2">
+          <ul className="sw-steps">
             {STEP_SEQUENCE.map(([key, label]) => {
               const currentIdx = PROGRESS_STATUSES.indexOf(jobState?.status || 'queued');
               const stepIdx = PROGRESS_STATUSES.indexOf(key);
               const state = currentIdx > stepIdx ? 'done' : currentIdx === stepIdx ? 'active' : 'pending';
               return (
-                <li key={key} className="flex items-center gap-2 text-sm">
-                  {state === 'done' && <span className="text-primary"><CheckIcon size={16} /></span>}
-                  {state === 'active' && <span className="text-muted-foreground animate-pulse"><RefreshIcon size={16} /></span>}
-                  {state === 'pending' && <span className="inline-block h-4 w-4 rounded-full border border-border" aria-hidden />}
-                  <span className={state === 'pending' ? 'text-muted-foreground' : 'text-foreground'}>{label}</span>
+                <li key={key} data-state={state}>
+                  {state === 'done' && <span className="sw-step-done"><CheckIcon size={16} /></span>}
+                  {state === 'active' && <span className="sw-step-active"><RefreshIcon size={16} /></span>}
+                  {state === 'pending' && <span className="sw-step-pending" aria-hidden />}
+                  <span>{label}</span>
                 </li>
               );
             })}
@@ -459,62 +456,62 @@ const SecuritySetupWizard = ({ onFinished }) => {
       )}
 
       {step === 'proxy' && (
-        <div className="space-y-4">
+        <div className="sw-stack">
           {errorBox}
-          <p className="text-sm text-muted-foreground">
+          <p className="sw-path-desc">
             Keep this app on plain HTTP and let your proxy terminate TLS. Two
             things to configure:
           </p>
-          <div className="space-y-1.5">
-            <div className="text-sm font-medium text-foreground">1. Tell the app to trust the proxy&apos;s headers</div>
-            <pre className="overflow-x-auto rounded-lg border border-border bg-secondary/40 p-3 text-xs"><code>{`# environment for the app container
+          <div className="sw-field">
+            <div className="em-label">1. Tell the app to trust the proxy&apos;s headers</div>
+            <pre className="sw-pre"><code>{`# environment for the app container
 SHH_BEHIND_PROXY: "1"
 # optionally restrict which proxy IPs are trusted (default: all)
 # FORWARDED_ALLOW_IPS: "172.18.0.2"`}</code></pre>
           </div>
-          <div className="space-y-1.5">
-            <div className="text-sm font-medium text-foreground">2. Route your proxy to the app (Traefik example)</div>
-            <pre className="overflow-x-auto rounded-lg border border-border bg-secondary/40 p-3 text-xs"><code>{`labels:
+          <div className="sw-field">
+            <div className="em-label">2. Route your proxy to the app (Traefik example)</div>
+            <pre className="sw-pre"><code>{`labels:
   - traefik.enable=true
   - traefik.http.routers.shh.rule=Host(\`hub.example.com\`)
   - traefik.http.routers.shh.entrypoints=websecure
   - traefik.http.routers.shh.tls.certresolver=letsencrypt
   - traefik.http.services.shh.loadbalancer.server.port=8000`}</code></pre>
           </div>
-          <p className="text-sm text-muted-foreground">
+          <p className="sw-path-desc">
             WebSockets are used on <code>/ws</code> and <code>/api/readers/ws</code> —
             Traefik and Caddy proxy them automatically; for nginx add the
             usual <code>Upgrade</code>/<code>Connection</code> headers.
           </p>
-          <div className="flex items-center gap-2">
-            <Button type="button" variant="secondary" onClick={backToChoose} className="gap-1.5">
+          <div className="sw-actions">
+            <button type="button" className="em-cancel" onClick={backToChoose}>
               <BackArrowIcon size={16} /> Back
-            </Button>
-            <Button onClick={enableProxy} disabled={busy}>
+            </button>
+            <button type="button" className="em-submit" onClick={enableProxy} disabled={busy}>
               {busy ? 'Saving…' : "I've configured my proxy"}
-            </Button>
+            </button>
           </div>
         </div>
       )}
 
       {step === 'proxy-status' && status && (
-        <div className="space-y-3" data-testid="proxy-checklist">
-          <Alert variant="success">Reverse-proxy mode is on.</Alert>
-          <ul className="space-y-2 text-sm">
-            <li className="flex items-center gap-2">
+        <div className="sw-stack" data-testid="proxy-checklist">
+          <div className="em-success" role="status">Reverse-proxy mode is on.</div>
+          <ul className="sw-checks">
+            <li>
               {status.behind_proxy
-                ? <span className="text-primary"><CheckIcon size={16} /></span>
-                : <span className="text-destructive"><InfoIcon size={16} /></span>}
+                ? <span className="sw-check-ok"><CheckIcon size={16} /></span>
+                : <span className="sw-check-warn"><InfoIcon size={16} /></span>}
               <span>
                 {status.behind_proxy
                   ? 'SHH_BEHIND_PROXY is set — the app trusts the proxy’s headers.'
                   : 'SHH_BEHIND_PROXY is NOT set on the container yet. Add it and restart, or secure cookies and client addresses won’t work correctly.'}
               </span>
             </li>
-            <li className="flex items-center gap-2">
+            <li>
               {window.location.protocol === 'https:'
-                ? <span className="text-primary"><CheckIcon size={16} /></span>
-                : <span className="text-muted-foreground"><InfoIcon size={16} /></span>}
+                ? <span className="sw-check-ok"><CheckIcon size={16} /></span>
+                : <span className="sw-check-dim"><InfoIcon size={16} /></span>}
               <span>
                 {window.location.protocol === 'https:'
                   ? 'You are viewing this page over HTTPS through the proxy.'
@@ -522,31 +519,37 @@ SHH_BEHIND_PROXY: "1"
               </span>
             </li>
           </ul>
-          {onFinished && <Button onClick={onFinished}>Finish</Button>}
+          {onFinished && (
+            <div className="sw-actions">
+              <button type="button" className="em-submit" onClick={onFinished}>Finish</button>
+            </div>
+          )}
         </div>
       )}
 
       {step === 'byo' && (
-        <form onSubmit={uploadByo} className="space-y-4">
+        <form onSubmit={uploadByo} className="sw-stack">
           {errorBox}
-          <p className="text-sm text-muted-foreground">
+          <p className="sw-path-desc">
             Upload a PEM certificate chain (<code>fullchain.pem</code>) and its
             unencrypted private key (<code>privkey.pem</code>). The domain on the
             certificate must point at this server.
           </p>
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-foreground" htmlFor="byo-fullchain">Certificate chain</label>
-            <Input id="byo-fullchain" name="fullchain" type="file" accept=".pem,.crt,.cer" />
+          <div className="sw-field">
+            <label className="em-label" htmlFor="byo-fullchain">Certificate chain</label>
+            <input id="byo-fullchain" className="em-input" name="fullchain" type="file" accept=".pem,.crt,.cer" />
           </div>
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-foreground" htmlFor="byo-privkey">Private key</label>
-            <Input id="byo-privkey" name="privkey" type="file" accept=".pem,.key" />
+          <div className="sw-field">
+            <label className="em-label" htmlFor="byo-privkey">Private key</label>
+            <input id="byo-privkey" className="em-input" name="privkey" type="file" accept=".pem,.key" />
           </div>
-          <div className="flex items-center gap-2">
-            <Button type="button" variant="secondary" onClick={backToChoose} className="gap-1.5">
+          <div className="sw-actions">
+            <button type="button" className="em-cancel" onClick={backToChoose}>
               <BackArrowIcon size={16} /> Back
-            </Button>
-            <Button type="submit" disabled={busy}>{busy ? 'Uploading…' : 'Install certificate'}</Button>
+            </button>
+            <button type="submit" className="em-submit" disabled={busy}>
+              {busy ? 'Uploading…' : 'Install certificate'}
+            </button>
           </div>
         </form>
       )}

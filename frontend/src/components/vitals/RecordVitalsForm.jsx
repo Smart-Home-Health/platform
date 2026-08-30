@@ -18,15 +18,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import config from '../../config';
 import { XIcon } from '../Icons';
-import { Alert } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-// Pull in AdminV2 styles so the admin-v2-* classes resolve when this form is
-// mounted from outside the admin-v2 route (e.g. the live dashboard History
-// modal). Vite dedupes with admin pages that also import it.
-import '../../pages/admin-v2/AdminV2.css';
+import '../vc/entity-card.css';
 import './vitals-form.css';
 
 /**
@@ -339,19 +331,14 @@ export default function RecordVitalsForm({
   }, [customDefinitions, activeVitals, singleVitalType]);
 
   return (
-    <div className="admin-v2-vitals-content vc-vitals-form">
-      <div className="admin-v2-settings-card">
+    <div className="vc-vitals-form">
         <form onSubmit={handleSubmit}>
           {/* Status messages */}
           {error && (
-            <div className="tw" style={{ marginBottom: 12 }}>
-              <Alert variant="destructive">{error}</Alert>
-            </div>
+            <div className="em-error" role="alert" style={{ marginBottom: 12 }}>{error}</div>
           )}
           {success && (
-            <div className="tw" style={{ marginBottom: 12 }}>
-              <Alert variant="success">{success}</Alert>
-            </div>
+            <div className="em-success" role="status" style={{ marginBottom: 12 }}>{success}</div>
           )}
 
           {/* Date/Time Header */}
@@ -362,7 +349,7 @@ export default function RecordVitalsForm({
                 type="datetime-local"
                 value={vitalsFormData.timestamp}
                 onChange={e => setVitalsFormData(p => ({ ...p, timestamp: e.target.value }))}
-                className="admin-v2-input"
+                className="vf-datetime-input"
                 required
               />
             </div>
@@ -402,29 +389,27 @@ export default function RecordVitalsForm({
           {allowCreateDefinitions && showCustomManager && !singleVitalType && (
             <div className="custom-vitals-manager">
               <div className="custom-vitals-manager-header"><span>Custom Vitals</span></div>
-              <div className="tw flex flex-wrap items-center gap-2">
-                <Input
-                  type="text" value={newCustomName}
+              <div className="vf-row">
+                <input
+                  type="text" className="em-input" value={newCustomName}
                   onChange={e => setNewCustomName(e.target.value)}
                   placeholder="Name (e.g. Blood Glucose)"
-                  className="min-w-[180px] flex-1 max-sm:basis-full"
                 />
-                <Input
-                  type="text" value={newCustomUnit}
+                <input
+                  type="text" className="em-input" value={newCustomUnit}
                   onChange={e => setNewCustomUnit(e.target.value)}
                   placeholder="Unit (e.g. mg/dL)"
-                  className="w-[120px] flex-1 sm:flex-none"
+                  style={{ flex: '0 1 140px' }}
                 />
-                <Button
+                <button
                   type="button"
+                  className="em-submit"
                   onClick={handleAddCustomDefinition}
                   disabled={!newCustomName.trim()}
-                >Add</Button>
+                >Add</button>
               </div>
               {customDefError && (
-                <div className="tw" style={{ marginTop: 8 }}>
-                  <p className="text-xs text-destructive">{customDefError}</p>
-                </div>
+                <p className="vf-error-text">{customDefError}</p>
               )}
               {customDefinitions.length > 0 && (
                 <div className="custom-vitals-list">
@@ -468,15 +453,13 @@ export default function RecordVitalsForm({
 
           {/* Notes */}
           {showNotes && (
-            <div className="tw mb-6 rounded-xl border border-border bg-secondary p-4 sm:p-5">
-              <Label
-                htmlFor="vitals-notes"
-                className="mb-3 block text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-              >
+            <div className="vf-notes">
+              <label className="em-label" htmlFor="vitals-notes">
                 Notes (optional)
-              </Label>
-              <Textarea
+              </label>
+              <textarea
                 id="vitals-notes"
+                className="em-input"
                 value={vitalsFormData.notes}
                 onChange={e => setVitalsFormData(p => ({ ...p, notes: e.target.value }))}
                 rows={2}
@@ -487,18 +470,15 @@ export default function RecordVitalsForm({
 
           {/* Submit */}
           <div className="vitals-form-actions">
-            <div className="tw">
-              <Button
-                type="submit"
-                disabled={saving || !patientId}
-                className="h-auto px-8 py-3 text-base font-semibold"
-              >
-                {saving ? 'Saving...' : submitLabel}
-              </Button>
-            </div>
+            <button
+              type="submit"
+              className="em-submit"
+              disabled={saving || !patientId}
+            >
+              {saving ? 'Saving...' : submitLabel}
+            </button>
           </div>
         </form>
-      </div>
     </div>
   );
 }
