@@ -22,6 +22,16 @@ import { describe, it, expect, vi } from 'vitest';
 import NutritionPlanTab from './NutritionPlanTab';
 import { describeCron } from './cronLabel';
 
+// What a stored UTC hour reads as on the runner's clock today.
+const localStamp = (utcHour, utcMinute) => {
+  const d = new Date();
+  d.setUTCHours(utcHour, utcMinute, 0, 0);
+  const h = d.getHours();
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  const display = h % 12 === 0 ? 12 : h % 12;
+  return `${display}:${String(d.getMinutes()).padStart(2, '0')} ${suffix}`;
+};
+
 const plan = (over = {}) => ({
   goal: {
     id: 1, water_ml_target: 1710, calories_target: 1575,
@@ -98,10 +108,11 @@ describe('NutritionPlanTab', () => {
     expect(screen.queryByText('Coverage')).not.toBeInTheDocument();
   });
 
-  it('renders a schedule as a card with a readable cadence', () => {
+  it('renders a schedule as a card with a readable local-time cadence', () => {
     setup();
     expect(screen.getByText('Morning Peptamen')).toBeInTheDocument();
-    expect(screen.getByText('Daily · 7:00 AM')).toBeInTheDocument();
+    // The stored cron is UTC ('0 7 * * *'); the card must read local.
+    expect(screen.getByText(`Daily · ${localStamp(7, 0)}`)).toBeInTheDocument();
   });
 
   it('marks a paused schedule instead of hiding it', () => {
@@ -134,13 +145,17 @@ describe('NutritionPlanTab', () => {
 });
 
 describe('describeCron', () => {
-  it('reads back the forms the schedule builder produces', () => {
-    expect(describeCron('0 7 * * *')).toBe('Daily · 7:00 AM');
-    expect(describeCron('30 12 * * *')).toBe('Daily · 12:30 PM');
-    expect(describeCron('0 0 * * *')).toBe('Daily · 12:00 AM');
-    expect(describeCron('0 7 * * 1,3,5')).toBe('Mon, Wed, Fri · 7:00 AM');
+  it('reads back the forms the schedule builder produces, in local time', () => {
+    // Stored crons are UTC; the label converts to the runner's timezone
+    // (pinned America/New_York), so expectations are computed, not literal.
+    expect(describeCron('0 7 * * *')).toBe(`Daily · ${localStamp(7, 0)}`);
+    expect(describeCron('30 12 * * *')).toBe(`Daily · ${localStamp(12, 30)}`);
+    expect(describeCron('0 0 * * *')).toBe(`Daily · ${localStamp(0, 0)}`);
+    // 07:00 UTC stays on the same local day in America/New_York, so the
+    // day names hold.
+    expect(describeCron('0 7 * * 1,3,5')).toBe(`Mon, Wed, Fri · ${localStamp(7, 0)}`);
     // A full week of days is just daily.
-    expect(describeCron('0 7 * * 0,1,2,3,4,5,6')).toBe('Daily · 7:00 AM');
+    expect(describeCron('0 7 * * 0,1,2,3,4,5,6')).toBe(`Daily · ${localStamp(7, 0)}`);
     expect(describeCron('0 */4 * * *')).toBe('Daily · every 4h');
     expect(describeCron(null)).toBe('Not scheduled');
     // Anything unrecognised comes back as-is rather than being guessed at.
