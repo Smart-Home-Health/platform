@@ -16,11 +16,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 import { useEffect, useState } from 'react';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Field, FormRow } from '@/components/ui/field';
+import { EmField, EmRow } from './vc/EntityModal';
 import config, { apiFetch } from '../config';
+import './vc/entity-card.css';
 
 // Care-area suggestions: the user's HA areas (rooms) + rooms already seen in
 // environmental data. Best-effort; the field stays free text.
@@ -49,45 +47,49 @@ function useCareAreaOptions() {
 export function IdentityFields({ formData, setFormData, idPrefix = 'pf' }) {
   return (
     <>
-      <FormRow>
-        <Field label="First Name" required htmlFor={`${idPrefix}-first`}>
-          <Input
+      <EmRow>
+        <EmField label="First Name" required htmlFor={`${idPrefix}-first`}>
+          <input
             id={`${idPrefix}-first`}
+            className="em-input"
             value={formData.first_name}
             onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
             required
             placeholder="John"
           />
-        </Field>
-        <Field label="Last Name" required htmlFor={`${idPrefix}-last`}>
-          <Input
+        </EmField>
+        <EmField label="Last Name" required htmlFor={`${idPrefix}-last`}>
+          <input
             id={`${idPrefix}-last`}
+            className="em-input"
             value={formData.last_name}
             onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
             required
             placeholder="Doe"
           />
-        </Field>
-      </FormRow>
+        </EmField>
+      </EmRow>
 
-      <FormRow>
-        <Field label="Date of Birth" htmlFor={`${idPrefix}-dob`}>
-          <Input
+      <EmRow>
+        <EmField label="Date of Birth" htmlFor={`${idPrefix}-dob`}>
+          <input
             id={`${idPrefix}-dob`}
+            className="em-input"
             type="date"
             value={formData.date_of_birth}
             onChange={(e) => setFormData({ ...formData, date_of_birth: e.target.value })}
           />
-        </Field>
-        <Field label="Medical Record Number" htmlFor={`${idPrefix}-mrn`}>
-          <Input
+        </EmField>
+        <EmField label="Medical Record Number" htmlFor={`${idPrefix}-mrn`}>
+          <input
             id={`${idPrefix}-mrn`}
+            className="em-input"
             value={formData.medical_record_number}
             onChange={(e) => setFormData({ ...formData, medical_record_number: e.target.value })}
             placeholder="MRN-12345"
           />
-        </Field>
-      </FormRow>
+        </EmField>
+      </EmRow>
     </>
   );
 }
@@ -95,9 +97,14 @@ export function IdentityFields({ formData, setFormData, idPrefix = 'pf' }) {
 export function CareAreaField({ formData, setFormData, idPrefix = 'pf' }) {
   const careAreaOptions = useCareAreaOptions();
   return (
-    <Field label="Care area (room)" htmlFor={`${idPrefix}-care-area`}>
-      <Input
+    <EmField
+      label="Care area (room)"
+      htmlFor={`${idPrefix}-care-area`}
+      hint="The room this person is cared for in — used to match room sensors and Home Assistant areas."
+    >
+      <input
         id={`${idPrefix}-care-area`}
+        className="em-input"
         list={`${idPrefix}-care-area-options`}
         value={formData.care_area || ''}
         onChange={(e) => setFormData({ ...formData, care_area: e.target.value })}
@@ -108,26 +115,22 @@ export function CareAreaField({ formData, setFormData, idPrefix = 'pf' }) {
           <option key={area} value={area} />
         ))}
       </datalist>
-      <p className="text-xs text-muted-foreground">
-        The room this person is cared for in — used to match room sensors and
-        Home Assistant areas.
-      </p>
-    </Field>
+    </EmField>
   );
 }
 
 export function NotesField({ formData, setFormData, idPrefix = 'pf', rows = 3, hint }) {
   return (
-    <Field label="Notes" htmlFor={`${idPrefix}-notes`}>
-      <Textarea
+    <EmField label="Notes" htmlFor={`${idPrefix}-notes`} hint={hint}>
+      <textarea
         id={`${idPrefix}-notes`}
+        className="em-input"
         rows={rows}
         value={formData.notes}
         onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
         placeholder="Anything the care team should know…"
       />
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
-    </Field>
+    </EmField>
   );
 }
 
@@ -140,12 +143,14 @@ export default function PatientFormFields({ formData, setFormData, idPrefix = 'p
       <CareAreaField formData={formData} setFormData={setFormData} idPrefix={idPrefix} />
       <NotesField formData={formData} setFormData={setFormData} idPrefix={idPrefix} />
 
-      <label className="flex cursor-pointer items-center gap-2">
-        <Checkbox
+      <label className="em-check-row">
+        <input
+          type="checkbox"
+          className="em-check"
           checked={formData.is_active}
-          onCheckedChange={(v) => setFormData({ ...formData, is_active: v === true })}
+          onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
         />
-        <span className="text-sm text-foreground">Active</span>
+        <span className="em-check-label">Active</span>
       </label>
     </>
   );

@@ -282,6 +282,8 @@
 .cfg-badge.live .cfg-badge-dot { background: var(--vc-data-live); }
 .cfg-badge.alert { border-color: color-mix(in srgb, var(--vc-state-alert) 45%, transparent); color: var(--vc-state-alert); }
 .cfg-badge.alert .cfg-badge-dot { background: var(--vc-state-alert); }
+.cfg-badge.warn { border-color: color-mix(in srgb, var(--vc-state-due) 45%, transparent); color: var(--vc-state-due); }
+.cfg-badge.warn .cfg-badge-dot { background: var(--vc-state-due); }
 
 /* Header-right slot: badge plus a small action, wrapping under the title on
    a phone rather than crushing it. */
@@ -607,6 +609,79 @@ button.cfg-stat .cfg-stat-label {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
 }
 .cfg-crumb-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
+
+/* Page heading under the crumb (user / care-profile section shells). */
+.cfg-pagehead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.cfg-pagehead-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.cfg-eyebrow {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.cfg-h1 {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--vc-text-primary);
+}
+.cfg-pagehead-desc {
+  margin: 0;
+  max-width: 58rem;
+  font-family: var(--vc-font-sans);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--vc-text-secondary);
+}
+
+/* Link tab bar for a record's sub-pages (users). Links, not local state. */
+.cfg-tabs {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: var(--cfg-radius);
+  background: var(--vc-bg-surface);
+}
+.cfg-tab {
+  padding: 0.4rem 0.5rem;
+  white-space: nowrap;
+  text-align: center;
+  border: 1px solid transparent;
+  border-radius: var(--cfg-radius);
+  background: transparent;
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-decoration: none;
+}
+.cfg-tab:hover { color: var(--vc-text-primary); }
+.cfg-tab[aria-selected='true'] {
+  border-color: color-mix(in srgb, var(--vc-data-live) 55%, transparent);
+  background: color-mix(in srgb, var(--vc-data-live) 12%, transparent);
+  color: var(--vc-data-live);
+}
+.cfg-tab:focus-visible { outline: 2px solid var(--vc-data-live); outline-offset: -2px; }
 
 /* Category-grouped permission toggles (PermissionSelector). */
 .cfg-perms {

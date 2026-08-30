@@ -21,11 +21,15 @@
 import { Link } from 'react-router-dom';
 import AdminV2Layout from '../AdminV2Layout';
 import { ChevronLeftIcon } from '../../../components/Icons';
-import { Alert } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
+import { CfgBadge } from '../settings/CfgSection';
 import { fullName } from './careProfileFormat';
+import '../../../components/vc/entity-card.css';
 import '../AdminV2.css';
 import './care-profile.css';
+
+// STATUS_META tones (careProfileSections.js) → cfg-badge tones; 'muted' stays
+// the neutral default.
+const BADGE_TONE = { success: 'ok', warning: 'warn', danger: 'alert' };
 
 export default function CareProfileSection({
   patientId, patient, title, description, status, loading, error, notice, children,
@@ -33,30 +37,27 @@ export default function CareProfileSection({
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
-        <div className="tw flex flex-col gap-6">
-          <Link
-            to={`/care/configuration/patients/${patientId}`}
-            className="flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ChevronLeftIcon size={16} />
-            {patient ? fullName(patient) : 'Care profile'}
-          </Link>
-
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="flex min-w-0 flex-col gap-1">
-              <span className="cp-eyebrow">Care profile</span>
-              <h1 className="cp-title">{title}</h1>
-              {description && (
-                <p className="max-w-prose text-sm text-muted-foreground">{description}</p>
-              )}
-            </div>
-            {status && <Badge variant={status.tone}>{status.label}</Badge>}
+        <div className="cfg">
+          <div className="cfg-crumb">
+            <Link to={`/care/configuration/patients/${patientId}`} className="cfg-back">
+              <ChevronLeftIcon size={14} />
+              {patient ? fullName(patient) : 'Care profile'}
+            </Link>
           </div>
 
-          {error && <Alert variant="destructive" role="alert">{error}</Alert>}
-          {notice && <Alert variant="success" role="status">{notice}</Alert>}
+          <div className="cfg-pagehead">
+            <div className="cfg-pagehead-text">
+              <span className="cfg-eyebrow">Care profile</span>
+              <h1 className="cfg-h1">{title}</h1>
+              {description && <p className="cfg-pagehead-desc">{description}</p>}
+            </div>
+            {status && <CfgBadge tone={BADGE_TONE[status.tone]}>{status.label}</CfgBadge>}
+          </div>
 
-          {loading ? <div className="admin-v2-loading">Loading…</div> : children}
+          {error && <p className="em-error" role="alert">{error}</p>}
+          {notice && <p className="em-success" role="status">{notice}</p>}
+
+          {loading ? <p className="cfg-loading">Loading…</p> : children}
         </div>
       </div>
     </AdminV2Layout>

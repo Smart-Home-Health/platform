@@ -20,10 +20,11 @@
 import { Link } from 'react-router-dom';
 import AdminV2Layout from '../AdminV2Layout';
 import { ChevronLeftIcon } from '../../../components/Icons';
-import { Alert } from '@/components/ui/alert';
 import { displayName } from './userDetail';
 import UserTabs from './UserTabs';
+import '../../../components/vc/entity-card.css';
 import '../AdminV2.css';
+import '../settings/settings-page.css';
 import '../care-profile/care-profile.css';
 import './users.css';
 
@@ -33,29 +34,28 @@ export default function UserSection({
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
-        <div className="tw flex flex-col gap-4">
-          <Link
-            to={`/care/configuration/users/${userId}`}
-            className="flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ChevronLeftIcon size={16} />
-            {user ? displayName(user) : 'User'}
-          </Link>
+        <div className="cfg">
+          <div className="cfg-crumb">
+            <Link to={`/care/configuration/users/${userId}`} className="cfg-back">
+              <ChevronLeftIcon size={14} />
+              {user ? displayName(user) : 'User'}
+            </Link>
+          </div>
 
-          <div className="flex min-w-0 flex-col gap-1">
-            <span className="cp-eyebrow">User</span>
-            <h1 className="cp-title">{title}</h1>
-            {description && (
-              <p className="max-w-prose text-sm text-muted-foreground">{description}</p>
-            )}
+          <div className="cfg-pagehead">
+            <div className="cfg-pagehead-text">
+              <span className="cfg-eyebrow">User</span>
+              <h1 className="cfg-h1">{title}</h1>
+              {description && <p className="cfg-pagehead-desc">{description}</p>}
+            </div>
           </div>
 
           <UserTabs userId={userId} current={tab} />
 
-          {error && <Alert variant="destructive" role="alert">{error}</Alert>}
-          {notice && <Alert variant="success" role="status">{notice}</Alert>}
+          {error && <p className="em-error" role="alert">{error}</p>}
+          {notice && <p className="em-success" role="status">{notice}</p>}
 
-          {loading ? <div className="admin-v2-loading">Loading…</div> : children}
+          {loading ? <p className="cfg-loading">Loading…</p> : children}
         </div>
       </div>
     </AdminV2Layout>
