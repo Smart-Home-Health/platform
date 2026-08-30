@@ -19,57 +19,30 @@ import { useState, useEffect, useCallback } from 'react';
 import AdminV2Layout from './AdminV2Layout';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { PlusIcon, EditIcon, TrashIcon, NotesIcon, XIcon } from '../../components/Icons';
+import {
+  PlusIcon, TrashIcon, NotesIcon, XIcon, HeartIcon, BodyIcon,
+} from '../../components/Icons';
 import { API_BASE_URL } from '../../config';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Alert } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
-import { Field, FormRow } from '@/components/ui/field';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
-import { cn } from '@/lib/utils';
+import EntityCard from '../../components/vc/EntityCard';
+import EntityToolbar from '../../components/vc/EntityToolbar';
+import EntityModal, { EmField, EmRow, EmSelect } from '../../components/vc/EntityModal';
+import '../../components/vc/entity-card.css';
 import './AdminV2.css';
+import './settings/settings-page.css';
 
-// Radix Select forbids an empty-string value, so use a sentinel for "none".
+// Kept as the "no selection" option value so the placeholder is a real row.
 const NONE = '__none__';
 
-const statusVariant = (status) => (
-  { active: 'success', pending: 'warning', removed: 'muted', replaced: 'info', failed: 'danger', expired: 'warning' }[status] || 'muted'
-);
-const mriVariant = (mriSafe) => (
-  { safe: 'success', conditional: 'warning', unsafe: 'danger' }[mriSafe] || 'muted'
+// EntityCard tag tones: accent | complete | due | idle.
+const statusTone = (status) => (
+  { active: 'complete', pending: 'due', replaced: 'accent', failed: 'due', expired: 'due' }[status] || 'idle'
 );
 
 // Section heading inside the implant form dialog.
 function FormSection({ children }) {
-  return <h4 className="border-b border-border pb-1 pt-2 text-sm font-semibold text-foreground">{children}</h4>;
+  return <h4 className="cfg-group-title imp-form-section">{children}</h4>;
 }
 
-// Label/value row used inside the implant cards.
-function Row({ label, value }) {
-  return (
-    <div className="flex justify-between gap-3">
-      <span className="shrink-0 text-muted-foreground">{label}:</span>
-      <span className="text-right text-foreground">{value}</span>
-    </div>
-  );
-}
 
 const EMPTY_FORM = {
   name: '', description: '', implant_type: 'medical', category: '', subcategory: '',
@@ -396,419 +369,422 @@ const AdminV2Implants = () => {
   const activeCount = implants.filter(i => i.active).length;
   const inactiveCount = implants.filter(i => !i.active).length;
 
-  // Shared provider <Select> options.
-  const providerOptions = providers.map(p => (
-    <SelectItem key={p.id} value={String(p.id)}>
+  // A function, not a shared array: rendering the same element instances into
+  // two different <select> parents trips React's dev key validation.
+  const providerOptions = () => providers.map(p => (
+    <option key={p.id} value={String(p.id)}>
       {p.title} {p.first_name} {p.last_name} - {p.specialty}
-    </SelectItem>
+    </option>
   ));
 
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
         {error && (
-          <div className="tw mb-4">
-            <Alert variant="destructive" className="flex items-center justify-between gap-3">
+          <p className="em-error ec-page-alert" role="alert">
+            <span className="em-alert-row">
               <span>{error}</span>
-              <button type="button" className="shrink-0 opacity-70 hover:opacity-100" onClick={() => setError(null)}>
+              <button type="button" className="em-dismiss" aria-label="Dismiss"
+                      onClick={() => setError(null)}>
                 <XIcon size={14} />
               </button>
-            </Alert>
+            </span>
+          </p>
+        )}
+
+        <EntityToolbar
+          counts={[
+            { key: 'active', label: 'Active', count: activeCount },
+            { key: 'inactive', label: 'Inactive', count: inactiveCount },
+          ]}
+          activeCount={activeTab}
+          onCountChange={setActiveTab}
+          search={searchTerm}
+          onSearchChange={setSearchTerm}
+          searchPlaceholder="Search implants…"
+          filter={[
+            {
+              label: 'Type',
+              value: typeFilter,
+              onChange: setTypeFilter,
+              options: [{ value: '', label: 'All Types' },
+                        ...implantTypes.map(t => ({ value: t.value, label: t.label }))],
+            },
+            {
+              label: 'Status',
+              value: statusFilter,
+              onChange: setStatusFilter,
+              options: [{ value: '', label: 'All Statuses' },
+                        ...statuses.map(s => ({ value: s.value, label: s.label }))],
+            },
+          ]}
+          onAdd={hasPermission('implants.create') ? () => handleOpenModal() : undefined}
+          addLabel="Add Implant"
+        />
+
+        {loading ? (
+          <p className="cfg-loading">Loading implants…</p>
+        ) : filteredImplants.length === 0 ? (
+          <div className="imp-empty">
+            <p className="cfg-empty">
+              {searchTerm
+                ? 'No implants found matching your search.'
+                : `No ${activeTab} implants found for this patient.`}
+            </p>
+            {activeTab === 'active' && hasPermission('implants.create') && !searchTerm && (
+              <button type="button" className="em-submit" onClick={() => handleOpenModal()}>
+                <PlusIcon size={16} /> Add First Implant
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="ec-grid">
+            {filteredImplants.map(implant => (
+              <EntityCard
+                key={implant.id}
+                icon={implant.is_life_sustaining
+                  ? <HeartIcon size={16} />
+                  : <BodyIcon size={16} />}
+                title={implant.name}
+                inactive={!implant.active}
+                badges={[
+                  getTypeLabel(implant.implant_type),
+                  ...(implant.mri_safe ? [`MRI: ${implant.mri_safe}`] : []),
+                  ...(implant.is_life_sustaining ? ['Life sustaining'] : []),
+                ]}
+                tag={{ label: implant.status, tone: statusTone(implant.status) }}
+                details={[
+                  {
+                    label: 'Location',
+                    value: `${implant.body_location}${implant.body_side && implant.body_side !== 'n/a' ? ` (${implant.body_side})` : ''}`,
+                  },
+                  ...(implant.manufacturer ? [{ label: 'Manufacturer', value: implant.manufacturer }] : []),
+                  ...(implant.model ? [{ label: 'Model', value: implant.model }] : []),
+                  ...(implant.size ? [{ label: 'Size', value: implant.size }] : []),
+                  ...(implant.serial_number ? [{ label: 'Serial #', value: implant.serial_number }] : []),
+                  ...(implant.implant_date
+                    ? [{ label: 'Implanted', value: new Date(implant.implant_date).toLocaleDateString() }] : []),
+                  ...(implant.managing_provider_name
+                    ? [{ label: 'Managed by', value: implant.managing_provider_name }] : []),
+                  ...(implant.next_change_date
+                    ? [{ label: 'Next change', value: new Date(implant.next_change_date).toLocaleDateString() }] : []),
+                  /* EntityCard renders quickActions icon-only (label becomes the
+                     tooltip), so the note count is shown here to stay visible. */
+                  ...(implant.notes_count > 0
+                    ? [{ label: 'Notes', value: implant.notes_count }] : []),
+                ]}
+                quickActions={[{
+                  icon: <NotesIcon size={14} />,
+                  label: `Notes${implant.notes_count > 0 ? ` (${implant.notes_count})` : ''}`,
+                  onClick: () => handleOpenNotesModal(implant),
+                }]}
+                menu={[
+                  ...(hasPermission('implants.update')
+                    ? [{ label: 'Edit', onClick: () => handleOpenModal(implant) }] : []),
+                  ...(hasPermission('implants.delete')
+                    ? [{ label: 'Delete', onClick: () => handleDelete(implant), danger: true }] : []),
+                ]}
+              />
+            ))}
           </div>
         )}
 
-        {/* Tabs and Filters */}
-        <div className="admin-v2-controls-bar">
-          <div className="admin-v2-tabs">
-            <button
-              className={`admin-v2-tab ${activeTab === 'active' ? 'active' : ''}`}
-              onClick={() => setActiveTab('active')}
-            >
-              Active ({activeCount})
-            </button>
-            <button
-              className={`admin-v2-tab ${activeTab === 'inactive' ? 'active' : ''}`}
-              onClick={() => setActiveTab('inactive')}
-            >
-              Inactive ({inactiveCount})
-            </button>
-          </div>
+        <EntityModal
+          open={showModal}
+          onOpenChange={(o) => { if (!o) setShowModal(false); }}
+          title={editingImplant ? 'Edit Implant' : 'Add Implant'}
+          wide
+        >
+          <form onSubmit={handleSubmit} className="em-form">
+            <FormSection>Basic Information</FormSection>
+            <EmRow>
+              <EmField label="Name" required htmlFor="imp-name">
+                <input id="imp-name" className="em-input" value={formData.name} required
+                       placeholder="e.g., Tracheostomy Tube"
+                       onChange={e => setFormData({ ...formData, name: e.target.value })} />
+              </EmField>
+              <EmField label="Type" required htmlFor="imp-type">
+                <EmSelect id="imp-type" value={formData.implant_type}
+                          onChange={e => setFormData({ ...formData, implant_type: e.target.value, category: '' })}>
+                  {implantTypes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </EmSelect>
+              </EmField>
+            </EmRow>
+            <EmRow>
+              <EmField label="Category" htmlFor="imp-category">
+                <EmSelect id="imp-category" value={formData.category || NONE}
+                          onChange={e => setFormData({ ...formData, category: e.target.value === NONE ? '' : e.target.value })}>
+                  <option value={NONE}>Select Category</option>
+                  {categories.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                </EmSelect>
+              </EmField>
+              <EmField label="Status" htmlFor="imp-status">
+                <EmSelect id="imp-status" value={formData.status}
+                          onChange={e => setFormData({ ...formData, status: e.target.value })}>
+                  {statuses.map(st => <option key={st.value} value={st.value}>{st.label}</option>)}
+                </EmSelect>
+              </EmField>
+            </EmRow>
+            <EmField label="Description" htmlFor="imp-desc">
+              <textarea id="imp-desc" className="em-input" rows={2} value={formData.description}
+                        onChange={e => setFormData({ ...formData, description: e.target.value })} />
+            </EmField>
 
-          <div className="admin-v2-filters">
-            <input
-              type="text"
-              placeholder="Search implants..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="admin-v2-search-input"
-            />
-            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="admin-v2-filter-select">
-              <option value="">All Types</option>
-              {implantTypes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-            </select>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="admin-v2-filter-select">
-              <option value="">All Statuses</option>
-              {statuses.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-            </select>
-          </div>
+            <FormSection>Location</FormSection>
+            <EmRow>
+              <EmField label="Body Location" required htmlFor="imp-loc">
+                <input id="imp-loc" className="em-input" value={formData.body_location} required
+                       placeholder="e.g., Neck, Chest, Left Ear"
+                       onChange={e => setFormData({ ...formData, body_location: e.target.value })} />
+              </EmField>
+              <EmField label="Side" htmlFor="imp-side">
+                <EmSelect id="imp-side" value={formData.body_side || NONE}
+                          onChange={e => setFormData({ ...formData, body_side: e.target.value === NONE ? '' : e.target.value })}>
+                  <option value={NONE}>Select Side</option>
+                  {bodySides.map(sd => <option key={sd.value} value={sd.value}>{sd.label}</option>)}
+                </EmSelect>
+              </EmField>
+            </EmRow>
 
-          {hasPermission('implants.create') && (
-            <button className="admin-v2-btn admin-v2-btn-primary" onClick={() => handleOpenModal()}>
-              <PlusIcon size={16} /> Add Implant
-            </button>
-          )}
-        </div>
+            <FormSection>Device Details</FormSection>
+            <EmRow>
+              <EmField label="Manufacturer" htmlFor="imp-mfr">
+                <input id="imp-mfr" className="em-input" value={formData.manufacturer}
+                       onChange={e => setFormData({ ...formData, manufacturer: e.target.value })} />
+              </EmField>
+              <EmField label="Model" htmlFor="imp-model">
+                <input id="imp-model" className="em-input" value={formData.model}
+                       onChange={e => setFormData({ ...formData, model: e.target.value })} />
+              </EmField>
+            </EmRow>
+            <EmRow>
+              <EmField label="Serial Number" htmlFor="imp-serial">
+                <input id="imp-serial" className="em-input" value={formData.serial_number}
+                       onChange={e => setFormData({ ...formData, serial_number: e.target.value })} />
+              </EmField>
+              <EmField label="Size" htmlFor="imp-size">
+                <input id="imp-size" className="em-input" value={formData.size}
+                       placeholder="e.g., 6.0 cuffed, 14g"
+                       onChange={e => setFormData({ ...formData, size: e.target.value })} />
+              </EmField>
+            </EmRow>
+            <EmField label="Material" htmlFor="imp-material">
+              <input id="imp-material" className="em-input" value={formData.material}
+                     placeholder="e.g., Silicone, Titanium"
+                     onChange={e => setFormData({ ...formData, material: e.target.value })} />
+            </EmField>
 
-        {/* Implant Cards Grid */}
-        <div className="tw mt-4">
-          {loading ? (
-            <p className="text-sm text-muted-foreground">Loading implants...</p>
-          ) : filteredImplants.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border py-12 text-center text-muted-foreground">
-              <p className="text-base font-semibold text-foreground">
-                {searchTerm ? 'No implants found matching your search.' : `No ${activeTab} implants found for this patient.`}
-              </p>
-              {activeTab === 'active' && hasPermission('implants.create') && !searchTerm && (
-                <Button onClick={() => handleOpenModal()}>
-                  <PlusIcon size={16} /> Add First Implant
-                </Button>
-              )}
+            <FormSection>Dates</FormSection>
+            <EmRow>
+              <EmField label="Implant Date" htmlFor="imp-date">
+                <input id="imp-date" className="em-input" type="date" value={formData.implant_date}
+                       onChange={e => setFormData({ ...formData, implant_date: e.target.value })} />
+              </EmField>
+              <EmField label="Last Change Date" htmlFor="imp-last">
+                <input id="imp-last" className="em-input" type="date" value={formData.last_change_date}
+                       onChange={e => setFormData({ ...formData, last_change_date: e.target.value })} />
+              </EmField>
+            </EmRow>
+            <EmRow>
+              <EmField label="Next Change Date" htmlFor="imp-next">
+                <input id="imp-next" className="em-input" type="date" value={formData.next_change_date}
+                       onChange={e => setFormData({ ...formData, next_change_date: e.target.value })} />
+              </EmField>
+              <EmField label="Expiration Date" htmlFor="imp-exp">
+                <input id="imp-exp" className="em-input" type="date" value={formData.expiration_date}
+                       onChange={e => setFormData({ ...formData, expiration_date: e.target.value })} />
+              </EmField>
+            </EmRow>
+
+            <FormSection>Providers &amp; Facility</FormSection>
+            <EmRow>
+              <EmField label="Implanting Provider" htmlFor="imp-implanting">
+                <EmSelect id="imp-implanting"
+                          value={formData.implanting_provider_id ? String(formData.implanting_provider_id) : NONE}
+                          onChange={e => setFormData({ ...formData, implanting_provider_id: e.target.value === NONE ? '' : e.target.value })}>
+                  <option value={NONE}>Select Provider</option>
+                  {providerOptions()}
+                </EmSelect>
+              </EmField>
+              <EmField label="Managing Provider" htmlFor="imp-managing">
+                <EmSelect id="imp-managing"
+                          value={formData.managing_provider_id ? String(formData.managing_provider_id) : NONE}
+                          onChange={e => setFormData({ ...formData, managing_provider_id: e.target.value === NONE ? '' : e.target.value })}>
+                  <option value={NONE}>Select Provider</option>
+                  {providerOptions()}
+                </EmSelect>
+              </EmField>
+            </EmRow>
+            <EmRow>
+              <EmField label="Facility Name" htmlFor="imp-fac">
+                <input id="imp-fac" className="em-input" value={formData.facility_name}
+                       onChange={e => setFormData({ ...formData, facility_name: e.target.value })} />
+              </EmField>
+              <EmField label="Facility Location" htmlFor="imp-facloc">
+                <input id="imp-facloc" className="em-input" value={formData.facility_location}
+                       placeholder="City, State"
+                       onChange={e => setFormData({ ...formData, facility_location: e.target.value })} />
+              </EmField>
+            </EmRow>
+
+            <FormSection>MRI Safety &amp; Flags</FormSection>
+            <EmRow>
+              <EmField label="MRI Safety" htmlFor="imp-mri">
+                <EmSelect id="imp-mri" value={formData.mri_safe || NONE}
+                          onChange={e => setFormData({ ...formData, mri_safe: e.target.value === NONE ? '' : e.target.value })}>
+                  <option value={NONE}>Select MRI Safety</option>
+                  {mriSafetyOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </EmSelect>
+              </EmField>
+              <EmField label="MRI Notes" htmlFor="imp-mrinotes">
+                <input id="imp-mrinotes" className="em-input" value={formData.mri_notes}
+                       placeholder="Any MRI-specific conditions"
+                       onChange={e => setFormData({ ...formData, mri_notes: e.target.value })} />
+              </EmField>
+            </EmRow>
+            <div className="cfg-checks">
+              <label className="em-check-row">
+                <input type="checkbox" className="em-check" checked={formData.is_life_sustaining}
+                       onChange={e => setFormData({ ...formData, is_life_sustaining: e.target.checked })} />
+                <span className="em-check-label">Life Sustaining</span>
+              </label>
+              <label className="em-check-row">
+                <input type="checkbox" className="em-check" checked={formData.requires_regular_change}
+                       onChange={e => setFormData({ ...formData, requires_regular_change: e.target.checked })} />
+                <span className="em-check-label">Requires Regular Change</span>
+              </label>
             </div>
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredImplants.map(implant => (
-                <Card key={implant.id} className={cn(!implant.active && "opacity-60")}>
-                  <CardHeader className="gap-2 py-3">
-                    <CardTitle className="flex items-center gap-1.5 text-sm">
-                      {implant.is_life_sustaining && <span title="Life Sustaining">❤️</span>}
-                      {implant.name}
-                    </CardTitle>
-                    <div className="flex flex-wrap gap-1.5">
-                      <Badge variant="info">{getTypeLabel(implant.implant_type)}</Badge>
-                      <Badge variant={statusVariant(implant.status)}>{implant.status}</Badge>
-                      {implant.mri_safe && <Badge variant={mriVariant(implant.mri_safe)}>MRI: {implant.mri_safe}</Badge>}
-                    </div>
-                  </CardHeader>
+            {formData.requires_regular_change && (
+              <EmField label="Change Frequency (days)" htmlFor="imp-freq">
+                <input id="imp-freq" className="em-input" type="number" min="1"
+                       value={formData.change_frequency_days}
+                       onChange={e => setFormData({ ...formData, change_frequency_days: e.target.value })} />
+              </EmField>
+            )}
 
-                  <CardContent className="flex flex-col gap-1.5 py-3 text-sm">
-                    <Row
-                      label="Location"
-                      value={`${implant.body_location}${implant.body_side && implant.body_side !== 'n/a' ? ` (${implant.body_side})` : ''}`}
-                    />
-                    {implant.manufacturer && <Row label="Manufacturer" value={implant.manufacturer} />}
-                    {implant.model && <Row label="Model" value={implant.model} />}
-                    {implant.size && <Row label="Size" value={implant.size} />}
-                    {implant.serial_number && (
-                      <Row label="Serial #" value={<code className="font-mono text-xs">{implant.serial_number}</code>} />
-                    )}
-                    {implant.implant_date && <Row label="Implanted" value={new Date(implant.implant_date).toLocaleDateString()} />}
-                    {implant.managing_provider_name && <Row label="Managed by" value={implant.managing_provider_name} />}
-                    {implant.next_change_date && <Row label="Next Change" value={new Date(implant.next_change_date).toLocaleDateString()} />}
-                  </CardContent>
+            <FormSection>Notes</FormSection>
+            <EmField label="General Notes" htmlFor="imp-gnotes">
+              <textarea id="imp-gnotes" className="em-input" rows={2} value={formData.notes}
+                        onChange={e => setFormData({ ...formData, notes: e.target.value })} />
+            </EmField>
+            <EmField label="Care Instructions" htmlFor="imp-care">
+              <textarea id="imp-care" className="em-input" rows={2} value={formData.care_instructions}
+                        onChange={e => setFormData({ ...formData, care_instructions: e.target.value })} />
+            </EmField>
+            <EmField label="Complications History" htmlFor="imp-comp">
+              <textarea id="imp-comp" className="em-input" rows={2} value={formData.complications}
+                        onChange={e => setFormData({ ...formData, complications: e.target.value })} />
+            </EmField>
 
-                  <CardFooter className="flex-wrap justify-start gap-2 py-3">
-                    <Button size="sm" variant="ghost" onClick={() => handleOpenNotesModal(implant)}>
-                      <NotesIcon size={14} /> Notes{implant.notes_count > 0 ? ` (${implant.notes_count})` : ''}
-                    </Button>
-                    {hasPermission('implants.update') && (
-                      <Button size="sm" variant="ghost" onClick={() => handleOpenModal(implant)}>
-                        <EditIcon size={14} /> Edit
-                      </Button>
-                    )}
-                    {hasPermission('implants.delete') && (
-                      <Button size="sm" variant="ghost" className="text-[#ff7b72] hover:text-[#ff7b72]" onClick={() => handleDelete(implant)}>
-                        <TrashIcon size={14} /> Delete
-                      </Button>
-                    )}
-                  </CardFooter>
-                </Card>
-              ))}
+            <div className="em-footer">
+              <button type="button" className="em-cancel" onClick={() => setShowModal(false)}>Cancel</button>
+              <button type="submit" className="em-submit">
+                {editingImplant ? 'Save Changes' : 'Add Implant'}
+              </button>
             </div>
-          )}
-        </div>
+          </form>
+        </EntityModal>
 
-        {/* Add/Edit Implant Dialog */}
-        <Dialog open={showModal} onOpenChange={(o) => { if (!o) setShowModal(false); }}>
-          <DialogContent className="sm:max-w-[760px]" aria-describedby={undefined}>
-            <DialogHeader>
-              <DialogTitle>{editingImplant ? 'Edit Implant' : 'Add Implant'}</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-              <FormSection>Basic Information</FormSection>
-              <FormRow>
-                <Field label="Name" required htmlFor="imp-name">
-                  <Input id="imp-name" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} placeholder="e.g., Tracheostomy Tube" required />
-                </Field>
-                <Field label="Type" required>
-                  <Select value={formData.implant_type} onValueChange={(v) => setFormData({ ...formData, implant_type: v, category: '' })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {implantTypes.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </Field>
-              </FormRow>
-              <FormRow>
-                <Field label="Category">
-                  <Select value={formData.category || NONE} onValueChange={(v) => setFormData({ ...formData, category: v === NONE ? '' : v })}>
-                    <SelectTrigger><SelectValue placeholder="Select Category" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NONE}>Select Category</SelectItem>
-                      {categories.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field label="Status">
-                  <Select value={formData.status} onValueChange={(v) => setFormData({ ...formData, status: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {statuses.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </Field>
-              </FormRow>
-              <Field label="Description" htmlFor="imp-desc">
-                <Textarea id="imp-desc" rows={2} value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} />
-              </Field>
-
-              <FormSection>Location</FormSection>
-              <FormRow>
-                <Field label="Body Location" required htmlFor="imp-loc">
-                  <Input id="imp-loc" value={formData.body_location} onChange={e => setFormData({ ...formData, body_location: e.target.value })} placeholder="e.g., Neck, Chest, Left Ear" required />
-                </Field>
-                <Field label="Side">
-                  <Select value={formData.body_side || NONE} onValueChange={(v) => setFormData({ ...formData, body_side: v === NONE ? '' : v })}>
-                    <SelectTrigger><SelectValue placeholder="Select Side" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NONE}>Select Side</SelectItem>
-                      {bodySides.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </Field>
-              </FormRow>
-
-              <FormSection>Device Details</FormSection>
-              <FormRow>
-                <Field label="Manufacturer" htmlFor="imp-mfr">
-                  <Input id="imp-mfr" value={formData.manufacturer} onChange={e => setFormData({ ...formData, manufacturer: e.target.value })} />
-                </Field>
-                <Field label="Model" htmlFor="imp-model">
-                  <Input id="imp-model" value={formData.model} onChange={e => setFormData({ ...formData, model: e.target.value })} />
-                </Field>
-              </FormRow>
-              <FormRow>
-                <Field label="Serial Number" htmlFor="imp-serial">
-                  <Input id="imp-serial" value={formData.serial_number} onChange={e => setFormData({ ...formData, serial_number: e.target.value })} />
-                </Field>
-                <Field label="Size" htmlFor="imp-size">
-                  <Input id="imp-size" value={formData.size} onChange={e => setFormData({ ...formData, size: e.target.value })} placeholder="e.g., 6.0 cuffed, 14g" />
-                </Field>
-              </FormRow>
-              <Field label="Material" htmlFor="imp-material">
-                <Input id="imp-material" value={formData.material} onChange={e => setFormData({ ...formData, material: e.target.value })} placeholder="e.g., Silicone, Titanium" />
-              </Field>
-
-              <FormSection>Dates</FormSection>
-              <FormRow>
-                <Field label="Implant Date" htmlFor="imp-date">
-                  <Input id="imp-date" type="date" value={formData.implant_date} onChange={e => setFormData({ ...formData, implant_date: e.target.value })} />
-                </Field>
-                <Field label="Last Change Date" htmlFor="imp-last">
-                  <Input id="imp-last" type="date" value={formData.last_change_date} onChange={e => setFormData({ ...formData, last_change_date: e.target.value })} />
-                </Field>
-              </FormRow>
-              <FormRow>
-                <Field label="Next Change Date" htmlFor="imp-next">
-                  <Input id="imp-next" type="date" value={formData.next_change_date} onChange={e => setFormData({ ...formData, next_change_date: e.target.value })} />
-                </Field>
-                <Field label="Expiration Date" htmlFor="imp-exp">
-                  <Input id="imp-exp" type="date" value={formData.expiration_date} onChange={e => setFormData({ ...formData, expiration_date: e.target.value })} />
-                </Field>
-              </FormRow>
-
-              <FormSection>Providers &amp; Facility</FormSection>
-              <FormRow>
-                <Field label="Implanting Provider">
-                  <Select
-                    value={formData.implanting_provider_id ? String(formData.implanting_provider_id) : NONE}
-                    onValueChange={(v) => setFormData({ ...formData, implanting_provider_id: v === NONE ? '' : v })}
-                  >
-                    <SelectTrigger><SelectValue placeholder="Select Provider" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NONE}>Select Provider</SelectItem>
-                      {providerOptions}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field label="Managing Provider">
-                  <Select
-                    value={formData.managing_provider_id ? String(formData.managing_provider_id) : NONE}
-                    onValueChange={(v) => setFormData({ ...formData, managing_provider_id: v === NONE ? '' : v })}
-                  >
-                    <SelectTrigger><SelectValue placeholder="Select Provider" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NONE}>Select Provider</SelectItem>
-                      {providerOptions}
-                    </SelectContent>
-                  </Select>
-                </Field>
-              </FormRow>
-              <FormRow>
-                <Field label="Facility Name" htmlFor="imp-fac">
-                  <Input id="imp-fac" value={formData.facility_name} onChange={e => setFormData({ ...formData, facility_name: e.target.value })} />
-                </Field>
-                <Field label="Facility Location" htmlFor="imp-facloc">
-                  <Input id="imp-facloc" value={formData.facility_location} onChange={e => setFormData({ ...formData, facility_location: e.target.value })} placeholder="City, State" />
-                </Field>
-              </FormRow>
-
-              <FormSection>MRI Safety &amp; Flags</FormSection>
-              <FormRow>
-                <Field label="MRI Safety">
-                  <Select value={formData.mri_safe || NONE} onValueChange={(v) => setFormData({ ...formData, mri_safe: v === NONE ? '' : v })}>
-                    <SelectTrigger><SelectValue placeholder="Select MRI Safety" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NONE}>Select MRI Safety</SelectItem>
-                      {mriSafetyOptions.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field label="MRI Notes" htmlFor="imp-mrinotes">
-                  <Input id="imp-mrinotes" value={formData.mri_notes} onChange={e => setFormData({ ...formData, mri_notes: e.target.value })} placeholder="Any MRI-specific conditions" />
-                </Field>
-              </FormRow>
-              <div className="flex flex-col gap-3 sm:flex-row sm:gap-8">
-                <label className="flex cursor-pointer items-center gap-2">
-                  <Checkbox checked={formData.is_life_sustaining} onCheckedChange={(v) => setFormData({ ...formData, is_life_sustaining: v === true })} />
-                  <span className="text-sm text-foreground">Life Sustaining</span>
-                </label>
-                <label className="flex cursor-pointer items-center gap-2">
-                  <Checkbox checked={formData.requires_regular_change} onCheckedChange={(v) => setFormData({ ...formData, requires_regular_change: v === true })} />
-                  <span className="text-sm text-foreground">Requires Regular Change</span>
-                </label>
-              </div>
-              {formData.requires_regular_change && (
-                <Field label="Change Frequency (days)" htmlFor="imp-freq">
-                  <Input id="imp-freq" type="number" min="1" value={formData.change_frequency_days} onChange={e => setFormData({ ...formData, change_frequency_days: e.target.value })} />
-                </Field>
-              )}
-
-              <FormSection>Notes</FormSection>
-              <Field label="General Notes" htmlFor="imp-gnotes">
-                <Textarea id="imp-gnotes" rows={2} value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} />
-              </Field>
-              <Field label="Care Instructions" htmlFor="imp-care">
-                <Textarea id="imp-care" rows={2} value={formData.care_instructions} onChange={e => setFormData({ ...formData, care_instructions: e.target.value })} />
-              </Field>
-              <Field label="Complications History" htmlFor="imp-comp">
-                <Textarea id="imp-comp" rows={2} value={formData.complications} onChange={e => setFormData({ ...formData, complications: e.target.value })} />
-              </Field>
-
-              <DialogFooter>
-                <Button type="button" variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
-                <Button type="submit">{editingImplant ? 'Save Changes' : 'Add Implant'}</Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-
-        {/* Notes Dialog */}
-        <Dialog
+        <EntityModal
           open={showNotesModal && !!selectedImplant}
           onOpenChange={(o) => { if (!o) setShowNotesModal(false); }}
+          title={`Notes — ${selectedImplant?.name ?? ''}`}
         >
-          <DialogContent className="sm:max-w-[600px]" aria-describedby={undefined}>
-            <DialogHeader>
-              <DialogTitle>Notes - {selectedImplant?.name}</DialogTitle>
-            </DialogHeader>
-
-            {/* Add Note Form */}
-            <form onSubmit={handleAddNote} className="flex flex-col gap-3 rounded-md border border-border p-3">
-              <FormRow>
-                <Field label="Note Type">
-                  <Select value={noteFormData.note_type} onValueChange={(v) => setNoteFormData({ ...noteFormData, note_type: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="follow_up">Follow-up</SelectItem>
-                      <SelectItem value="change">Change/Replacement</SelectItem>
-                      <SelectItem value="complication">Complication</SelectItem>
-                      <SelectItem value="maintenance">Maintenance</SelectItem>
-                      <SelectItem value="status_change">Status Change</SelectItem>
-                      <SelectItem value="provider_note">Provider Note</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field label="Provider (Optional)">
-                  <Select
-                    value={noteFormData.provider_id ? String(noteFormData.provider_id) : NONE}
-                    onValueChange={(v) => setNoteFormData({ ...noteFormData, provider_id: v === NONE ? '' : v })}
-                  >
-                    <SelectTrigger><SelectValue placeholder="Select Provider" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NONE}>Select Provider</SelectItem>
-                      {providers.map(p => (
-                        <SelectItem key={p.id} value={String(p.id)}>{p.title} {p.first_name} {p.last_name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-              </FormRow>
+          <div className="em-form">
+            <form onSubmit={handleAddNote} className="imp-note-form">
+              <EmRow>
+                <EmField label="Note Type" htmlFor="imp-note-type">
+                  <EmSelect id="imp-note-type" value={noteFormData.note_type}
+                            onChange={e => setNoteFormData({ ...noteFormData, note_type: e.target.value })}>
+                    <option value="follow_up">Follow-up</option>
+                    <option value="change">Change/Replacement</option>
+                    <option value="complication">Complication</option>
+                    <option value="maintenance">Maintenance</option>
+                    <option value="status_change">Status Change</option>
+                    <option value="provider_note">Provider Note</option>
+                  </EmSelect>
+                </EmField>
+                <EmField label="Provider (Optional)" htmlFor="imp-note-provider">
+                  <EmSelect id="imp-note-provider"
+                            value={noteFormData.provider_id ? String(noteFormData.provider_id) : NONE}
+                            onChange={e => setNoteFormData({ ...noteFormData, provider_id: e.target.value === NONE ? '' : e.target.value })}>
+                    <option value={NONE}>Select Provider</option>
+                    {providers.map(pr => (
+                      <option key={pr.id} value={String(pr.id)}>
+                        {pr.title} {pr.first_name} {pr.last_name}
+                      </option>
+                    ))}
+                  </EmSelect>
+                </EmField>
+              </EmRow>
 
               {noteFormData.note_type === 'change' && (
-                <div className="flex flex-col gap-2">
-                  <label className="flex w-fit cursor-pointer items-center gap-2">
-                    <Checkbox checked={noteFormData.was_changed} onCheckedChange={(v) => setNoteFormData({ ...noteFormData, was_changed: v === true })} />
-                    <span className="text-sm text-foreground">Device was changed</span>
+                <>
+                  <label className="em-check-row">
+                    <input type="checkbox" className="em-check" checked={noteFormData.was_changed}
+                           onChange={e => setNoteFormData({ ...noteFormData, was_changed: e.target.checked })} />
+                    <span className="em-check-label">Device was changed</span>
                   </label>
                   {noteFormData.was_changed && (
-                    <FormRow>
-                      <Input placeholder="Old Serial #" value={noteFormData.old_serial_number} onChange={e => setNoteFormData({ ...noteFormData, old_serial_number: e.target.value })} />
-                      <Input placeholder="New Serial #" value={noteFormData.new_serial_number} onChange={e => setNoteFormData({ ...noteFormData, new_serial_number: e.target.value })} />
-                    </FormRow>
+                    <EmRow>
+                      <EmField label="Old Serial #" htmlFor="imp-note-old">
+                        <input id="imp-note-old" className="em-input" value={noteFormData.old_serial_number}
+                               onChange={e => setNoteFormData({ ...noteFormData, old_serial_number: e.target.value })} />
+                      </EmField>
+                      <EmField label="New Serial #" htmlFor="imp-note-new">
+                        <input id="imp-note-new" className="em-input" value={noteFormData.new_serial_number}
+                               onChange={e => setNoteFormData({ ...noteFormData, new_serial_number: e.target.value })} />
+                      </EmField>
+                    </EmRow>
                   )}
-                </div>
+                </>
               )}
 
-              <Textarea value={noteFormData.content} onChange={e => setNoteFormData({ ...noteFormData, content: e.target.value })} placeholder="Enter note content..." rows={3} required />
-              <div className="flex justify-end">
-                <Button type="submit">Add Note</Button>
+              <EmField label="Note" htmlFor="imp-note-content">
+                <textarea id="imp-note-content" className="em-input" rows={3} required
+                          placeholder="Enter note content…"
+                          value={noteFormData.content}
+                          onChange={e => setNoteFormData({ ...noteFormData, content: e.target.value })} />
+              </EmField>
+              <div className="cfg-actions end">
+                <button type="submit" className="em-submit">Add Note</button>
               </div>
             </form>
 
-            {/* Notes List */}
-            <div className="flex max-h-80 flex-col gap-3 overflow-y-auto">
+            <div className="imp-note-list">
               {implantNotes.length === 0 ? (
-                <p className="py-4 text-center text-sm text-muted-foreground">No notes yet.</p>
+                <p className="cfg-empty">No notes yet.</p>
               ) : (
                 implantNotes.map(note => (
-                  <div key={note.id} className="rounded-md border border-border p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="secondary">{note.note_type.replace('_', ' ')}</Badge>
-                        <span className="text-xs text-muted-foreground">{new Date(note.created_at).toLocaleString()}</span>
-                      </div>
-                      <Button size="sm" variant="ghost" className="text-[#ff7b72] hover:text-[#ff7b72]" onClick={() => handleDeleteNote(note.id)}>
+                  <article key={note.id} className="imp-note">
+                    <header className="imp-note-head">
+                      <span className="imp-note-tags">
+                        <span className="cfg-badge">{note.note_type.replace('_', ' ')}</span>
+                        <span className="imp-note-when">{new Date(note.created_at).toLocaleString()}</span>
+                      </span>
+                      <button type="button" className="cfg-iconbtn danger"
+                              aria-label="Delete note" onClick={() => handleDeleteNote(note.id)}>
                         <TrashIcon size={12} />
-                      </Button>
-                    </div>
-                    <div className="mt-2 whitespace-pre-wrap text-sm text-foreground">{note.content}</div>
+                      </button>
+                    </header>
+                    <p className="imp-note-body">{note.content}</p>
                     {note.was_changed && (
-                      <div className="mt-2 text-xs text-muted-foreground">
+                      <p className="imp-note-meta">
                         Changed: {note.old_serial_number} → {note.new_serial_number}
-                      </div>
+                      </p>
                     )}
                     {(note.provider_name || note.created_by_name) && (
-                      <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
+                      <p className="imp-note-meta">
                         {note.provider_name && <span>Provider: {note.provider_name}</span>}
                         {note.created_by_name && <span>By: {note.created_by_name}</span>}
-                      </div>
+                      </p>
                     )}
-                  </div>
+                  </article>
                 ))
               )}
             </div>
-          </DialogContent>
-        </Dialog>
+          </div>
+        </EntityModal>
       </div>
     </AdminV2Layout>
   );

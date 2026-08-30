@@ -512,6 +512,205 @@
   .cfg-maint-actions { flex-wrap: nowrap; }
 }
 
+/* Page crumb bar: back link on the left, status badges on the right. */
+.cfg-crumb {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.cfg-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+  border-radius: var(--cfg-radius);
+}
+.cfg-back:hover { color: var(--vc-data-live); }
+.cfg-back:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
+}
+.cfg-crumb-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
+
+/* Category-grouped permission toggles (PermissionSelector). */
+.cfg-perms {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-height: 18rem;
+  overflow-y: auto;
+  padding: 0.55rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: var(--cfg-radius);
+  background: var(--vc-bg-raised);
+}
+.cfg-perm-group { display: flex; flex-direction: column; gap: 0.35rem; }
+.cfg-perm-cat {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.cfg-perm-row { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.cfg-perm {
+  min-height: 26px;
+  padding: 0 0.6rem;
+  background: transparent;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 999px;
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+.cfg-perm:hover:not(.on) { color: var(--vc-text-primary); border-color: var(--vc-line-strong); }
+.cfg-perm.on {
+  background: var(--vc-data-live);
+  border-color: var(--vc-data-live);
+  color: var(--vc-bg-base);
+}
+.cfg-perm:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
+}
+
+/* Icon-only row action (edit / delete in a cfg-table row). */
+.cfg-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  flex: 0 0 auto;
+  background: transparent;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: var(--cfg-radius);
+  color: var(--vc-text-secondary);
+  cursor: pointer;
+}
+.cfg-iconbtn:hover { color: var(--vc-data-live); border-color: var(--vc-data-live); }
+.cfg-iconbtn.danger:hover { color: var(--vc-state-alert); border-color: var(--vc-state-alert); }
+.cfg-iconbtn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
+}
+.cfg-rowactions { display: flex; align-items: center; gap: 0.3rem; }
+/* A per-row failure note, under the value it belongs to. */
+.cfg-rowerr {
+  display: block;
+  font-family: var(--vc-font-sans);
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--vc-state-alert);
+}
+
+/* An already-used option in a pick list stays visible but inert. */
+.cfg-pick:disabled { opacity: 0.45; cursor: not-allowed; }
+.cfg-pick:disabled:hover { background: transparent; }
+/* Two-line pick row: name over identifier. */
+.cfg-pick-main { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; overflow: hidden; }
+.cfg-pick-name {
+  font-weight: 600;
+  color: var(--vc-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cfg-pick-id {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  color: var(--vc-text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* The chosen entity, shown in place of the picker. */
+.cfg-chosen {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: var(--cfg-radius);
+  background: var(--vc-bg-raised);
+  overflow: hidden;
+}
+.cfg-picklist.scroll { max-height: 14rem; overflow-y: auto; }
+
+/* Empty state that offers the first-record action. */
+.imp-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 2rem 1rem;
+  border: 1px dashed var(--vc-line-hairline);
+  border-radius: var(--cfg-radius);
+}
+/* Section heading inside a long form dialog. */
+.imp-form-section {
+  padding-bottom: 0.3rem;
+  padding-top: 0.4rem;
+  border-bottom: 1px solid var(--vc-line-hairline);
+}
+
+/* Implant note thread inside the notes dialog. */
+.imp-note-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.55rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: var(--cfg-radius);
+}
+.imp-note-list { display: flex; flex-direction: column; gap: 0.45rem; max-height: 20rem; overflow-y: auto; }
+.imp-note {
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: var(--cfg-radius);
+  padding: 0.5rem 0.6rem;
+}
+.imp-note-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.imp-note-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+.imp-note-when {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  color: var(--vc-text-tertiary);
+}
+.imp-note-body {
+  margin: 0.35rem 0 0;
+  white-space: pre-wrap;
+  font-family: var(--vc-font-sans);
+  font-size: 13px;
+  color: var(--vc-text-primary);
+}
+.imp-note-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0.3rem 0 0;
+  font-family: var(--vc-font-sans);
+  font-size: 11.5px;
+  color: var(--vc-text-tertiary);
+}
+
 /* Read-only label/value list (account id, created, status…). */
 .cfg-facts { margin: 0; display: flex; flex-direction: column; }
 .cfg-facts > div {
