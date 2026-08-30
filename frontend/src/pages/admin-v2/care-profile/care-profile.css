@@ -16,12 +16,10 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-/* Care-profile hub + section chrome (Configuration → Care Profiles).
- *
- * Lives inside `.tw`, so every colour here reads the shadcn semantic vars —
- * which vc-content.css already remaps to the bedside palette in dark. That
- * keeps one stylesheet honest in both themes; the only dark-only rule is the
- * mono/uppercase lettering, which the light admin theme does not use. */
+/* Care-profile hub + section chrome (Configuration → Care Profiles), shared
+ * by the user pages — the same kind of record hub. The bespoke row/tile
+ * system the cfg chassis has no analog for lives here; everything reads the
+ * vc tokens directly and, like every vc surface, is dark-only. */
 @import '../../../styles/vc-tokens.css';
 
 /* ---------- Shared lettering ---------- */
@@ -30,34 +28,34 @@
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--muted-foreground);
+  color: var(--vc-text-secondary);
 }
 .cp-title {
   margin: 0;
   font-size: 1.35rem;
   font-weight: 600;
-  color: var(--foreground);
+  color: var(--vc-text-primary);
 }
 .cp-name {
   margin: 0;
   font-size: 1.3rem;
   font-weight: 600;
-  color: var(--foreground);
+  color: var(--vc-text-primary);
   overflow-wrap: anywhere;
 }
-:root:not(.light) .cp-eyebrow,
-:root:not(.light) .cp-title,
-:root:not(.light) .cp-name,
-:root:not(.light) .cp-row-title,
-:root:not(.light) .cp-meta-label,
-:root:not(.light) .cp-count-value,
-:root:not(.light) .cp-count-label,
-:root:not(.light) .cp-action {
+.cp-eyebrow,
+.cp-title,
+.cp-name,
+.cp-row-title,
+.cp-meta-label,
+.cp-count-value,
+.cp-count-label,
+.cp-action {
   font-family: var(--vc-font-mono);
 }
-:root:not(.light) .cp-title,
-:root:not(.light) .cp-name,
-:root:not(.light) .cp-row-title {
+.cp-title,
+.cp-name,
+.cp-row-title {
   text-transform: uppercase;
   letter-spacing: 0.07em;
 }
@@ -71,7 +69,7 @@
 .cp-subtitle {
   margin: 0.3rem 0 0;
   font-size: 0.85rem;
-  color: var(--muted-foreground);
+  color: var(--vc-text-secondary);
 }
 .cp-meta {
   display: grid;
@@ -84,13 +82,13 @@
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--muted-foreground);
+  color: var(--vc-text-secondary);
 }
 .cp-meta-value {
   display: block;
   margin-top: 0.25rem;
   font-size: 0.9rem;
-  color: var(--foreground);
+  color: var(--vc-text-primary);
   overflow-wrap: anywhere;
 }
 
@@ -105,16 +103,16 @@
   align-items: center;
   gap: 0.55rem;
   padding: 0.55rem 0.7rem;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--foreground) 4%, transparent);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--vc-text-primary) 4%, transparent);
   min-width: 0;
 }
-.cp-count-icon { display: flex; color: var(--muted-foreground); }
+.cp-count-icon { display: flex; color: var(--vc-text-secondary); }
 .cp-count-value {
   font-size: 1.15rem;
   font-weight: 600;
-  color: var(--foreground);
+  color: var(--vc-text-primary);
   line-height: 1;
 }
 .cp-count-label {
@@ -123,7 +121,7 @@
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--muted-foreground);
+  color: var(--vc-text-secondary);
 }
 
 /* ---------- Section rows ---------- */
@@ -134,15 +132,15 @@
   align-items: flex-start;
   gap: 0.9rem;
   padding: 1rem;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--vc-line-hairline);
   color: inherit;
   text-decoration: none;
   transition: background-color 0.15s ease;
 }
 .cp-row:first-child { border-top: 0; }
-.cp-row:hover { background: color-mix(in srgb, var(--foreground) 5%, transparent); }
+.cp-row:hover { background: color-mix(in srgb, var(--vc-text-primary) 5%, transparent); }
 .cp-row:focus-visible {
-  outline: 2px solid var(--ring);
+  outline: 2px solid var(--vc-data-live);
   outline-offset: -2px;
 }
 .cp-tile {
@@ -150,9 +148,9 @@
   place-items: center;
   width: 52px;
   height: 52px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  color: var(--muted-foreground);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 4px;
+  color: var(--vc-text-secondary);
 }
 .cp-row-head {
   display: flex;
@@ -165,12 +163,12 @@
   margin: 0;
   font-size: 0.95rem;
   font-weight: 600;
-  color: var(--foreground);
+  color: var(--vc-text-primary);
 }
 .cp-row-blurb {
   margin: 0.3rem 0 0;
   font-size: 0.85rem;
-  color: var(--muted-foreground);
+  color: var(--vc-text-secondary);
 }
 .cp-facts {
   margin: 0.3rem 0 0;
@@ -184,7 +182,7 @@
   display: block;
   font-size: 0.78rem;
   line-height: 1.35;
-  color: var(--muted-foreground);
+  color: var(--vc-text-secondary);
 }
 .cp-action {
   display: inline-block;
@@ -193,21 +191,21 @@
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--ring);
+  color: var(--vc-data-live);
 }
 .cp-chevron {
   align-self: center;
   display: flex;
-  color: var(--muted-foreground);
+  color: var(--vc-text-secondary);
 }
 
 /* Status tone: carried by the tile and the counter icon, never by a stripe. */
 .cp-tile[data-tone='success'],
-.cp-count[data-tone='success'] .cp-count-icon { border-color: color-mix(in srgb, var(--success) 60%, transparent); color: var(--success); }
+.cp-count[data-tone='success'] .cp-count-icon { border-color: color-mix(in srgb, var(--vc-state-complete) 60%, transparent); color: var(--vc-state-complete); }
 .cp-tile[data-tone='warning'],
-.cp-count[data-tone='warning'] .cp-count-icon { border-color: color-mix(in srgb, var(--warning) 65%, transparent); color: var(--warning); }
+.cp-count[data-tone='warning'] .cp-count-icon { border-color: color-mix(in srgb, var(--vc-state-due) 65%, transparent); color: var(--vc-state-due); }
 .cp-tile[data-tone='danger'],
-.cp-count[data-tone='danger'] .cp-count-icon { border-color: color-mix(in srgb, var(--destructive) 60%, transparent); color: var(--destructive); }
+.cp-count[data-tone='danger'] .cp-count-icon { border-color: color-mix(in srgb, var(--vc-state-alert) 60%, transparent); color: var(--vc-state-alert); }
 
 /* ---------- Measurements: stat strip, callout, tabs, rows ---------- */
 .cp-stats {
@@ -220,7 +218,7 @@
   align-items: center;
   gap: 0.2rem;
   padding: 0.65rem 0.5rem;
-  border-left: 1px solid var(--border);
+  border-left: 1px solid var(--vc-line-hairline);
   text-align: center;
   min-width: 0;
 }
@@ -229,18 +227,18 @@
   font-size: 1.2rem;
   font-weight: 600;
   line-height: 1;
-  color: var(--foreground);
+  color: var(--vc-text-primary);
 }
 .cp-stat-label {
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--muted-foreground);
+  color: var(--vc-text-secondary);
 }
 .cp-stat[data-tone='warning'] .cp-stat-value,
-.cp-stat[data-tone='warning'] .cp-stat-label { color: var(--warning); }
-:root:not(.light) .cp-stat-value,
-:root:not(.light) .cp-stat-label { font-family: var(--vc-font-mono); }
+.cp-stat[data-tone='warning'] .cp-stat-label { color: var(--vc-state-due); }
+.cp-stat-value,
+.cp-stat-label { font-family: var(--vc-font-mono); }
 
 .cp-callout {
   display: flex;
@@ -249,17 +247,17 @@
   width: 100%;
   padding: 0.55rem 0.85rem;
   border: 0;
-  border-top: 1px solid var(--border);
-  background: color-mix(in srgb, var(--warning) 10%, transparent);
-  color: var(--foreground);
+  border-top: 1px solid var(--vc-line-hairline);
+  background: color-mix(in srgb, var(--vc-state-due) 10%, transparent);
+  color: var(--vc-text-primary);
   text-align: left;
   cursor: pointer;
   font: inherit;
 }
-.cp-callout:hover { background: color-mix(in srgb, var(--warning) 16%, transparent); }
-.cp-callout-icon { display: flex; color: var(--warning); }
-.cp-callout-text { flex: 1; min-width: 0; font-size: 0.85rem; color: var(--warning); }
-:root:not(.light) .cp-callout-text { font-family: var(--vc-font-mono); }
+.cp-callout:hover { background: color-mix(in srgb, var(--vc-state-due) 16%, transparent); }
+.cp-callout-icon { display: flex; color: var(--vc-state-due); }
+.cp-callout-text { flex: 1; min-width: 0; font-size: 0.85rem; color: var(--vc-state-due); }
+.cp-callout-text { font-family: var(--vc-font-mono); }
 
 .cp-tabs {
   display: grid;
@@ -267,31 +265,31 @@
   grid-auto-columns: 1fr;
   gap: 0.25rem;
   padding: 0.25rem;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--card);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 4px;
+  background: var(--vc-bg-surface);
 }
 .cp-tab {
   padding: 0.45rem 0.5rem;
   white-space: nowrap;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 4px;
   background: transparent;
-  color: var(--muted-foreground);
+  color: var(--vc-text-secondary);
   font-size: 0.8rem;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   cursor: pointer;
 }
-:root:not(.light) .cp-tab { font-family: var(--vc-font-mono); }
-.cp-tab:hover { color: var(--foreground); }
+.cp-tab { font-family: var(--vc-font-mono); }
+.cp-tab:hover { color: var(--vc-text-primary); }
 .cp-tab[aria-selected='true'] {
-  border-color: color-mix(in srgb, var(--ring) 55%, transparent);
-  background: color-mix(in srgb, var(--ring) 12%, transparent);
-  color: var(--ring);
+  border-color: color-mix(in srgb, var(--vc-data-live) 55%, transparent);
+  background: color-mix(in srgb, var(--vc-data-live) 12%, transparent);
+  color: var(--vc-data-live);
 }
-.cp-tab:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+.cp-tab:focus-visible { outline: 2px solid var(--vc-data-live); outline-offset: -2px; }
 /* A tab or a button can be a Link; neither should pick up a link underline. */
 a.cp-tab {
   display: inline-flex;
@@ -330,7 +328,7 @@ a[data-slot='button'] { text-decoration: none; }
   text-transform: none;
   letter-spacing: normal;
 }
-:root:not(.light) .cp-row-title-plain {
+.cp-row-title-plain {
   font-family: inherit;
   text-transform: none;
   letter-spacing: normal;
@@ -345,7 +343,7 @@ a[data-slot='button'] { text-decoration: none; }
   gap: 0.7rem;
   padding: 0.55rem 0.85rem;
 }
-.cp-row-compact .cp-tile { width: 36px; height: 36px; border-radius: 9px; }
+.cp-row-compact .cp-tile { width: 36px; height: 36px; border-radius: 4px; }
 .cp-row-compact .cp-row-title { font-size: 0.88rem; }
 .cp-row-compact .cp-row-blurb { margin-top: 0.05rem; font-size: 0.78rem; }
 .cp-row-compact .cp-row-status { flex-direction: row; align-items: center; gap: 0.45rem; }
@@ -385,12 +383,12 @@ a[data-slot='button'] { text-decoration: none; }
   font-weight: 600;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--muted-foreground);
+  color: var(--vc-text-secondary);
 }
-:root:not(.light) .cp-status { font-family: var(--vc-font-mono); }
-.cp-status[data-tone='success'] { color: var(--success); }
-.cp-status[data-tone='warning'] { color: var(--warning); }
-.cp-status[data-tone='danger'] { color: var(--destructive); }
+.cp-status { font-family: var(--vc-font-mono); }
+.cp-status[data-tone='success'] { color: var(--vc-state-complete); }
+.cp-status[data-tone='warning'] { color: var(--vc-state-due); }
+.cp-status[data-tone='danger'] { color: var(--vc-state-alert); }
 
 .cp-limit-row {
   display: flex;
@@ -398,7 +396,7 @@ a[data-slot='button'] { text-decoration: none; }
   justify-content: space-between;
   gap: 1rem;
   padding: 0.5rem 0.85rem;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--vc-line-hairline);
 }
 .cp-limit-row:last-child { border-bottom: 0; }
 .cp-limit-fields {
@@ -416,11 +414,11 @@ a[data-slot='button'] { text-decoration: none; }
   padding: 0.75rem 0.85rem;
   cursor: pointer;
   list-style: none;
-  color: var(--foreground);
+  color: var(--vc-text-primary);
 }
 .cp-advanced summary::-webkit-details-marker { display: none; }
-.cp-advanced summary:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
-.cp-advanced-marker { margin-left: auto; display: flex; color: var(--muted-foreground); transition: transform 0.15s ease; }
+.cp-advanced summary:focus-visible { outline: 2px solid var(--vc-data-live); outline-offset: -2px; }
+.cp-advanced-marker { margin-left: auto; display: flex; color: var(--vc-text-secondary); transition: transform 0.15s ease; }
 .cp-advanced[open] .cp-advanced-marker { transform: rotate(180deg); }
 
 @media (max-width: 640px) {
@@ -434,7 +432,7 @@ a[data-slot='button'] { text-decoration: none; }
   }
   .cp-row-compact .cp-row-status { gap: 0.3rem; }
   .cp-row-compact .cp-status { font-size: 10px; }
-  .cp-tile { width: 44px; height: 44px; border-radius: 10px; }
+  .cp-tile { width: 44px; height: 44px; border-radius: 4px; }
   /* Keep the three counters on one line — stacked, they push the sections
    * below the fold on a phone. */
   .cp-counts { gap: 0.4rem; }

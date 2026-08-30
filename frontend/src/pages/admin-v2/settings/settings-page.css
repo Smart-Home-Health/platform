@@ -310,6 +310,7 @@
   cursor: pointer;
 }
 .cfg-ghost:hover { color: var(--vc-data-live); border-color: var(--vc-data-live); }
+a.cfg-ghost { text-decoration: none; }
 .cfg-ghost:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
@@ -396,6 +397,25 @@ button.cfg-stat .cfg-stat-label {
   color: var(--vc-text-secondary);
 }
 .cfg-toolbar-actions { display: flex; align-items: center; gap: 0.5rem; }
+
+/* Fine print under a card — a caveat the reader can skip. */
+.cfg-fine {
+  margin: 0;
+  font-family: var(--vc-font-sans);
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--vc-text-tertiary);
+}
+
+/* A labelled list card: eyebrow (+ optional right-hand note) above the box. */
+.cfg-listgroup { display: flex; flex-direction: column; gap: 0.4rem; }
+.cfg-listgroup-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
 
 /* Centered "pick a patient first" state for patient-scoped pages. */
 .cfg-nopatient {

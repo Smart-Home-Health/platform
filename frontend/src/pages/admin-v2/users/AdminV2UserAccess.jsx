@@ -19,8 +19,6 @@
 // user may do, and the care profiles they may do it to.
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Card, CardContent, CardFooter } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { CheckIcon } from '../../../components/Icons';
 import useUserRecord, { saveUserAccess } from './useUserRecord';
 import UserSection from './UserSection';
@@ -110,46 +108,40 @@ export default function AdminV2UserAccess() {
       error={error}
       notice={notice}
     >
-      <div className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+      <div className="cfg-listgroup">
+        <div className="cfg-listgroup-head">
           <h2 className="cp-eyebrow">Roles</h2>
-          <p className="text-xs text-muted-foreground">{accessCounts(user, patientIds)}</p>
+          <p className="cfg-fine">{accessCounts(user, patientIds)}</p>
         </div>
-        <Card>
-          <CardContent className="cp-rows p-0">
-            {roles.length === 0 && (
-              <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-                No roles have been created yet.
-              </p>
-            )}
-            {roles.map((role) => (
-              <GrantRow
-                key={role.id}
-                selected={selectedRoles.includes(role.id)}
-                title={role.display_name}
-                blurb={role.description}
-                disabled={role.name === 'system_admin' && user?.is_system_admin}
-                onToggle={() => toggle(setSelectedRoles)(role.id)}
-              />
-            ))}
-          </CardContent>
-        </Card>
+        <section className="cfg-card cp-rows">
+          {roles.length === 0 && (
+            <p className="cfg-empty">No roles have been created yet.</p>
+          )}
+          {roles.map((role) => (
+            <GrantRow
+              key={role.id}
+              selected={selectedRoles.includes(role.id)}
+              title={role.display_name}
+              blurb={role.description}
+              disabled={role.name === 'system_admin' && user?.is_system_admin}
+              onToggle={() => toggle(setSelectedRoles)(role.id)}
+            />
+          ))}
+        </section>
       </div>
 
-      <div className="flex flex-col gap-2">
+      <div className="cfg-listgroup">
         <h2 className="cp-eyebrow">Care profiles</h2>
-        <Card>
+        <section className="cfg-card cp-rows">
           {grantsEverything ? (
-            <CardContent className="p-4 text-sm text-muted-foreground sm:p-4">
+            <p className="cfg-empty">
               A system administrator reaches every care profile, so there is nothing to
               choose here. Any assignments already recorded are left untouched.
-            </CardContent>
+            </p>
           ) : (
-            <CardContent className="cp-rows p-0">
+            <>
               {patients.length === 0 && (
-                <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-                  No care profiles have been added yet.
-                </p>
+                <p className="cfg-empty">No care profiles have been added yet.</p>
               )}
               {patients.map((p) => (
                 <GrantRow
@@ -160,24 +152,23 @@ export default function AdminV2UserAccess() {
                   onToggle={() => toggle(setSelectedProfiles)(p.id)}
                 />
               ))}
-            </CardContent>
+            </>
           )}
-        </Card>
+        </section>
       </div>
 
-      <Card>
-        <CardFooter className="flex flex-wrap gap-3 p-4 sm:p-4">
-          <Button onClick={save} disabled={saving}>
-            {saving ? 'Saving…' : 'Save access'}
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() => navigate(`/care/configuration/users/${userId}`)}
-          >
-            Cancel
-          </Button>
-        </CardFooter>
-      </Card>
+      <div className="ud-actions">
+        <button type="button" className="em-submit" onClick={save} disabled={saving}>
+          {saving ? 'Saving…' : 'Save access'}
+        </button>
+        <button
+          type="button"
+          className="em-cancel"
+          onClick={() => navigate(`/care/configuration/users/${userId}`)}
+        >
+          Cancel
+        </button>
+      </div>
     </UserSection>
   );
 }

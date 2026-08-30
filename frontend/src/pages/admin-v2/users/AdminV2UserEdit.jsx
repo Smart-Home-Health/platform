@@ -19,13 +19,8 @@
 // no rename; everything else on the record is editable here.
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Card, CardContent, CardFooter } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Field, FormRow } from '@/components/ui/field';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
+import { EmField, EmSelect } from '../../../components/vc/EntityModal';
+import { CfgSection, CfgGroup, CfgFields } from '../settings/CfgSection';
 import useUserRecord, { updateUser } from './useUserRecord';
 import UserSection from './UserSection';
 
@@ -77,65 +72,82 @@ export default function AdminV2UserEdit() {
       error={error}
       notice={notice}
     >
-      <Card>
-        <CardContent className="flex flex-col gap-4 p-4 sm:p-4">
-          <FormRow>
-            <Field label="Username" htmlFor="ue-username" hint="A username cannot be changed">
-              <Input id="ue-username" value={user?.username || ''} disabled />
-            </Field>
-            <Field label="Full name" required htmlFor="ue-fullname">
-              <Input
-                id="ue-fullname"
-                value={form.full_name}
-                onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-                placeholder="Enter full name"
-                required
-              />
-            </Field>
-          </FormRow>
-
-          <FormRow>
-            <Field label="Email" htmlFor="ue-email" hint="Optional — used to identify the account only">
-              <Input
-                id="ue-email"
-                type="email"
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                placeholder="Enter email address"
-              />
-            </Field>
-            <Field
-              label="Status"
-              hint={user?.is_system_admin
-                ? 'A system administrator cannot be deactivated'
-                : 'An inactive user keeps their record but cannot sign in'}
+      <CfgSection
+        title="Details"
+        actions={
+          <>
+            <button
+              type="button"
+              className="em-cancel"
+              onClick={() => navigate(`/care/configuration/users/${userId}`)}
             >
-              <Select
-                value={form.is_active ? 'active' : 'inactive'}
-                onValueChange={(v) => setForm({ ...form, is_active: v === 'active' })}
-                disabled={user?.is_system_admin}
-              >
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-          </FormRow>
-        </CardContent>
-        <CardFooter className="flex flex-wrap gap-3">
-          <Button onClick={save} disabled={saving || !form.full_name.trim()}>
-            {saving ? 'Saving…' : 'Save details'}
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() => navigate(`/care/configuration/users/${userId}`)}
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="user-edit-form"
+              className="em-submit"
+              disabled={saving || !form.full_name.trim()}
+            >
+              {saving ? 'Saving…' : 'Save details'}
+            </button>
+          </>
+        }
+      >
+        <CfgGroup>
+          <form
+            id="user-edit-form"
+            className="cfg-form"
+            onSubmit={(e) => { e.preventDefault(); save(); }}
           >
-            Cancel
-          </Button>
-        </CardFooter>
-      </Card>
+            <CfgFields>
+              <EmField label="Username" htmlFor="ue-username" hint="A username cannot be changed">
+                <input id="ue-username" className="em-input" value={user?.username || ''} disabled />
+              </EmField>
+              <EmField label="Full name" required htmlFor="ue-fullname">
+                <input
+                  id="ue-fullname"
+                  className="em-input"
+                  value={form.full_name}
+                  onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+                  placeholder="Enter full name"
+                  required
+                />
+              </EmField>
+            </CfgFields>
+
+            <CfgFields>
+              <EmField label="Email" htmlFor="ue-email" hint="Optional — used to identify the account only">
+                <input
+                  id="ue-email"
+                  className="em-input"
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  placeholder="Enter email address"
+                />
+              </EmField>
+              <EmField
+                label="Status"
+                htmlFor="ue-status"
+                hint={user?.is_system_admin
+                  ? 'A system administrator cannot be deactivated'
+                  : 'An inactive user keeps their record but cannot sign in'}
+              >
+                <EmSelect
+                  id="ue-status"
+                  value={form.is_active ? 'active' : 'inactive'}
+                  onChange={(e) => setForm({ ...form, is_active: e.target.value === 'active' })}
+                  disabled={user?.is_system_admin}
+                >
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </EmSelect>
+              </EmField>
+            </CfgFields>
+          </form>
+        </CfgGroup>
+      </CfgSection>
     </UserSection>
   );
 }

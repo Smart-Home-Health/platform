@@ -21,7 +21,6 @@
 // Worth knowing what is *not* here: role and care-profile assignment changes
 // made from these screens are not recorded by the API, so they never appear.
 import { useParams } from 'react-router-dom';
-import { Card, CardContent } from '@/components/ui/card';
 import { HistoryIcon } from '../../../components/Icons';
 import useUserRecord from './useUserRecord';
 import UserSection from './UserSection';
@@ -42,36 +41,32 @@ export default function AdminV2UserActivity() {
       loading={loading}
       error={error}
     >
-      <Card>
-        <CardContent className="flex flex-col p-0">
-          {activity === null && (
-            <div className="px-4 py-10 text-center text-sm text-muted-foreground">
-              You do not have permission to read this user&rsquo;s account log.
-            </div>
-          )}
-          {activity?.length === 0 && (
-            <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
-              <span className="text-muted-foreground" aria-hidden><HistoryIcon size={32} /></span>
-              <p className="text-sm text-foreground">Nothing recorded yet</p>
-              <p className="text-sm text-muted-foreground">
-                Sign-ins and password changes will appear here as they happen.
-              </p>
-            </div>
-          )}
-          {rows.map((row) => (
-            <div className="ud-activity" key={row.id}>
-              <span className="ud-activity-dot" data-tone={row.tone} aria-hidden />
-              <span className="min-w-0">
-                <span className="ud-activity-label" data-raw={!row.known}>{row.label}</span>
-                {row.detail && <span className="ud-activity-detail">{row.detail}</span>}
-              </span>
-              <span className="ud-activity-when">{row.when}</span>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+      <section className="cfg-card">
+        {activity === null && (
+          <p className="cfg-empty">
+            You do not have permission to read this user&rsquo;s account log.
+          </p>
+        )}
+        {activity?.length === 0 && (
+          <div className="cfg-nopatient">
+            <HistoryIcon size={32} />
+            <p>Nothing recorded yet</p>
+            <p>Sign-ins and password changes will appear here as they happen.</p>
+          </div>
+        )}
+        {rows.map((row) => (
+          <div className="ud-activity" key={row.id}>
+            <span className="ud-activity-dot" data-tone={row.tone} aria-hidden />
+            <span className="ud-activity-body">
+              <span className="ud-activity-label" data-raw={!row.known}>{row.label}</span>
+              {row.detail && <span className="ud-activity-detail">{row.detail}</span>}
+            </span>
+            <span className="ud-activity-when">{row.when}</span>
+          </div>
+        ))}
+      </section>
 
-      <p className="text-xs text-muted-foreground">
+      <p className="cfg-fine">
         Role and care-profile changes are not written to the account log, so they are not
         listed here.
       </p>
