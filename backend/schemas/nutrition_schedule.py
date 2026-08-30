@@ -44,6 +44,14 @@ class NutritionSchedule(Base):
     default_amount_unit = Column(String(50), nullable=True)  # 'ml', 'oz', 'cups'
     default_calories = Column(Float, nullable=True)
     
+    # Dynamic water budget: a flagged spot has no fixed amount — its
+    # suggestion is computed on read from what is left of the daily fluid
+    # target, clamped to [fluid_min_ml, fluid_max_ml] (max defaults to the
+    # spot's nominal amount).
+    fills_fluid_goal = Column(Boolean, default=False, nullable=False)
+    fluid_min_ml = Column(Float, nullable=True)
+    fluid_max_ml = Column(Float, nullable=True)
+
     # Configuration
     is_active = Column(Boolean, default=True, nullable=False)
     create_care_task = Column(Boolean, default=True, nullable=False)  # Auto-create care task?

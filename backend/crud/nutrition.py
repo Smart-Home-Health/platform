@@ -905,6 +905,37 @@ def get_patient_nutrition_goals(db: Session, patient_id: int, active_only: bool 
     return query.order_by(desc(NutritionGoal.effective_date)).all()
 
 
+def get_water_suggestion(db: Session, patient_id: int,
+                         schedule_id: int = None, scheduled_time=None,
+                         followup_id: int = None):
+    """Today's dynamic water suggestion for one spot, or None.
+
+    Wraps the daily-board walk (which computes the whole water plan) and
+    picks out the matching row: a flagged schedule occurrence by
+    (schedule_id, HH:MM), or a pending flush by followup_id. Used by the
+    completion endpoints so a quick-complete pours the suggested amount,
+    not the nominal one.
+    """
+    from crud.scheduling import get_scheduled_nutrition
+    from utils.datetime_utils import resolve_tz_for_patient
+
+    tz = resolve_tz_for_patient(db, patient_id)
+    today = utc_now().astimezone(tz).date()
+    for row in get_scheduled_nutrition(db, today, patient_id, tz=tz):
+        if not row.get('fluid_dynamic'):
+            continue
+        if followup_id is not None:
+            if row.get('followup_id') == followup_id:
+                return row.get('suggested_amount')
+            continue
+        if (row.get('row_kind') == 'schedule'
+                and row.get('schedule_id') == schedule_id
+                and scheduled_time is not None
+                and row['scheduled_time'].strftime('%H:%M') == scheduled_time.strftime('%H:%M')):
+            return row.get('suggested_amount')
+    return None
+
+
 def get_current_nutrition_goal(db: Session, patient_id: int) -> Optional[NutritionGoal]:
     """Get the current active nutrition goal for a patient (most recent effective)"""
     now = utc_now()
@@ -1502,8 +1533,13 @@ def update_nutrition_schedule(db: Session, schedule_id: int, update_data: dict) 
         components = payload.pop('components', None)
 
         for field, value in payload.items():
-            if hasattr(schedule, field) and field not in ['id', 'created_at'] and value is not None:
-                setattr(schedule, field, value)
+            if not hasattr(schedule, field) or field in ['id', 'created_at']:
+                continue
+            # The route dumps with exclude_unset, so a present-but-None
+            # clamp is an explicit clear, not an omission.
+            if value is None and field not in ('fluid_min_ml', 'fluid_max_ml'):
+                continue
+            setattr(schedule, field, value)
 
         if components is not None:
             _set_schedule_components(db, schedule, components)

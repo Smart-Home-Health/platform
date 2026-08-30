@@ -228,11 +228,16 @@ const SCHEDULE_ITEM_TYPE = {
  *  Intake feed link all seed from here so they cannot drift. */
 export function rowsFromScheduleRow(row) {
   if (row.components?.length) return row.components.map(rowFromScheduleComponent);
-  if (row.default_item || row.default_amount != null) {
+  // A dynamic water spot prefills today's suggestion (what is left of the
+  // fluid goal), not its nominal default — including a suggested 0.
+  const amount = (row.fluid_dynamic && row.suggested_amount != null)
+    ? row.suggested_amount
+    : row.default_amount;
+  if (row.default_item || amount != null) {
     return [makeItemRow({
       itemName: row.default_item || row.name || '',
       itemType: SCHEDULE_ITEM_TYPE[row.schedule_type] || 'liquid',
-      amount: row.default_amount != null ? String(row.default_amount) : '',
+      amount: amount != null ? String(amount) : '',
       amountUnit: row.default_amount_unit || 'ml',
       calories: row.default_calories != null ? String(row.default_calories) : '',
     })];

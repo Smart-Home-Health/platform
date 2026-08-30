@@ -241,7 +241,18 @@ export default function NutritionPlanTab({
                   value: describeCron(schedule.cron_expression),
                 },
               ];
-              if (schedule.default_amount) {
+              if (schedule.fills_fluid_goal) {
+                // Flex spot: the amount adjusts to what is left of the daily
+                // fluid target, so its nominal reads as an upper bound.
+                const cap = schedule.fluid_max_ml ?? schedule.default_amount;
+                details.push({
+                  icon: <DropletIcon size={18} />,
+                  label: 'Amount',
+                  value: cap
+                    ? `flex — fills to target (up to ${cap} ${schedule.default_amount_unit || 'ml'})`
+                    : 'flex — fills to target',
+                });
+              } else if (schedule.default_amount) {
                 details.push({
                   icon: <DropletIcon size={18} />,
                   label: 'Amount',

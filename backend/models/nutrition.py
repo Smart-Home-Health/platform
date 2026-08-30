@@ -394,6 +394,11 @@ class NutritionScheduleCreate(BaseModel):
     # Multi-item feed mix; when set, completion expands one intake row per
     # component and the default_* fields above are ignored.
     components: Optional[List[NutritionScheduleComponentBase]] = None
+    # Dynamic water budget: suggest this spot's amount from what is left of
+    # the daily fluid target instead of a fixed default.
+    fills_fluid_goal: bool = False
+    fluid_min_ml: Optional[float] = Field(None, ge=0)
+    fluid_max_ml: Optional[float] = Field(None, ge=0)
     is_active: bool = True
     create_care_task: bool = True
     reminder_minutes_before: Optional[int] = 15
@@ -412,6 +417,9 @@ class NutritionScheduleUpdate(BaseModel):
     default_calories: Optional[float] = None
     # When present, replaces the whole component list ([] clears it).
     components: Optional[List[NutritionScheduleComponentBase]] = None
+    fills_fluid_goal: Optional[bool] = None
+    fluid_min_ml: Optional[float] = Field(None, ge=0)
+    fluid_max_ml: Optional[float] = Field(None, ge=0)
     is_active: Optional[bool] = None
     create_care_task: Optional[bool] = None
     reminder_minutes_before: Optional[int] = None
@@ -431,6 +439,9 @@ class NutritionScheduleResponse(BaseModel):
     default_amount_unit: Optional[str]
     default_calories: Optional[float]
     components: List[NutritionScheduleComponentResponse] = []
+    fills_fluid_goal: bool = False
+    fluid_min_ml: Optional[float] = None
+    fluid_max_ml: Optional[float] = None
     is_active: bool
     create_care_task: bool
     reminder_minutes_before: Optional[int]

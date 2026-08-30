@@ -18,6 +18,15 @@ event_group_id, hand-logged intakes linked to (and completing) a scheduled
 feed, grouped undo, and the barcode lookup chain (library -> OpenFoodFacts ->
 none)."""
 from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
+
+
+def _local_today():
+    # The /daily window is account-local (America/New_York in the test
+    # seed); date.today() is the container's UTC date and diverges from it
+    # between 8 PM and midnight Eastern.
+    return datetime.now(ZoneInfo("America/New_York")).date()
+
 
 import pytest
 
@@ -160,7 +169,7 @@ def test_completion_accepts_the_adjusted_mix_from_the_client(admin_client, patie
     # The daily board shows the feed completed exactly once, not thrice.
     day = admin_client.get(
         f"/api/schedule/daily?patient_id={patient.id}"
-        f"&target_date={date.today().isoformat()}&tz_offset_minutes=0"
+        f"&target_date={_local_today().isoformat()}&tz_offset_minutes=0"
     ).json()
     feed_rows = [n for n in day["nutrition"] if n["schedule_id"] == body["id"]]
     assert len(feed_rows) == 1 and feed_rows[0]["completed"] is True
@@ -231,7 +240,7 @@ def test_intake_event_linked_to_a_feed_marks_it_complete(admin_client, patient, 
 
     day = admin_client.get(
         f"/api/schedule/daily?patient_id={patient.id}"
-        f"&target_date={date.today().isoformat()}&tz_offset_minutes=0"
+        f"&target_date={_local_today().isoformat()}&tz_offset_minutes=0"
     ).json()
     feed_rows = [n for n in day["nutrition"] if n["schedule_id"] == body["id"]]
     assert len(feed_rows) == 1 and feed_rows[0]["completed"] is True
@@ -249,7 +258,7 @@ def test_unlinked_intake_event_surfaces_as_prn(admin_client, patient):
 
     day = admin_client.get(
         f"/api/schedule/daily?patient_id={patient.id}"
-        f"&target_date={date.today().isoformat()}&tz_offset_minutes=0"
+        f"&target_date={_local_today().isoformat()}&tz_offset_minutes=0"
     ).json()
     prn = [n for n in day["nutrition"] if n["is_prn"]]
     assert len(prn) == 1 and prn[0]["name"] == "Water"
@@ -292,7 +301,7 @@ def test_schedule_undo_voids_every_row_of_the_feed(admin_client, patient, mix_it
 
     day = admin_client.get(
         f"/api/schedule/daily?patient_id={patient.id}"
-        f"&target_date={date.today().isoformat()}&tz_offset_minutes=0"
+        f"&target_date={_local_today().isoformat()}&tz_offset_minutes=0"
     ).json()
     feed_rows = [n for n in day["nutrition"] if n["schedule_id"] == body["id"]]
     assert feed_rows[0]["completed"] is False

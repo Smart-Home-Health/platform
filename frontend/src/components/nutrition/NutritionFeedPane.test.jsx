@@ -129,6 +129,36 @@ describe('NutritionFeedPane', () => {
     expect(onSkipFlush).toHaveBeenCalled();
   });
 
+  it('prefills a dynamic flush with the suggestion and shows the arithmetic', () => {
+    const item = flushItem();
+    item._raw.fluid_dynamic = true;
+    item._raw.suggested_amount = 25;
+    item._raw.water_plan = {
+      target_ml: 550, logged_ml: 525, expected_food_ml: 0,
+      remaining_ml: 25, spots_remaining: 1,
+    };
+    setup(item);
+
+    expect(document.getElementById('ldfeed-flush-amount')).toHaveValue(25);
+    expect(screen.getByText(/Suggested 25 mL of the queued 60/)).toBeInTheDocument();
+    expect(screen.getByText(/target 550 mL/)).toBeInTheDocument();
+  });
+
+  it('nudges skip and blocks Run when the fluid goal is already met', () => {
+    const item = flushItem();
+    item._raw.fluid_dynamic = true;
+    item._raw.suggested_amount = 0;
+    item._raw.water_plan = {
+      target_ml: 500, logged_ml: 525, expected_food_ml: 0,
+      remaining_ml: 0, spots_remaining: 1,
+    };
+    setup(item);
+
+    expect(document.getElementById('ldfeed-flush-amount')).toHaveValue(0);
+    expect(screen.getByText(/Fluid goal already met — skip\?/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Run flush' })).toBeDisabled();
+  });
+
   it('uses its own note id so it cannot collide with the meds pane', () => {
     setup(feedItem());
     expect(document.getElementById('ldfeed-note')).toBeInTheDocument();
