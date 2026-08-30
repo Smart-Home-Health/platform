@@ -31,9 +31,10 @@ import './nutrition-sheet.css';
 
 const FIELDS = {
   fluids: [
-    { key: 'water_ml_target', label: 'Water', unit: 'mL' },
+    { key: 'water_ml_target', label: 'Water', unit: 'mL',
+      hint: 'On top of what the feeds carry' },
     { key: 'total_fluid_ml_target', label: 'Total fluids', unit: 'mL',
-      hint: 'Including fluid from food' },
+      hint: 'Everything combined, fluid from feeds included — used as-is when set' },
   ],
   calories: [
     { key: 'calories_target', label: 'Target', unit: 'kcal' },

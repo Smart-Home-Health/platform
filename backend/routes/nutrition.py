@@ -688,13 +688,24 @@ async def get_plan(
     schedules carry no effective dating, it can only ever describe the plan as
     it stands now — there is no past state to reconstruct.
     """
+    from crud.nutrition_plan import effective_fluid_target
     plan = get_nutrition_plan(db, patient_id)
     goal = plan['goal']
     contributions = plan['schedule_contributions']
 
+    goal_payload = None
+    if goal is not None:
+        goal_resp = NutritionGoalResponse.model_validate(goal)
+        goal_resp.effective_fluid_target_ml, goal_resp.fluid_target_parts = (
+            effective_fluid_target(db, patient_id, goal))
+        goal_payload = goal_resp.model_dump()
+
     return {
-        "goal": NutritionGoalResponse.model_validate(goal).model_dump() if goal else None,
+        "goal": goal_payload,
         "coverage": plan['coverage'],
+        # Non-None when the fluid target was lifted from a water-only goal;
+        # the UI shows the arithmetic instead of an unexplained number.
+        "fluid_target_parts": plan['fluid_target_parts'],
         "basis": plan['basis'],
         "schedules": [
             {
@@ -930,7 +941,14 @@ async def get_goals_for_patient(
 @router.get("/nutrition/goals/patient/{patient_id}/current", response_model=Optional[NutritionGoalResponse])
 async def get_current_goal(patient_id: int, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get the current active nutrition goal for a patient"""
-    return get_current_nutrition_goal(db, patient_id)
+    from crud.nutrition_plan import effective_fluid_target
+    goal = get_current_nutrition_goal(db, patient_id)
+    if goal is None:
+        return None
+    resp = NutritionGoalResponse.model_validate(goal)
+    resp.effective_fluid_target_ml, resp.fluid_target_parts = (
+        effective_fluid_target(db, patient_id, goal))
+    return resp
 
 
 @router.get("/nutrition/goals/{goal_id}", response_model=NutritionGoalResponse)

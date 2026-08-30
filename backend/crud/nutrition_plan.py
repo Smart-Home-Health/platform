@@ -122,6 +122,62 @@ def schedule_daily_contribution(schedule: NutritionSchedule) -> dict:
     }
 
 
+# Schedule types whose fluid is "food-side" fluid: it arrives with the meal
+# whatever the water plan says. Hydration schedules ARE the water plan.
+FOOD_SCHEDULE_TYPES = {'meal', 'snack', 'supplement'}
+
+
+def _food_fluid_per_firing(schedule: NutritionSchedule) -> float:
+    """One firing's food-side fluid, excluding flush components (those are
+    water — part of the water plan, not the meal)."""
+    if schedule.components:
+        return sum(
+            to_ml(comp.amount, comp.amount_unit) or 0
+            for comp in schedule.components
+            if not comp.is_flush
+        )
+    return to_ml(schedule.default_amount, schedule.default_amount_unit) or 0
+
+
+def expected_food_fluid_ml(db: Session, patient_id: int) -> float:
+    """Fluid a day's food schedules (meals, snacks, supplements) deliver."""
+    schedules = (
+        db.query(NutritionSchedule)
+        .filter(
+            NutritionSchedule.patient_id == patient_id,
+            NutritionSchedule.is_active.is_(True),
+            NutritionSchedule.schedule_type.in_(FOOD_SCHEDULE_TYPES),
+        )
+        .all()
+    )
+    return sum(
+        _food_fluid_per_firing(s) * daily_occurrences(s.cron_expression)
+        for s in schedules
+    )
+
+
+def effective_fluid_target(db: Session, patient_id: int, goal) -> tuple:
+    """The day's combined fluid target, as (target_ml, parts).
+
+    Every consumer measures ALL fluid — feed mixes included — so the target
+    must be a combined number too. total_fluid_ml_target is that number and
+    wins when set (parts is None). A goal carrying only water_ml_target
+    counts just the water plan; comparing it against combined intake is
+    apples-to-oranges, so it is lifted by the fluid the food schedules are
+    expected to deliver, and parts carries the arithmetic for display:
+    {'water_ml': ..., 'food_ml': ...}.
+    """
+    if goal is None:
+        return None, None
+    if goal.total_fluid_ml_target:
+        return float(goal.total_fluid_ml_target), None
+    if goal.water_ml_target:
+        water = float(goal.water_ml_target)
+        food = expected_food_fluid_ml(db, patient_id)
+        return water + food, {'water_ml': round(water), 'food_ml': round(food)}
+    return None, None
+
+
 def _metric(label: str, scheduled: float, goal: Optional[float], events: float, unit: str) -> dict:
     """One coverage line: what is scheduled against what was asked for."""
     target = float(goal) if goal else 0.0
@@ -168,14 +224,15 @@ def get_nutrition_plan(db: Session, patient_id: int) -> dict:
             calories += contribution['calories']
             calorie_events += contribution['occurrences']
 
-    fluid_goal = None
-    if goal is not None:
-        fluid_goal = goal.total_fluid_ml_target or goal.water_ml_target
+    fluid_goal, fluid_parts = effective_fluid_target(db, patient_id, goal)
 
     return {
         'goal': goal,
         'schedules': schedules,
         'schedule_contributions': per_schedule,
+        # Non-None when the fluid target was lifted from a water-only goal —
+        # the UI shows the arithmetic instead of an unexplained number.
+        'fluid_target_parts': fluid_parts,
         'coverage': [
             _metric('fluids', fluid_ml, fluid_goal, fluid_events, 'mL'),
             _metric('calories', calories, goal.calories_target if goal else None,

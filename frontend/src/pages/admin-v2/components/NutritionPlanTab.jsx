@@ -200,6 +200,13 @@ export default function NutritionPlanTab({
               </div>
             ))}
           </div>
+          {plan?.fluid_target_parts && (
+            <p className="nplan-note">
+              Fluids target = {num(plan.fluid_target_parts.water_ml)} mL water goal
+              {' + '}{num(plan.fluid_target_parts.food_ml)} mL carried by the feeds.
+              Set a Total fluids target to state it directly.
+            </p>
+          )}
           {/* The difference between a plan and a record, stated rather than
               left for the reader to assume. */}
           <footer className="nplan-card-foot">

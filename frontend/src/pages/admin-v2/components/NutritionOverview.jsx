@@ -120,7 +120,18 @@ const NutritionOverview = ({
     };
   }, [intakes, outputs, events, intakeToMl, outputToMl]);
 
-  const fluidGoal = currentGoal?.total_fluid_ml_target || currentGoal?.water_ml_target || 0;
+  // The combined daily fluid target — intake below counts ALL fluid (feed
+  // mixes included), so the goal side must too. The backend lifts a
+  // water-only goal by the food schedules' expected fluid and says so in
+  // fluid_target_parts.
+  const fluidGoal = currentGoal?.effective_fluid_target_ml
+    || currentGoal?.total_fluid_ml_target
+    || currentGoal?.water_ml_target
+    || 0;
+  const fluidParts = currentGoal?.fluid_target_parts || null;
+  const fluidGoalTitle = fluidParts
+    ? `${num(fluidParts.water_ml)} mL water goal + ${num(fluidParts.food_ml)} mL carried by the scheduled feeds`
+    : undefined;
   const calorieGoal = currentGoal?.calories_target || 0;
   const pct = (value, goal) => (goal > 0 ? Math.min(100, (value / goal) * 100) : 0);
   const fluidPct = pct(totals.totalFluidMl, fluidGoal);
@@ -267,7 +278,7 @@ const NutritionOverview = ({
               <div className="novw-bar-row">
                 <span className="novw-bar-icon fluids"><DropletIcon size={18} /></span>
                 <span className="novw-bar-label">Fluids</span>
-                <span className="novw-bar-value">
+                <span className="novw-bar-value" title={fluidGoalTitle}>
                   {num(totals.totalFluidMl)} <em>/ {num(fluidGoal)} mL</em>
                 </span>
                 <span className="novw-bar-pct">{Math.round(fluidPct)}%</span>

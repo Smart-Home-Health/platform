@@ -1436,10 +1436,11 @@ def _apply_water_budget(db, patient_id, rows, local_start_utc, local_end_utc):
         return
 
     from crud.nutrition import get_current_nutrition_goal
+    from crud.nutrition_plan import effective_fluid_target
     goal = get_current_nutrition_goal(db, patient_id)
-    target = None
-    if goal is not None:
-        target = goal.total_fluid_ml_target or goal.water_ml_target
+    # Combined target: a water-only goal is lifted by the food schedules'
+    # expected fluid so both sides of the comparison count the same thing.
+    target, target_parts = effective_fluid_target(db, patient_id, goal)
     if not target:
         for r in rows:
             strip(r)
@@ -1469,6 +1470,8 @@ def _apply_water_budget(db, patient_id, rows, local_start_utc, local_end_utc):
 
     plan = {
         'target_ml': round(float(target)),
+        # The lift arithmetic, when the target came from a water-only goal.
+        'target_parts': target_parts,
         'logged_ml': round(logged),
         'expected_food_ml': round(expected_food),
         'remaining_ml': round(remaining),
