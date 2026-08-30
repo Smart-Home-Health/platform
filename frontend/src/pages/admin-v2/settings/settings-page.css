@@ -313,6 +313,8 @@
 }
 .cfg-ghost:hover { color: var(--vc-data-live); border-color: var(--vc-data-live); }
 a.cfg-ghost { text-decoration: none; }
+.cfg-ghost.danger { color: var(--vc-state-alert); border-color: color-mix(in srgb, var(--vc-state-alert) 45%, transparent); }
+.cfg-ghost.danger:hover { color: var(--vc-state-alert); border-color: var(--vc-state-alert); }
 .cfg-ghost:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
@@ -882,6 +884,9 @@ button.cfg-stat .cfg-stat-label {
 .cfg-pick:disabled { opacity: 0.45; cursor: not-allowed; }
 .cfg-pick:disabled:hover { background: transparent; }
 /* Two-line pick row: name over identifier. */
+.cfg-pick.selected { background: color-mix(in srgb, var(--vc-data-live) 10%, transparent); }
+/* An avatar (or icon) leading the pick row's text. */
+.cfg-pick-lead { display: flex; align-items: center; gap: 0.6rem; min-width: 0; }
 .cfg-pick-main { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; overflow: hidden; }
 .cfg-pick-name {
   font-weight: 600;

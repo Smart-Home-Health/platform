@@ -22,15 +22,9 @@
 // big buttons, plain language, and nothing is final here — the parent
 // confirm panel shows an editable review before anything is saved.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { CameraIcon, CheckIcon } from '../../../components/Icons';
+import EntityModal from '../../../components/vc/EntityModal';
+import { CfgBadge } from '../settings/CfgSection';
+import { CameraIcon } from '../../../components/Icons';
 import { shipmentService } from '../../../services/shipments';
 import { sessionGet, sessionSet } from '../../../lib/sessionState';
 
@@ -225,74 +219,81 @@ export default function PackingSlipCapture({
   if (!open) return null;
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose?.(); }}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-[560px]" aria-describedby={undefined}>
-        <DialogHeader>
-          <DialogTitle>{title || (mode === 'import' ? 'Scan the invoice' : 'Scan the packing slip')}</DialogTitle>
-        </DialogHeader>
+    <EntityModal
+      open
+      onOpenChange={(o) => { if (!o) onClose?.(); }}
+      title={title || (mode === 'import' ? 'Scan the invoice' : 'Scan the packing slip')}
+    >
+      <div className="em-form">
+        {error && <div className="em-error" role="alert">{error}</div>}
 
-        {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
-
-        <p className="text-sm text-muted-foreground">
+        <p className="em-hint">
           {mode === 'import'
             ? 'Take a photo of each page of the sheet — each little barcode adds that item for you.'
             : 'Take a photo of each page of the slip — the little barcodes check items off automatically.'}
         </p>
 
         {/* Progress: friendly, glanceable */}
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-3 py-1">
-            <CheckIcon size={13} />{' '}
+        <div className="cfg-crumb-tags">
+          <CfgBadge tone={matchedCount > 0 ? 'ok' : undefined}>
             {mode === 'import'
               ? `${matchedCount} item${matchedCount === 1 ? '' : 's'} found`
               : `${matchedCount} of ${expectedItems.length} checked off${newCount > 0 ? ` · ${newCount} new` : ''}`}
-          </span>
+          </CfgBadge>
           {pagesUploaded > 0 && (
-            <span className="rounded-full bg-secondary px-3 py-1">
+            <CfgBadge>
               {pagesUploaded} page{pagesUploaded > 1 ? 's' : ''} {shipmentId ? 'saved' : 'read'}
-            </span>
+            </CfgBadge>
           )}
           {(busy || batch) && (
-            <span className="rounded-full bg-secondary px-3 py-1 animate-pulse">
+            <CfgBadge tone="live">
               {batch
                 ? `Reading photo ${batch.current} of ${batch.total}…`
                 : busy === 'reading' ? 'Reading the page…' : 'Saving the photo…'}
-            </span>
+            </CfgBadge>
           )}
         </div>
 
-        <div className="flex flex-col gap-2">
-          <Button size="lg" onClick={() => takePhotoInputRef.current?.click()} disabled={!!busy || !!batch}>
-            <CameraIcon size={16} /> Take a photo of the page
-          </Button>
-          <Button variant="secondary" onClick={() => cameraRollInputRef.current?.click()} disabled={!!busy || !!batch}>
-            Choose from your camera roll
-          </Button>
-          {/* capture="environment" jumps straight to the camera (iOS) */}
-          <input
-            ref={takePhotoInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="hidden"
-            onChange={handleFileChosen}
-          />
-          {/* no capture attr -> photo-library picker; multiple = bring the
-              whole photographed slip stack in at once */}
-          <input
-            ref={cameraRollInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            className="hidden"
-            onChange={handleFileChosen}
-          />
-          <Button size="lg" variant="default" onClick={handleDone} disabled={!!busy || !!batch}>
-            {mode === 'import' ? 'Done — review the items' : 'Done — check the numbers'}
-          </Button>
-          <Button variant="ghost" onClick={() => onClose?.()}>Cancel</Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+        <button
+          type="button"
+          className="em-submit"
+          onClick={() => takePhotoInputRef.current?.click()}
+          disabled={!!busy || !!batch}
+        >
+          <CameraIcon size={16} /> Take a photo of the page
+        </button>
+        <button
+          type="button"
+          className="em-cancel"
+          onClick={() => cameraRollInputRef.current?.click()}
+          disabled={!!busy || !!batch}
+        >
+          Choose from your camera roll
+        </button>
+        {/* capture="environment" jumps straight to the camera (iOS) */}
+        <input
+          ref={takePhotoInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          style={{ display: 'none' }}
+          onChange={handleFileChosen}
+        />
+        {/* no capture attr -> photo-library picker; multiple = bring the
+            whole photographed slip stack in at once */}
+        <input
+          ref={cameraRollInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          style={{ display: 'none' }}
+          onChange={handleFileChosen}
+        />
+        <button type="button" className="em-submit" onClick={handleDone} disabled={!!busy || !!batch}>
+          {mode === 'import' ? 'Done — review the items' : 'Done — check the numbers'}
+        </button>
+        <button type="button" className="em-cancel" onClick={() => onClose?.()}>Cancel</button>
+      </div>
+    </EntityModal>
   );
 }

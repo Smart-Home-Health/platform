@@ -15,13 +15,9 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import EntityModal from '../../../components/vc/EntityModal';
 import PersonAvatar from '../../../components/vc/PersonAvatar';
+import '../settings/settings-page.css';
 
 /**
  * Reusable patient selector modal for Admin V2 pages
@@ -36,48 +32,49 @@ const PatientSelectorModal = ({
   title = 'Select Patient'
 }) => {
   // Until a patient is chosen the modal is a hard gate: ignoring onOpenChange
-  // blocks Escape/outside-click, and the built-in X is hidden via CSS.
+  // blocks Escape/outside-click, and the built-in X is not rendered.
   const canClose = !!selectedPatient;
 
   // Consumers gate mounting (`{showPatientModal && ...}`), so always open.
   return (
-    <Dialog open onOpenChange={(o) => { if (!o && canClose) onClose(); }}>
-      <DialogContent
-        className={`max-h-[85vh] overflow-y-auto sm:max-w-[480px] ${canClose ? '' : '[&>button]:hidden'}`}
-        aria-describedby={undefined}
-      >
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-        </DialogHeader>
-
+    <EntityModal
+      open
+      onOpenChange={(o) => { if (!o && canClose) onClose(); }}
+      title={title}
+      hideClose={!canClose}
+    >
+      <div className="em-form">
         {loading ? (
-          <p className="py-2 text-center text-muted-foreground">Loading patients...</p>
+          <p className="cfg-empty">Loading patients...</p>
         ) : patients.length === 0 ? (
-          <p className="py-2 text-center text-muted-foreground">No patients found</p>
+          <p className="cfg-empty">No patients found</p>
         ) : (
-          <div className="admin-v2-patient-selector-list">
+          <div className="cfg-picklist">
             {patients.filter(p => p.is_active).map(patient => (
               <button
                 key={patient.id}
-                className={`admin-v2-patient-selector-item ${selectedPatient?.id === patient.id ? 'selected' : ''}`}
+                type="button"
+                className={`cfg-pick ${selectedPatient?.id === patient.id ? 'selected' : ''}`}
                 onClick={() => onSelectPatient(patient)}
               >
-                <PersonAvatar kind="patient" id={patient.id} seed={patient.avatar_seed}
-                              photo={patient.avatar_photo} size={48} decorative />
-                <div className="admin-v2-patient-selector-info">
-                  <span className="admin-v2-patient-name">
-                    {patient.first_name} {patient.last_name}
+                <span className="cfg-pick-lead">
+                  <PersonAvatar kind="patient" id={patient.id} seed={patient.avatar_seed}
+                                photo={patient.avatar_photo} size={40} decorative />
+                  <span className="cfg-pick-main">
+                    <span className="cfg-pick-name">
+                      {patient.first_name} {patient.last_name}
+                    </span>
+                    <span className="cfg-pick-id">
+                      {patient.room || 'No room assigned'}
+                    </span>
                   </span>
-                  <span className="admin-v2-patient-meta">
-                    {patient.room || 'No room assigned'}
-                  </span>
-                </div>
+                </span>
               </button>
             ))}
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+      </div>
+    </EntityModal>
   );
 };
 

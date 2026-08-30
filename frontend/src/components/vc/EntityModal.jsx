@@ -45,7 +45,9 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { XIcon, ChevronDownIcon } from '../Icons';
 import './entity-card.css';
 
-export default function EntityModal({ open, onOpenChange, title, wide = false, children }) {
+// `hideClose` removes the X for hard-gate dialogs (a patient MUST be picked);
+// pair it with an onOpenChange that ignores dismissal.
+export default function EntityModal({ open, onOpenChange, title, wide = false, hideClose = false, children }) {
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
@@ -65,9 +67,11 @@ export default function EntityModal({ open, onOpenChange, title, wide = false, c
         >
           <div className="em-head">
             <DialogPrimitive.Title className="em-title">{title}</DialogPrimitive.Title>
-            <DialogPrimitive.Close className="em-close" aria-label="Close">
-              <XIcon size={18} />
-            </DialogPrimitive.Close>
+            {!hideClose && (
+              <DialogPrimitive.Close className="em-close" aria-label="Close">
+                <XIcon size={18} />
+              </DialogPrimitive.Close>
+            )}
           </div>
           {children}
         </DialogPrimitive.Content>
