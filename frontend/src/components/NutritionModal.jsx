@@ -111,7 +111,13 @@ const NutritionModal = ({ onClose }) => {
     return scheduled.map(item => {
       const detail = [];
       if (item.default_item) detail.push(item.default_item);
-      if (item.default_amount != null) {
+      if (item.fluid_dynamic && !item.completed && item.suggested_amount != null) {
+        // Dynamic water spot: the amount is computed from what is left of
+        // the daily fluid target, so show that instead of the nominal.
+        detail.push(item.suggested_amount > 0
+          ? `suggested ${item.suggested_amount} ${item.default_amount_unit || 'ml'}`
+          : 'goal met — skip?');
+      } else if (item.default_amount != null) {
         detail.push(`${item.default_amount}${item.default_amount_unit ? ' ' + item.default_amount_unit : ''}`);
       }
       if (item.default_calories != null) detail.push(`${item.default_calories} kcal`);

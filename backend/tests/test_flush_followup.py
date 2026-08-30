@@ -21,12 +21,20 @@ is then run (logging a liquid intake) or explicitly skipped. Undoing the feed
 voids a pending follow-up; undoing a logged flush restores it to pending.
 """
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 
 
 def _now_utc():
     return datetime.now(timezone.utc)
+
+
+def _local_today():
+    # The seeded test account runs America/New_York and the /daily window is
+    # account-local, so "today" must be the account's date, not UTC's —
+    # date.today() diverges from it between 8 PM and midnight Eastern.
+    return datetime.now(ZoneInfo("America/New_York")).date()
 
 
 @pytest.fixture
@@ -74,7 +82,7 @@ def _followups(admin_client, patient, status=None):
 
 
 def _daily(admin_client, patient, target_date=None):
-    day = (target_date or date.today()).isoformat()
+    day = (target_date or _local_today()).isoformat()
     return admin_client.get(
         f"/api/schedule/daily?patient_id={patient.id}"
         f"&target_date={day}&tz_offset_minutes=0"
@@ -399,7 +407,9 @@ def test_flush_crossing_midnight_lands_on_the_next_day_board(admin_client, patie
     body, when = _flush_schedule(admin_client, patient, flush_items)
     # Feed ran 30 minutes before last midnight UTC (a past time, so the
     # future-timestamp guard allows it); the 52.5-min run crosses into today.
-    yesterday = date.today() - timedelta(days=1)
+    # Anchored to the account-local date so "yesterday" and the default
+    # _daily() board stay two distinct days at any hour.
+    yesterday = _local_today() - timedelta(days=1)
     completed_at = datetime.combine(yesterday, datetime.min.time(), tzinfo=timezone.utc) \
         + timedelta(hours=23, minutes=30)
     resp = admin_client.post("/api/schedule/complete/nutrition", json={

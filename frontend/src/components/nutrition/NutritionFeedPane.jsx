@@ -81,7 +81,12 @@ export default function NutritionFeedPane({
     setHistoryOpen(false);
     if (!raw) { setRows([]); return; }
     if (raw.row_kind === 'flush') {
-      setFlushAmount(raw.default_amount != null ? String(raw.default_amount) : '');
+      // A dynamic spot prefills today's suggestion (what is left of the
+      // fluid goal) over the queued nominal — 0 means the goal is met.
+      const prefill = (raw.fluid_dynamic && raw.suggested_amount != null)
+        ? raw.suggested_amount
+        : raw.default_amount;
+      setFlushAmount(prefill != null ? String(prefill) : '');
       setRows([]);
     } else {
       setRows(rowsFromScheduleRow(raw));
@@ -146,6 +151,16 @@ export default function NutritionFeedPane({
 
       {isFlush ? (
         <>
+          {raw?.fluid_dynamic && raw?.water_plan && (
+            <p className="ldfeed-flush-hint">
+              {raw.suggested_amount > 0
+                ? `Suggested ${raw.suggested_amount} mL of the queued ${raw.default_amount ?? '—'}: `
+                : 'Fluid goal already met — skip? '}
+              target {raw.water_plan.target_ml} mL,
+              logged {raw.water_plan.logged_ml},
+              {' '}{raw.water_plan.expected_food_ml} still coming from feeds.
+            </p>
+          )}
           <label className="ld-dose-detail-label" htmlFor="ldfeed-flush-amount">
             Amount ({raw.default_amount_unit || 'ml'})
           </label>

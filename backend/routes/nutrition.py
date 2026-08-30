@@ -38,7 +38,8 @@ from crud.nutrition import (
     get_nutrition_summary,
     update_nutrition_intake,
     delete_nutrition_intake,
-    get_nutrition_intake_for_care_task
+    get_nutrition_intake_for_care_task,
+    get_water_suggestion
 )
 from crud.patients import get_active_patient
 from crud.scheduling import get_due_and_upcoming_nutrition_count
@@ -196,6 +197,17 @@ async def complete_flush_followup(
         return future
 
     completed_at = data.completed_at or utc_now()
+
+    # No explicit amount → today's dynamic suggestion (what's left of the
+    # fluid goal), falling back to the queued nominal amount. A suggestion
+    # of 0 means the goal is met — the UI nudges Skip, but a plain Run
+    # still pours the nominal so nothing silently logs a zero.
+    amount = data.amount
+    if not amount:
+        suggestion = get_water_suggestion(db, followup.patient_id,
+                                          followup_id=followup.id)
+        amount = suggestion if suggestion else followup.amount
+
     try:
         intakes = create_nutrition_intake_event(
             db,
@@ -204,7 +216,7 @@ async def complete_flush_followup(
                 'item_id': followup.item_id,
                 'item_name': followup.item_name,
                 'item_type': 'liquid',
-                'amount': data.amount or followup.amount,
+                'amount': amount,
                 'amount_unit': data.amount_unit or followup.amount_unit,
             }],
             consumed_at=completed_at,

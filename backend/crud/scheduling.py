@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 from schemas.care_task import CareTask
 from schemas.care_task_schedule import CareTaskSchedule
 from schemas.care_task_log import CareTaskLog
-from nutrition_vocab import LOCATION_LABELS
+from nutrition_vocab import LOCATION_LABELS, to_ml
 from care_task_vocab import is_nutrition_category
 from crud.patients import get_active_patient
 from utils.datetime_utils import (
@@ -1088,6 +1088,14 @@ def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset
                 components = schedule_components_as_intake_items(schedule)
                 flush_comps = schedule_flush_components(schedule)
 
+                # The spot's nominal fluid, for the dynamic water budget:
+                # what this schedule pours when taken as planned.
+                nominal_fluid = (
+                    sum(to_ml(c['amount'], c['amount_unit']) or 0 for c in components)
+                    if components
+                    else (to_ml(schedule.default_amount, schedule.default_amount_unit) or 0)
+                )
+
                 # Walk croniter forward from just before the local-day window in UTC.
                 base_time = local_start_utc - timedelta(hours=1)
                 cron = croniter(schedule.cron_expression, base_time)
@@ -1129,6 +1137,17 @@ def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset
                         'followup_id': None,
                         'skipped': False,
                         'flush_components': flush_comps,
+                        # Water-budget bookkeeping (stripped before return):
+                        # an uncompleted flagged spot competes for the
+                        # remaining need; an uncompleted feed's fluid is
+                        # still expected and held back from it.
+                        **({'_water_spot': {
+                                'nominal': nominal_fluid or (schedule.fluid_max_ml or 0),
+                                'min': schedule.fluid_min_ml or 0,
+                                'max': schedule.fluid_max_ml or nominal_fluid or 0,
+                            }} if (log is None and schedule.fills_fluid_goal) else {}),
+                        **({'_food_fluid_ml': nominal_fluid}
+                           if (log is None and not schedule.fills_fluid_goal) else {}),
                     })
             except Exception as cron_error:
                 logger.error(f"Error processing nutrition cron expression {schedule.cron_expression}: {cron_error}")
@@ -1230,6 +1249,11 @@ def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset
                 'row_kind': 'flush',
                 'followup_id': f.id,
                 'skipped': f.status == 'skipped',
+                **({'_water_spot': {
+                        'nominal': to_ml(f.amount, f.amount_unit) or 0,
+                        'min': 0,
+                        'max': to_ml(f.amount, f.amount_unit) or 0,
+                    }} if f.status == 'pending' else {}),
             })
 
         prn_outputs = db.query(NutritionOutput).filter(
@@ -1351,11 +1375,116 @@ def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset
                 'skipped': False,
             })
 
+        _apply_water_budget(db, patient_id, scheduled_nutrition,
+                            local_start_utc, local_end_utc)
+
         return sorted(scheduled_nutrition, key=lambda x: x['scheduled_time'])
 
     except Exception as e:
         logger.error(f"Error getting scheduled nutrition: {e}")
         return []
+
+
+def _fill_water_spots(need, spots):
+    """Split `need` mL across spots proportionally to their nominal sizes,
+    honoring per-spot [min, max]. Iterative so a capped spot's leftover share
+    flows to the others. Returns {key: mL}."""
+    alloc = {s['key']: float(s['min'] or 0) for s in spots}
+    remaining = need - sum(alloc.values())
+    pool = [s for s in spots if float(s['max'] or 0) > alloc[s['key']]]
+    while remaining > 0.5 and pool:
+        total = sum((s['nominal'] or 1) for s in pool)
+        distributed = 0.0
+        capped = []
+        for s in pool:
+            share = remaining * (s['nominal'] or 1) / total
+            room = float(s['max']) - alloc[s['key']]
+            take = min(share, room)
+            alloc[s['key']] += take
+            distributed += take
+            if take >= room - 1e-9:
+                capped.append(s['key'])
+        remaining -= distributed
+        if not capped:
+            break
+        pool = [s for s in pool if s['key'] not in capped]
+    return alloc
+
+
+def _apply_water_budget(db, patient_id, rows, local_start_utc, local_end_utc):
+    """Annotate the day's nutrition rows with dynamic water suggestions.
+
+    A spot flagged fills_fluid_goal (and every pending flush) has no fixed
+    amount: its suggestion is what is left of the daily fluid target after
+    what was already logged (juices included) and what is still expected
+    from uncompleted feeds, split across the remaining spots proportionally
+    to their nominal sizes. Computed on read, never stored — an undo or an
+    extra smoothie reshapes the next suggestion by itself.
+    """
+    spot_rows = [r for r in rows if r.get('_water_spot')]
+
+    def strip(row):
+        row.pop('_water_spot', None)
+        row.pop('_food_fluid_ml', None)
+        row.setdefault('fluid_dynamic', False)
+        row.setdefault('suggested_amount', None)
+        row.setdefault('water_plan', None)
+
+    if not spot_rows:
+        for r in rows:
+            strip(r)
+        return
+
+    from crud.nutrition import get_current_nutrition_goal
+    goal = get_current_nutrition_goal(db, patient_id)
+    target = None
+    if goal is not None:
+        target = goal.total_fluid_ml_target or goal.water_ml_target
+    if not target:
+        for r in rows:
+            strip(r)
+        return
+
+    # Fluid already in, bucketed the way the daily summary buckets (a feed
+    # logged late still belongs to the day it was meant for).
+    from schemas.nutrition_intake import NutritionIntake as NI
+    bucket = func.coalesce(NI.scheduled_time, NI.consumed_at)
+    logged = sum(
+        to_ml(amount, unit) or 0
+        for amount, unit in db.query(NI.amount, NI.amount_unit).filter(
+            NI.patient_id == patient_id,
+            bucket >= local_start_utc,
+            bucket < local_end_utc,
+        ).all()
+    )
+    expected_food = sum(r.get('_food_fluid_ml') or 0 for r in rows)
+    remaining = max(0.0, float(target) - logged - expected_food)
+
+    specs = []
+    for idx, r in enumerate(spot_rows):
+        spec = dict(r['_water_spot'])
+        spec['key'] = idx
+        specs.append(spec)
+    alloc = _fill_water_spots(remaining, specs)
+
+    plan = {
+        'target_ml': round(float(target)),
+        'logged_ml': round(logged),
+        'expected_food_ml': round(expected_food),
+        'remaining_ml': round(remaining),
+        'spots_remaining': len(spot_rows),
+    }
+    for idx, r in enumerate(spot_rows):
+        spec = specs[idx]
+        raw = alloc.get(idx, 0.0)
+        # Pourable numbers: nearest 5 mL, kept inside the clamps.
+        suggested = round(raw / 5.0) * 5
+        suggested = max(spec['min'] or 0, min(suggested, spec['max'] or suggested))
+        r['fluid_dynamic'] = True
+        r['suggested_amount'] = suggested
+        r['water_plan'] = plan
+    for r in rows:
+        strip(r)
 
 
 def get_due_and_upcoming_nutrition_count(db: Session, patient_id=None, tz=None):

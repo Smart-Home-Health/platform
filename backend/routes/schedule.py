@@ -36,6 +36,7 @@ from crud.nutrition import (
     maybe_spawn_flush_followup,
     schedule_components_as_intake_items,
     schedule_flush_components,
+    get_water_suggestion,
     sync_flush_followups_on_void,
     _publish_nutrition_mqtt,
     _publish_bathroom_mqtt,
@@ -235,6 +236,12 @@ async def get_daily_schedule(
                 "followup_id": nutr.get("followup_id"),
                 "skipped": nutr.get("skipped", False),
                 "flush_components": nutr.get("flush_components") or [],
+                # Dynamic water budget: a flagged spot's amount is computed
+                # on read; water_plan carries the arithmetic so the UI can
+                # show its work.
+                "fluid_dynamic": nutr.get("fluid_dynamic", False),
+                "suggested_amount": nutr.get("suggested_amount"),
+                "water_plan": nutr.get("water_plan"),
                 "scheduled_time": nutr["scheduled_time"].isoformat(),
                 "hour": nutr["scheduled_time"].hour,
                 "minute": nutr["scheduled_time"].minute,
@@ -364,7 +371,8 @@ async def complete_medication(
         return {"success": False, "error": str(e)}
 
 
-def _nutrition_completion_rows(schedule, data: CompleteItemRequest):
+def _nutrition_completion_rows(schedule, data: CompleteItemRequest, db=None,
+                               scheduled_dt=None):
     """What a nutrition completion actually logs, in priority order:
     explicit `items` from the client, else the schedule's component mix, else
     the legacy single default. Shared by the single and bulk paths so they
@@ -389,10 +397,22 @@ def _nutrition_completion_rows(schedule, data: CompleteItemRequest):
     if item_type is None:
         return None
 
+    amount = data.amount
+    if amount is None and schedule.fills_fluid_goal and db is not None:
+        # Dynamic water spot completed without an explicit amount: pour
+        # today's suggestion (what's left of the fluid goal, split across
+        # the remaining spots), not the nominal default.
+        amount = get_water_suggestion(
+            db, schedule.patient_id,
+            schedule_id=schedule.id, scheduled_time=scheduled_dt,
+        )
+    if amount is None:
+        amount = schedule.default_amount or 0
+
     return [{
         'item_name': data.item_name or schedule.default_item_name or schedule.name,
         'item_type': item_type,
-        'amount': data.amount if data.amount is not None else (schedule.default_amount or 0),
+        'amount': amount,
         'amount_unit': data.amount_unit or schedule.default_amount_unit or 'servings',
         'calories': schedule.default_calories,
     }]
@@ -436,7 +456,7 @@ async def complete_nutrition(
         # Resolve what this feed actually logs: explicit items from the
         # client, else the schedule's component mix, else the legacy single
         # default. None means a care activity that records no intake.
-        rows = _nutrition_completion_rows(schedule, data)
+        rows = _nutrition_completion_rows(schedule, data, db=db, scheduled_dt=scheduled_dt)
         if rows is None:
             return {
                 "success": True,
@@ -747,7 +767,7 @@ async def complete_bulk(
                 
                 schedule = db.query(NutritionSchedule).filter(NutritionSchedule.id == item.schedule_id).first()
                 if schedule:
-                    rows = _nutrition_completion_rows(schedule, item)
+                    rows = _nutrition_completion_rows(schedule, item, db=db, scheduled_dt=scheduled_dt)
                     if rows is None:
                         # Care activity, not an intake -- see the single path.
                         continue

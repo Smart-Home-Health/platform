@@ -319,7 +319,10 @@ const AdminV2Schedule = () => {
       notes: '',
       dose_amount: item.dose_amount || '',
       dose_unit: item.dose_unit || '',
-      amount: item.default_amount || '',
+      // A dynamic water spot prefills today's suggestion, not its nominal.
+      amount: (item.fluid_dynamic && item.suggested_amount != null)
+        ? item.suggested_amount
+        : (item.default_amount || ''),
       amount_unit: item.default_amount_unit || '',
       item_name: item.default_item || item.name || ''
     });
@@ -529,7 +532,11 @@ const AdminV2Schedule = () => {
   const openFlushModal = (item) => setFlushModal({
     open: true,
     item,
-    amount: item.default_amount != null ? String(item.default_amount) : '',
+    // A pending flush prefills today's suggestion (what is left of the
+    // fluid goal) over its queued nominal — 0 means the goal is met.
+    amount: (item.fluid_dynamic && item.suggested_amount != null)
+      ? String(item.suggested_amount)
+      : (item.default_amount != null ? String(item.default_amount) : ''),
     notes: '',
     busy: false,
     error: null,
@@ -1124,6 +1131,20 @@ const AdminV2Schedule = () => {
                                               ? `${item.components.length} items`
                                               : `${item.components[0].item_name} ${item.components[0].amount} ${item.components[0].amount_unit || ''}`}
                                           </span>
+                                        ) : (item.fluid_dynamic && !item.completed && item.suggested_amount != null) ? (
+                                          // Dynamic water spot: the amount is computed from
+                                          // what is left of the daily fluid target.
+                                          <span
+                                            className="admin-v2-schedule-item-dose"
+                                            title={item.water_plan
+                                              ? `Target ${item.water_plan.target_ml} mL · logged ${item.water_plan.logged_ml} · ${item.water_plan.expected_food_ml} coming from feeds · ${item.water_plan.spots_remaining} spot${item.water_plan.spots_remaining === 1 ? '' : 's'} left`
+                                              : undefined}
+                                          >
+                                            {item.default_item && <span>{item.default_item} </span>}
+                                            {item.suggested_amount > 0
+                                              ? `suggested ${item.suggested_amount} ${item.default_amount_unit || 'ml'}${item.default_amount ? ` (of ${item.default_amount})` : ''}`
+                                              : 'goal met — skip?'}
+                                          </span>
                                         ) : (item.default_amount || item.default_item) && (
                                           <span className="admin-v2-schedule-item-dose">
                                             {item.default_item && <span>{item.default_item}</span>}
@@ -1674,6 +1695,21 @@ const AdminV2Schedule = () => {
 
             {flushModal.error && (
               <div className="tw"><Alert variant="destructive">{flushModal.error}</Alert></div>
+            )}
+
+            {flushModal.item?.fluid_dynamic && flushModal.item?.water_plan && (
+              // The suggestion shows its work so a caregiver can sanity-check
+              // it against the day before pouring.
+              <div className="tw">
+                <div className="rounded-md bg-secondary p-3 text-sm text-muted-foreground">
+                  {flushModal.item.suggested_amount > 0
+                    ? `Suggested ${flushModal.item.suggested_amount} mL of the queued ${flushModal.item.default_amount ?? '—'}: `
+                    : 'Fluid goal already met — skip? '}
+                  target {flushModal.item.water_plan.target_ml} mL,
+                  logged {flushModal.item.water_plan.logged_ml},
+                  {' '}{flushModal.item.water_plan.expected_food_ml} still coming from feeds.
+                </div>
+              </div>
             )}
 
             <Field label={`Amount (${flushModal.item?.default_amount_unit || 'ml'})`}>

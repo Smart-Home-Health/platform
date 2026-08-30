@@ -97,6 +97,11 @@ export default function ScheduleSheet({ open, onClose, onSave, editing, saving, 
   // post-feed flush (volume ÷ rate after the feed is marked done). Stored on
   // the first non-flush component.
   const [feedRate, setFeedRate] = useState('');
+  // Dynamic water budget: a flagged spot's amount is suggested at completion
+  // from what is left of the daily fluid target instead of the fixed default.
+  const [fillsFluidGoal, setFillsFluidGoal] = useState(false);
+  const [fluidMin, setFluidMin] = useState('');
+  const [fluidMax, setFluidMax] = useState('');
   const [localError, setLocalError] = useState(null);
 
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
@@ -112,12 +117,18 @@ export default function ScheduleSheet({ open, onClose, onSave, editing, saving, 
       setTime('08:00');
       setMixItems([]);
       setFeedRate('');
+      setFillsFluidGoal(false);
+      setFluidMin('');
+      setFluidMax('');
       return;
     }
 
     setMixItems((editing.components || []).map(rowFromComponentResponse));
     const rated = (editing.components || []).find((c) => !c.is_flush && c.rate_ml_per_hr);
     setFeedRate(rated?.rate_ml_per_hr != null ? String(rated.rate_ml_per_hr) : '');
+    setFillsFluidGoal(editing.fills_fluid_goal === true);
+    setFluidMin(editing.fluid_min_ml != null ? String(editing.fluid_min_ml) : '');
+    setFluidMax(editing.fluid_max_ml != null ? String(editing.fluid_max_ml) : '');
 
     setForm({
       ...emptyForm(),
@@ -219,6 +230,11 @@ export default function ScheduleSheet({ open, onClose, onSave, editing, saving, 
         if (rate && main) main.rate_ml_per_hr = rate;
         return comps;
       })(),
+      // A flagged spot pours what is left of the daily fluid target; the
+      // fixed amount above becomes its nominal (weight and default cap).
+      fills_fluid_goal: !isCare && fillsFluidGoal,
+      fluid_min_ml: (!isCare && fillsFluidGoal) ? numberOrNull(fluidMin) : null,
+      fluid_max_ml: (!isCare && fillsFluidGoal) ? numberOrNull(fluidMax) : null,
       create_care_task: form.create_care_task,
       reminder_minutes_before: numberOrNull(form.reminder_minutes_before) ?? 0,
       instructions: form.instructions || null,
@@ -420,6 +436,65 @@ export default function ScheduleSheet({ open, onClose, onSave, editing, saving, 
             <p className="nsheet-note">
               Amounts in mL, oz or cups count toward the fluid target.
             </p>
+          </section>
+        )}
+
+        {/* Only hydration spots make sense as budget-fillers — a feed's mix
+            is fixed; the water runs are what flex. */}
+        {form.schedule_type === 'hydration' && (
+          <section className="nsheet-card">
+            <label className="nsheet-switch-row">
+              <span className="nsheet-switch-text">
+                <strong>Fills remaining fluid need</strong>
+                <span>
+                  Suggests the amount from what is left of the daily fluid
+                  target instead of always pouring the full amount
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                className="em-check"
+                checked={fillsFluidGoal}
+                onChange={(e) => setFillsFluidGoal(e.target.checked)}
+              />
+            </label>
+            {fillsFluidGoal && (
+              <>
+                <div className="nsheet-amount">
+                  <EmField label="Min (mL)" optional htmlFor="sched-fluid-min">
+                    <input
+                      id="sched-fluid-min"
+                      className="em-input"
+                      type="number"
+                      min="0"
+                      step="any"
+                      inputMode="decimal"
+                      placeholder="0"
+                      value={fluidMin}
+                      onChange={(e) => setFluidMin(e.target.value)}
+                    />
+                  </EmField>
+                  <EmField label="Max (mL)" optional htmlFor="sched-fluid-max">
+                    <input
+                      id="sched-fluid-max"
+                      className="em-input"
+                      type="number"
+                      min="0"
+                      step="any"
+                      inputMode="decimal"
+                      placeholder="amount above"
+                      value={fluidMax}
+                      onChange={(e) => setFluidMax(e.target.value)}
+                    />
+                  </EmField>
+                </div>
+                <p className="nsheet-note">
+                  The amount above stays as the nominal size — it weights how
+                  the remaining need is split across today&apos;s spots and caps
+                  the suggestion unless a max is set here.
+                </p>
+              </>
+            )}
           </section>
         )}
 

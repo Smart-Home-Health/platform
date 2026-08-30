@@ -94,6 +94,37 @@ describe('rowsFromScheduleRow', () => {
     const { rowsFromScheduleRow } = await import('./intakeItemRows');
     expect(rowsFromScheduleRow({ schedule_type: 'meal', components: [] })).toEqual([]);
   });
+
+  it('prefills a dynamic water spot with the suggestion, not the nominal', async () => {
+    const { rowsFromScheduleRow } = await import('./intakeItemRows');
+    const rows = rowsFromScheduleRow({
+      schedule_type: 'hydration', default_item: 'Water',
+      default_amount: 660, default_amount_unit: 'ml',
+      fluid_dynamic: true, suggested_amount: 410,
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].amount).toBe('410');
+  });
+
+  it('prefills a suggested zero when the fluid goal is already met', async () => {
+    const { rowsFromScheduleRow } = await import('./intakeItemRows');
+    const rows = rowsFromScheduleRow({
+      schedule_type: 'hydration', default_item: 'Water',
+      default_amount: 660, default_amount_unit: 'ml',
+      fluid_dynamic: true, suggested_amount: 0,
+    });
+    expect(rows[0].amount).toBe('0');
+  });
+
+  it('keeps the nominal when the spot is not dynamic', async () => {
+    const { rowsFromScheduleRow } = await import('./intakeItemRows');
+    const rows = rowsFromScheduleRow({
+      schedule_type: 'hydration', default_item: 'Water',
+      default_amount: 660, default_amount_unit: 'ml',
+      fluid_dynamic: false, suggested_amount: null,
+    });
+    expect(rows[0].amount).toBe('660');
+  });
 });
 
 describe('rowsTotals', () => {

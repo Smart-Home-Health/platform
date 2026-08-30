@@ -70,6 +70,52 @@ describe('ScheduleSheet', () => {
     expect(payload.components).toEqual([]);
   });
 
+  it('sends the fluid-budget flag and clamps for a flagged hydration spot', () => {
+    const { onSave } = setup();
+    nameIt('Afternoon water');
+    fireEvent.click(screen.getByRole('radio', { name: 'Hydration' }));
+    // The toggle only appears for hydration schedules.
+    fireEvent.click(screen.getByLabelText(/Fills remaining fluid need/i));
+    fireEvent.change(document.getElementById('sched-fluid-min'), { target: { value: '100' } });
+    fireEvent.change(document.getElementById('sched-fluid-max'), { target: { value: '700' } });
+    fireEvent.click(saveButton());
+
+    const payload = onSave.mock.calls[0][0];
+    expect(payload.fills_fluid_goal).toBe(true);
+    expect(payload.fluid_min_ml).toBe(100);
+    expect(payload.fluid_max_ml).toBe(700);
+  });
+
+  it('clears the clamps when the spot is not flagged', () => {
+    const { onSave } = setup();
+    nameIt('Fixed water');
+    fireEvent.click(screen.getByRole('radio', { name: 'Hydration' }));
+    fireEvent.click(saveButton());
+
+    const payload = onSave.mock.calls[0][0];
+    expect(payload.fills_fluid_goal).toBe(false);
+    expect(payload.fluid_min_ml).toBeNull();
+    expect(payload.fluid_max_ml).toBeNull();
+  });
+
+  it('hides the fluid-budget toggle for a meal schedule', () => {
+    setup();
+    expect(screen.queryByText(/Fills remaining fluid need/i)).not.toBeInTheDocument();
+  });
+
+  it('reads a flagged spot back into the form', () => {
+    setup({
+      editing: {
+        id: 9, schedule_type: 'hydration', name: 'Water run',
+        cron_expression: '0 20 * * *', default_amount: 660,
+        default_amount_unit: 'ml', fills_fluid_goal: true,
+        fluid_min_ml: null, fluid_max_ml: 700,
+      },
+    });
+    expect(screen.getByLabelText(/Fills remaining fluid need/i)).toBeChecked();
+    expect(document.getElementById('sched-fluid-max')).toHaveValue(700);
+  });
+
   it('offers no flush toggle for a single-item mix', () => {
     setup({
       editing: {
