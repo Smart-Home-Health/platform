@@ -687,6 +687,13 @@ select.em-input {
   margin: 0.25rem -1rem -1rem;
   padding: 0.7rem 1rem calc(0.7rem + env(safe-area-inset-bottom));
 }
+/* A footer action pushed to the left edge (a Back step button). */
+.em-footer .em-cancel.start {
+  margin-right: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
 .em-cancel {
   background: transparent;
   border: 1px solid var(--vc-line-strong);
