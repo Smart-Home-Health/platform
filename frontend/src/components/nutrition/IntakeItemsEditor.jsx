@@ -50,6 +50,23 @@ const TYPE_ICONS = {
   tube_feed: <TubeIcon size={16} />,
 };
 
+// Water is a given — nobody should have to author it. The search always
+// offers it; picking it creates the real library item on the spot (zero
+// facts, counts toward fluids by unit) so it also works where a saved item
+// id is required, like a schedule component.
+const BUILTIN_WATER = {
+  name: 'Water',
+  item_type: 'liquid',
+  default_amount: 60,
+  default_amount_unit: 'ml',
+  calories_per_unit: 0,
+  protein_per_unit: 0,
+  carbs_per_unit: 0,
+  fat_per_unit: 0,
+  fiber_per_unit: 0,
+  sodium_per_unit: 0,
+};
+
 export default function IntakeItemsEditor({
   patient,
   items,
@@ -127,7 +144,14 @@ export default function IntakeItemsEditor({
     setScanNotice(null);
   };
 
-  const removeRow = (key) => onChange(items.filter((row) => row.key !== key));
+  const removeRow = (key) => {
+    const remaining = items.filter((row) => row.key !== key);
+    // A one-item mix cannot have a flush (the meal itself would vanish);
+    // clear an orphaned flag when a deletion leaves a single row.
+    onChange(remaining.length < 2
+      ? remaining.map((row) => (row.isFlush ? { ...row, isFlush: false } : row))
+      : remaining);
+  };
 
   // One flush per feed: flagging a row clears the flag on the others.
   const setFlush = (key, value) => {
@@ -149,6 +173,35 @@ export default function IntakeItemsEditor({
     const row = makeItemRow({ itemName: search.trim() });
     addRow(row);
     setExpanded((prev) => new Set(prev).add(row.key));
+  };
+
+  // Offered while the term reads like "water" and the library has no Water
+  // of its own yet.
+  const builtinWaterOffered = (() => {
+    const term = search.trim().toLowerCase();
+    return term.length > 0
+      && 'water'.startsWith(term)
+      && !results.some((item) => item.name.trim().toLowerCase() === 'water');
+  })();
+
+  const addBuiltinWater = async () => {
+    let item = null;
+    try {
+      item = await nutritionService.createItem({
+        patient_id: patient?.id ?? null,
+        ...BUILTIN_WATER,
+      });
+    } catch {
+      // Already exists (or a race): fall back to the saved one.
+      try {
+        const found = await nutritionService.listItems({
+          patientId: patient?.id, search: 'water', limit: 8,
+        });
+        item = found.find((i) => i.name.trim().toLowerCase() === 'water') || null;
+      } catch { /* handled below */ }
+    }
+    if (item) addRow(rowFromSavedItem(item));
+    else setScanNotice('Could not add Water — try adding it manually.');
   };
 
   const handleBarcode = async (code) => {
@@ -305,7 +358,16 @@ export default function IntakeItemsEditor({
               </div>
             )}
 
-            {allowFlushToggle && row.itemType === 'liquid' && (
+            {/* Offered only once the mix has a meal AND something to flush
+                with — flagging the only item would leave nothing to log.
+                Until then, say where the toggle went instead of hiding it. */}
+            {allowFlushToggle && row.itemType === 'liquid' && items.length === 1 && (
+              <p className="nsheet-note nitems-flush-hint">
+                For a post-feed flush, add the water as its own item — the
+                flush flag appears on it.
+              </p>
+            )}
+            {allowFlushToggle && row.itemType === 'liquid' && items.length >= 2 && (
               <label className="nitems-flush-toggle">
                 <input
                   type="checkbox"
@@ -547,8 +609,24 @@ export default function IntakeItemsEditor({
       {scanNotice && <p className="nsheet-note nitems-scan-notice">{scanNotice}</p>}
       {scanBusy && <p className="nsheet-note">Looking up barcode…</p>}
 
-      {canAdd && results.length > 0 && (
+      {canAdd && (results.length > 0 || builtinWaterOffered) && (
         <div className="nsheet-results">
+          {builtinWaterOffered && (
+            <button
+              type="button"
+              className="nsheet-result"
+              onClick={addBuiltinWater}
+            >
+              <span className="nsheet-result-icon"><LiquidIcon size={18} /></span>
+              <span className="nsheet-result-text">
+                <span className="nsheet-result-name">Water</span>
+                <span className="nsheet-result-meta">
+                  built-in · counts toward fluids · no calories
+                </span>
+              </span>
+              <span className="nsheet-result-add"><PlusIcon size={18} /></span>
+            </button>
+          )}
           {results.map((item) => (
             <button
               key={item.id}

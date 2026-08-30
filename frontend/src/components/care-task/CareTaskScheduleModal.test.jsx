@@ -22,6 +22,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import CareTaskScheduleModal from './CareTaskScheduleModal';
 
 const TASK = { id: 1, name: 'Morning feed' };
+
+// Stored crons are UTC; the row labels read local. Compute what a UTC hour
+// says on the runner's clock so expectations survive DST.
+const localStamp = (utcHour) => {
+  const d = new Date();
+  d.setUTCHours(utcHour, 0, 0, 0);
+  const h = d.getHours();
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  const display = h % 12 === 0 ? 12 : h % 12;
+  return `${display}:00 ${suffix}`;
+};
+
 const SCHEDULES = [
   { id: 10, care_task_id: 1, cron_expression: '0 12 * * *', description: 'Midday', active: true },
   { id: 11, care_task_id: 1, cron_expression: '0 20 * * *', description: 'Evening', active: false },
@@ -53,7 +65,7 @@ describe('CareTaskScheduleModal', () => {
 
   it('can delete a schedule', () => {
     const { onDelete } = setup();
-    fireEvent.click(screen.getByLabelText(/Delete Daily · 12:00 PM/));
+    fireEvent.click(screen.getByLabelText(`Delete Daily · ${localStamp(12)}`));
     expect(onDelete).toHaveBeenCalledWith(SCHEDULES[0]);
   });
 
@@ -67,7 +79,7 @@ describe('CareTaskScheduleModal', () => {
 
   it('edits an existing schedule rather than adding another', () => {
     const { onUpdate, onCreate } = setup();
-    fireEvent.click(screen.getByLabelText(/Edit Daily · 12:00 PM/));
+    fireEvent.click(screen.getByLabelText(`Edit Daily · ${localStamp(12)}`));
     expect(screen.getByText('Edit schedule')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Save schedule' }));
     expect(onUpdate).toHaveBeenCalled();
@@ -112,7 +124,7 @@ describe('CareTaskScheduleModal', () => {
       }),
     };
     const { onUpdate } = setup({ isNutritionTask: true, schedules: [legacy] });
-    fireEvent.click(screen.getByLabelText(/Edit Daily · 8:00 AM/));
+    fireEvent.click(screen.getByLabelText(`Edit Daily · ${localStamp(8)}`));
     fireEvent.click(screen.getByText('Notes'));
     expect(screen.getByDisplayValue('Warm it first')).toBeInTheDocument();
 

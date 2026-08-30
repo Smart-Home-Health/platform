@@ -127,6 +127,39 @@ describe('IntakeItemsEditor barcode flow', () => {
     await waitFor(() => expect(screen.getByText(/Barcode lookup failed/)).toBeInTheDocument());
   });
 
+  it('offers built-in Water without a library item, and creates one on pick', async () => {
+    nutritionService.listItems.mockResolvedValue([]);
+    render(<Harness />);
+    fireEvent.change(screen.getByPlaceholderText('Search saved items'), { target: { value: 'wat' } });
+
+    const offer = await screen.findByText(/built-in · counts toward fluids/);
+    fireEvent.click(offer.closest('button'));
+
+    // Picking it materializes the real library item (a schedule component
+    // needs an item id) with zero facts, and adds the row.
+    await waitFor(() => expect(nutritionService.createItem).toHaveBeenCalled());
+    const created = nutritionService.createItem.mock.calls[0][0];
+    expect(created.name).toBe('Water');
+    expect(created.calories_per_unit).toBe(0);
+    await waitFor(() => expect(screen.getByText('Naked Green Machine')).toBeInTheDocument());
+  });
+
+  it('steps aside when the library already has a Water', async () => {
+    nutritionService.listItems.mockResolvedValue([{
+      id: 5, name: 'Water', item_type: 'liquid',
+      default_amount: 60, default_amount_unit: 'ml', calories_per_unit: 0,
+    }]);
+    render(<Harness />);
+    fireEvent.change(screen.getByPlaceholderText('Search saved items'), { target: { value: 'water' } });
+
+    // The built-in offer may flash while the debounced search runs; once the
+    // library's own Water lands, the offer must be gone.
+    await waitFor(() => {
+      expect(screen.getByText('Water')).toBeInTheDocument();
+      expect(screen.queryByText(/built-in · counts toward fluids/)).not.toBeInTheDocument();
+    });
+  });
+
   it('removes a row', async () => {
     nutritionService.lookupBarcode.mockResolvedValue({
       source: 'library',
