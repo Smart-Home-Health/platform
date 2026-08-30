@@ -26,26 +26,16 @@
 // Coverage describes the plan, not the record. Because schedules carry no
 // effective dating, it can only ever describe the plan as it stands now.
 import { useMemo, useState } from 'react';
-import EntityCard from '../../../components/vc/EntityCard';
-import EntityToolbar from '../../../components/vc/EntityToolbar';
+import ScheduleListSheet from './ScheduleListSheet';
 import {
-  CalendarIcon, CheckIcon, ClockIcon, DropletIcon, FlameIcon, HistoryIcon, LiquidIcon,
-  NutritionIcon, TargetIcon, TubeIcon, FoodIcon, SupplementIcon,
+  CalendarIcon, CheckIcon, ChevronRightIcon, DropletIcon, FlameIcon,
+  HistoryIcon, TargetIcon,
 } from '../../../components/Icons';
-import { describeCron } from './cronLabel';
 import './nutrition-plan.css';
 
 const METRIC_ICONS = {
   fluids: <DropletIcon size={18} />,
   calories: <FlameIcon size={18} />,
-};
-
-const TYPE_ICONS = {
-  hydration: <LiquidIcon size={18} />,
-  meal: <FoodIcon size={18} />,
-  snack: <FoodIcon size={18} />,
-  supplement: <SupplementIcon size={18} />,
-  tube_feed: <TubeIcon size={18} />,
 };
 
 const num = (v) => Math.round(v || 0).toLocaleString();
@@ -79,7 +69,7 @@ export default function NutritionPlanTab({
   onDeleteSchedule,
   formatDate,
 }) {
-  const [search, setSearch] = useState('');
+  const [schedulesOpen, setSchedulesOpen] = useState(false);
 
   const goal = plan?.goal || null;
   const coverage = plan?.coverage || [];
@@ -92,28 +82,9 @@ export default function NutritionPlanTab({
     [goal],
   );
 
-  const visible = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    if (!term) return schedules;
-    return schedules.filter((s) => [s.name, s.default_item_name, s.schedule_type]
-      .filter(Boolean)
-      .some((f) => String(f).toLowerCase().includes(term)));
-  }, [schedules, search]);
-
-  const menuFor = (schedule) => {
-    const items = [];
-    if (canUpdate) {
-      items.push({ label: 'Edit', onClick: () => onEditSchedule(schedule) });
-      items.push({
-        label: schedule.is_active ? 'Pause' : 'Resume',
-        onClick: () => onToggleSchedule(schedule),
-      });
-    }
-    if (canDelete) {
-      items.push({ label: 'Delete', onClick: () => onDeleteSchedule(schedule), danger: true });
-    }
-    return items;
-  };
+  const activeCount = useMemo(
+    () => schedules.filter((s) => s.is_active !== false).length, [schedules]);
+  const pausedCount = schedules.length - activeCount;
 
   if (loading && !plan) return <div className="ec-empty">Loading plan…</div>;
 
@@ -209,94 +180,46 @@ export default function NutritionPlanTab({
       )}
 
       {/* ---- Schedules ---- */}
-      <section className="nplan-schedules">
-        <EntityToolbar
-          counts={[{ key: 'active', label: 'Active schedules', count: schedules.length }]}
-          activeCount="active"
-          onCountChange={() => {}}
-          search={search}
-          onSearchChange={setSearch}
-          searchPlaceholder="Search schedules"
-          onAdd={canCreate ? onAddSchedule : undefined}
-          addLabel="Add schedule"
-        />
-
-        {visible.length === 0 ? (
-          <div className="ec-empty">
-            <NutritionIcon size={32} />
-            <p>
-              {schedules.length === 0
-                ? 'Nothing scheduled yet. Add a schedule to start covering the targets.'
-                : 'No schedules match your search.'}
-            </p>
-          </div>
+      <section className="nplan-card">
+        <header className="nplan-card-head">
+          <h3>Schedules</h3>
+          {canCreate && (
+            <button type="button" className="nplan-link" onClick={onAddSchedule}>
+              Add schedule
+            </button>
+          )}
+        </header>
+        {schedules.length === 0 ? (
+          <p className="nplan-empty">
+            Nothing scheduled yet. Add a schedule to start covering the targets.
+          </p>
         ) : (
-          <div className="ec-grid">
-            {visible.map((schedule) => {
-              const daily = schedule.daily || {};
-              const details = [
-                {
-                  icon: <ClockIcon size={18} />,
-                  label: 'When',
-                  value: describeCron(schedule.cron_expression),
-                },
-              ];
-              if (schedule.fills_fluid_goal) {
-                // Flex spot: the amount adjusts to what is left of the daily
-                // fluid target, so its nominal reads as an upper bound.
-                const cap = schedule.fluid_max_ml ?? schedule.default_amount;
-                details.push({
-                  icon: <DropletIcon size={18} />,
-                  label: 'Amount',
-                  value: cap
-                    ? `flex — fills to target (up to ${cap} ${schedule.default_amount_unit || 'ml'})`
-                    : 'flex — fills to target',
-                });
-              } else if (schedule.default_amount) {
-                details.push({
-                  icon: <DropletIcon size={18} />,
-                  label: 'Amount',
-                  value: `${schedule.default_amount} ${schedule.default_amount_unit || ''}`.trim(),
-                });
-              }
-              if (schedule.default_calories) {
-                details.push({
-                  icon: <FlameIcon size={18} />,
-                  label: 'Calories',
-                  value: `${num(schedule.default_calories)} kcal`,
-                });
-              }
-              // What this one actually puts into the day, which is the number
-              // that matters when a schedule does not fire daily.
-              if (daily.occurrences && daily.occurrences !== 1) {
-                details.push({
-                  icon: <ClockIcon size={18} />,
-                  label: 'Per day',
-                  value: `${Math.round(daily.occurrences * 10) / 10}×`,
-                });
-              }
-
-              return (
-                <EntityCard
-                  key={schedule.id}
-                  icon={TYPE_ICONS[schedule.schedule_type] || <NutritionIcon size={18} />}
-                  title={schedule.name}
-                  badges={[
-                    titleCase(schedule.schedule_type),
-                    schedule.default_item_name,
-                  ].filter(Boolean)}
-                  inactive={!schedule.is_active}
-                  tag={!schedule.is_active ? { label: 'Paused', tone: 'idle' } : undefined}
-                  details={details}
-                  menu={menuFor(schedule)}
-                >
-                  {schedule.instructions && <p className="ec-note">{schedule.instructions}</p>}
-                </EntityCard>
-              );
-            })}
-          </div>
+          <button
+            type="button"
+            className="nplan-schedules-open"
+            onClick={() => setSchedulesOpen(true)}
+          >
+            <span>
+              {activeCount} active
+              {pausedCount > 0 ? ` · ${pausedCount} paused` : ''}
+            </span>
+            <ChevronRightIcon size={16} />
+          </button>
         )}
       </section>
+
+      <ScheduleListSheet
+        open={schedulesOpen}
+        onClose={() => setSchedulesOpen(false)}
+        schedules={schedules}
+        canCreate={canCreate}
+        canUpdate={canUpdate}
+        canDelete={canDelete}
+        onAddSchedule={onAddSchedule}
+        onEditSchedule={onEditSchedule}
+        onToggleSchedule={onToggleSchedule}
+        onDeleteSchedule={onDeleteSchedule}
+      />
     </div>
   );
 }

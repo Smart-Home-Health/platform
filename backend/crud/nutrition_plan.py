@@ -144,13 +144,12 @@ def get_nutrition_plan(db: Session, patient_id: int) -> dict:
     """Targets, the schedules meant to meet them, and the gap between."""
     goal = get_current_nutrition_goal(db, patient_id)
 
+    # All of them — the schedule sheet lists paused ones on their own tab.
+    # Coverage still counts only what actually fires.
     schedules: List[NutritionSchedule] = (
         db.query(NutritionSchedule)
-        .filter(
-            NutritionSchedule.patient_id == patient_id,
-            NutritionSchedule.is_active.is_(True),
-        )
-        .order_by(NutritionSchedule.name.asc())
+        .filter(NutritionSchedule.patient_id == patient_id)
+        .order_by(NutritionSchedule.is_active.desc(), NutritionSchedule.name.asc())
         .all()
     )
 
@@ -161,6 +160,8 @@ def get_nutrition_plan(db: Session, patient_id: int) -> dict:
     for schedule in schedules:
         contribution = schedule_daily_contribution(schedule)
         per_schedule[schedule.id] = contribution
+        if not schedule.is_active:
+            continue
         if contribution['fluid_ml'] > 0:
             fluid_ml += contribution['fluid_ml']
             fluid_events += contribution['occurrences']

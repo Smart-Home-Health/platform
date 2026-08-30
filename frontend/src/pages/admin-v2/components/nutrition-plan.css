@@ -356,3 +356,58 @@
   .nplan-cov-tag { grid-column: 3 / 4; justify-self: end; }
   .nplan-cov-value { grid-column: 1 / -1; text-align: left; }
 }
+
+/* ---- Schedules summary row + full-screen list sheet ---- */
+/* The card grid moved behind this one flat row so Targets and Coverage stay
+   on screen; the list itself opens as the item-picker-style sheet. */
+.nplan-schedules-open {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.55rem 0.6rem;
+  background: transparent;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 4px;
+  color: var(--vc-text-primary);
+  font-size: 14px;
+  cursor: pointer;
+}
+.nplan-schedules-open:hover { border-color: var(--vc-data-live); }
+.nplan-schedules-open svg { color: var(--vc-text-secondary); }
+
+/* Sheet rows: the row body edits; pause/resume and delete trail it. */
+.sls-row { cursor: default; padding-right: 0; }
+.sls-row:hover { background: transparent; }
+.sls-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.sls-row-main:hover .nip-item-name { color: var(--vc-data-live); }
+.sls-row-when { text-transform: none; letter-spacing: 0; }
+.sls-row-action {
+  flex-shrink: 0;
+  display: grid;
+  place-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 4px;
+  color: var(--vc-text-secondary);
+  cursor: pointer;
+}
+.sls-row-action:hover { color: var(--vc-text-primary); border-color: var(--vc-line-strong); }
+.sls-row-action.danger:hover { color: var(--vc-state-alert); border-color: var(--vc-state-alert); }
+.sls-done { flex: 1; }
