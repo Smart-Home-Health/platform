@@ -212,6 +212,12 @@ class NutritionGoalResponse(BaseModel):
     patient_id: int
     water_ml_target: Optional[float]
     total_fluid_ml_target: Optional[float]
+    # Computed, not stored: the combined daily fluid target every fluid
+    # readout compares against (a water-only goal lifted by the food
+    # schedules' expected fluid). Populated by the endpoints that have a
+    # session at hand; parts carries the arithmetic when derived.
+    effective_fluid_target_ml: Optional[float] = None
+    fluid_target_parts: Optional[dict] = None
     calories_target: Optional[float]
     calories_min: Optional[float]
     calories_max: Optional[float]

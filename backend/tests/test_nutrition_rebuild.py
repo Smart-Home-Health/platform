@@ -423,10 +423,15 @@ def test_plan_returns_targets_schedules_and_coverage(admin_client, patient, db_s
     # Coverage is about the plan, not the record — said explicitly.
     assert body['basis'] == 'scheduled'
 
+    # Scheduled fluid counts everything, feed mixes included, so a
+    # water-only goal is lifted by the food schedules' expected fluid to
+    # keep both sides of the comparison combined.
     fluids = next(c for c in body['coverage'] if c['key'] == 'fluids')
     assert fluids['scheduled'] == 525
-    assert fluids['goal'] == 1710
-    assert fluids['shortfall'] == 1185
+    assert fluids['goal'] == 1710 + 525
+    assert fluids['shortfall'] == 1710
+    assert body['fluid_target_parts'] == {'water_ml': 1710, 'food_ml': 525}
+    assert body['goal']['effective_fluid_target_ml'] == 2235
     assert fluids['covered'] is False
 
 
@@ -450,7 +455,7 @@ def test_fluid_coverage_follows_the_unit_not_the_label(admin_client, patient, db
 
 
 def test_coverage_reports_covered_once_the_goal_is_met(admin_client, patient, db_session):
-    _goal(db_session, patient, water_ml_target=500, calories_target=500)
+    _goal(db_session, patient, total_fluid_ml_target=500, calories_target=500)
     _schedule(db_session, patient, default_amount=500, default_amount_unit='ml',
               default_calories=500)
 

@@ -198,6 +198,48 @@ describe('IntakeSheet', () => {
     expect(onSaved).toHaveBeenCalled();
   });
 
+  it('opens pre-linked to a feed for the schedule pages\' Complete Now', async () => {
+    const feed = {
+      schedule_id: 8,
+      scheduled_time: '2026-08-28T21:00:00+00:00', // yesterday — not in today's fetch
+      name: 'Dinner',
+      completed: false,
+      is_prn: false,
+      intake_type: 'intake',
+      components: [],
+      default_item: 'Peptamen', default_amount: 525, default_amount_unit: 'ml',
+      default_calories: 525,
+    };
+    const { onSaved } = setup({ prefillFeed: feed });
+
+    // The mix lands as editable rows, already linked.
+    expect(screen.getByText('Complete Dinner')).toBeInTheDocument();
+    expect(screen.getByText(/Logging will mark it complete/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Amount of Peptamen')).toHaveValue(525);
+
+    fireEvent.click(logButton());
+    await waitFor(() => expect(nutritionService.createIntakeEvent).toHaveBeenCalled());
+    const event = nutritionService.createIntakeEvent.mock.calls[0][0];
+    expect(event.schedule_id).toBe(8);
+    expect(event.scheduled_time).toBe('2026-08-28T21:00:00+00:00');
+    expect(onSaved).toHaveBeenCalled();
+  });
+
+  it('a pre-linked feed can still be unlinked from its chip', async () => {
+    const feed = {
+      schedule_id: 8, scheduled_time: '2026-08-28T21:00:00+00:00', name: 'Dinner',
+      completed: false, is_prn: false, intake_type: 'intake', components: [],
+      default_item: 'Peptamen', default_amount: 525, default_amount_unit: 'ml',
+    };
+    setup({ prefillFeed: feed });
+    // The linked note repeats the "Dinner · time" text; the chip is the one
+    // inside a button.
+    const chips = await screen.findAllByText(/Dinner ·/);
+    const chip = chips.map((el) => el.closest('button')).find(Boolean);
+    fireEvent.click(chip);
+    expect(screen.queryByText(/Logging will mark it complete/)).not.toBeInTheDocument();
+  });
+
   it('unlinks when the feed chip is tapped again', async () => {
     mockDaily([{
       schedule_id: 8, scheduled_time: '2026-08-29T15:30:00+00:00', name: 'Lunch',

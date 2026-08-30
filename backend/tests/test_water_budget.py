@@ -209,6 +209,55 @@ def test_min_clamp_floors_the_suggestion(admin_client, patient):
     assert row["suggested_amount"] == 100
 
 
+def test_water_only_goal_is_lifted_by_expected_food_fluid(admin_client, patient):
+    """A goal carrying only water_ml_target predates combined accounting:
+    it counts just the water plan, while the budget counts ALL fluid. The
+    target is lifted by the food schedules' expected fluid so a full water
+    goal survives the feeds being counted against it."""
+    resp = admin_client.post("/api/nutrition/goals", json={
+        "patient_id": patient.id,
+        "water_ml_target": 500,
+        "effective_date": _now_utc().isoformat(),
+    })
+    assert resp.status_code == 200, resp.text
+
+    spot, _ = _spot(admin_client, patient)
+    when = _now_utc()
+    feed = admin_client.post("/api/nutrition/schedules", json={
+        "patient_id": patient.id, "schedule_type": "meal", "name": "Dinner",
+        "cron_expression": f"{when.minute} {when.hour} * * *",
+        "default_item_name": "Formula", "default_amount": 400,
+        "default_amount_unit": "ml",
+    })
+    assert feed.status_code == 200, feed.text
+
+    row = _row(_daily(admin_client, patient), spot["id"])
+    # Target 500 + 400 from Dinner; 400 still expected → the water spot
+    # keeps its full 500.
+    assert row["water_plan"]["target_ml"] == 900
+    assert row["water_plan"]["target_parts"] == {"water_ml": 500, "food_ml": 400}
+    assert row["suggested_amount"] == 500
+
+    # Completing the feed moves its 400 from expected to logged; the water
+    # suggestion holds steady instead of being eaten by the meal.
+    resp = admin_client.post("/api/schedule/complete/nutrition", json={
+        "schedule_id": feed.json()["id"], "scheduled_time": when.isoformat(),
+        "patient_id": patient.id,
+    })
+    assert resp.status_code == 200, resp.text
+    row = _row(_daily(admin_client, patient), spot["id"])
+    assert row["suggested_amount"] == 500
+
+
+def test_current_goal_endpoint_reports_the_combined_target(admin_client, patient):
+    _goal(admin_client, patient, 1000)
+    body = admin_client.get(
+        f"/api/nutrition/goals/patient/{patient.id}/current").json()
+    # A stated total is used as-is, with no lift arithmetic to explain.
+    assert body["effective_fluid_target_ml"] == 1000
+    assert body["fluid_target_parts"] is None
+
+
 def test_without_a_goal_the_spot_stays_fixed(admin_client, patient):
     body, _ = _spot(admin_client, patient)
     row = _row(_daily(admin_client, patient), body["id"])
