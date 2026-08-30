@@ -489,4 +489,8 @@ def test_inactive_schedules_are_left_out_of_coverage(admin_client, patient, db_s
     body = admin_client.get(f"/api/nutrition/plan?patient_id={patient.id}").json()
     fluids = next(c for c in body['coverage'] if c['key'] == 'fluids')
     assert fluids['scheduled'] == 400
-    assert len(body['schedules']) == 1
+    # Paused schedules stay in the payload (the schedule sheet lists them on
+    # their own tab) — they just don't count toward coverage.
+    assert {s['name']: s['is_active'] for s in body['schedules']} == {
+        'On': True, 'Off': False,
+    }

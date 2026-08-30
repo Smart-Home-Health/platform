@@ -108,14 +108,24 @@ describe('NutritionPlanTab', () => {
     expect(screen.queryByText('Coverage')).not.toBeInTheDocument();
   });
 
-  it('renders a schedule as a card with a readable local-time cadence', () => {
-    setup();
+  it('tucks the schedules behind a summary row and lists them in the sheet', () => {
+    const { onEditSchedule } = setup();
+    // The tab itself stays compact — the list is behind one flat row.
+    expect(screen.queryByText('Morning Peptamen')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /1 active/ }));
     expect(screen.getByText('Morning Peptamen')).toBeInTheDocument();
-    // The stored cron is UTC ('0 7 * * *'); the card must read local.
-    expect(screen.getByText(`Daily · ${localStamp(7, 0)}`)).toBeInTheDocument();
+    // The stored cron is UTC ('0 7 * * *'); the row must read local.
+    expect(
+      screen.getByText(new RegExp(`Daily · ${localStamp(7, 0)}`)),
+    ).toBeInTheDocument();
+
+    // Tapping the row edits it.
+    fireEvent.click(screen.getByText('Morning Peptamen'));
+    expect(onEditSchedule).toHaveBeenCalled();
   });
 
-  it('marks a paused schedule instead of hiding it', () => {
+  it('keeps a paused schedule reachable on the Inactive tab', () => {
     setup({
       plan: plan({
         schedules: [{
@@ -124,7 +134,20 @@ describe('NutritionPlanTab', () => {
         }],
       }),
     });
-    expect(screen.getByText('Paused')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /0 active · 1 paused/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Inactive · 1/ }));
+    expect(screen.getByText('Old feed')).toBeInTheDocument();
+    // Resume rides the row.
+    expect(screen.getByLabelText('Resume Old feed')).toBeInTheDocument();
+  });
+
+  it('pauses and deletes from the sheet rows', () => {
+    const { onToggleSchedule, onDeleteSchedule } = setup();
+    fireEvent.click(screen.getByRole('button', { name: /1 active/ }));
+    fireEvent.click(screen.getByLabelText('Pause Morning Peptamen'));
+    expect(onToggleSchedule).toHaveBeenCalled();
+    fireEvent.click(screen.getByLabelText('Delete Morning Peptamen'));
+    expect(onDeleteSchedule).toHaveBeenCalled();
   });
 
   it('opens goal history and goal editing from Targets', () => {
