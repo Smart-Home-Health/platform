@@ -31,25 +31,10 @@ import {
 } from '../../components/Icons';
 import EntityCard from '../../components/vc/EntityCard';
 import EntityToolbar from '../../components/vc/EntityToolbar';
+import EntityModal, { EmField, EmRow, EmSelect } from '../../components/vc/EntityModal';
+import ConfirmSheet from '../../components/vc/ConfirmSheet';
+import { CfgStat, CfgBadge } from './settings/CfgSection';
 import { localTimeToUTC, localTimeAndDaysToUTC, parseCronExpression } from '../../utils/timezone';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Alert } from '@/components/ui/alert';
-import { Field } from '@/components/ui/field';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
 import './AdminV2.css';
 
 
@@ -518,7 +503,9 @@ const AdminV2MedicationsManage = () => {
   if (loadingPatients) {
     return (
       <AdminV2Layout>
-        <div className="admin-v2-loading">Loading patients...</div>
+        <div className="admin-v2-page">
+          <p className="cfg-loading">Loading patients...</p>
+        </div>
       </AdminV2Layout>
     );
   }
@@ -527,35 +514,15 @@ const AdminV2MedicationsManage = () => {
     <AdminV2Layout>
       <div className="admin-v2-page">
         {selectedPatient ? (
-          <>
+          <div className="cfg">
             {error && <div className="em-error ec-page-alert">{error}</div>}
 
             {/* Summary Stats */}
-            <div className="admin-v2-summary-stats admin-v2-medications-summary" style={{ marginBottom: '1.5rem' }}>
-              <div className="admin-v2-stat-card">
-                <div className="admin-v2-stat-info">
-                  <h4>{activeCount}</h4>
-                  <p>Active</p>
-                </div>
-              </div>
-              <div className="admin-v2-stat-card">
-                <div className="admin-v2-stat-info">
-                  <h4>{prnCount}</h4>
-                  <p>PRN</p>
-                </div>
-              </div>
-              <div className="admin-v2-stat-card">
-                <div className="admin-v2-stat-info">
-                  <h4>{inactiveCount}</h4>
-                  <p>Inactive</p>
-                </div>
-              </div>
-              <div className="admin-v2-stat-card">
-                <div className="admin-v2-stat-info">
-                  <h4>{lowStockCount}</h4>
-                  <p>Low Stock</p>
-                </div>
-              </div>
+            <div className="cfg-stats">
+              <CfgStat label="Active" value={activeCount} />
+              <CfgStat label="PRN" value={prnCount} />
+              <CfgStat label="Inactive" value={inactiveCount} />
+              <CfgStat label="Low Stock" value={lowStockCount} />
             </div>
 
             <EntityToolbar
@@ -584,10 +551,14 @@ const AdminV2MedicationsManage = () => {
             />
 
             {hasPermission('medications.update') && (
-              <div className="tw mb-4">
-                <Button variant="secondary" onClick={() => { setBulkLowStockResult(null); setShowBulkLowStockModal(true); }}>
+              <div className="cfg-actions">
+                <button
+                  type="button"
+                  className="cfg-ghost"
+                  onClick={() => { setBulkLowStockResult(null); setShowBulkLowStockModal(true); }}
+                >
                   Bulk Low-Stock Alert
-                </Button>
+                </button>
               </div>
             )}
 
@@ -628,15 +599,15 @@ const AdminV2MedicationsManage = () => {
                 ))}
               </div>
             )}
-          </>
+          </div>
         ) : (
-          <div className="admin-v2-no-patient">
+          <div className="cfg-nopatient">
             <MedicationsIcon size={48} />
             <h2>Select a Patient</h2>
             <p>Choose a patient to view and manage their medications</p>
-            <div className="tw">
-              <Button onClick={() => setShowPatientModal(true)}>Select Patient</Button>
-            </div>
+            <button type="button" className="em-submit" onClick={() => setShowPatientModal(true)}>
+              Select Patient
+            </button>
           </div>
         )}
 
@@ -667,116 +638,115 @@ const AdminV2MedicationsManage = () => {
         />
 
         {/* Bulk Low-Stock Alert Modal */}
-        <Dialog open={showBulkLowStockModal} onOpenChange={(o) => { if (!o) setShowBulkLowStockModal(false); }}>
-          <DialogContent className="sm:max-w-[480px]" aria-describedby={undefined}>
-            <DialogHeader>
-              <DialogTitle>Bulk Low-Stock Alert</DialogTitle>
-            </DialogHeader>
-            {bulkLowStockResult ? (
-              <div className="flex flex-col gap-3">
-                <p className="text-sm text-foreground">
-                  Applied a {bulkLowStockDays}-day low-stock alert to {bulkLowStockResult.updated_count} medication{bulkLowStockResult.updated_count === 1 ? '' : 's'}:
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {bulkLowStockResult.medications.join(', ') || 'None had an active schedule.'}
-                </p>
-                <DialogFooter>
-                  <Button onClick={() => setShowBulkLowStockModal(false)}>Done</Button>
-                </DialogFooter>
-              </div>
-            ) : (
-              <form onSubmit={handleBulkLowStock} className="flex flex-col gap-4">
-                {formError && <Alert variant="destructive">{formError}</Alert>}
-                <p className="text-sm text-muted-foreground">
-                  Sets a days-of-supply low-stock alert on every active medication that has
-                  an active schedule, replacing any existing threshold. As-needed meds without
-                  a schedule are skipped (their usage can't be projected).
-                </p>
-                <Field label="Alert when supply drops below (days)" required htmlFor="bulk-low-stock-days">
-                  <Input
-                    id="bulk-low-stock-days"
-                    type="number"
-                    value={bulkLowStockDays}
-                    onChange={e => setBulkLowStockDays(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                    required
-                    min="1"
-                    max="365"
-                    step="1"
-                  />
-                </Field>
-                <DialogFooter>
-                  <Button type="button" variant="secondary" onClick={() => setShowBulkLowStockModal(false)}>Cancel</Button>
-                  <Button type="submit" disabled={bulkLowStockSaving || !bulkLowStockDays}>
-                    {bulkLowStockSaving ? 'Applying...' : 'Apply to All Scheduled Meds'}
-                  </Button>
-                </DialogFooter>
-              </form>
-            )}
-          </DialogContent>
-        </Dialog>
-
-
-        {/* Delete Confirmation Modal */}
-        <Dialog open={showDeleteModal && !!selectedMedication} onOpenChange={(o) => { if (!o) setShowDeleteModal(false); }}>
-          <DialogContent className="sm:max-w-[440px]" aria-describedby={undefined}>
-            <DialogHeader>
-              <DialogTitle>Delete Medication</DialogTitle>
-            </DialogHeader>
-            <div className="flex flex-col gap-3">
-              {formError && <Alert variant="destructive">{formError}</Alert>}
-              <p className="text-sm text-foreground">
-                Are you sure you want to delete <strong>{selectedMedication?.name}</strong>?
+        <EntityModal
+          open={showBulkLowStockModal}
+          onOpenChange={(o) => { if (!o) setShowBulkLowStockModal(false); }}
+          title="Bulk Low-Stock Alert"
+        >
+          {bulkLowStockResult ? (
+            <div className="em-form">
+              <p className="cfg-note">
+                Applied a {bulkLowStockDays}-day low-stock alert to {bulkLowStockResult.updated_count} medication{bulkLowStockResult.updated_count === 1 ? '' : 's'}:
               </p>
-              <p className="text-sm text-muted-foreground">This will also delete all associated schedules and history.</p>
+              <p className="em-hint">
+                {bulkLowStockResult.medications.join(', ') || 'None had an active schedule.'}
+              </p>
+              <div className="em-footer">
+                <button type="button" className="em-submit" onClick={() => setShowBulkLowStockModal(false)}>
+                  Done
+                </button>
+              </div>
             </div>
-            <DialogFooter>
-              <Button type="button" variant="secondary" onClick={() => setShowDeleteModal(false)}>Cancel</Button>
-              <Button type="button" variant="destructive" onClick={handleDeleteMedication} disabled={saving}>
-                {saving ? 'Deleting...' : 'Delete Medication'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+          ) : (
+            <form onSubmit={handleBulkLowStock} className="em-form">
+              {formError && <div className="em-error" role="alert">{formError}</div>}
+              <p className="em-hint">
+                Sets a days-of-supply low-stock alert on every active medication that has
+                an active schedule, replacing any existing threshold. As-needed meds without
+                a schedule are skipped (their usage can't be projected).
+              </p>
+              <EmField label="Alert when supply drops below (days)" required htmlFor="bulk-low-stock-days">
+                <input
+                  id="bulk-low-stock-days"
+                  className="em-input"
+                  type="number"
+                  value={bulkLowStockDays}
+                  onChange={e => setBulkLowStockDays(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                  required
+                  min="1"
+                  max="365"
+                  step="1"
+                />
+              </EmField>
+              <div className="em-footer">
+                <button type="button" className="em-cancel" onClick={() => setShowBulkLowStockModal(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="em-submit" disabled={bulkLowStockSaving || !bulkLowStockDays}>
+                  {bulkLowStockSaving ? 'Applying...' : 'Apply to All Scheduled Meds'}
+                </button>
+              </div>
+            </form>
+          )}
+        </EntityModal>
+
+        {/* Delete Confirmation */}
+        <ConfirmSheet
+          open={showDeleteModal && !!selectedMedication}
+          onOpenChange={(o) => { if (!o) setShowDeleteModal(false); }}
+          title="Delete Medication"
+          confirmLabel={saving ? 'Deleting...' : 'Delete Medication'}
+          tone="destructive"
+          busy={saving}
+          error={formError}
+          onConfirm={handleDeleteMedication}
+        >
+          Are you sure you want to delete <strong>{selectedMedication?.name}</strong>?
+          This will also delete all associated schedules and history.
+        </ConfirmSheet>
 
         {/* Schedule Modal */}
-        <Dialog open={showScheduleModal && !!selectedMedication} onOpenChange={(o) => { if (!o) setShowScheduleModal(false); }}>
-          <DialogContent className="sm:max-w-[720px]" aria-describedby={undefined}>
-            <DialogHeader>
-              <DialogTitle>Manage Schedules{selectedMedication ? `: ${selectedMedication.name}` : ''}</DialogTitle>
-            </DialogHeader>
-
+        <EntityModal
+          open={showScheduleModal && !!selectedMedication}
+          onOpenChange={(o) => { if (!o) setShowScheduleModal(false); }}
+          title={`Manage Schedules${selectedMedication ? `: ${selectedMedication.name}` : ''}`}
+          wide
+        >
+          <div className="em-form">
             {selectedMedication && (
-              <div className="flex flex-col gap-4">
-                {formError && <Alert variant="destructive">{formError}</Alert>}
+              <>
+                {formError && <div className="em-error" role="alert">{formError}</div>}
 
                 {/* Add New Schedule */}
-                <h4 className="text-sm font-semibold text-foreground">Add New Schedule</h4>
+                <h4 className="cfg-group-title">Add New Schedule</h4>
 
-                <div className="flex gap-2">
-                  <Button
+                <div className="cfg-tabs" role="group" aria-label="Schedule cadence">
+                  <button
                     type="button"
-                    variant={scheduleMode === 'weekly' ? 'default' : 'secondary'}
+                    className="cfg-tab"
+                    aria-selected={scheduleMode === 'weekly'}
                     onClick={() => setScheduleMode('weekly')}
                   >
                     Weekly
-                  </Button>
-                  <Button
+                  </button>
+                  <button
                     type="button"
-                    variant={scheduleMode === 'monthly' ? 'default' : 'secondary'}
+                    className="cfg-tab"
+                    aria-selected={scheduleMode === 'monthly'}
                     onClick={() => setScheduleMode('monthly')}
                   >
                     Monthly
-                  </Button>
+                  </button>
                 </div>
 
                 {scheduleMode === 'weekly' ? (
-                  <Field label="Select Days">
-                    <div className="admin-v2-day-selector">
+                  <EmField label="Select Days">
+                    <div className="cfg-daypick">
                       {daysOfWeek.map((day, i) => (
                         <button
                           key={day}
                           type="button"
-                          className={`admin-v2-day-btn ${selectedDays.includes(i.toString()) ? 'selected' : ''}`}
+                          aria-pressed={selectedDays.includes(i.toString())}
                           onClick={() => {
                             setSelectedDays(prev =>
                               prev.includes(i.toString())
@@ -789,55 +759,53 @@ const AdminV2MedicationsManage = () => {
                         </button>
                       ))}
                     </div>
-                  </Field>
+                  </EmField>
                 ) : (
-                  <Field label="Day of Month">
-                    <Select
+                  <EmField label="Day of Month" htmlFor="med-sched-dom">
+                    <EmSelect
+                      id="med-sched-dom"
                       value={String(selectedDayOfMonth)}
-                      onValueChange={(v) => setSelectedDayOfMonth(Number(v))}
+                      onChange={(e) => setSelectedDayOfMonth(Number(e.target.value))}
                     >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {[...Array(28)].map((_, i) => (
-                          <SelectItem key={i + 1} value={String(i + 1)}>{i + 1}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </Field>
+                      {[...Array(28)].map((_, i) => (
+                        <option key={i + 1} value={String(i + 1)}>{i + 1}</option>
+                      ))}
+                    </EmSelect>
+                  </EmField>
                 )}
 
                 {/* Patient Selection for Global Meds */}
                 {selectedMedication.is_global && (
-                  <Field label="Patient" required>
-                    <Select
+                  <EmField label="Patient" required htmlFor="med-sched-patient">
+                    <EmSelect
+                      id="med-sched-patient"
                       value={schedulePatientId || '__none__'}
-                      onValueChange={(v) => setSchedulePatientId(v === '__none__' ? '' : v)}
+                      onChange={(e) => setSchedulePatientId(e.target.value === '__none__' ? '' : e.target.value)}
                     >
-                      <SelectTrigger><SelectValue placeholder="Select a patient..." /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none__">Select a patient...</SelectItem>
-                        {patients.map(patient => (
-                          <SelectItem key={patient.id} value={String(patient.id)}>
-                            {patient.first_name} {patient.last_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </Field>
+                      <option value="__none__">Select a patient...</option>
+                      {patients.map(patient => (
+                        <option key={patient.id} value={String(patient.id)}>
+                          {patient.first_name} {patient.last_name}
+                        </option>
+                      ))}
+                    </EmSelect>
+                  </EmField>
                 )}
 
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-                  <Field label="Time" htmlFor="med-sched-time" className="sm:flex-1">
-                    <Input
+                <EmRow>
+                  <EmField label="Time" htmlFor="med-sched-time">
+                    <input
                       id="med-sched-time"
+                      className="em-input"
                       type="time"
                       value={scheduleTime}
                       onChange={e => setScheduleTime(e.target.value)}
                     />
-                  </Field>
-                  <Field label={`Dose Amount (${selectedMedication.quantity_unit || 'units'})`} htmlFor="med-sched-dose" className="sm:flex-1">
-                    <Input
+                  </EmField>
+                  <EmField label={`Dose Amount (${selectedMedication.quantity_unit || 'units'})`} htmlFor="med-sched-dose">
+                    <input
                       id="med-sched-dose"
+                      className="em-input"
                       type="number"
                       step="0.001"
                       min="0"
@@ -845,18 +813,21 @@ const AdminV2MedicationsManage = () => {
                       onChange={e => setDoseAmount(e.target.value)}
                       placeholder="1.000"
                     />
-                  </Field>
-                  <Button
+                  </EmField>
+                </EmRow>
+                <div className="cfg-actions">
+                  <button
                     type="button"
+                    className="em-submit"
                     onClick={handleAddSchedule}
                     disabled={scheduleSaving || (scheduleMode === 'weekly' && selectedDays.length === 0)}
                   >
                     {scheduleSaving ? 'Adding...' : 'Add Schedule'}
-                  </Button>
+                  </button>
                 </div>
 
                 {/* Current Schedules */}
-                <h4 className="text-sm font-semibold text-foreground">Current Schedules</h4>
+                <h4 className="cfg-group-title">Current Schedules</h4>
 
                 {/* Row-as-card table: stacks into cards below 768px instead of
                     forcing the dialog wider than the phone viewport. */}
@@ -892,15 +863,15 @@ const AdminV2MedicationsManage = () => {
                                 <td data-label="Patient">{patientName ? `${patientName.first_name} ${patientName.last_name}` : '-'}</td>
                               )}
                               <td data-label="Status">
-                                <span className={`admin-v2-status-badge ${schedule.active ? 'active' : 'inactive'}`}>
+                                <CfgBadge tone={schedule.active ? 'ok' : undefined}>
                                   {schedule.active ? 'Active' : 'Paused'}
-                                </span>
+                                </CfgBadge>
                               </td>
                               <td className="admin-v2-cell-actions">
-                                <div className="admin-v2-table-actions">
+                                <div className="cfg-rowactions">
                                   <button
                                     type="button"
-                                    className={`admin-v2-action-btn ${schedule.active ? 'admin-v2-action-btn-warning' : 'admin-v2-action-btn-success'}`}
+                                    className="cfg-ghost"
                                     onClick={() => handleToggleSchedule(schedule.id)}
                                     disabled={scheduleSaving}
                                   >
@@ -908,7 +879,8 @@ const AdminV2MedicationsManage = () => {
                                   </button>
                                   <button
                                     type="button"
-                                    className="admin-v2-action-btn admin-v2-action-btn-delete"
+                                    className="cfg-iconbtn danger"
+                                    aria-label="Delete schedule"
                                     onClick={() => handleDeleteSchedule(schedule.id)}
                                     disabled={scheduleSaving}
                                   >
@@ -923,20 +895,22 @@ const AdminV2MedicationsManage = () => {
                     </table>
                   </div>
                 ) : (
-                  <div className="admin-v2-empty-state">
+                  <div className="cfg-nopatient">
                     <ClockIcon size={32} />
                     <p>No schedules created yet</p>
-                    <p className="admin-v2-text-muted">Add a schedule using the form above</p>
+                    <p>Add a schedule using the form above</p>
                   </div>
                 )}
-              </div>
+              </>
             )}
 
-            <DialogFooter>
-              <Button type="button" variant="secondary" onClick={() => setShowScheduleModal(false)}>Close</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            <div className="em-footer">
+              <button type="button" className="em-cancel" onClick={() => setShowScheduleModal(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </EntityModal>
       </div>
     </AdminV2Layout>
   );

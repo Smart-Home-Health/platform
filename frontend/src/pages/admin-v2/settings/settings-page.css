@@ -400,6 +400,73 @@ button.cfg-stat .cfg-stat-label {
 }
 .cfg-toolbar-actions { display: flex; align-items: center; gap: 0.5rem; }
 
+/* A padded standalone card (wizard steps, catalog rows). */
+.cfg-card.pad {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.6rem 0.7rem;
+}
+
+/* Day-of-week picker: one toggle per day, selection via aria-pressed. */
+.cfg-daypick { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.cfg-daypick button {
+  min-width: 2.6rem;
+  padding: 0.35rem 0.4rem;
+  background: transparent;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: var(--cfg-radius);
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.cfg-daypick button:hover { color: var(--vc-text-primary); }
+.cfg-daypick button[aria-pressed='true'] {
+  border-color: color-mix(in srgb, var(--vc-data-live) 55%, transparent);
+  background: color-mix(in srgb, var(--vc-data-live) 12%, transparent);
+  color: var(--vc-data-live);
+}
+
+/* A real scrolling <table> for grid-shaped data (CSV preview) — arbitrary
+ * column counts card-ify badly, so horizontal scroll is the mobile story. */
+.cfg-rawtable-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: var(--cfg-radius);
+}
+.cfg-rawtable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  color: var(--vc-text-primary);
+}
+.cfg-rawtable th,
+.cfg-rawtable td {
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--vc-line-hairline);
+  text-align: left;
+  white-space: nowrap;
+}
+.cfg-rawtable th {
+  background: var(--vc-bg-raised);
+  vertical-align: top;
+}
+.cfg-rawtable tbody tr:last-child td { border-bottom: 0; }
+.cfg-rawtable td.dim { color: var(--vc-text-tertiary); }
+.cfg-rawtable-colname {
+  margin-top: 0.25rem;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+
 /* Scrollable checkbox list for role / patient assignment (ToggleList). */
 .cfg-togglelist {
   display: flex;
