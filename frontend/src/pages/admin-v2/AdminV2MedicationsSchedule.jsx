@@ -22,25 +22,14 @@ import { PatientSelectorModal } from './components';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
-import {
-  MedicationsIcon,
-  ClockIcon,
-  CheckIcon,
-  XIcon
-} from '../../components/Icons';
+import { MedicationsIcon } from '../../components/Icons';
 import { checkAdministrationWindow, formatDurationMinutes } from '../../utils/timezone';
 import ScheduleBoard from '../../components/schedule/ScheduleBoard';
 import { groupBySlot, recurrenceLabel } from '../../components/schedule/scheduleRollup';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import ConfirmSheet from '../../components/vc/ConfirmSheet';
+import '../../components/vc/entity-card.css';
 import './AdminV2.css';
+import './settings/settings-page.css';
 
 const AdminV2MedicationsSchedule = () => {
   const { user } = useAuth();
@@ -359,7 +348,9 @@ const AdminV2MedicationsSchedule = () => {
   if (loadingPatients) {
     return (
       <AdminV2Layout>
-        <div className="admin-v2-loading">Loading patients...</div>
+        <div className="admin-v2-page">
+          <p className="cfg-loading">Loading patients...</p>
+        </div>
       </AdminV2Layout>
     );
   }
@@ -367,80 +358,50 @@ const AdminV2MedicationsSchedule = () => {
   const filteredMeds = getFilteredMedications();
   const dayGroups = buildDayGroups(filteredMeds);
 
+  // Stat tiles double as status filters; the status colour rides on the dot.
+  const statTiles = [
+    { key: 'ready', label: 'Ready', count: stats.ready, dot: 'var(--vc-state-due)' },
+    { key: 'upcoming', label: 'Upcoming', count: stats.upcoming, dot: 'var(--vc-state-idle)' },
+    { key: 'missed', label: 'Missed', count: stats.missed, dot: 'var(--vc-state-alert)' },
+    { key: 'completed', label: 'Completed', count: stats.completed, dot: 'var(--vc-state-complete)' },
+  ];
+
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
         {selectedPatient ? (
-          <>
-            {/* Stats Row */}
-            <div className="admin-v2-summary-stats admin-v2-meds-schedule-summary">
-              <div 
-                className={`admin-v2-stat-card ${statusFilters.ready ? 'selected' : ''}`}
-                onClick={() => setStatusFilters(f => ({ ...f, ready: !f.ready }))}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="admin-v2-stat-icon" style={{ background: 'var(--sched-ontime-chip, rgba(88, 166, 255, 0.15))' }}>
-                  <ClockIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.ready}</h4>
-                  <p>Ready</p>
-                </div>
-              </div>
-              <div 
-                className={`admin-v2-stat-card ${statusFilters.upcoming ? 'selected' : ''}`}
-                onClick={() => setStatusFilters(f => ({ ...f, upcoming: !f.upcoming }))}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="admin-v2-stat-icon" style={{ background: 'var(--sched-pending-chip, rgba(31, 111, 235, 0.15))' }}>
-                  <ClockIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.upcoming}</h4>
-                  <p>Upcoming</p>
-                </div>
-              </div>
-              <div 
-                className={`admin-v2-stat-card ${statusFilters.missed ? 'selected' : ''}`}
-                onClick={() => setStatusFilters(f => ({ ...f, missed: !f.missed }))}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="admin-v2-stat-icon" style={{ background: 'var(--sched-late-chip, rgba(248, 81, 73, 0.15))' }}>
-                  <XIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.missed}</h4>
-                  <p>Missed</p>
-                </div>
-              </div>
-              <div 
-                className={`admin-v2-stat-card ${statusFilters.completed ? 'selected' : ''}`}
-                onClick={() => setStatusFilters(f => ({ ...f, completed: !f.completed }))}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="admin-v2-stat-icon" style={{ background: 'var(--sched-completed-chip, rgba(35, 134, 54, 0.15))' }}>
-                  <CheckIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.completed}</h4>
-                  <p>Completed</p>
-                </div>
-              </div>
+          <div className="cfg">
+            {/* Stats row — each tile toggles its status filter */}
+            <div className="cfg-stats">
+              {statTiles.map(tile => (
+                <button
+                  key={tile.key}
+                  type="button"
+                  className="cfg-stat"
+                  aria-pressed={!!statusFilters[tile.key]}
+                  onClick={() => setStatusFilters(f => ({ ...f, [tile.key]: !f[tile.key] }))}
+                >
+                  <span className="cfg-stat-label">
+                    <span className="cfg-stat-dot" style={{ background: tile.dot }} aria-hidden="true" />
+                    {tile.label}
+                  </span>
+                  <span className="cfg-stat-value">{tile.count}</span>
+                </button>
+              ))}
             </div>
 
-            {/* Refresh Button */}
-            <div className="admin-v2-page-header tw">
-              <h3 style={{ margin: 0, color: 'var(--foreground)' }}>
+            <div className="cfg-toolbar">
+              <h3 className="cfg-toolbar-title">
                 Today & Yesterday ({filteredMeds.length} of {scheduledMedications.length})
               </h3>
-              <Button onClick={fetchSchedule} disabled={loading}>
+              <button type="button" className="cfg-ghost" onClick={fetchSchedule} disabled={loading}>
                 {loading ? 'Refreshing...' : 'Refresh'}
-              </Button>
+              </button>
             </div>
 
             {/* Schedule Content */}
             {error ? (
-              <div className="tw"><Alert variant="destructive">{error}</Alert></div>
+              <div className="em-error">{error}</div>
             ) : (
               <ScheduleBoard
                 dayGroups={dayGroups}
@@ -452,17 +413,15 @@ const AdminV2MedicationsSchedule = () => {
                 }
               />
             )}
-          </>
+          </div>
         ) : (
-          <div className="admin-v2-no-patient">
+          <div className="cfg-nopatient">
             <MedicationsIcon size={48} />
             <h2>Select a Patient</h2>
             <p>Choose a patient to view their daily medication schedule</p>
-            <div className="tw">
-              <Button onClick={() => setShowPatientModal(true)}>
-                Select Patient
-              </Button>
-            </div>
+            <button type="button" className="em-submit" onClick={() => setShowPatientModal(true)}>
+              Select Patient
+            </button>
           </div>
         )}
 
@@ -477,9 +436,9 @@ const AdminV2MedicationsSchedule = () => {
           />
         )}
 
-        {/* Off-window (early or late) administration confirmation modal */}
-        {windowConfirm.open && windowConfirm.medication && (() => {
-          const isLate = windowConfirm.check?.status === 'late';
+        {/* Off-window (early or late) administration confirmation */}
+        {windowConfirm.open && windowConfirm.medication && windowConfirm.check && (() => {
+          const isLate = windowConfirm.check.status === 'late';
           const title = isLate ? 'Warning: Late Administration' : 'Warning: Early Administration';
           const heading = isLate
             ? 'This medication was scheduled earlier'
@@ -493,37 +452,23 @@ const AdminV2MedicationsSchedule = () => {
           const confirmLabel = isLate ? 'Confirm Late Administration' : 'Confirm Early Administration';
           const close = () => setWindowConfirm({ open: false, medication: null, check: null });
           return (
-            <Dialog open={windowConfirm.open && !!windowConfirm.medication} onOpenChange={(o) => { if (!o) close(); }}>
-              <DialogContent className="sm:max-w-[480px]" aria-describedby={undefined}>
-                <DialogHeader>
-                  <DialogTitle>{title}</DialogTitle>
-                </DialogHeader>
-                {windowConfirm.medication && windowConfirm.check && (
-                  <Alert variant="warning">
-                    <AlertTitle className="text-[#f0883e]">{heading}</AlertTitle>
-                    <AlertDescription>
-                      <strong>{windowConfirm.medication.name}</strong> is scheduled for{' '}
-                      <strong>{windowConfirm.check.scheduledLocal}</strong>
-                      {' '}— that's <strong>{offsetText}</strong>.
-                      {' '}{consequence} Confirm this is intentional.
-                    </AlertDescription>
-                  </Alert>
-                )}
-                <DialogFooter>
-                  <Button type="button" variant="secondary" onClick={close}>Cancel</Button>
-                  <Button
-                    type="button"
-                    onClick={async () => {
-                      const med = windowConfirm.medication;
-                      close();
-                      await submitMarkTaken(med, true);
-                    }}
-                  >
-                    {confirmLabel}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+            <ConfirmSheet
+              open
+              onOpenChange={(o) => { if (!o) close(); }}
+              title={title}
+              confirmLabel={confirmLabel}
+              onConfirm={async () => {
+                const med = windowConfirm.medication;
+                close();
+                await submitMarkTaken(med, true);
+              }}
+            >
+              <strong className="cs-lead">{heading}</strong>
+              <strong>{windowConfirm.medication.name}</strong> is scheduled for{' '}
+              <strong>{windowConfirm.check.scheduledLocal}</strong>
+              {' '}— that&apos;s <strong>{offsetText}</strong>.
+              {' '}{consequence} Confirm this is intentional.
+            </ConfirmSheet>
           );
         })()}
       </div>

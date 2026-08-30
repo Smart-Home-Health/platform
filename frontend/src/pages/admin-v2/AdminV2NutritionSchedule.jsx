@@ -22,28 +22,17 @@ import { PatientSelectorModal, IntakeSheet, OutputSheet } from './components';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
-import {
-  NutritionIcon,
-  ClockIcon,
-  CheckIcon,
-  XIcon,
-  LiquidIcon,
-  ToiletIcon
-} from '../../components/Icons';
+import { NutritionIcon, LiquidIcon, ToiletIcon } from '../../components/Icons';
 import { computeScheduleStatus } from '../../components/schedule/scheduleStatus';
 import { nutritionService } from '../../services/nutrition';
 import ScheduleBoard from '../../components/schedule/ScheduleBoard';
 import { groupBySlot } from '../../components/schedule/scheduleRollup';
 import { getCurrentLocalDateTime } from '../../utils/timezone';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Alert } from '@/components/ui/alert';
+import EntityModal from '../../components/vc/EntityModal';
+import '../../components/vc/entity-card.css';
 import './AdminV2.css';
+import './settings/settings-page.css';
+import './vc-schedule.css';
 
 // Daily nutrition schedule view (today + yesterday), the admin counterpart of
 // the live-dashboard NutritionModal, rendered with the same admin-v2 schedule
@@ -311,95 +300,64 @@ const AdminV2NutritionSchedule = () => {
   if (loadingPatients) {
     return (
       <AdminV2Layout>
-        <div className="admin-v2-loading">Loading patients...</div>
+        <div className="admin-v2-page">
+          <p className="cfg-loading">Loading patients...</p>
+        </div>
       </AdminV2Layout>
     );
   }
 
   const dayGroups = buildDayGroups(filteredItems);
 
+  // Stat tiles double as status filters; the status colour rides on the dot.
+  const statTiles = [
+    { key: 'ready', label: 'Ready', count: stats.ready, dot: 'var(--vc-state-due)' },
+    { key: 'upcoming', label: 'Upcoming', count: stats.upcoming, dot: 'var(--vc-state-idle)' },
+    { key: 'missed', label: 'Missed', count: stats.missed, dot: 'var(--vc-state-alert)' },
+    { key: 'completed', label: 'Completed', count: stats.completed, dot: 'var(--vc-state-complete)' },
+  ];
+
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
         {selectedPatient ? (
-          <>
-            {/* Stats Row */}
-            <div className="admin-v2-summary-stats admin-v2-meds-schedule-summary">
-              <div
-                className={`admin-v2-stat-card ${statusFilters.ready ? 'selected' : ''}`}
-                onClick={() => setStatusFilters(f => ({ ...f, ready: !f.ready }))}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="admin-v2-stat-icon" style={{ background: 'var(--sched-ontime-chip, rgba(88, 166, 255, 0.15))' }}>
-                  <ClockIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.ready}</h4>
-                  <p>Ready</p>
-                </div>
-              </div>
-              <div
-                className={`admin-v2-stat-card ${statusFilters.upcoming ? 'selected' : ''}`}
-                onClick={() => setStatusFilters(f => ({ ...f, upcoming: !f.upcoming }))}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="admin-v2-stat-icon" style={{ background: 'var(--sched-pending-chip, rgba(31, 111, 235, 0.15))' }}>
-                  <ClockIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.upcoming}</h4>
-                  <p>Upcoming</p>
-                </div>
-              </div>
-              <div
-                className={`admin-v2-stat-card ${statusFilters.missed ? 'selected' : ''}`}
-                onClick={() => setStatusFilters(f => ({ ...f, missed: !f.missed }))}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="admin-v2-stat-icon" style={{ background: 'var(--sched-late-chip, rgba(248, 81, 73, 0.15))' }}>
-                  <XIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.missed}</h4>
-                  <p>Missed</p>
-                </div>
-              </div>
-              <div
-                className={`admin-v2-stat-card ${statusFilters.completed ? 'selected' : ''}`}
-                onClick={() => setStatusFilters(f => ({ ...f, completed: !f.completed }))}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="admin-v2-stat-icon" style={{ background: 'var(--sched-completed-chip, rgba(35, 134, 54, 0.15))' }}>
-                  <CheckIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.completed}</h4>
-                  <p>Completed</p>
-                </div>
-              </div>
+          <div className="cfg">
+            {/* Stats row — each tile toggles its status filter */}
+            <div className="cfg-stats">
+              {statTiles.map(tile => (
+                <button
+                  key={tile.key}
+                  type="button"
+                  className="cfg-stat"
+                  aria-pressed={!!statusFilters[tile.key]}
+                  onClick={() => setStatusFilters(f => ({ ...f, [tile.key]: !f[tile.key] }))}
+                >
+                  <span className="cfg-stat-label">
+                    <span className="cfg-stat-dot" style={{ background: tile.dot }} aria-hidden="true" />
+                    {tile.label}
+                  </span>
+                  <span className="cfg-stat-value">{tile.count}</span>
+                </button>
+              ))}
             </div>
 
-            {/* PRN + Refresh Buttons */}
-            <div className="admin-v2-page-header tw">
-              <h3 style={{ margin: 0, color: 'var(--foreground)' }}>
+            <div className="cfg-toolbar">
+              <h3 className="cfg-toolbar-title">
                 Today & Yesterday ({filteredItems.length} of {items.length})
               </h3>
-              <div className="tw flex items-center gap-2">
+              <div className="cfg-toolbar-actions">
                 {hasPermission('nutrition.create') && (
-                  <Button
-                    onClick={openPrnPicker}
-                    className="bg-[#6f42c1] text-white hover:bg-[#6f42c1]/90"
-                  >PRN</Button>
+                  <button type="button" className="cfg-ghost" onClick={openPrnPicker}>PRN</button>
                 )}
-                <Button onClick={fetchSchedule} disabled={loading}>
+                <button type="button" className="cfg-ghost" onClick={fetchSchedule} disabled={loading}>
                   {loading ? 'Refreshing...' : 'Refresh'}
-                </Button>
+                </button>
               </div>
             </div>
 
             {/* Schedule Content */}
             {error ? (
-              <div className="tw"><Alert variant="destructive">{error}</Alert></div>
+              <div className="em-error">{error}</div>
             ) : (
               <ScheduleBoard
                 dayGroups={dayGroups}
@@ -412,17 +370,15 @@ const AdminV2NutritionSchedule = () => {
               />
             )}
 
-          </>
+          </div>
         ) : (
-          <div className="admin-v2-no-patient">
+          <div className="cfg-nopatient">
             <NutritionIcon size={48} />
             <h2>Select a Patient</h2>
             <p>Choose a patient to view their daily nutrition schedule</p>
-            <div className="tw">
-              <Button onClick={() => setShowPatientModal(true)}>
-                Select Patient
-              </Button>
-            </div>
+            <button type="button" className="em-submit" onClick={() => setShowPatientModal(true)}>
+              Select Patient
+            </button>
           </div>
         )}
 
@@ -448,32 +404,24 @@ const AdminV2NutritionSchedule = () => {
         />
 
         {/* PRN pick: intake vs output */}
-        <Dialog open={prnMode === 'pick'} onOpenChange={(o) => { if (!o) closePrn(); }}>
-          <DialogContent className="sm:max-w-[480px]" aria-describedby={undefined}>
-            <DialogHeader>
-              <DialogTitle>Log Ad-Hoc Nutrition</DialogTitle>
-            </DialogHeader>
-            <div className="grid grid-cols-2 gap-3">
-              <Button
-                type="button"
-                onClick={() => setPrnMode('intake')}
-                className="h-auto flex-col gap-1.5 py-6 text-base font-bold"
-              >
+        <EntityModal
+          open={prnMode === 'pick'}
+          onOpenChange={(o) => { if (!o) closePrn(); }}
+          title="Log Ad-Hoc Nutrition"
+        >
+          <div className="em-form">
+            <div className="sch-choices">
+              <button type="button" className="sch-choice primary" onClick={() => setPrnMode('intake')}>
                 <LiquidIcon size={22} />
                 Log Intake
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setPrnMode('output')}
-                className="h-auto flex-col gap-1.5 py-6 text-base font-bold"
-              >
+              </button>
+              <button type="button" className="sch-choice" onClick={() => setPrnMode('output')}>
                 <ToiletIcon size={22} />
                 Log Output
-              </Button>
+              </button>
             </div>
-          </DialogContent>
-        </Dialog>
+          </div>
+        </EntityModal>
 
         {/* Shared AdminV2 intake form */}
         <IntakeSheet
