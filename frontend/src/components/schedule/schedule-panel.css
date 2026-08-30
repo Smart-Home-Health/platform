@@ -264,10 +264,18 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
   gap: 1rem;
-  align-items: start;
+  /* Stretch + a definite height (from .ld-panel-scroll) let each column own
+     its own scrollbar; align-items:start sized columns to content and the
+     whole grid scrolled as one. */
+  align-items: stretch;
+  height: 100%;
+  min-height: 0;
 }
-.ld-dose-main { min-width: 0; }
-.ld-dose-side { min-width: 0; }
+/* A wider side pane for panels that host a full form (nutrition's feed
+   completion mix); the editor is designed for ~560px sheets. */
+.ld-dose-panel.wide.detail-wide { grid-template-columns: minmax(0, 1fr) minmax(360px, 480px); }
+.ld-dose-main { min-width: 0; min-height: 0; overflow-y: auto; }
+.ld-dose-side { min-width: 0; min-height: 0; overflow-y: auto; }
 
 .ld-dose-tiles {
   display: grid;
@@ -574,7 +582,9 @@
 /* Below the dock's breakpoint the panel is the whole screen, so the wide
    layout's two columns stack rather than squeezing the detail pane. */
 @media (max-width: 900px) {
-  .ld-dose-panel.wide { grid-template-columns: minmax(0, 1fr); }
+  /* Stacked columns share one outer scroller again. */
+  .ld-dose-panel.wide { grid-template-columns: minmax(0, 1fr); height: auto; align-items: start; }
+  .ld-dose-main, .ld-dose-side { min-height: auto; overflow-y: visible; }
   .ld-dose-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 

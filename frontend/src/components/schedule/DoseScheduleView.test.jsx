@@ -130,6 +130,23 @@ describe('DoseScheduleView — narrow stop', () => {
     expect(within(given).queryByRole('button', { name: /skip/i })).toBeNull();
   });
 
+  it('detailWide widens the side track only when asked', () => {
+    const { container } = render(
+      <ModalDockProvider value={{ docked: true, expanded: true, toggleExpand: vi.fn(), setExpanded: vi.fn() }}>
+        <DoseScheduleView items={ITEMS} detail={<div />} detailWide />
+      </ModalDockProvider>
+    );
+    expect(container.querySelector('.ld-dose-panel.wide.detail-wide')).toBeInTheDocument();
+
+    const { container: plain } = render(
+      <ModalDockProvider value={{ docked: true, expanded: true, toggleExpand: vi.fn(), setExpanded: vi.fn() }}>
+        <DoseScheduleView items={ITEMS} detail={<div />} />
+      </ModalDockProvider>
+    );
+    expect(plain.querySelector('.ld-dose-panel.wide')).toBeInTheDocument();
+    expect(plain.querySelector('.detail-wide')).toBeNull();
+  });
+
   it('can_skip narrows the view-wide skip to specific rows', () => {
     // The nutrition modal passes onSkip for flush follow-ups only; a row
     // with can_skip: false must not grow the button. Rows that never set

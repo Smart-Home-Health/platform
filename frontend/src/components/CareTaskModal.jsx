@@ -332,7 +332,7 @@ const CareTaskModal = ({ onClose }) => {
             }]}
           />
 
-          <div style={{ flex: 1, overflow: 'auto' }}>
+          <div className="ld-panel-scroll">
             {tab === 'scheduled' && (
               <DoseScheduleView
                 items={scheduledItems}

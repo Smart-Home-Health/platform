@@ -32,6 +32,11 @@ import DoseDetailPane from './schedule/DoseDetailPane';
 import { NUTRITION_LABELS } from './schedule/scheduleLabels';
 import { rollupSchedule } from './schedule/scheduleRollup';
 import { nutritionService } from '../services/nutrition';
+import { rowToItemPayload } from './nutrition/intakeItemRows';
+import NutritionFeedPane from './nutrition/NutritionFeedPane';
+import IntakeForm from './nutrition/IntakeForm';
+import { useModalDock } from '../contexts/ModalDockContext';
+import { XIcon } from './Icons';
 import PanelViewSwitcher from './section-panel/PanelViewSwitcher';
 import './section-panel/section-panel.css';
 import { computeScheduleStatus } from './schedule/scheduleStatus';
@@ -44,6 +49,7 @@ import '../pages/admin-v2/AdminV2.css';
 const NutritionModal = ({ onClose }) => {
   const { selectedPatient } = useAdminPatient();
   const { user } = useAuth() || {};
+  const { docked, expanded, setExpanded } = useModalDock();
   const [tab, setTab] = useState('scheduled');
   // Keyed on the schedule slot, not the normalized id — see the medication
   // panel: the id embeds the log and changes the moment an item is recorded.
@@ -59,6 +65,18 @@ const NutritionModal = ({ onClose }) => {
   // the shared AdminV2 modal of the same name.
   const [prnMode, setPrnMode] = useState(null); // null | 'pick' | 'intake' | 'output'
   const [prnDefaultDateTime, setPrnDefaultDateTime] = useState('');
+
+  // Anchor body-portalled sheets (PRN Output) over the docked panel instead
+  // of centering them on the wall-sized screen — same pattern as the capture
+  // panel's ld-capture-docked classes.
+  useEffect(() => {
+    if (!docked) return undefined;
+    document.body.classList.add('ld-nutrition-docked');
+    document.body.classList.toggle('ld-nutrition-wide', expanded);
+    return () => {
+      document.body.classList.remove('ld-nutrition-docked', 'ld-nutrition-wide');
+    };
+  }, [docked, expanded]);
 
   useEffect(() => {
     if (!selectedPatient) return;
@@ -141,10 +159,12 @@ const NutritionModal = ({ onClose }) => {
   }, [scheduledItems]);
 
   // ===== Post-feed flush follow-up =====
-  const runFlushRow = async (item, note) => {
+  const runFlushRow = async (item, note, amount) => {
     try {
       await nutritionService.completeFlush(item.followup_id, {
-        notes: note || undefined, user_id: user?.id || undefined,
+        notes: note || undefined,
+        user_id: user?.id || undefined,
+        ...(amount > 0 ? { amount } : {}),
       });
       fetchSchedule();
     } catch (err) {
@@ -166,10 +186,11 @@ const NutritionModal = ({ onClose }) => {
   };
 
   // ===== Complete scheduled item =====
-  const submitComplete = async (item, { earlyOverride = false, note } = {}) => {
-    // Flush follow-ups have their own one-tap Run path.
+  const submitComplete = async (item, { earlyOverride = false, note, items, amount } = {}) => {
+    // Flush follow-ups have their own Run path (one-tap from the row,
+    // amount-adjustable from the side pane).
     if (item.row_kind === 'flush') {
-      await runFlushRow(item, note);
+      await runFlushRow(item, note, amount);
       return;
     }
     try {
@@ -185,6 +206,9 @@ const NutritionModal = ({ onClose }) => {
           completed_at: null,
           notes: note || 'Completed via live dashboard',
           early_override: earlyOverride,
+          // The side pane sends the adjusted mix; the quick one-tap paths
+          // send nothing and the backend expands the schedule's components.
+          ...(items?.length ? { items: items.map(rowToItemPayload) } : {}),
         }),
       });
       if (res.ok) {
@@ -202,6 +226,7 @@ const NutritionModal = ({ onClose }) => {
           open: true,
           item,
           note,
+          items,
           check: checkAdministrationWindow(item.scheduled_time),
         });
         return;
@@ -218,6 +243,12 @@ const NutritionModal = ({ onClose }) => {
   // would otherwise skip.
   const openPrn = (mode) => {
     setPrnDefaultDateTime(getCurrentLocalDateTime());
+    // Docked, the intake form lives in the side pane — no centered dialog on
+    // a wall-sized screen. Output (and everything on mobile) keeps the sheet.
+    if (mode === 'intake' && docked) {
+      setSelectedId(null);
+      if (!expanded) setExpanded?.(true);
+    }
     setPrnMode(mode);
   };
 
@@ -309,7 +340,7 @@ const NutritionModal = ({ onClose }) => {
             ]}
           />
 
-          <div style={{ flex: 1, overflow: 'auto' }}>
+          <div className="ld-panel-scroll">
             {tab === 'scheduled' && (
               <DoseScheduleView
                 items={scheduledItems}
@@ -317,11 +348,44 @@ const NutritionModal = ({ onClose }) => {
                 emptyText="No scheduled nutrition for today"
                 labels={NUTRITION_LABELS}
                 selectedId={selectedItem?.id || null}
-                onSelect={(item) => setSelectedId(item ? itemKey(item._raw) : null)}
+                onSelect={(item) => {
+                  if (item && prnMode === 'intake') setPrnMode(null);
+                  setSelectedId(item ? itemKey(item._raw) : null);
+                }}
                 onRecord={(item, opts) => submitComplete(item._raw, opts)}
                 onRecordAll={(items) => submitBulk(items.map(i => i._raw))}
                 onSkip={(item, opts) => skipFlushRow(item._raw, opts?.note)}
-                detail={(
+                detailWide
+                detail={(prnMode === 'intake' && docked) ? (
+                  <div className="ld-dose-detail em-inline">
+                    <div className="ld-dose-detail-head">
+                      <h3 className="ld-dose-detail-name">Log intake</h3>
+                      <button
+                        type="button"
+                        className="ld-dose-btn ghost"
+                        onClick={closePrn}
+                        aria-label="Close intake form"
+                      >
+                        <XIcon size={16} />
+                      </button>
+                    </div>
+                    <IntakeForm
+                      active
+                      patient={selectedPatient}
+                      defaultDateTime={prnDefaultDateTime}
+                      onClose={closePrn}
+                      onSaved={onPrnSaved}
+                    />
+                  </div>
+                ) : (selectedItem && !selectedItem.is_completed) ? (
+                  <NutritionFeedPane
+                    item={selectedItem}
+                    patient={selectedPatient}
+                    recordingAs={recordingAs}
+                    onRecord={(item, opts) => submitComplete(item._raw, opts)}
+                    onSkipFlush={(item, opts) => skipFlushRow(item._raw, opts?.note)}
+                  />
+                ) : (
                   <DoseDetailPane
                     item={selectedItem}
                     patientId={selectedPatient?.id}
@@ -369,9 +433,9 @@ const NutritionModal = ({ onClose }) => {
             title={title}
             confirmLabel="Complete anyway"
             onConfirm={async () => {
-              const { item, note } = windowConfirm;
+              const { item, note, items } = windowConfirm;
               close();
-              await submitComplete(item, { earlyOverride: true, note });
+              await submitComplete(item, { earlyOverride: true, note, items });
             }}
           >
             <strong className="cs-lead">{heading}</strong>
@@ -399,9 +463,10 @@ const NutritionModal = ({ onClose }) => {
         administration window. Record them anyway?
       </ConfirmSheet>
 
-      {/* Shared AdminV2 intake form */}
+      {/* Shared AdminV2 intake form — modal only where there is no side
+          pane to host it (mobile / undocked). */}
       <IntakeSheet
-        open={prnMode === 'intake'}
+        open={prnMode === 'intake' && !docked}
         onClose={closePrn}
         onSaved={onPrnSaved}
         patient={selectedPatient}

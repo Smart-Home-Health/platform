@@ -355,6 +355,9 @@ export default function CaptureVitalsPanel({
         </div>
       )}
 
+      {/* In the docked dashboard panel this is the scrolling middle, so the
+          Save footer stays pinned; everywhere else it is a plain wrapper. */}
+      <div className="vc-scroll">
       {rows ? (
         <>
           {snapshotConfigs.length > 0 && (
@@ -434,6 +437,7 @@ export default function CaptureVitalsPanel({
           )}
         </div>
       )}
+      </div>
 
       <div className="vc-footer">
         <div className="vc-progress" aria-live="polite">{counter}</div>

@@ -586,6 +586,9 @@ export default function IntakeItemsEditor({
               placeholder="Scan or type the UPC"
               inputMode="numeric"
               autoComplete="off"
+              // The wedge scanner types on its own; popping the on-screen
+              // keyboard over the panel mid-scan is pure noise.
+              data-vkb-ignore="true"
               onChange={(e) => setScanCode(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {

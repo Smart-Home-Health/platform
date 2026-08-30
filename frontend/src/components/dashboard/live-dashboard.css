@@ -402,7 +402,8 @@
     top: var(--ld-panel-top, 60px);
     left: var(--ld-panel-left, 0px);
     right: var(--ld-panel-right, 0px);
-    bottom: var(--ld-panel-bottom, 0px);
+    /* Reserve the in-app keyboard's height so the panel shrinks above it. */
+  bottom: calc(var(--ld-panel-bottom, 0px) + var(--vkb-height, 0px));
     width: auto;
     height: auto;
     /* The panel *is* the surface — no scrim, the board stays legible. */
@@ -421,7 +422,8 @@
     top: var(--ld-panel-top, 60px);
     left: var(--ld-panel-left, 0px);
     right: 0;
-    bottom: var(--ld-panel-bottom, 0px);
+    /* Reserve the in-app keyboard's height so the panel shrinks above it. */
+  bottom: calc(var(--ld-panel-bottom, 0px) + var(--vkb-height, 0px));
     width: auto;
     height: auto;
   }
@@ -445,6 +447,12 @@
     text-transform: uppercase;
     color: var(--dash-text-muted);
   }
+  /* The one inner scroller of a docked panel body. min-height: 0 is the
+     whole point — without it the flex child can't shrink below its content
+     and overflow never engages, so the outer .modal-body scrolls the list
+     and the side pane as one document. */
+  .ld-panel-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+
   .live-dash .modal-body.docked {
     flex: 1;
     min-height: 0;

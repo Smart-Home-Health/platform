@@ -380,7 +380,7 @@
   z-index: 1001;
   width: calc(100% - 1.5rem);
   max-width: 560px;
-  max-height: calc(100dvh - 3rem);
+  max-height: calc(100dvh - 3rem - var(--vkb-height, 0px));
   overflow-y: auto;
   /* overflow-y:auto alone makes overflow-x compute to auto as well, turning
      the whole dialog into a sideways scroller the moment any child runs one
@@ -395,6 +395,42 @@
   font-family: var(--vc-font-sans);
 }
 .em-panel.wide { max-width: 680px; }
+
+/* Inline host for the em-form family outside an EntityModal — the live
+   dashboard's docked side pane. Replicates the only two .em-panel-scoped
+   rules (box-sizing; the bare-button reset that keeps index.css chrome out)
+   and un-sticks the footer, which is tuned to .em-panel's 1rem padding. */
+.em-inline, .em-inline *, .em-inline *::before, .em-inline *::after { box-sizing: border-box; }
+.em-inline button {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+}
+.em-inline .em-footer {
+  position: static;
+  margin: 0.5rem 0 0;
+  padding: 0.7rem 0 0;
+}
+
+/* PRN sheets opened from the docked nutrition panel anchor over the panel
+   instead of centering on the whole wall screen (same fix the capture
+   sheet uses via body.ld-capture-docked). */
+body.ld-nutrition-docked .em-overlay {
+  left: var(--ld-panel-left, 0px);
+  right: var(--ld-panel-right, 0px);
+  top: var(--ld-panel-top, 60px);
+}
+body.ld-nutrition-docked .em-panel {
+  left: var(--ld-panel-left, 0px);
+  right: var(--ld-panel-right, 0px);
+  transform: none;
+  width: auto;
+  max-width: none;
+  top: var(--ld-panel-top, 60px);
+  margin: 0 1rem;
+}
+body.ld-nutrition-docked.ld-nutrition-wide .em-overlay,
+body.ld-nutrition-docked.ld-nutrition-wide .em-panel { left: var(--ld-panel-left-wide, 0px); }
 
 .em-head {
   display: flex;

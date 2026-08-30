@@ -63,7 +63,7 @@ export default function AlertsModal({ isOpen, onClose, alertsCount, onAlertAckno
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
         <PanelViewSwitcher views={views} value={tab} onChange={setTab} />
 
-        <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+        <div className="ld-panel-scroll">
           {/* With no patient chosen the alert queries drop their patient filter
               and return every patient's episodes, so hold off entirely — the
               same bail the medication and care-task panels make. */}
