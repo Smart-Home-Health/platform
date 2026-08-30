@@ -280,6 +280,8 @@
 .cfg-badge.ok .cfg-badge-dot { background: var(--vc-state-complete); }
 .cfg-badge.live { border-color: color-mix(in srgb, var(--vc-data-live) 45%, transparent); color: var(--vc-data-live); }
 .cfg-badge.live .cfg-badge-dot { background: var(--vc-data-live); }
+.cfg-badge.alert { border-color: color-mix(in srgb, var(--vc-state-alert) 45%, transparent); color: var(--vc-state-alert); }
+.cfg-badge.alert .cfg-badge-dot { background: var(--vc-state-alert); }
 
 /* Header-right slot: badge plus a small action, wrapping under the title on
    a phone rather than crushing it. */
@@ -364,6 +366,180 @@
 
 /* Inline action row inside a group (as opposed to the section footer). */
 .cfg-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem; }
+.cfg-actions.end { justify-content: flex-end; }
+
+/* A <form> is a single CfgGroup child, so it needs its own field rhythm. */
+.cfg-form { display: flex; flex-direction: column; gap: 0.5rem; }
+
+/* Field + adjacent action (search box and its button). */
+/* Capped to the same measure as .cfg-fields so the location block lines up
+   with the coordinate row below it. */
+.cfg-search-row { display: flex; gap: 0.4rem; align-items: stretch; max-width: 58rem; }
+.cfg-search-row .em-input { flex: 1 1 auto; min-width: 0; }
+.cfg-search-row .cfg-ghost { flex: 0 0 auto; min-height: 38px; }
+
+/* Results you pick from — flat rows in one hairline box, no nested cards. */
+.cfg-picklist {
+  max-width: 58rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: var(--cfg-radius);
+  overflow: hidden;
+}
+.cfg-pick {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--vc-line-hairline);
+  border-radius: 0;
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--vc-font-sans);
+  font-size: 13px;
+  color: var(--vc-text-primary);
+}
+.cfg-pick:last-child { border-bottom: none; }
+.cfg-pick:hover { background: var(--vc-bg-raised); }
+.cfg-pick:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--vc-data-live) 45%, transparent);
+}
+.cfg-pick-meta {
+  flex: 0 0 auto;
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-text-tertiary);
+}
+
+/* Tabular data as ONE markup path: flat rows on a phone, re-flowed into
+   columns at >=900px with `display: contents` — the same technique
+   vitals-history.css uses, so there is no separate mobile-card tree to keep
+   in sync with a desktop <table>. Column widths come from the consumer via
+   --cfg-trow-cols. */
+.cfg-table { display: flex; flex-direction: column; }
+.cfg-thead { display: none; }
+.cfg-trow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--vc-line-hairline);
+  min-width: 0;
+}
+.cfg-trow:last-child { border-bottom: none; }
+/* Phone: the label rides with the value. */
+.cfg-tcell { display: flex; align-items: baseline; justify-content: space-between; gap: 0.6rem; min-width: 0; }
+.cfg-tcell::before {
+  content: attr(data-label);
+  flex: 0 0 auto;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.cfg-tcell.name::before { content: none; }
+.cfg-tcell.name {
+  font-family: var(--vc-font-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--vc-text-primary);
+  overflow-wrap: anywhere;
+}
+.cfg-tval {
+  font-family: var(--vc-font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-text-secondary);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.cfg-tval.strong { color: var(--vc-text-primary); font-weight: 700; }
+.cfg-tags { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+
+@media (min-width: 900px) {
+  .cfg-thead,
+  .cfg-trow {
+    display: grid;
+    grid-template-columns: var(--cfg-trow-cols, repeat(6, minmax(0, 1fr)));
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .cfg-thead {
+    padding: 0.35rem 0;
+    border-bottom: 1px solid var(--vc-line-hairline);
+  }
+  .cfg-thead span {
+    font-family: var(--vc-font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--vc-text-tertiary);
+  }
+  .cfg-tcell { display: contents; }
+  .cfg-tcell::before { display: none; }
+  /* `display: contents` drops the wrapper, so the name cell styles its span. */
+  .cfg-tcell.name { display: block; }
+  .cfg-tval { text-align: left; }
+}
+
+/* One maintenance target: identity on the left, its controls on the right. */
+.cfg-maint { display: flex; flex-direction: column; gap: 0.5rem; }
+.cfg-maint-id { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.cfg-maint-name {
+  font-family: var(--vc-font-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--vc-text-primary);
+  overflow-wrap: anywhere;
+}
+.cfg-maint-meta {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  color: var(--vc-text-tertiary);
+}
+.cfg-maint-actions { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.45rem; }
+.cfg-maint-actions .em-field { flex: 0 0 9rem; }
+@media (min-width: 720px) {
+  .cfg-maint { flex-direction: row; align-items: flex-end; justify-content: space-between; gap: 0.75rem; }
+  .cfg-maint-actions { flex-wrap: nowrap; }
+}
+
+/* Read-only label/value list (account id, created, status…). */
+.cfg-facts { margin: 0; display: flex; flex-direction: column; }
+.cfg-facts > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--vc-line-hairline);
+}
+.cfg-facts > div:last-child { border-bottom: none; }
+.cfg-facts dt {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.cfg-facts dd {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--vc-text-primary);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
 /* Destructive action — red is reserved for exactly this and clinical concern. */
 .cfg .em-danger {
   background: transparent;
