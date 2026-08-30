@@ -602,3 +602,5 @@
 }
 .nitems-flush-toggle strong { color: var(--vc-text-primary); font-weight: 600; }
 .nitems-flush-toggle input:checked ~ span strong { color: var(--vc-data-live); }
+
+.nitems-flush-hint { padding-left: 1.5rem; }
