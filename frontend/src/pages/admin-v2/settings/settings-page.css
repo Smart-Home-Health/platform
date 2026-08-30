@@ -1,0 +1,440 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Shared chassis for the /care/configuration settings pages — the vc
+ * replacement for the shadcn Card + Field + FormRow stack those pages were
+ * built from.
+ *
+ * This is the page-level sibling of components/settings/settings-panel.css
+ * (`st-*`, the docked live-dashboard panel): same tight/boxy spec — 4px
+ * radii, half-rem padding, flat rows, groups divided by a hairline instead of
+ * nested cards — but it scrolls with the page instead of owning its height.
+ * The field vocabulary is the shared em-* set from
+ * components/vc/entity-card.css; this sheet only squares it to 4px.
+ *
+ * vc-native, dark by design, like nutrition-overview.css and vitals-history.css.
+ */
+@import '../../../styles/vc-tokens.css';
+
+.cfg {
+  --cfg-radius: 4px;
+  --cfg-pad: 0.55rem;
+  --cfg-pad-x: 0.7rem;
+  --cfg-gap: 0.55rem;
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--cfg-gap);
+}
+.cfg *, .cfg *::before, .cfg *::after { box-sizing: border-box; }
+
+/* ---------- section card ---------- */
+.cfg-card {
+  background: var(--vc-bg-surface);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: var(--cfg-radius);
+  overflow: hidden;
+}
+.cfg-head {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: var(--cfg-pad) var(--cfg-pad-x);
+  border-bottom: 1px solid var(--vc-line-hairline);
+}
+.cfg-head-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: var(--cfg-radius);
+  background: var(--vc-bg-raised);
+  color: var(--vc-text-secondary);
+}
+/* `flex: 1 1 0` (not `auto`): with an auto basis a long subtitle sets a wide
+   flex basis and the whole block wraps below the icon at the narrow stop. */
+.cfg-head-text { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; flex: 1 1 0; }
+.cfg-title {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+.cfg-sub {
+  margin: 0;
+  font-family: var(--vc-font-sans);
+  font-size: 12.5px;
+  color: var(--vc-text-secondary);
+}
+/* Transient "saved" acknowledgement in the section header. */
+.cfg-saved {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-state-complete);
+}
+
+.cfg-body {
+  display: flex;
+  flex-direction: column;
+  padding: 0 var(--cfg-pad-x);
+}
+
+/* Groups are divided by a hairline rather than nested in their own cards. */
+.cfg-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: var(--cfg-pad) 0;
+  border-bottom: 1px solid var(--vc-line-hairline);
+}
+.cfg-group:last-child { border-bottom: none; }
+.cfg-group-head { display: flex; flex-direction: column; gap: 0.15rem; }
+.cfg-group-title {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.cfg-group-hint {
+  margin: 0;
+  font-family: var(--vc-font-sans);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--vc-text-secondary);
+}
+
+.cfg-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: var(--cfg-pad) var(--cfg-pad-x);
+  border-top: 1px solid var(--vc-line-hairline);
+}
+
+/* A checkbox stack that goes side-by-side once there is room. */
+.cfg-checks { display: flex; flex-direction: column; gap: 0.5rem; }
+@media (min-width: 560px) {
+  .cfg-checks { flex-direction: row; flex-wrap: wrap; gap: 0.5rem 1.5rem; }
+}
+
+/* Two-column page layout for pages whose sections are independent (export vs
+   restore, say). Single column until there is genuinely room for two. */
+.cfg-cols { display: grid; gap: var(--cfg-gap); align-items: start; }
+@media (min-width: 900px) {
+  .cfg-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* `.three` earns its third column only once there is real width for it. */
+@media (min-width: 1200px) {
+  .cfg-cols.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* A disabled field should read as switched off, not merely unfocused. */
+.cfg .em-input:disabled {
+  background: color-mix(in srgb, var(--vc-bg-raised) 60%, transparent);
+  color: var(--vc-text-tertiary);
+  cursor: not-allowed;
+}
+.cfg .em-cancel:disabled {
+  color: var(--vc-text-tertiary);
+  border-color: var(--vc-line-hairline);
+  cursor: not-allowed;
+}
+
+/* File picker: the em-input shell with a vc-styled browse button, since the
+   native one keeps the platform chrome and ignores the surrounding palette. */
+.cfg .em-input[type="file"] {
+  padding: 0.3rem;
+  cursor: pointer;
+  font-family: var(--vc-font-sans);
+  font-size: 12.5px;
+  color: var(--vc-text-secondary);
+}
+.cfg .em-input[type="file"]::file-selector-button {
+  margin-right: 0.6rem;
+  padding: 0 0.7rem;
+  min-height: 28px;
+  background: var(--vc-bg-raised);
+  border: 1px solid var(--vc-line-strong);
+  border-radius: var(--cfg-radius);
+  color: var(--vc-text-primary);
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.cfg .em-input[type="file"]::file-selector-button:hover {
+  border-color: var(--vc-data-live);
+  color: var(--vc-data-live);
+}
+
+/* Collapsible detail inside a result box (per-table restore counts). */
+.cfg-details { margin-top: 0.4rem; }
+/* The native disclosure marker is a text glyph; the summary carries an SVG
+   chevron instead, rotated by the open state. */
+.cfg-details > summary { list-style: none; }
+.cfg-details > summary::-webkit-details-marker { display: none; }
+.cfg-details > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  cursor: pointer;
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-data-live);
+}
+.cfg-details > summary:focus-visible {
+  outline: none;
+  border-radius: var(--cfg-radius);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
+}
+.cfg-details > summary svg { transition: transform 0.15s ease; }
+.cfg-details[open] > summary svg { transform: rotate(180deg); }
+.cfg-kv {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.1rem 0.75rem;
+}
+.cfg-kv li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.2rem 0;
+  border-bottom: 1px solid var(--vc-line-hairline);
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  color: var(--vc-text-secondary);
+}
+.cfg-kv li b {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-text-primary);
+}
+
+/* Status pill for a section header. The state reads from the dot + the word,
+   never from a text glyph. */
+.cfg-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0 0.5rem;
+  min-height: 24px;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 999px;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+  white-space: nowrap;
+}
+.cfg-badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--vc-text-tertiary);
+}
+.cfg-badge.ok { border-color: color-mix(in srgb, var(--vc-state-complete) 45%, transparent); color: var(--vc-state-complete); }
+.cfg-badge.ok .cfg-badge-dot { background: var(--vc-state-complete); }
+.cfg-badge.live { border-color: color-mix(in srgb, var(--vc-data-live) 45%, transparent); color: var(--vc-data-live); }
+.cfg-badge.live .cfg-badge-dot { background: var(--vc-data-live); }
+
+/* Header-right slot: badge plus a small action, wrapping under the title on
+   a phone rather than crushing it. */
+.cfg-head-aside { display: flex; align-items: center; gap: 0.4rem; flex: 0 0 auto; }
+@media (max-width: 560px) {
+  .cfg-head { flex-wrap: wrap; }
+  .cfg-head-aside { width: 100%; justify-content: flex-start; }
+}
+.cfg-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 32px;
+  padding: 0 0.6rem;
+  background: transparent;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: var(--cfg-radius);
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.cfg-ghost:hover { color: var(--vc-data-live); border-color: var(--vc-data-live); }
+.cfg-ghost:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
+}
+
+/* Read-only fact tiles (mode, address, expiry…). */
+.cfg-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.45rem;
+}
+.cfg-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.5rem 0.6rem;
+  background: var(--vc-bg-raised);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: var(--cfg-radius);
+  min-width: 0;
+}
+.cfg-stat-label {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.cfg-stat-value {
+  font-family: var(--vc-font-mono);
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--vc-text-primary);
+  overflow-wrap: anywhere;
+}
+.cfg-stat-hint {
+  font-family: var(--vc-font-sans);
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--vc-text-tertiary);
+}
+
+/* Neutral informational box — the counterpart to em-error / em-success. */
+.cfg-note {
+  margin: 0;
+  border: 1px solid var(--vc-line-hairline);
+  background: var(--vc-bg-raised);
+  border-radius: var(--cfg-radius);
+  padding: 0.5rem 0.7rem;
+  font-family: var(--vc-font-sans);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--vc-text-secondary);
+}
+
+/* Inline action row inside a group (as opposed to the section footer). */
+.cfg-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem; }
+/* Destructive action — red is reserved for exactly this and clinical concern. */
+.cfg .em-danger {
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--vc-state-alert) 50%, transparent);
+  border-radius: var(--cfg-radius);
+  color: var(--vc-state-alert);
+  font-family: var(--vc-font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  min-height: 40px;
+  padding: 0 1rem;
+  cursor: pointer;
+}
+.cfg .em-danger:hover { border-color: var(--vc-state-alert); }
+.cfg .em-danger:disabled { color: var(--vc-text-tertiary); border-color: var(--vc-line-hairline); cursor: not-allowed; }
+
+/* Prose blocks (About, explanatory sections). */
+.cfg-prose {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-family: var(--vc-font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--vc-text-secondary);
+  /* Prose gets a reading measure; the section card itself stays full width. */
+  max-width: 68ch;
+}
+.cfg-prose p { margin: 0; }
+.cfg-prose strong { color: var(--vc-text-primary); font-weight: 600; }
+.cfg-link {
+  color: var(--vc-data-live);
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+.cfg-link:hover { text-decoration: underline; }
+.cfg-link:focus-visible {
+  outline: none;
+  border-radius: var(--cfg-radius);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
+}
+
+.cfg-loading,
+.cfg-empty {
+  margin: 0;
+  padding: 1.4rem 0.85rem;
+  text-align: center;
+  font-family: var(--vc-font-sans);
+  font-size: 13px;
+  color: var(--vc-text-tertiary);
+}
+
+/* ---------- square the shared em-* field vocabulary to this page ---------- */
+.cfg .em-input { border-radius: var(--cfg-radius); min-height: 38px; padding: 0.35rem 0.6rem; }
+.cfg .em-error,
+.cfg .em-success { border-radius: var(--cfg-radius); padding: 0.5rem 0.7rem; font-size: 13px; }
+.cfg .em-check { width: 20px; height: 20px; border-radius: var(--cfg-radius); }
+.cfg .em-check-label { font-size: 13.5px; }
+.cfg .em-cancel,
+.cfg .em-submit { border-radius: var(--cfg-radius); min-height: 40px; font-size: 12px; }
+/* em-row is a fixed 2-up; settings pages want a denser auto-fit grid so a
+   four-field threshold row does not become four stacked rows on a tablet. */
+.cfg-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.5rem 0.75rem;
+  /* Without a cap the fields stretch the full width of a desktop card, which
+     reads loose next to the tight section chrome. */
+  max-width: 58rem;
+}
+.cfg-fields.narrow { grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }
+.cfg-group-hint { max-width: 68ch; }

@@ -21,21 +21,15 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import { apiFetch } from '../../config';
 import config from '../../config';
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Alert } from '@/components/ui/alert';
-import { Field } from '@/components/ui/field';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
+import { DatabaseIcon, UndoIcon, ChevronDownIcon } from '../../components/Icons';
+import { EmField, EmSelect } from '../../components/vc/EntityModal';
+import { CfgSection, CfgGroup } from './settings/CfgSection';
+import '../../components/vc/entity-card.css';
 import './AdminV2.css';
+import './settings/settings-page.css';
 
-// Radix Select forbids an empty-string value, so use a sentinel for "none".
+// Keep an explicit sentinel so "no patient chosen" is a real row rather than
+// a blank first option.
 const NONE = '__none__';
 
 const AdminV2Backup = () => {
@@ -55,9 +49,16 @@ const AdminV2Backup = () => {
   if (user && !user.is_system_admin) {
     return (
       <AdminV2Layout>
-        <div style={{ padding: '2rem', color: 'var(--muted-foreground)', textAlign: 'center' }}>
-          <h3 style={{ color: 'var(--foreground)' }}>Access Denied</h3>
-          <p>Backup &amp; Restore is only available to system administrators.</p>
+        <div className="admin-v2-page">
+          <div className="cfg">
+            <CfgSection icon={<DatabaseIcon size={16} />} title="Access Denied">
+              <CfgGroup>
+                <p className="cfg-empty">
+                  Backup &amp; Restore is only available to system administrators.
+                </p>
+              </CfgGroup>
+            </CfgSection>
+          </div>
         </div>
       </AdminV2Layout>
     );
@@ -140,88 +141,86 @@ const AdminV2Backup = () => {
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
-        <div className="tw grid gap-6 lg:grid-cols-2">
-          {/* Export */}
-          <Card>
-            <CardHeader><CardTitle>Export Patient</CardTitle></CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              {exportError && <Alert variant="destructive">{exportError}</Alert>}
-              {exportSuccess && <Alert variant="success">{exportSuccess}</Alert>}
+        <div className="cfg cfg-cols">
+          <CfgSection
+            icon={<DatabaseIcon size={16} />}
+            title="Export Patient"
+            actions={
+              <button type="button" className="em-submit" onClick={handleExport}
+                      disabled={exporting || !exportPatientId}>
+                {exporting ? 'Exporting…' : 'Download Backup'}
+              </button>
+            }
+          >
+            <CfgGroup>
+              {exportError && <p className="em-error" role="alert">{exportError}</p>}
+              {exportSuccess && <p className="em-success" role="status">{exportSuccess}</p>}
 
-              <Field
+              <EmField
                 label="Patient"
                 htmlFor="export-patient"
                 hint="All rows tied to this patient will be included. The download is a gzipped tar archive containing one JSON file per entity."
               >
-                <Select
+                <EmSelect
+                  id="export-patient"
                   value={exportPatientId ? String(exportPatientId) : NONE}
-                  onValueChange={(v) => setExportPatientId(v === NONE ? '' : v)}
+                  onChange={(e) => setExportPatientId(e.target.value === NONE ? '' : e.target.value)}
                   disabled={loadingPatients || exporting}
                 >
-                  <SelectTrigger id="export-patient">
-                    <SelectValue placeholder="-- Select patient --" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NONE}>-- Select patient --</SelectItem>
-                    {activePatients.map(p => (
-                      <SelectItem key={p.id} value={String(p.id)}>
-                        {p.first_name} {p.last_name}{p.medical_record_number ? ` (MRN ${p.medical_record_number})` : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-            </CardContent>
-            <CardFooter>
-              <Button type="button" onClick={handleExport} disabled={exporting || !exportPatientId}>
-                {exporting ? 'Exporting…' : 'Download Backup'}
-              </Button>
-            </CardFooter>
-          </Card>
+                  <option value={NONE}>-- Select patient --</option>
+                  {activePatients.map(p => (
+                    <option key={p.id} value={String(p.id)}>
+                      {p.first_name} {p.last_name}{p.medical_record_number ? ` (MRN ${p.medical_record_number})` : ''}
+                    </option>
+                  ))}
+                </EmSelect>
+              </EmField>
+            </CfgGroup>
+          </CfgSection>
 
-          {/* Restore */}
-          <Card>
-            <CardHeader><CardTitle>Restore Patient</CardTitle></CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              {restoreError && <Alert variant="destructive">{restoreError}</Alert>}
+          <CfgSection
+            icon={<UndoIcon size={16} />}
+            title="Restore Patient"
+            actions={
+              <button type="button" className="em-submit" onClick={handleRestore}
+                      disabled={restoring || !restoreFile}>
+                {restoring ? 'Restoring…' : 'Restore From Backup'}
+              </button>
+            }
+          >
+            <CfgGroup>
+              {restoreError && <p className="em-error" role="alert">{restoreError}</p>}
               {restoreResult && (
-                <Alert variant="success">
-                  <div>
-                    Restored patient as new id <strong>{restoreResult.new_patient_id}</strong>.
-                    Inserted {totalRestored} rows across {Object.keys(restoreResult.inserted || {}).length} tables.
-                  </div>
-                  <details className="mt-2">
-                    <summary className="cursor-pointer">Per-table breakdown</summary>
-                    <ul className="mt-2 list-disc pl-5">
+                <div className="em-success" role="status">
+                  Restored patient as new id <strong>{restoreResult.new_patient_id}</strong>.
+                  Inserted {totalRestored} rows across {Object.keys(restoreResult.inserted || {}).length} tables.
+                  <details className="cfg-details">
+                    <summary><ChevronDownIcon size={12} />Per-table breakdown</summary>
+                    <ul className="cfg-kv">
                       {Object.entries(restoreResult.inserted || {}).map(([table, count]) => (
-                        <li key={table}>{table}: {count}</li>
+                        <li key={table}>{table}<b>{count}</b></li>
                       ))}
                     </ul>
                   </details>
-                </Alert>
+                </div>
               )}
 
-              <Field
+              <EmField
                 label="Backup file (.tar.gz)"
                 htmlFor="restore-file-input"
                 hint="A new patient record will be created in this account. Original ids are not preserved — every foreign key is remapped. Any user references that no longer exist in this account will be attributed to the hidden “Imported (legacy attribution)” user, which is created automatically on first restore."
               >
-                <Input
+                <input
                   id="restore-file-input"
+                  className="em-input"
                   type="file"
                   accept=".gz,.tar.gz,application/gzip,application/x-tar"
-                  className="h-auto cursor-pointer py-1.5 file:mr-3 file:cursor-pointer"
                   onChange={(e) => setRestoreFile(e.target.files?.[0] || null)}
                   disabled={restoring}
                 />
-              </Field>
-            </CardContent>
-            <CardFooter>
-              <Button type="button" onClick={handleRestore} disabled={restoring || !restoreFile}>
-                {restoring ? 'Restoring…' : 'Restore From Backup'}
-              </Button>
-            </CardFooter>
-          </Card>
+              </EmField>
+            </CfgGroup>
+          </CfgSection>
         </div>
       </div>
     </AdminV2Layout>

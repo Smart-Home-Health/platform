@@ -314,8 +314,7 @@
 }
 
 /* ---------- History pages: filter bar, stats row, table cells ---------- */
-:root:is(:not(.light), .dash-scheme-dark) .history-filter-bar,
-:root:is(:not(.light), .dash-scheme-dark) .vitals-history-filters {
+:root:is(:not(.light), .dash-scheme-dark) .history-filter-bar {
   background: var(--vc-bg-surface);
   border: 1px solid var(--vc-line-hairline);
   border-radius: 10px;

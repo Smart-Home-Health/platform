@@ -76,7 +76,7 @@ export default function EntityModal({ open, onOpenChange, title, wide = false, c
   );
 }
 
-export function EmField({ label, required = false, optional = false, htmlFor, children }) {
+export function EmField({ label, required = false, optional = false, htmlFor, hint, children }) {
   return (
     <div className="em-field">
       <label className="em-label" htmlFor={htmlFor}>
@@ -85,6 +85,7 @@ export function EmField({ label, required = false, optional = false, htmlFor, ch
         {optional && <span className="em-optional">Optional</span>}
       </label>
       {children}
+      {hint && <p className="em-hint">{hint}</p>}
     </div>
   );
 }
