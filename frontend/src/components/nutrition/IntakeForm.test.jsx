@@ -54,7 +54,8 @@ describe('IntakeForm', () => {
     render(<IntakeForm active patient={patient} onClose={vi.fn()} onSaved={vi.fn()} />);
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(document.querySelector('form.em-form.nsheet')).toBeInTheDocument();
-    expect(document.getElementById('intake-search')).toBeInTheDocument();
+    // Item search moved to the picker, opened from the items card.
+    expect(screen.getByRole('button', { name: 'Add items' })).toBeInTheDocument();
   });
 
   it('submits an intake event and reports back', async () => {
@@ -62,6 +63,7 @@ describe('IntakeForm', () => {
     const onClose = vi.fn();
     render(<IntakeForm active patient={patient} onClose={onClose} onSaved={onSaved} />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Add items' }));
     fireEvent.change(document.getElementById('intake-search'), { target: { value: 'Broth' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add "Broth" manually' }));
     fireEvent.change(screen.getByLabelText('Amount of Broth'), { target: { value: '150' } });

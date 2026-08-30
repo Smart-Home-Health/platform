@@ -509,6 +509,12 @@ body.ld-nutrition-docked.ld-nutrition-wide .em-panel { left: var(--ld-panel-left
   min-height: 46px;
   padding: 0.5rem 0.75rem;
 }
+/* iOS Safari force-zooms (and strands the page zoomed-in, with nothing to
+   pinch on a fixed full-screen layer) when a focused input's font-size is
+   under 16px. Touch devices get 16px so focusing never zooms. */
+@media (hover: none) and (pointer: coarse) {
+  .em-input { font-size: 16px; }
+}
 .em-input::placeholder { color: var(--vc-text-tertiary); }
 .em-input:focus {
   outline: none;

@@ -301,6 +301,24 @@
 
 /* Item search row: input plus the (not yet wired) scan affordance. */
 .nsheet-search { display: flex; gap: 0.5rem; align-items: stretch; }
+
+/* Opens the full-screen ItemPickerSheet — the one add affordance now that
+   search/scan/manual live in the picker. */
+.nitems-open-picker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.55rem;
+  background: transparent;
+  border: 1px dashed var(--vc-line-strong);
+  border-radius: 4px;
+  color: var(--vc-text-secondary);
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.nitems-open-picker:hover { color: var(--vc-text-primary); border-color: var(--vc-data-live); }
 .nsheet-search .em-input { flex: 1 1 auto; min-width: 0; }
 .nsheet-scan {
   flex: 0 0 auto;

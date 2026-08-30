@@ -15,11 +15,11 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-// The multi-item editor's barcode flow: saved items win, unknown codes fall
-// through to OpenFoodFacts as a save-able suggestion, and a miss reads as
-// "enter manually" rather than an error. No scan dialog — the Bluetooth
-// scanner is a keyboard wedge, so the button reveals a plain input and the
-// wedge's Enter fires the lookup.
+// Finding items now lives in the full-screen picker: search, barcode, and
+// manual entry add to a pending selection (chips), and Done hands the rows
+// to the form for configuring. The barcode flow keeps its contract: saved
+// items win, unknown codes fall through to OpenFoodFacts as a save-able
+// suggestion, and a miss reads as "enter manually" rather than an error.
 import { useState } from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -29,6 +29,7 @@ import { nutritionService } from '../../services/nutrition';
 vi.mock('../../services/nutrition', () => ({
   nutritionService: {
     listItems: vi.fn(() => Promise.resolve([])),
+    recent: vi.fn(() => Promise.resolve({ recent: [] })),
     createItem: vi.fn(() => Promise.resolve({ id: 42, name: 'Naked Green Machine', item_type: 'liquid', default_amount: 100, default_amount_unit: 'ml', calories_per_unit: 0.53 })),
     lookupBarcode: vi.fn(),
   },
@@ -41,7 +42,13 @@ function Harness(props) {
   return <IntakeItemsEditor patient={patient} items={items} onChange={setItems} {...props} />;
 }
 
+const openPicker = () =>
+  fireEvent.click(screen.getByRole('button', { name: /Add items|Add or remove items/ }));
+
+const doneButton = () => screen.getByRole('button', { name: /Done · \d+ items?/ });
+
 const scanACode = async (code = '082592720153') => {
+  openPicker();
   fireEvent.click(screen.getByLabelText('Scan a barcode'));
   const input = screen.getByLabelText('Barcode');
   fireEvent.change(input, { target: { value: code } });
@@ -50,8 +57,8 @@ const scanACode = async (code = '082592720153') => {
 
 beforeEach(() => vi.clearAllMocks());
 
-describe('IntakeItemsEditor barcode flow', () => {
-  it('adds a saved library item on a barcode hit', async () => {
+describe('IntakeItemsEditor picker flow', () => {
+  it('adds a saved library item on a barcode hit and configures it after Done', async () => {
     nutritionService.lookupBarcode.mockResolvedValue({
       source: 'library',
       barcode: '082592720153',
@@ -63,10 +70,13 @@ describe('IntakeItemsEditor barcode flow', () => {
     render(<Harness />);
     await scanACode();
 
-    await waitFor(() => expect(screen.getByText('Naked Green Machine')).toBeInTheDocument());
+    // The scan lands as a removable chip in the pending selection.
+    await waitFor(() => expect(screen.getByText(/Naked Green Machine · 450 ml/)).toBeInTheDocument());
     expect(nutritionService.lookupBarcode).toHaveBeenCalledWith('082592720153', 5);
-    // Default amount and scaled calories came along (450 * 0.53 ≈ 238.5),
-    // shown on the row and summed in the card header.
+
+    // Done returns to the form, where the amount is editable and the scaled
+    // calories (450 * 0.53 ≈ 238.5) show on the row and in the card header.
+    fireEvent.click(doneButton());
     expect(screen.getByLabelText('Amount of Naked Green Machine')).toHaveValue(450);
     expect(screen.getAllByText(/238.5 kcal/).length).toBeGreaterThanOrEqual(1);
   });
@@ -84,7 +94,7 @@ describe('IntakeItemsEditor barcode flow', () => {
     render(<Harness />);
     await scanACode();
 
-    await waitFor(() => expect(screen.getByText('Green Machine')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Green Machine · 240 ml/)).toBeInTheDocument());
     expect(screen.getByText(/will be saved for next time/)).toBeInTheDocument();
     // Nothing hits the library yet — saving happens when the intake is logged.
     expect(nutritionService.createItem).not.toHaveBeenCalled();
@@ -107,7 +117,7 @@ describe('IntakeItemsEditor barcode flow', () => {
     // with its barcode, and the row references it.
     await waitFor(() => expect(nutritionService.createItem).toHaveBeenCalled());
     expect(nutritionService.createItem.mock.calls[0][0].barcode).toBe('082592720153');
-    await waitFor(() => expect(screen.getByText('Naked Green Machine')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Naked Green Machine/)).toBeInTheDocument());
   });
 
   it('reads a miss as "enter manually", not an error', async () => {
@@ -116,6 +126,7 @@ describe('IntakeItemsEditor barcode flow', () => {
     await scanACode();
 
     await waitFor(() => expect(screen.getByText(/No match for barcode/)).toBeInTheDocument());
+    fireEvent.click(doneButton());
     expect(document.querySelectorAll('.nitems-row')).toHaveLength(0);
   });
 
@@ -130,18 +141,19 @@ describe('IntakeItemsEditor barcode flow', () => {
   it('offers built-in Water without a library item, and creates one on pick', async () => {
     nutritionService.listItems.mockResolvedValue([]);
     render(<Harness />);
+    openPicker();
     fireEvent.change(screen.getByPlaceholderText('Search saved items'), { target: { value: 'wat' } });
 
     const offer = await screen.findByText(/built-in · counts toward fluids/);
     fireEvent.click(offer.closest('button'));
 
     // Picking it materializes the real library item (a schedule component
-    // needs an item id) with zero facts, and adds the row.
+    // needs an item id) with zero facts, and adds it to the selection.
     await waitFor(() => expect(nutritionService.createItem).toHaveBeenCalled());
     const created = nutritionService.createItem.mock.calls[0][0];
     expect(created.name).toBe('Water');
     expect(created.calories_per_unit).toBe(0);
-    await waitFor(() => expect(screen.getByText('Naked Green Machine')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Naked Green Machine/)).toBeInTheDocument());
   });
 
   it('steps aside when the library already has a Water', async () => {
@@ -150,6 +162,7 @@ describe('IntakeItemsEditor barcode flow', () => {
       default_amount: 60, default_amount_unit: 'ml', calories_per_unit: 0,
     }]);
     render(<Harness />);
+    openPicker();
     fireEvent.change(screen.getByPlaceholderText('Search saved items'), { target: { value: 'water' } });
 
     // The built-in offer may flash while the debounced search runs; once the
@@ -160,6 +173,47 @@ describe('IntakeItemsEditor barcode flow', () => {
     });
   });
 
+  it('cancel discards what the picker session added', async () => {
+    nutritionService.lookupBarcode.mockResolvedValue({
+      source: 'library',
+      barcode: '082592720153',
+      item: { id: 7, name: 'Naked Green Machine', item_type: 'liquid', default_amount: 450, default_amount_unit: 'ml' },
+    });
+    render(<Harness />);
+    await scanACode();
+    await waitFor(() => expect(screen.getByText(/Naked Green Machine · 450 ml/)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(document.querySelectorAll('.nitems-row')).toHaveLength(0);
+  });
+
+  it('adds a manual row and opens it for configuring on the form', async () => {
+    render(<Harness />);
+    openPicker();
+    fireEvent.change(screen.getByPlaceholderText('Search saved items'), { target: { value: 'Broth' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add "Broth" manually' }));
+
+    // Manual entry commits immediately — configure on the form, not in the
+    // picker — with the row expanded (its editable name field is visible).
+    expect(screen.getByLabelText('Amount of Broth')).toBeInTheDocument();
+    expect(screen.getByLabelText('Item name')).toHaveValue('Broth');
+  });
+
+  it('one-tap adds a recent combo with its last-logged amount', async () => {
+    nutritionService.recent.mockResolvedValue({
+      recent: [{ item_name: 'Mighty Mango', item_type: 'liquid', amount: 123, amount_unit: 'ml' }],
+    });
+    render(<Harness />);
+    openPicker();
+
+    const row = await screen.findByText('Mighty Mango');
+    fireEvent.click(row.closest('button'));
+    await waitFor(() => expect(screen.getByText(/Mighty Mango · 123 ml/)).toBeInTheDocument());
+
+    fireEvent.click(doneButton());
+    expect(screen.getByLabelText('Amount of Mighty Mango')).toHaveValue(123);
+  });
+
   it('removes a row', async () => {
     nutritionService.lookupBarcode.mockResolvedValue({
       source: 'library',
@@ -168,7 +222,8 @@ describe('IntakeItemsEditor barcode flow', () => {
     });
     render(<Harness />);
     await scanACode();
-    await waitFor(() => expect(screen.getByText('Naked Green Machine')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Naked Green Machine · 450 ml/)).toBeInTheDocument());
+    fireEvent.click(doneButton());
 
     fireEvent.click(screen.getByLabelText('Remove Naked Green Machine'));
     expect(screen.queryByText('Naked Green Machine')).not.toBeInTheDocument();
