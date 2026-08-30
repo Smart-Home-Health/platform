@@ -1,0 +1,55 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+@import '../../../styles/vc-tokens.css';
+
+/* Home Assistant identity rows (Directory → Users). One flat box per HA
+ * login: who they are, their state as badges, and the link/import actions. */
+.hai-rows { display: flex; flex-direction: column; gap: 0.6rem; }
+.hai-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 4px;
+  background: var(--vc-bg-raised);
+}
+.hai-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+.hai-name {
+  font-family: var(--vc-font-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--vc-text-primary);
+}
+.hai-sub {
+  font-size: 11px;
+  color: var(--vc-text-secondary);
+}
+.hai-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.hai-actions .em-select-wrap { flex: 0 1 12rem; min-width: 9rem; }

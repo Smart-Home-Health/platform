@@ -28,13 +28,10 @@ import AdminV2Layout from '../AdminV2Layout';
 import config, { apiFetch } from '../../../config';
 import { useAuth } from '../../../contexts/AuthContext';
 import {
-  ChevronRightIcon, FilterIcon, PatientsIcon, PlusIcon, SearchIcon, ShieldIcon, UsersIcon, XIcon,
+  ChevronRightIcon, FilterIcon, PatientsIcon, SearchIcon, ShieldIcon, UsersIcon, XIcon,
 } from '../../../components/Icons';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Alert } from '@/components/ui/alert';
-import { Input } from '@/components/ui/input';
+import { CfgBadge } from '../settings/CfgSection';
+import '../../../components/vc/entity-card.css';
 import HAIdentitiesCard from '../components/HAIdentitiesCard';
 import DirectoryFilters from './DirectoryFilters';
 import CreateCareProfileDialog from './CreateCareProfileDialog';
@@ -50,6 +47,8 @@ import './directory.css';
 import PersonAvatar from '../../../components/vc/PersonAvatar';
 
 const TAB_ICONS = { profiles: PatientsIcon, users: UsersIcon, roles: ShieldIcon };
+// Row status tones → cfg-badge tones; 'muted' stays the neutral default.
+const BADGE_TONE = { success: 'ok', warning: 'warn', danger: 'alert' };
 
 export default function AdminV2Directory() {
   const { user } = useAuth();
@@ -133,12 +132,14 @@ export default function AdminV2Directory() {
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
-        <div className="tw flex flex-col gap-4">
-          <div className="flex flex-col gap-0.5">
-            <h1 className="cp-title">Directory</h1>
-            <p className="text-sm text-muted-foreground">
-              Manage care profiles, users, and access roles.
-            </p>
+        <div className="cfg">
+          <div className="cfg-pagehead">
+            <div className="cfg-pagehead-text">
+              <h1 className="cfg-h1">Directory</h1>
+              <p className="cfg-pagehead-desc">
+                Manage care profiles, users, and access roles.
+              </p>
+            </div>
           </div>
 
           {/* Tabs — real routes, so a bookmark still lands where it used to. */}
@@ -161,41 +162,39 @@ export default function AdminV2Directory() {
             })}
           </div>
 
-          {error && <Alert variant="destructive" role="alert">{error}</Alert>}
+          {error && <p className="em-error" role="alert">{error}</p>}
 
-          <Card>
-            <CardContent className="cp-stats p-0">
+          <section className="cfg-card cp-stats">
               {stats.map((stat) => (
                 <div className="cp-stat" key={stat.label} data-tone={stat.tone}>
                   <span className="cp-stat-value">{stat.value}</span>
                   <span className="cp-stat-label">{stat.label}</span>
                 </div>
               ))}
-            </CardContent>
-          </Card>
+          </section>
 
           {/* Toolbar */}
           <div className="dir-toolbar">
-            <div className="relative flex-1">
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+            <div className="dir-search">
+              <span className="dir-search-icon" aria-hidden>
                 <SearchIcon size={16} />
               </span>
-              <Input
-                className="pl-9"
+              <input
+                className="em-input"
                 placeholder={meta.searchPlaceholder}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            <Button
-              variant="secondary"
-              className="dir-filter-button"
+            <button
+              type="button"
+              className="cfg-ghost dir-filter-button"
               onClick={() => setFiltersOpen(true)}
               aria-label={`Filter ${meta.noun[1]}`}
             >
               <FilterIcon size={16} />
               {chips.length > 0 && <span className="dir-filter-count">{chips.length}</span>}
-            </Button>
+            </button>
           </div>
 
           {chips.length > 0 && (
@@ -222,24 +221,21 @@ export default function AdminV2Directory() {
           )}
 
           {can(meta.createPermission) && (
-            <Button className="w-full gap-1.5" onClick={() => setCreating(true)}>
-              <PlusIcon size={16} /> {meta.addLabel}
-            </Button>
+            <button type="button" className="em-submit dir-add" onClick={() => setCreating(true)}>
+              {meta.addLabel}
+            </button>
           )}
 
           {/* List */}
           {loading ? (
-            <div className="admin-v2-loading">Loading {meta.noun[1]}…</div>
+            <p className="cfg-loading">Loading {meta.noun[1]}…</p>
           ) : (
-            <Card>
-              <CardContent className="cp-rows p-0">
+            <section className="cfg-card cp-rows">
                 {visible.length === 0 ? (
-                  <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
-                    <span className="text-muted-foreground" aria-hidden>
-                      {(() => { const Icon = TAB_ICONS[tab]; return <Icon size={32} />; })()}
-                    </span>
-                    <p className="text-sm text-foreground">No {meta.noun[1]} match this view</p>
-                    <p className="text-sm text-muted-foreground">
+                  <div className="cfg-nopatient">
+                    {(() => { const Icon = TAB_ICONS[tab]; return <Icon size={32} />; })()}
+                    <p>No {meta.noun[1]} match this view</p>
+                    <p>
                       {search || chips.length
                         ? 'Try a different search, or clear the filters.'
                         : `Add a ${meta.noun[0]} to get started.`}
@@ -256,10 +252,10 @@ export default function AdminV2Directory() {
                       <span className="cp-row-body">
                         <span className="cp-row-title cp-row-title-plain">{row.title}</span>
                         <span className="cp-row-status">
-                          {row.badge && <Badge variant="default">{row.badge}</Badge>}
-                          <Badge variant={row.status.tone === 'muted' ? 'muted' : row.status.tone}>
+                          {row.badge && <CfgBadge tone="live">{row.badge}</CfgBadge>}
+                          <CfgBadge tone={BADGE_TONE[row.status.tone]}>
                             {row.status.label}
-                          </Badge>
+                          </CfgBadge>
                         </span>
                         <span className="cp-row-blurb">{row.meta}</span>
                       </span>
@@ -282,8 +278,7 @@ export default function AdminV2Directory() {
                     </select>
                   </label>
                 </div>
-              </CardContent>
-            </Card>
+            </section>
           )}
 
           {/* Home Assistant identity mapping belongs with the people it maps. */}

@@ -18,13 +18,7 @@
 // Add an access role. Moved out of the old Roles page unchanged in behaviour.
 import { useState } from 'react';
 import config, { apiFetch } from '../../../config';
-import {
-  Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Alert } from '@/components/ui/alert';
-import { Field, FormRow } from '@/components/ui/field';
+import EntityModal, { EmField, EmRow } from '../../../components/vc/EntityModal';
 import { PermissionSelector } from '../components/PermissionSelector';
 
 const emptyForm = {
@@ -77,59 +71,59 @@ export default function CreateRoleDialog({ open, onOpenChange, onCreated, permis
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) close(); }}>
-      <DialogContent className="sm:max-w-[640px]" aria-describedby={undefined}>
-        <DialogHeader>
-          <DialogTitle>Add role</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={submit} className="flex flex-col gap-4">
-          {error && <Alert variant="destructive">{error}</Alert>}
+    <EntityModal open={open} onOpenChange={(o) => { if (!o) close(); }} title="Add role" wide>
+      <form onSubmit={submit} className="em-form">
+        {error && <div className="em-error" role="alert">{error}</div>}
 
-          <FormRow>
-            <Field label="Role name (code)" required htmlFor="role-name"
+        <EmRow>
+          <EmField label="Role name (code)" required htmlFor="role-name"
                    hint="Lowercase with underscores, used internally">
-              <Input
-                id="role-name"
-                value={formData.name}
-                onChange={(e) => setFormData({
-                  ...formData, name: e.target.value.toLowerCase().replace(/\s+/g, '_'),
-                })}
-                required placeholder="e.g. nurse_aide"
-              />
-            </Field>
-            <Field label="Display name" required htmlFor="role-display">
-              <Input
-                id="role-display"
-                value={formData.display_name}
-                onChange={(e) => setFormData({ ...formData, display_name: e.target.value })}
-                required placeholder="e.g. Nurse Aide"
-              />
-            </Field>
-          </FormRow>
-
-          <Field label="Description" htmlFor="role-desc">
-            <Input
-              id="role-desc"
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              placeholder="Brief description of this role"
+            <input
+              id="role-name"
+              className="em-input"
+              value={formData.name}
+              onChange={(e) => setFormData({
+                ...formData, name: e.target.value.toLowerCase().replace(/\s+/g, '_'),
+              })}
+              required placeholder="e.g. nurse_aide"
             />
-          </Field>
-
-          <Field label="Permissions">
-            <PermissionSelector
-              permissionsByCategory={permissionsByCategory}
-              selectedIds={formData.permission_ids}
-              onToggle={togglePermission}
+          </EmField>
+          <EmField label="Display name" required htmlFor="role-display">
+            <input
+              id="role-display"
+              className="em-input"
+              value={formData.display_name}
+              onChange={(e) => setFormData({ ...formData, display_name: e.target.value })}
+              required placeholder="e.g. Nurse Aide"
             />
-          </Field>
+          </EmField>
+        </EmRow>
 
-          <DialogFooter>
-            <Button type="button" variant="secondary" onClick={close}>Cancel</Button>
-            <Button type="submit" disabled={saving}>{saving ? 'Creating…' : 'Create role'}</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        <EmField label="Description" htmlFor="role-desc">
+          <input
+            id="role-desc"
+            className="em-input"
+            value={formData.description}
+            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            placeholder="Brief description of this role"
+          />
+        </EmField>
+
+        <EmField label="Permissions">
+          <PermissionSelector
+            permissionsByCategory={permissionsByCategory}
+            selectedIds={formData.permission_ids}
+            onToggle={togglePermission}
+          />
+        </EmField>
+
+        <div className="em-footer">
+          <button type="button" className="em-cancel" onClick={close}>Cancel</button>
+          <button type="submit" className="em-submit" disabled={saving}>
+            {saving ? 'Creating…' : 'Create role'}
+          </button>
+        </div>
+      </form>
+    </EntityModal>
   );
 }

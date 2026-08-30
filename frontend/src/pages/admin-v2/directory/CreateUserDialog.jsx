@@ -18,16 +18,7 @@
 // Add a user. Moved out of the old Users page unchanged in behaviour.
 import { useState } from 'react';
 import config, { apiFetch } from '../../../config';
-import {
-  Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Alert } from '@/components/ui/alert';
-import { Field, FormRow } from '@/components/ui/field';
-import {
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
-} from '@/components/ui/select';
+import EntityModal, { EmField, EmRow, EmSelect } from '../../../components/vc/EntityModal';
 import { ToggleList } from '../components/ToggleList';
 
 const emptyForm = {
@@ -79,125 +70,116 @@ export default function CreateUserDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) close(); }}>
-      <DialogContent className="sm:max-w-[640px]" aria-describedby={undefined}>
-        <DialogHeader>
-          <DialogTitle>Add user</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={submit} className="flex flex-col gap-4">
-          {error && <Alert variant="destructive">{error}</Alert>}
+    <EntityModal open={open} onOpenChange={(o) => { if (!o) close(); }} title="Add user" wide>
+      <form onSubmit={submit} className="em-form">
+        {error && <div className="em-error" role="alert">{error}</div>}
 
-          <FormRow>
-            <Field label="Username" required htmlFor="u-username">
-              <Input
-                id="u-username"
-                value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                required minLength={3} placeholder="Enter username"
-              />
-            </Field>
-            <Field label="Full name" required htmlFor="u-fullname">
-              <Input
-                id="u-fullname"
-                value={formData.full_name}
-                onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                required placeholder="Enter full name"
-              />
-            </Field>
-          </FormRow>
+        <EmRow>
+          <EmField label="Username" required htmlFor="u-username">
+            <input
+              id="u-username"
+              className="em-input"
+              value={formData.username}
+              onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+              required minLength={3} placeholder="Enter username"
+            />
+          </EmField>
+          <EmField label="Full name" required htmlFor="u-fullname">
+            <input
+              id="u-fullname"
+              className="em-input"
+              value={formData.full_name}
+              onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+              required placeholder="Enter full name"
+            />
+          </EmField>
+        </EmRow>
 
-          <FormRow>
-            <Field label="Email" htmlFor="u-email">
-              <Input
-                id="u-email" type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                placeholder="Enter email address"
-              />
-            </Field>
-            <Field label="Password" required htmlFor="u-password">
-              <Input
-                id="u-password" type="password"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                required minLength={8} placeholder="Min 8 characters"
-              />
-            </Field>
-          </FormRow>
+        <EmRow>
+          <EmField label="Email" htmlFor="u-email">
+            <input
+              id="u-email" className="em-input" type="email"
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              placeholder="Enter email address"
+            />
+          </EmField>
+          <EmField label="Password" required htmlFor="u-password">
+            <input
+              id="u-password" className="em-input" type="password"
+              value={formData.password}
+              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              required minLength={8} placeholder="Min 8 characters"
+            />
+          </EmField>
+        </EmRow>
 
-          <FormRow>
-            <Field label="PIN (4-8 digits)" htmlFor="u-pin">
-              <Input
-                id="u-pin" type="password"
-                value={formData.pin}
-                onChange={(e) => setFormData({ ...formData, pin: e.target.value })}
-                placeholder="Optional quick-login PIN" maxLength={8} pattern="[0-9]*"
-              />
-            </Field>
-            <Field label="Status">
-              <Select
-                value={formData.is_active ? 'active' : 'inactive'}
-                onValueChange={(v) => setFormData({ ...formData, is_active: v === 'active' })}
-              >
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-          </FormRow>
+        <EmRow>
+          <EmField label="PIN (4-8 digits)" htmlFor="u-pin">
+            <input
+              id="u-pin" className="em-input" type="password"
+              value={formData.pin}
+              onChange={(e) => setFormData({ ...formData, pin: e.target.value })}
+              placeholder="Optional quick-login PIN" maxLength={8} pattern="[0-9]*"
+            />
+          </EmField>
+          <EmField label="Status" htmlFor="u-status">
+            <EmSelect
+              id="u-status"
+              value={formData.is_active ? 'active' : 'inactive'}
+              onChange={(e) => setFormData({ ...formData, is_active: e.target.value === 'active' })}
+            >
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </EmSelect>
+          </EmField>
+        </EmRow>
 
-          <Field label="Roles">
+        <EmField label="Roles">
+          <ToggleList
+            items={roles}
+            selectedIds={formData.role_ids}
+            onToggle={(id) => toggle('role_ids', id)}
+            getId={(r) => r.id}
+            renderLabel={(r) => (
+              <>
+                {r.display_name}
+                {r.description && <small>{r.description}</small>}
+              </>
+            )}
+            empty="No roles available"
+          />
+        </EmField>
+
+        <EmField label="Care profile access">
+          {isSystemAdmin ? (
+            <p className="cfg-note">
+              System admins have access to every care profile automatically.
+            </p>
+          ) : (
             <ToggleList
-              items={roles}
-              selectedIds={formData.role_ids}
-              onToggle={(id) => toggle('role_ids', id)}
-              getId={(r) => r.id}
-              renderLabel={(r) => (
+              items={patients}
+              selectedIds={formData.patient_ids}
+              onToggle={(id) => toggle('patient_ids', id)}
+              getId={(p) => p.id}
+              renderLabel={(p) => (
                 <>
-                  {r.display_name}
-                  {r.description && (
-                    <small className="block text-xs text-muted-foreground">{r.description}</small>
-                  )}
+                  {p.first_name} {p.last_name}
+                  {p.medical_record_number && <small>MRN: {p.medical_record_number}</small>}
                 </>
               )}
-              empty="No roles available"
+              empty="No care profiles configured yet."
             />
-          </Field>
+          )}
+        </EmField>
 
-          <Field label="Care profile access">
-            {isSystemAdmin ? (
-              <div className="rounded-md border border-border bg-background/40 p-3 text-sm text-muted-foreground">
-                System admins have access to every care profile automatically.
-              </div>
-            ) : (
-              <ToggleList
-                items={patients}
-                selectedIds={formData.patient_ids}
-                onToggle={(id) => toggle('patient_ids', id)}
-                getId={(p) => p.id}
-                renderLabel={(p) => (
-                  <>
-                    {p.first_name} {p.last_name}
-                    {p.medical_record_number && (
-                      <small className="block text-xs text-muted-foreground">
-                        MRN: {p.medical_record_number}
-                      </small>
-                    )}
-                  </>
-                )}
-                empty="No care profiles configured yet."
-              />
-            )}
-          </Field>
-
-          <DialogFooter>
-            <Button type="button" variant="secondary" onClick={close}>Cancel</Button>
-            <Button type="submit" disabled={saving}>{saving ? 'Creating…' : 'Create user'}</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        <div className="em-footer">
+          <button type="button" className="em-cancel" onClick={close}>Cancel</button>
+          <button type="submit" className="em-submit" disabled={saving}>
+            {saving ? 'Creating…' : 'Create user'}
+          </button>
+        </div>
+      </form>
+    </EntityModal>
   );
 }

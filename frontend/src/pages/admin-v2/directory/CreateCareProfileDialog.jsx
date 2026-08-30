@@ -20,11 +20,7 @@
 import { useState } from 'react';
 import config, { apiFetch } from '../../../config';
 import PatientFormFields from '../../../components/PatientFormFields';
-import {
-  Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Alert } from '@/components/ui/alert';
+import EntityModal from '../../../components/vc/EntityModal';
 
 const emptyForm = {
   first_name: '', last_name: '', date_of_birth: '',
@@ -72,22 +68,17 @@ export default function CreateCareProfileDialog({ open, onOpenChange, onCreated 
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) close(); }}>
-      <DialogContent className="sm:max-w-[600px]" aria-describedby={undefined}>
-        <DialogHeader>
-          <DialogTitle>Add care profile</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={submit} className="flex flex-col gap-4">
-          {error && <Alert variant="destructive">{error}</Alert>}
-          <PatientFormFields formData={formData} setFormData={setFormData} />
-          <DialogFooter>
-            <Button type="button" variant="secondary" onClick={close}>Cancel</Button>
-            <Button type="submit" disabled={saving}>
-              {saving ? 'Creating…' : 'Create profile'}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <EntityModal open={open} onOpenChange={(o) => { if (!o) close(); }} title="Add care profile" wide>
+      <form onSubmit={submit} className="em-form">
+        {error && <div className="em-error" role="alert">{error}</div>}
+        <PatientFormFields formData={formData} setFormData={setFormData} />
+        <div className="em-footer">
+          <button type="button" className="em-cancel" onClick={close}>Cancel</button>
+          <button type="submit" className="em-submit" disabled={saving}>
+            {saving ? 'Creating…' : 'Create profile'}
+          </button>
+        </div>
+      </form>
+    </EntityModal>
   );
 }

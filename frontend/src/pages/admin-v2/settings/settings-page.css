@@ -143,6 +143,8 @@
   padding: var(--cfg-pad) var(--cfg-pad-x);
   border-top: 1px solid var(--vc-line-hairline);
 }
+/* A footer with a status line on the left and its action on the right. */
+.cfg-foot.spread { justify-content: space-between; }
 
 /* A checkbox stack that goes side-by-side once there is room. */
 .cfg-checks { display: flex; flex-direction: column; gap: 0.5rem; }
@@ -397,6 +399,34 @@ button.cfg-stat .cfg-stat-label {
   color: var(--vc-text-secondary);
 }
 .cfg-toolbar-actions { display: flex; align-items: center; gap: 0.5rem; }
+
+/* Scrollable checkbox list for role / patient assignment (ToggleList). */
+.cfg-togglelist {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  max-height: 12rem;
+  overflow-y: auto;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: var(--cfg-radius);
+  background: var(--vc-bg-raised);
+}
+.cfg-togglelist .em-check-row[data-disabled] { opacity: 0.55; cursor: not-allowed; }
+.cfg-togglelist small {
+  display: block;
+  font-size: 11px;
+  color: var(--vc-text-tertiary);
+}
+.cfg-togglelist-empty {
+  margin: 0;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: var(--cfg-radius);
+  background: var(--vc-bg-raised);
+  font-size: 12.5px;
+  color: var(--vc-text-secondary);
+}
 
 /* Fine print under a card — a caveat the reader can skip. */
 .cfg-fine {

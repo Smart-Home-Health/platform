@@ -211,6 +211,6 @@ describe('HAIdentitiesCard fallback mode', () => {
       <HAIdentitiesCard users={USERS} roles={ROLES} patients={PATIENTS} />
     );
     await waitFor(() => expect(getHaDirectory).toHaveBeenCalled());
-    expect(container.querySelector('.font-medium')).toBeNull();
+    expect(container.querySelector('.hai-name')).toBeNull();
   });
 });
