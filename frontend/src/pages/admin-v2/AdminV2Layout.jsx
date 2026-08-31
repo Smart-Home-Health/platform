@@ -41,17 +41,8 @@ import {
   BarChartIcon,
   MessagesIcon
 } from '../../components/Icons';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Alert } from '@/components/ui/alert';
+import EntityModal, { EmField } from '../../components/vc/EntityModal';
+import '../../components/vc/entity-card.css';
 import './AdminV2.css';
 import './admin-nav.css'; // grouped-nav structure (both themes)
 // Bedside-monitor skin (dark theme only) + its fonts (shared entry, deduped
@@ -729,37 +720,40 @@ const AdminV2Layout = ({ children }) => {
         </div>
 
         {/* Unlock modal */}
-        <Dialog open={showUnlockModal} onOpenChange={(o) => { if (!o && !unlockLoading) setShowUnlockModal(false); }}>
-          <DialogContent className="sm:max-w-[400px]">
-            <DialogHeader>
-              <DialogTitle>Unlock read access</DialogTitle>
-              <DialogDescription>Enter account password to view data.</DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleUnlockSubmit} className="flex flex-col gap-3">
-              {unlockError && <Alert variant="destructive">{unlockError}</Alert>}
-              <Input
+        <EntityModal
+          open={showUnlockModal}
+          onOpenChange={(o) => { if (!o && !unlockLoading) setShowUnlockModal(false); }}
+          title="Unlock read access"
+        >
+          <form onSubmit={handleUnlockSubmit} className="em-form">
+            <p className="em-hint">Enter account password to view data.</p>
+            {unlockError && <div className="em-error" role="alert">{unlockError}</div>}
+            <EmField label="Account password" htmlFor="layout-unlock-password">
+              <input
+                id="layout-unlock-password"
+                className="em-input"
                 type="password"
                 value={unlockPassword}
                 onChange={e => setUnlockPassword(e.target.value)}
                 placeholder="Account password"
                 autoFocus
               />
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => !unlockLoading && setShowUnlockModal(false)}
-                  disabled={unlockLoading}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={unlockLoading}>
-                  {unlockLoading ? 'Unlocking...' : 'Unlock'}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+            </EmField>
+            <div className="em-footer">
+              <button
+                type="button"
+                className="em-cancel"
+                onClick={() => !unlockLoading && setShowUnlockModal(false)}
+                disabled={unlockLoading}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="em-submit" disabled={unlockLoading}>
+                {unlockLoading ? 'Unlocking...' : 'Unlock'}
+              </button>
+            </div>
+          </form>
+        </EntityModal>
 
         {/* Page Content */}
         <main className={`admin-v2-content ${topNavItems.length > 0 ? 'with-topnav' : ''}`}>
