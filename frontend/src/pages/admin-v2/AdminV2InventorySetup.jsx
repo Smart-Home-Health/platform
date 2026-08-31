@@ -26,6 +26,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
+import PatientGate from './components/PatientGate';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import { EmSelect } from '../../components/vc/EntityModal';
 import { CfgBadge } from './settings/CfgSection';
@@ -458,7 +459,9 @@ const AdminV2InventorySetup = () => {
   if (!selectedPatient) {
     return (
       <AdminV2Layout>
-        <div className="admin-v2-page"><p className="cfg-loading">Select a patient from the sidebar</p></div>
+        <div className="admin-v2-page">
+          <PatientGate message="Choose a patient to set up their inventory." />
+        </div>
       </AdminV2Layout>
     );
   }

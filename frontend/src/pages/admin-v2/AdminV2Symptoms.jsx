@@ -18,6 +18,7 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
+import PatientGate from './components/PatientGate';
 import config, { apiFetch } from '../../config';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
@@ -262,9 +263,7 @@ const AdminV2Symptoms = () => {
         )}
 
         {!selectedPatient ? (
-          <div className="admin-v2-empty-state">
-            <p>Please select a patient from the sidebar</p>
-          </div>
+          <PatientGate message="Choose a patient to track symptoms." />
         ) : (
           isHistoryView ? renderHistoryView() : isActiveView ? renderActiveView() : renderLogView()
         )}

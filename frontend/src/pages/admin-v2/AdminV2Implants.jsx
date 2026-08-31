@@ -17,6 +17,7 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import AdminV2Layout from './AdminV2Layout';
+import PatientGate from './components/PatientGate';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -345,7 +346,7 @@ const AdminV2Implants = () => {
     return (
       <AdminV2Layout>
         <div className="admin-v2-page">
-          <p className="cfg-empty">Please select a patient to manage implants.</p>
+          <PatientGate message="Choose a patient to manage implants." />
         </div>
       </AdminV2Layout>
     );

@@ -18,6 +18,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
+import PatientGate from './components/PatientGate';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import config, { apiFetch } from '../../config';
 import {
@@ -445,9 +446,7 @@ const AdminV2ProfileSummary = () => {
     return (
       <AdminV2Layout>
         <div className="admin-v2-page">
-          <div className="admin-v2-empty-state">
-            <p>Please select a patient from the sidebar to view their summary.</p>
-          </div>
+          <PatientGate message="Choose a patient to view their summary." />
         </div>
       </AdminV2Layout>
     );

@@ -24,7 +24,12 @@ vi.mock('./AdminV2Layout', () => ({ default: ({ children }) => <div>{children}</
 vi.mock('../../config', () => ({ default: { apiUrl: '' } }));
 
 const { patientCtx } = vi.hoisted(() => ({
-  patientCtx: { selectedPatient: { id: 5, first_name: 'Eli', last_name: 'Carty' } },
+  patientCtx: {
+    selectedPatient: { id: 5, first_name: 'Eli', last_name: 'Carty' },
+    patients: [{ id: 5, first_name: 'Eli', last_name: 'Carty', is_active: true }],
+    selectPatient: () => {},
+    loadingPatients: false,
+  },
 }));
 vi.mock('../../contexts/AdminPatientContext', () => ({
   useAdminPatient: () => patientCtx,
@@ -119,10 +124,12 @@ describe('AdminV2Vitals history', () => {
     expect(screen.getByRole('button', { name: 'Clear filters' })).toBeInTheDocument();
   });
 
-  it('shows the sidebar empty state without a selected patient', async () => {
+  it('gates on the patient picker without a selected patient', async () => {
     patientCtx.selectedPatient = null;
     await act(async () => { render(<AdminV2Vitals />); });
-    expect(screen.getByText(/select a patient from the sidebar/i)).toBeInTheDocument();
+    // PatientGate: the picker opens on its own with the patients listed.
+    expect(document.querySelector('.em-panel')).toBeInTheDocument();
+    expect(screen.getByText('Eli Carty')).toBeInTheDocument();
     patientCtx.selectedPatient = { id: 5, first_name: 'Eli', last_name: 'Carty' };
   });
 });

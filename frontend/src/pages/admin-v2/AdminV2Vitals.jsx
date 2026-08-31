@@ -17,6 +17,7 @@
  */
 import { Fragment, useState, useEffect, useMemo } from 'react';
 import AdminV2Layout from './AdminV2Layout';
+import PatientGate from './components/PatientGate';
 import config from '../../config';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import {
@@ -392,7 +393,7 @@ const AdminV2Vitals = () => {
     <AdminV2Layout>
       <div className="admin-v2-page">
         {!selectedPatient ? (
-          <div className="admin-v2-empty-state"><p>Please select a patient from the sidebar</p></div>
+          <PatientGate message="Choose a patient to view their vitals history." />
         ) : (
           renderHistoryView()
         )}

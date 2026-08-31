@@ -20,6 +20,7 @@ import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { API_BASE_URL, getApiBaseUrl, isIngress } from '../../config';
 import AdminV2Layout from './AdminV2Layout';
+import PatientGate from './components/PatientGate';
 import { timeAgo } from '../../utils/timezone';
 import {
   PlusIcon,
@@ -598,10 +599,11 @@ export default function AdminV2Connections() {
   if (!selectedPatient) {
     return (
       <AdminV2Layout>
-        <div className="admin-v2-empty-state">
-          <LinkIcon size={48} />
-          <h3>Select a Patient</h3>
-          <p className="admin-v2-text-muted">Please select a patient to manage their connections.</p>
+        <div className="admin-v2-page">
+          <PatientGate
+            icon={<LinkIcon size={48} />}
+            message="Choose a patient to manage their connections."
+          />
         </div>
       </AdminV2Layout>
     );

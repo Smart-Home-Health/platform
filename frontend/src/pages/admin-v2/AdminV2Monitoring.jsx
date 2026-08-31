@@ -17,6 +17,7 @@
  */
 import { useLocation } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
+import PatientGate from './components/PatientGate';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import AlertsList from '../../components/alerts/AlertsList';
 import AlertsHistory from '../../components/alerts/AlertsHistory';
@@ -50,11 +51,7 @@ const AdminV2Monitoring = () => {
 
   const renderContent = () => {
     if (!selectedPatient) {
-      return (
-        <p className="cfg-empty">
-          Select a patient from the sidebar to view monitoring alerts and history.
-        </p>
-      );
+      return <PatientGate message="Choose a patient to view monitoring alerts and history." />;
     }
 
     if (isTimelineView) {
