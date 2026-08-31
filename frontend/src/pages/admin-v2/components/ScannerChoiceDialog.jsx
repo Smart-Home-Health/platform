@@ -19,14 +19,9 @@
 // paired Bluetooth (keyboard-wedge) scanner coexist. The last-used answer is
 // remembered per device and preselected, so continuing is a single tap.
 import { useState } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+import EntityModal from '../../../components/vc/EntityModal';
 import { CameraIcon, BarcodeIcon } from '../../../components/Icons';
+import './scan-dialogs.css';
 
 export const SCANNER_CHOICE_KEY = 'adminV2ScannerChoice'; // 'camera' | 'external'
 
@@ -61,35 +56,27 @@ export default function ScannerChoiceDialog({
   ];
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose?.(); }}>
-      <DialogContent className="sm:max-w-[440px]" aria-describedby={undefined}>
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-        </DialogHeader>
-
-        <div className="flex flex-col gap-2">
-          {options.map(({ mode, label, icon }) => {
-            const preselected = mode === last;
-            return (
-              <div key={mode} className="flex flex-col gap-1">
-                <Button
-                  size="lg"
-                  variant={preselected ? 'default' : 'secondary'}
-                  autoFocus={preselected}
-                  data-preselected={preselected || undefined}
-                  onClick={() => choose(mode)}
-                >
-                  {icon} {label}
-                </Button>
-                {preselected && (
-                  <span className="text-center text-xs text-muted-foreground">Last used</span>
-                )}
-              </div>
-            );
-          })}
-          <Button variant="ghost" onClick={() => onClose?.()}>Cancel</Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+    <EntityModal open onOpenChange={(o) => { if (!o) onClose?.(); }} title={title}>
+      <div className="em-form">
+        {options.map(({ mode, label, icon }) => {
+          const preselected = mode === last;
+          return (
+            <div key={mode} className="scd-choice">
+              <button
+                type="button"
+                className={preselected ? 'em-submit' : 'em-cancel'}
+                autoFocus={preselected}
+                data-preselected={preselected || undefined}
+                onClick={() => choose(mode)}
+              >
+                {icon} {label}
+              </button>
+              {preselected && <span className="scd-last">Last used</span>}
+            </div>
+          );
+        })}
+        <button type="button" className="em-cancel" onClick={() => onClose?.()}>Cancel</button>
+      </div>
+    </EntityModal>
   );
 }

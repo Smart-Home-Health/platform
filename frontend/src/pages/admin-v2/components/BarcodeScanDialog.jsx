@@ -18,14 +18,7 @@
 // Single-barcode scanner: photograph the barcode on the item's own box
 // (retail UPC/EAN or Code 128) and hand the first read back to the caller.
 import { useEffect, useRef, useState } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import EntityModal from '../../../components/vc/EntityModal';
 import { CameraIcon } from '../../../components/Icons';
 
 export default function BarcodeScanDialog({ open, onClose, onFound, title = 'Scan the item barcode' }) {
@@ -85,43 +78,49 @@ export default function BarcodeScanDialog({ open, onClose, onFound, title = 'Sca
   if (!open) return null;
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose?.(); }}>
-      <DialogContent className="sm:max-w-[440px]" aria-describedby={undefined}>
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-        </DialogHeader>
+    <EntityModal open onOpenChange={(o) => { if (!o) onClose?.(); }} title={title}>
+      <div className="em-form">
+        {error && <div className="em-error" role="alert">{error}</div>}
 
-        {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
-
-        <p className="text-sm text-muted-foreground">
+        <p className="em-hint">
           Take a photo of the barcode on the box — get close and keep it flat.
         </p>
 
-        <div className="flex flex-col gap-2">
-          <Button size="lg" onClick={() => takePhotoInputRef.current?.click()} disabled={busy}>
-            <CameraIcon size={16} /> {busy ? 'Reading…' : 'Take a photo of the barcode'}
-          </Button>
-          <Button variant="secondary" onClick={() => cameraRollInputRef.current?.click()} disabled={busy}>
-            Choose from your camera roll
-          </Button>
-          <input
-            ref={takePhotoInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="hidden"
-            onChange={handleFileChosen}
-          />
-          <input
-            ref={cameraRollInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleFileChosen}
-          />
-          <Button variant="ghost" onClick={() => onClose?.()} disabled={busy}>Cancel</Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+        <button
+          type="button"
+          className="em-submit"
+          onClick={() => takePhotoInputRef.current?.click()}
+          disabled={busy}
+        >
+          <CameraIcon size={16} /> {busy ? 'Reading…' : 'Take a photo of the barcode'}
+        </button>
+        <button
+          type="button"
+          className="em-cancel"
+          onClick={() => cameraRollInputRef.current?.click()}
+          disabled={busy}
+        >
+          Choose from your camera roll
+        </button>
+        <input
+          ref={takePhotoInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          style={{ display: 'none' }}
+          onChange={handleFileChosen}
+        />
+        <input
+          ref={cameraRollInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: 'none' }}
+          onChange={handleFileChosen}
+        />
+        <button type="button" className="em-cancel" onClick={() => onClose?.()} disabled={busy}>
+          Cancel
+        </button>
+      </div>
+    </EntityModal>
   );
 }
