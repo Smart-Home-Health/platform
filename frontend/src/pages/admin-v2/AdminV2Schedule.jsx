@@ -42,6 +42,7 @@ import {
 import { getCurrentLocalDateTime, localDateTimeToUTC, checkAdministrationWindow, formatDurationMinutes } from '../../utils/timezone';
 import EntityModal, { EmField } from '../../components/vc/EntityModal';
 import '../../components/vc/entity-card.css';
+import './settings/settings-page.css';
 import './AdminV2.css';
 import './vc-schedule.css'; // bedside-monitor skin (dark theme only)
 
@@ -793,9 +794,7 @@ const AdminV2Schedule = () => {
         {selectedPatient ? (
           <>
             {error && (
-              <div className="tw" style={{ marginBottom: '1rem' }}>
-                <Alert variant="destructive">{error}</Alert>
-              </div>
+              <div className="em-error" role="alert" style={{ marginBottom: '1rem' }}>{error}</div>
             )}
 
             {/* Date Navigation */}
@@ -1285,14 +1284,12 @@ const AdminV2Schedule = () => {
             </div>
           </>
         ) : (
-          <div className="schedule-select-patient">
+          <div className="cfg-nopatient">
             <h2>Select a Patient</h2>
             <p>Choose a patient to view their daily schedule</p>
-            <div className="tw">
-              <Button onClick={() => setShowPatientModal(true)}>
-                Select Patient
-              </Button>
-            </div>
+            <button type="button" className="em-submit" onClick={() => setShowPatientModal(true)}>
+              Select Patient
+            </button>
           </div>
         )}
 
