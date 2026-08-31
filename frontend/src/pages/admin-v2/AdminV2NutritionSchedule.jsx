@@ -323,7 +323,7 @@ const AdminV2NutritionSchedule = () => {
         {selectedPatient ? (
           <div className="cfg">
             {/* Stats row — each tile toggles its status filter */}
-            <div className="cfg-stats">
+            <div className="cfg-stats row">
               {statTiles.map(tile => (
                 <button
                   key={tile.key}

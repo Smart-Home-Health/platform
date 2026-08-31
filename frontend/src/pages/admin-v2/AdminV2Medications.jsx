@@ -179,7 +179,7 @@ const AdminV2Medications = () => {
           <div className="cfg">
             {error && <div className="em-error ec-page-alert">{error}</div>}
 
-            <div className="cfg-stats">
+            <div className="cfg-stats row">
               <CfgStat label="Active" value={medications.length} />
               <CfgStat label="Scheduled" value={scheduledCount} />
               <CfgStat label="PRN" value={prnCount} />

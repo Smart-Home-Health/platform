@@ -326,6 +326,20 @@ a.cfg-ghost { text-decoration: none; }
   grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
   gap: 0.45rem;
 }
+/* Count tiles stay on ONE row even on a phone (same call as cp-stats:
+ * stacked, they push the actual content below the fold). Only for short
+ * numeric tiles — long fact values keep the wrapping default above. */
+.cfg-stats.row {
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-template-columns: none;
+}
+@media (max-width: 640px) {
+  .cfg-stats.row { gap: 0.3rem; }
+  .cfg-stats.row .cfg-stat { padding: 0.4rem 0.35rem; }
+  .cfg-stats.row .cfg-stat-label { font-size: 8.5px; letter-spacing: 0.04em; }
+  .cfg-stats.row .cfg-stat-value { font-size: 15px; }
+}
 .cfg-stat {
   display: flex;
   flex-direction: column;

@@ -346,7 +346,7 @@ const AdminV2CareTasksSchedule = () => {
         {selectedPatient ? (
           <div className="cfg">
             {/* Stats row — each tile toggles its status filter(s) */}
-            <div className="cfg-stats">
+            <div className="cfg-stats row">
               {statTiles.map(tile => {
                 const pressed = tile.keys.every(k => statusFilters[k]);
                 return (

@@ -518,7 +518,7 @@ const AdminV2MedicationsManage = () => {
             {error && <div className="em-error ec-page-alert">{error}</div>}
 
             {/* Summary Stats */}
-            <div className="cfg-stats">
+            <div className="cfg-stats row">
               <CfgStat label="Active" value={activeCount} />
               <CfgStat label="PRN" value={prnCount} />
               <CfgStat label="Inactive" value={inactiveCount} />
