@@ -31,17 +31,10 @@ import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import { NutritionIcon } from '../../components/Icons';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Alert } from '@/components/ui/alert';
+import ConfirmSheet from '../../components/vc/ConfirmSheet';
+import '../../components/vc/entity-card.css';
 import './AdminV2.css';
+import './settings/settings-page.css';
 
 // Module-scope so the inputs don't lose focus on each keystroke (a component
 // defined inside render remounts every change).
@@ -579,17 +572,17 @@ const AdminV2Nutrition = () => {
         />
         
         {!selectedPatient ? (
-          <div className="admin-v2-empty-state">
+          <div className="cfg-nopatient">
             <NutritionIcon size={48} />
-            <h3>No Patient Selected</h3>
+            <h2>No Patient Selected</h2>
             <p>Please select a patient to manage nutrition and output tracking.</p>
-            <div className="tw">
-              <Button onClick={() => setShowPatientModal(true)}>Select Patient</Button>
-            </div>
+            <button type="button" className="em-submit" onClick={() => setShowPatientModal(true)}>
+              Select Patient
+            </button>
           </div>
         ) : (
           <>
-            {error && <div className="tw"><Alert variant="destructive">{error}</Alert></div>}
+            {error && <div className="em-error" role="alert">{error}</div>}
 
             {/* OVERVIEW TAB — rendered outside .admin-v2-content so the
                 sticky date nav binds to the outer Layout scroll container. */}
@@ -738,25 +731,18 @@ const AdminV2Nutrition = () => {
         refreshKey={historyRefresh}
       />
 
-      {/* Delete Confirmation Modal */}
-      <Dialog open={showDeleteModal} onOpenChange={(o) => { if (!o) setShowDeleteModal(false); }}>
-        <DialogContent className="sm:max-w-[420px]">
-          <DialogHeader>
-            <DialogTitle>Confirm Delete</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete this {deleteType}? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setShowDeleteModal(false)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={saving}>
-              {saving ? 'Deleting...' : 'Delete'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Delete Confirmation */}
+      <ConfirmSheet
+        open={showDeleteModal}
+        onOpenChange={(o) => { if (!o) setShowDeleteModal(false); }}
+        title="Confirm Delete"
+        confirmLabel={saving ? 'Deleting...' : 'Delete'}
+        tone="destructive"
+        busy={saving}
+        onConfirm={handleDelete}
+      >
+        Are you sure you want to delete this {deleteType}? This action cannot be undone.
+      </ConfirmSheet>
     </AdminV2Layout>
   );
 };
