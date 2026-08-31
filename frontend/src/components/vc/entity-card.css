@@ -568,6 +568,42 @@ textarea.em-input { min-height: 0; resize: vertical; padding: 0.6rem 0.75rem; }
 .em-input::-webkit-datetime-edit-hour-field,
 .em-input::-webkit-datetime-edit-minute-field,
 .em-input::-webkit-datetime-edit-meridiem-field { padding-block: 0; }
+/* Multi-select: an em-input-shaped trigger opening a checkbox popover. */
+.em-multi { position: relative; }
+.em-multi-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+.em-multi-trigger > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.em-multi-trigger svg { flex: 0 0 auto; color: var(--vc-text-secondary); }
+.em-multi-placeholder { color: var(--vc-text-tertiary); }
+.em-multi-pop {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  max-height: 15rem;
+  overflow-y: auto;
+  padding: 0.4rem 0.5rem;
+  background: var(--vc-bg-sheet);
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
 .em-select-wrap { position: relative; display: block; }
 .em-select-wrap svg {
   position: absolute;
