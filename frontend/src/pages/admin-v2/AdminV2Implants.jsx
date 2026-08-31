@@ -94,8 +94,13 @@ const AdminV2Implants = () => {
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
+  // Same shape as the Diagnoses/Providers/Businesses helpers: a system admin
+  // always passes (this page used to skip that check, which hid the Add
+  // button from admins with no explicit grants).
   const hasPermission = useCallback((permission) => {
-    if (!user?.permissions) return false;
+    if (!user) return false;
+    if (user.is_system_admin) return true;
+    if (!user.permissions) return false;
     return user.permissions.includes(permission) ||
            user.permissions.includes('admin') ||
            user.permissions.includes('implants.*') ||

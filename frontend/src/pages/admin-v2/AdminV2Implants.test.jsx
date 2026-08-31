@@ -112,7 +112,8 @@ describe('AdminV2Implants', () => {
   });
 
   it('hides create and row actions without the permissions', async () => {
-    authCtx.user = { is_system_admin: true, permissions: [] };
+    // Not a system admin (admins always pass, like every sibling page).
+    authCtx.user = { is_system_admin: false, permissions: [] };
     await renderPage();
     expect(screen.queryByRole('button', { name: /Add Implant/i })).not.toBeInTheDocument();
     expect(document.querySelector('.ec-menu-wrap')).not.toBeInTheDocument();
