@@ -34,9 +34,9 @@
 
 /* Titles are a flex row of tabs + counts with no wrap — let them stack rather
    than overflow the header. Scoped to the title node, not "any flex row". */
-.ld-dock-narrow .modal-header > .modal-title { min-width: 0; }
-.ld-dock-narrow .modal-title > div,
-.ld-dock-narrow .modal-title > span { flex-wrap: wrap; }
+.ld-dock-narrow .mb-head > .mb-title { min-width: 0; }
+.ld-dock-narrow .mb-title > div,
+.ld-dock-narrow .mb-title > span { flex-wrap: wrap; }
 
 /* History's table sits in a container that clips (`overflow: hidden`) rather
    than scrolls, so a 4-column table just loses its right-hand columns. */
@@ -46,12 +46,12 @@
 .ld-dock-narrow .admin-v2-table td { padding: 0.5rem; }
 
 /* Give the content back the space the wide slab's padding spends. */
-.ld-dock-narrow .modal-body { padding: 0.75rem; }
+.ld-dock-narrow .mb-body { padding: 0.75rem; }
 
-/* NOTE — deliberately not patched here: Settings' two hard `1fr 1fr` field
-   grids and the Alerts history row grid (a viewport-keyed Tailwind `sm:`
-   class, which stays "on" inside a narrow panel on a wide screen). Both need
-   a real fix in their own markup, and blanket inline-style attribute
-   selectors to reach them would fire on unrelated rows. They are cramped but
-   usable at the narrow stop, and the expand control is one click away —
-   they get sorted when those sections are rebuilt. */
+/* The two exceptions this note used to list — Settings' hard `1fr 1fr` field
+   grids and the Alerts history row grid (then a viewport-keyed Tailwind `sm:`
+   class, which stayed "on" inside a narrow panel on a wide screen) — have both
+   since been fixed in their own markup: settings-panel.css carries the `st-panel
+   narrow/wide` variants and alerts-history.css the `.ah-panel.wide` row grids,
+   each driven by the dock state rather than the viewport. That is the pattern
+   to follow; prefer it over adding anything below. */

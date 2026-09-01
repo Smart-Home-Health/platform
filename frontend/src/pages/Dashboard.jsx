@@ -195,7 +195,7 @@ export default function Dashboard() {
   // expanded also takes the charts. Both are measured rather than written as
   // vw constants — the columns are a grid (`minmax(230px, 320px)` /
   // `minmax(300px, 400px)`), so no viewport fraction is right at every width.
-  // Consumed by .live-dash .dashboard-modal-overlay in live-dashboard.css.
+  // Consumed by .live-dash .mb-overlay in live-dashboard.css.
   //
   // Written to <html>, not to the board element: the capture panel's entry
   // sheet portals to <body>, outside the board, and still has to line up with
@@ -991,6 +991,7 @@ export default function Dashboard() {
         onClose={() => { if (!needsUnlock) setActionUnlockOpen(false); }}
         title="Unlock"
         dock={false}
+        dismissible={false}
       >
         <form onSubmit={handleUnlockSubmit} className="em-inline">
           <div className="em-form">
@@ -1029,6 +1030,7 @@ export default function Dashboard() {
         onClose={() => { if (selectedPatient) setShowPatientModal(false); }}
         title="Select Patient"
         dock={false}
+        dismissible={false}
       >
         {loadingPatients ? (
           <div>Loading patients…</div>

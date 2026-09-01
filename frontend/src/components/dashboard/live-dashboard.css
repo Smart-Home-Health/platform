@@ -398,7 +398,7 @@
  * Breakpoint matches ModalBase's own `window.innerWidth <= 768` test, which
  * switches the overlay to its full-screen `.mobile` variant. */
 @media (min-width: 769px) {
-  .live-dash .dashboard-modal-overlay.docked {
+  .live-dash .mb-overlay.docked {
     top: var(--ld-panel-top, 60px);
     left: var(--ld-panel-left, 0px);
     right: var(--ld-panel-right, 0px);
@@ -411,14 +411,14 @@
     backdrop-filter: none;
     transition: left 160ms ease;
   }
-  .live-dash .dashboard-modal-overlay.docked.expanded {
+  .live-dash .mb-overlay.docked.expanded {
     left: var(--ld-panel-left-wide, 0px);
   }
 
   /* Undocked panels (`dock={false}`) take the rest of the board, but still
      start after the vitals column: the pulse ox keeps streaming while the
      board is locked, so an unlock prompt must not cover live readings. */
-  .live-dash .dashboard-modal-overlay:not(.docked):not(.mobile) {
+  .live-dash .mb-overlay:not(.docked):not(.mobile) {
     top: var(--ld-panel-top, 60px);
     left: var(--ld-panel-left, 0px);
     right: 0;
@@ -426,21 +426,34 @@
   bottom: calc(var(--ld-panel-bottom, 0px) + var(--vkb-height, 0px));
     width: auto;
     height: auto;
+    /* The board's own gates (unlock, patient picker) fill their region
+       edge-to-edge rather than sitting as a centred panel inside it — the
+       region is already bounded by the vitals column it must not cover.
+       modal-base.css centres the plain-desktop shape for admin surfaces,
+       which have no such bounding. */
+    display: block;
+    padding: 0;
+  }
+  .live-dash .mb-overlay:not(.docked):not(.mobile) > .mb-panel {
+    height: 100%;
+    max-width: none;
+    border: none;
+    border-radius: 0;
   }
 
   /* Docked panels wear the same chrome as the cards they stand in for. */
-  .live-dash .modal-container.docked {
+  .live-dash .mb-panel.docked {
     border: 1px solid var(--dash-border);
     border-radius: 12px;
     background: var(--dash-surface);
   }
-  .live-dash .modal-header.docked {
+  .live-dash .mb-head.docked {
     border-bottom: 1px solid var(--dash-border);
     background: none;
     padding: 0.7rem 0.5rem 0.7rem 1rem;
     gap: 0.5rem;
   }
-  .live-dash .modal-header.docked .modal-title {
+  .live-dash .mb-head.docked .mb-title {
     font-size: 12.5px;
     font-weight: 700;
     letter-spacing: 0.12em;
@@ -449,44 +462,17 @@
   }
   /* The one inner scroller of a docked panel body. min-height: 0 is the
      whole point — without it the flex child can't shrink below its content
-     and overflow never engages, so the outer .modal-body scrolls the list
+     and overflow never engages, so the outer .mb-body scrolls the list
      and the side pane as one document. */
   .ld-panel-scroll { flex: 1; min-height: 0; overflow-y: auto; }
 
-  .live-dash .modal-body.docked {
+  .live-dash .mb-body.docked {
     flex: 1;
     min-height: 0;
     overflow: auto;
     padding: 0.85rem 1rem;
   }
 }
-
-/* Expand / collapse control in a docked panel header.
- * box-sizing + padding are explicit because index.css styles every bare
- * <button> outside `.tw` (0.6em/1.2em padding on a content-box), and the icon
- * needs its own dimensions or it collapses to zero width as a flex item. */
-.modal-expand {
-  box-sizing: border-box;
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  margin-left: auto;
-  border: 1px solid var(--dash-border);
-  border-radius: 8px;
-  background: none;
-  color: var(--dash-text-muted);
-  cursor: pointer;
-}
-.modal-expand svg { flex: 0 0 auto; width: 16px; height: 16px; }
-.modal-expand:hover {
-  border-color: var(--dash-border-strong);
-  color: var(--dash-text);
-}
-.modal-header.docked .modal-close { margin-left: 0; }
 
 /* ---- Mobile ---- */
 @media (max-width: 768px) {
@@ -602,7 +588,7 @@
  * "← Back" that belongs to no palette here. It appears on every section on a
  * phone, so its weight is felt across the whole board. Tighter, and on-token.
  * Specificity is doubled deliberately — App.css is injected after this sheet. */
-.live-dash .modal-header.mobile {
+.live-dash .mb-head.mobile {
   height: auto;
   min-height: 0;
   padding: 0.55rem 0.75rem;
@@ -610,7 +596,7 @@
   border-bottom: 1px solid var(--dash-border);
   background: none;
 }
-.live-dash .modal-header .modal-back-button {
+.live-dash .mb-head .mb-back {
   flex-shrink: 0;
   min-height: 34px;
   padding: 0 0.6rem;
@@ -625,10 +611,10 @@
   text-transform: uppercase;
   gap: 0.3rem;
 }
-.live-dash .modal-header .modal-back-button:hover {
+.live-dash .mb-head .mb-back:hover {
   background: var(--dash-surface-2);
   color: var(--dash-text);
   border-color: var(--dash-border-strong);
 }
 /* The title carries the section, so it gets the space the button gives back. */
-.live-dash .modal-header.mobile .modal-title { font-size: 12.5px; min-width: 0; }
+.live-dash .mb-head.mobile .mb-title { font-size: 12.5px; min-width: 0; }
