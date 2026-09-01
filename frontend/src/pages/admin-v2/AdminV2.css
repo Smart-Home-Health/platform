@@ -882,7 +882,6 @@
 }
 
 @media (max-width: 600px) {
-  
 
   .admin-v2-stats-row-compact .admin-v2-stat-card {
     padding: 0.5rem 0.25rem;
@@ -1013,11 +1012,11 @@
   .admin-v2-sidebar {
     width: 200px;
   }
-  
+
   .admin-v2-main {
     margin-left: 200px;
   }
-  
+
   .admin-v2-patients-grid {
     grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   }
@@ -1272,10 +1271,6 @@
   background: color-mix(in srgb, var(--vc-data-live) 5%, transparent);
 }
 
-/* One line per member in a merged output row (mixed diaper details). */
-
-/* User Cell */
-
 /* Role Badges */
 
 .admin-v2-role-badge.admin {
@@ -1300,10 +1295,6 @@
   color: var(--vc-text-secondary);
 }
 
-/* Patient Count */
-
-/* Table Actions */
-
 /* Action Buttons with Text Labels */
 
 .admin-v2-icon-btn.danger:hover {
@@ -1312,28 +1303,12 @@
   border-color: var(--vc-state-alert);
 }
 
-/* Modal Styles */
-
-/* Form inside modal needs to be a flex container */
-
-/* Form Styles */
-
 /* 3-column variant for triples (e.g. macros: calories/protein/carbs). */
 
 .admin-v2-form-group input.disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
-
-/* Role Selector */
-
-/* Placeholder Box */
-
-/* Warning Text */
-
-/* Danger Button */
-
-/* Permission Selector for Role CRUD */
 
 /* Pill-style permission toggles */
 
@@ -1347,10 +1322,6 @@
   background: var(--vc-state-complete);
   border-color: var(--vc-state-complete);
 }
-
-/* Role/Permission Info Cells */
-
-/* Notice/Info Box */
 
 /* Permissions by Category Cards */
 .admin-v2-section {
@@ -1372,14 +1343,6 @@
   background: var(--vc-text-secondary);
 }
 
-/* Empty State Small */
-
-/* Responsive adjustments for forms */
-
-/* Patient Context Header */
-
-/* No Patient Selected State */
-
 /* Patient Selector List */
 
 .admin-v2-patient-selector-item.selected {
@@ -1397,18 +1360,12 @@
   color: var(--vc-text-secondary);
 }
 
-/* Inactive Row Styling */
-
 /* Patient Table Cell */
 
 .admin-v2-patient-cell .admin-v2-patient-name {
   font-weight: 500;
   color: var(--vc-text-primary);
 }
-
-/* Medication Name Cell */
-
-/* Instructions Cell */
 
 /* Badge Styles */
 .admin-v2-badge {
@@ -1449,18 +1406,12 @@
   font-size: 1rem;
 }
 
-/* Checkbox Label */
-
-/* Checkbox Grid for multi-select */
-
 /* Badge Group for multiple badges */
 
 .admin-v2-badge-group .admin-v2-badge {
   font-size: 0.7rem;
   padding: 0.15rem 0.5rem;
 }
-
-/* Empty Row */
 
 /* Schedule Modal Styles */
 
@@ -1595,10 +1546,6 @@
   border-color: var(--vc-data-live);
 }
 
-/* Table Header with Actions */
-
-/* History Page Styles */
-
 /* History Stats */
 
 .history-stat {
@@ -1673,10 +1620,6 @@
   color: var(--vc-text-secondary);
 }
 
-/* Empty/Error/Loading States */
-
-/* ===================== */
-/* Medication History Styles */
 /* ===================== */
 
 /* Collapsible filter card (medication history): a tappable header that expands
@@ -1685,8 +1628,6 @@
 .admin-v2-filter-card.open .admin-v2-filter-chevron {
   transform: rotate(-90deg); /* points up when expanded */
 }
-
-/* Search spans the full width above the 2x2 of date/status/limit. */
 
 /* History Stats */
 
@@ -1999,28 +1940,16 @@
 
 /* Responsive adjustments */
 @media (max-width: 768px) {
-  
-
-  
 
   /* Full-width controls that stay inside the card. Without box-sizing the
      padding on a width:100% input overruns the filter card and the row
      overflows the viewport. */
-  
-  
-  
-  
+
   .history-stat {
     flex: 1;
     min-width: 80px;
   }
-  
-  
-  
-  
-  
-  
-  
+
   .admin-v2-cards-grid {
     grid-template-columns: 1fr;
   }
@@ -2076,21 +2005,11 @@
   color: #fff;
 }
 
-/* Nutrition section in schedule modal */
-
 /* Equipment-specific styles */
 
 .admin-v2-quantity.low {
   color: var(--vc-state-alert);
 }
-
-/* History List Styles */
-
-/* Filter Bar */
-
-/* Text color utilities */
-
-/* ===== SCHEDULE PAGE STYLES ===== */
 
 /* Date Navigation */
 .admin-v2-schedule-nav {
@@ -3006,8 +2925,7 @@ body.printing-schedule .admin-v2-schedule-prn-add {
 
   /* Section tabs: natural-width pills that scroll horizontally instead of
      clipping the last option ("Consumables"). Standard mobile tab pattern. */
-  
-  
+
   .admin-v2-tab {
     flex: 0 0 auto;
     white-space: nowrap;
@@ -3018,7 +2936,6 @@ body.printing-schedule .admin-v2-schedule-prn-add {
     align-items: center;
     gap: 3px;
   }
-  
 
   /* Equipment table → stacked cards on mobile (the row-as-card pattern). Only
      applies to tables opted in with .admin-v2-table-cards, so other tables keep
@@ -3180,78 +3097,78 @@ body.printing-schedule .admin-v2-schedule-prn-add {
   .admin-v2-schedule-header {
     grid-template-columns: 60px minmax(0, 1fr);
   }
-  
+
   .admin-v2-schedule-row {
     grid-template-columns: 60px minmax(0, 1fr);
   }
-  
+
   .admin-v2-schedule-header .admin-v2-schedule-time-col,
   .admin-v2-schedule-header .admin-v2-schedule-col,
   .admin-v2-schedule-row .admin-v2-schedule-time-col,
   .admin-v2-schedule-row .admin-v2-schedule-col {
     min-width: 0;
   }
-  
+
   /* Truncate long item text so table doesn't overflow */
   .admin-v2-schedule-item-name {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  
+
   .admin-v2-schedule-item-header {
     min-width: 0;
   }
-  
+
   /* Hide column headers except time */
   .admin-v2-schedule-header .admin-v2-schedule-col {
     display: none;
   }
-  
+
   /* Show the active tab's column header */
   .admin-v2-schedule-container.mobile-tab-medications .admin-v2-schedule-header .admin-v2-schedule-col.medications,
   .admin-v2-schedule-container.mobile-tab-nutrition .admin-v2-schedule-header .admin-v2-schedule-col.nutrition,
   .admin-v2-schedule-container.mobile-tab-tasks .admin-v2-schedule-header .admin-v2-schedule-col.tasks {
     display: flex;
   }
-  
+
   /* Hide all columns by default on mobile */
   .admin-v2-schedule-row .admin-v2-schedule-col {
     display: none;
   }
-  
+
   /* Show only the active tab's column */
   .admin-v2-schedule-container.mobile-tab-medications .admin-v2-schedule-row .admin-v2-schedule-col.medications,
   .admin-v2-schedule-container.mobile-tab-nutrition .admin-v2-schedule-row .admin-v2-schedule-col.nutrition,
   .admin-v2-schedule-container.mobile-tab-tasks .admin-v2-schedule-row .admin-v2-schedule-col.tasks {
     display: block;
   }
-  
+
   /* Time column adjustments */
   .admin-v2-schedule-time-col {
     padding: 0.5rem;
     font-size: 0.8rem;
   }
-  
+
   /* Shrink item padding on mobile */
   .admin-v2-schedule-item {
     padding: 0.5rem;
   }
-  
+
   .admin-v2-schedule-item-header {
     flex-wrap: wrap;
     gap: 0.25rem;
   }
-  
+
   .admin-v2-schedule-item-name {
     flex: 1 1 100%;
     order: -1;
   }
-  
+
   .admin-v2-schedule-item-time {
     font-size: 0.7rem;
   }
-  
+
   .admin-v2-schedule-item-dose,
   .admin-v2-schedule-item-category {
     font-size: 0.7rem;
@@ -3516,8 +3433,6 @@ body.printing-schedule .admin-v2-schedule-prn-add {
   background: color-mix(in srgb, var(--vc-bg-surface) 60%, transparent);
 }
 
-/* Severity Slider */
-
 /* Empty State */
 .admin-v2-empty-state {
   text-align: center;
@@ -3538,18 +3453,12 @@ body.printing-schedule .admin-v2-schedule-prn-add {
   gap: 0.5rem;
 }
 
-/* Form row for modal */
-
-/* Modal detail text */
-
 /* Button variants */
 
 .admin-v2-btn-sm {
   padding: 0.35rem 0.5rem;
   font-size: 0.8rem;
 }
-
-/* ===== Nutrition Styles ===== */
 
 /* Current Goals Card */
 
@@ -3568,8 +3477,6 @@ body.printing-schedule .admin-v2-schedule-prn-add {
 .macro-item.carbs .macro-value { color: var(--vc-state-due); }
 .macro-item.fat .macro-value { color: #fb923c; }
 .macro-item.fiber .macro-value { color: var(--vc-state-complete); }
-
-/* Limits Grid */
 
 /* Goals Footer */
 
@@ -3662,10 +3569,6 @@ body.printing-schedule .admin-v2-schedule-prn-add {
   text-align: center;
 }
 
-/* Timeline styles for output log */
-
-/* Amount input with unit */
-
 /* ===== Schedule Summary Cards ===== */
 
 .admin-v2-schedule-summary-icon.water {
@@ -3719,8 +3622,6 @@ body.printing-schedule .admin-v2-schedule-prn-add {
    styled: the overview is now components/NutritionOverview.jsx on its own
    vc-native nutrition-overview.css. */
 
-/* Filters Card Styles */
-
 /* Status badges */
 
 .admin-v2-status-badge.active {
@@ -3738,8 +3639,6 @@ body.printing-schedule .admin-v2-schedule-prn-add {
   background: color-mix(in srgb, var(--vc-data-live) 15%, transparent);
   color: var(--vc-data-live);
 }
-
-/* Table description column */
 
 /* Resolved row */
 .admin-v2-table tr.resolved-row {
@@ -4049,8 +3948,6 @@ body.printing-schedule .admin-v2-schedule-prn-add {
   font-weight: 500;
 }
 
-/* Notes Section */
-
 /* Form Actions */
 .vitals-form-actions {
   display: flex;
@@ -4064,11 +3961,11 @@ body.printing-schedule .admin-v2-schedule-prn-add {
   .vitals-input-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .vitals-toggle-bar {
     justify-content: center;
   }
-  
+
   .vitals-toggle-btn {
     flex: 1;
     min-width: 80px;
@@ -4082,14 +3979,6 @@ body.printing-schedule .admin-v2-schedule-prn-add {
   .vital-input.large {
     font-size: 1.25rem;
   }
-
-  
-
-  
-
-  
-
-  
 
   .custom-vitals-add-row .admin-v2-btn {
     flex-shrink: 0;
@@ -4112,8 +4001,6 @@ body.printing-schedule .admin-v2-schedule-prn-add {
   margin-top: 0.75rem;
 }
 
-/* Note type badges */
-
 /* Status badges for diagnoses */
 .admin-v2-badge-success {
   background: color-mix(in srgb, var(--vc-state-complete) 20%, transparent);
@@ -4125,10 +4012,6 @@ body.printing-schedule .admin-v2-schedule-prn-add {
   color: var(--vc-text-secondary);
 }
 
-/* Notes action button */
-
-/* Card badges container */
-
 /* Empty state small variant */
 
 /* ==============================================
@@ -4138,10 +4021,6 @@ body.printing-schedule .admin-v2-schedule-prn-add {
 .admin-v2-notes-form .admin-v2-btn {
   margin-top: 0.5rem;
 }
-
-/* Note type badges */
-
-/* Card badges container */
 
 /* Additional badge types for diagnoses */
 .admin-v2-badge-success {
@@ -4164,12 +4043,6 @@ body.printing-schedule .admin-v2-schedule-prn-add {
   grid-column: 1 / -1;
 }
 
-/* Profile Lists (Diagnoses, Medications, Symptoms) */
-
-/* Medications - single column, scrollable */
-
-/* Diagnosis Items */
-
 /* Status Badges */
 
 .status-badge.active {
@@ -4191,10 +4064,6 @@ body.printing-schedule .admin-v2-schedule-prn-add {
   background: color-mix(in srgb, var(--vc-data-live) 20%, transparent);
   color: var(--vc-data-live);
 }
-
-/* Medication Items - 2 row layout */
-
-/* Old medication styles removed - using medication-row instead */
 
 /* Symptom Items */
 
@@ -4219,10 +4088,6 @@ body.printing-schedule .admin-v2-schedule-prn-add {
 .provider-card.primary {
   border-color: color-mix(in srgb, var(--vc-data-live) 50%, transparent);
 }
-
-/* Vitals Charts Grid */
-
-/* Nutrition Charts */
 
 /* Profile Summary - Implants Section */
 
@@ -4286,26 +4151,12 @@ body.printing-schedule .admin-v2-schedule-prn-add {
   border-radius: 3px;
 }
 
-/* Card badges row */
-
-/* Notes count badge */
-
-/* Filter row */
-
-/* Large modal for implant form */
-
 /* Form grid for implant form */
 
 .admin-v2-form-group.full-width,
 .admin-v2-form-section.full-width {
   grid-column: 1 / -1;
 }
-
-/* Checkbox label styling */
-
-/* Notes form */
-
-/* Note change info */
 
 /* Print Button */
 
@@ -4359,113 +4210,38 @@ body.printing-schedule .admin-v2-schedule-prn-add {
     overflow: visible !important;
   }
 
-  
-
-  
-
   .admin-v2-header .subtitle {
     color: #666 !important;
     font-size: 11pt !important;
   }
 
   /* Profile sections */
-  
-
-  
 
   .profile-section.full-width {
     width: 100% !important;
   }
 
-  
-
-  
-
-  /* Profile list - remove scroll constraints */
-  
-
   /* List items */
-  
 
   .symptom-type {
     color: #000 !important;
   }
 
-  
-
-  
-
-  /* Status badges for print */
-  
-
-  
-
   /* Provider cards */
-  
-
-  
 
   .provider-card.primary {
     border-color: #666 !important;
   }
 
-  /* Charts - ensure they print with colors */
-  
-
-  
-
-  
-
-  
-
-  /* Recharts print adjustments */
-  
-
-  
-
-  
-
-  
-
   /* Implants section for print */
-  
 
   .implant-item.life-sustaining {
     border-left-color: #666 !important;
     background: #f0f0f0 !important;
   }
 
-  
-
-  
-
-  
-
-  
-
-  /* Providers table for print */
-  
-
-  
-
-  
-
-  
-
-  
-
-  
-
-  
-
-  /* Page breaks */
-  
-
-  
 }
 
-/* ======================= */
-/* DME Shipments Styles    */
 /* ======================= */
 
 .admin-v2-section {
@@ -4492,7 +4268,7 @@ body.printing-schedule .admin-v2-schedule-prn-add {
    full-width — otherwise the side-by-side flex squeezes the text into a
    one-word-per-line column and pushes buttons off-screen. */
 @media (max-width: 768px) {
-  
+
   .admin-v2-info-banner .tw {
     width: 100%;
   }
@@ -4533,9 +4309,6 @@ body.printing-schedule .admin-v2-schedule-prn-add {
 .spinning {
   animation: spin 1s linear infinite;
 }
-
-/* ───────── Medications overview/manage: mobile card list ───────── */
-/* Hide the card list on desktop; the table is the primary view. */
 
 /* Title row + Table/Cards view toggle (overview page). */
 
