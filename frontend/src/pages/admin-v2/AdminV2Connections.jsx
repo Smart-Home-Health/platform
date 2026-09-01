@@ -590,8 +590,8 @@ export default function AdminV2Connections() {
   if (user && !user.is_system_admin) {
     return (
       <AdminV2Layout>
-        <div style={{ padding: '2rem', color: 'var(--muted-foreground)', textAlign: 'center' }}>
-          <h3 style={{ color: 'var(--foreground)' }}>Access Denied</h3>
+        <div style={{ padding: '2rem', color: 'var(--vc-text-secondary)', textAlign: 'center' }}>
+          <h3 style={{ color: 'var(--vc-text-primary)' }}>Access Denied</h3>
           <p>Connections are only available to system administrators.</p>
         </div>
       </AdminV2Layout>

@@ -2,19 +2,22 @@
  * Smart Home Health
  * Copyright (C) 2026 John Carty — GNU AGPL v3 (see LICENSE)
  *
- * What is left of the isolated Tailwind v4 + shadcn/ui layer, after the vc
- * migration finished 2026-08-31. Preflight was never imported, so there is no
- * global reset to remove; the `.tw`-scoped reset, the form/date normalization
- * and the Radix `[data-slot]` animations all went with the last `.tw` island
- * and `src/components/ui/`.
+ * All that is left of the isolated Tailwind v4 + shadcn/ui layer.
  *
- * TWO THINGS STILL EARN THEIR KEEP, and neither can go yet:
- *  1. The legacy palette below (--card / --muted-foreground / --ring / …).
- *     `pages/admin-v2/AdminV2.css` still reads it ~1000 times from page-level
- *     `admin-v2-*` classes that sit OUTSIDE any island, so deleting it would
- *     silently repaint most of the admin shell. That is the last big job.
- *  2. Tailwind utilities, for exactly one surface: the deliberate
- *     `.summary-print-root` print view in AdminV2ProfileSummary.
+ * The `.tw` islands, `src/components/ui/` and `vc-forms.css` went on
+ * 2026-08-31. The legacy shadcn/GitHub-dark palette went with the AdminV2.css
+ * remap: that sheet was its last consumer (~1000 reads), and it now reads
+ * `--vc-*` from styles/vc-tokens.css like every other surface. Nothing in the
+ * app reads --background / --card / --muted-foreground / --ring any more, and
+ * the admin is dark-only, so the light half of that palette had no purpose
+ * either.
+ *
+ * Preflight was never imported, so there is no global reset here.
+ *
+ * ONE THING STILL EARNS ITS KEEP: Tailwind utilities, for exactly one surface —
+ * the deliberate `.summary-print-root` print view in AdminV2ProfileSummary.
+ * It uses only literal colours (black/white) and arbitrary sizes, so it needs
+ * no `@theme inline` colour mapping; plain utilities are enough.
  */
 
 @layer theme, base, components, utilities;
@@ -22,109 +25,6 @@
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
 /* tailwindcss/preflight.css is intentionally omitted — see header. */
-
-/* Map shadcn semantic vars -> Tailwind --color-* so bg-card, text-foreground… work. */
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-success: var(--success);
-  --color-success-foreground: var(--success-foreground);
-  --color-warning: var(--warning);
-  --color-warning-foreground: var(--warning-foreground);
-  --color-accent-purple: var(--accent-purple);
-  --color-accent-purple-foreground: var(--accent-purple-foreground);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-}
-
-/* ---- Theme palettes -----------------------------------------------------
-   Dark is the default (`:root`, and explicit `.dark`) so nothing regresses if
-   the theme class is missing. `:root.light` (toggled on <html> by the theme
-   boot script / ThemeContext) supplies the GitHub-light equivalents.
-   "System" mode resolves to one of these classes via prefers-color-scheme.
-   `.force-dark` pins a subtree to the dark palette regardless of the active
-   theme (custom props inherit, so descendants override `:root.light`) — used by
-   the live dashboard, which has no light design. */
-:root,
-:root.dark,
-.force-dark {
-  color-scheme: dark;
-  --radius: 0.5rem;
-  --background: #0d1117;
-  --foreground: #e6edf3;
-  --card: #161b22;
-  --card-foreground: #e6edf3;
-  --popover: #161b22;
-  --popover-foreground: #e6edf3;
-  --primary: #238636;
-  --primary-foreground: #ffffff;
-  --secondary: #21262d;
-  --secondary-foreground: #e6edf3;
-  --muted: #161b22;
-  --muted-foreground: #8b949e;
-  --accent: #21262d;
-  --accent-foreground: #e6edf3;
-  --destructive: #da3633;
-  --destructive-foreground: #ffffff;
-  --success: #238636;
-  --success-foreground: #ffffff;
-  --warning: #d29922;
-  --warning-foreground: #1c2128;
-  --accent-purple: #a371f7;
-  --accent-purple-foreground: #ffffff;
-  --border: #30363d;
-  --input: #30363d;
-  --ring: #58a6ff;
-}
-
-:root.light {
-  color-scheme: light;
-  --radius: 0.5rem;
-  --background: #ffffff;
-  --foreground: #1f2328;
-  --card: #f6f8fa;
-  --card-foreground: #1f2328;
-  --popover: #ffffff;
-  --popover-foreground: #1f2328;
-  --primary: #1f883d;
-  --primary-foreground: #ffffff;
-  --secondary: #eaeef2;
-  --secondary-foreground: #1f2328;
-  --muted: #f6f8fa;
-  --muted-foreground: #656d76;
-  --accent: #eaeef2;
-  --accent-foreground: #1f2328;
-  --destructive: #cf222e;
-  --destructive-foreground: #ffffff;
-  --success: #1f883d;
-  --success-foreground: #ffffff;
-  --warning: #9a6700;
-  --warning-foreground: #ffffff;
-  --accent-purple: #8250df;
-  --accent-purple-foreground: #ffffff;
-  --border: #d0d7de;
-  --input: #d0d7de;
-  --ring: #0969da;
-}
 
 /* ---- Dedicated print view -----------------------------------------------
    A page can render a `.summary-print-root` document that is hidden on screen

@@ -34,21 +34,6 @@
 @import '../../styles/vc-tokens.css';
 
 .mx-board {
-  --mx-surface: var(--card);
-  --mx-raised: var(--secondary, var(--card));
-  --mx-line: var(--border);
-  --mx-line-strong: var(--border);
-  --mx-text: var(--foreground);
-  --mx-text-2: var(--muted-foreground);
-  --mx-text-3: var(--muted-foreground);
-  --mx-accent: #0e7490;
-  --mx-critical: #b42318;
-  --mx-warning: #b54708;
-  --mx-info: #0f6f8f;
-}
-
-:root:not(.light) .mx-board,
-.force-dark .mx-board {
   --mx-surface: var(--vc-bg-surface);
   --mx-raised: var(--vc-bg-raised);
   --mx-line: var(--vc-line-hairline);
