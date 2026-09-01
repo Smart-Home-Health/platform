@@ -1188,17 +1188,24 @@
     min-width: 0;
   }
 
+  /* View Details + Schedule stay on ONE row. They used to be `flex: 1 1 auto`
+     (basis = content width) inside a wrapping row, and the pair's natural
+     widths land within a few px of the card's inner width on a 393px phone —
+     so on a real handset Schedule dropped onto its own line. An equal 0-basis
+     with min-width:0 makes the split width-independent instead of a coin flip,
+     and the reduced padding keeps both labels un-clipped down to 320px. */
   .admin-v2-patient-actions {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
   }
 
-  /* em-cancel/em-submit are the vc replacements for the shadcn Buttons that
-     used to carry `max-md:min-w-[120px] max-md:flex-1` utilities here. */
   .admin-v2-patient-actions .admin-v2-btn,
   .admin-v2-patient-actions .em-cancel,
   .admin-v2-patient-actions .em-submit {
-    flex: 1 1 auto;
-    min-width: 120px;
+    flex: 1 1 0;
+    min-width: 0;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+    white-space: nowrap;
   }
 }
 
