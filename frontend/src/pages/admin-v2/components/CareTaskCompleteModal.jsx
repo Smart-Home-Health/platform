@@ -21,18 +21,8 @@ import {
   getCurrentLocalDateTime,
   localDateTimeToUTC,
 } from '../../../utils/timezone';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Field } from '@/components/ui/field';
-import { Alert } from '@/components/ui/alert';
+import EntityModal, { EmField } from '../../../components/vc/EntityModal';
+import '../vc-schedule.css';
 
 const emptyForm = () => ({
   completed_at: '',
@@ -99,62 +89,59 @@ const CareTaskCompleteModal = ({ open, onClose, onSaved, patient, task, defaultD
   const categoryColor = task.category_color || '#a371f7';
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose?.(); }}>
-      <DialogContent className="sm:max-w-[480px]" aria-describedby={undefined}>
-        <DialogHeader>
-          <DialogTitle>
-            Log Care Task — {task.name}
-            {task.category_name && (
-              <span
-                className="ml-2 inline-block rounded-full px-2 py-0.5 align-middle text-xs font-semibold"
-                style={{
-                  backgroundColor: categoryColor + '20',
-                  color: categoryColor,
-                  border: `1px solid ${categoryColor}40`,
-                }}
-              >
-                {task.category_name}
-              </span>
-            )}
-          </DialogTitle>
-        </DialogHeader>
-
-        {error && <Alert variant="destructive">{error}</Alert>}
-
-        {task.description && (
-          <div className="rounded-md bg-secondary px-4 py-3 text-sm text-muted-foreground">
-            {task.description}
-          </div>
+    <EntityModal
+      open={open}
+      onOpenChange={(o) => { if (!o) onClose?.(); }}
+      title={`Log Care Task — ${task.name}`}
+    >
+      <div className="em-form">
+        {/* Category identity on a dot, never a stripe or a coloured pill. */}
+        {task.category_name && (
+          <span className="sch-group-head">
+            <span className="sch-dot" style={{ background: categoryColor }} />
+            {task.category_name}
+          </span>
         )}
 
-        <Field label="Completed At" required>
-          <Input
+        {error && <div className="em-error">{error}</div>}
+
+        {task.description && (
+          <p className="sch-note">{task.description}</p>
+        )}
+
+        <EmField label="Completed At" required htmlFor="task-completed-at">
+          <input
+            id="task-completed-at"
+            className="em-input"
             type="datetime-local"
             value={form.completed_at}
             onChange={e => setForm({ ...form, completed_at: e.target.value })}
           />
-        </Field>
+        </EmField>
 
-        <Field label="Notes (optional)">
-          <Textarea
+        <EmField label="Notes" optional htmlFor="task-notes">
+          <textarea
+            id="task-notes"
+            className="em-input"
             value={form.notes}
             onChange={e => setForm({ ...form, notes: e.target.value })}
             rows={2}
           />
-        </Field>
+        </EmField>
 
-        <DialogFooter>
-          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button
+        <div className="em-footer">
+          <button type="button" className="em-cancel" onClick={onClose}>Cancel</button>
+          <button
             type="button"
+            className="em-submit"
             onClick={handleSave}
             disabled={saving || !form.completed_at}
           >
             {saving ? 'Saving...' : 'Mark Done'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </button>
+        </div>
+      </div>
+    </EntityModal>
   );
 };
 

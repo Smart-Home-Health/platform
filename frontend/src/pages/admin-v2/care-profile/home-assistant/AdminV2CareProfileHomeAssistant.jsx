@@ -28,10 +28,6 @@ import {
   BellAlertIcon, ChevronRightIcon, ClipboardListIcon, HomeIcon, LockIcon,
   RefreshIcon, VitalsIcon, WifiIcon,
 } from '../../../../components/Icons';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Alert } from '@/components/ui/alert';
-import { Switch } from '@/components/ui/switch';
 import CareProfileSection from '../CareProfileSection';
 import useCareProfile from '../useCareProfile';
 import { STATUS_META, homeAssistantSummary } from '../careProfileSections';
@@ -178,89 +174,86 @@ export default function AdminV2CareProfileHomeAssistant() {
     >
       {/* Connection — read-only. The broker belongs to the hub. */}
       {status && (
-        <Card>
-          <CardContent className="flex flex-col gap-3 p-4 sm:p-4">
-            <h2 className="cp-eyebrow">Connection</h2>
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="cp-tile" data-tone={status.connected ? 'success' : 'warning'} aria-hidden>
-                <WifiIcon size={18} />
+        <section className="cfg-card cp-card-pad">
+          <h2 className="cp-eyebrow">Connection</h2>
+          <div className="cp-conn">
+            <span className="cp-tile" data-tone={status.connected ? 'success' : 'warning'} aria-hidden>
+              <WifiIcon size={18} />
+            </span>
+            <div className="cp-conn-text">
+              <span className="cp-status" data-tone={status.connected ? 'success' : 'warning'}>
+                {status.connected ? 'Connected' : status.enabled ? 'Not connected' : 'MQTT off'}
               </span>
-              <div className="min-w-0 flex-1">
-                <span className="cp-status" data-tone={status.connected ? 'success' : 'warning'}>
-                  {status.connected ? 'Connected' : status.enabled ? 'Not connected' : 'MQTT off'}
-                </span>
-                <p className="text-sm text-foreground">
-                  {status.broker
-                    ? `${status.broker}${status.port ? `:${status.port}` : ''} · MQTT`
-                    : 'No broker configured'}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Base topic {status.base_topic} ·{' '}
-                  <Link className="underline" to="/care/configuration/mqtt">
-                    Broker settings
-                  </Link>{' '}
-                  are shared by every profile on this hub.
-                </p>
-              </div>
+              <p className="cp-meta-value">
+                {status.broker
+                  ? `${status.broker}${status.port ? `:${status.port}` : ''} · MQTT`
+                  : 'No broker configured'}
+              </p>
+              <p className="cfg-fine">
+                Base topic {status.base_topic} ·{' '}
+                <Link className="cfg-link" to="/care/configuration/mqtt">
+                  Broker settings
+                </Link>{' '}
+                are shared by every profile on this hub.
+              </p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
       )}
 
       {status && !status.enabled ? (
-        <Alert>
+        <p className="cfg-note">
           MQTT is turned off for this hub, so nothing is published for any profile.{' '}
-          <Link className="underline" to="/care/configuration/mqtt">Turn it on in MQTT settings</Link>{' '}
+          <Link className="cfg-link" to="/care/configuration/mqtt">Turn it on in MQTT settings</Link>{' '}
           to share this profile with Home Assistant.
-        </Alert>
+        </p>
       ) : (
         <>
           {/* Share + mode */}
-          <Card>
-            <CardContent className="flex flex-col gap-4 p-4 sm:p-4">
-              <label className="flex cursor-pointer items-center justify-between gap-3">
-                <span className="text-sm text-foreground">Share this care profile</span>
-                <Switch
-                  checked={Boolean(mqtt?.enabled)}
-                  disabled={busy}
-                  onCheckedChange={(v) => toggleSharing(v === true)}
-                />
-              </label>
+          <section className="cfg-card cp-card-pad">
+            <label className="cp-spread">
+              <span className="cp-meta-value">Share this care profile</span>
+              <input
+                type="checkbox"
+                className="em-check"
+                checked={Boolean(mqtt?.enabled)}
+                disabled={busy}
+                onChange={(e) => toggleSharing(e.target.checked)}
+              />
+            </label>
 
-              {mqtt?.enabled && (
-                <div className="flex flex-col gap-2 border-t border-border pt-4">
-                  <h2 className="cp-eyebrow">Sharing mode</h2>
-                  <div className="cp-tabs" role="group" aria-label="Sharing mode">
-                    {MODE_OPTIONS.map((option) => (
-                      <button
-                        key={option.id}
-                        type="button"
-                        className="cp-tab"
-                        aria-selected={mode === option.id}
-                        disabled={busy}
-                        onClick={() => chooseMode(option.id)}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {mode === 'none'
-                      ? 'Nothing is shared yet — open a group below to choose what to publish.'
-                      : activeMode?.blurb}
-                  </p>
-                  {modeHint && <p className="text-xs text-muted-foreground">{modeHint}</p>}
+            {mqtt?.enabled && (
+              <div className="cp-divide cp-bounds">
+                <h2 className="cp-eyebrow">Sharing mode</h2>
+                <div className="cp-tabs" role="group" aria-label="Sharing mode">
+                  {MODE_OPTIONS.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      className="cp-tab"
+                      aria-selected={mode === option.id}
+                      disabled={busy}
+                      onClick={() => chooseMode(option.id)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
                 </div>
-              )}
-            </CardContent>
-          </Card>
+                <p className="cfg-fine">
+                  {mode === 'none'
+                    ? 'Nothing is shared yet — open a group below to choose what to publish.'
+                    : activeMode?.blurb}
+                </p>
+                {modeHint && <p className="cfg-fine">{modeHint}</p>}
+              </div>
+            )}
+          </section>
 
           {/* Permissions */}
           {mqtt?.enabled && (
-            <div className="flex flex-col gap-2">
+            <div className="cfg-listgroup">
               <h2 className="cp-eyebrow">Permissions</h2>
-              <Card>
-                <CardContent className="cp-rows p-0">
+              <section className="cfg-card cp-rows">
                   {groups.map((group) => {
                     const Icon = GROUP_ICONS[group.id] || HomeIcon;
                     return (
@@ -286,48 +279,47 @@ export default function AdminV2CareProfileHomeAssistant() {
                       </button>
                     );
                   })}
-                </CardContent>
-              </Card>
+              </section>
             </div>
           )}
 
           {/* Discovery */}
           {mqtt?.enabled && (
-            <Card>
-              <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4 sm:p-4">
-                <div className="min-w-0">
+            <section className="cfg-card cp-card-pad">
+              <div className="cp-spread">
+                <div className="cp-spread-text">
                   <h2 className="cp-eyebrow">Discovery</h2>
-                  <p className="mt-1 text-sm text-foreground">
+                  <p className="cp-meta-value">
                     {entities
                       ? `${entities.count} ${entities.count === 1 ? 'entity' : 'entities'} published from the sections above`
                       : 'Counting entities…'}
                   </p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="cfg-fine">
                     Re-announced to Home Assistant every time sharing changes here.
                   </p>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    variant="secondary"
-                    size="sm"
+                <div className="cp-actions">
+                  <button
+                    type="button"
+                    className="cfg-ghost"
                     disabled={!entities?.count}
                     onClick={() => setEntitiesOpen(true)}
                   >
                     View entities
-                  </Button>
-                  <Button size="sm" className="gap-1.5" disabled={busy} onClick={republish}>
+                  </button>
+                  <button type="button" className="cfg-ghost" disabled={busy} onClick={republish}>
                     <RefreshIcon size={14} /> Republish
-                  </Button>
+                  </button>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </section>
           )}
 
           {/* Advanced */}
-          <Card>
+          <section className="cfg-card">
             <Link className="cp-row cp-row-compact" to={`${base}/home-assistant/topics`}>
               <span className="cp-tile" aria-hidden><LockIcon size={18} /></span>
-              <div className="min-w-0">
+              <div className="cp-spread-text">
                 <h3 className="cp-row-title">Advanced · MQTT topics</h3>
                 <p className="cp-row-blurb">
                   Where this profile publishes, and how to point it somewhere else.
@@ -335,17 +327,13 @@ export default function AdminV2CareProfileHomeAssistant() {
               </div>
               <span className="cp-chevron" aria-hidden><ChevronRightIcon size={18} /></span>
             </Link>
-          </Card>
+          </section>
         </>
       )}
 
-      <div className="flex flex-wrap justify-end gap-3">
-        <Button variant="secondary" asChild>
-          <Link to={base}>Back to profile</Link>
-        </Button>
-        <Button asChild>
-          <Link to={base}>Done</Link>
-        </Button>
+      <div className="cp-actions end">
+        <Link className="em-cancel" to={base}>Back to profile</Link>
+        <Link className="em-submit" to={base}>Done</Link>
       </div>
 
       <PermissionGroupDialog

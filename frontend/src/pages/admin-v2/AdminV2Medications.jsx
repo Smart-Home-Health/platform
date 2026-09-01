@@ -24,7 +24,7 @@ import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import { MedicationsIcon, ClockIcon, PackageIcon, ChevronRightIcon } from '../../components/Icons';
 import EntityCard from '../../components/vc/EntityCard';
 import EntityToolbar from '../../components/vc/EntityToolbar';
-import { Button } from '@/components/ui/button';
+import { CfgStat } from './settings/CfgSection';
 import './AdminV2.css';
 
 const formatDateTime = (iso) => {
@@ -165,7 +165,9 @@ const AdminV2Medications = () => {
   if (loadingPatients) {
     return (
       <AdminV2Layout>
-        <div className="admin-v2-loading">Loading patients...</div>
+        <div className="admin-v2-page">
+          <p className="cfg-loading">Loading patients...</p>
+        </div>
       </AdminV2Layout>
     );
   }
@@ -174,34 +176,14 @@ const AdminV2Medications = () => {
     <AdminV2Layout>
       <div className="admin-v2-page">
         {selectedPatient ? (
-          <>
+          <div className="cfg">
             {error && <div className="em-error ec-page-alert">{error}</div>}
 
-            <div className="admin-v2-summary-stats admin-v2-medications-summary" style={{ marginBottom: '1.5rem' }}>
-              <div className="admin-v2-stat-card">
-                <div className="admin-v2-stat-info">
-                  <h4>{medications.length}</h4>
-                  <p>Active</p>
-                </div>
-              </div>
-              <div className="admin-v2-stat-card">
-                <div className="admin-v2-stat-info">
-                  <h4>{scheduledCount}</h4>
-                  <p>Scheduled</p>
-                </div>
-              </div>
-              <div className="admin-v2-stat-card">
-                <div className="admin-v2-stat-info">
-                  <h4>{prnCount}</h4>
-                  <p>PRN</p>
-                </div>
-              </div>
-              <div className="admin-v2-stat-card">
-                <div className="admin-v2-stat-info">
-                  <h4>{lowStockCount}</h4>
-                  <p>Low Stock</p>
-                </div>
-              </div>
+            <div className="cfg-stats row">
+              <CfgStat label="Active" value={medications.length} />
+              <CfgStat label="Scheduled" value={scheduledCount} />
+              <CfgStat label="PRN" value={prnCount} />
+              <CfgStat label="Low Stock" value={lowStockCount} />
             </div>
 
             <EntityToolbar
@@ -232,15 +214,15 @@ const AdminV2Medications = () => {
               <>
                 {scheduledMeds.length > 0 && (
                   <>
-                    <h3 className="admin-v2-section-title">Scheduled · {scheduledMeds.length}</h3>
-                    <div className="ec-grid" style={{ marginBottom: '1.5rem' }}>
+                    <h3 className="cfg-toolbar-title">Scheduled · {scheduledMeds.length}</h3>
+                    <div className="ec-grid">
                       {scheduledMeds.map(renderCard)}
                     </div>
                   </>
                 )}
                 {prnMeds.length > 0 && (
                   <>
-                    <h3 className="admin-v2-section-title">As Needed · {prnMeds.length}</h3>
+                    <h3 className="cfg-toolbar-title">As Needed · {prnMeds.length}</h3>
                     <div className="ec-grid">
                       {prnMeds.map(renderCard)}
                     </div>
@@ -248,17 +230,15 @@ const AdminV2Medications = () => {
                 )}
               </>
             )}
-          </>
+          </div>
         ) : (
-          <div className="admin-v2-no-patient">
+          <div className="cfg-nopatient">
             <MedicationsIcon size={48} />
             <h2>Select a Patient</h2>
             <p>Choose a patient to view their medications</p>
-            <div className="tw">
-              <Button onClick={() => setShowPatientModal(true)}>
-                Select Patient
-              </Button>
-            </div>
+            <button type="button" className="em-submit" onClick={() => setShowPatientModal(true)}>
+              Select Patient
+            </button>
           </div>
         )}
 

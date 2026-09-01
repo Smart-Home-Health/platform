@@ -26,13 +26,8 @@ import {
   ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, HistoryIcon, LockIcon, ProfileIcon,
   ShieldIcon,
 } from '../../../components/Icons';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Alert } from '@/components/ui/alert';
-import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
-} from '@/components/ui/dialog';
+import ConfirmSheet from '../../../components/vc/ConfirmSheet';
+import { CfgBadge } from '../settings/CfgSection';
 import useUserRecord, { deleteUser, updateUser } from './useUserRecord';
 import UserTabs from './UserTabs';
 import AvatarEditor from '../components/AvatarEditor';
@@ -42,6 +37,7 @@ import {
 import {
   accessSection, accountSection, activitySection, securitySection, userStats,
 } from './userSections';
+import '../../../components/vc/entity-card.css';
 import '../AdminV2.css';
 import '../care-profile/care-profile.css';
 import './users.css';
@@ -118,7 +114,7 @@ export default function AdminV2UserDetail() {
   if (loading) {
     return (
       <AdminV2Layout>
-        <div className="admin-v2-page"><div className="admin-v2-loading">Loading user…</div></div>
+        <div className="admin-v2-page"><p className="cfg-loading">Loading user…</p></div>
       </AdminV2Layout>
     );
   }
@@ -165,134 +161,123 @@ export default function AdminV2UserDetail() {
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
-        <div className="tw flex flex-col gap-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <Link
-              to="/care/configuration/users"
-              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-            >
-              <ChevronLeftIcon size={16} /> Users
+        <div className="cfg">
+          <div className="cfg-crumb">
+            <Link to="/care/configuration/users" className="cfg-back">
+              <ChevronLeftIcon size={14} /> Users
             </Link>
-            <div className="flex items-center gap-2">
-              {user?.force_password_reset && <Badge variant="warning">First login pending</Badge>}
-              <Badge variant={user?.is_active ? 'success' : 'muted'}>
+            <div className="cfg-crumb-tags">
+              {user?.force_password_reset && <CfgBadge tone="warn">First login pending</CfgBadge>}
+              <CfgBadge tone={user?.is_active ? 'ok' : undefined}>
                 {user?.is_active ? 'Active' : 'Inactive'}
-              </Badge>
+              </CfgBadge>
             </div>
           </div>
 
-          {error && <Alert variant="destructive" role="alert">{error}</Alert>}
-          {notice && <Alert variant="success" role="status">{notice}</Alert>}
+          {error && <p className="em-error" role="alert">{error}</p>}
+          {notice && <p className="em-success" role="status">{notice}</p>}
 
           {/* Who this user is */}
-          <Card>
-            <CardContent className="flex flex-col gap-3 p-4 sm:p-4">
-              <div className="cp-identity">
-                <AvatarEditor kind="user" person={user} name={displayName(user)}
-                              onError={setError} onNotice={flash} />
-                <div className="flex min-w-0 flex-1 flex-col">
-                  <h1 className="cp-name">{displayName(user)}</h1>
-                  <p className="cp-subtitle">@{user?.username}</p>
-                </div>
-                <Button variant="secondary" size="sm" asChild>
-                  <Link to={`${base}/edit`}>Edit details</Link>
-                </Button>
+          <section className="cfg-card ud-identity-card">
+            <div className="cp-identity">
+              <AvatarEditor kind="user" person={user} name={displayName(user)}
+                            onError={setError} onNotice={flash} />
+              <div className="ud-identity-name">
+                <h1 className="cp-name">{displayName(user)}</h1>
+                <p className="cp-subtitle">@{user?.username}</p>
               </div>
+              <Link className="cfg-ghost" to={`${base}/edit`}>Edit details</Link>
+            </div>
 
-              {/* Roles and reach get the whole card width — squeezed into the
-                * column beside the button they wrap after three words. */}
-              <p className="cp-subtitle ud-identity-line">{identityLine(user, profileNames)}</p>
+            {/* Roles and reach get the whole card width — squeezed into the
+              * column beside the button they wrap after three words. */}
+            <p className="cp-subtitle ud-identity-line">{identityLine(user, profileNames)}</p>
 
-              <div className="cp-meta border-t border-border pt-3">
-                <div>
-                  <span className="cp-meta-label">Last sign-in</span>
-                  <span className="cp-meta-value">{lastSeen(user)}</span>
-                </div>
-                <div>
-                  <span className="cp-meta-label">Account created</span>
-                  <span className="cp-meta-value">{formatDate(user?.created_at) || '—'}</span>
-                </div>
+            <div className="cp-meta ud-divide">
+              <div>
+                <span className="cp-meta-label">Last sign-in</span>
+                <span className="cp-meta-value">{lastSeen(user)}</span>
               </div>
-            </CardContent>
-          </Card>
+              <div>
+                <span className="cp-meta-label">Account created</span>
+                <span className="cp-meta-value">{formatDate(user?.created_at) || '—'}</span>
+              </div>
+            </div>
+          </section>
 
           <UserTabs userId={userId} current="overview" />
 
-          <Card>
-            <CardContent className="flex flex-col gap-0 p-0">
-              <div className="cp-stats ud-stats">
-                {userStats(user, patientIds).map((stat) => (
-                  <div className="cp-stat" key={stat.label}>
-                    <span className="cp-stat-value">{stat.value}</span>
-                    <span className="cp-stat-label">{stat.label}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="cp-rows border-t border-border">
-                {sections.map((section) => <SectionRow key={section.id} section={section} />)}
-              </div>
-            </CardContent>
-          </Card>
+          <section className="cfg-card">
+            <div className="cp-stats ud-stats">
+              {userStats(user, patientIds).map((stat) => (
+                <div className="cp-stat" key={stat.label}>
+                  <span className="cp-stat-value">{stat.value}</span>
+                  <span className="cp-stat-label">{stat.label}</span>
+                </div>
+              ))}
+            </div>
+            <div className="cp-rows ud-border-top">
+              {sections.map((section) => <SectionRow key={section.id} section={section} />)}
+            </div>
+          </section>
 
           {/* Danger zone */}
           {(can('users.update') || can('users.delete')) && !isSelf && (
-            <Card>
+            <section className="cfg-card">
               <details className="cp-advanced ud-danger">
                 <summary>
                   <span className="cp-eyebrow">Danger zone</span>
                   <span className="cp-advanced-marker" aria-hidden><ChevronDownIcon size={16} /></span>
                 </summary>
-                <div className="flex flex-col gap-3 border-t border-border p-4 pt-3">
-                  <p className="text-sm text-muted-foreground">
+                <div className="ud-danger-body">
+                  <p className="cfg-fine">
                     {user?.is_system_admin
                       ? 'A system administrator cannot be deactivated or deleted here.'
                       : 'Deactivating keeps the account and everything recorded against it, but '
                         + 'stops this user signing in. Deleting removes the account for good.'}
                   </p>
                   {!user?.is_system_admin && (
-                    <div className="flex flex-wrap gap-2">
+                    <div className="ud-actions">
                       {can('users.update') && (
-                        <Button
-                          variant={user?.is_active ? 'destructive' : 'secondary'}
-                          size="sm"
+                        <button
+                          type="button"
+                          className={user?.is_active ? 'em-danger' : 'em-cancel'}
                           onClick={toggleActive}
                           disabled={busy}
                         >
                           {user?.is_active ? 'Deactivate user' : 'Activate user'}
-                        </Button>
+                        </button>
                       )}
                       {can('users.delete') && (
-                        <Button variant="destructive" size="sm" onClick={() => setShowDelete(true)} disabled={busy}>
+                        <button
+                          type="button"
+                          className="em-danger"
+                          onClick={() => setShowDelete(true)}
+                          disabled={busy}
+                        >
                           Delete user
-                        </Button>
+                        </button>
                       )}
                     </div>
                   )}
                 </div>
               </details>
-            </Card>
+            </section>
           )}
         </div>
 
-        <Dialog open={showDelete} onOpenChange={(o) => { if (!o) setShowDelete(false); }}>
-          <DialogContent className="sm:max-w-[420px]">
-            <DialogHeader>
-              <DialogTitle>Delete user</DialogTitle>
-            </DialogHeader>
-            <div className="flex flex-col gap-2 text-sm">
-              <p className="text-foreground">
-                Delete <strong>{displayName(user)}</strong> (@{user?.username})?
-              </p>
-              <p className="text-muted-foreground">This cannot be undone.</p>
-            </div>
-            <DialogFooter>
-              <Button variant="secondary" onClick={() => setShowDelete(false)}>Cancel</Button>
-              <Button variant="destructive" onClick={confirmDelete} disabled={busy}>
-                {busy ? 'Deleting…' : 'Delete user'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <ConfirmSheet
+          open={showDelete}
+          onOpenChange={(o) => { if (!o) setShowDelete(false); }}
+          title="Delete user"
+          confirmLabel={busy ? 'Deleting…' : 'Delete user'}
+          tone="destructive"
+          busy={busy}
+          onConfirm={confirmDelete}
+        >
+          Delete <strong>{displayName(user)}</strong> (@{user?.username})?
+          This cannot be undone.
+        </ConfirmSheet>
       </div>
     </AdminV2Layout>
   );

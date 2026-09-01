@@ -38,18 +38,8 @@ import {
   localDateTimeToUTC,
 } from '../utils/timezone';
 import ConfirmSheet from './vc/ConfirmSheet';
-import { Button } from '@/components/ui/button';
-import { Alert } from '@/components/ui/alert';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Field } from '@/components/ui/field';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import EntityModal, { EmField } from './vc/EntityModal';
+import { ChevronLeftIcon } from './Icons';
 
 const OFF_WINDOW_ERRORS = ['early_administration', 'late_administration', 'off_window_administration'];
 
@@ -461,49 +451,63 @@ const CareTaskModal = ({ onClose }) => {
       />
 
       {/* PRN step 2: when it was done + notes */}
-      <Dialog open={prnModal.open && !!prnModal.selectedTask} onOpenChange={(o) => { if (!o) closePrnModal(); }}>
-        <DialogContent className="sm:max-w-[480px]" aria-describedby={undefined}>
-          <DialogHeader>
-            <DialogTitle>{prnModal.selectedTask ? `Mark Done — ${prnModal.selectedTask.name}` : 'Mark a Care Task Done'}</DialogTitle>
-          </DialogHeader>
-
-          {prnError && <Alert variant="destructive">{prnError}</Alert>}
+      <EntityModal
+        open={prnModal.open && !!prnModal.selectedTask}
+        onOpenChange={(o) => { if (!o) closePrnModal(); }}
+        title={prnModal.selectedTask ? `Mark Done — ${prnModal.selectedTask.name}` : 'Mark a Care Task Done'}
+      >
+        <div className="em-form">
+          {prnError && <div className="em-error">{prnError}</div>}
 
           {/* Step 2: time + notes */}
           {prnModal.selectedTask && (
-            <div className="flex flex-col gap-4">
+            <>
               {prnModal.selectedTask.description && (
-                <p className="m-0 text-sm text-muted-foreground">{prnModal.selectedTask.description}</p>
+                <p className="em-hint">{prnModal.selectedTask.description}</p>
               )}
-              <Field label="Completed At" required htmlFor="ct-prn-when">
-                <Input
+              <EmField label="Completed At" required htmlFor="ct-prn-when">
+                <input
                   id="ct-prn-when"
+                  className="em-input"
                   type="datetime-local"
                   value={prnForm.completed_at}
                   onChange={(e) => setPrnForm(f => ({ ...f, completed_at: e.target.value }))}
                 />
-              </Field>
-              <Field label="Notes (optional)" htmlFor="ct-prn-notes">
-                <Textarea
+              </EmField>
+              <EmField label="Notes" optional htmlFor="ct-prn-notes">
+                <textarea
                   id="ct-prn-notes"
+                  className="em-input"
                   rows={2}
                   value={prnForm.notes}
                   onChange={(e) => setPrnForm(f => ({ ...f, notes: e.target.value }))}
                 />
-              </Field>
-              <DialogFooter className="justify-between sm:justify-between">
-                <Button type="button" variant="secondary" onClick={() => setPrnModal({ open: true, selectedTask: null })} disabled={prnSaving}>← Back</Button>
-                <div className="flex gap-2">
-                  <Button type="button" variant="secondary" onClick={closePrnModal} disabled={prnSaving}>Cancel</Button>
-                  <Button type="button" onClick={handlePrnSave} disabled={prnSaving || !prnForm.completed_at}>
-                    {prnSaving ? 'Saving…' : 'Mark Done'}
-                  </Button>
-                </div>
-              </DialogFooter>
-            </div>
+              </EmField>
+              <div className="em-footer">
+                <button
+                  type="button"
+                  className="em-cancel start"
+                  onClick={() => setPrnModal({ open: true, selectedTask: null })}
+                  disabled={prnSaving}
+                >
+                  <ChevronLeftIcon size={14} /> Back
+                </button>
+                <button type="button" className="em-cancel" onClick={closePrnModal} disabled={prnSaving}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="em-submit"
+                  onClick={handlePrnSave}
+                  disabled={prnSaving || !prnForm.completed_at}
+                >
+                  {prnSaving ? 'Saving…' : 'Mark Done'}
+                </button>
+              </div>
+            </>
           )}
-        </DialogContent>
-      </Dialog>
+        </div>
+      </EntityModal>
 
       {/* Nutrition intake for a task that tracks it — the same sheet the
           admin pages and the live dashboard use. */}

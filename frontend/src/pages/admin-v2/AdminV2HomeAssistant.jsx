@@ -22,21 +22,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AdminV2Layout from './AdminV2Layout';
 import config, { apiFetch } from '../../config';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Alert } from '@/components/ui/alert';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
-import {
-  Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle,
-} from '@/components/ui/dialog';
-import {
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
-} from '@/components/ui/select';
+import EntityModal, { EmField, EmSelect } from '../../components/vc/EntityModal';
+import { CfgSection, CfgGroup, CfgFields, CfgBadge } from './settings/CfgSection';
 import { HomeIcon, PlusIcon, RefreshIcon, TrashIcon, EditIcon } from '../../components/Icons';
+import '../../components/vc/entity-card.css';
 import './AdminV2.css';
+import './settings/settings-page.css';
 
 const API = () => `${config.apiUrl}/api/integrations/home_assistant`;
 
@@ -315,7 +306,7 @@ const AdminV2HomeAssistant = () => {
     return (
       <AdminV2Layout>
         <div className="admin-v2-page">
-          <div className="admin-v2-loading">Loading Home Assistant settings…</div>
+          <p className="cfg-loading">Loading Home Assistant settings…</p>
         </div>
       </AdminV2Layout>
     );
@@ -333,396 +324,314 @@ const AdminV2HomeAssistant = () => {
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
-        <div className="tw space-y-6">
-          {error && <Alert variant="destructive">{error}</Alert>}
-          {notice && <Alert variant="success">{notice}</Alert>}
+        <div className="cfg">
+          {error && <p className="em-error" role="alert">{error}</p>}
+          {notice && <p className="em-success" role="status">{notice}</p>}
 
-          {/* Connection */}
-          <Card>
-            <CardHeader>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="text-muted-foreground" aria-hidden><HomeIcon size={22} /></span>
-                  <div className="flex flex-col gap-0.5">
-                    <CardTitle>Home Assistant</CardTitle>
-                    <p className="text-sm text-muted-foreground">
-                      Bring readings from Home Assistant into Smart Home Health —
-                      pulse oximeters, blood pressure cuffs, room sensors, anything HA can see.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Badge variant={connected ? 'success' : 'muted'}>
-                    {connected ? 'Connected' : 'Not connected'}
-                  </Badge>
-                  <Button variant="secondary" onClick={loadAll} className="gap-1.5">
-                    <RefreshIcon size={16} /> Refresh
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-5">
-                {supervisor ? (
-                  <Alert>
-                    Running as the Home Assistant add-on — the connection is automatic,
-                    no URL or token needed.
-                  </Alert>
-                ) : (
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="ha-base-url">Home Assistant URL</Label>
-                      <Input id="ha-base-url" placeholder="http://homeassistant.local:8123"
-                             value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="ha-token">Long-lived access token</Label>
-                      <Input id="ha-token" type="password"
-                             placeholder={cfg?.token_set ? 'Saved — enter to replace' : 'Paste token'}
-                             value={token} onChange={(e) => setToken(e.target.value)} />
-                      <p className="text-xs text-muted-foreground">
-                        Create one in HA under your profile, Security tab. An administrator
-                        user's token is recommended (needed for room names).
-                      </p>
-                    </div>
-                  </div>
-                )}
+          <CfgSection
+            icon={<HomeIcon size={16} />}
+            title="Home Assistant"
+            subtitle="Bring readings from Home Assistant into Smart Home Health — pulse oximeters, blood pressure cuffs, room sensors, anything HA can see."
+            aside={
+              <>
+                <CfgBadge tone={connected ? 'ok' : undefined}>
+                  {connected ? 'Connected' : 'Not connected'}
+                </CfgBadge>
+                <button type="button" className="cfg-ghost" onClick={loadAll}>
+                  <RefreshIcon size={14} /> Refresh
+                </button>
+              </>
+            }
+            actions={
+              <>
+                <button type="button" className="em-cancel" onClick={testConnection}
+                        disabled={busy === 'test'}>
+                  {busy === 'test' ? 'Testing…' : 'Test connection'}
+                </button>
+                <button type="button" className="em-submit" onClick={saveConfig}
+                        disabled={busy === 'save'}>
+                  {busy === 'save' ? 'Saving…' : 'Save'}
+                </button>
+              </>
+            }
+          >
+            <CfgGroup>
+              {supervisor ? (
+                <p className="cfg-note">
+                  Running as the Home Assistant add-on — the connection is automatic,
+                  no URL or token needed.
+                </p>
+              ) : (
+                <CfgFields narrow>
+                  <EmField label="Home Assistant URL" htmlFor="ha-base-url">
+                    <input id="ha-base-url" className="em-input"
+                           placeholder="http://homeassistant.local:8123"
+                           value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
+                  </EmField>
+                  <EmField
+                    label="Long-lived access token"
+                    htmlFor="ha-token"
+                    hint="Create one in HA under your profile, Security tab. An administrator user's token is recommended (needed for room names)."
+                  >
+                    <input id="ha-token" className="em-input" type="password"
+                           placeholder={cfg?.token_set ? 'Saved — enter to replace' : 'Paste token'}
+                           value={token} onChange={(e) => setToken(e.target.value)} />
+                  </EmField>
+                </CfgFields>
+              )}
 
-                <div className="flex items-center gap-2">
-                  <Checkbox id="ha-enabled" checked={enabled}
-                            onCheckedChange={(v) => setEnabled(Boolean(v))} />
-                  <Label htmlFor="ha-enabled">Ingest mapped entities live</Label>
-                </div>
+              <label className="em-check-row" htmlFor="ha-enabled">
+                <input id="ha-enabled" type="checkbox" className="em-check"
+                       checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+                <span className="em-check-label">Ingest mapped entities live</span>
+              </label>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button onClick={saveConfig} disabled={busy === 'save'}>
-                    {busy === 'save' ? 'Saving…' : 'Save'}
-                  </Button>
-                  <Button variant="secondary" onClick={testConnection} disabled={busy === 'test'}>
-                    {busy === 'test' ? 'Testing…' : 'Test connection'}
-                  </Button>
-                </div>
+              {status?.last_error && !connected && (
+                <p className="em-error" role="alert">Last connection error: {status.last_error}</p>
+              )}
+            </CfgGroup>
+          </CfgSection>
 
-                {status?.last_error && !connected && (
-                  <Alert variant="destructive">Last connection error: {status.last_error}</Alert>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Mappings */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex flex-col gap-0.5">
-                  <CardTitle>Entity mappings</CardTitle>
-                  <p className="text-sm text-muted-foreground">
-                    Each mapped entity is recorded as a patient vital or an
-                    environmental reading whenever its value changes in HA.
-                  </p>
-                </div>
-                <Button onClick={() => openDialog()} className="gap-1.5 shrink-0">
-                  <PlusIcon size={16} /> Add mapping
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
+          <CfgSection
+            title="Entity mappings"
+            subtitle="Each mapped entity is recorded as a patient vital or an environmental reading whenever its value changes in HA."
+            aside={
+              <button type="button" className="cfg-ghost" onClick={() => openDialog()}>
+                <PlusIcon size={14} /> Add mapping
+              </button>
+            }
+          >
+            <CfgGroup>
               {mappings.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
+                <p className="cfg-empty">
                   No entities mapped yet. Add a mapping to start ingesting data.
                 </p>
               ) : (
-                <>
-                {/* Phone layout: stacked cards (the table needs sideways
-                    scrolling on narrow screens). */}
-                <div className="space-y-3 md:hidden">
+                /* One row markup: stacked label/value pairs on a phone,
+                   columns at >=900px. */
+                <div
+                  className="cfg-table"
+                  style={{ '--cfg-trow-cols': 'minmax(10rem, 1.6fr) minmax(0, 1.4fr) 8rem 7rem 3rem 4.5rem' }}
+                >
+                  <div className="cfg-thead" aria-hidden="true">
+                    <span>Entity</span><span>Target</span><span>Last seen</span>
+                    <span>Last value</span><span>On</span><span />
+                  </div>
                   {mappings.map((m) => (
-                    <div key={m.id} className="space-y-2 rounded-lg border border-border p-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 overflow-hidden">
-                          <div className="truncate font-medium text-foreground">
-                            {m.friendly_name || m.entity_id}
-                          </div>
-                          <div className="break-all text-xs text-muted-foreground">{m.entity_id}</div>
-                        </div>
-                        <Checkbox checked={m.enabled} className="mt-1 shrink-0"
-                                  aria-label={`Toggle ${m.entity_id}`}
-                                  onCheckedChange={() => toggleMapping(m)} />
-                      </div>
-                      <div className="text-sm">{describeTarget(m)}</div>
-                      <div className="text-xs text-muted-foreground">
-                        Last seen {formatWhen(m.last_seen_at)}
-                        {m.last_value != null
-                          ? ` · ${m.last_value}${m.source_unit ? ` ${m.source_unit}` : ''}`
-                          : ''}
-                      </div>
-                      {m.last_error && (
-                        <div className="text-xs text-destructive">{m.last_error}</div>
-                      )}
-                      <div className="flex justify-end gap-2">
-                        <Button variant="secondary" size="sm" className="gap-1.5"
-                                aria-label={`Edit ${m.entity_id}`}
-                                onClick={() => openDialog(m)}>
-                          <EditIcon size={14} /> Edit
-                        </Button>
-                        <Button variant="secondary" size="sm" className="gap-1.5"
-                                aria-label={`Delete ${m.entity_id}`}
-                                onClick={() => deleteMapping(m)}>
-                          <TrashIcon size={14} /> Delete
-                        </Button>
-                      </div>
+                    <div className="cfg-trow" key={m.id}>
+                      <span className="cfg-tcell name">
+                        <span className="cfg-pick-main">
+                          <span className="cfg-pick-name">{m.friendly_name || m.entity_id}</span>
+                          <span className="cfg-pick-id">{m.entity_id}</span>
+                        </span>
+                      </span>
+                      <span className="cfg-tcell" data-label="Target">
+                        <span className="cfg-tval">{describeTarget(m)}</span>
+                      </span>
+                      <span className="cfg-tcell" data-label="Last seen">
+                        <span className="cfg-tval">{formatWhen(m.last_seen_at)}</span>
+                      </span>
+                      <span className="cfg-tcell" data-label="Last value">
+                        <span className="cfg-tval strong">
+                          {m.last_value != null
+                            ? `${m.last_value}${m.source_unit ? ` ${m.source_unit}` : ''}`
+                            : '—'}
+                          {m.last_error && <span className="cfg-rowerr">{m.last_error}</span>}
+                        </span>
+                      </span>
+                      <span className="cfg-tcell" data-label="On">
+                        <input
+                          type="checkbox"
+                          className="em-check"
+                          checked={m.enabled}
+                          aria-label={`Toggle ${m.entity_id}`}
+                          onChange={() => toggleMapping(m)}
+                        />
+                      </span>
+                      <span className="cfg-tcell" data-label="Actions">
+                        <span className="cfg-rowactions">
+                          <button type="button" className="cfg-iconbtn"
+                                  aria-label={`Edit ${m.entity_id}`} onClick={() => openDialog(m)}>
+                            <EditIcon size={14} />
+                          </button>
+                          <button type="button" className="cfg-iconbtn danger"
+                                  aria-label={`Delete ${m.entity_id}`} onClick={() => deleteMapping(m)}>
+                            <TrashIcon size={14} />
+                          </button>
+                        </span>
+                      </span>
                     </div>
                   ))}
                 </div>
-                <div className="hidden overflow-x-auto md:block">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-                        <th className="py-2 pr-4">Entity</th>
-                        <th className="py-2 pr-4">Target</th>
-                        <th className="py-2 pr-4">Last seen</th>
-                        <th className="py-2 pr-4">Last value</th>
-                        <th className="py-2 pr-4">On</th>
-                        <th className="py-2" />
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {mappings.map((m) => (
-                        <tr key={m.id}>
-                          <td className="py-2 pr-4">
-                            <div className="font-medium text-foreground">
-                              {m.friendly_name || m.entity_id}
-                            </div>
-                            <div className="text-xs text-muted-foreground">{m.entity_id}</div>
-                          </td>
-                          <td className="py-2 pr-4">{describeTarget(m)}</td>
-                          <td className="py-2 pr-4">{formatWhen(m.last_seen_at)}</td>
-                          <td className="py-2 pr-4">
-                            {m.last_value != null
-                              ? `${m.last_value}${m.source_unit ? ` ${m.source_unit}` : ''}`
-                              : '—'}
-                            {m.last_error && (
-                              <div className="text-xs text-destructive">{m.last_error}</div>
-                            )}
-                          </td>
-                          <td className="py-2 pr-4">
-                            <Checkbox checked={m.enabled}
-                                      aria-label={`Toggle ${m.entity_id}`}
-                                      onCheckedChange={() => toggleMapping(m)} />
-                          </td>
-                          <td className="py-2">
-                            <div className="flex justify-end gap-1">
-                              <Button variant="ghost" size="icon" aria-label={`Edit ${m.entity_id}`}
-                                      onClick={() => openDialog(m)}>
-                                <EditIcon size={16} />
-                              </Button>
-                              <Button variant="ghost" size="icon" aria-label={`Delete ${m.entity_id}`}
-                                      onClick={() => deleteMapping(m)}>
-                                <TrashIcon size={16} />
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                </>
               )}
-            </CardContent>
-          </Card>
+            </CfgGroup>
+          </CfgSection>
+        </div>
 
-          {/* Add/edit mapping dialog */}
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogContent className="sm:max-w-2xl" aria-describedby={undefined}>
-              <DialogHeader>
-                <DialogTitle>{editingId ? 'Edit mapping' : 'Add mapping'}</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                {/* Entity picker (create only) */}
-                {!editingId && (
-                  <div className="space-y-2">
-                    <Label htmlFor="ha-entity-search">Home Assistant entity</Label>
-                    {form.entity_id ? (
-                      <div className="flex items-center justify-between gap-3 overflow-hidden rounded-lg border border-border p-3 text-sm">
-                        {/* overflow-hidden (not just min-w-0): without it the
-                            nowrap entity text sets the grid column's min-content
-                            and widens the whole dialog past the phone viewport */}
-                        <div className="min-w-0 overflow-hidden">
-                          <div className="truncate font-medium">{form.friendly_name || form.entity_id}</div>
-                          <div className="break-all text-xs text-muted-foreground">
-                            {form.entity_id}
-                            {form.source_unit ? ` · ${form.source_unit}` : ''}
-                          </div>
-                        </div>
-                        <Button variant="secondary" className="shrink-0"
-                                onClick={() => setField('entity_id', '')}>
-                          Change
-                        </Button>
-                      </div>
-                    ) : (
-                      <>
-                        <Input id="ha-entity-search" placeholder="Search entities…"
-                               value={entitySearch}
-                               onChange={(e) => setEntitySearch(e.target.value)} />
-                        <div className="max-h-56 overflow-y-auto rounded-lg border border-border divide-y divide-border">
-                          {entities === null && (
-                            <div className="p-3 text-sm text-muted-foreground">Loading entities…</div>
-                          )}
-                          {entities !== null && filteredEntities.length === 0 && (
-                            <div className="p-3 text-sm text-muted-foreground">No matching entities.</div>
-                          )}
-                          {filteredEntities.slice(0, 50).map((e) => (
-                            <button key={e.entity_id} type="button" onClick={() => pickEntity(e)}
-                                    disabled={e.mapped}
-                                    className="flex w-full items-center justify-between gap-3 p-3 text-left text-sm hover:bg-secondary/60 disabled:opacity-50">
-                              {/* overflow-hidden + truncate: long entity ids must
-                                  never widen the dialog past the viewport on mobile */}
-                              <span className="min-w-0 overflow-hidden">
-                                <span className="block truncate font-medium">{e.friendly_name || e.entity_id}</span>
-                                <span className="block truncate text-xs text-muted-foreground">{e.entity_id}</span>
-                              </span>
-                              <span className="shrink-0 text-xs text-muted-foreground">
-                                {e.mapped ? 'Mapped' : [e.state, e.unit_of_measurement].filter(Boolean).join(' ')}
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
-
-                {/* Target */}
-                <div className="space-y-2">
-                  <Label>Record as</Label>
-                  <Select value={form.target_kind} onValueChange={(v) => setField('target_kind', v)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="vital">Patient vital</SelectItem>
-                      <SelectItem value="environment">Environmental reading</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {form.target_kind === 'vital' ? (
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                    <div className="space-y-2">
-                      <Label>Patient</Label>
-                      <Select value={form.patient_id}
-                              onValueChange={(v) => setField('patient_id', v)}>
-                        <SelectTrigger><SelectValue placeholder="Choose…" /></SelectTrigger>
-                        <SelectContent>
-                          {patients.map((p) => (
-                            <SelectItem key={p.id} value={String(p.id)}>
-                              {[p.first_name, p.last_name].filter(Boolean).join(' ') || `Patient ${p.id}`}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Vital type</Label>
-                      <Select value={form.vital_type}
-                              onValueChange={(v) => { setField('vital_type', v); setField('vital_group', ''); }}>
-                        <SelectTrigger><SelectValue placeholder="Choose…" /></SelectTrigger>
-                        <SelectContent>
-                          {vitalTypes.map((t) => (
-                            <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {selectedVitalType?.groups?.length > 0 && (
-                      <div className="space-y-2">
-                        <Label>Component</Label>
-                        <Select value={form.vital_group}
-                                onValueChange={(v) => setField('vital_group', v)}>
-                          <SelectTrigger><SelectValue placeholder="Choose…" /></SelectTrigger>
-                          <SelectContent>
-                            {selectedVitalType.groups.map((g) => (
-                              <SelectItem key={g} value={g}>{g}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
+        <EntityModal
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          title={editingId ? 'Edit mapping' : 'Add mapping'}
+          wide
+        >
+          <div className="em-form">
+            {!editingId && (
+              <EmField label="Home Assistant entity" htmlFor="ha-entity-search">
+                {form.entity_id ? (
+                  <div className="cfg-chosen">
+                    <span className="cfg-pick-main">
+                      <span className="cfg-pick-name">{form.friendly_name || form.entity_id}</span>
+                      <span className="cfg-pick-id">
+                        {form.entity_id}
+                        {form.source_unit ? ` · ${form.source_unit}` : ''}
+                      </span>
+                    </span>
+                    <button type="button" className="cfg-ghost"
+                            onClick={() => setField('entity_id', '')}>
+                      Change
+                    </button>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                    <div className="space-y-2">
-                      <Label>Metric</Label>
-                      <Select value={form.metric} onValueChange={(v) => setField('metric', v)}>
-                        <SelectTrigger><SelectValue placeholder="Choose…" /></SelectTrigger>
-                        <SelectContent>
-                          {metrics.map((m) => (
-                            <SelectItem key={m.name} value={m.name}>
-                              {m.label} ({m.unit})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                  <>
+                    <input id="ha-entity-search" className="em-input" placeholder="Search entities…"
+                           value={entitySearch}
+                           onChange={(e) => setEntitySearch(e.target.value)} />
+                    <div className="cfg-picklist scroll">
+                      {entities === null && <p className="cfg-empty">Loading entities…</p>}
+                      {entities !== null && filteredEntities.length === 0 && (
+                        <p className="cfg-empty">No matching entities.</p>
+                      )}
+                      {filteredEntities.slice(0, 50).map((e) => (
+                        <button key={e.entity_id} type="button" className="cfg-pick"
+                                onClick={() => pickEntity(e)} disabled={e.mapped}>
+                          <span className="cfg-pick-main">
+                            <span className="cfg-pick-name">{e.friendly_name || e.entity_id}</span>
+                            <span className="cfg-pick-id">{e.entity_id}</span>
+                          </span>
+                          <span className="cfg-pick-meta">
+                            {e.mapped ? 'Mapped' : [e.state, e.unit_of_measurement].filter(Boolean).join(' ')}
+                          </span>
+                        </button>
+                      ))}
                     </div>
-                    <div className="space-y-2">
-                      <Label>Scope</Label>
-                      <Select value={form.scope} onValueChange={(v) => setField('scope', v)}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="room">Room</SelectItem>
-                          <SelectItem value="indoor">Indoor (whole home)</SelectItem>
-                          <SelectItem value="outdoor">Outdoor</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="ha-map-location">Location</Label>
-                      <Input id="ha-map-location" placeholder="e.g. bedroom"
-                             list="ha-location-suggestions"
-                             value={form.location}
-                             onChange={(e) => setField('location', e.target.value)} />
-                      <datalist id="ha-location-suggestions">
-                        {locationOptions.map((loc) => (
-                          <option key={loc} value={loc} />
-                        ))}
-                      </datalist>
-                      <p className="text-xs text-muted-foreground">
-                        Suggestions come from your Home Assistant areas and
-                        rooms already in use here.
-                      </p>
-                    </div>
-                  </div>
+                  </>
                 )}
+              </EmField>
+            )}
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="ha-map-interval">Minimum seconds between recordings</Label>
-                    <Input id="ha-map-interval" type="number" min="0" max="86400"
-                           value={form.min_interval_seconds}
-                           onChange={(e) => setField('min_interval_seconds', e.target.value)} />
-                    <p className="text-xs text-muted-foreground">
-                      0 records every change; e.g. 300 keeps a chatty sensor to one reading per 5 minutes.
-                    </p>
-                  </div>
-                  {form.source_unit && (
-                    <div className="space-y-2">
-                      <Label>Detected unit</Label>
-                      <p className="pt-2 text-sm text-muted-foreground">{form.source_unit}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="secondary" onClick={() => setDialogOpen(false)}>Cancel</Button>
-                <Button onClick={saveMapping}
-                        disabled={busy === 'mapping' || !form.entity_id
-                          || (form.target_kind === 'vital' && (!form.patient_id || !form.vital_type))
-                          || (form.target_kind === 'environment' && !form.metric)}>
-                  {busy === 'mapping' ? 'Saving…' : (editingId ? 'Save changes' : 'Add mapping')}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </div>
+            <EmField label="Record as" htmlFor="ha-target-kind">
+              <EmSelect id="ha-target-kind" value={form.target_kind}
+                        onChange={(e) => setField('target_kind', e.target.value)}>
+                <option value="vital">Patient vital</option>
+                <option value="environment">Environmental reading</option>
+              </EmSelect>
+            </EmField>
+
+            {form.target_kind === 'vital' ? (
+              <CfgFields>
+                <EmField label="Patient" htmlFor="ha-patient">
+                  <EmSelect id="ha-patient" value={form.patient_id}
+                            onChange={(e) => setField('patient_id', e.target.value)}>
+                    <option value="">Choose…</option>
+                    {patients.map((p) => (
+                      <option key={p.id} value={String(p.id)}>
+                        {[p.first_name, p.last_name].filter(Boolean).join(' ') || `Patient ${p.id}`}
+                      </option>
+                    ))}
+                  </EmSelect>
+                </EmField>
+                <EmField label="Vital type" htmlFor="ha-vital-type">
+                  <EmSelect id="ha-vital-type" value={form.vital_type}
+                            onChange={(e) => { setField('vital_type', e.target.value); setField('vital_group', ''); }}>
+                    <option value="">Choose…</option>
+                    {vitalTypes.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </EmSelect>
+                </EmField>
+                {selectedVitalType?.groups?.length > 0 && (
+                  <EmField label="Component" htmlFor="ha-vital-group">
+                    <EmSelect id="ha-vital-group" value={form.vital_group}
+                              onChange={(e) => setField('vital_group', e.target.value)}>
+                      <option value="">Choose…</option>
+                      {selectedVitalType.groups.map((g) => (
+                        <option key={g} value={g}>{g}</option>
+                      ))}
+                    </EmSelect>
+                  </EmField>
+                )}
+              </CfgFields>
+            ) : (
+              <CfgFields>
+                <EmField label="Metric" htmlFor="ha-metric">
+                  <EmSelect id="ha-metric" value={form.metric}
+                            onChange={(e) => setField('metric', e.target.value)}>
+                    <option value="">Choose…</option>
+                    {metrics.map((m) => (
+                      <option key={m.name} value={m.name}>{m.label} ({m.unit})</option>
+                    ))}
+                  </EmSelect>
+                </EmField>
+                <EmField label="Scope" htmlFor="ha-scope">
+                  <EmSelect id="ha-scope" value={form.scope}
+                            onChange={(e) => setField('scope', e.target.value)}>
+                    <option value="room">Room</option>
+                    <option value="indoor">Indoor (whole home)</option>
+                    <option value="outdoor">Outdoor</option>
+                  </EmSelect>
+                </EmField>
+                <EmField
+                  label="Location"
+                  htmlFor="ha-map-location"
+                  hint="Suggestions come from your Home Assistant areas and rooms already in use here."
+                >
+                  <input id="ha-map-location" className="em-input" placeholder="e.g. bedroom"
+                         list="ha-location-suggestions"
+                         value={form.location}
+                         onChange={(e) => setField('location', e.target.value)} />
+                  <datalist id="ha-location-suggestions">
+                    {locationOptions.map((loc) => (
+                      <option key={loc} value={loc} />
+                    ))}
+                  </datalist>
+                </EmField>
+              </CfgFields>
+            )}
+
+            <CfgFields narrow>
+              <EmField
+                label="Minimum seconds between recordings"
+                htmlFor="ha-map-interval"
+                hint="0 records every change; e.g. 300 keeps a chatty sensor to one reading per 5 minutes."
+              >
+                <input id="ha-map-interval" className="em-input" type="number" min="0" max="86400"
+                       value={form.min_interval_seconds}
+                       onChange={(e) => setField('min_interval_seconds', e.target.value)} />
+              </EmField>
+              {form.source_unit && (
+                <EmField label="Detected unit">
+                  <p className="cfg-note">{form.source_unit}</p>
+                </EmField>
+              )}
+            </CfgFields>
+
+            <div className="em-footer">
+              <button type="button" className="em-cancel" onClick={() => setDialogOpen(false)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="em-submit"
+                onClick={saveMapping}
+                disabled={busy === 'mapping' || !form.entity_id
+                  || (form.target_kind === 'vital' && (!form.patient_id || !form.vital_type))
+                  || (form.target_kind === 'environment' && !form.metric)}
+              >
+                {busy === 'mapping' ? 'Saving…' : (editingId ? 'Save changes' : 'Add mapping')}
+              </button>
+            </div>
+          </div>
+        </EntityModal>
       </div>
     </AdminV2Layout>
   );

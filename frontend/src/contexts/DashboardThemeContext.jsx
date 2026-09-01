@@ -55,21 +55,14 @@ export function DashboardThemeProvider({ children }) {
   // them dark on <html> while the live dashboard is mounted (see the
   // `:root.dash-scheme-dark` block in App.css).
   //
-  // `vc-form-skin` on <body> is the same opt-in the admin makes in
-  // AdminV2Layout: it turns on vc-forms.css for the shared shadcn primitives
-  // (the Equipment/Settings/Camera panels and the dialogs the rebuilt panels
-  // open). It goes on <body>, not the board wrapper, so it also reaches the
-  // portalled Select/Dialog content. /live and /care never co-mount, so the
-  // two owners can't strip each other's class. Both sheets gate on
-  // `:root:is(:not(.light), .dash-scheme-dark)`, so a light-theme user still
-  // gets the dark skin on the dark-only board.
+  // The `vc-form-skin` body class that used to go on here as well is gone with
+  // vc-forms.css — that sheet only ever restyled the shadcn `ui/` primitives
+  // through their `data-slot` hooks, and those were deleted 2026-08-31.
   useEffect(() => {
     const el = document.documentElement;
     el.classList.add('dash-scheme-dark');
-    document.body.classList.add('vc-form-skin');
     return () => {
       el.classList.remove('dash-scheme-dark');
-      document.body.classList.remove('vc-form-skin');
     };
   }, []);
 

@@ -2,11 +2,19 @@
  * Smart Home Health
  * Copyright (C) 2026 John Carty — GNU AGPL v3 (see LICENSE)
  *
- * Isolated Tailwind v4 + shadcn/ui layer. Preflight is intentionally NOT
- * imported so the global reset never leaks to the un-migrated app. Tailwind
- * utilities + theme tokens are available everywhere, but the structural reset
- * (box-sizing, etc.) is scoped to `.tw` subtrees (and to Radix portal slots,
- * which render outside `.tw` on <body>).
+ * What is left of the isolated Tailwind v4 + shadcn/ui layer, after the vc
+ * migration finished 2026-08-31. Preflight was never imported, so there is no
+ * global reset to remove; the `.tw`-scoped reset, the form/date normalization
+ * and the Radix `[data-slot]` animations all went with the last `.tw` island
+ * and `src/components/ui/`.
+ *
+ * TWO THINGS STILL EARN THEIR KEEP, and neither can go yet:
+ *  1. The legacy palette below (--card / --muted-foreground / --ring / …).
+ *     `pages/admin-v2/AdminV2.css` still reads it ~1000 times from page-level
+ *     `admin-v2-*` classes that sit OUTSIDE any island, so deleting it would
+ *     silently repaint most of the admin shell. That is the last big job.
+ *  2. Tailwind utilities, for exactly one surface: the deliberate
+ *     `.summary-print-root` print view in AdminV2ProfileSummary.
  */
 
 @layer theme, base, components, utilities;
@@ -117,97 +125,6 @@
   --input: #d0d7de;
   --ring: #0969da;
 }
-
-/* ---- Minimal scoped base (unlayered so it reliably wins) ---------------- */
-/* Only inside `.tw` subtrees + Radix portal slots; nothing leaks elsewhere. */
-.tw,
-.tw *,
-.tw *::before,
-.tw *::after,
-[data-slot="dialog-overlay"],
-[data-slot="dialog-content"],
-[data-slot="dialog-content"] *,
-[data-slot="dialog-content"] *::before,
-[data-slot="dialog-content"] *::after,
-[data-slot="select-content"],
-[data-slot="select-content"] * {
-  box-sizing: border-box;
-}
-
-.tw {
-  color: var(--foreground);
-}
-
-/* Form-control normalization for `.tw` subtrees (Preflight isn't loaded).
-   In @layer base so per-control utilities (text-sm, h-9, …) still win. */
-@layer base {
-  .tw input,
-  .tw textarea,
-  .tw select {
-    font: inherit;
-    color: inherit;
-    letter-spacing: inherit;
-  }
-  /* Same story for bare <button>s (card wrappers, list rows, close buttons):
-     without Preflight they fall back to UA styling — grey ButtonFace, a 2px
-     outset bevel and ButtonText, which reads as a light frame around dark
-     cards. Font is deliberately left alone; only the paint is reset. */
-  .tw button {
-    background-color: transparent;
-    border: 0 solid transparent;
-    color: inherit;
-  }
-  /* Without Preflight, headings/paragraphs keep default UA margins (which, as
-     flex items, don't even collapse) — zero them so component spacing wins. */
-  .tw h1, .tw h2, .tw h3, .tw h4, .tw h5, .tw h6,
-  .tw p, .tw figure, .tw blockquote, .tw dl, .tw dd, .tw pre {
-    margin: 0;
-  }
-  .tw h1, .tw h2, .tw h3, .tw h4, .tw h5, .tw h6 {
-    font-size: inherit;
-    font-weight: inherit;
-  }
-}
-
-/* iOS/WebKit date & time inputs render with extra internal height when
-   Preflight is absent — this is what made the Date of Birth field overflow.
-   Drop the native appearance so the input honors h-9/padding (tapping still
-   opens the native picker), then restore Preflight's normalized internals. */
-.tw input[type="date"],
-.tw input[type="time"],
-.tw input[type="datetime-local"],
-.tw input[type="month"],
-.tw input[type="week"] {
-  -webkit-appearance: none;
-  appearance: none;
-}
-.tw input::-webkit-date-and-time-value { min-height: 1lh; text-align: inherit; }
-.tw input::-webkit-datetime-edit { display: inline-flex; padding: 0; }
-.tw input::-webkit-datetime-edit-fields-wrapper { padding: 0; }
-.tw input::-webkit-datetime-edit-year-field,
-.tw input::-webkit-datetime-edit-month-field,
-.tw input::-webkit-datetime-edit-day-field,
-.tw input::-webkit-datetime-edit-hour-field,
-.tw input::-webkit-datetime-edit-minute-field,
-.tw input::-webkit-datetime-edit-meridiem-field { padding-block: 0; }
-
-/* ---- Animations (replaces tw-animate-css for the few we use) ------------ */
-@keyframes tw-fade-in { from { opacity: 0 } to { opacity: 1 } }
-@keyframes tw-fade-out { from { opacity: 1 } to { opacity: 0 } }
-/* Dialog content centers via Tailwind v4's independent `translate` property
-   (-translate-x/y-1/2). The keyframes must NOT translate too — a v3-era
-   translate(-50%,-50%) here stacks on top of `translate` and shoves the
-   dialog off-screen for the whole animation (worst on phone widths). */
-@keyframes tw-dialog-in { from { opacity: 0; transform: scale(.96) } to { opacity: 1; transform: scale(1) } }
-@keyframes tw-dialog-out { from { opacity: 1; transform: scale(1) } to { opacity: 0; transform: scale(.96) } }
-/* Select popover is popper-positioned (no translate) — scale only. */
-@keyframes tw-pop-in { from { opacity: 0; transform: scale(.96) } to { opacity: 1; transform: scale(1) } }
-
-[data-slot="dialog-overlay"][data-state="open"] { animation: tw-fade-in 150ms ease-out; }
-[data-slot="dialog-overlay"][data-state="closed"] { animation: tw-fade-out 150ms ease-in; }
-[data-slot="dialog-content"][data-state="open"] { animation: tw-dialog-in 150ms ease-out; }
-[data-slot="dialog-content"][data-state="closed"] { animation: tw-dialog-out 150ms ease-in; }
-[data-slot="select-content"][data-state="open"] { animation: tw-pop-in 120ms ease-out; }
 
 /* ---- Dedicated print view -----------------------------------------------
    A page can render a `.summary-print-root` document that is hidden on screen

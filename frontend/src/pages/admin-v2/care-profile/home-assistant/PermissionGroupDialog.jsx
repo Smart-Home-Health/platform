@@ -18,12 +18,9 @@
 // One group of MQTT sections, each with its direction. Get is Home Assistant
 // reading from us, Set is Home Assistant writing back, Both is both ways.
 import { useEffect, useState } from 'react';
-import {
-  Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Alert } from '@/components/ui/alert';
-import { MQTT_SECTIONS, permOptionsForSection, permSelectClass } from '../../mqttConstants';
+import EntityModal, { EmSelect } from '../../../../components/vc/EntityModal';
+import { MQTT_SECTIONS, permOptionsForSection } from '../../mqttConstants';
+import '../care-profile.css';
 
 const labelOf = (id) => MQTT_SECTIONS.find((s) => s.id === id)?.label || id;
 
@@ -53,56 +50,50 @@ export default function PermissionGroupDialog({
     ])));
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[520px]">
-        <DialogHeader>
-          <DialogTitle>{group.label}</DialogTitle>
-          <DialogDescription>
-            Get is Home Assistant reading this from the hub. Set is Home Assistant
-            writing it back. Off is never published.
-          </DialogDescription>
-        </DialogHeader>
+    <EntityModal open={open} onOpenChange={onOpenChange} title={group.label}>
+      <form onSubmit={submit} className="em-form">
+        <p className="em-hint">
+          Get is Home Assistant reading this from the hub. Set is Home Assistant
+          writing it back. Off is never published.
+        </p>
 
-        <form onSubmit={submit} className="flex flex-col gap-4">
-          {error && <Alert variant="destructive" role="alert">{error}</Alert>}
+        {error && <div className="em-error" role="alert">{error}</div>}
 
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="secondary" size="sm" onClick={() => setAll('get')}>
-              All read-only
-            </Button>
-            <Button type="button" variant="secondary" size="sm" onClick={() => setAll('off')}>
-              All off
-            </Button>
-          </div>
+        <div className="cp-actions">
+          <button type="button" className="cfg-ghost" onClick={() => setAll('get')}>
+            All read-only
+          </button>
+          <button type="button" className="cfg-ghost" onClick={() => setAll('off')}>
+            All off
+          </button>
+        </div>
 
-          <div className="divide-y divide-border/60 rounded-lg border border-border">
-            {group.sections.map((id) => (
-              <div key={id} className="flex items-center justify-between gap-3 px-3 py-2">
-                <span className="text-sm text-foreground">{labelOf(id)}</span>
-                <select
-                  className={`${permSelectClass} max-w-[8rem]`}
-                  aria-label={`${labelOf(id)} permission`}
-                  value={values[id] || 'off'}
-                  onChange={(e) => setValues((prev) => ({ ...prev, [id]: e.target.value }))}
-                >
-                  {permOptionsForSection(id).map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </div>
-            ))}
-          </div>
+        <div className="cp-rows boxed">
+          {group.sections.map((id) => (
+            <div key={id} className="cp-list-row">
+              <span className="cp-row-title cp-row-title-plain">{labelOf(id)}</span>
+              <EmSelect
+                aria-label={`${labelOf(id)} permission`}
+                value={values[id] || 'off'}
+                onChange={(e) => setValues((prev) => ({ ...prev, [id]: e.target.value }))}
+              >
+                {permOptionsForSection(id).map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </EmSelect>
+            </div>
+          ))}
+        </div>
 
-          <DialogFooter>
-            <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={saving}>
-              {saving ? 'Saving…' : 'Save permissions'}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        <div className="em-footer">
+          <button type="button" className="em-cancel" onClick={() => onOpenChange(false)}>
+            Cancel
+          </button>
+          <button type="submit" className="em-submit" disabled={saving}>
+            {saving ? 'Saving…' : 'Save permissions'}
+          </button>
+        </div>
+      </form>
+    </EntityModal>
   );
 }

@@ -15,39 +15,29 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { Checkbox } from '@/components/ui/checkbox';
-import { cn } from '@/lib/utils';
+import '../settings/settings-page.css';
 
 // Scrollable checkbox list used for role / patient assignment on the user
-// create dialog and the user detail page.
+// create dialog and the HA identity import dialog.
 export function ToggleList({ items, selectedIds, onToggle, getId, renderLabel, isDisabled, empty }) {
   if (!items || items.length === 0) {
-    return (
-      <div className="rounded-md border border-border bg-background/40 p-3 text-sm text-muted-foreground">
-        {empty}
-      </div>
-    );
+    return <p className="cfg-togglelist-empty">{empty}</p>;
   }
   return (
-    <div className="flex max-h-48 flex-col gap-1 overflow-y-auto rounded-md border border-border bg-background/40 p-2">
+    <div className="cfg-togglelist">
       {items.map(item => {
         const id = getId(item);
         const disabled = isDisabled ? isDisabled(item) : false;
         return (
-          <label
-            key={id}
-            className={cn(
-              'flex items-start gap-2 rounded px-2 py-1.5',
-              disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-accent'
-            )}
-          >
-            <Checkbox
-              className="mt-0.5"
+          <label key={id} className="em-check-row" data-disabled={disabled || undefined}>
+            <input
+              type="checkbox"
+              className="em-check"
               checked={selectedIds.includes(id)}
-              onCheckedChange={() => onToggle(id)}
+              onChange={() => onToggle(id)}
               disabled={disabled}
             />
-            <span className="text-sm text-foreground">{renderLabel(item)}</span>
+            <span className="em-check-label">{renderLabel(item)}</span>
           </label>
         );
       })}

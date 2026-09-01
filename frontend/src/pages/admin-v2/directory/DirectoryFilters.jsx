@@ -18,15 +18,7 @@
 // The filter sheet behind the toolbar button. Edits a draft so closing without
 // applying leaves the list alone.
 import { useEffect, useState } from 'react';
-import {
-  Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Field } from '@/components/ui/field';
-import {
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
-} from '@/components/ui/select';
+import EntityModal, { EmField, EmSelect } from '../../../components/vc/EntityModal';
 import { DEFAULT_FILTERS, STALE_LOGIN_DAYS, TABS } from './directoryTabs';
 
 export default function DirectoryFilters({
@@ -45,62 +37,64 @@ export default function DirectoryFilters({
   const noun = TABS[tab].noun[1];
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[420px]">
-        <DialogHeader>
-          <DialogTitle>Filter {noun}</DialogTitle>
-          <DialogDescription>Narrow the list without losing your search.</DialogDescription>
-        </DialogHeader>
+    <EntityModal open={open} onOpenChange={onOpenChange} title={`Filter ${noun}`}>
+      <form onSubmit={apply} className="em-form">
+        <p className="em-hint">Narrow the list without losing your search.</p>
 
-        <form onSubmit={apply} className="flex flex-col gap-4">
-          <Field label="Status">
-            <Select value={draft.status} onValueChange={(v) => setDraft({ ...draft, status: v })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="inactive">Inactive</SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
+        <EmField label="Status" htmlFor="dirf-status">
+          <EmSelect
+            id="dirf-status"
+            value={draft.status}
+            onChange={(e) => setDraft({ ...draft, status: e.target.value })}
+          >
+            <option value="all">All</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </EmSelect>
+        </EmField>
 
-          {tab === 'users' && (
-            <>
-              <Field label="Role">
-                <Select value={String(draft.role)} onValueChange={(v) => setDraft({ ...draft, role: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All roles</SelectItem>
-                    {roles.map((role) => (
-                      <SelectItem key={role.id} value={String(role.id)}>
-                        {role.display_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
+        {tab === 'users' && (
+          <>
+            <EmField label="Role" htmlFor="dirf-role">
+              <EmSelect
+                id="dirf-role"
+                value={String(draft.role)}
+                onChange={(e) => setDraft({ ...draft, role: e.target.value })}
+              >
+                <option value="all">All roles</option>
+                {roles.map((role) => (
+                  <option key={role.id} value={String(role.id)}>
+                    {role.display_name}
+                  </option>
+                ))}
+              </EmSelect>
+            </EmField>
 
-              <label className="flex w-fit cursor-pointer items-center gap-2">
-                <Checkbox
-                  checked={draft.stale}
-                  onCheckedChange={(v) => setDraft({ ...draft, stale: v === true })}
-                />
-                <span className="text-sm text-foreground">
-                  No sign-in in {STALE_LOGIN_DAYS} days
-                </span>
-              </label>
-            </>
-          )}
+            <label className="em-check-row">
+              <input
+                type="checkbox"
+                className="em-check"
+                checked={draft.stale}
+                onChange={(e) => setDraft({ ...draft, stale: e.target.checked })}
+              />
+              <span className="em-check-label">
+                No sign-in in {STALE_LOGIN_DAYS} days
+              </span>
+            </label>
+          </>
+        )}
 
-          <DialogFooter>
-            <Button type="button" variant="secondary"
-                    onClick={() => setDraft({ ...DEFAULT_FILTERS, status: 'all' })}>
-              Reset
-            </Button>
-            <Button type="submit">Apply</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        <div className="em-footer">
+          <button
+            type="button"
+            className="em-cancel"
+            onClick={() => setDraft({ ...DEFAULT_FILTERS, status: 'all' })}
+          >
+            Reset
+          </button>
+          <button type="submit" className="em-submit">Apply</button>
+        </div>
+      </form>
+    </EntityModal>
   );
 }

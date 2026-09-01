@@ -22,11 +22,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import config, { apiFetch } from '../../../../config';
-import { Card, CardContent, CardFooter } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Alert } from '@/components/ui/alert';
-import { Field } from '@/components/ui/field';
+import { EmField } from '../../../../components/vc/EntityModal';
+import { CfgSection, CfgGroup } from '../../settings/CfgSection';
 import CareProfileSection from '../CareProfileSection';
 import useCareProfile from '../useCareProfile';
 import '../care-profile.css';
@@ -95,74 +92,71 @@ export default function AdminV2CareProfileMqttTopics() {
       notice={notice}
     >
       {!mqtt?.integration ? (
-        <Alert>
+        <p className="cfg-note">
           Nothing is published for this profile yet. Turn sharing on under{' '}
-          <Link className="underline" to={`/care/configuration/patients/${patientId}/home-assistant`}>
+          <Link className="cfg-link" to={`/care/configuration/patients/${patientId}/home-assistant`}>
             Home Assistant
           </Link>{' '}
           and its topics will appear here.
-        </Alert>
+        </p>
       ) : (
         <>
-          <Card>
-            <CardContent className="flex flex-col gap-3 p-4 sm:p-4">
-              <h2 className="cp-eyebrow">In use now</h2>
-              <div className="flex flex-col gap-2">
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-xs text-muted-foreground">Device → Home Assistant</span>
-                  <code className="break-all font-mono text-sm text-foreground">
-                    {effective(overrides.state_topic, defaultState)}
-                  </code>
+          <CfgSection title="In use now">
+            <CfgGroup>
+              <dl className="cfg-facts">
+                <div>
+                  <dt>Device → Home Assistant</dt>
+                  <dd>{effective(overrides.state_topic, defaultState)}</dd>
                 </div>
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-xs text-muted-foreground">Home Assistant → device</span>
-                  <code className="break-all font-mono text-sm text-foreground">
-                    {effective(overrides.set_topic, defaultSet)}
-                  </code>
+                <div>
+                  <dt>Home Assistant → device</dt>
+                  <dd>{effective(overrides.set_topic, defaultSet)}</dd>
                 </div>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                The <code className="font-mono">{baseTopic}</code> prefix is hub-wide —
+              </dl>
+              <p className="cfg-fine">
+                The <code>{baseTopic}</code> prefix is hub-wide —
                 change it in{' '}
-                <Link className="underline" to="/care/configuration/mqtt">MQTT settings</Link>.
+                <Link className="cfg-link" to="/care/configuration/mqtt">MQTT settings</Link>.
               </p>
-            </CardContent>
-          </Card>
+            </CfgGroup>
+          </CfgSection>
 
-          <form onSubmit={save}>
-            <Card>
-              <CardContent className="flex flex-col gap-4">
-                <p className="text-sm text-muted-foreground">
-                  Leave these blank unless the broker expects topics of its own. An
-                  override replaces the default entirely.
-                </p>
-                <Field label="State topic override" hint={`Default: ${defaultState}`}>
-                  <Input
+          <CfgSection
+            title="Overrides"
+            actions={
+              <button type="submit" form="cp-mqtt-form" className="em-submit" disabled={saving}>
+                {saving ? 'Saving…' : 'Save topics'}
+              </button>
+            }
+          >
+            <CfgGroup hint="Leave these blank unless the broker expects topics of its own. An override replaces the default entirely.">
+              <form id="cp-mqtt-form" className="cfg-form" onSubmit={save}>
+                <EmField label="State topic override" htmlFor="cp-mqtt-state" hint={`Default: ${defaultState}`}>
+                  <input
+                    id="cp-mqtt-state"
+                    className="em-input"
                     value={overrides.state_topic}
                     onChange={(e) => setOverrides((p) => ({ ...p, state_topic: e.target.value }))}
                     placeholder={defaultState}
                   />
-                </Field>
-                <Field label="Set topic override" hint={`Default: ${defaultSet}`}>
-                  <Input
+                </EmField>
+                <EmField label="Set topic override" htmlFor="cp-mqtt-set" hint={`Default: ${defaultSet}`}>
+                  <input
+                    id="cp-mqtt-set"
+                    className="em-input"
                     value={overrides.set_topic}
                     onChange={(e) => setOverrides((p) => ({ ...p, set_topic: e.target.value }))}
                     placeholder={defaultSet}
                   />
-                </Field>
-              </CardContent>
-              <CardFooter className="justify-start">
-                <Button type="submit" disabled={saving}>
-                  {saving ? 'Saving…' : 'Save topics'}
-                </Button>
-              </CardFooter>
-            </Card>
-          </form>
+                </EmField>
+              </form>
+            </CfgGroup>
+          </CfgSection>
 
-          <Alert>
+          <p className="cfg-note">
             Changing a topic does not move the entities Home Assistant already knows
             about — republish discovery from the Home Assistant page afterwards.
-          </Alert>
+          </p>
         </>
       )}
     </CareProfileSection>

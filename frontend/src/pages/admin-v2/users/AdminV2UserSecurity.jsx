@@ -20,15 +20,7 @@
 // Assistant identity that signs them in without either.
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Field } from '@/components/ui/field';
-import { Checkbox } from '@/components/ui/checkbox';
-import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
-} from '@/components/ui/dialog';
-import { Alert } from '@/components/ui/alert';
+import EntityModal, { EmField } from '../../../components/vc/EntityModal';
 import { ChevronRightIcon, HomeIcon, KeyIcon, LockIcon, RefreshIcon } from '../../../components/Icons';
 import { unlinkHaIdentity } from '../../../services/haIdentity';
 import useUserRecord, { forceFirstLogin, resetUserPassword, updateUser } from './useUserRecord';
@@ -157,8 +149,7 @@ export default function AdminV2UserSecurity() {
       error={error}
       notice={notice}
     >
-      <Card>
-        <CardContent className="cp-rows p-0">
+      <section className="cfg-card cp-rows">
           <Row
             icon={<KeyIcon size={18} />}
             title="PIN sign-in"
@@ -218,86 +209,90 @@ export default function AdminV2UserSecurity() {
               disabledNote="Link from Directory"
             />
           )}
-        </CardContent>
-      </Card>
+      </section>
 
-      <p className="text-xs text-muted-foreground">
+      <p className="cfg-fine">
         Tap a row to change it. Unlinking a Home Assistant sign-in takes effect immediately;
         a PIN can be replaced but the API has no way to remove one.
       </p>
 
-      <Dialog open={showPin} onOpenChange={(o) => { if (!o) setShowPin(false); }}>
-        <DialogContent className="sm:max-w-[420px]">
-          <DialogHeader>
-            <DialogTitle>{user?.has_pin ? 'Replace PIN' : 'Set a PIN'}</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col gap-4">
-            <p className="text-sm text-muted-foreground">
-              A PIN for <strong className="text-foreground">{displayName(user)}</strong>. Setting one
-              replaces any PIN they already have; the API has no way to take a PIN away again.
-            </p>
-            {dialogError && <Alert variant="destructive" role="alert">{dialogError}</Alert>}
-            <Field label="New PIN" htmlFor="us-pin">
-              <Input
-                id="us-pin"
-                type="password"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={8}
-                value={pin}
-                onChange={(e) => setPin(e.target.value)}
-                placeholder="4 to 8 digits"
-              />
-            </Field>
+      <EntityModal
+        open={showPin}
+        onOpenChange={(o) => { if (!o) setShowPin(false); }}
+        title={user?.has_pin ? 'Replace PIN' : 'Set a PIN'}
+      >
+        <div className="em-form">
+          <p className="em-hint">
+            A PIN for <strong>{displayName(user)}</strong>. Setting one
+            replaces any PIN they already have; the API has no way to take a PIN away again.
+          </p>
+          {dialogError && <div className="em-error" role="alert">{dialogError}</div>}
+          <EmField label="New PIN" htmlFor="us-pin">
+            <input
+              id="us-pin"
+              className="em-input"
+              type="password"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={8}
+              value={pin}
+              onChange={(e) => setPin(e.target.value)}
+              placeholder="4 to 8 digits"
+            />
+          </EmField>
+          <div className="em-footer">
+            <button type="button" className="em-cancel" onClick={() => setShowPin(false)}>Cancel</button>
+            <button type="button" className="em-submit" onClick={savePin} disabled={busy}>
+              {busy ? 'Saving…' : 'Save PIN'}
+            </button>
           </div>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setShowPin(false)}>Cancel</Button>
-            <Button onClick={savePin} disabled={busy}>{busy ? 'Saving…' : 'Save PIN'}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+      </EntityModal>
 
-      <Dialog open={showReset} onOpenChange={(o) => { if (!o) setShowReset(false); }}>
-        <DialogContent className="sm:max-w-[420px]">
-          <DialogHeader>
-            <DialogTitle>Reset password</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col gap-4">
-            <p className="text-sm text-muted-foreground">
-              Set a new password for <strong className="text-foreground">{displayName(user)}</strong>{' '}
-              (@{user?.username}).
-            </p>
-            {dialogError && <Alert variant="destructive" role="alert">{dialogError}</Alert>}
-            <Field label="New password" htmlFor="us-new">
-              <Input
-                id="us-new" type="password" autoComplete="new-password"
-                value={password} onChange={(e) => setPassword(e.target.value)}
-                placeholder="At least 8 characters"
-              />
-            </Field>
-            <Field label="Confirm password" htmlFor="us-confirm">
-              <Input
-                id="us-confirm" type="password" autoComplete="new-password"
-                value={confirm} onChange={(e) => setConfirm(e.target.value)}
-                placeholder="Re-enter the new password"
-              />
-            </Field>
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
-              <Checkbox
-                checked={requireChange}
-                onCheckedChange={(v) => setRequireChange(v === true)}
-              />
+      <EntityModal
+        open={showReset}
+        onOpenChange={(o) => { if (!o) setShowReset(false); }}
+        title="Reset password"
+      >
+        <div className="em-form">
+          <p className="em-hint">
+            Set a new password for <strong>{displayName(user)}</strong>{' '}
+            (@{user?.username}).
+          </p>
+          {dialogError && <div className="em-error" role="alert">{dialogError}</div>}
+          <EmField label="New password" htmlFor="us-new">
+            <input
+              id="us-new" className="em-input" type="password" autoComplete="new-password"
+              value={password} onChange={(e) => setPassword(e.target.value)}
+              placeholder="At least 8 characters"
+            />
+          </EmField>
+          <EmField label="Confirm password" htmlFor="us-confirm">
+            <input
+              id="us-confirm" className="em-input" type="password" autoComplete="new-password"
+              value={confirm} onChange={(e) => setConfirm(e.target.value)}
+              placeholder="Re-enter the new password"
+            />
+          </EmField>
+          <label className="em-check-row">
+            <input
+              type="checkbox"
+              className="em-check"
+              checked={requireChange}
+              onChange={(e) => setRequireChange(e.target.checked)}
+            />
+            <span className="em-check-label">
               Make them choose their own password at the next sign-in
-            </label>
-          </div>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setShowReset(false)}>Cancel</Button>
-            <Button onClick={doReset} disabled={busy}>
+            </span>
+          </label>
+          <div className="em-footer">
+            <button type="button" className="em-cancel" onClick={() => setShowReset(false)}>Cancel</button>
+            <button type="button" className="em-submit" onClick={doReset} disabled={busy}>
               {busy ? 'Resetting…' : 'Reset password'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </button>
+          </div>
+        </div>
+      </EntityModal>
     </UserSection>
   );
 }

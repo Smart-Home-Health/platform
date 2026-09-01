@@ -41,17 +41,8 @@ import {
   BarChartIcon,
   MessagesIcon
 } from '../../components/Icons';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Alert } from '@/components/ui/alert';
+import EntityModal, { EmField } from '../../components/vc/EntityModal';
+import '../../components/vc/entity-card.css';
 import './AdminV2.css';
 import './admin-nav.css'; // grouped-nav structure (both themes)
 // Bedside-monitor skin (dark theme only) + its fonts (shared entry, deduped
@@ -59,7 +50,6 @@ import './admin-nav.css'; // grouped-nav structure (both themes)
 import '../../styles/vcFonts';
 import './vc-shell.css';
 import './vc-content.css';
-import './vc-forms.css';
 import ConnectionChip from '../../components/ConnectionChip';
 import PersonAvatar from '../../components/vc/PersonAvatar';
 import useConnectionStatus from '../../hooks/useConnectionStatus';
@@ -359,21 +349,6 @@ const AdminV2Layout = ({ children }) => {
     const delta = (activeRect.left - navRect.left) - (nav.clientWidth - active.clientWidth) / 2;
     nav.scrollBy({ left: delta, behavior: 'smooth' });
   }, [location.pathname, topNavItems.length]);
-
-  // vc form skin (vc-forms.css) applies to the whole admin. It used to be an
-  // opt-in allowlist of routes while the rebuild rolled out, which left every
-  // un-listed section on stock shadcn geometry and the stock red destructive —
-  // the colours were already right everywhere (vc-content.css remaps the .tw
-  // islands globally), only the shape and typography stopped at the list.
-  //
-  // This layout is mounted by every /care page, so binding the class to its
-  // lifetime scopes the skin to the admin exactly. It goes on <body> rather
-  // than the page wrapper so it also reaches Radix's portalled Select/Dialog
-  // content, which renders outside the page tree.
-  useEffect(() => {
-    document.body.classList.add('vc-form-skin');
-    return () => document.body.classList.remove('vc-form-skin');
-  }, []);
 
   // Chevron scroll hints: shown at whichever edge has more tabs off-screen.
   const [navScroll, setNavScroll] = useState({ left: false, right: false });
@@ -729,37 +704,40 @@ const AdminV2Layout = ({ children }) => {
         </div>
 
         {/* Unlock modal */}
-        <Dialog open={showUnlockModal} onOpenChange={(o) => { if (!o && !unlockLoading) setShowUnlockModal(false); }}>
-          <DialogContent className="sm:max-w-[400px]">
-            <DialogHeader>
-              <DialogTitle>Unlock read access</DialogTitle>
-              <DialogDescription>Enter account password to view data.</DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleUnlockSubmit} className="flex flex-col gap-3">
-              {unlockError && <Alert variant="destructive">{unlockError}</Alert>}
-              <Input
+        <EntityModal
+          open={showUnlockModal}
+          onOpenChange={(o) => { if (!o && !unlockLoading) setShowUnlockModal(false); }}
+          title="Unlock read access"
+        >
+          <form onSubmit={handleUnlockSubmit} className="em-form">
+            <p className="em-hint">Enter account password to view data.</p>
+            {unlockError && <div className="em-error" role="alert">{unlockError}</div>}
+            <EmField label="Account password" htmlFor="layout-unlock-password">
+              <input
+                id="layout-unlock-password"
+                className="em-input"
                 type="password"
                 value={unlockPassword}
                 onChange={e => setUnlockPassword(e.target.value)}
                 placeholder="Account password"
                 autoFocus
               />
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => !unlockLoading && setShowUnlockModal(false)}
-                  disabled={unlockLoading}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={unlockLoading}>
-                  {unlockLoading ? 'Unlocking...' : 'Unlock'}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+            </EmField>
+            <div className="em-footer">
+              <button
+                type="button"
+                className="em-cancel"
+                onClick={() => !unlockLoading && setShowUnlockModal(false)}
+                disabled={unlockLoading}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="em-submit" disabled={unlockLoading}>
+                {unlockLoading ? 'Unlocking...' : 'Unlock'}
+              </button>
+            </div>
+          </form>
+        </EntityModal>
 
         {/* Page Content */}
         <main className={`admin-v2-content ${topNavItems.length > 0 ? 'with-topnav' : ''}`}>

@@ -219,6 +219,7 @@
 .pc-btn {
   display: inline-flex;
   align-items: center;
+  gap: 0.35rem;
   justify-content: center;
   min-height: 40px;
   padding: 0 0.9rem;

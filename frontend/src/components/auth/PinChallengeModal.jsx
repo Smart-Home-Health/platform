@@ -20,6 +20,7 @@ import { createPortal } from 'react-dom';
 import ModalBase from '../ModalBase';
 import Keypad from '../vc/Keypad';
 import PersonAvatar from '../vc/PersonAvatar';
+import { BackArrowIcon } from '../Icons';
 import { useAuth } from '../../contexts/AuthContext';
 import './pin-challenge.css';
 
@@ -250,7 +251,7 @@ export default function PinChallengeModal({ open, onSuccess, onCancel }) {
                 type="button"
                 className="pc-btn ghost"
                 onClick={() => { setSelected(null); setError(null); }}
-              >← Change user</button>
+              ><BackArrowIcon size={13} />Change user</button>
               <div className="pc-actions-right">
                 <button type="button" className="pc-btn ghost" onClick={onCancel}>Cancel</button>
                 <button

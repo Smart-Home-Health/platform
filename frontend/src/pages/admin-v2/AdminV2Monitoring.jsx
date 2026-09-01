@@ -17,6 +17,7 @@
  */
 import { useLocation } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
+import PatientGate from './components/PatientGate';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import AlertsList from '../../components/alerts/AlertsList';
 import AlertsHistory from '../../components/alerts/AlertsHistory';
@@ -25,6 +26,7 @@ import AdminV2MonitoringVentilator from './AdminV2MonitoringVentilator';
 import AdminV2MonitoringInteractions from './AdminV2MonitoringInteractions';
 import AdminV2MonitoringEnvironment from './AdminV2MonitoringEnvironment';
 import './AdminV2.css';
+import './settings/settings-page.css';
 
 const AdminV2Monitoring = () => {
   const location = useLocation();
@@ -49,11 +51,7 @@ const AdminV2Monitoring = () => {
 
   const renderContent = () => {
     if (!selectedPatient) {
-      return (
-        <div className="admin-v2-monitoring-empty">
-          <p>Select a patient from the sidebar to view monitoring alerts and history.</p>
-        </div>
-      );
+      return <PatientGate message="Choose a patient to view monitoring alerts and history." />;
     }
 
     if (isTimelineView) {
@@ -86,16 +84,18 @@ const AdminV2Monitoring = () => {
 
   return (
     <AdminV2Layout>
-      <div className="admin-v2-monitoring">
-        <div className="admin-v2-monitoring-header">
-          <h1 className="admin-v2-page-title">Monitoring</h1>
-          {selectedPatient && (
-            <p className="admin-v2-page-subtitle">
-              {subtitle()} for {selectedPatient.first_name} {selectedPatient.last_name}
-            </p>
-          )}
-        </div>
-        <div className="admin-v2-monitoring-content">
+      <div className="admin-v2-page">
+        <div className="cfg">
+          <div className="cfg-pagehead">
+            <div className="cfg-pagehead-text">
+              <h1 className="cfg-h1">Monitoring</h1>
+              {selectedPatient && (
+                <p className="cfg-pagehead-desc">
+                  {subtitle()} for {selectedPatient.first_name} {selectedPatient.last_name}
+                </p>
+              )}
+            </div>
+          </div>
           {renderContent()}
         </div>
       </div>

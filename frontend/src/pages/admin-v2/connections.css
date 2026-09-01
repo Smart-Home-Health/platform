@@ -15,22 +15,23 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-// Wave 1 — cn() class merge helper (clsx + tailwind-merge).
-import { describe, it, expect } from 'vitest';
-import { cn } from './utils';
+@import '../../styles/vc-tokens.css';
 
-describe('cn', () => {
-  it('joins simple class strings', () => {
-    expect(cn('a', 'b')).toBe('a b');
-  });
+/* Connections page. The body was a `.tw` island of Tailwind layout utilities
+   wrapped around already-migrated EntityCards; the sections are `cfg-listgroup`
+   now and only the outer stack and the CTA empty state need their own rules. */
 
-  it('applies clsx conditional/array/object inputs', () => {
-    const off = false; // avoid a constant `&&` (lint) while still exercising falsy skips
-    expect(cn('a', off && 'b', null, ['c', 'd'], { e: true, f: false })).toBe('a c d e');
-  });
+.cx-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
 
-  it('dedupes conflicting Tailwind classes (last wins)', () => {
-    expect(cn('p-2', 'p-4')).toBe('p-4');
-    expect(cn('text-sm text-red-500', 'text-lg')).toBe('text-red-500 text-lg');
-  });
-});
+/* ec-empty plus a stacked call to action. */
+.cx-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+.cx-empty p { margin: 0; font-size: 13.5px; }

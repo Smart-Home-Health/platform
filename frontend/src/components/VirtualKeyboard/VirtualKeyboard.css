@@ -1,3 +1,4 @@
+@import '../../styles/vc-tokens.css';
 .vkb-root {
   position: fixed;
   left: 0;
@@ -8,7 +9,7 @@
      keyboard render but swallow every tap. A descendant may re-enable. */
   pointer-events: auto;
   background: #1a1f2e;
-  border-top: 1px solid var(--card);
+  border-top: 1px solid var(--vc-bg-surface);
   box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.4);
   padding: 8px 8px 12px;
   user-select: none;
@@ -27,8 +28,8 @@
 }
 
 .vkb-toolbar-button {
-  background: var(--card);
-  color: var(--foreground);
+  background: var(--vc-bg-surface);
+  color: var(--vc-text-primary);
   border: none;
   border-radius: 6px;
   padding: 8px 14px;
@@ -37,7 +38,7 @@
 }
 
 .vkb-toolbar-button:hover {
-  background: var(--secondary);
+  background: var(--vc-bg-raised);
 }
 
 /* Style the react-simple-keyboard for a dark touch UI */
@@ -47,21 +48,21 @@
 
 .vkb-root .simple-keyboard .hg-button {
   height: 52px;
-  background: var(--card);
-  color: var(--foreground);
-  border: 1px solid var(--secondary);
+  background: var(--vc-bg-surface);
+  color: var(--vc-text-primary);
+  border: 1px solid var(--vc-bg-raised);
   border-radius: 6px;
   font-size: 18px;
 }
 
 .vkb-root .simple-keyboard .hg-button:active,
 .vkb-root .simple-keyboard .hg-button.hg-activeButton {
-  background: var(--border);
+  background: var(--vc-line-hairline);
 }
 
 .vkb-root .simple-keyboard .hg-button.hg-functionBtn {
-  background: var(--card);
-  color: var(--foreground);
+  background: var(--vc-bg-surface);
+  color: var(--vc-text-primary);
 }
 
 /* Numpad mode: fewer keys per row, taller buttons, centered + narrower. */

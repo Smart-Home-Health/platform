@@ -20,8 +20,6 @@
 // that do not toggle.
 import { useParams } from 'react-router-dom';
 import { CheckIcon } from '../../../components/Icons';
-import { Card, CardContent } from '@/components/ui/card';
-import { Alert } from '@/components/ui/alert';
 import CareProfileSection from './CareProfileSection';
 import { STATUS_META, featuresSummary } from './careProfileSections';
 import useCareProfile from './useCareProfile';
@@ -51,28 +49,23 @@ export default function AdminV2CareProfileFeatures() {
       loading={loading}
       error={error}
     >
-      <Alert>
+      <p className="cfg-note">
         Every area below is available for every care profile today. Turning them on
         and off per profile is not built yet — this page will grow the switches when
         it is.
-      </Alert>
+      </p>
 
-      <Card>
-        <CardContent className="flex flex-col gap-0 p-0">
-          {APP_AREAS.map((area) => (
-            <div
-              key={area.id}
-              className="flex items-start gap-3 border-b border-border p-4 last:border-b-0"
-            >
-              <span className="mt-0.5 text-success" aria-hidden><CheckIcon size={18} /></span>
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-foreground">{area.label}</p>
-                <p className="text-sm text-muted-foreground">{area.blurb}</p>
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+      <section className="cfg-card cp-rows">
+        {APP_AREAS.map((area) => (
+          <div key={area.id} className="cp-row cp-row-compact cp-row-static">
+            <span className="cp-tile" data-tone="success" aria-hidden><CheckIcon size={18} /></span>
+            <span className="cp-row-body">
+              <span className="cp-row-title cp-row-title-plain">{area.label}</span>
+              <span className="cp-row-blurb">{area.blurb}</span>
+            </span>
+          </div>
+        ))}
+      </section>
     </CareProfileSection>
   );
 }

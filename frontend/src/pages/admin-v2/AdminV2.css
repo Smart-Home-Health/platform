@@ -1315,7 +1315,11 @@
     flex-wrap: wrap;
   }
 
-  .admin-v2-patient-actions .admin-v2-btn {
+  /* em-cancel/em-submit are the vc replacements for the shadcn Buttons that
+     used to carry `max-md:min-w-[120px] max-md:flex-1` utilities here. */
+  .admin-v2-patient-actions .admin-v2-btn,
+  .admin-v2-patient-actions .em-cancel,
+  .admin-v2-patient-actions .em-submit {
     flex: 1 1 auto;
     min-width: 120px;
   }
@@ -7396,162 +7400,6 @@ body.printing-schedule .admin-v2-schedule-prn-add {
 
   .custom-vitals-add-row .admin-v2-btn {
     flex-shrink: 0;
-  }
-}
-
-/* =====================================================
-   VITALS HISTORY FILTERS
-   ===================================================== */
-
-.vitals-history-filters {
-  background: linear-gradient(135deg, color-mix(in srgb, var(--secondary) 90%, transparent), color-mix(in srgb, var(--card) 90%, transparent));
-  border: 1px solid color-mix(in srgb, var(--muted-foreground) 15%, transparent);
-  border-radius: 12px;
-  padding: 1.25rem;
-  margin-bottom: 1.5rem;
-}
-
-.vitals-filter-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  align-items: flex-end;
-}
-
-.vitals-filter-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  min-width: 140px;
-}
-
-.vitals-filter-group.search {
-  flex: 1;
-  min-width: 200px;
-}
-
-.vitals-filter-group.actions {
-  min-width: auto;
-}
-
-.vitals-filter-group label {
-  font-size: 0.8rem;
-  color: var(--muted-foreground);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.vitals-filter-group input,
-.vitals-filter-group select {
-  padding: 0.75rem 1rem;
-  background: linear-gradient(135deg, color-mix(in srgb, var(--card) 90%, transparent), color-mix(in srgb, var(--background) 90%, transparent));
-  border: 1px solid color-mix(in srgb, var(--muted-foreground) 25%, transparent);
-  border-radius: 10px;
-  color: var(--foreground);
-  font-size: 0.95rem;
-  font-weight: 500;
-  transition: all 0.2s ease;
-}
-
-.vitals-filter-group input:focus,
-.vitals-filter-group select:focus {
-  outline: none;
-  border-color: color-mix(in srgb, var(--ring) 50%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 10%, transparent);
-}
-
-.vitals-filter-group input[type="date"]::-webkit-calendar-picker-indicator {
-  filter: invert(0.7);
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
-  transition: all 0.2s ease;
-}
-
-.vitals-filter-group input[type="date"]::-webkit-calendar-picker-indicator:hover {
-  filter: invert(0.9);
-  background: color-mix(in srgb, var(--ring) 20%, transparent);
-}
-
-.vitals-filter-group select {
-  cursor: pointer;
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b949e' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 12px center;
-  padding-right: 36px;
-}
-
-.vitals-search-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  background: linear-gradient(135deg, color-mix(in srgb, var(--card) 90%, transparent), color-mix(in srgb, var(--background) 90%, transparent));
-  border: 1px solid color-mix(in srgb, var(--muted-foreground) 25%, transparent);
-  border-radius: 10px;
-  transition: all 0.2s ease;
-}
-
-.vitals-search-wrapper:focus-within {
-  border-color: color-mix(in srgb, var(--ring) 50%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 10%, transparent);
-}
-
-.vitals-search-wrapper svg {
-  color: var(--muted-foreground);
-  flex-shrink: 0;
-}
-
-.vitals-search-wrapper input {
-  flex: 1;
-  background: transparent;
-  border: none;
-  color: var(--foreground);
-  font-size: 0.95rem;
-  font-weight: 500;
-  padding: 0;
-}
-
-.vitals-search-wrapper input:focus {
-  outline: none;
-}
-
-.vitals-search-wrapper input::placeholder {
-  color: color-mix(in srgb, var(--muted-foreground) 60%, transparent);
-}
-
-.vitals-clear-btn {
-  padding: 0.75rem 1.25rem;
-  background: color-mix(in srgb, var(--border) 60%, transparent);
-  border: 1px solid color-mix(in srgb, var(--muted-foreground) 25%, transparent);
-  border-radius: 10px;
-  color: var(--muted-foreground);
-  font-size: 0.9rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  white-space: nowrap;
-}
-
-.vitals-clear-btn:hover {
-  background: color-mix(in srgb, var(--border) 90%, transparent);
-  border-color: color-mix(in srgb, var(--muted-foreground) 40%, transparent);
-  color: var(--foreground);
-}
-
-@media (max-width: 768px) {
-  .vitals-filter-row {
-    flex-direction: column;
-  }
-  
-  .vitals-filter-group {
-    width: 100%;
-  }
-  
-  .vitals-filter-group.search {
-    min-width: 100%;
   }
 }
 

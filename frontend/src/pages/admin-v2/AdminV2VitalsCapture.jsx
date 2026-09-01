@@ -19,6 +19,7 @@
 // AdminV2Layout (hamburger nav, sidebar patient selection). The standalone
 // phone shell for the same panel lives at /capture.
 import AdminV2Layout from './AdminV2Layout';
+import PatientGate from './components/PatientGate';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import CaptureVitalsPanel from '../capture/CaptureVitalsPanel';
 import useConnectionStatus from '../../hooks/useConnectionStatus';
@@ -32,7 +33,7 @@ const AdminV2VitalsCapture = () => {
     <AdminV2Layout>
       <div className="admin-v2-page">
         {!selectedPatient ? (
-          <div className="admin-v2-empty-state"><p>Please select a patient from the sidebar</p></div>
+          <PatientGate message="Choose a patient to capture vitals." />
         ) : (
           <div className="vitals-capture vc-embedded">
             <CaptureVitalsPanel patient={selectedPatient} connection={connection} embedded />

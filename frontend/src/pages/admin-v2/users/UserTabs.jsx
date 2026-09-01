@@ -29,14 +29,14 @@ const USER_TABS = [
 
 export default function UserTabs({ userId, current }) {
   return (
-    <div className="cp-tabs" role="tablist" aria-label="User">
+    <div className="cfg-tabs" role="tablist" aria-label="User">
       {USER_TABS.map((t) => (
         <Link
           key={t.id}
           to={`/care/configuration/users/${userId}${t.segment}`}
           role="tab"
           aria-selected={current === t.id}
-          className="cp-tab"
+          className="cfg-tab"
         >
           {t.label}
         </Link>

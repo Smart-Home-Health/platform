@@ -32,6 +32,11 @@ export default [
       // (the Vite template's `varsIgnorePattern: '^[A-Z_]'`), which exempts
       // essentially every component import and lets dead ones pile up unseen.
       'react/jsx-uses-vars': 'error',
+      // …and the mirror image: core no-undef cannot see a JSX reference
+      // either, so `<Button />` with the import deleted passes lint and
+      // becomes a runtime ReferenceError (a blank page). This rule is what
+      // actually catches that.
+      'react/jsx-no-undef': 'error',
       // `const { [field]: _, ...rest } = prev` is how a key gets dropped; the
       // binding exists to be discarded, so only the rest siblings are a use.
       'no-unused-vars': ['error', { ignoreRestSiblings: true }],

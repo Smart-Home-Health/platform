@@ -373,7 +373,7 @@
 .mp-sheet-step { flex-shrink: 0; color: var(--vc-data-live); font-weight: 700; }
 
 /* Modal title: name on top, patient + which view under it. Styled here rather
-   than leaning on the dock's `.modal-header.docked` rule, which does not apply
+   than leaning on the dock's `.mb-head.docked` rule, which does not apply
    on a phone — the title would fall back to the 1.5rem sans <h2>. */
 .mp-modal-title {
   display: flex;

@@ -28,7 +28,7 @@ import {
 } from '../../components/Icons';
 import EntityCard from '../../components/vc/EntityCard';
 import EntityToolbar from '../../components/vc/EntityToolbar';
-import EntityModal, { EmField, EmRow } from '../../components/vc/EntityModal';
+import EntityModal, { EmField, EmRow, EmMultiSelect } from '../../components/vc/EntityModal';
 import './AdminV2.css';
 
 const AdminV2Businesses = () => {
@@ -380,20 +380,14 @@ const AdminV2Businesses = () => {
           <form onSubmit={handleSubmit} className="em-form">
             {formError && <div className="em-error">{formError}</div>}
 
-            <EmField label="Business types (select all that apply)" required>
-              <EmRow>
-                {businessTypeOptions.map(type => (
-                  <label key={type} className="em-check-row">
-                    <input
-                      type="checkbox"
-                      className="em-check"
-                      checked={(formData.business_types || []).includes(type)}
-                      onChange={() => toggleBusinessType(type)}
-                    />
-                    <span className="em-check-label">{typeLabel(type)}</span>
-                  </label>
-                ))}
-              </EmRow>
+            <EmField label="Business types" required htmlFor="biz-types" hint="Select all that apply">
+              <EmMultiSelect
+                id="biz-types"
+                values={formData.business_types || []}
+                options={businessTypeOptions.map(t => ({ value: t, label: typeLabel(t) }))}
+                onToggle={toggleBusinessType}
+                placeholder="Select types…"
+              />
               {formData.business_types?.length === 0 && (
                 <div className="em-error">Please select at least one type</div>
               )}

@@ -41,11 +41,14 @@
 //       </div>
 //     </form>
 //   </EntityModal>
+import { useEffect, useRef, useState } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { XIcon, ChevronDownIcon } from '../Icons';
 import './entity-card.css';
 
-export default function EntityModal({ open, onOpenChange, title, wide = false, children }) {
+// `hideClose` removes the X for hard-gate dialogs (a patient MUST be picked);
+// pair it with an onOpenChange that ignores dismissal.
+export default function EntityModal({ open, onOpenChange, title, wide = false, hideClose = false, children }) {
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
@@ -62,12 +65,20 @@ export default function EntityModal({ open, onOpenChange, title, wide = false, c
           onInteractOutside={(e) => {
             if (e.target?.closest?.('.vkb-root')) e.preventDefault();
           }}
+          // With a multiselect popover open inside the panel, the first
+          // Escape belongs to the popover (its own listener closes it) —
+          // not to the dialog.
+          onEscapeKeyDown={(e) => {
+            if (document.querySelector('.em-multi-pop')) e.preventDefault();
+          }}
         >
           <div className="em-head">
             <DialogPrimitive.Title className="em-title">{title}</DialogPrimitive.Title>
-            <DialogPrimitive.Close className="em-close" aria-label="Close">
-              <XIcon size={18} />
-            </DialogPrimitive.Close>
+            {!hideClose && (
+              <DialogPrimitive.Close className="em-close" aria-label="Close">
+                <XIcon size={18} />
+              </DialogPrimitive.Close>
+            )}
           </div>
           {children}
         </DialogPrimitive.Content>
@@ -76,7 +87,7 @@ export default function EntityModal({ open, onOpenChange, title, wide = false, c
   );
 }
 
-export function EmField({ label, required = false, optional = false, htmlFor, children }) {
+export function EmField({ label, required = false, optional = false, htmlFor, hint, children }) {
   return (
     <div className="em-field">
       <label className="em-label" htmlFor={htmlFor}>
@@ -85,12 +96,80 @@ export function EmField({ label, required = false, optional = false, htmlFor, ch
         {optional && <span className="em-optional">Optional</span>}
       </label>
       {children}
+      {hint && <p className="em-hint">{hint}</p>}
     </div>
   );
 }
 
 export function EmRow({ children }) {
   return <div className="em-row">{children}</div>;
+}
+
+// Multi-select: an em-input-shaped trigger that opens a checkbox popover, so
+// a dozen options don't eat the whole form. `options` is [{ value, label }],
+// `values` the selected value array, `onToggle(value)` flips one.
+export function EmMultiSelect({ id, values = [], options = [], onToggle, placeholder = 'Select…' }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDocDown = (e) => {
+      if (!rootRef.current?.contains(e.target)) setOpen(false);
+    };
+    // Capture phase + stopPropagation: the first Escape closes just the
+    // popover, not the EntityModal hosting it (Radix listens on bubble).
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        setOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', onDocDown);
+    document.addEventListener('keydown', onKey, true);
+    return () => {
+      document.removeEventListener('pointerdown', onDocDown);
+      document.removeEventListener('keydown', onKey, true);
+    };
+  }, [open]);
+
+  const summary = options
+    .filter((o) => values.includes(o.value))
+    .map((o) => o.label)
+    .join(', ');
+
+  return (
+    <div className="em-multi" ref={rootRef}>
+      <button
+        type="button"
+        id={id}
+        className="em-input em-multi-trigger"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className={summary ? undefined : 'em-multi-placeholder'}>
+          {summary || placeholder}
+        </span>
+        <ChevronDownIcon size={16} />
+      </button>
+      {open && (
+        <div className="em-multi-pop">
+          {options.map((o) => (
+            <label key={o.value} className="em-check-row">
+              <input
+                type="checkbox"
+                className="em-check"
+                checked={values.includes(o.value)}
+                onChange={() => onToggle(o.value)}
+              />
+              <span className="em-check-label">{o.label}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // Native select with the vc chevron; forwards all props to <select>.

@@ -21,12 +21,12 @@ import AdminV2Layout from './AdminV2Layout';
 import {
   PatientSelectorModal, CareTasksOverviewPanel, CareTaskHistoryModal,
 } from './components';
+import PatientGate from './components/PatientGate';
 import { careTaskService } from '../../services/careTasks';
 import { TasksIcon } from '../../components/Icons';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import config from '../../config';
-import { Button } from '@/components/ui/button';
-import { Alert } from '@/components/ui/alert';
+import '../../components/vc/entity-card.css';
 import './AdminV2.css';
 
 const AdminV2CareTasksOverview = () => {
@@ -125,25 +125,10 @@ const AdminV2CareTasksOverview = () => {
     return (
       <AdminV2Layout>
         <div className="admin-v2-page">
-          <div className="admin-v2-no-patient">
-            <TasksIcon size={48} />
-            <h2>Select a Patient</h2>
-            <p>Choose a patient to view their care task overview</p>
-            <div className="tw">
-              <Button onClick={() => setShowPatientModal(true)}>
-                Select Patient
-              </Button>
-            </div>
-          </div>
-          {showPatientModal && (
-            <PatientSelectorModal
-              patients={patients}
-              selectedPatient={selectedPatient}
-              onSelectPatient={(p) => { selectPatient(p); setShowPatientModal(false); }}
-              onClose={() => setShowPatientModal(false)}
-              loading={loadingPatients}
-            />
-          )}
+          <PatientGate
+            icon={<TasksIcon size={48} />}
+            message="Choose a patient to view their care task overview"
+          />
         </div>
       </AdminV2Layout>
     );
@@ -152,7 +137,7 @@ const AdminV2CareTasksOverview = () => {
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
-        {error && <div className="tw"><Alert variant="destructive">{error}</Alert></div>}
+        {error && <div className="em-error ec-page-alert" role="alert">{error}</div>}
 
         <CareTasksOverviewPanel
           windowDays={windowDays}

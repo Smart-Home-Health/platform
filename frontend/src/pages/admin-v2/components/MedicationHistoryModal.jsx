@@ -20,14 +20,8 @@
 // substring match) — see backend/routes/medications.py's docstring on why.
 import { useEffect, useState } from 'react';
 import config from '../../../config';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+import EntityModal from '../../../components/vc/EntityModal';
+import '../vc-schedule.css';
 
 const STATUS_INFO = {
   'on-time': { label: 'On Time', className: 'success' },
@@ -82,12 +76,13 @@ const MedicationHistoryModal = ({ open, onClose, patientId, medication }) => {
   }, [open, medication, patientId]);
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="sm:max-w-[560px]" aria-describedby={undefined}>
-        <DialogHeader>
-          <DialogTitle>History{medication ? `: ${medication.name}` : ''}</DialogTitle>
-        </DialogHeader>
-
+    <EntityModal
+      open={open}
+      onOpenChange={(o) => { if (!o) onClose(); }}
+      title={medication ? `History: ${medication.name}` : 'History'}
+      wide
+    >
+      <div className="em-form">
         {loading ? (
           <div className="ec-empty">Loading history…</div>
         ) : error ? (
@@ -95,43 +90,43 @@ const MedicationHistoryModal = ({ open, onClose, patientId, medication }) => {
         ) : history.length === 0 ? (
           <div className="ec-empty">No doses recorded yet.</div>
         ) : (
-          <div className="flex flex-col gap-2" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+          <div className="sch-hist">
             {history.map((record) => {
               const info = STATUS_INFO[record.status] || { label: record.status, className: 'muted' };
               return (
-                <div key={record.id} className="admin-v2-med-card">
-                  <div className="admin-v2-med-card-row admin-v2-med-card-header">
-                    <span className="history-datetime">{formatDateTime(record.administered_at)}</span>
-                    <span className={`history-status-badge ${info.className}`}>{info.label}</span>
+                <div key={record.id} className="sch-hist-row">
+                  <div className="sch-hist-top">
+                    <span className="sch-hist-when">{formatDateTime(record.administered_at)}</span>
+                    <span className={`sch-hist-badge ${info.className}`}>{info.label}</span>
                   </div>
-                  <div className="admin-v2-med-card-row admin-v2-med-card-meta">
-                    <div className="admin-v2-med-card-meta-item">
-                      <span className="admin-v2-med-card-label">Dose</span>
-                      <span className="history-dose">
+                  <div className="sch-hist-meta">
+                    <div className="sch-hist-item">
+                      <span className="sch-hist-label">Dose</span>
+                      <span className="sch-hist-val">
                         {record.dose_amount > 0 ? `${record.dose_amount} ${record.dose_unit || 'units'}` : 'Skipped'}
                       </span>
                     </div>
-                    <div className="admin-v2-med-card-meta-item">
-                      <span className="admin-v2-med-card-label">Scheduled</span>
+                    <div className="sch-hist-item">
+                      <span className="sch-hist-label">Scheduled</span>
                       {record.is_scheduled && record.scheduled_time ? (
-                        <span>{formatDateTime(record.scheduled_time)}</span>
+                        <span className="sch-hist-val">{formatDateTime(record.scheduled_time)}</span>
                       ) : (
-                        <span className="history-unscheduled">As Needed</span>
+                        <span className="sch-hist-val dim">As Needed</span>
                       )}
                     </div>
                   </div>
-                  {record.notes && <div className="history-notes">{record.notes}</div>}
+                  {record.notes && <div className="sch-hist-note">{record.notes}</div>}
                 </div>
               );
             })}
           </div>
         )}
 
-        <DialogFooter>
-          <Button type="button" variant="secondary" onClick={onClose}>Close</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <div className="em-footer">
+          <button type="button" className="em-cancel" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </EntityModal>
   );
 };
 

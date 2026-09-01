@@ -1,0 +1,1091 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Shared chassis for the /care/configuration settings pages — the vc
+ * replacement for the shadcn Card + Field + FormRow stack those pages were
+ * built from.
+ *
+ * This is the page-level sibling of components/settings/settings-panel.css
+ * (`st-*`, the docked live-dashboard panel): same tight/boxy spec — 4px
+ * radii, half-rem padding, flat rows, groups divided by a hairline instead of
+ * nested cards — but it scrolls with the page instead of owning its height.
+ * The field vocabulary is the shared em-* set from
+ * components/vc/entity-card.css; this sheet only squares it to 4px.
+ *
+ * vc-native, dark by design, like nutrition-overview.css and vitals-history.css.
+ */
+@import '../../../styles/vc-tokens.css';
+
+.cfg {
+  --cfg-radius: 4px;
+  --cfg-pad: 0.55rem;
+  --cfg-pad-x: 0.7rem;
+  --cfg-gap: 0.55rem;
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--cfg-gap);
+}
+.cfg *, .cfg *::before, .cfg *::after { box-sizing: border-box; }
+
+/* ---------- section card ---------- */
+.cfg-card {
+  background: var(--vc-bg-surface);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: var(--cfg-radius);
+  overflow: hidden;
+}
+.cfg-head {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: var(--cfg-pad) var(--cfg-pad-x);
+  border-bottom: 1px solid var(--vc-line-hairline);
+}
+.cfg-head-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: var(--cfg-radius);
+  background: var(--vc-bg-raised);
+  color: var(--vc-text-secondary);
+}
+/* `flex: 1 1 0` (not `auto`): with an auto basis a long subtitle sets a wide
+   flex basis and the whole block wraps below the icon at the narrow stop. */
+.cfg-head-text { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; flex: 1 1 0; }
+.cfg-title {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+.cfg-sub {
+  margin: 0;
+  font-family: var(--vc-font-sans);
+  font-size: 12.5px;
+  color: var(--vc-text-secondary);
+}
+/* Transient "saved" acknowledgement in the section header. */
+.cfg-saved {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-state-complete);
+}
+
+.cfg-body {
+  display: flex;
+  flex-direction: column;
+  padding: 0 var(--cfg-pad-x);
+}
+
+/* Groups are divided by a hairline rather than nested in their own cards. */
+.cfg-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: var(--cfg-pad) 0;
+  border-bottom: 1px solid var(--vc-line-hairline);
+}
+.cfg-group:last-child { border-bottom: none; }
+.cfg-group-head { display: flex; flex-direction: column; gap: 0.15rem; }
+.cfg-group-title {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.cfg-group-hint {
+  margin: 0;
+  font-family: var(--vc-font-sans);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--vc-text-secondary);
+}
+
+.cfg-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: var(--cfg-pad) var(--cfg-pad-x);
+  border-top: 1px solid var(--vc-line-hairline);
+}
+/* A footer with a status line on the left and its action on the right. */
+.cfg-foot.spread { justify-content: space-between; }
+
+/* A checkbox stack that goes side-by-side once there is room. */
+.cfg-checks { display: flex; flex-direction: column; gap: 0.5rem; }
+@media (min-width: 560px) {
+  .cfg-checks { flex-direction: row; flex-wrap: wrap; gap: 0.5rem 1.5rem; }
+}
+
+/* Two-column page layout for pages whose sections are independent (export vs
+   restore, say). Single column until there is genuinely room for two. */
+.cfg-cols { display: grid; gap: var(--cfg-gap); align-items: start; }
+@media (min-width: 900px) {
+  .cfg-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* `.three` earns its third column only once there is real width for it. */
+@media (min-width: 1200px) {
+  .cfg-cols.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* A disabled field should read as switched off, not merely unfocused. */
+.cfg .em-input:disabled {
+  background: color-mix(in srgb, var(--vc-bg-raised) 60%, transparent);
+  color: var(--vc-text-tertiary);
+  cursor: not-allowed;
+}
+.cfg .em-cancel:disabled {
+  color: var(--vc-text-tertiary);
+  border-color: var(--vc-line-hairline);
+  cursor: not-allowed;
+}
+
+/* File picker: the em-input shell with a vc-styled browse button, since the
+   native one keeps the platform chrome and ignores the surrounding palette. */
+.cfg .em-input[type="file"] {
+  padding: 0.3rem;
+  cursor: pointer;
+  font-family: var(--vc-font-sans);
+  font-size: 12.5px;
+  color: var(--vc-text-secondary);
+}
+.cfg .em-input[type="file"]::file-selector-button {
+  margin-right: 0.6rem;
+  padding: 0 0.7rem;
+  min-height: 28px;
+  background: var(--vc-bg-raised);
+  border: 1px solid var(--vc-line-strong);
+  border-radius: var(--cfg-radius);
+  color: var(--vc-text-primary);
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.cfg .em-input[type="file"]::file-selector-button:hover {
+  border-color: var(--vc-data-live);
+  color: var(--vc-data-live);
+}
+
+/* Collapsible detail inside a result box (per-table restore counts). */
+.cfg-details { margin-top: 0.4rem; }
+/* The native disclosure marker is a text glyph; the summary carries an SVG
+   chevron instead, rotated by the open state. */
+.cfg-details > summary { list-style: none; }
+.cfg-details > summary::-webkit-details-marker { display: none; }
+.cfg-details > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  cursor: pointer;
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-data-live);
+}
+.cfg-details > summary:focus-visible {
+  outline: none;
+  border-radius: var(--cfg-radius);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
+}
+.cfg-details > summary svg { transition: transform 0.15s ease; }
+.cfg-details[open] > summary svg { transform: rotate(180deg); }
+.cfg-kv {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.1rem 0.75rem;
+}
+.cfg-kv li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.2rem 0;
+  border-bottom: 1px solid var(--vc-line-hairline);
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  color: var(--vc-text-secondary);
+}
+.cfg-kv li b {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-text-primary);
+}
+
+/* Status pill for a section header. The state reads from the dot + the word,
+   never from a text glyph. */
+.cfg-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0 0.5rem;
+  min-height: 24px;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 999px;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+  white-space: nowrap;
+}
+.cfg-badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--vc-text-tertiary);
+}
+.cfg-badge.ok { border-color: color-mix(in srgb, var(--vc-state-complete) 45%, transparent); color: var(--vc-state-complete); }
+.cfg-badge.ok .cfg-badge-dot { background: var(--vc-state-complete); }
+.cfg-badge.live { border-color: color-mix(in srgb, var(--vc-data-live) 45%, transparent); color: var(--vc-data-live); }
+.cfg-badge.live .cfg-badge-dot { background: var(--vc-data-live); }
+.cfg-badge.alert { border-color: color-mix(in srgb, var(--vc-state-alert) 45%, transparent); color: var(--vc-state-alert); }
+.cfg-badge.alert .cfg-badge-dot { background: var(--vc-state-alert); }
+.cfg-badge.warn { border-color: color-mix(in srgb, var(--vc-state-due) 45%, transparent); color: var(--vc-state-due); }
+.cfg-badge.warn .cfg-badge-dot { background: var(--vc-state-due); }
+
+/* Header-right slot: badge plus a small action, wrapping under the title on
+   a phone rather than crushing it. */
+.cfg-head-aside { display: flex; align-items: center; gap: 0.4rem; flex: 0 0 auto; }
+@media (max-width: 560px) {
+  .cfg-head { flex-wrap: wrap; }
+  .cfg-head-aside { width: 100%; justify-content: flex-start; }
+}
+.cfg-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 32px;
+  padding: 0 0.6rem;
+  background: transparent;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: var(--cfg-radius);
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.cfg-ghost:hover { color: var(--vc-data-live); border-color: var(--vc-data-live); }
+a.cfg-ghost { text-decoration: none; }
+.cfg-ghost.danger { color: var(--vc-state-alert); border-color: color-mix(in srgb, var(--vc-state-alert) 45%, transparent); }
+.cfg-ghost.danger:hover { color: var(--vc-state-alert); border-color: var(--vc-state-alert); }
+.cfg-ghost:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
+}
+
+/* Read-only fact tiles (mode, address, expiry…). */
+.cfg-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.45rem;
+}
+/* Count tiles stay on ONE row even on a phone (same call as cp-stats:
+ * stacked, they push the actual content below the fold). Only for short
+ * numeric tiles — long fact values keep the wrapping default above. */
+.cfg-stats.row {
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-template-columns: none;
+}
+@media (max-width: 640px) {
+  .cfg-stats.row { gap: 0.3rem; }
+  .cfg-stats.row .cfg-stat { padding: 0.4rem 0.35rem; }
+  .cfg-stats.row .cfg-stat-label { font-size: 8.5px; letter-spacing: 0.04em; }
+  .cfg-stats.row .cfg-stat-value { font-size: 15px; }
+}
+.cfg-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.5rem 0.6rem;
+  background: var(--vc-bg-raised);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: var(--cfg-radius);
+  min-width: 0;
+}
+.cfg-stat-label {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.cfg-stat-value {
+  font-family: var(--vc-font-mono);
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--vc-text-primary);
+  overflow-wrap: anywhere;
+}
+.cfg-stat-hint {
+  font-family: var(--vc-font-sans);
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--vc-text-tertiary);
+}
+
+/* Clickable stat tiles used as status filters (the schedule pages). Selection
+ * is aria-pressed; the status colour rides on a dot beside the label, never a
+ * stripe or a tinted card. */
+button.cfg-stat {
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+button.cfg-stat:hover { border-color: var(--vc-line-strong); }
+button.cfg-stat[aria-pressed='true'] {
+  border-color: color-mix(in srgb, var(--vc-data-live) 55%, transparent);
+  background: color-mix(in srgb, var(--vc-data-live) 8%, var(--vc-bg-raised));
+}
+button.cfg-stat .cfg-stat-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.cfg-stat-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+/* Page-level toolbar row (count summary + actions) above a board. */
+.cfg-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.cfg-toolbar-title {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.cfg-toolbar-actions { display: flex; align-items: center; gap: 0.5rem; }
+
+/* A padded standalone card (wizard steps, catalog rows). */
+.cfg-card.pad {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.6rem 0.7rem;
+}
+
+/* Day-of-week picker: one toggle per day, selection via aria-pressed. */
+.cfg-daypick { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.cfg-daypick button {
+  min-width: 2.6rem;
+  padding: 0.35rem 0.4rem;
+  background: transparent;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: var(--cfg-radius);
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.cfg-daypick button:hover { color: var(--vc-text-primary); }
+.cfg-daypick button[aria-pressed='true'] {
+  border-color: color-mix(in srgb, var(--vc-data-live) 55%, transparent);
+  background: color-mix(in srgb, var(--vc-data-live) 12%, transparent);
+  color: var(--vc-data-live);
+}
+
+/* A real scrolling <table> for grid-shaped data (CSV preview) — arbitrary
+ * column counts card-ify badly, so horizontal scroll is the mobile story. */
+.cfg-rawtable-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: var(--cfg-radius);
+}
+.cfg-rawtable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  color: var(--vc-text-primary);
+}
+.cfg-rawtable th,
+.cfg-rawtable td {
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--vc-line-hairline);
+  text-align: left;
+  white-space: nowrap;
+}
+.cfg-rawtable th {
+  background: var(--vc-bg-raised);
+  vertical-align: top;
+}
+.cfg-rawtable tbody tr:last-child td { border-bottom: 0; }
+.cfg-rawtable td.dim { color: var(--vc-text-tertiary); }
+.cfg-rawtable-colname {
+  margin-top: 0.25rem;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+
+/* Scrollable checkbox list for role / patient assignment (ToggleList). */
+.cfg-togglelist {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  max-height: 12rem;
+  overflow-y: auto;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: var(--cfg-radius);
+  background: var(--vc-bg-raised);
+}
+.cfg-togglelist .em-check-row[data-disabled] { opacity: 0.55; cursor: not-allowed; }
+.cfg-togglelist small {
+  display: block;
+  font-size: 11px;
+  color: var(--vc-text-tertiary);
+}
+.cfg-togglelist-empty {
+  margin: 0;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: var(--cfg-radius);
+  background: var(--vc-bg-raised);
+  font-size: 12.5px;
+  color: var(--vc-text-secondary);
+}
+
+/* Fine print under a card — a caveat the reader can skip. */
+.cfg-fine {
+  margin: 0;
+  font-family: var(--vc-font-sans);
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--vc-text-tertiary);
+}
+
+/* A labelled list card: eyebrow (+ optional right-hand note) above the box. */
+.cfg-listgroup { display: flex; flex-direction: column; gap: 0.4rem; }
+.cfg-listgroup-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+/* Centered "pick a patient first" state for patient-scoped pages. */
+.cfg-nopatient {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 3rem 1rem;
+  text-align: center;
+  color: var(--vc-text-secondary);
+}
+.cfg-nopatient svg { color: var(--vc-text-tertiary); }
+.cfg-nopatient h2 {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 15px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+.cfg-nopatient p { margin: 0; font-size: 12.5px; }
+
+/* Neutral informational box — the counterpart to em-error / em-success. */
+.cfg-note {
+  margin: 0;
+  border: 1px solid var(--vc-line-hairline);
+  background: var(--vc-bg-raised);
+  border-radius: var(--cfg-radius);
+  padding: 0.5rem 0.7rem;
+  font-family: var(--vc-font-sans);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--vc-text-secondary);
+}
+
+/* Inline action row inside a group (as opposed to the section footer). */
+.cfg-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem; }
+.cfg-actions.end { justify-content: flex-end; }
+
+/* A <form> is a single CfgGroup child, so it needs its own field rhythm. */
+.cfg-form { display: flex; flex-direction: column; gap: 0.5rem; }
+
+/* Field + adjacent action (search box and its button). */
+/* Capped to the same measure as .cfg-fields so the location block lines up
+   with the coordinate row below it. */
+.cfg-search-row { display: flex; gap: 0.4rem; align-items: stretch; max-width: 58rem; }
+.cfg-search-row .em-input { flex: 1 1 auto; min-width: 0; }
+.cfg-search-row .cfg-ghost { flex: 0 0 auto; min-height: 38px; }
+
+/* Results you pick from — flat rows in one hairline box, no nested cards. */
+.cfg-picklist {
+  max-width: 58rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: var(--cfg-radius);
+  overflow: hidden;
+}
+.cfg-pick {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--vc-line-hairline);
+  border-radius: 0;
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--vc-font-sans);
+  font-size: 13px;
+  color: var(--vc-text-primary);
+}
+.cfg-pick:last-child { border-bottom: none; }
+.cfg-pick:hover { background: var(--vc-bg-raised); }
+.cfg-pick:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--vc-data-live) 45%, transparent);
+}
+.cfg-pick-meta {
+  flex: 0 0 auto;
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-text-tertiary);
+}
+
+/* Tabular data as ONE markup path: flat rows on a phone, re-flowed into
+   columns at >=900px with `display: contents` — the same technique
+   vitals-history.css uses, so there is no separate mobile-card tree to keep
+   in sync with a desktop <table>. Column widths come from the consumer via
+   --cfg-trow-cols. */
+.cfg-table { display: flex; flex-direction: column; }
+.cfg-thead { display: none; }
+.cfg-trow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--vc-line-hairline);
+  min-width: 0;
+}
+.cfg-trow:last-child { border-bottom: none; }
+/* Phone: the label rides with the value. */
+.cfg-tcell { display: flex; align-items: baseline; justify-content: space-between; gap: 0.6rem; min-width: 0; }
+.cfg-tcell::before {
+  content: attr(data-label);
+  flex: 0 0 auto;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.cfg-tcell.name::before { content: none; }
+.cfg-tcell.name {
+  font-family: var(--vc-font-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--vc-text-primary);
+  overflow-wrap: anywhere;
+}
+.cfg-tval {
+  font-family: var(--vc-font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-text-secondary);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.cfg-tval.strong { color: var(--vc-text-primary); font-weight: 700; }
+.cfg-tags { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+
+@media (min-width: 900px) {
+  .cfg-thead,
+  .cfg-trow {
+    display: grid;
+    grid-template-columns: var(--cfg-trow-cols, repeat(6, minmax(0, 1fr)));
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .cfg-thead {
+    padding: 0.35rem 0;
+    border-bottom: 1px solid var(--vc-line-hairline);
+  }
+  .cfg-thead span {
+    font-family: var(--vc-font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--vc-text-tertiary);
+  }
+  .cfg-tcell { display: contents; }
+  .cfg-tcell::before { display: none; }
+  /* `display: contents` drops the wrapper, so the name cell styles its span. */
+  .cfg-tcell.name { display: block; }
+  .cfg-tval { text-align: left; }
+}
+
+/* One maintenance target: identity on the left, its controls on the right. */
+.cfg-maint { display: flex; flex-direction: column; gap: 0.5rem; }
+.cfg-maint-id { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.cfg-maint-name {
+  font-family: var(--vc-font-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--vc-text-primary);
+  overflow-wrap: anywhere;
+}
+.cfg-maint-meta {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  color: var(--vc-text-tertiary);
+}
+.cfg-maint-actions { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.45rem; }
+.cfg-maint-actions .em-field { flex: 0 0 9rem; }
+@media (min-width: 720px) {
+  .cfg-maint { flex-direction: row; align-items: flex-end; justify-content: space-between; gap: 0.75rem; }
+  .cfg-maint-actions { flex-wrap: nowrap; }
+}
+
+/* Page crumb bar: back link on the left, status badges on the right. */
+.cfg-crumb {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.cfg-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+  border-radius: var(--cfg-radius);
+}
+.cfg-back:hover { color: var(--vc-data-live); }
+.cfg-back:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
+}
+.cfg-crumb-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
+
+/* Page heading under the crumb (user / care-profile section shells). */
+.cfg-pagehead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.cfg-pagehead-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.cfg-eyebrow {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.cfg-h1 {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--vc-text-primary);
+}
+.cfg-pagehead-desc {
+  margin: 0;
+  max-width: 58rem;
+  font-family: var(--vc-font-sans);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--vc-text-secondary);
+}
+
+/* Link tab bar for a record's sub-pages (users). Links, not local state. */
+.cfg-tabs {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: var(--cfg-radius);
+  background: var(--vc-bg-surface);
+}
+.cfg-tab {
+  padding: 0.4rem 0.5rem;
+  white-space: nowrap;
+  text-align: center;
+  border: 1px solid transparent;
+  border-radius: var(--cfg-radius);
+  background: transparent;
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-decoration: none;
+}
+.cfg-tab:hover { color: var(--vc-text-primary); }
+.cfg-tab[aria-selected='true'] {
+  border-color: color-mix(in srgb, var(--vc-data-live) 55%, transparent);
+  background: color-mix(in srgb, var(--vc-data-live) 12%, transparent);
+  color: var(--vc-data-live);
+}
+.cfg-tab:focus-visible { outline: 2px solid var(--vc-data-live); outline-offset: -2px; }
+
+/* Category-grouped permission toggles (PermissionSelector). */
+.cfg-perms {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-height: 18rem;
+  overflow-y: auto;
+  padding: 0.55rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: var(--cfg-radius);
+  background: var(--vc-bg-raised);
+}
+.cfg-perm-group { display: flex; flex-direction: column; gap: 0.35rem; }
+.cfg-perm-cat {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.cfg-perm-row { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.cfg-perm {
+  min-height: 26px;
+  padding: 0 0.6rem;
+  background: transparent;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 999px;
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+.cfg-perm:hover:not(.on) { color: var(--vc-text-primary); border-color: var(--vc-line-strong); }
+.cfg-perm.on {
+  background: var(--vc-data-live);
+  border-color: var(--vc-data-live);
+  color: var(--vc-bg-base);
+}
+.cfg-perm:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
+}
+
+/* Icon-only row action (edit / delete in a cfg-table row). */
+.cfg-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  flex: 0 0 auto;
+  background: transparent;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: var(--cfg-radius);
+  color: var(--vc-text-secondary);
+  cursor: pointer;
+}
+.cfg-iconbtn:hover { color: var(--vc-data-live); border-color: var(--vc-data-live); }
+.cfg-iconbtn.danger:hover { color: var(--vc-state-alert); border-color: var(--vc-state-alert); }
+.cfg-iconbtn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
+}
+.cfg-rowactions { display: flex; align-items: center; gap: 0.3rem; }
+/* A per-row failure note, under the value it belongs to. */
+.cfg-rowerr {
+  display: block;
+  font-family: var(--vc-font-sans);
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--vc-state-alert);
+}
+
+/* An already-used option in a pick list stays visible but inert. */
+.cfg-pick:disabled { opacity: 0.45; cursor: not-allowed; }
+.cfg-pick:disabled:hover { background: transparent; }
+/* Two-line pick row: name over identifier. */
+.cfg-pick.selected { background: color-mix(in srgb, var(--vc-data-live) 10%, transparent); }
+/* An avatar (or icon) leading the pick row's text. */
+.cfg-pick-lead { display: flex; align-items: center; gap: 0.6rem; min-width: 0; }
+.cfg-pick-main { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; overflow: hidden; }
+.cfg-pick-name {
+  font-weight: 600;
+  color: var(--vc-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cfg-pick-id {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  color: var(--vc-text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* The chosen entity, shown in place of the picker. */
+.cfg-chosen {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: var(--cfg-radius);
+  background: var(--vc-bg-raised);
+  overflow: hidden;
+}
+.cfg-picklist.scroll { max-height: 14rem; overflow-y: auto; }
+
+/* Empty state that offers the first-record action. */
+.imp-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 2rem 1rem;
+  border: 1px dashed var(--vc-line-hairline);
+  border-radius: var(--cfg-radius);
+}
+/* Section heading inside a long form dialog. */
+.imp-form-section {
+  padding-bottom: 0.3rem;
+  padding-top: 0.4rem;
+  border-bottom: 1px solid var(--vc-line-hairline);
+}
+
+/* Implant note thread inside the notes dialog. */
+.imp-note-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.55rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: var(--cfg-radius);
+}
+.imp-note-list { display: flex; flex-direction: column; gap: 0.45rem; max-height: 20rem; overflow-y: auto; }
+.imp-note {
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: var(--cfg-radius);
+  padding: 0.5rem 0.6rem;
+}
+.imp-note-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.imp-note-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+.imp-note-when {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  color: var(--vc-text-tertiary);
+}
+.imp-note-body {
+  margin: 0.35rem 0 0;
+  white-space: pre-wrap;
+  font-family: var(--vc-font-sans);
+  font-size: 13px;
+  color: var(--vc-text-primary);
+}
+.imp-note-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0.3rem 0 0;
+  font-family: var(--vc-font-sans);
+  font-size: 11.5px;
+  color: var(--vc-text-tertiary);
+}
+
+/* Read-only label/value list (account id, created, status…). */
+.cfg-facts { margin: 0; display: flex; flex-direction: column; }
+.cfg-facts > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--vc-line-hairline);
+}
+.cfg-facts > div:last-child { border-bottom: none; }
+.cfg-facts dt {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.cfg-facts dd {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--vc-text-primary);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+/* Destructive action — red is reserved for exactly this and clinical concern. */
+.cfg .em-danger {
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--vc-state-alert) 50%, transparent);
+  border-radius: var(--cfg-radius);
+  color: var(--vc-state-alert);
+  font-family: var(--vc-font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  min-height: 40px;
+  padding: 0 1rem;
+  cursor: pointer;
+}
+.cfg .em-danger:hover { border-color: var(--vc-state-alert); }
+.cfg .em-danger:disabled { color: var(--vc-text-tertiary); border-color: var(--vc-line-hairline); cursor: not-allowed; }
+
+/* Prose blocks (About, explanatory sections). */
+.cfg-prose {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-family: var(--vc-font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--vc-text-secondary);
+  /* Prose gets a reading measure; the section card itself stays full width. */
+  max-width: 68ch;
+}
+.cfg-prose p { margin: 0; }
+.cfg-prose strong { color: var(--vc-text-primary); font-weight: 600; }
+.cfg-link {
+  color: var(--vc-data-live);
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+.cfg-link:hover { text-decoration: underline; }
+.cfg-link:focus-visible {
+  outline: none;
+  border-radius: var(--cfg-radius);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
+}
+
+.cfg-loading,
+.cfg-empty {
+  margin: 0;
+  padding: 1.4rem 0.85rem;
+  text-align: center;
+  font-family: var(--vc-font-sans);
+  font-size: 13px;
+  color: var(--vc-text-tertiary);
+}
+
+/* ---------- square the shared em-* field vocabulary to this page ---------- */
+.cfg .em-input { border-radius: var(--cfg-radius); min-height: 38px; padding: 0.35rem 0.6rem; }
+.cfg .em-error,
+.cfg .em-success { border-radius: var(--cfg-radius); padding: 0.5rem 0.7rem; font-size: 13px; }
+.cfg .em-check { width: 20px; height: 20px; border-radius: var(--cfg-radius); }
+.cfg .em-check-label { font-size: 13.5px; }
+.cfg .em-cancel,
+.cfg .em-submit { border-radius: var(--cfg-radius); min-height: 40px; font-size: 12px; }
+/* em-row is a fixed 2-up; settings pages want a denser auto-fit grid so a
+   four-field threshold row does not become four stacked rows on a tablet. */
+.cfg-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.5rem 0.75rem;
+  /* Without a cap the fields stretch the full width of a desktop card, which
+     reads loose next to the tight section chrome. */
+  max-width: 58rem;
+}
+.cfg-fields.narrow { grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }
+.cfg-group-hint { max-width: 68ch; }

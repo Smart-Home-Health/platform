@@ -23,14 +23,10 @@
 // back RAW — parsing (e.g. the /I slip format) stays with the caller, same
 // contract as the camera dialogs.
 import { useEffect, useRef, useState } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { BarcodeIcon, CheckIcon, XIcon } from '../../../components/Icons';
+import EntityModal from '../../../components/vc/EntityModal';
+import { CfgBadge } from '../settings/CfgSection';
+import { BarcodeIcon, XIcon } from '../../../components/Icons';
+import './scan-dialogs.css';
 
 export const IDLE_COMMIT_MS = 120;     // no-terminator fallback
 export const MIN_AUTO_COMMIT_LEN = 4;  // don't auto-commit fragments
@@ -161,21 +157,19 @@ export default function ExternalScanDialog({
   if (!open) return null;
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose?.(); }}>
-      <DialogContent className="sm:max-w-[440px]" aria-describedby={undefined}>
-        <DialogHeader>
-          <DialogTitle>
-            {title || (multi ? 'Scan the slip barcodes' : 'Scan the item barcode')}
-          </DialogTitle>
-        </DialogHeader>
-
+    <EntityModal
+      open
+      onOpenChange={(o) => { if (!o) onClose?.(); }}
+      title={title || (multi ? 'Scan the slip barcodes' : 'Scan the item barcode')}
+    >
+      <div className="em-form">
         {counting ? (
           <>
-            <p className="text-sm text-muted-foreground">
+            <p className="em-hint">
               How many line items are on the invoice? We&apos;ll count your scans
               against it so nothing gets skipped.
             </p>
-            <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-2">
+            <div className="scd-capture">
               <input
                 type="number"
                 min="1"
@@ -192,35 +186,37 @@ export default function ExternalScanDialog({
                 autoFocus
                 placeholder="e.g. 16"
                 aria-label="Expected item count"
-                className="w-full bg-transparent text-sm outline-none"
               />
             </div>
-            <div className="flex flex-col gap-2">
-              <Button
-                size="lg"
-                disabled={!(parseInt(expectedDraft, 10) > 0)}
-                onClick={() => {
-                  setExpected(parseInt(expectedDraft, 10));
-                  setCounting(false);
-                }}
-              >
-                <BarcodeIcon size={16} /> Start scanning
-              </Button>
-              <Button variant="secondary" onClick={() => { setExpected(null); setCounting(false); }}>
-                Not sure — just start
-              </Button>
-              <Button variant="ghost" onClick={() => onClose?.()}>Cancel</Button>
-            </div>
+            <button
+              type="button"
+              className="em-submit"
+              disabled={!(parseInt(expectedDraft, 10) > 0)}
+              onClick={() => {
+                setExpected(parseInt(expectedDraft, 10));
+                setCounting(false);
+              }}
+            >
+              <BarcodeIcon size={16} /> Start scanning
+            </button>
+            <button
+              type="button"
+              className="em-cancel"
+              onClick={() => { setExpected(null); setCounting(false); }}
+            >
+              Not sure — just start
+            </button>
+            <button type="button" className="em-cancel" onClick={() => onClose?.()}>Cancel</button>
           </>
         ) : (
         <>
-        <p className="text-sm text-muted-foreground">
+        <p className="em-hint">
           {hint || (multi
             ? 'Point your scanner at each little barcode, one line at a time — every read lands below.'
             : 'One scan and this closes on its own.')}
         </p>
 
-        <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-2">
+        <div className="scd-capture">
           <BarcodeIcon size={18} />
           <input
             ref={inputRef}
@@ -235,56 +231,42 @@ export default function ExternalScanDialog({
             spellCheck={false}
             placeholder="Scan now — or type the code and press Enter"
             aria-label="Barcode input"
-            className="w-full bg-transparent text-sm outline-none"
-            style={{ fontFamily: 'ui-monospace, monospace' }}
           />
         </div>
 
         {multi && (
           <>
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-3 py-1">
-                <CheckIcon size={13} />{' '}
+            <div className="cfg-crumb-tags">
+              <CfgBadge tone={expected && list.length >= expected ? 'ok' : undefined}>
                 {expected
                   ? (list.length >= expected
                     ? `all ${expected} scanned`
                     : `${list.length} of ${expected} scanned`)
                   : `${list.length} barcode${list.length === 1 ? '' : 's'} scanned`}
-              </span>
+              </CfgBadge>
               {flash && (
-                <span className="rounded-full bg-secondary px-3 py-1 animate-pulse">
-                  Already scanned · {flash}
-                </span>
+                <CfgBadge tone="warn">Already scanned · {flash}</CfgBadge>
               )}
             </div>
 
             {list.length > 0 && (
-              <div className="flex max-h-48 flex-col gap-1 overflow-y-auto">
+              <div className="scd-list">
                 {list.map((code, i) => {
                   const warning = warnFor?.(code) || null;
                   return (
-                    <div
-                      key={code}
-                      className="flex items-center justify-between gap-2 rounded border border-border px-2 py-1 text-sm"
-                    >
-                      <div className="flex flex-col gap-0.5">
-                        <span style={{ fontFamily: 'ui-monospace, monospace', overflowWrap: 'anywhere' }}>
-                          {code}
-                        </span>
-                        {warning && (
-                          <span className="admin-v2-badge admin-v2-badge-warning" style={{ alignSelf: 'flex-start' }}>
-                            {warning}
-                          </span>
-                        )}
+                    <div key={code} className="scd-row">
+                      <div className="scd-row-main">
+                        <span className="scd-code">{code}</span>
+                        {warning && <CfgBadge tone="warn">{warning}</CfgBadge>}
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
+                      <button
+                        type="button"
+                        className="cfg-iconbtn"
                         aria-label={`Remove ${code}`}
                         onClick={() => removeAt(i)}
                       >
                         <XIcon size={14} />
-                      </Button>
+                      </button>
                     </div>
                   );
                 })}
@@ -293,17 +275,20 @@ export default function ExternalScanDialog({
           </>
         )}
 
-        <div className="flex flex-col gap-2">
-          {multi && (
-            <Button size="lg" disabled={list.length === 0} onClick={() => onComplete?.(list)}>
-              <CheckIcon size={16} /> Done — use these {list.length || ''}
-            </Button>
-          )}
-          <Button variant="ghost" onClick={() => onClose?.()}>Cancel</Button>
-        </div>
+        {multi && (
+          <button
+            type="button"
+            className="em-submit"
+            disabled={list.length === 0}
+            onClick={() => onComplete?.(list)}
+          >
+            Done — use these {list.length || ''}
+          </button>
+        )}
+        <button type="button" className="em-cancel" onClick={() => onClose?.()}>Cancel</button>
         </>
         )}
-      </DialogContent>
-    </Dialog>
+      </div>
+    </EntityModal>
   );
 }

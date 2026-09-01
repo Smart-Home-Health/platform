@@ -147,4 +147,50 @@ describe('AdminV2Environment', () => {
       expect(screen.getByLabelText('Label')).toHaveValue('Springfield, Pennsylvania, US');
     });
   });
+
+  // --- vc chassis (migrated off shadcn Card/Badge/Alert/Input) ---
+
+  it('renders a vc section with no shadcn island on the page', async () => {
+    apiFetchMock.mockResolvedValue(jsonResponse([baseConnector]));
+    await renderPage();
+    expect(document.querySelector('.cfg-title')).toHaveTextContent('Outdoor weather (Open-Meteo)');
+    expect(document.querySelector('.tw')).not.toBeInTheDocument();
+  });
+
+  it('carries collection state on a dot badge', async () => {
+    apiFetchMock.mockResolvedValue(jsonResponse([baseConnector]));
+    await renderPage();
+    const badge = document.querySelector('.cfg-badge');
+    expect(badge).toHaveTextContent('Collecting');
+    expect(badge).toHaveClass('ok');
+    expect(badge.querySelector('.cfg-badge-dot')).toBeInTheDocument();
+  });
+
+  it('renders the poll status as cfg-stat tiles', async () => {
+    apiFetchMock.mockResolvedValue(jsonResponse([baseConnector]));
+    await renderPage();
+    const tiles = [...document.querySelectorAll('.cfg-stat')].map(t => t.textContent);
+    expect(tiles).toHaveLength(3);
+    expect(tiles[1]).toMatch(/OK — 12 new readings/);
+  });
+
+  it('offers geocode matches as flat pick rows', async () => {
+    apiFetchMock.mockResolvedValue(jsonResponse([baseConnector]));
+    await renderPage();
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({
+      results: [{
+        id: 1, name: 'Springfield', admin1: 'Pennsylvania', country: 'United States',
+        country_code: 'US', latitude: 39.9307, longitude: -75.3202,
+      }],
+    })));
+    fireEvent.change(screen.getByLabelText('Find your location'),
+      { target: { value: 'Springfield' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Search/ }));
+    });
+    await screen.findByText(/Springfield, Pennsylvania, United States/);
+    const picks = document.querySelectorAll('.cfg-picklist .cfg-pick');
+    expect(picks.length).toBeGreaterThan(0);
+    expect(picks[0].querySelector('.cfg-pick-meta')).toHaveTextContent('39.931, -75.320');
+  });
 });

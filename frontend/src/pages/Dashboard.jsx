@@ -32,9 +32,7 @@ import useLiveVitalsBuffer, { CHART_RANGES } from "../hooks/useLiveVitalsBuffer"
 import config from '../config';
 import "../components/dashboard/live-dashboard.css";
 import "../components/dashboard/dock-panel.css";
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Alert } from '@/components/ui/alert';
+import '../components/vc/entity-card.css';
 import AlertsModal from "../components/AlertsModal";
 import EquipmentModal from "../components/EquipmentModal";
 import HistoryModal from "../components/HistoryModal";
@@ -197,7 +195,7 @@ export default function Dashboard() {
   // expanded also takes the charts. Both are measured rather than written as
   // vw constants — the columns are a grid (`minmax(230px, 320px)` /
   // `minmax(300px, 400px)`), so no viewport fraction is right at every width.
-  // Consumed by .live-dash .dashboard-modal-overlay in live-dashboard.css.
+  // Consumed by .live-dash .mb-overlay in live-dashboard.css.
   //
   // Written to <html>, not to the board element: the capture panel's entry
   // sheet portals to <body>, outside the board, and still has to line up with
@@ -993,28 +991,36 @@ export default function Dashboard() {
         onClose={() => { if (!needsUnlock) setActionUnlockOpen(false); }}
         title="Unlock"
         dock={false}
+        dismissible={false}
       >
-        <form onSubmit={handleUnlockSubmit} className="tw">
-          <div className="flex flex-col gap-3">
-            <p className="m-0 text-sm text-muted-foreground">
+        <form onSubmit={handleUnlockSubmit} className="em-inline">
+          <div className="em-form">
+            <p className="em-hint">
               {needsUnlock
                 ? 'Enter the account unlock password to view dashboard data.'
                 : 'Enter the account password to continue.'}
             </p>
             {unlockError && (
-              <Alert variant="destructive">{unlockError}</Alert>
+              <div className="em-error" role="alert">{unlockError}</div>
             )}
-            <Input
+            <input
+              className="em-input"
               type="password"
+              aria-label="Account password"
               value={unlockPassword}
               onChange={(e) => setUnlockPassword(e.target.value)}
               placeholder="Account password"
               autoFocus
               disabled={unlockLoading}
             />
-            <Button type="submit" className="w-full" disabled={unlockLoading || !unlockPassword}>
+            <button
+              type="submit"
+              className="em-submit"
+              style={{ width: '100%' }}
+              disabled={unlockLoading || !unlockPassword}
+            >
               {unlockLoading ? 'Unlocking…' : 'Unlock'}
-            </Button>
+            </button>
           </div>
         </form>
       </ModalBase>
@@ -1024,6 +1030,7 @@ export default function Dashboard() {
         onClose={() => { if (selectedPatient) setShowPatientModal(false); }}
         title="Select Patient"
         dock={false}
+        dismissible={false}
       >
         {loadingPatients ? (
           <div>Loading patients…</div>

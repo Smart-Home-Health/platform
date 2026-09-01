@@ -24,6 +24,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
+import PatientGate from './components/PatientGate';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import {
@@ -161,7 +162,9 @@ const AdminV2EquipmentOverview = () => {
   if (!selectedPatient) {
     return (
       <AdminV2Layout>
-        <div className="admin-v2-loading">Select a patient from the sidebar</div>
+        <div className="admin-v2-page">
+          <PatientGate message="Choose a patient to view their equipment." />
+        </div>
       </AdminV2Layout>
     );
   }

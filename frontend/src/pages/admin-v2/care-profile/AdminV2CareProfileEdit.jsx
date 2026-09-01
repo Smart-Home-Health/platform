@@ -20,8 +20,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { IdentityFields } from '../../../components/PatientFormFields';
-import { Card, CardContent, CardFooter } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { CfgSection, CfgGroup } from '../settings/CfgSection';
 import CareProfileSection from './CareProfileSection';
 import useCareProfile, { updateCareProfile } from './useCareProfile';
 
@@ -78,25 +77,34 @@ export default function AdminV2CareProfileEdit() {
       error={error}
       notice={notice}
     >
-      <form onSubmit={save}>
-        <Card>
-          <CardContent className="flex flex-col gap-4">
-            <IdentityFields formData={form} setFormData={setForm} idPrefix="cp-edit" />
-          </CardContent>
-          <CardFooter className="justify-start gap-3">
-            <Button type="submit" disabled={saving || !form.first_name.trim()}>
-              {saving ? 'Saving…' : 'Save profile'}
-            </Button>
-            <Button
+      <CfgSection
+        title="Identity"
+        actions={
+          <>
+            <button
               type="button"
-              variant="secondary"
+              className="em-cancel"
               onClick={() => navigate(`/care/configuration/patients/${patientId}`)}
             >
               Cancel
-            </Button>
-          </CardFooter>
-        </Card>
-      </form>
+            </button>
+            <button
+              type="submit"
+              form="cp-edit-form"
+              className="em-submit"
+              disabled={saving || !form.first_name.trim()}
+            >
+              {saving ? 'Saving…' : 'Save profile'}
+            </button>
+          </>
+        }
+      >
+        <CfgGroup>
+          <form id="cp-edit-form" className="cfg-form" onSubmit={save}>
+            <IdentityFields formData={form} setFormData={setForm} idPrefix="cp-edit" />
+          </form>
+        </CfgGroup>
+      </CfgSection>
     </CareProfileSection>
   );
 }

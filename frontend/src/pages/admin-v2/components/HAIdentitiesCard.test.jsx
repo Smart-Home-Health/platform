@@ -24,21 +24,6 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 // Radix (via ToggleList's Checkbox) probes element size; jsdom has no ResizeObserver.
 vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
 
-vi.mock('@/components/ui/dialog', () => ({
-  Dialog: ({ open, children }) => (open ? <div>{children}</div> : null),
-  DialogContent: ({ children }) => <div>{children}</div>,
-  DialogHeader: ({ children }) => <div>{children}</div>,
-  DialogTitle: ({ children }) => <h2>{children}</h2>,
-  DialogFooter: ({ children }) => <div>{children}</div>,
-}));
-vi.mock('@/components/ui/select', () => ({
-  Select: ({ children }) => <div>{children}</div>,
-  SelectTrigger: ({ children }) => <div>{children}</div>,
-  SelectValue: () => null,
-  SelectContent: ({ children }) => <div>{children}</div>,
-  SelectItem: ({ children }) => <div>{children}</div>,
-}));
-
 const apiFetch = vi.fn();
 vi.mock('../../../config', () => ({
   isIngress: () => true,
@@ -211,6 +196,6 @@ describe('HAIdentitiesCard fallback mode', () => {
       <HAIdentitiesCard users={USERS} roles={ROLES} patients={PATIENTS} />
     );
     await waitFor(() => expect(getHaDirectory).toHaveBeenCalled());
-    expect(container.querySelector('.font-medium')).toBeNull();
+    expect(container.querySelector('.hai-name')).toBeNull();
   });
 });

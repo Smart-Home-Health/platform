@@ -19,15 +19,8 @@
 // first few rows, the user gets the final say via per-column dropdowns, then
 // everything goes through the same bulk-add endpoint the invoice scanner uses.
 import { useRef, useState } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { PlusIcon } from '../../../components/Icons';
+import EntityModal, { EmSelect } from '../../../components/vc/EntityModal';
+import { CfgBadge } from '../settings/CfgSection';
 import { shipmentService } from '../../../services/shipments';
 import {
   parseCsv,
@@ -126,68 +119,67 @@ export default function CsvItemImport({
   if (!open) return null;
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) { reset(); onClose?.(); } }}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-[720px]" aria-describedby={undefined}>
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-        </DialogHeader>
-
-        {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+    <EntityModal open onOpenChange={(o) => { if (!o) { reset(); onClose?.(); } }} title={title} wide>
+      <div className="em-form">
+        {error && <div className="em-error" role="alert">{error}</div>}
 
         {!rows ? (
-          <div className="flex flex-col gap-2">
-            <p className="text-sm text-muted-foreground">
+          <>
+            <p className="em-hint">
               A spreadsheet export works great — one row per item. We'll figure out
               which column is which, and you can correct us before anything is saved.
             </p>
-            <Button size="lg" onClick={() => fileInputRef.current?.click()}>
+            <button type="button" className="em-submit" onClick={() => fileInputRef.current?.click()}>
               Choose a CSV file
-            </Button>
+            </button>
             <input
               ref={fileInputRef}
               type="file"
               accept=".csv,text/csv"
-              className="hidden"
+              style={{ display: 'none' }}
               onChange={handleFileChosen}
             />
-          </div>
+          </>
         ) : (
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="rounded-full bg-secondary px-3 py-1">{fileName}</span>
-              <span className="rounded-full bg-secondary px-3 py-1">
+          <>
+            <div className="cfg-crumb-tags">
+              <CfgBadge>{fileName}</CfgBadge>
+              <CfgBadge tone={items.length > 0 ? 'ok' : undefined}>
                 {items.length} item{items.length === 1 ? '' : 's'} ready
-              </span>
-              <label className="inline-flex cursor-pointer items-center gap-2">
-                <input type="checkbox" checked={hasHeader} onChange={toggleHeader} />
-                First row is column names
+              </CfgBadge>
+              <label className="em-check-row">
+                <input
+                  type="checkbox"
+                  className="em-check"
+                  checked={hasHeader}
+                  onChange={toggleHeader}
+                />
+                <span className="em-check-label">First row is column names</span>
               </label>
             </div>
 
-            <p className="text-sm text-muted-foreground">
+            <p className="em-hint">
               Check the dropdowns — that's our guess at what each column is.
               Set any we got wrong (or "Ignore" ones you don't need).
             </p>
 
-            <div className="admin-v2-table-container" style={{ overflowX: 'auto' }}>
-              <table className="admin-v2-table">
+            <div className="cfg-rawtable-wrap">
+              <table className="cfg-rawtable">
                 <thead>
                   <tr>
                     {Array.from({ length: width }, (_, col) => (
                       <th key={col} style={{ minWidth: 130 }}>
-                        <select
+                        <EmSelect
+                          aria-label={`Column ${col + 1} field`}
                           value={mapping[col] || ''}
                           onChange={(e) => updateMapping(col, e.target.value)}
-                          style={{ width: '100%', padding: '6px' }}
                         >
                           {targetFields.map((f) => (
                             <option key={f.value || 'ignore'} value={f.value}>{f.label}</option>
                           ))}
-                        </select>
+                        </EmSelect>
                         {hasHeader && (
-                          <div className="admin-v2-text-muted" style={{ marginTop: 4, fontWeight: 400 }}>
-                            {rows[0][col] || ''}
-                          </div>
+                          <div className="cfg-rawtable-colname">{rows[0][col] || ''}</div>
                         )}
                       </th>
                     ))}
@@ -197,7 +189,7 @@ export default function CsvItemImport({
                   {previewData.map((row, i) => (
                     <tr key={i}>
                       {Array.from({ length: width }, (_, col) => (
-                        <td key={col} className={mapping[col] ? '' : 'admin-v2-text-muted'}>
+                        <td key={col} className={mapping[col] ? '' : 'dim'}>
                           {row[col] || ''}
                         </td>
                       ))}
@@ -207,37 +199,53 @@ export default function CsvItemImport({
               </table>
             </div>
             {rows.length > previewData.length + (hasHeader ? 1 : 0) && (
-              <p className="admin-v2-text-muted text-sm" style={{ margin: 0 }}>
+              <p className="em-hint">
                 Showing the first {previewData.length} of {rows.length - (hasHeader ? 1 : 0)} rows.
               </p>
             )}
 
-            <div className="flex flex-wrap gap-2">
-              <Button size="lg" onClick={handleImport} disabled={saving || items.length === 0}>
-                <PlusIcon size={16} /> {saving ? 'Adding…' : `Add ${items.length} item${items.length === 1 ? '' : 's'}`}
-              </Button>
-              <Button variant="secondary" onClick={() => fileInputRef.current?.click()} disabled={saving}>
-                Pick a different file
-              </Button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".csv,text/csv"
-                className="hidden"
-                onChange={handleFileChosen}
-              />
-              <Button variant="ghost" onClick={() => { reset(); onClose?.(); }} disabled={saving}>
-                Cancel
-              </Button>
-            </div>
             {items.length === 0 && (
-              <p className="admin-v2-text-muted text-sm" style={{ margin: 0 }}>
+              <p className="em-hint">
                 Nothing to add yet — at least one column needs to be Item # or Description.
               </p>
             )}
-          </div>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              style={{ display: 'none' }}
+              onChange={handleFileChosen}
+            />
+            <div className="em-footer">
+              <button
+                type="button"
+                className="em-cancel start"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={saving}
+              >
+                Pick a different file
+              </button>
+              <button
+                type="button"
+                className="em-cancel"
+                onClick={() => { reset(); onClose?.(); }}
+                disabled={saving}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="em-submit"
+                onClick={handleImport}
+                disabled={saving || items.length === 0}
+              >
+                {saving ? 'Adding…' : `Add ${items.length} item${items.length === 1 ? '' : 's'}`}
+              </button>
+            </div>
+          </>
         )}
-      </DialogContent>
-    </Dialog>
+      </div>
+    </EntityModal>
   );
 }

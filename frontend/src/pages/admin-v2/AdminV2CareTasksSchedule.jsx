@@ -19,23 +19,17 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
 import { PatientSelectorModal } from './components';
-import { TasksIcon, ClockIcon, CheckIcon, XIcon } from '../../components/Icons';
+import { TasksIcon } from '../../components/Icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import config from '../../config';
 import { checkAdministrationWindow, formatDurationMinutes } from '../../utils/timezone';
 import ScheduleBoard from '../../components/schedule/ScheduleBoard';
 import { groupBySlot } from '../../components/schedule/scheduleRollup';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import ConfirmSheet from '../../components/vc/ConfirmSheet';
+import '../../components/vc/entity-card.css';
 import './AdminV2.css';
+import './settings/settings-page.css';
 
 const AdminV2CareTasksSchedule = () => {
   const { user } = useAuth();
@@ -324,7 +318,9 @@ const AdminV2CareTasksSchedule = () => {
   if (loadingPatients) {
     return (
       <AdminV2Layout>
-        <div className="admin-v2-loading">Loading patients...</div>
+        <div className="admin-v2-page">
+          <p className="cfg-loading">Loading patients...</p>
+        </div>
       </AdminV2Layout>
     );
   }
@@ -332,115 +328,61 @@ const AdminV2CareTasksSchedule = () => {
   const filteredTasks = getFilteredTasks();
   const dayGroups = buildDayGroups(filteredTasks);
 
+  // Stat tiles double as status filters; a tile that spans several statuses
+  // toggles them together. Status colour rides on the dot; PRN is an identity
+  // (avatar palette), not a state.
+  const statTiles = [
+    { key: 'ready', label: 'Ready', count: stats.ready, dot: 'var(--vc-state-due)', keys: ['due_on_time', 'due_warning', 'due_late'] },
+    { key: 'upcoming', label: 'Upcoming', count: stats.upcoming, dot: 'var(--vc-state-idle)', keys: ['pending', 'upcoming'] },
+    { key: 'missed', label: 'Missed', count: stats.missed, dot: 'var(--vc-state-alert)', keys: ['missed'] },
+    { key: 'completed', label: 'Completed', count: stats.completed, dot: 'var(--vc-state-complete)', keys: ['completed'] },
+    { key: 'skipped', label: 'Skipped', count: stats.skipped, dot: 'var(--vc-state-idle)', keys: ['skipped'] },
+    { key: 'prn', label: 'PRN', count: stats.prn, dot: 'var(--vc-avatar-plum)', keys: ['prn'] },
+  ];
+
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
         {selectedPatient ? (
-          <>
-            {/* Stats Row */}
-            <div className="admin-v2-summary-stats admin-v2-care-tasks-stat-summary">
-              <div 
-                className={`admin-v2-stat-card ${statusFilters.due_on_time && statusFilters.due_warning && statusFilters.due_late ? 'selected' : ''}`}
-                onClick={() => setStatusFilters(f => ({ 
-                  ...f, 
-                  due_on_time: !f.due_on_time,
-                  due_warning: !f.due_warning,
-                  due_late: !f.due_late
-                }))}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="admin-v2-stat-icon" style={{ background: 'var(--sched-ontime-chip, rgba(35, 134, 54, 0.15))' }}>
-                  <ClockIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.ready}</h4>
-                  <p>Ready</p>
-                </div>
-              </div>
-              <div 
-                className={`admin-v2-stat-card ${statusFilters.pending && statusFilters.upcoming ? 'selected' : ''}`}
-                onClick={() => setStatusFilters(f => ({ 
-                  ...f, 
-                  pending: !f.pending,
-                  upcoming: !f.upcoming
-                }))}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="admin-v2-stat-icon" style={{ background: 'var(--sched-ontime-chip, rgba(88, 166, 255, 0.15))' }}>
-                  <ClockIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.upcoming}</h4>
-                  <p>Upcoming</p>
-                </div>
-              </div>
-              <div 
-                className={`admin-v2-stat-card ${statusFilters.missed ? 'selected' : ''}`}
-                onClick={() => setStatusFilters(f => ({ ...f, missed: !f.missed }))}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="admin-v2-stat-icon" style={{ background: 'var(--sched-late-chip, rgba(248, 81, 73, 0.15))' }}>
-                  <XIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.missed}</h4>
-                  <p>Missed</p>
-                </div>
-              </div>
-              <div
-                className={`admin-v2-stat-card ${statusFilters.completed ? 'selected' : ''}`}
-                onClick={() => setStatusFilters(f => ({ ...f, completed: !f.completed }))}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="admin-v2-stat-icon" style={{ background: 'var(--sched-completed-chip, rgba(35, 134, 54, 0.15))' }}>
-                  <CheckIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.completed}</h4>
-                  <p>Completed</p>
-                </div>
-              </div>
-              <div
-                className={`admin-v2-stat-card ${statusFilters.skipped ? 'selected' : ''}`}
-                onClick={() => setStatusFilters(f => ({ ...f, skipped: !f.skipped }))}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(139, 148, 158, 0.15)' }}>
-                  <XIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.skipped}</h4>
-                  <p>Skipped</p>
-                </div>
-              </div>
-              <div
-                className={`admin-v2-stat-card ${statusFilters.prn ? 'selected' : ''}`}
-                onClick={() => setStatusFilters(f => ({ ...f, prn: !f.prn }))}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(111, 66, 193, 0.15)' }}>
-                  <TasksIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.prn}</h4>
-                  <p>PRN</p>
-                </div>
-              </div>
+          <div className="cfg">
+            {/* Stats row — each tile toggles its status filter(s) */}
+            <div className="cfg-stats row">
+              {statTiles.map(tile => {
+                const pressed = tile.keys.every(k => statusFilters[k]);
+                return (
+                  <button
+                    key={tile.key}
+                    type="button"
+                    className="cfg-stat"
+                    aria-pressed={pressed}
+                    onClick={() => setStatusFilters(f => {
+                      const next = { ...f };
+                      for (const k of tile.keys) next[k] = !pressed;
+                      return next;
+                    })}
+                  >
+                    <span className="cfg-stat-label">
+                      <span className="cfg-stat-dot" style={{ background: tile.dot }} aria-hidden="true" />
+                      {tile.label}
+                    </span>
+                    <span className="cfg-stat-value">{tile.count}</span>
+                  </button>
+                );
+              })}
             </div>
 
-            {/* Refresh Button */}
-            <div className="admin-v2-page-header tw">
-              <h3 style={{ margin: 0, color: 'var(--foreground)' }}>
+            <div className="cfg-toolbar">
+              <h3 className="cfg-toolbar-title">
                 Today & Yesterday ({filteredTasks.length} of {scheduledTasks.length})
               </h3>
-              <Button onClick={fetchSchedule} disabled={loading}>
+              <button type="button" className="cfg-ghost" onClick={fetchSchedule} disabled={loading}>
                 {loading ? 'Refreshing...' : 'Refresh'}
-              </Button>
+              </button>
             </div>
 
             {/* Schedule Content */}
             {error ? (
-              <div className="tw"><Alert variant="destructive">{error}</Alert></div>
+              <div className="em-error">{error}</div>
             ) : (
               <ScheduleBoard
                 dayGroups={dayGroups}
@@ -452,17 +394,15 @@ const AdminV2CareTasksSchedule = () => {
                 }
               />
             )}
-          </>
+          </div>
         ) : (
-          <div className="admin-v2-no-patient">
+          <div className="cfg-nopatient">
             <TasksIcon size={48} />
             <h2>Select a Patient</h2>
             <p>Choose a patient to view their daily care tasks schedule</p>
-            <div className="tw">
-              <Button onClick={() => setShowPatientModal(true)}>
-                Select Patient
-              </Button>
-            </div>
+            <button type="button" className="em-submit" onClick={() => setShowPatientModal(true)}>
+              Select Patient
+            </button>
           </div>
         )}
 
@@ -477,50 +417,36 @@ const AdminV2CareTasksSchedule = () => {
           />
         )}
 
-        {/* Off-window (early or late) completion confirmation Dialog */}
-        {(() => {
-          const isLate = windowConfirm.check?.status === 'late';
+        {/* Off-window (early or late) completion confirmation */}
+        {windowConfirm.open && windowConfirm.task && windowConfirm.check && (() => {
+          const isLate = windowConfirm.check.status === 'late';
           const title = isLate ? 'Warning: Late Completion' : 'Warning: Early Completion';
           const heading = isLate
             ? 'This care task was scheduled earlier'
             : 'This care task is scheduled later';
-          const offsetText = windowConfirm.check && (isLate
+          const offsetText = isLate
             ? `${formatDurationMinutes(Math.abs(windowConfirm.check.minutesOffset))} ago`
-            : `${formatDurationMinutes(windowConfirm.check.minutesOffset)} from now`);
+            : `${formatDurationMinutes(windowConfirm.check.minutesOffset)} from now`;
           const confirmLabel = isLate ? 'Confirm Late Completion' : 'Confirm Early Completion';
           const close = () => setWindowConfirm({ open: false, task: null, check: null });
           return (
-            <Dialog open={windowConfirm.open && !!windowConfirm.task} onOpenChange={(o) => { if (!o) close(); }}>
-              <DialogContent className="sm:max-w-[480px]" aria-describedby={undefined}>
-                <DialogHeader>
-                  <DialogTitle>{title}</DialogTitle>
-                </DialogHeader>
-                {windowConfirm.task && windowConfirm.check && (
-                  <Alert variant="warning">
-                    <AlertTitle className="text-[#f0883e]">{heading}</AlertTitle>
-                    <AlertDescription>
-                      <strong>{windowConfirm.task.name}</strong> is scheduled for{' '}
-                      <strong>{windowConfirm.check.scheduledLocal}</strong>
-                      {' '}— that's <strong>{offsetText}</strong>.
-                      {' '}Confirm this is intentional before marking it complete.
-                    </AlertDescription>
-                  </Alert>
-                )}
-                <DialogFooter>
-                  <Button type="button" variant="secondary" onClick={close}>Cancel</Button>
-                  <Button
-                    type="button"
-                    onClick={async () => {
-                      const task = windowConfirm.task;
-                      close();
-                      await submitMarkCompleted(task, true);
-                    }}
-                  >
-                    {confirmLabel}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+            <ConfirmSheet
+              open
+              onOpenChange={(o) => { if (!o) close(); }}
+              title={title}
+              confirmLabel={confirmLabel}
+              onConfirm={async () => {
+                const task = windowConfirm.task;
+                close();
+                await submitMarkCompleted(task, true);
+              }}
+            >
+              <strong className="cs-lead">{heading}</strong>
+              <strong>{windowConfirm.task.name}</strong> is scheduled for{' '}
+              <strong>{windowConfirm.check.scheduledLocal}</strong>
+              {' '}— that&apos;s <strong>{offsetText}</strong>.
+              {' '}Confirm this is intentional before marking it complete.
+            </ConfirmSheet>
           );
         })()}
       </div>

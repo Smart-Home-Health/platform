@@ -22,6 +22,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
 import { PatientSelectorModal, CareTasksTab } from './components';
+import PatientGate from './components/PatientGate';
 import CareTaskSheet from '../../components/care-task/CareTaskSheet';
 import CategoryManagerModal from '../../components/care-task/CategoryManagerModal';
 import CareTaskScheduleModal from '../../components/care-task/CareTaskScheduleModal';
@@ -29,8 +30,7 @@ import { careTaskService } from '../../services/careTasks';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import { CareTasksIcon } from '../../components/Icons';
-import { Button } from '@/components/ui/button';
-import { Alert } from '@/components/ui/alert';
+import '../../components/vc/entity-card.css';
 import './AdminV2.css';
 
 // Mirrors care_task_vocab.NUTRITION_CATEGORY_KEYWORDS. Used only to decide
@@ -191,17 +191,13 @@ const AdminV2CareTasks = () => {
         {loadingPatients ? (
           <div className="admin-v2-loading">Loading…</div>
         ) : !selectedPatient ? (
-          <div className="admin-v2-no-patient">
-            <CareTasksIcon size={48} />
-            <h2>Select a Patient</h2>
-            <p>Choose a patient to manage their care tasks</p>
-            <div className="tw">
-              <Button onClick={() => setShowPatientModal(true)}>Select Patient</Button>
-            </div>
-          </div>
+          <PatientGate
+            icon={<CareTasksIcon size={48} />}
+            message="Choose a patient to manage their care tasks"
+          />
         ) : (
           <>
-            {error && <div className="tw"><Alert variant="destructive">{error}</Alert></div>}
+            {error && <div className="em-error ec-page-alert" role="alert">{error}</div>}
 
             <CareTasksTab
               tasks={decoratedTasks}
@@ -225,7 +221,7 @@ const AdminV2CareTasks = () => {
           <PatientSelectorModal
             patients={patients}
             selectedPatient={selectedPatient}
-            onSelect={(p) => {
+            onSelectPatient={(p) => {
               setContextPatient(p);
               setSearchParams({ patient: String(p.id) });
               setShowPatientModal(false);

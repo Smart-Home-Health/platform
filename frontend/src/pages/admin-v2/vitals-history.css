@@ -1,0 +1,418 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Vitals history — vc-native, dark by design, same chassis as the nutrition
+   overview (novw-*) and the capture tiles: 8px radii, hairline rules, mono
+   uppercase labels, no nested cards and no side accent bars. Readings are
+   flat rows in one card rather than a table; above 900px the same markup
+   re-flows into columns via `display: contents`, so there is one row shape
+   to maintain instead of a card list plus a table. */
+
+.vhist { display: flex; flex-direction: column; gap: 0.55rem; }
+
+/* ---------- toolbar ---------- */
+.vhist-toolbar { display: flex; align-items: center; gap: 0.35rem; }
+
+.vhist-search {
+  flex: 1 1 auto;
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.vhist-search-icon {
+  position: absolute;
+  left: 0.6rem;
+  display: inline-flex;
+  color: var(--vc-text-tertiary);
+  pointer-events: none;
+}
+/* The field itself is the shared .em-input (entity-card.css) — this only
+   opens room for the leading icon and the trailing clear button. */
+.vhist-search .em-input { padding-left: 2.1rem; padding-right: 2.2rem; }
+.vhist-search-clear {
+  position: absolute;
+  right: 0.35rem;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--vc-text-tertiary);
+  cursor: pointer;
+}
+.vhist-search-clear:hover { color: var(--vc-text-primary); }
+
+.vhist-icon-btn {
+  flex: 0 0 auto;
+  width: 46px;
+  min-height: 46px;
+  /* index.css puts padding on every non-Tailwind button; without this the
+     padding eats the fixed width and the icon collapses. */
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--vc-bg-surface);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  color: var(--vc-text-secondary);
+  cursor: pointer;
+}
+.vhist-icon-btn:hover { color: var(--vc-data-live); border-color: var(--vc-line-strong); }
+.vhist-icon-btn.on {
+  color: var(--vc-data-live);
+  border-color: color-mix(in srgb, var(--vc-data-live) 45%, transparent);
+  background: color-mix(in srgb, var(--vc-data-live) 14%, transparent);
+}
+
+.vhist-icon-btn:focus-visible,
+.vhist-chip:focus-visible,
+.vhist-link:focus-visible,
+.vhist-search-clear:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
+}
+
+/* ---------- type chips ---------- */
+.vhist-chips {
+  display: flex;
+  gap: 0.35rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  /* The row bleeds to the page edge so the last chip reads as scrollable. */
+  padding-bottom: 0.15rem;
+}
+.vhist-chips::-webkit-scrollbar { display: none; }
+.vhist-chip {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 0 0.75rem;
+  background: transparent;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 999px;
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.vhist-chip:hover:not(.on) { color: var(--vc-text-primary); border-color: var(--vc-line-strong); }
+.vhist-chip.on {
+  background: var(--vc-data-live);
+  border-color: var(--vc-data-live);
+  color: var(--vc-bg-base);
+}
+
+/* ---------- cards ---------- */
+.vhist-card {
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-surface);
+  overflow: hidden;
+}
+.vhist-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.7rem;
+  border-bottom: 1px solid var(--vc-line-hairline);
+}
+.vhist-card-head h3 {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+.vhist-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.5rem 0.7rem;
+  border-top: 1px solid var(--vc-line-hairline);
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.vhist-link {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-data-live);
+  border-radius: 4px;
+}
+.vhist-link:hover { text-decoration: underline; }
+
+/* ---------- date range ---------- */
+.vhist-range { display: grid; grid-template-columns: 1fr 1fr; }
+.vhist-date {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.6rem 0.7rem;
+  border-right: 1px solid var(--vc-line-hairline);
+  min-width: 0;
+}
+.vhist-date:last-child { border-right: none; }
+.vhist-date > span {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.vhist-date .em-input {
+  min-height: 40px;
+  font-family: var(--vc-font-mono);
+  /* Fill the range column here — the shared rule sizes date inputs to their
+     content, which leaves a ragged edge in this two-up grid. */
+  width: 100%;
+  align-self: stretch;
+}
+
+/* ---------- at a glance ---------- */
+.vhist-glance { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.vhist-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.6rem 0.3rem;
+  border-right: 1px solid var(--vc-line-hairline);
+  text-align: center;
+  min-width: 0;
+}
+.vhist-stat:last-child { border-right: none; }
+.vhist-stat-label {
+  font-family: var(--vc-font-mono);
+  font-size: clamp(8.5px, 2.5vw, 10px);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+  white-space: nowrap;
+}
+.vhist-stat.readings .vhist-stat-label { color: var(--vc-data-live); }
+.vhist-stat.types .vhist-stat-label { color: var(--vc-state-complete); }
+.vhist-stat.latest .vhist-stat-label { color: var(--vc-state-due); }
+.vhist-stat-value {
+  font-family: var(--vc-font-mono);
+  /* Scales rather than wraps, so three stats stay on one line on a phone. */
+  font-size: clamp(14px, 4.4vw, 19px);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-text-primary);
+  line-height: 1.15;
+  white-space: nowrap;
+}
+.vhist-stat-sub {
+  font-family: var(--vc-font-mono);
+  font-size: clamp(8.5px, 2.4vw, 10px);
+  letter-spacing: 0.02em;
+  color: var(--vc-text-tertiary);
+  white-space: nowrap;
+}
+
+/* ---------- reading rows ---------- */
+.vhist-list { list-style: none; margin: 0; padding: 0; }
+
+.vhist-day {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0.7rem;
+  background: var(--vc-bg-raised);
+  border-bottom: 1px solid var(--vc-line-hairline);
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.vhist-day-count { color: var(--vc-text-tertiary); font-weight: 600; letter-spacing: 0.08em; }
+
+.vhist-row {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: start;
+  gap: 0.55rem;
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid var(--vc-line-hairline);
+}
+.vhist-row:last-child { border-bottom: none; }
+
+.vhist-row-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--vc-line-hairline);
+  background: var(--vc-bg-raised);
+  color: var(--vc-text-secondary);
+}
+/* The metric's colour lives on its icon, never on a stripe down the row. */
+.vhist-row-icon.cardio { color: var(--vc-data-live); }
+.vhist-row-icon.oxygen { color: var(--vc-state-complete); }
+.vhist-row-icon.thermal { color: var(--vc-state-due); }
+
+.vhist-row-body { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+.vhist-row-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  min-width: 0;
+}
+.vhist-row-type {
+  font-family: var(--vc-font-mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vhist-row-value {
+  font-family: var(--vc-font-mono);
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-text-primary);
+  white-space: nowrap;
+}
+.vhist-row-value em {
+  font-style: normal;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--vc-text-secondary);
+  margin-left: 0.25rem;
+}
+.vhist-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.vhist-row-time {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-text-secondary);
+  white-space: nowrap;
+}
+.vhist-src {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.4rem;
+  min-height: 17px;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 999px;
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+  white-space: nowrap;
+}
+.vhist-src.device,
+.vhist-src.sensor,
+.vhist-src.mqtt,
+.vhist-src.pulse_ox {
+  border-color: color-mix(in srgb, var(--vc-data-live) 45%, transparent);
+  color: var(--vc-data-live);
+}
+.vhist-row-notes {
+  margin: 0.1rem 0 0;
+  font-family: var(--vc-font-sans);
+  font-size: 12.5px;
+  color: var(--vc-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.vhist-empty,
+.vhist-loading {
+  margin: 0;
+  padding: 1.4rem 0.85rem;
+  text-align: center;
+  font-family: var(--vc-font-sans);
+  font-size: 13px;
+  color: var(--vc-text-tertiary);
+}
+
+@media (max-width: 380px) {
+  .vhist-range { grid-template-columns: 1fr; }
+  .vhist-date { border-right: none; border-bottom: 1px solid var(--vc-line-hairline); }
+  .vhist-date:last-child { border-bottom: none; }
+  .vhist-row-value { font-size: 15px; }
+}
+
+/* On a wide screen the same row markup re-flows into columns: the two
+   wrappers go `display: contents` so type / value / time / source / notes
+   become direct grid items and line up like a table would, without a second
+   markup path to keep in sync. */
+@media (min-width: 900px) {
+  .vhist-row { align-items: center; padding: 0.5rem 0.7rem; }
+  .vhist-row-body {
+    display: grid;
+    /* Type / value / time / source stay grouped at the left at their natural
+       widths; the notes column takes all the slack. */
+    grid-template-columns: minmax(9rem, 14rem) 7.5rem 6rem 7rem minmax(0, 1fr);
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .vhist-row-top,
+  .vhist-row-meta { display: contents; }
+  .vhist-row-value { font-size: 15px; text-align: right; }
+  /* Grid items stretch by default; the badge keeps its pill width. */
+  .vhist-src { justify-self: start; }
+  .vhist-row-notes { margin: 0; }
+  .vhist-glance { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .vhist-stat-value { font-size: 20px; }
+  .vhist-range { grid-template-columns: repeat(2, minmax(0, 16rem)); }
+}

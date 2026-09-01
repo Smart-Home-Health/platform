@@ -18,20 +18,13 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
+import PatientGate from './components/PatientGate';
 import config, { apiFetch } from '../../config';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import { XIcon } from '../../components/Icons';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Alert } from '@/components/ui/alert';
+import ConfirmSheet from '../../components/vc/ConfirmSheet';
+import '../../components/vc/entity-card.css';
 import SymptomLogForm from './components/SymptomLogForm';
 import SymptomActiveList from './components/SymptomActiveList';
 import SymptomHistoryList from './components/SymptomHistoryList';
@@ -248,31 +241,29 @@ const AdminV2Symptoms = () => {
       <div className="admin-v2-page">
         {/* Alerts */}
         {error && (
-          <div className="tw" style={{ marginBottom: '1rem' }}>
-            <Alert variant="destructive" className="flex items-center justify-between gap-2">
-              {error}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 shrink-0"
-                onClick={() => setError(null)}
-                aria-label="Dismiss"
-              >
-                <XIcon size={14} />
-              </Button>
-            </Alert>
+          <div
+            className="em-error"
+            role="alert"
+            style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}
+          >
+            {error}
+            <button
+              type="button"
+              className="em-close"
+              style={{ width: 28, height: 28 }}
+              onClick={() => setError(null)}
+              aria-label="Dismiss"
+            >
+              <XIcon size={14} />
+            </button>
           </div>
         )}
         {success && (
-          <div className="tw" style={{ marginBottom: '1rem' }}>
-            <Alert variant="success">{success}</Alert>
-          </div>
+          <div className="em-success" role="status" style={{ marginBottom: '1rem' }}>{success}</div>
         )}
 
         {!selectedPatient ? (
-          <div className="admin-v2-empty-state">
-            <p>Please select a patient from the sidebar</p>
-          </div>
+          <PatientGate message="Choose a patient to track symptoms." />
         ) : (
           isHistoryView ? renderHistoryView() : isActiveView ? renderActiveView() : renderLogView()
         )}
@@ -301,41 +292,25 @@ const AdminV2Symptoms = () => {
           </DialogPrimitive.Portal>
         </DialogPrimitive.Root>
 
-        {/* Delete Confirmation Dialog */}
-        <Dialog open={showDeleteModal && !!selectedSymptom} onOpenChange={(o) => { if (!o) setShowDeleteModal(false); }}>
-          <DialogContent className="sm:max-w-[420px]">
-            <DialogHeader>
-              <DialogTitle>Delete Symptom</DialogTitle>
-              <DialogDescription>
-                Are you sure you want to delete this symptom record?
-              </DialogDescription>
-            </DialogHeader>
-            {selectedSymptom && (
-              <p className="text-sm">
-                <strong>{formatSymptomType(selectedSymptom.symptom_type)}</strong>
-                {selectedSymptom.timestamp && (
-                  <span> — {new Date(selectedSymptom.timestamp).toLocaleString()}</span>
-                )}
-              </p>
-            )}
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setShowDeleteModal(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                variant="destructive"
-                onClick={handleDeleteSymptom}
-              >
-                Delete
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        {/* Delete Confirmation */}
+        <ConfirmSheet
+          open={showDeleteModal && !!selectedSymptom}
+          onOpenChange={(o) => { if (!o) setShowDeleteModal(false); }}
+          title="Delete Symptom"
+          confirmLabel="Delete"
+          tone="destructive"
+          onConfirm={handleDeleteSymptom}
+        >
+          Are you sure you want to delete this symptom record?{' '}
+          {selectedSymptom && (
+            <>
+              <strong>{formatSymptomType(selectedSymptom.symptom_type)}</strong>
+              {selectedSymptom.timestamp && (
+                <span> — {new Date(selectedSymptom.timestamp).toLocaleString()}</span>
+              )}
+            </>
+          )}
+        </ConfirmSheet>
       </div>
     </AdminV2Layout>
   );

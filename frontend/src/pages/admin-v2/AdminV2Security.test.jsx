@@ -95,4 +95,51 @@ describe('AdminV2Security', () => {
     await act(async () => { render(<AdminV2Security />); });
     expect(screen.getByText('Access Denied')).toBeInTheDocument();
   });
+
+  // --- vc chassis (migrated off shadcn Card/Badge/Alert) ---
+
+  it('renders a vc section with no shadcn island left on the page', async () => {
+    stubStatus(baseStatus);
+    await act(async () => { render(<AdminV2Security />); });
+    expect(document.querySelector('.cfg-title')).toHaveTextContent('HTTPS / Secure access');
+    // The wizard owns its own `.tw`; the page itself must not have one.
+    expect(document.querySelector('.cfg-card .tw')).not.toBeInTheDocument();
+  });
+
+  it('renders the cert facts as cfg-stat tiles', async () => {
+    stubStatus({
+      ...baseStatus, mode: 'duckdns', https_active: true, cert_installed: true,
+      domain: 'myhome.duckdns.org', days_until_expiry: 58,
+    });
+    await act(async () => { render(<AdminV2Security />); });
+    const tiles = [...document.querySelectorAll('.cfg-stat')].map(t => t.textContent);
+    expect(tiles).toHaveLength(3);
+    expect(tiles[0]).toMatch(/DuckDNS \+ Let’s Encrypt/);
+  });
+
+  it('carries HTTPS state on a dot badge rather than a ●/○ glyph', async () => {
+    stubStatus({ ...baseStatus, mode: 'duckdns', https_active: true, domain: 'x.duckdns.org' });
+    await act(async () => { render(<AdminV2Security />); });
+    const badge = document.querySelector('.cfg-badge');
+    expect(badge).toHaveTextContent('HTTPS on');
+    expect(badge).toHaveClass('ok');
+    expect(badge.querySelector('.cfg-badge-dot')).toBeInTheDocument();
+    expect(badge.textContent).not.toMatch(/[●○]/);
+  });
+
+  it('uses the neutral badge when HTTPS is off', async () => {
+    stubStatus(baseStatus);
+    await act(async () => { render(<AdminV2Security />); });
+    const badge = document.querySelector('.cfg-badge');
+    expect(badge).toHaveTextContent('HTTPS off');
+    expect(badge).not.toHaveClass('ok');
+  });
+
+  it('shows the ingress notice in the neutral cfg-note box, with no badge', async () => {
+    stubStatus({ ...baseStatus, ingress: true });
+    await act(async () => { render(<AdminV2Security />); });
+    expect(document.querySelector('.cfg-note')).toHaveTextContent(/Home Assistant ingress/);
+    expect(document.querySelector('.cfg-badge')).not.toBeInTheDocument();
+    expect(document.querySelector('.cfg-stats')).not.toBeInTheDocument();
+  });
 });

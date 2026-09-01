@@ -126,12 +126,16 @@ describe('AdminV2HomeAssistant', () => {
     routeFetches({ mappings: [sampleMapping] });
     await renderPage();
 
-    // Both the desktop table and the phone card list render (CSS decides
-    // which is visible), so mapping details appear twice.
-    expect(screen.getAllByText('SpO2 Ring')).toHaveLength(2);
-    expect(screen.getAllByText('Vital: spo2')).toHaveLength(2);
-    expect(screen.getByText('97 %')).toBeInTheDocument();        // table cell
-    expect(screen.getByText(/Last seen .* · 97 %/)).toBeInTheDocument(); // card
+    // There is now ONE row markup that re-flows into columns at >=900px, so
+    // each detail is rendered exactly once (it used to appear twice: a phone
+    // card list plus a desktop table, with CSS choosing between them).
+    expect(screen.getAllByText('SpO2 Ring')).toHaveLength(1);
+    expect(screen.getAllByText('Vital: spo2')).toHaveLength(1);
+    expect(screen.getByText('97 %')).toBeInTheDocument();
+    expect(screen.getByText('sensor.spo2_ring')).toBeInTheDocument();
+    // Every row must emit all six cells or the grid shifts for that row.
+    expect(document.querySelectorAll('.cfg-trow')).toHaveLength(1);
+    expect(document.querySelector('.cfg-trow').querySelectorAll('.cfg-tcell')).toHaveLength(6);
   });
 
   it('opens the add-mapping dialog and lists pickable entities', async () => {

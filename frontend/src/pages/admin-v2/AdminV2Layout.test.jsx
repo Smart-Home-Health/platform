@@ -15,10 +15,11 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-// The vc form skin (vc-forms.css) is gated on `vc-form-skin` being on <body>.
-// It used to be an allowlist of three route prefixes, which silently left the
-// rest of the admin on stock shadcn geometry. These tests pin the current
-// contract: the class is bound to this layout's lifetime, not to the path.
+// Every /care page mounts this layout, so a crash here takes the whole admin
+// down. These were the `vc-form-skin` body-class tests until that class (and
+// vc-forms.css with it) was removed on 2026-08-31; kept as a render smoke test
+// across the same route spread, which is the coverage that actually mattered —
+// an un-imported component or a bad hook order shows up here first.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -54,13 +55,11 @@ const renderAt = (path) => render(
   </MemoryRouter>,
 );
 
-describe('AdminV2Layout vc form skin', () => {
+describe('AdminV2Layout', () => {
   beforeEach(() => {
     document.body.className = '';
   });
 
-  // The three that were on the old allowlist, and five that were not. Every
-  // /care page mounts this layout, so all of them must get the skin.
   it.each([
     '/care',
     '/care/configuration/account',
@@ -71,24 +70,23 @@ describe('AdminV2Layout vc form skin', () => {
     '/care/monitoring/timeline',
     '/care/care-tasks/schedule',
     '/care/vitals/history',
-  ])('puts vc-form-skin on <body> at %s', (path) => {
-    renderAt(path);
-    expect(document.body.classList.contains('vc-form-skin')).toBe(true);
+  ])('renders the shell and its page body at %s', (path) => {
+    const { getByText } = renderAt(path);
+    expect(getByText('page body')).toBeInTheDocument();
   });
 
-  it('removes the class when the admin unmounts, so /live is unaffected', () => {
+  it('unmounts cleanly and leaves no classes on <body>', () => {
+    // The layout used to own a body class; assert it leaves nothing behind now,
+    // so /live is never handed a stale admin class.
     const { unmount } = renderAt('/care');
-    expect(document.body.classList.contains('vc-form-skin')).toBe(true);
     unmount();
-    expect(document.body.classList.contains('vc-form-skin')).toBe(false);
+    expect(document.body.className).toBe('');
   });
 
-  it('keeps the class across a route change within the admin', () => {
+  it('survives a route change within the admin', () => {
     renderAt('/care/patients');
-    expect(document.body.classList.contains('vc-form-skin')).toBe(true);
     cleanup();
-
-    renderAt('/care/monitoring/ventilator');
-    expect(document.body.classList.contains('vc-form-skin')).toBe(true);
+    const { getByText } = renderAt('/care/monitoring/ventilator');
+    expect(getByText('page body')).toBeInTheDocument();
   });
 });

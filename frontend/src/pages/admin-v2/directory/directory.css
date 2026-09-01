@@ -34,15 +34,15 @@
   justify-content: center;
   min-width: 1.4rem;
   padding: 0 0.3rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 4px;
   font-size: 10px;
   line-height: 1.5;
-  color: var(--muted-foreground);
+  color: var(--vc-text-secondary);
 }
 .cp-tab[aria-selected='true'] .dir-tab-count {
-  border-color: color-mix(in srgb, var(--ring) 55%, transparent);
-  color: var(--ring);
+  border-color: color-mix(in srgb, var(--vc-data-live) 55%, transparent);
+  color: var(--vc-data-live);
 }
 
 .dir-toolbar {
@@ -50,6 +50,7 @@
   align-items: center;
   gap: 0.5rem;
 }
+.dir-add { width: 100%; justify-content: center; }
 .dir-filter-button { position: relative; padding-left: 0.85rem; padding-right: 0.85rem; }
 .dir-filter-count {
   position: absolute;
@@ -62,8 +63,8 @@
   height: 1.1rem;
   padding: 0 0.2rem;
   border-radius: 999px;
-  background: var(--ring);
-  color: var(--background);
+  background: var(--vc-data-live);
+  color: var(--vc-bg-base);
   font-size: 10px;
   font-weight: 600;
 }
@@ -79,33 +80,33 @@
   align-items: center;
   gap: 0.35rem;
   padding: 0.2rem 0.6rem;
-  border: 1px solid color-mix(in srgb, var(--ring) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vc-data-live) 55%, transparent);
   border-radius: 999px;
   background: transparent;
-  color: var(--ring);
+  color: var(--vc-data-live);
   font: inherit;
   font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   cursor: pointer;
 }
-:root:not(.light) .dir-chip,
-:root:not(.light) .dir-chip-clear,
-:root:not(.light) .dir-tab-count,
-:root:not(.light) .dir-footer { font-family: var(--vc-font-mono); }
-.dir-chip:hover { background: color-mix(in srgb, var(--ring) 12%, transparent); }
+.dir-chip,
+.dir-chip-clear,
+.dir-tab-count,
+.dir-footer { font-family: var(--vc-font-mono); }
+.dir-chip:hover { background: color-mix(in srgb, var(--vc-data-live) 12%, transparent); }
 .dir-chip-clear {
   padding: 0.2rem 0.4rem;
   border: 0;
   background: transparent;
-  color: var(--muted-foreground);
+  color: var(--vc-text-secondary);
   font: inherit;
   font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   cursor: pointer;
 }
-.dir-chip-clear:hover { color: var(--foreground); }
+.dir-chip-clear:hover { color: var(--vc-text-primary); }
 
 /* Initials disc on a directory row — smaller than the profile hub's avatar. */
 .dir-avatar {
@@ -115,13 +116,13 @@
   width: 36px;
   height: 36px;
   border-radius: 999px;
-  background: var(--secondary);
-  color: var(--muted-foreground);
+  background: var(--vc-bg-raised);
+  color: var(--vc-text-secondary);
   font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.04em;
 }
-:root:not(.light) .dir-avatar { font-family: var(--vc-font-mono); }
+.dir-avatar { font-family: var(--vc-font-mono); }
 
 .dir-footer {
   display: flex;
@@ -129,36 +130,35 @@
   justify-content: space-between;
   gap: 1rem;
   padding: 0.6rem 0.85rem;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--vc-line-hairline);
   font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--muted-foreground);
+  color: var(--vc-text-secondary);
 }
 .dir-sort select {
   border: 0;
   background: transparent;
-  color: var(--foreground);
+  color: var(--vc-text-primary);
   font: inherit;
   letter-spacing: inherit;
   text-transform: inherit;
   cursor: pointer;
 }
-.dir-sort select:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
-/* The vc form skin paints every select as a boxed field. In the list footer
- * this is a caption, not a field — keep the skin's chevron, drop the box.
- * Matches that rule's specificity on purpose. */
-:root:not(.light) body.vc-form-skin .tw .dir-sort select {
-  min-height: 0;
-  padding: 0.1rem 1.1rem 0.1rem 0.25rem;
-  border: 0;
-  border-radius: 0;
-  background-color: transparent;
-  background-position: calc(100% - 10px) calc(50% + 1px), calc(100% - 5px) calc(50% + 1px);
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+.dir-sort select:focus-visible { outline: 2px solid var(--vc-data-live); outline-offset: 2px; }
+
+/* Search box with its leading icon, beside the filter button. */
+.dir-search { position: relative; flex: 1 1 auto; min-width: 0; }
+.dir-search-icon {
+  position: absolute;
+  left: 0.6rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  color: var(--vc-text-tertiary);
+  pointer-events: none;
 }
+.dir-search .em-input { width: 100%; padding-left: 2rem; }
 
 @media (max-width: 640px) {
   .dir-tab { flex-direction: column; gap: 0.2rem; }

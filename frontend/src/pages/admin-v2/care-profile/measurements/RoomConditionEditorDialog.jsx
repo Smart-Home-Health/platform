@@ -20,13 +20,7 @@
 // to its default bounds.
 import { useEffect, useState } from 'react';
 import config, { apiFetch } from '../../../../config';
-import {
-  Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Alert } from '@/components/ui/alert';
-import { Field, FormRow } from '@/components/ui/field';
+import EntityModal, { EmField, EmRow } from '../../../../components/vc/EntityModal';
 import { numOrNull, rangeErrorText } from './rangeApi';
 
 const FIELDS = ['critical_min', 'caution_min', 'caution_max', 'critical_max'];
@@ -73,63 +67,64 @@ export default function RoomConditionEditorDialog({
   if (!metric) return null;
 
   const bound = (name, label) => (
-    <Field label={`${label}${metric.unit ? ` (${metric.unit})` : ''}`} htmlFor={`env-${metric.key}-${name}`}>
-      <Input
+    <EmField
+      label={`${label}${metric.unit ? ` (${metric.unit})` : ''}`}
+      htmlFor={`env-${metric.key}-${name}`}
+    >
+      <input
         id={`env-${metric.key}-${name}`}
+        className="em-input"
         type="number"
         step="any"
         inputMode="decimal"
         value={values[name] ?? ''}
         onChange={(e) => setValues((prev) => ({ ...prev, [name]: e.target.value }))}
       />
-    </Field>
+    </EmField>
   );
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[520px]">
-        <DialogHeader>
-          <DialogTitle>{metric.label}</DialogTitle>
-          <DialogDescription>
-            When to flag the room on this profile&rsquo;s timeline. Leave a field blank
-            for no bound; clear them all to go back to the default bounds.
-          </DialogDescription>
-        </DialogHeader>
+    <EntityModal open={open} onOpenChange={onOpenChange} title={metric.label}>
+      <form onSubmit={save} className="em-form">
+        <p className="em-hint">
+          When to flag the room on this profile&rsquo;s timeline. Leave a field blank
+          for no bound; clear them all to go back to the default bounds.
+        </p>
 
-        <form onSubmit={save} className="flex flex-col gap-4">
-          {error && <Alert variant="destructive" role="alert">{error}</Alert>}
+        {error && <div className="em-error" role="alert">{error}</div>}
 
-          {metric.hasFloor ? (
-            <>
-              <FormRow>
-                {bound('critical_min', 'Critical low')}
-                {bound('caution_min', 'Caution low')}
-              </FormRow>
-              <FormRow>
-                {bound('caution_max', 'Caution high')}
-                {bound('critical_max', 'Critical high')}
-              </FormRow>
-            </>
-          ) : (
-            <>
-              <FormRow>
-                {bound('caution_max', 'Caution above')}
-                {bound('critical_max', 'Critical above')}
-              </FormRow>
-              <p className="text-xs text-muted-foreground">
-                {metric.label} only has ceilings — a floor here would flag every clean reading.
-              </p>
-            </>
-          )}
+        {metric.hasFloor ? (
+          <>
+            <EmRow>
+              {bound('critical_min', 'Critical low')}
+              {bound('caution_min', 'Caution low')}
+            </EmRow>
+            <EmRow>
+              {bound('caution_max', 'Caution high')}
+              {bound('critical_max', 'Critical high')}
+            </EmRow>
+          </>
+        ) : (
+          <>
+            <EmRow>
+              {bound('caution_max', 'Caution above')}
+              {bound('critical_max', 'Critical above')}
+            </EmRow>
+            <p className="em-hint">
+              {metric.label} only has ceilings — a floor here would flag every clean reading.
+            </p>
+          </>
+        )}
 
-          <DialogFooter>
-            <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save bounds'}</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        <div className="em-footer">
+          <button type="button" className="em-cancel" onClick={() => onOpenChange(false)}>
+            Cancel
+          </button>
+          <button type="submit" className="em-submit" disabled={saving}>
+            {saving ? 'Saving…' : 'Save bounds'}
+          </button>
+        </div>
+      </form>
+    </EntityModal>
   );
 }

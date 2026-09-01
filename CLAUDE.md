@@ -96,8 +96,7 @@ Third-party data sources (Withings, manual entry, generic MQTT) implement `BaseI
 
 - `src/App.jsx` — routing and providers
 - `src/contexts/` — `AuthContext`, `AdminPatientContext` (the selected patient, shared by the admin pages and the live dashboard)
-- `src/pages/admin/` — **legacy** admin UI, still routed but being replaced
-- `src/pages/admin-v2/` — **current** admin UI; this is where new admin work goes
+- `src/pages/admin-v2/` — the admin UI (the old `src/pages/admin/` is gone); new admin work goes here, on the vc design system (`styles/vc-tokens.css`, the `cfg-*` chassis in `pages/admin-v2/settings/settings-page.css`, and the `em-*` form vocabulary from `components/vc/EntityModal.jsx`)
 - `src/services/` — small REST wrappers (settings, equipment, shipments, nutrition, care tasks, businesses)
 - `src/config.js` — exports `apiUrl`, `wsUrl`, and `apiFetch()`
 

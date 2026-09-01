@@ -22,12 +22,11 @@ import { useAuth } from '../../contexts/AuthContext';
 import config, { apiFetch } from '../../config';
 import SecuritySetupWizard from '../../components/SecuritySetupWizard';
 import { canonicalHttpsUrl } from '../../lib/httpsSetup';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Alert } from '@/components/ui/alert';
 import { ShieldIcon, RefreshIcon } from '../../components/Icons';
+import { CfgSection, CfgGroup, CfgStat, CfgBadge } from './settings/CfgSection';
+import '../../components/vc/entity-card.css';
 import './AdminV2.css';
+import './settings/settings-page.css';
 
 const MODE_LABELS = {
   off: 'Not configured',
@@ -40,14 +39,6 @@ const IN_PROGRESS = [
   'queued', 'validating_token', 'setting_dns', 'waiting_dns',
   'requesting_cert', 'finalizing',
 ];
-
-const Stat = ({ label, value, hint }) => (
-  <div className="flex flex-col gap-1 rounded-lg border border-border bg-secondary/40 p-4">
-    <span className="text-xs uppercase tracking-wide text-muted-foreground">{label}</span>
-    <span className="text-lg font-semibold text-foreground break-all">{value}</span>
-    {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
-  </div>
-);
 
 const AdminV2Security = () => {
   const { user } = useAuth();
@@ -110,9 +101,16 @@ const AdminV2Security = () => {
   if (user && !user.is_system_admin) {
     return (
       <AdminV2Layout>
-        <div style={{ padding: '2rem', color: 'var(--muted-foreground)', textAlign: 'center' }}>
-          <h3 style={{ color: 'var(--foreground)' }}>Access Denied</h3>
-          <p>Security settings are only available to system administrators.</p>
+        <div className="admin-v2-page">
+          <div className="cfg">
+            <CfgSection icon={<ShieldIcon size={16} />} title="Access Denied">
+              <CfgGroup>
+                <p className="cfg-empty">
+                  Security settings are only available to system administrators.
+                </p>
+              </CfgGroup>
+            </CfgSection>
+          </div>
         </div>
       </AdminV2Layout>
     );
@@ -122,7 +120,7 @@ const AdminV2Security = () => {
     return (
       <AdminV2Layout>
         <div className="admin-v2-page">
-          <div className="admin-v2-loading">Loading security status…</div>
+          <p className="cfg-loading">Loading security status…</p>
         </div>
       </AdminV2Layout>
     );
@@ -134,115 +132,111 @@ const AdminV2Security = () => {
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
-        <div className="tw space-y-6">
-          {error && <Alert variant="destructive">{error}</Alert>}
-          {notice && <Alert variant="success">{notice}</Alert>}
+        <div className="cfg">
+          {error && <p className="em-error" role="alert">{error}</p>}
+          {notice && <p className="em-success" role="status">{notice}</p>}
 
-          <Card>
-            <CardHeader>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="text-muted-foreground" aria-hidden><ShieldIcon size={22} /></span>
-                  <div className="flex flex-col gap-0.5">
-                    <CardTitle>HTTPS / Secure access</CardTitle>
-                    <p className="text-sm text-muted-foreground">
-                      A secure address encrypts your connection so health data never crosses the network in the clear.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  {status && !status.ingress && (
-                    <Badge variant={status.https_active || status.mode === 'proxy' ? 'success' : 'muted'}>
-                      {status.mode === 'proxy'
-                        ? 'Proxy mode'
-                        : status.https_active ? '● HTTPS on' : '○ HTTPS off'}
-                    </Badge>
-                  )}
-                  <Button variant="secondary" onClick={loadStatus} className="gap-1.5">
-                    <RefreshIcon size={16} /> Refresh
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {status?.ingress ? (
-                <Alert variant="info">
+          <CfgSection
+            icon={<ShieldIcon size={16} />}
+            title="HTTPS / Secure access"
+            subtitle="A secure address encrypts your connection so health data never crosses the network in the clear."
+            aside={
+              <>
+                {status && !status.ingress && (
+                  status.mode === 'proxy'
+                    ? <CfgBadge tone="live">Proxy mode</CfgBadge>
+                    : status.https_active
+                      ? <CfgBadge tone="ok">HTTPS on</CfgBadge>
+                      : <CfgBadge>HTTPS off</CfgBadge>
+                )}
+                <button type="button" className="cfg-ghost" onClick={loadStatus}>
+                  <RefreshIcon size={14} /> Refresh
+                </button>
+              </>
+            }
+          >
+            {status?.ingress ? (
+              <CfgGroup>
+                <p className="cfg-note">
                   This install runs behind Home Assistant ingress, which already
                   provides HTTPS — nothing to configure here.
-                </Alert>
-              ) : (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                    <Stat label="Mode" value={MODE_LABELS[status?.mode] || status?.mode} />
-                    {certActive && (
-                      <Stat
-                        label="Secure address"
-                        value={httpsUrl || '—'}
-                        hint={status.https_error ? undefined : 'Use this anywhere you want the connection encrypted'}
-                      />
-                    )}
-                    {certActive && (
-                      <Stat
-                        label="Certificate expires"
-                        value={status?.days_until_expiry != null ? `in ${status.days_until_expiry} days` : '—'}
-                        hint={status?.mode === 'duckdns' ? 'Renews automatically ~30 days before expiry' : undefined}
-                      />
-                    )}
-                    {status?.mode === 'proxy' && (
-                      <Stat
-                        label="Proxy header trust"
-                        value={status.behind_proxy ? 'Enabled' : 'Missing'}
-                        hint={status.behind_proxy
-                          ? `This request arrived as ${status.request_scheme}`
-                          : 'Set SHH_BEHIND_PROXY=1 on the container'}
-                      />
-                    )}
-                  </div>
-
-                  {status?.https_error && (
-                    <Alert variant="destructive">HTTPS listener problem: {status.https_error}</Alert>
+                </p>
+              </CfgGroup>
+            ) : (
+              <CfgGroup>
+                <div className="cfg-stats">
+                  <CfgStat label="Mode" value={MODE_LABELS[status?.mode] || status?.mode} />
+                  {certActive && (
+                    <CfgStat
+                      label="Secure address"
+                      value={httpsUrl || '—'}
+                      hint={status.https_error ? undefined : 'Use this anywhere you want the connection encrypted'}
+                    />
                   )}
-                  {status?.last_renewal_error && (
-                    <Alert variant="destructive">Last renewal failed: {status.last_renewal_error}</Alert>
+                  {certActive && (
+                    <CfgStat
+                      label="Certificate expires"
+                      value={status?.days_until_expiry != null ? `in ${status.days_until_expiry} days` : '—'}
+                      hint={status?.mode === 'duckdns' ? 'Renews automatically ~30 days before expiry' : undefined}
+                    />
                   )}
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    {!showWizard && (
-                      <Button onClick={() => setShowWizard(true)}>
-                        {status?.mode === 'off' ? 'Set up HTTPS' : 'Change setup'}
-                      </Button>
-                    )}
-                    {status?.mode === 'duckdns' && (
-                      <Button
-                        variant="secondary"
-                        disabled={busy === 'Renew'}
-                        onClick={() => runAction('Renew', 'duckdns/renew')}
-                      >
-                        {busy === 'Renew' ? 'Renewing…' : 'Renew now'}
-                      </Button>
-                    )}
-                    {status?.mode && status.mode !== 'off' && (
-                      <Button
-                        variant="destructive"
-                        disabled={busy === 'Disable HTTPS'}
-                        onClick={() => runAction('Disable HTTPS', 'disable')}
-                      >
-                        {busy === 'Disable HTTPS' ? 'Disabling…' : 'Disable'}
-                      </Button>
-                    )}
-                  </div>
+                  {status?.mode === 'proxy' && (
+                    <CfgStat
+                      label="Proxy header trust"
+                      value={status.behind_proxy ? 'Enabled' : 'Missing'}
+                      hint={status.behind_proxy
+                        ? `This request arrived as ${status.request_scheme}`
+                        : 'Set SHH_BEHIND_PROXY=1 on the container'}
+                    />
+                  )}
                 </div>
-              )}
-            </CardContent>
-          </Card>
+
+                {status?.https_error && (
+                  <p className="em-error" role="alert">HTTPS listener problem: {status.https_error}</p>
+                )}
+                {status?.last_renewal_error && (
+                  <p className="em-error" role="alert">Last renewal failed: {status.last_renewal_error}</p>
+                )}
+
+                <div className="cfg-actions">
+                  {!showWizard && (
+                    <button type="button" className="em-submit" onClick={() => setShowWizard(true)}>
+                      {status?.mode === 'off' ? 'Set up HTTPS' : 'Change setup'}
+                    </button>
+                  )}
+                  {status?.mode === 'duckdns' && (
+                    <button
+                      type="button"
+                      className="em-cancel"
+                      disabled={busy === 'Renew'}
+                      onClick={() => runAction('Renew', 'duckdns/renew')}
+                    >
+                      {busy === 'Renew' ? 'Renewing…' : 'Renew now'}
+                    </button>
+                  )}
+                  {status?.mode && status.mode !== 'off' && (
+                    <button
+                      type="button"
+                      className="em-danger"
+                      disabled={busy === 'Disable HTTPS'}
+                      onClick={() => runAction('Disable HTTPS', 'disable')}
+                    >
+                      {busy === 'Disable HTTPS' ? 'Disabling…' : 'Disable'}
+                    </button>
+                  )}
+                </div>
+              </CfgGroup>
+            )}
+          </CfgSection>
 
           {showWizard && !status?.ingress && (
-            <Card>
-              <CardHeader><CardTitle>Set up HTTPS</CardTitle></CardHeader>
-              <CardContent>
+            <CfgSection icon={<ShieldIcon size={16} />} title="Set up HTTPS">
+              <CfgGroup>
+                {/* The wizard keeps its own `.tw` island for now — converting it
+                    is tracked separately (it is 560 lines of its own flow). */}
                 <SecuritySetupWizard onFinished={() => { setShowWizard(false); loadStatus(); }} />
-              </CardContent>
-            </Card>
+              </CfgGroup>
+            </CfgSection>
           )}
         </div>
       </div>

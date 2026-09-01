@@ -147,7 +147,7 @@ describe('PinChallengeModal', () => {
   it('cancels from the picker', async () => {
     renderModal();
     await screen.findByText('Claude');
-    fireEvent.click(screen.getByText('×')); // ModalBase close
+    fireEvent.click(screen.getByLabelText('Close')); // ModalBase close
     expect(onCancel).toHaveBeenCalled();
   });
 });

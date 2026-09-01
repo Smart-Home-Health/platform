@@ -1,0 +1,252 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+@import '../styles/vc-tokens.css';
+
+/* Chrome for ModalBase — the live board's panel shell, and the only modal
+ * system outside EntityModal.
+ *
+ * These rules used to live in App.css under names so generic (`.modal-header`,
+ * `.modal-body`, `.modal-title`) that a long-dead `.alert-detail-modal` block
+ * later in the same file silently outranked them for years. Hence the `mb-`
+ * prefix and a sheet ModalBase.jsx imports itself.
+ *
+ * SPLIT OF CONCERNS: chrome lives here; the board's docked *geometry* stays in
+ * dashboard/live-dashboard.css, because it is measured at runtime into
+ * --ld-panel-* by Dashboard.jsx. Anything here that a docked panel overrides is
+ * marked as such.
+ *
+ * Dark-only, like every vc surface. Written against --vc-* rather than the
+ * board's --dash-* layer on purpose: --dash-* is scoped to .dashboard-wrapper,
+ * so off the board every one of these rules used to collapse to its pre-vc
+ * fallback hex. Two consumers (QuickAddVitalModal, PinChallengeModal) portal to
+ * <body> and land outside that wrapper even while the board is mounted.
+ */
+
+/* ---- Overlay ------------------------------------------------------------ */
+
+/* Plain desktop: a scrim over the whole viewport. The old rule anchored to
+   `top:10vh; left:25vw; width:75vw` — the geometry of a dashboard layout that
+   no longer exists (see the note at live-dashboard.css). `.live-dash` still
+   overrides all of this from its measured variables. */
+.mb-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background-color: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(2px);
+  margin: 0;
+  border: none;
+}
+
+/* Full-screen sheet. --auth-banner-height leaves the pinned vitals readings
+   visible above an auth prompt; --vkb-height is the in-app keyboard. */
+.mb-overlay.mobile {
+  /* `inset: 0` above already pins all four edges; top + height re-anchor the
+     sheet and win over `bottom` per absolute-positioning resolution. */
+  top: calc(60px + var(--auth-banner-height, 0px));
+  height: calc(100vh - 60px - var(--auth-banner-height, 0px) - var(--vkb-height, 0px));
+  display: block;
+  padding: 0;
+  background-color: var(--vc-bg-base);
+  backdrop-filter: none;
+}
+
+/* Docked: the overlay is only a positioned box for the panel to fill — the
+   panel IS the surface, so no scrim, no centering, no padding. Its edges come
+   from the --ld-panel-* variables in live-dashboard.css. */
+.mb-overlay.docked {
+  display: block;
+  padding: 0;
+  background: none;
+  backdrop-filter: none;
+}
+
+/* ---- Panel -------------------------------------------------------------- */
+
+.mb-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 1100px;
+  max-height: 100%;
+  overflow: hidden;
+  margin: 0;
+  background-color: var(--vc-bg-surface);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 12px;
+  color: var(--vc-text-primary);
+  font-family: var(--vc-font-sans);
+}
+
+/* Fills the docked box exactly, as it did when the base rule was 100%/100%.
+   live-dashboard.css supplies the docked border, radius and background. */
+.mb-panel.docked {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+}
+
+.mb-panel.mobile {
+  width: 100vw;
+  height: calc(100vh - var(--vkb-height, 0px));
+  max-width: 100vw;
+  max-height: calc(100vh - var(--vkb-height, 0px));
+  border: none;
+  border-radius: 0;
+  background-color: var(--vc-bg-base);
+}
+
+/* ---- Header ------------------------------------------------------------- */
+
+.mb-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  padding: 0.7rem 0.5rem 0.7rem 1rem;
+  border-bottom: 1px solid var(--vc-line-hairline);
+  background: none;
+}
+
+.mb-head.mobile {
+  justify-content: flex-start;
+  padding: 0.55rem 0.75rem;
+  gap: 0.6rem;
+}
+
+/* Consumers usually pass a node (`.mp-modal-title`, section-panel.css) rather
+   than a string, which supplies its own two-line treatment. This is the
+   fallback for the plain-string titles — PinChallengeModal's "Verify
+   Caregiver", Dashboard's "Unlock" and "Select Patient". */
+.mb-title {
+  margin: 0;
+  min-width: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+
+/* ---- Header buttons ----------------------------------------------------- */
+
+/* box-sizing and padding are explicit on all three: index.css styles every
+   bare <button> outside `.tw` with a content-box 0.6em/1.2em padding, and an
+   icon-only button collapses to zero width as a flex item without it. */
+.mb-close,
+.mb-expand {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 4px;
+  background: none;
+  color: var(--vc-text-secondary);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background-color 0.15s;
+}
+
+.mb-close svg { flex: 0 0 auto; }
+/* ExpandPanelIcon/CollapsePanelIcon take no size prop — dimension them here. */
+.mb-expand svg { flex: 0 0 auto; width: 16px; height: 16px; }
+
+.mb-close:hover,
+.mb-expand:hover {
+  color: var(--vc-text-primary);
+  background-color: var(--vc-bg-raised);
+  border-color: var(--vc-line-strong);
+}
+
+/* Expand sits hard against the close button, both pushed to the right edge. */
+.mb-expand { margin-left: auto; }
+.mb-head .mb-expand + .mb-close { margin-left: 0; }
+
+.mb-back {
+  box-sizing: border-box;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 34px;
+  padding: 0 0.6rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 4px;
+  background: var(--vc-bg-surface);
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.mb-back:hover {
+  background: var(--vc-bg-raised);
+  color: var(--vc-text-primary);
+  border-color: var(--vc-line-strong);
+}
+
+.mb-back:active { background: var(--vc-bg-raised); }
+
+/* ---- Body --------------------------------------------------------------- */
+
+.mb-body {
+  flex: 1;
+  min-height: 0;
+  padding: 0.85rem 1rem;
+  overflow-y: auto;
+  color: var(--vc-text-primary);
+}
+
+.mb-body.mobile {
+  padding: 0.75rem;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 768px) {
+  .mb-panel.mobile {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+    border-radius: 0;
+  }
+
+  .mb-head.mobile { flex-shrink: 0; }
+
+  .mb-body.mobile {
+    flex: 1;
+    overflow: auto;
+  }
+}
