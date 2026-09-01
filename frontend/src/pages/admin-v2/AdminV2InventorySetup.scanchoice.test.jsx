@@ -56,14 +56,6 @@ vi.mock('./components/BarcodeScanDialog', () => ({
 }));
 vi.mock('./components/CsvItemImport', () => ({ default: () => null }));
 
-// Radix portals + focus traps are noise here — render the shell inline.
-vi.mock('@/components/ui/dialog', () => ({
-  Dialog: ({ children }) => <div>{children}</div>,
-  DialogContent: ({ children }) => <div>{children}</div>,
-  DialogHeader: ({ children }) => <div>{children}</div>,
-  DialogTitle: ({ children }) => <h2>{children}</h2>,
-}));
-
 import AdminV2InventorySetup from './AdminV2InventorySetup';
 
 const renderWizard = async () => {

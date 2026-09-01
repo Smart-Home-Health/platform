@@ -658,7 +658,7 @@ const AdminV2Nutrition = () => {
         <PatientSelectorModal
           patients={patients}
           selectedPatient={selectedPatient}
-          onSelect={handleSelectPatient}
+          onSelectPatient={handleSelectPatient}
           onClose={() => setShowPatientModal(false)}
         />
       )}

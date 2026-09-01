@@ -50,7 +50,6 @@ import './admin-nav.css'; // grouped-nav structure (both themes)
 import '../../styles/vcFonts';
 import './vc-shell.css';
 import './vc-content.css';
-import './vc-forms.css';
 import ConnectionChip from '../../components/ConnectionChip';
 import PersonAvatar from '../../components/vc/PersonAvatar';
 import useConnectionStatus from '../../hooks/useConnectionStatus';
@@ -350,21 +349,6 @@ const AdminV2Layout = ({ children }) => {
     const delta = (activeRect.left - navRect.left) - (nav.clientWidth - active.clientWidth) / 2;
     nav.scrollBy({ left: delta, behavior: 'smooth' });
   }, [location.pathname, topNavItems.length]);
-
-  // vc form skin (vc-forms.css) applies to the whole admin. It used to be an
-  // opt-in allowlist of routes while the rebuild rolled out, which left every
-  // un-listed section on stock shadcn geometry and the stock red destructive —
-  // the colours were already right everywhere (vc-content.css remaps the .tw
-  // islands globally), only the shape and typography stopped at the list.
-  //
-  // This layout is mounted by every /care page, so binding the class to its
-  // lifetime scopes the skin to the admin exactly. It goes on <body> rather
-  // than the page wrapper so it also reaches Radix's portalled Select/Dialog
-  // content, which renders outside the page tree.
-  useEffect(() => {
-    document.body.classList.add('vc-form-skin');
-    return () => document.body.classList.remove('vc-form-skin');
-  }, []);
 
   // Chevron scroll hints: shown at whichever edge has more tabs off-screen.
   const [navScroll, setNavScroll] = useState({ left: false, right: false });

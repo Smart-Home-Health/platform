@@ -24,7 +24,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-const SHEETS = ['./vc-forms.css', './vc-content.css'];
+const SHEETS = ['./vc-content.css'];
 const GATE = ':root:is(:not(.light), .dash-scheme-dark)';
 
 describe('vc skin dark gating', () => {

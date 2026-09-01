@@ -69,36 +69,6 @@
   --sched-primary-text: var(--vc-bg-base);
 }
 
-/* ---------- shadcn (.tw) island token remap ---------- */
-/* Everything built from the ui/ primitives — buttons, cards, dialogs,
- * selects — re-reads its palette from the vc tokens in dark theme. Scoped
- * to the islands and the Radix portal slots, NOT :root, so legacy CSS that
- * reads the same var names keeps the old palette until its page is skinned. */
-:root:is(:not(.light), .dash-scheme-dark) .tw,
-:root:is(:not(.light), .dash-scheme-dark) [data-slot='dialog-content'],
-:root:is(:not(.light), .dash-scheme-dark) [data-slot='select-content'] {
-  --background: var(--vc-bg-base);
-  --foreground: var(--vc-text-primary);
-  --card: var(--vc-bg-surface);
-  --card-foreground: var(--vc-text-primary);
-  --popover: var(--vc-bg-raised);
-  --popover-foreground: var(--vc-text-primary);
-  --primary: var(--vc-data-live);
-  --primary-foreground: var(--vc-bg-base);
-  --secondary: var(--vc-bg-raised);
-  --secondary-foreground: var(--vc-text-primary);
-  --muted: var(--vc-bg-raised);
-  --muted-foreground: var(--vc-text-secondary);
-  --accent: var(--vc-bg-raised);
-  --accent-foreground: var(--vc-text-primary);
-  --success: var(--vc-state-complete);
-  --warning: var(--vc-state-due);
-  --warning-foreground: var(--vc-bg-base);
-  --border: var(--vc-line-strong);
-  --input: var(--vc-line-strong);
-  --ring: var(--vc-data-live);
-}
-
 /* Legend dots / stat-icon chips on the schedule pages consume these as
  * inline-style vars (bootstrap-ish fallbacks keep the light theme). */
 :root:is(:not(.light), .dash-scheme-dark) {

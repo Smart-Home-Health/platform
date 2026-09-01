@@ -59,20 +59,6 @@ describe('DashboardThemeProvider', () => {
     expect(document.documentElement.classList.contains('dash-scheme-dark')).toBe(false);
   });
 
-  // The admin's form skin (vc-forms.css) is opted into per surface via a body
-  // class; the live board opts in for its lifetime so shadcn primitives and
-  // portalled dialogs on /live get the same skin as under /care.
-  it('opts the live board into the vc form skin while mounted', () => {
-    const { unmount } = render(
-      <DashboardThemeProvider>
-        <Probe />
-      </DashboardThemeProvider>
-    );
-    expect(document.body.classList.contains('vc-form-skin')).toBe(true);
-    unmount();
-    expect(document.body.classList.contains('vc-form-skin')).toBe(false);
-  });
-
   it('exposes a complete chrome for recharts consumers', () => {
     for (const key of ['bg', 'axis', 'grid', 'tooltipBg', 'tooltipBorder', 'tooltipText', 'text', 'textMuted', 'textDim', 'border']) {
       expect(CHART_CHROME[key], key).toBeTruthy();

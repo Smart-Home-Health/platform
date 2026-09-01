@@ -37,7 +37,9 @@ import {
 import EntityCard from '../../components/vc/EntityCard';
 import EntityModal, { EmField, EmRow, EmSelect } from '../../components/vc/EntityModal';
 import { VentImportPanel } from './components';
-import { Button } from '@/components/ui/button';
+import '../../components/vc/entity-card.css';
+import './settings/settings-page.css';
+import './connections.css';
 import './AdminV2.css';
 
 export default function AdminV2Connections() {
@@ -639,28 +641,28 @@ export default function AdminV2Connections() {
         {loading ? (
           <div className="admin-v2-loading">Loading connections...</div>
         ) : (
-          <div className="tw flex flex-col gap-6">
+          <div className="cx-sections">
             {/* Configured Integrations */}
-            <section className="flex flex-col gap-3">
-              <div className="flex items-center justify-between gap-3">
-                <h3 className="text-base font-semibold text-foreground">
+            <section className="cfg-listgroup">
+              <div className="cfg-listgroup-head">
+                <h3 className="cfg-group-title">
                   Connected ({patientIntegrations.length + pairedReaderCount})
                 </h3>
                 {unconfiguredIntegrations.length > 0 && (
-                  <Button onClick={() => setShowAddModal(true)}>
+                  <button type="button" className="em-submit" onClick={() => setShowAddModal(true)}>
                     <PlusIcon size={16} /> Add a connection
-                  </Button>
+                  </button>
                 )}
               </div>
 
               {patientIntegrations.length === 0 && !hasConfiguredReaders ? (
-                <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border py-12 text-center text-muted-foreground">
+                <div className="ec-empty cx-empty">
                   <LinkIcon size={48} />
-                  <h3 className="text-base font-semibold text-foreground">Nothing connected yet</h3>
-                  <p className="text-sm">Add a device or service to start collecting health data.</p>
-                  <Button onClick={() => setShowAddModal(true)}>
+                  <h3 className="cfg-group-title">Nothing connected yet</h3>
+                  <p>Add a device or service to start collecting health data.</p>
+                  <button type="button" className="em-submit" onClick={() => setShowAddModal(true)}>
                     <PlusIcon size={16} /> Add your first connection
-                  </Button>
+                  </button>
                 </div>
               ) : patientIntegrations.length === 0 ? null : (
                 <div className="ec-grid">
@@ -750,8 +752,8 @@ export default function AdminV2Connections() {
             )}
 
             {/* Available Integrations */}
-            <section className="flex flex-col gap-3">
-              <h3 className="text-base font-semibold text-foreground">
+            <section className="cfg-listgroup">
+              <h3 className="cfg-group-title">
                 Available to add ({allAvailableIntegrations.length})
               </h3>
               <div className="ec-grid">

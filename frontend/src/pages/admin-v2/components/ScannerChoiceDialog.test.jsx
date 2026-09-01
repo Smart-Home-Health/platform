@@ -20,14 +20,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
-// Radix portals + focus traps are noise here — render the shell inline.
-vi.mock('@/components/ui/dialog', () => ({
-  Dialog: ({ children }) => <div>{children}</div>,
-  DialogContent: ({ children }) => <div>{children}</div>,
-  DialogHeader: ({ children }) => <div>{children}</div>,
-  DialogTitle: ({ children }) => <h2>{children}</h2>,
-}));
-
 import ScannerChoiceDialog, { SCANNER_CHOICE_KEY } from './ScannerChoiceDialog';
 
 beforeEach(() => {

@@ -1315,7 +1315,11 @@
     flex-wrap: wrap;
   }
 
-  .admin-v2-patient-actions .admin-v2-btn {
+  /* em-cancel/em-submit are the vc replacements for the shadcn Buttons that
+     used to carry `max-md:min-w-[120px] max-md:flex-1` utilities here. */
+  .admin-v2-patient-actions .admin-v2-btn,
+  .admin-v2-patient-actions .em-cancel,
+  .admin-v2-patient-actions .em-submit {
     flex: 1 1 auto;
     min-width: 120px;
   }
