@@ -22,7 +22,7 @@ remaining spots proportionally to their nominal sizes, clamped to
 [fluid_min_ml, fluid_max_ml] (max defaults to the nominal). Completion
 without an explicit amount pours the suggestion.
 """
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -36,6 +36,17 @@ def _local_today():
     # The seeded test account runs America/New_York and the /daily window is
     # account-local, so "today" must be the account's date, not UTC's.
     return datetime.now(ZoneInfo("America/New_York")).date()
+
+
+def _feed_time():
+    # A feed time whose ~52-min flush still lands on today's board: in the
+    # last hour of the account-local day the follow-up would cross midnight,
+    # so back the feed up two hours (still today, still in the past).
+    now = _now_utc()
+    tz = ZoneInfo("America/New_York")
+    if (now + timedelta(hours=1)).astimezone(tz).date() != now.astimezone(tz).date():
+        now -= timedelta(hours=2)
+    return now
 
 
 def _daily(admin_client, patient):
@@ -328,7 +339,7 @@ def flush_setup(admin_client, patient):
         "patient_id": patient.id, "name": "Water", "item_type": "liquid",
         "default_amount": 60, "default_amount_unit": "ml", "calories_per_unit": 0,
     }).json()
-    when = _now_utc()
+    when = _feed_time()
     schedule = admin_client.post("/api/nutrition/schedules", json={
         "patient_id": patient.id, "schedule_type": "meal", "name": "Lunch",
         "cron_expression": f"{when.minute} {when.hour} * * *",
@@ -341,7 +352,7 @@ def flush_setup(admin_client, patient):
     }).json()
     resp = admin_client.post("/api/schedule/complete/nutrition", json={
         "schedule_id": schedule["id"], "scheduled_time": when.isoformat(),
-        "patient_id": patient.id,
+        "patient_id": patient.id, "completed_at": when.isoformat(),
     })
     assert resp.status_code == 200, resp.text
     return resp.json()["flush_followup"]
