@@ -108,10 +108,12 @@ describe('ItemSheet', () => {
     fireEvent.change(document.getElementById('item-name'), { target: { value: 'My name' } });
     wedgeScan('082592011480');
 
-    await waitFor(() => expect(document.getElementById('item-barcode')).toHaveValue('082592011480'));
+    // The scan lands the barcode synchronously; the product fields arrive
+    // when the lookup resolves, so wait on one of those, not the barcode.
+    await waitFor(() => expect(document.getElementById('item-brand')).toHaveValue('Naked'));
+    expect(document.getElementById('item-barcode')).toHaveValue('082592011480');
     // Typed name survives; blank fields fill from the product.
     expect(document.getElementById('item-name')).toHaveValue('My name');
-    expect(document.getElementById('item-brand')).toHaveValue('Naked');
     expect(document.getElementById('item-serving')).toHaveValue(450);
     expect(document.getElementById('item-calories')).toHaveValue(229.5);
   });
