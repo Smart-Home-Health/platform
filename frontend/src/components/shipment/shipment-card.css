@@ -16,10 +16,10 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-/* Shipment cards and the shipments list chrome. Dark-only, like the rest of
- * the vc skin — the pages scope themselves to :root:not(.light). */
+/* Shipment cards and the shipments list chrome. Tokens only, never scoped
+ * to a theme class, like the rest of the vc skin. */
 
-:root:not(.light) .sc-card {
+.sc-card {
   background: var(--vc-bg-surface);
   border: 1px solid var(--vc-line-hairline);
   border-radius: 10px;
@@ -29,21 +29,21 @@
   gap: 12px;
 }
 
-:root:not(.light) .sc-card.needs-attention {
+.sc-card.needs-attention {
   border-color: color-mix(in srgb, var(--vc-state-due) 45%, transparent);
 }
 
 /* --- head --- */
 
-:root:not(.light) .sc-head {
+.sc-head {
   display: flex;
   align-items: flex-start;
   gap: 12px;
 }
 
-:root:not(.light) .sc-head-text { flex: 1; min-width: 0; }
+.sc-head-text { flex: 1; min-width: 0; }
 
-:root:not(.light) .sc-title {
+.sc-title {
   background: none;
   border: 0;
   padding: 0;
@@ -57,18 +57,18 @@
   word-break: break-all;
 }
 
-:root:not(.light) .sc-card.tone-due .sc-title { color: var(--vc-state-due); }
-:root:not(.light) .sc-card.tone-complete .sc-title { color: var(--vc-state-complete); }
-:root:not(.light) .sc-card.tone-idle .sc-title { color: var(--vc-text-secondary); }
+.sc-card.tone-due .sc-title { color: var(--vc-state-due); }
+.sc-card.tone-complete .sc-title { color: var(--vc-state-complete); }
+.sc-card.tone-idle .sc-title { color: var(--vc-text-secondary); }
 
-:root:not(.light) .sc-title:hover { text-decoration: underline; }
-:root:not(.light) .sc-title:focus-visible {
+.sc-title:hover { text-decoration: underline; }
+.sc-title:focus-visible {
   outline: 2px solid var(--vc-data-live);
   outline-offset: 2px;
   border-radius: 3px;
 }
 
-:root:not(.light) .sc-supplier {
+.sc-supplier {
   margin: 2px 0 0;
   font-size: 0.72rem;
   letter-spacing: 0.08em;
@@ -76,14 +76,14 @@
   color: var(--vc-text-secondary);
 }
 
-:root:not(.light) .sc-head-right {
+.sc-head-right {
   display: flex;
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
 }
 
-:root:not(.light) .sc-status {
+.sc-status {
   font-family: var(--vc-font-mono);
   font-size: 0.68rem;
   font-weight: 600;
@@ -96,20 +96,20 @@
 
 /* Filled for states that are moving or done; outlined for a draft, which is
  * a state the user still owns rather than one the supplier reports. */
-:root:not(.light) .sc-status.tone-accent {
+.sc-status.tone-accent {
   background: var(--vc-data-live);
   color: var(--vc-bg-base);
 }
-:root:not(.light) .sc-status.tone-complete {
+.sc-status.tone-complete {
   background: var(--vc-state-complete);
   color: var(--vc-bg-base);
 }
-:root:not(.light) .sc-status.tone-due {
+.sc-status.tone-due {
   background: transparent;
   color: var(--vc-state-due);
   border: 1px solid var(--vc-state-due);
 }
-:root:not(.light) .sc-status.tone-idle {
+.sc-status.tone-idle {
   background: transparent;
   color: var(--vc-text-tertiary);
   border: 1px solid var(--vc-line-strong);
@@ -117,9 +117,9 @@
 
 /* --- kebab --- */
 
-:root:not(.light) .sc-menu-wrap { position: relative; }
+.sc-menu-wrap { position: relative; }
 
-:root:not(.light) .sc-kebab {
+.sc-kebab {
   display: grid;
   place-content: center;
   width: 32px;
@@ -131,12 +131,12 @@
   color: var(--vc-text-secondary);
   cursor: pointer;
 }
-:root:not(.light) .sc-kebab:hover {
+.sc-kebab:hover {
   background: color-mix(in srgb, var(--vc-text-primary) 8%, transparent);
   color: var(--vc-text-primary);
 }
 
-:root:not(.light) .sc-menu {
+.sc-menu {
   position: absolute;
   top: calc(100% + 4px);
   right: 0;
@@ -149,7 +149,7 @@
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
-:root:not(.light) .sc-menu-item {
+.sc-menu-item {
   display: block;
   width: 100%;
   padding: 8px 10px;
@@ -161,14 +161,14 @@
   color: var(--vc-text-primary);
   cursor: pointer;
 }
-:root:not(.light) .sc-menu-item:hover {
+.sc-menu-item:hover {
   background: color-mix(in srgb, var(--vc-text-primary) 8%, transparent);
 }
-:root:not(.light) .sc-menu-item.danger { color: var(--vc-state-alert); }
+.sc-menu-item.danger { color: var(--vc-state-alert); }
 
 /* --- detail grid --- */
 
-:root:not(.light) .sc-details {
+.sc-details {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 10px;
@@ -177,14 +177,14 @@
   border-top: 1px solid var(--vc-line-hairline);
 }
 
-:root:not(.light) .sc-detail dt {
+.sc-detail dt {
   font-size: 0.64rem;
   letter-spacing: 0.09em;
   text-transform: uppercase;
   color: var(--vc-text-secondary);
 }
 
-:root:not(.light) .sc-detail dd {
+.sc-detail dd {
   margin: 3px 0 0;
   font-family: var(--vc-font-mono);
   font-size: 0.9rem;
@@ -195,18 +195,18 @@
 
 /* The last column reads right-aligned in the mockup, which keeps the numbers
  * off the card edge without a second grid. */
-:root:not(.light) .sc-detail:last-child { text-align: right; }
+.sc-detail:last-child { text-align: right; }
 
 /* --- progress rail --- */
 
-:root:not(.light) .sc-rail {
+.sc-rail {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   padding-top: 12px;
   border-top: 1px solid var(--vc-line-hairline);
 }
 
-:root:not(.light) .sc-step {
+.sc-step {
   position: relative;
   display: flex;
   flex-direction: column;
@@ -214,7 +214,7 @@
   gap: 8px;
 }
 
-:root:not(.light) .sc-rail-node {
+.sc-rail-node {
   width: 12px;
   height: 12px;
   border-radius: 50%;
@@ -222,20 +222,20 @@
   background: var(--vc-bg-surface);
 }
 
-:root:not(.light) .sc-step.is-done .sc-rail-node {
+.sc-step.is-done .sc-rail-node {
   border-color: var(--vc-data-live);
   background: var(--vc-data-live);
 }
 
 /* The current step reads as a ring, so "here" is distinguishable from
  * "finished" without relying on the fill colour alone. */
-:root:not(.light) .sc-step.is-current .sc-rail-node {
+.sc-step.is-current .sc-rail-node {
   border-color: var(--vc-data-live);
   background: var(--vc-bg-surface);
   box-shadow: inset 0 0 0 2px var(--vc-data-live);
 }
 
-:root:not(.light) .sc-rail-line {
+.sc-rail-line {
   position: absolute;
   top: 5px;
   right: 50%;
@@ -244,12 +244,12 @@
   background: var(--vc-state-idle);
 }
 
-:root:not(.light) .sc-step.is-done .sc-rail-line,
-:root:not(.light) .sc-step.is-current .sc-rail-line {
+.sc-step.is-done .sc-rail-line,
+.sc-step.is-current .sc-rail-line {
   background: var(--vc-data-live);
 }
 
-:root:not(.light) .sc-step-label {
+.sc-step-label {
   font-size: 0.6rem;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -257,14 +257,14 @@
   text-align: center;
 }
 
-:root:not(.light) .sc-step.is-done .sc-step-label,
-:root:not(.light) .sc-step.is-current .sc-step-label {
+.sc-step.is-done .sc-step-label,
+.sc-step.is-current .sc-step-label {
   color: var(--vc-text-primary);
 }
 
 /* --- footer action --- */
 
-:root:not(.light) .sc-action {
+.sc-action {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -284,20 +284,20 @@
   cursor: pointer;
 }
 
-:root:not(.light) .sc-card.tone-due .sc-action { color: var(--vc-state-due); }
-:root:not(.light) .sc-card.tone-complete .sc-action { color: var(--vc-state-complete); }
+.sc-card.tone-due .sc-action { color: var(--vc-state-due); }
+.sc-card.tone-complete .sc-action { color: var(--vc-state-complete); }
 
-:root:not(.light) .sc-action:hover {
+.sc-action:hover {
   background: color-mix(in srgb, var(--vc-text-primary) 5%, transparent);
 }
-:root:not(.light) .sc-action:focus-visible {
+.sc-action:focus-visible {
   outline: 2px solid var(--vc-data-live);
   outline-offset: -2px;
 }
 
 /* --- item card (shipment detail) --- */
 
-:root:not(.light) .si-card {
+.si-card {
   display: flex;
   align-items: flex-start;
   gap: 12px;
@@ -307,7 +307,7 @@
   border-radius: 9px;
 }
 
-:root:not(.light) .si-index {
+.si-index {
   display: grid;
   place-content: center;
   width: 26px;
@@ -320,15 +320,15 @@
   color: var(--vc-text-secondary);
 }
 
-:root:not(.light) .si-body { flex: 1; min-width: 0; }
+.si-body { flex: 1; min-width: 0; }
 
-:root:not(.light) .si-head {
+.si-head {
   display: flex;
   align-items: flex-start;
   gap: 8px;
 }
 
-:root:not(.light) .si-name {
+.si-name {
   flex: 1;
   padding: 0;
   background: none;
@@ -339,10 +339,10 @@
   color: var(--vc-text-primary);
   cursor: pointer;
 }
-:root:not(.light) .si-name:disabled { cursor: default; }
-:root:not(.light) .si-name:not(:disabled):hover { color: var(--vc-data-live); }
+.si-name:disabled { cursor: default; }
+.si-name:not(:disabled):hover { color: var(--vc-data-live); }
 
-:root:not(.light) .si-kebab {
+.si-kebab {
   display: grid;
   place-content: center;
   width: 28px;
@@ -354,14 +354,14 @@
   color: var(--vc-text-secondary);
   cursor: pointer;
 }
-:root:not(.light) .si-kebab:hover {
+.si-kebab:hover {
   background: color-mix(in srgb, var(--vc-text-primary) 8%, transparent);
   color: var(--vc-text-primary);
 }
 
-:root:not(.light) .si-menu-wrap { position: relative; }
+.si-menu-wrap { position: relative; }
 
-:root:not(.light) .si-menu {
+.si-menu {
   position: absolute;
   top: calc(100% + 4px);
   right: 0;
@@ -374,7 +374,7 @@
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
-:root:not(.light) .si-menu-item {
+.si-menu-item {
   display: block;
   width: 100%;
   padding: 8px 10px;
@@ -386,32 +386,32 @@
   color: var(--vc-text-primary);
   cursor: pointer;
 }
-:root:not(.light) .si-menu-item:hover {
+.si-menu-item:hover {
   background: color-mix(in srgb, var(--vc-text-primary) 8%, transparent);
 }
-:root:not(.light) .si-menu-item.danger { color: var(--vc-state-alert); }
+.si-menu-item.danger { color: var(--vc-state-alert); }
 
-:root:not(.light) .si-meta {
+.si-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 16px;
   margin: 4px 0 0;
 }
-:root:not(.light) .si-meta > div { display: flex; gap: 6px; align-items: baseline; }
-:root:not(.light) .si-meta dt {
+.si-meta > div { display: flex; gap: 6px; align-items: baseline; }
+.si-meta dt {
   font-size: 0.62rem;
   letter-spacing: 0.09em;
   text-transform: uppercase;
   color: var(--vc-text-secondary);
 }
-:root:not(.light) .si-meta dd {
+.si-meta dd {
   margin: 0;
   font-family: var(--vc-font-mono);
   font-size: 0.78rem;
   color: var(--vc-text-primary);
 }
 
-:root:not(.light) .si-numbers {
+.si-numbers {
   display: flex;
   gap: 22px;
   margin-top: 9px;
@@ -419,34 +419,34 @@
   border-top: 1px solid var(--vc-line-hairline);
 }
 
-:root:not(.light) .si-number { display: flex; flex-direction: column; gap: 2px; }
+.si-number { display: flex; flex-direction: column; gap: 2px; }
 
-:root:not(.light) .si-number-label {
+.si-number-label {
   font-size: 0.6rem;
   letter-spacing: 0.09em;
   text-transform: uppercase;
   color: var(--vc-text-secondary);
 }
 
-:root:not(.light) .si-number-value {
+.si-number-value {
   font-family: var(--vc-font-mono);
   font-size: 0.92rem;
   font-variant-numeric: tabular-nums;
   color: var(--vc-text-primary);
 }
-:root:not(.light) .si-number-value.is-in { color: var(--vc-state-complete); }
-:root:not(.light) .si-number-value.is-due { color: var(--vc-state-due); }
+.si-number-value.is-in { color: var(--vc-state-complete); }
+.si-number-value.is-due { color: var(--vc-state-due); }
 
 /* --- quantity stepper --- */
 
-:root:not(.light) .si-stepper {
+.si-stepper {
   display: flex;
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
 }
 
-:root:not(.light) .si-stepper button {
+.si-stepper button {
   display: grid;
   place-content: center;
   width: 34px;
@@ -458,15 +458,15 @@
   color: var(--vc-data-live);
   cursor: pointer;
 }
-:root:not(.light) .si-stepper button:hover:not(:disabled) {
+.si-stepper button:hover:not(:disabled) {
   background: color-mix(in srgb, var(--vc-data-live) 15%, transparent);
 }
-:root:not(.light) .si-stepper button:disabled {
+.si-stepper button:disabled {
   opacity: 0.4;
   cursor: default;
 }
 
-:root:not(.light) .si-stepper input {
+.si-stepper input {
   width: 46px;
   padding: 6px 2px;
   background: none;
@@ -478,12 +478,12 @@
   color: var(--vc-text-primary);
   -moz-appearance: textfield;
 }
-:root:not(.light) .si-stepper input::-webkit-outer-spin-button,
-:root:not(.light) .si-stepper input::-webkit-inner-spin-button {
+.si-stepper input::-webkit-outer-spin-button,
+.si-stepper input::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
-:root:not(.light) .si-stepper input:focus {
+.si-stepper input:focus {
   outline: 2px solid var(--vc-data-live);
   outline-offset: 2px;
   border-radius: 4px;

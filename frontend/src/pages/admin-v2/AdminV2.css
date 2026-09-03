@@ -200,11 +200,6 @@
   color: #fff;
 }
 
-.admin-v2-patient-selector-avatar.empty {
-  background: var(--vc-line-hairline);
-  color: var(--vc-text-secondary);
-}
-
 .admin-v2-patient-selector-details {
   flex: 1;
   display: flex;
@@ -768,21 +763,8 @@
   letter-spacing: 0.4px;
 }
 
-/* Per-category color identity (border + count color). Red is reserved for the
-   overdue state below, so tasks use blue by default. */
-.admin-v2-due-item.meds { border-color: color-mix(in srgb, var(--vc-state-due) 40%, transparent); }
-.admin-v2-due-item.meds .admin-v2-due-count { color: #f78166; }
-.admin-v2-due-item.equip { border-color: color-mix(in srgb, var(--vc-state-due) 40%, transparent); }
-.admin-v2-due-item.equip .admin-v2-due-count { color: var(--vc-state-due); }
-.admin-v2-due-item.tasks { border-color: color-mix(in srgb, var(--vc-avatar-plum) 40%, transparent); }
-.admin-v2-due-item.tasks .admin-v2-due-count { color: var(--vc-avatar-plum); }
-.admin-v2-due-item.nutrition { border-color: color-mix(in srgb, var(--vc-state-complete) 40%, transparent); }
-.admin-v2-due-item.nutrition .admin-v2-due-count { color: var(--vc-state-complete); }
-
-/* Overdue / missed: red urgency, overrides the category color. Placed last so
-   it wins on equal specificity. */
-.admin-v2-due-item.overdue { border-color: color-mix(in srgb, var(--vc-state-alert) 60%, transparent); }
-.admin-v2-due-item.overdue .admin-v2-due-count { color: var(--vc-state-alert); }
+/* Due-counter colour (state, not category) is owned by vc-dashboard.css,
+   which always loads with the only page that renders them. */
 
 /* Patient Actions */
 .admin-v2-patient-actions {
