@@ -87,7 +87,7 @@ const EquipmentRestockGate = ({ info, onClose, onUpdated }) => {
       onClick={onClose}
       style={{
         position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-        backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)',
+        backgroundColor: 'var(--vc-scrim)', backdropFilter: 'blur(6px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         zIndex: 2000,
       }}
@@ -95,24 +95,24 @@ const EquipmentRestockGate = ({ info, onClose, onUpdated }) => {
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          backgroundColor: '#1a2332',
-          border: '1px solid rgba(255,255,255,0.08)',
+          backgroundColor: 'var(--vc-bg-sheet)',
+          border: '1px solid var(--vc-line-hairline)',
           borderRadius: 12, padding: 24,
           maxWidth: 440, width: '90%',
           boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
-          color: '#e6edf3',
+          color: 'var(--vc-text-primary)',
         }}
       >
         <h3 style={{
           margin: '0 0 16px 0', fontSize: 18, fontWeight: 700,
-          paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.08)',
+          paddingBottom: 12, borderBottom: '1px solid var(--vc-line-hairline)',
         }}>
           Out of Stock — {info.equipment_name}
         </h3>
 
         {error && (
           <div style={{
-            background: 'rgba(248,81,73,0.12)', border: '1px solid rgba(248,81,73,0.5)',
+            background: 'color-mix(in srgb, var(--vc-state-alert) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--vc-state-alert) 40%, transparent)',
             borderRadius: 6, padding: '0.6rem 0.9rem', marginBottom: 12, fontSize: 13,
           }}>{error}</div>
         )}
@@ -120,7 +120,7 @@ const EquipmentRestockGate = ({ info, onClose, onUpdated }) => {
         <div
           role="alert"
           style={{
-            background: 'rgba(248,81,73,0.12)', border: '1px solid rgba(248,81,73,0.5)',
+            background: 'color-mix(in srgb, var(--vc-state-alert) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--vc-state-alert) 40%, transparent)',
             borderRadius: 6, padding: '0.75rem 1rem', marginBottom: 16, fontSize: 14,
           }}
         >
@@ -141,8 +141,8 @@ const EquipmentRestockGate = ({ info, onClose, onUpdated }) => {
           placeholder="Enter current count on hand"
           style={{
             width: '100%', padding: 10, fontSize: 14,
-            background: '#2d3748', color: '#e6edf3',
-            border: '1px solid rgba(255,255,255,0.15)', borderRadius: 6,
+            background: 'var(--vc-bg-raised)', color: 'var(--vc-text-primary)',
+            border: '1px solid var(--vc-line-strong)', borderRadius: 6,
             boxSizing: 'border-box', outline: 'none',
           }}
         />
@@ -154,8 +154,8 @@ const EquipmentRestockGate = ({ info, onClose, onUpdated }) => {
             disabled={saving}
             style={{
               ...btn, fontWeight: 500,
-              border: '1px solid rgba(255,255,255,0.15)',
-              background: 'transparent', color: '#e6edf3',
+              border: '1px solid var(--vc-line-strong)',
+              background: 'transparent', color: 'var(--vc-text-primary)',
             }}
           >Cancel</button>
           <button
@@ -164,7 +164,7 @@ const EquipmentRestockGate = ({ info, onClose, onUpdated }) => {
             disabled={saving || !valid}
             style={{
               ...btn, border: 'none',
-              background: '#3b82f6', color: '#fff',
+              background: 'var(--vc-data-live)', color: 'var(--vc-text-on-accent)',
               opacity: saving || !valid ? 0.6 : 1,
             }}
           >{saving ? 'Saving…' : 'Update & Continue'}</button>

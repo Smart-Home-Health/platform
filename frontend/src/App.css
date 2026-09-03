@@ -5,42 +5,14 @@
   padding: 0;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
-}
-
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
-}
-
 html, body, #root {
   height: 100%;
   margin: 0;
   padding: 0;
   overflow: hidden;
   font-family: 'Roboto', Arial, sans-serif;
-  background-color: #1a1a1a;
-  color: var(--dash-text, #fff);
+  background-color: var(--vc-bg-base);
+  color: var(--vc-text-primary);
 }
 
 /* Add these new styles for the revised layout */
@@ -48,24 +20,24 @@ html, body, #root {
 /* ---------------------------------------------------------------------------
    Live-dashboard structural colors.
 
-   Dark-only by design (bedside-monitor aesthetic): the --dash-* variable
-   layer survives — every dashboard modal reads it — but the values are now
-   defined once from the vc tokens (styles/vc-tokens.css). Literals rather
-   than var(--vc-*) so rules using `var(--dash-*, <fallback>)` outside the
-   wrapper keep their fallback behavior unchanged.
+   The --dash-* variable layer survives — every dashboard modal reads it —
+   but each value is an alias of a vc token (styles/vc-tokens.css), so the
+   board follows whichever palette is on <html>. Rules that read
+   `var(--dash-*, <fallback>)` outside .dashboard-wrapper keep their literal
+   fallback, as before.
 
-   Vital accent colors (SpO2/HR/perfusion) and alarm reds are intentionally
-   NOT variables — they stay constant.
+   Vital accents ride the --vc-series-* aliases; the alarm reds are
+   --vc-alarm / --vc-alarm-deep.
    --------------------------------------------------------------------------- */
 .dashboard-wrapper {
-  --dash-bg: #0a0e14;            /* vc-bg-base */
-  --dash-surface: #131a24;       /* vc-bg-surface */
-  --dash-surface-2: #1b242f;     /* vc-bg-raised */
-  --dash-border: rgba(255, 255, 255, 0.1);  /* vc-line-hairline */
-  --dash-border-strong: rgba(255, 255, 255, 0.2); /* vc-line-strong */
-  --dash-text: #e8edf3;          /* vc-text-primary */
-  --dash-text-muted: #9aa8b8;    /* vc-text-secondary */
-  --dash-text-dim: #6b7987;      /* vc-text-tertiary */
+  --dash-bg: var(--vc-bg-base);
+  --dash-surface: var(--vc-bg-surface);
+  --dash-surface-2: var(--vc-bg-raised);
+  --dash-border: var(--vc-line-hairline);
+  --dash-border-strong: var(--vc-line-strong);
+  --dash-text: var(--vc-text-primary);
+  --dash-text-muted: var(--vc-text-secondary);
+  --dash-text-dim: var(--vc-text-tertiary);
 }
 
 /* ---------------------------------------------------------------------------
@@ -158,66 +130,12 @@ html, body, #root {
   position: relative;
 }
 
-/* Logo container with Smart Home Health text */
-.logo-container {
-  width: 25%; /* Match width of first column */
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center; /* Center logo and text */
-  z-index: 1;
-  padding-left: 10px;
-}
-
-.header-logo {
-  max-height: 70%;
-  max-width: 50px; /* Reduce size to make room for text */
-  object-fit: contain;
-}
-
 .logo-text {
   color: var(--dash-text, white);
   font-size: 1.2rem;
   font-weight: 500;
   margin-left: 10px;
   white-space: nowrap;
-}
-
-/* Keep the menu centered in middle 50% */
-.menu-container {
-  position: absolute;
-  left: 25%;
-  right: 25%;
-  height: 100%;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 25px; /* Increased gap for better spacing with badges */
-}
-
-/* Clock positioned in rightmost 25% */
-.datetime-container {
-  width: 25%; /* Match width of last column */
-  height: 100%;
-  display: flex;
-  justify-content: center; /* Center the clock */
-  align-items: center;
-  z-index: 1;
-}
-
-/* Update clock styling to fit in the container */
-.clock-card {
-  height: 80%;
-  background-color: transparent;
-  color: var(--dash-text, white);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  border-radius: 0;
-  font-family: sans-serif;
-  width: 100%; /* Use full width of container */
-  text-align: center; /* Center the text */
 }
 
 .clock-time {
@@ -233,18 +151,6 @@ html, body, #root {
 }
 
 /* Update these styles for the centered menu */
-
-/* Container for all menu buttons, centered in the header */
-.menu-container {
-  position: absolute;
-  left: 25%;
-  right: 25%;
-  height: 100%;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 25px; /* Increased gap for better spacing with badges */
-}
 
 /* Individual menu button styling */
 .menu-button {
@@ -274,7 +180,7 @@ html, body, #root {
 }
 
 .menu-button.active {
-  color: #ff8c00; /* Orange color */
+  color: var(--vc-state-due);
   background-color: rgba(255, 140, 0, 0.1);
 }
 
@@ -287,31 +193,6 @@ html, body, #root {
   .logo-text {
     display: none;
   }
-  .logo-container {
-    width: auto;
-    flex: 0 0 auto;
-    justify-content: flex-start;
-    padding-left: 12px;
-  }
-  .datetime-container {
-    width: auto;
-    flex: 0 0 auto;
-    padding: 0 12px;
-  }
-  .menu-container {
-    position: static;
-    left: auto;
-    right: auto;
-    flex: 1 1 auto;
-    gap: clamp(8px, 2vw, 25px);
-  }
-}
-
-.icon-wrapper {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 /* Compact vitals banner pinned above the auth modal on mobile so the three
@@ -361,134 +242,14 @@ html, body, #root {
   color: var(--dash-text-muted, #8b949e);
 }
 
-.mobile-auth-vitals-banner .bar-vital.spo2 .bar-value     { color: #58a6ff; }
-.mobile-auth-vitals-banner .bar-vital.bpm .bar-value      { color: #f85149; }
-.mobile-auth-vitals-banner .bar-vital.perfusion .bar-value { color: #f0883e; }
-
-.form-group {
-  margin-bottom: 12px;
-  display: flex;
-  flex-direction: column;
-}
-
-.form-group label {
-  margin-bottom: 6px;
-  font-size: 0.9rem;
-  color: var(--dash-text, #eee);
-}
-
-.form-group input[type="number"],
-.form-group input[type="text"],
-.form-group select {
-  background-color: var(--dash-surface-2, #253244);
-  border: 1px solid var(--dash-border, #30363d);
-  border-radius: 4px;
-  padding: 8px 12px;
-  color: var(--dash-text, white);
-  font-size: 1rem;
-  width: 100%;
-  max-width: 300px;
-}
-
-.form-group.checkbox-group {
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-}
-
-.form-group.checkbox-group input[type="checkbox"] {
-  margin: 0;
-  width: 18px;
-  height: 18px;
-  accent-color: #1565C0;
-}
+.mobile-auth-vitals-banner .bar-vital.spo2 .bar-value     { color: var(--vc-series-spo2); }
+.mobile-auth-vitals-banner .bar-vital.bpm .bar-value      { color: var(--vc-series-hr); }
+.mobile-auth-vitals-banner .bar-vital.perfusion .bar-value { color: var(--vc-series-pi); }
 
 .form-actions {
   display: flex;
   justify-content: flex-end;
   margin-top: 16px;
-}
-
-.save-button {
-  background-color: #1565C0;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  padding: 10px 20px;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.save-button:hover {
-  background-color: #1976D2;
-}
-
-/* Update dashboard container for new height */
-.dashboard-container {
-  display: flex;
-  height: 90%;
-  width: 100%;
-  background-color: var(--dash-bg, #161e2e); /* Match main background */
-}
-
-/* Values column - no significant changes needed */
-.values-column {
-  width: 25%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  border-right: 1px solid var(--dash-border, #30363d);
-  padding: 10px;
-  box-sizing: border-box;
-  background-color: var(--dash-bg, #161e2e); /* Match main background */
-}
-
-/* Charts column - no significant changes needed */
-.charts-column {
-  width: 50%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  background-color: var(--dash-bg, #161e2e); /* Match main background */
-  border-right: 1px solid var(--dash-border, #30363d); /* Add right border to match left column */
-}
-
-/* Updated right column for new BP sizing */
-.right-column {
-  width: 25%;
-  height: 100%;
-  padding: 10px;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  background-color: var(--dash-bg, #161e2e); /* Match main background */
-}
-
-/* Dynamic chart containers */
-.dynamic-chart-container {
-  height: 50%;
-  margin-bottom: 10px;
-}
-
-.dynamic-chart-container:last-child {
-  margin-bottom: 0;
-}
-
-/* Placeholder takes remaining 50% */
-.placeholder-container {
-  height: 50%;
-  background-color: var(--dash-surface, #1a2b42);
-  border-radius: 8px;
-}
-
-.placeholder-content {
-  width: 100%;
-  height: 100%;
-  color: var(--dash-text-dim, #ccc);
-  display: flex;
-  justify-content: center;
-  align-items: center;
 }
 
 .placeholder {
@@ -501,62 +262,7 @@ html, body, #root {
   align-items: center;
 }
 
-.chart-block {
-  width: 100%;
-  height: 33.33%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border-bottom: 1px solid var(--dash-border, #333);
-}
-
-.chart-inner {
-  flex: 1;
-  width: 100%;
-  height: 100%;
-  position: relative;
-  background-color: var(--dash-bg, #161e2e); /* Match main background */
-  border-radius: 8px;
-}
-
-.chart-inner > div {
-  width: 100%;
-  height: 100%;
-}
-
 /* Update the value display styles to use global background with colored text */
-
-.value-display {
-  display: flex;
-  flex-direction: column;
-  position: relative;
-  border-radius: 8px;
-  padding: 15px;
-  height: 30%;
-  margin-bottom: 12px;
-  color: var(--dash-text, white);
-  background-color: var(--dash-bg, #161e2e); /* Same as global background */
-  border: 1px solid rgba(255, 255, 255, 0.1); /* Subtle border */
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2); /* Subtle shadow for depth */
-}
-
-/* Value title - will inherit the specific color from each type */
-.value-title {
-  position: absolute;
-  top: 10px;
-  left: 15px;
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 500;
-  /* Color will come from specific classes */
-}
-
-.value-content {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 1;
-}
 
 .value {
   font-size: 5.5rem;
@@ -574,40 +280,26 @@ html, body, #root {
   /* Color will inherit from specific classes */
 }
 
-.value-stats {
-  display: flex;
-  justify-content: space-around;
-  font-size: 0.8rem;
-  margin-top: 5px;
-  border-top: 1px solid rgba(255, 255, 255, 0.15);
-  padding-top: 8px;
-  /* Color will inherit from specific classes */
-}
-
-.value-stats span {
-  padding: 0 5px;
-}
-
 /* Apply text colors to each type instead of background colors */
 .spo2 .value-title,
 .spo2 .value,
 .spo2 .unit,
 .spo2 .value-stats {
-  color: #1565C0; /* Blue for SPO2 */
+  color: var(--vc-series-spo2);
 }
 
 .bpm .value-title,
 .bpm .value,
 .bpm .unit,
 .bpm .value-stats {
-  color: #2E7D32; /* Green for Heart Rate */
+  color: var(--vc-series-hr);
 }
 
 .perfusion .value-title,
 .perfusion .value,
 .perfusion .unit,
 .perfusion .value-stats {
-  color: #EF6C00; /* Orange for Perfusion */
+  color: var(--vc-series-pi);
 }
 
 /* Tight desktop screens (iPad landscape / embedded iframe): scale the large
@@ -624,21 +316,6 @@ html, body, #root {
   }
 }
 
-/* Update ClockCard to work in the header */
-.clock-card {
-  height: 80%;
-  background-color: transparent;
-  color: var(--dash-text, white);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  border-radius: 0;
-  font-family: sans-serif;
-  width: 100%; /* Use full width of container */
-  text-align: center; /* Center the text */
-}
-
 .clock-time {
   font-size: 1.6em;
   font-weight: bold;
@@ -649,12 +326,6 @@ html, body, #root {
   font-size: 0.9em;
   margin-top: 5px;
   white-space: nowrap; /* Prevent line breaks */
-}
-
-/* Update any other components that need to match */
-.clock-card {
-  background-color: transparent;
-  color: var(--dash-text, white);
 }
 
 .clock-time {
@@ -669,178 +340,13 @@ html, body, #root {
 
 /* Update the Blood Pressure and Temperature card styling */
 
-/* Blood pressure and temperature card styling */
-.bp-card, .temp-card {
-  background-color: var(--dash-bg, #161e2e); /* Match main background */
-  border-radius: 8px;
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-}
-
-.bp-title, .temp-title {
-  font-size: 1rem;
-  margin: 0 0 8px 0;
-  text-align: center;
-  font-weight: 500;
-}
-
-.bp-title {
-  color: #ff5252; /* Reddish */
-}
-
-.temp-title {
-  color: #ffd54f; /* Yellow */
-}
-
-/* Change to flex-direction: column for stacked layout */
-.bp-content, .temp-content {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  height: calc(100% - 30px); /* Account for title */
-}
-
-/* Adjust chart container to 40% height */
-.bp-chart-container, .temp-chart-container {
-  width: 100%;
-  height: 40%;
-  position: relative;
-}
-
-/* Adjust table container to 60% height */
-.bp-table-container, .temp-table-container {
-  width: 100%;
-  height: 60%;
-  overflow-y: auto;
-  /* Custom scrollbar styling */
-  scrollbar-width: thin;
-  margin-top: 5px; /* Add some spacing between chart and table */
-}
-
-/* Rest of the styles remain the same */
-.bp-table-container {
-  scrollbar-color: #ff5252 var(--dash-bg, #161e2e);
-}
-
-.temp-table-container {
-  scrollbar-color: #ffd54f var(--dash-bg, #161e2e);
-}
-
-/* Custom scrollbar for Webkit browsers */
-.bp-table-container::-webkit-scrollbar,
-.temp-table-container::-webkit-scrollbar {
-  width: 4px;
-}
-
-.bp-table-container::-webkit-scrollbar-track,
-.temp-table-container::-webkit-scrollbar-track {
-  background: var(--dash-bg, #161e2e);
-}
-
-.bp-table-container::-webkit-scrollbar-thumb {
-  background-color: #ff5252;
-  border-radius: 4px;
-}
-
-.temp-table-container::-webkit-scrollbar-thumb {
-  background-color: #ffd54f;
-  border-radius: 4px;
-}
-
-.bp-table, .temp-table {
-  width: 100%;
-  border-collapse: collapse;
-  color: var(--dash-text, #fff);
-  font-size: 0.75rem;
-}
-
-.bp-table th, .bp-table td,
-.temp-table th, .temp-table td {
-  padding: 4px 5px; /* Slightly reduce padding for more rows */
-  text-align: center;
-  border-bottom: 1px solid var(--dash-border, #30363d);
-}
-
-.bp-table th {
-  color: #ff5252;
-  font-size: 0.7rem;
-  font-weight: 500;
-}
-
-.temp-table th {
-  color: #ffd54f;
-  font-size: 0.7rem;
-  font-weight: 500;
-}
-
-/* Improve legend positioning at the bottom of the chart */
-.temp-legend {
-  display: flex;
-  justify-content: center;
-  gap: 15px;
-  position: absolute;
-  bottom: 10px; /* Increase from 0 to 10px to move it higher */
-  left: 0;
-  right: 0;
-  margin-bottom: 5px;
-  background-color: rgba(22, 30, 46, 0.8); /* Slightly less transparent for better readability */
-  padding: 6px 0; /* Increase padding from 3px to 6px for more height */
-  border-radius: 4px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.2); /* Add subtle shadow for better distinction */
-}
-
 .legend-item {
   display: flex;
   align-items: center;
   gap: 6px; /* Slightly more space between dot and text */
 }
 
-.legend-color {
-  width: 12px; /* Slightly bigger dots */
-  height: 12px;
-  border-radius: 50%;
-}
-
-.legend-label {
-  font-size: 0.8rem; /* Slightly larger font */
-  color: var(--dash-text, #fff);
-  font-weight: 500; /* Make it a bit bolder */
-}
-
-/* Also update the body and skin temp text colors in the table */
-.body-temp {
-  color: #9c56b8; /* Purple for body temp */
-}
-
-.skin-temp {
-  color: #ffd54f; /* Yellow for skin temp */
-}
-
-.no-data {
-  color: var(--dash-text-dim, #ccc);
-  font-style: italic;
-  font-size: 0.85rem;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100%;
-}
-
-.no-data-row {
-  text-align: center;
-  color: var(--dash-text-dim, #ccc);
-  font-style: italic;
-}
-
 /* Add these styles for the icon wrapper and badges */
-
-.icon-wrapper {
-  position: relative;
-  display: inline-block;
-}
 
 .badge {
   position: absolute;
@@ -849,7 +355,7 @@ html, body, #root {
   min-width: 18px;
   height: 18px;
   border-radius: 50%;
-  background-color: #ff3b30;
+  background-color: var(--vc-alarm);
   color: white;
   font-size: 0.7rem;
   display: flex;
@@ -884,17 +390,6 @@ html, body, #root {
   margin-bottom: 0.75rem;
 }
 
-.vitals-form .form-row {
-  display: flex;
-  gap: 1rem;
-  margin-bottom: 0.75rem;
-}
-
-.vitals-form .form-group {
-  flex: 1;
-  margin-bottom: 0.75rem;
-}
-
 .vitals-form label {
   display: block;
   color: var(--dash-text-muted, #a0aec0);
@@ -916,7 +411,7 @@ html, body, #root {
 .vitals-form input:focus,
 .vitals-form textarea:focus {
   outline: none;
-  border-color: #4299e1;
+  border-color: var(--vc-data-live);
   box-shadow: 0 0 0 2px rgba(66, 153, 225, 0.2);
 }
 
@@ -942,12 +437,12 @@ html, body, #root {
 }
 
 .vitals-form .button.primary {
-  background-color: #4299e1;
+  background-color: var(--vc-data-live);
   color: white;
 }
 
 .vitals-form .button.primary:hover {
-  background-color: #3182ce;
+  background-color: color-mix(in srgb, var(--vc-data-live) 85%, var(--vc-bg-base));
 }
 
 .vitals-form .button.primary:disabled {
@@ -967,24 +462,6 @@ html, body, #root {
   color: var(--dash-text-muted, #e2e8f0);
 }
 
-.vitals-form .error-message {
-  background-color: rgba(245, 101, 101, 0.1);
-  border: 1px solid #fc8181;
-  border-radius: 4px;
-  padding: 0.75rem;
-  color: #fc8181;
-  margin-bottom: 1rem;
-}
-
-.vitals-form .success-message {
-  background-color: rgba(72, 187, 120, 0.1);
-  border: 1px solid #48bb78;
-  border-radius: 4px;
-  padding: 0.75rem;
-  color: #48bb78;
-  margin-bottom: 1rem;
-}
-
 .loading {
   text-align: center;
   color: var(--dash-text-muted, #a0aec0);
@@ -992,106 +469,6 @@ html, body, #root {
 }
 
 /* PulseOx Modal Styles */
-
-.pulse-ox-modal {
-  color: var(--dash-text, #fff);
-}
-
-.tab-navigation {
-  display: flex;
-  margin-bottom: 1.5rem;
-  border-bottom: 1px solid var(--dash-surface-2, #2d3748);
-}
-
-.tab-button {
-  background: none;
-  border: none;
-  color: var(--dash-text-muted, #a0aec0);
-  padding: 0.75rem 1.5rem;
-  font-size: 1rem;
-  cursor: pointer;
-  position: relative;
-  transition: all 0.2s ease;
-  outline: none;
-}
-
-.tab-button.active {
-  color: #4299e1;
-  border-bottom: 2px solid #4299e1;
-}
-
-.tab-button:hover {
-  color: var(--dash-text-muted, #e2e8f0);
-}
-
-.tab-badge {
-  position: absolute;
-  top: 0.25rem;
-  right: 0.25rem;
-  background-color: #f56565;
-  color: white;
-  font-size: 0.75rem;
-  font-weight: 600;
-  min-width: 1.25rem;
-  height: 1.25rem;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 0.25rem;
-}
-
-.current-readings {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 2rem;
-}
-
-.reading-card {
-  background-color: var(--dash-surface, #1a202c);
-  border-radius: 8px;
-  padding: 1.5rem;
-  flex: 1;
-  margin: 0 0.5rem;
-  text-align: center;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.reading-card:first-child {
-  margin-left: 0;
-}
-
-.reading-card:last-child {
-  margin-right: 0;
-}
-
-.reading-label {
-  color: var(--dash-text-muted, #a0aec0);
-  font-size: 0.9rem;
-  margin-bottom: 0.5rem;
-}
-
-.reading-value {
-  font-size: 2rem;
-  font-weight: 600;
-  color: var(--dash-text-muted, #e2e8f0);
-}
-
-.charts-container {
-  display: flex;
-  flex-direction: column;
-  gap: 2rem;
-}
-
-.chart-wrapper {
-  flex: 1;
-}
-
-.chart-wrapper h3 {
-  color: var(--dash-text-muted, #a0aec0);
-  font-size: 1rem;
-  margin-bottom: 1rem;
-}
 
 .chart {
   height: 250px;
@@ -1105,16 +482,11 @@ html, body, #root {
   backface-visibility: hidden;
 }
 
-/* Update the badge style for the icon */
-.icon-wrapper {
-  position: relative;
-}
-
 .badge {
   position: absolute;
   top: -5px;
   right: -5px;
-  background-color: #f56565;
+  background-color: var(--vc-state-alert);
   color: white;
   font-size: 0.75rem;
   font-weight: 600;
@@ -1134,142 +506,25 @@ html, body, #root {
   100% { transform: scale(1); }
 }
 
-.icon-wrapper:has(.badge) .menu-button {
-  animation: pulse 1.5s infinite;
-}
-
-
-.alerts-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.alert-card {
-  border: 1px solid #444;
-  padding: 1rem;
-  border-radius: 0.5rem;
-  background: var(--dash-surface, #1f2937);
-}
-
-.alert-card.acknowledged {
-  opacity: 0.6;
-}
-
-.alert-header {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 0.5rem;
-}
-
-.alert-body > div {
-  margin: 0.25rem 0;
-}
-
-.alert-actions {
-  margin-top: 0.75rem;
-  display: flex;
-  gap: 0.5rem;
-  justify-content: flex-end;
-}
-
 .header-section.alarm-active {
-  background-color: #b71c1c !important; /* Red */
-  border-bottom: 2px solid #ff3b30;
+  background-color: var(--vc-alarm-deep) !important;
+  border-bottom: 2px solid var(--vc-alarm);
   transition: background-color 0.2s;
 }
 
 .header-section.alarm-blink {
-  background-color: #ff3b30 !important; /* Bright red for blink */
-  border-bottom: 2px solid #ff3b30;
+  background-color: var(--vc-alarm) !important;
+  border-bottom: 2px solid var(--vc-alarm);
   transition: background-color 0.1s;
 }
 
 /* Alerts History Styling */
 .alerts-history {
   padding: 20px;
-  background-color: #1a1a1a;
+  background-color: var(--vc-bg-base);
   color: var(--dash-text, #fff);
   height: 100%;
   overflow-y: auto;
-}
-
-.history-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 30px;
-  padding-bottom: 15px;
-  border-bottom: 2px solid var(--dash-border, #333);
-}
-
-.history-header h2 {
-  margin: 0;
-  color: var(--dash-text, #fff);
-  font-size: 24px;
-  font-weight: 600;
-}
-
-.date-selector {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.date-selector label {
-  font-weight: 500;
-  color: var(--dash-text-dim, #ccc);
-}
-
-.date-selector select {
-  padding: 8px 12px;
-  border: 1px solid #555;
-  border-radius: 6px;
-  background-color: #2a2a2a;
-  color: var(--dash-text, #fff);
-  font-size: 14px;
-  min-width: 200px;
-}
-
-.date-selector select:focus {
-  outline: none;
-  border-color: #007bff;
-}
-
-.analysis-results {
-  background-color: #222;
-  border-radius: 12px;
-  padding: 25px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-.analysis-header h3 {
-  margin: 0 0 25px 0;
-  color: var(--dash-text, #fff);
-  font-size: 20px;
-  font-weight: 600;
-  text-align: center;
-}
-
-.summary-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 20px;
-  margin-bottom: 35px;
-}
-
-.summary-card {
-  background: linear-gradient(135deg, #2a2a2a 0%, #1e1e1e 100%);
-  border-radius: 12px;
-  padding: 20px;
-  text-align: center;
-  border: 1px solid var(--dash-border, #333);
-  transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.summary-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
 }
 
 .card-title {
@@ -1279,85 +534,11 @@ html, body, #root {
   font-weight: 500;
 }
 
-.card-value {
-  font-size: 28px;
-  font-weight: 700;
-  margin-bottom: 4px;
-}
-
-.card-value.primary { color: #007bff; }
-.card-value.success { color: #28a745; }
-.card-value.warning { color: #ffc107; }
-.card-value.info { color: #17a2b8; }
-
-.card-subtitle {
-  font-size: 12px;
-  color: var(--dash-text-dim, #999);
-}
-
-.distribution-section {
-  background-color: #1a1a1a;
-  border-radius: 12px;
-  padding: 25px;
-  border: 1px solid var(--dash-border, #333);
-}
-
-.distribution-section h4 {
-  margin: 0 0 20px 0;
-  color: var(--dash-text, #fff);
-  font-size: 18px;
-  font-weight: 600;
-  text-align: center;
-}
-
-.distribution-chart {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.distribution-row {
-  display: grid;
-  grid-template-columns: 200px 1fr 120px;
-  align-items: center;
-  gap: 15px;
-  padding: 8px 0;
-}
-
-.distribution-label {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-weight: 500;
-}
-
-.color-indicator {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
-  flex-shrink: 0;
-}
-
-.distribution-bar {
-  background-color: var(--dash-border, #333);
-  border-radius: 8px;
-  height: 20px;
-  position: relative;
-  overflow: hidden;
-}
-
 .bar-fill {
   height: 100%;
   border-radius: 8px;
   transition: width 0.3s ease;
   min-width: 2px;
-}
-
-.distribution-stats {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
 }
 
 .percentage {
@@ -1380,61 +561,12 @@ html, body, #root {
   font-size: 16px;
 }
 
-.spinner {
-  width: 24px;
-  height: 24px;
-  border: 3px solid var(--dash-border, #333);
-  border-top: 3px solid #007bff;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
 
-.error-message {
-  background-color: #dc3545;
-  color: #fff;
-  padding: 15px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-  text-align: center;
-}
-
-.no-data, .no-selection {
-  text-align: center;
-  padding: 40px;
-  color: var(--dash-text-dim, #999);
-  font-size: 16px;
-  background-color: #222;
-  border-radius: 12px;
-  border: 1px solid var(--dash-border, #333);
-}
-
 /* Responsive design for smaller screens */
-@media (max-width: 768px) {
-  .summary-cards {
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 15px;
-  }
-  
-  .distribution-row {
-    grid-template-columns: 150px 1fr 100px;
-    gap: 10px;
-  }
-  
-  .history-header {
-    flex-direction: column;
-    gap: 15px;
-    align-items: stretch;
-  }
-  
-  .date-selector {
-    justify-content: center;
-  }
-}
 
 /* Mobile Dashboard Styles */
 @media (max-width: 768px) {
@@ -1447,9 +579,6 @@ html, body, #root {
     padding: 0 10px;
   }
   
-  .dashboard-container:not(.mobile) {
-    display: none;
-  }
 }
 
 @media (min-width: 769px) {
@@ -1459,22 +588,6 @@ html, body, #root {
   .dashboard-container.mobile {
     display: none;
   }
-}
-
-.mobile-logo-container {
-  display: flex;
-  align-items: center;
-  padding-left: 15px;
-}
-
-.mobile-logo-container .header-logo {
-  max-height: 40px;
-  max-width: 40px;
-}
-
-.mobile-logo-container .logo-text {
-  font-size: 1rem;
-  margin-left: 8px;
 }
 
 .mobile-menu-button {
@@ -1535,18 +648,6 @@ html, body, #root {
   transform: rotate(-135deg);
 }
 
-.mobile-menu-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 1000;
-  display: flex;
-  justify-content: flex-end;
-}
-
 .mobile-menu {
   background: var(--dash-surface, #1e2028);
   width: 250px;
@@ -1564,309 +665,27 @@ html, body, #root {
   -webkit-overflow-scrolling: touch; /* momentum scroll on iOS */
 }
 
-.mobile-menu-item {
-  display: flex;
-  align-items: center;
-  padding: 15px 20px;
-  color: var(--dash-text, #ffffff);
-  cursor: pointer;
-  border-bottom: 1px solid var(--dash-border, #30363d);
-  position: relative;
-  transition: background-color 0.2s;
-}
-
-.mobile-menu-item:hover {
-  background: var(--dash-border, #30363d);
-}
-
-.mobile-menu-item svg {
-  width: 24px;
-  height: 24px;
-  margin-right: 15px;
-  flex-shrink: 0;
-}
-
-.mobile-menu-item span {
-  font-size: 16px;
-  font-weight: 500;
-}
-
-.mobile-badge {
-  background: #dc2626;
-  color: white;
-  border-radius: 12px;
-  padding: 2px 8px;
-  font-size: 12px;
-  font-weight: bold;
-  margin-left: auto;
-}
-
-.dashboard-container.mobile {
-  padding: 0;
-  /* Was `height: calc(100vh - 60px - vkb)`, which fights with the wrapper:
-     .dashboard-wrapper is already 100vh (clamped by overflow:hidden) and
-     contains .header-section at 10%. Setting an absolute height here meant
-     header+dashboard wanted ~140vh, so the dashboard got clipped past the
-     fold. iOS Safari's 100vh also includes URL-bar space that isn't
-     actually visible, compounding the problem.
-     Fix: be a flex child of the wrapper and consume whatever's left. */
-  flex: 1 1 0;
-  min-height: 0;
-  overflow-y: auto; /* safety net for very small screens */
-  display: flex;
-  flex-direction: column;
-}
-
-.mobile-values-container {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 8px 10px 10px 10px;
-  height: 100%;
-  flex: 1;
-  /* Critical for flex shrink: without this, children with content force the
-     container taller than 100%, causing scroll. */
-  min-height: 0;
-}
-
-.mobile-values-container .value-display {
-  background-color: var(--dash-bg, #161e2e);
-  border-radius: 8px;
-  padding: 10px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  flex: 1 1 0;
-  /* No min-height — let flex divide the available viewport evenly between
-     all three cards. Was 180px which broke fit on phones in portrait. */
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  position: relative;
-  color: var(--dash-text, white);
-  /* Hide any overflow if a value somehow gets long. */
-  overflow: hidden;
-}
-
-.mobile-values-container .value-display .value-title {
-  position: absolute;
-  top: 8px;
-  left: 14px;
-  margin: 0;
-  font-size: 0.9rem;
-  font-weight: 500;
-}
-
-.mobile-values-container .value-display .value-content {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 1;
-  min-height: 0;
-}
-
-.mobile-values-container .value-display .value {
-  /* Viewport-relative so the number scales with the card slot. Bound by a
-     readable minimum and a sane max so it doesn't get tiny on small phones
-     or absurdly huge on tablets in portrait. */
-  font-size: clamp(2.5rem, 11vh, 4.25rem);
-  font-weight: 700;
-  text-align: center;
-  line-height: 1;
-}
-
-.mobile-values-container .value-display .unit {
-  font-size: 1.1rem;
-  margin-left: 4px;
-  align-self: flex-start;
-  margin-top: 8px;
-}
-
-.mobile-values-container .value-display .value-stats {
-  display: flex;
-  justify-content: space-around;
-  font-size: 0.75rem;
-  margin-top: 4px;
-  border-top: 1px solid rgba(255, 255, 255, 0.15);
-  padding-top: 6px;
-}
-
-.mobile-values-container .value-display .value-stats span {
-  padding: 0 5px;
-}
-
-/* Mobile specific color overrides - match desktop */
-.mobile-values-container .value-display.spo2 .value-title,
-.mobile-values-container .value-display.spo2 .value,
-.mobile-values-container .value-display.spo2 .unit,
-.mobile-values-container .value-display.spo2 .value-stats {
-  color: #1565C0;
-}
-
-.mobile-values-container .value-display.bpm .value-title,
-.mobile-values-container .value-display.bpm .value,
-.mobile-values-container .value-display.bpm .unit,
-.mobile-values-container .value-display.bpm .value-stats {
-  color: #2E7D32;
-}
-
-.mobile-values-container .value-display.perfusion .value-title,
-.mobile-values-container .value-display.perfusion .value,
-.mobile-values-container .value-display.perfusion .unit,
-.mobile-values-container .value-display.perfusion .value-stats {
-  color: #EF6C00;
-}
-
 /* Touch-friendly improvements for mobile */
 @media (max-width: 768px) {
-  .mobile-menu-item {
-    padding: 20px;
-    min-height: 60px;
-  }
   
-  .mobile-values-container .value-display {
-    min-height: 180px;
-    padding: 35px 24px;
-    margin-bottom: 5px;
-  }
   
-  .mobile-values-container .value-display .value {
-    font-size: 3.5rem;
-  }
   
   /* Improve header spacing on mobile */
   .header-section {
     padding: 0 15px;
   }
   
-  .mobile-logo-container .logo-text {
-    font-size: 0.9rem;
-  }
   
-  /* Ensure mobile menu covers the screen properly */
-  .mobile-menu-overlay {
-    z-index: 9999;
-  }
   
   .mobile-menu {
     z-index: 10000;
   }
   
-  /* Add visual feedback for touch */
-  .mobile-menu-item:active {
-    background: var(--dash-border-strong, #4a5568);
-  }
   
   .mobile-menu-button:active {
     opacity: 0.7;
   }
   
-}
-
-/* Business and Provider Management Styles */
-.businesses-grid,
-.providers-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
-  gap: 1.5rem;
-  margin-top: 1.5rem;
-  padding: 0 0.5rem;
-}
-
-.business-card,
-.provider-card {
-  background: #3a3a3a;
-  border: 1px solid #4a4a4a;
-  border-radius: 12px;
-  padding: 2rem;
-  transition: all 0.3s ease;
-  position: relative;
-}
-
-.business-card:hover,
-.provider-card:hover {
-  border-color: #6a6a6a;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 16px rgba(255, 255, 255, 0.1);
-}
-
-.provider-card.primary {
-  border-color: #28a745;
-  background: linear-gradient(135deg, #2a2a2a 0%, #2d3f2d 100%);
-}
-
-.business-header,
-.provider-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 1.25rem;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-}
-
-.business-header h3,
-.provider-header h3 {
-  margin: 0;
-  color: var(--dash-text, #fff);
-  font-size: 1.1rem;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.business-type,
-.provider-type {
-  background: #007acc;
-  color: white;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.provider-type.medical { background: #007acc; }
-.provider-type.therapy { background: #28a745; }
-.provider-type.rehab { background: #ffc107; color: #000; }
-.provider-type.school { background: #17a2b8; }
-.provider-type.pharmacy { background: #6f42c1; }
-.provider-type.specialist { background: #fd7e14; }
-.provider-type.emergency { background: #dc3545; }
-
-.business-type.hospital { background: #dc3545; }
-.business-type.pharmacy { background: #6f42c1; }
-.business-type.clinic { background: #007acc; }
-.business-type.rehab { background: #ffc107; color: #000; }
-.business-type.therapy { background: #28a745; }
-.business-type.school { background: #17a2b8; }
-.business-type.lab { background: #6c757d; }
-
-.primary-badge {
-  background: #28a745;
-  color: white;
-  padding: 0.125rem 0.375rem;
-  border-radius: 3px;
-  font-size: 0.625rem;
-  font-weight: 600;
-  margin-left: 0.5rem;
-}
-
-.business-info,
-.provider-info {
-  margin-bottom: 1rem;
-}
-
-.info-item {
-  margin-bottom: 0.5rem;
-  font-size: 0.9rem;
-}
-
-.info-item strong {
-  color: #e0e0e0;
-  margin-right: 0.5rem;
 }
 
 .address {
@@ -1875,106 +694,18 @@ html, body, #root {
   line-height: 1.3;
 }
 
-.business-actions,
-.provider-actions {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.business-form,
-.provider-form {
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  padding: 0;
-  width: 100%;
-  max-width: none;
-  max-height: none;
-  overflow: visible;
-  margin: 0;
-  box-shadow: none;
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 2.5rem;
-  margin: 0 0 2.5rem 0;
-  padding: 0;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0;
-}
-
-.form-group.full-width {
-  grid-column: 1 / -1;
-}
-
-.form-group label {
-  color: #e0e0e0;
-  margin-bottom: 1rem;
-  font-weight: 500;
-  font-size: 0.95rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.form-group input,
-.form-group select,
-.form-group textarea {
-  background: #2a2a2a;
-  border: 1px solid #555;
-  border-radius: 8px;
-  padding: 1rem;
-  color: var(--dash-text, #fff);
-  font-size: 0.95rem;
-  transition: all 0.2s ease;
-  margin: 0;
-  min-height: 44px;
-}
-
-.form-group select {
-  cursor: pointer;
-}
-
-.form-group input:focus,
-.form-group select:focus,
-.form-group textarea:focus {
-  outline: none;
-  border-color: #6a6a6a;
-  background: #323232;
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1);
-}
-
-.form-group input::placeholder,
-.form-group textarea::placeholder {
-  color: var(--dash-text-dim, #999);
-}
-
-.form-group input[type="checkbox"] {
-  width: auto;
-  margin-right: 0.75rem;
-  transform: scale(1.2);
-}
-
 .form-actions {
   display: flex;
   gap: 1.25rem;
   justify-content: flex-end;
   padding-top: 1.5rem;
   margin-top: 1rem;
-  border-top: 1px solid #4a4a4a;
+  border-top: 1px solid var(--vc-line-strong);
 }
 
 .patient-selector {
-  background: #3a3a3a;
-  border: 1px solid #4a4a4a;
+  background: var(--vc-bg-raised);
+  border: 1px solid var(--vc-line-strong);
   border-radius: 12px;
   padding: 1.5rem;
   margin-bottom: 1.5rem;
@@ -1984,15 +715,15 @@ html, body, #root {
 }
 
 .patient-selector label {
-  color: #e0e0e0;
+  color: var(--vc-text-primary);
   font-weight: 500;
   white-space: nowrap;
   font-size: 0.95rem;
 }
 
 .patient-select {
-  background: #2a2a2a;
-  border: 1px solid #555;
+  background: var(--vc-bg-surface);
+  border: 1px solid var(--vc-line-strong);
   border-radius: 8px;
   padding: 0.875rem;
   color: var(--dash-text, #fff);
@@ -2003,26 +734,14 @@ html, body, #root {
 
 .patient-select:focus {
   outline: none;
-  border-color: #6a6a6a;
-  background: #323232;
+  border-color: var(--vc-data-live);
+  background: var(--vc-bg-raised);
   box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1);
 }
 
 @media (max-width: 768px) {
-  .businesses-grid,
-  .providers-grid {
-    grid-template-columns: 1fr;
-  }
   
-  .form-grid {
-    grid-template-columns: 1fr;
-  }
   
-  .business-form,
-  .provider-form {
-    width: 95%;
-    padding: 1rem;
-  }
   
   .patient-selector {
     flex-direction: column;
@@ -2035,37 +754,3 @@ html, body, #root {
   }
 }
 
-/* Admin Controls Styling */
-.admin-filters {
-  display: flex;
-  gap: 1rem;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.search-input,
-.filter-select {
-  background: #3a3a3a;
-  border: 1px solid #4a4a4a;
-  border-radius: 8px;
-  padding: 0.75rem;
-  color: var(--dash-text, #fff);
-  font-size: 0.9rem;
-  transition: all 0.2s ease;
-}
-
-.search-input {
-  min-width: 250px;
-}
-
-.search-input:focus,
-.filter-select:focus {
-  outline: none;
-  border-color: #6a6a6a;
-  background: #424242;
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1);
-}
-
-.search-input::placeholder {
-  color: var(--dash-text-dim, #999);
-}

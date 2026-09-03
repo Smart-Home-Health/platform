@@ -690,7 +690,7 @@ const AdminV2Schedule = () => {
         groups.set(key, {
           id: t.category_id,
           name: t.category_name || 'Uncategorized',
-          color: t.category_color || '#a371f7',
+          color: t.category_color || 'var(--vc-series-3)',
           tasks: [],
         });
       }
@@ -1207,7 +1207,7 @@ const AdminV2Schedule = () => {
                                         className="admin-v2-schedule-divider"
                                         style={task.category_color !== careTasksByHour[hour][idx-1]?.category_color ? {
                                           height: '2px',
-                                          background: `linear-gradient(to right, ${careTasksByHour[hour][idx-1]?.category_color || '#a371f7'}, ${task.category_color || '#a371f7'})`
+                                          background: `linear-gradient(to right, ${careTasksByHour[hour][idx-1]?.category_color || 'var(--vc-series-3)'}, ${task.category_color || 'var(--vc-series-3)'})`
                                         } : {}}
                                       />
                                     )}
