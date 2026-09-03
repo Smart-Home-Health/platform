@@ -116,7 +116,6 @@
   padding: 0;
   cursor: pointer;
   font: inherit;
-  color-scheme: dark;
 }
 .mtl-datepill svg { color: var(--vc-text-secondary); flex-shrink: 0; }
 

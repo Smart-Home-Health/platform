@@ -209,7 +209,6 @@
   color: var(--vc-text-secondary);
   font-family: var(--vc-font-mono);
   font-size: 0.72rem;
-  color-scheme: dark;
 }
 
 /* ---------- chart stack ---------- */
