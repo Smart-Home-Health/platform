@@ -524,7 +524,8 @@ export default function Dashboard() {
   // one patient's due items don't leak into another's view. (The WebSocket
   // state carries global counts that ignore the viewer's patient, so we don't
   // use those for the badges.) A ref keeps the current patient id reachable
-  // from the mount-time WebSocket closure for live refreshes.
+  // from the mount-time WebSocket closure — for the due-count refreshes AND for
+  // picking this patient's readings out of the sensor_update broadcast.
   const dueCountPatientRef = useRef(null);
 
   const fetchDueCount = (path, setter, pid) => {
@@ -564,6 +565,17 @@ export default function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on patient change only
   }, [selectedPatient?.id]);
 
+  // Switching patients must not leave the previous patient's numbers on screen
+  // attributed to the new one. Clear immediately and wait for a broadcast that
+  // actually carries an entry for this patient — a stale 97% wearing the wrong
+  // name is worse than "--".
+  useEffect(() => {
+    setSensorValues({ spo2: null, bpm: null, perfusion: null, skin_temp: null, body_temp: null });
+    setSensorOffline(false);
+    setIsAlarmActive(false);
+    prevAlarmActive.current = false;
+  }, [selectedPatient?.id]);
+
   // Detect Frigate integration for the current patient: the Live Camera action
   // appears only when a camera is actually configured. (It used to take the
   // Messages slot rather than add one, which hid the messages list entirely.)
@@ -601,7 +613,16 @@ export default function Dashboard() {
     const handleMessage = (event) => {
       const msg = JSON.parse(event.data);
       if (msg.type === "sensor_update" && msg.state) {
-        const alarmActive = !!msg.state.alarm;
+        // Read THIS patient's entry, never the top-level spo2/bpm/perfusion:
+        // those are last-writer-wins across every reader on the system, so on a
+        // board showing patient A they can be patient B's numbers the moment B's
+        // reader publishes. `patient_readings` is keyed by patient id and each
+        // entry carries its own alarm flags. Same reasoning as the chart data
+        // below. No entry = this patient has no live source right now, which is
+        // shown as "--" rather than someone else's vitals.
+        const pid = dueCountPatientRef.current;
+        const reading = pid != null ? msg.state.patient_readings?.[String(pid)] : null;
+        const alarmActive = !!reading?.alarm;
 
         if (!prevAlarmActive.current && alarmActive) {
           setIsAlarmBlinking(true);
@@ -612,30 +633,31 @@ export default function Dashboard() {
 
         // The pulse ox reports its own disconnect in-band as -1 readings —
         // surface that as "sensor offline" instead of rendering -1.
-        const offline = msg.state.spo2 === -1 || msg.state.bpm === -1;
+        const offline = reading?.spo2 === -1 || reading?.bpm === -1;
         setSensorOffline(offline);
         const clean = (v) => (v === -1 || v == null ? null : v);
 
         setSensorValues({
-          spo2: clean(msg.state.spo2),
-          bpm: clean(msg.state.bpm),
-          perfusion: offline ? null : msg.state.perfusion,
-          skin_temp: msg.state.skin_temp,
-          body_temp: msg.state.body_temp
+          spo2: clean(reading?.spo2),
+          bpm: clean(reading?.bpm),
+          perfusion: offline ? null : reading?.perfusion ?? null,
+          skin_temp: reading?.skin_temp ?? null,
+          body_temp: reading?.body_temp ?? null
         });
 
         pushTickRef.current({
           t: Date.now(),
-          spo2: clean(msg.state.spo2),
-          bpm: clean(msg.state.bpm),
-          perfusion: offline ? null : msg.state.perfusion ?? null,
+          spo2: clean(reading?.spo2),
+          bpm: clean(reading?.bpm),
+          perfusion: offline ? null : reading?.perfusion ?? null,
         });
 
         // NOTE: msg.state.alerts_count and dashboard_chart_1/2 are deliberately
         // ignored — the server builds them without a patient filter, so
         // consuming them here would show other patients' alerts and vitals.
         // The badge and the cards use patient-scoped REST fetches instead
-        // (fetchAlertsCount, fetchChartData).
+        // (fetchAlertsCount, fetchChartData). The same is true of the top-level
+        // spo2/bpm/perfusion — see the patient_readings lookup above.
       }
 
       else if (msg.type === "alarm_update") {

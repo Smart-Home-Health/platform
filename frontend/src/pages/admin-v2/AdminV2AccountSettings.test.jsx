@@ -21,12 +21,10 @@ import { render, screen, act, fireEvent } from '@testing-library/react';
 
 vi.mock('./AdminV2Layout', () => ({ default: ({ children }) => <div>{children}</div> }));
 
-const { authCtx, themeCtx } = vi.hoisted(() => ({
+const { authCtx } = vi.hoisted(() => ({
   authCtx: { user: { is_system_admin: true } },
-  themeCtx: { theme: 'dark', setTheme: vi.fn() },
 }));
 vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => authCtx }));
-vi.mock('../../contexts/ThemeContext', () => ({ useTheme: () => themeCtx }));
 vi.mock('../../config', () => ({ API_BASE_URL: '' }));
 
 import AdminV2AccountSettings from './AdminV2AccountSettings';
@@ -45,8 +43,6 @@ const stubFetch = (account = ACCOUNT) => {
 
 beforeEach(() => {
   authCtx.user = { is_system_admin: true };
-  themeCtx.theme = 'dark';
-  themeCtx.setTheme.mockReset();
   stubFetch();
 });
 
@@ -55,10 +51,13 @@ const callTo = (path, method) =>
   fetchMock.mock.calls.find(([u, o]) => u.endsWith(path) && o?.method === method);
 
 describe('AdminV2AccountSettings', () => {
-  it('renders four vc sections rather than shadcn cards', async () => {
+  // The Appearance/theme picker went with the light palette — the admin is
+  // dark-only now, so a Light/System choice had nothing left to switch.
+  it('renders three vc sections rather than shadcn cards', async () => {
     await renderPage();
     expect([...document.querySelectorAll('.cfg-title')].map(t => t.textContent))
-      .toEqual(['Appearance', 'Account Details', 'Account Password', 'Account Information']);
+      .toEqual(['Account Details', 'Account Password', 'Account Information']);
+    expect(document.querySelector('#theme')).not.toBeInTheDocument();
     expect(document.querySelector('.tw')).not.toBeInTheDocument();
   });
 
@@ -67,7 +66,6 @@ describe('AdminV2AccountSettings', () => {
     expect(document.querySelector('#name').value).toBe('Carty Family');
     expect(document.querySelector('#slug').value).toBe('carty');
     expect(document.querySelector('#timezone').value).toBe('America/New_York');
-    expect(document.querySelector('#theme').value).toBe('dark');
   });
 
   // The Save button sits in the section footer, outside the <form>, and reaches

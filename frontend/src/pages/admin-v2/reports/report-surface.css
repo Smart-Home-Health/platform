@@ -29,21 +29,6 @@
 @import '../../../styles/vc-tokens.css';
 
 .rpt {
-  --rpt-surface: var(--card);
-  --rpt-raised: var(--secondary, var(--card));
-  --rpt-line: var(--border);
-  --rpt-text: var(--foreground);
-  --rpt-text-2: var(--muted-foreground);
-  --rpt-text-3: var(--muted-foreground);
-  --rpt-accent: #0e7490;
-  --rpt-alarm: #b54708;
-  --rpt-breach: #b42318;
-  --rpt-ok: #167a45;
-  --rpt-plot: transparent;
-}
-
-:root:not(.light) .rpt,
-.force-dark .rpt {
   --rpt-surface: var(--vc-bg-surface);
   --rpt-raised: var(--vc-bg-raised);
   --rpt-line: var(--vc-line-hairline);
