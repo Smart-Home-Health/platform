@@ -12,7 +12,28 @@
     <link rel="apple-touch-icon" href="icon-192.png" />
     <link rel="manifest" href="manifest.json" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#161b22" />
+    <meta name="theme-color" content="#0a0e14" />
+    <!-- Apply the saved appearance before React mounts so there is no flash of
+         the wrong palette. Mirrors contexts/ThemeContext.jsx: `light` and `hc`
+         classes on <html>, nothing at all for the dark default. -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('theme');        // "light" | "dark" | "system"
+          var c = localStorage.getItem('contrast');     // "normal" | "high"
+          var theme = (t === 'light' || t === 'dark') ? t
+            : t === 'system' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+            : 'dark';
+          var hc = c === 'high';
+          var el = document.documentElement;
+          el.classList.toggle('light', theme === 'light');
+          el.classList.toggle('hc', hc);
+          var colors = { dark: '#0a0e14', light: '#e6e1d8', 'dark-hc': '#000000', 'light-hc': '#ffffff' };
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute('content', colors[theme + (hc ? '-hc' : '')]);
+        } catch (e) { /* dark default needs no class */ }
+      })();
+    </script>
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="SHH" />

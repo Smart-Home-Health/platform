@@ -824,7 +824,8 @@ def select_user(
             "is_system_admin": user.is_superuser,
             "has_pin": bool(user.pin_hash),
             "roles": [{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles],
-            "permissions": [p.name for r in user.roles for p in r.permissions]
+            "permissions": [p.name for r in user.roles for p in r.permissions],
+            "preferences": user.preferences,
         },
         requires_full_password=False,
         read_restricted=read_restricted
@@ -944,7 +945,8 @@ def reset_user_password(
             "is_system_admin": user.is_superuser,
             "has_pin": bool(user.pin_hash),
             "roles": [{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles],
-            "permissions": [p.name for r in user.roles for p in r.permissions]
+            "permissions": [p.name for r in user.roles for p in r.permissions],
+            "preferences": user.preferences,
         },
         requires_full_password=False,
         read_restricted=read_restricted
@@ -1052,7 +1054,8 @@ def login(
             "has_pin": bool(user.pin_hash),
             "account_id": user.account_id,
             "roles": [{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles],
-            "permissions": [p.name for r in user.roles for p in r.permissions]
+            "permissions": [p.name for r in user.roles for p in r.permissions],
+            "preferences": user.preferences,
         },
         requires_full_password=False
     )
@@ -1162,7 +1165,8 @@ def verify_user_pin(
             "has_pin": bool(user.pin_hash),
             "account_id": user.account_id,
             "roles": [{"id": r.id, "name": r.name, "display_name": r.display_name} for r in user.roles],
-            "permissions": [p.name for r in user.roles for p in r.permissions]
+            "permissions": [p.name for r in user.roles for p in r.permissions],
+            "preferences": user.preferences,
         },
         requires_full_password=False
     )
