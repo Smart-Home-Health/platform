@@ -74,6 +74,6 @@
   cursor: pointer;
   white-space: nowrap;
 }
-.ave-item:hover { background: var(--vc-bg-raised); color: var(--accent-foreground); }
+.ave-item:hover { background: var(--vc-bg-raised); color: var(--vc-text-primary); }
 .ave-item:disabled { opacity: 0.5; cursor: default; }
 .ave-item.danger { color: var(--vc-state-alert); }

@@ -84,7 +84,6 @@ import FirstRunSetup from './components/FirstRunSetup';
 import { ActiveInputProvider } from './contexts/ActiveInputContext';
 import { PinChallengeProvider } from './contexts/PinChallengeContext';
 import { IdleLockProvider } from './contexts/IdleLockContext';
-import { ThemeProvider } from './contexts/ThemeContext';
 import { DashboardThemeProvider } from './contexts/DashboardThemeContext';
 import VirtualKeyboard from './components/VirtualKeyboard/VirtualKeyboard';
 import { useVirtualKeyboard } from './hooks/useVirtualKeyboard';
@@ -107,8 +106,8 @@ function AppContent() {
         justifyContent: 'center', 
         height: '100vh',
         fontSize: '18px',
-        color: 'var(--muted-foreground)',
-        background: 'var(--background)'
+        color: 'var(--vc-text-secondary)',
+        background: 'var(--vc-bg-base)'
       }}>
         Loading...
       </div>
@@ -116,7 +115,6 @@ function AppContent() {
   }
 
   return (
-    <ThemeProvider>
     <ActiveInputProvider>
       <PinChallengeProvider>
       <Router basename={(typeof window !== 'undefined' && window.__BASE_PATH__) || undefined}>
@@ -255,7 +253,6 @@ function AppContent() {
       <VirtualKeyboard show={showVKB} />
       </PinChallengeProvider>
     </ActiveInputProvider>
-    </ThemeProvider>
   );
 }
 
