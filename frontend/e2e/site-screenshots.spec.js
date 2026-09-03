@@ -40,6 +40,8 @@ const DESKTOP = { width: 1440, height: 900 };
 const PHONE = { width: 390, height: 844 };
 
 test.describe.configure({ mode: 'serial' });
+// Each set pauses for the auth window at least once — see visit().
+test.setTimeout(240_000);
 test.skip(!USER || !PASSWORD, 'set SHOTS_USER and SHOTS_PASSWORD');
 
 fs.mkdirSync(OUT, { recursive: true });
@@ -55,7 +57,7 @@ async function login(context, page) {
   const { access_token } = await res.json();
   const host = new URL(process.env.E2E_BASE_URL || 'http://localhost:5173').hostname;
   await context.addCookies([{ name: 'session_token', value: access_token, domain: host, path: '/' }]);
-  await page.goto('/care');
+  await visit(page, '/care');
   await expect(page).toHaveURL(/\/care/, { timeout: 15_000 });
   // The admin pages read the selected patient from session storage.
   await page.evaluate((id) => sessionStorage.setItem('adminSelectedPatientId', String(id)), PATIENT);
@@ -100,11 +102,25 @@ async function liveWithMessages(page, name) {
 
 // The backend throttles /api/auth/* to 40 hits a minute per IP, and every
 // page load spends four of them (first-run + session, doubled by StrictMode
-// in dev). The desktop set alone uses the whole window, so a context that
-// starts right after it is met with 429s, which the app reads as "signed
-// out". Each set therefore starts a full minute after the previous one ended.
+// in dev). Past the limit the app reads the 429s as "signed out" and the
+// shot is of the unlock screen. So every navigation goes through visit(),
+// which counts loads and sits out the rest of the minute before the budget
+// runs dry — the desktop set's tenth page would otherwise land right on it.
 const AUTH_WINDOW_MS = 61_000;
-let lastSetEndedAt = 0;
+const LOADS_PER_WINDOW = 8;
+let windowStartedAt = 0;
+let loads = LOADS_PER_WINDOW;
+
+async function visit(page, route) {
+  if (loads >= LOADS_PER_WINDOW) {
+    const wait = windowStartedAt + AUTH_WINDOW_MS - Date.now();
+    if (wait > 0) await page.waitForTimeout(wait);
+    windowStartedAt = Date.now();
+    loads = 0;
+  }
+  loads += 1;
+  await page.goto(route);
+}
 
 async function newPage(browser, viewport, scale) {
   const context = await browser.newContext({
@@ -112,21 +128,14 @@ async function newPage(browser, viewport, scale) {
     isMobile: viewport === PHONE, hasTouch: viewport === PHONE,
   });
   const page = await context.newPage();
-  const wait = lastSetEndedAt + AUTH_WINDOW_MS - Date.now();
-  if (wait > 0) await page.waitForTimeout(wait);
   await login(context, page);
   return { context, page };
-}
-
-async function endSet(context) {
-  await context.close();
-  lastSetEndedAt = Date.now();
 }
 
 test('desktop set', async ({ browser }) => {
   const { context, page } = await newPage(browser, DESKTOP, 2);
 
-  await page.goto(`/live?patient=${PATIENT}`);
+  await visit(page, `/live?patient=${PATIENT}`);
   await liveWithMessages(page, 'hub-messages');
   await shot(page, 'hub-live', { wait: 3000 });
 
@@ -140,7 +149,7 @@ test('desktop set', async ({ browser }) => {
     ['hub-equipment', '/care/equipment'],
     ['hub-care-profile', `/care/configuration/patients/${PATIENT}`],
   ]) {
-    await page.goto(route);
+    await visit(page, route);
     if (name === 'hub-overnight') {
       // Tonight is still in progress; the last full night is the useful one.
       await page.getByRole('button', { name: 'Previous night' }).click();
@@ -148,22 +157,22 @@ test('desktop set', async ({ browser }) => {
     if (name === 'hub-schedule') await scrollScheduleToMorning(page);
     await shot(page, name, { wait: 2500 });
   }
-  await endSet(context);
+  await context.close();
 });
 
 test('phone set', async ({ browser }) => {
   const { context, page } = await newPage(browser, PHONE, 3);
 
-  await page.goto(`/live?patient=${PATIENT}&vkb=0`);
+  await visit(page, `/live?patient=${PATIENT}&vkb=0`);
   await liveWithMessages(page, 'hub-messages-phone');
   await shot(page, 'hub-live-phone', { wait: 4000 });
 
-  await page.goto('/capture');
+  await visit(page, '/capture');
   await shot(page, 'hub-capture-phone', { wait: 2000 });
 
-  await page.goto('/care/schedule');
+  await visit(page, '/care/schedule');
   await scrollScheduleToMorning(page);
   await shot(page, 'hub-schedule-phone', { wait: 1500 });
 
-  await endSet(context);
+  await context.close();
 });
