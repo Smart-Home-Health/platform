@@ -42,7 +42,7 @@ export function useChartColors() {
   };
   return {
     grid: read('--vc-line-hairline', 'rgba(255, 255, 255, 0.1)'),
-    axis: read('--vc-text-tertiary', '#6b7987'),
+    axis: read('--vc-text-tertiary', '#7c8c9d'),
     cutout: read('--vc-plot-bg', '#0f1620'),
     foreground: read('--vc-text-primary', '#e8edf3'),
   };

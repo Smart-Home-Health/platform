@@ -342,7 +342,6 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved, ch
             padding: '8px',
             fontSize: '11px',
             color: chrome.textDim,
-            opacity: 0.7
           }}>
             Click to view details
           </div>
@@ -474,7 +473,6 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved, ch
             padding: '8px',
             fontSize: '11px',
             color: chrome.textDim,
-            opacity: 0.7
           }}>
             Click to hide details
           </div>

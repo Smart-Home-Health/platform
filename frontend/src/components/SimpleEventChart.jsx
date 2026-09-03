@@ -84,7 +84,7 @@ const SimpleEventChart = memo(({ title, color, data, unit, xType = 'category' })
       const ctx = chartRef.current.getContext('2d');
 
       // Theme-aware axis/grid colors resolved from the active palette.
-      const tickColor = themeColor('--vc-text-tertiary', '#6b7987');
+      const tickColor = themeColor('--vc-text-tertiary', '#7c8c9d');
       const titleColor = themeColor('--vc-text-primary', '#e8edf3');
       const gridColor = themeColor('--vc-line-hairline', 'rgba(255, 255, 255, 0.1)');
       // `color` may be a var(--vc-*) reference; canvas needs the literal.

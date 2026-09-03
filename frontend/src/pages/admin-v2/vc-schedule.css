@@ -202,7 +202,7 @@
   border-style: solid;
   background: var(--vc-state-complete);
   border-color: var(--vc-state-complete);
-  color: var(--vc-bg-base);
+  color: var(--vc-text-on-accent);
 }
 
 .admin-v2-schedule-item-undo {
@@ -247,14 +247,14 @@
 .admin-v2-schedule-complete-all:hover {
   background: var(--vc-state-complete);
   border-color: var(--vc-state-complete);
-  color: var(--vc-bg-base);
+  color: var(--vc-text-on-accent);
 }
 
 .admin-v2-schedule-complete-all .admin-v2-btn-primary,
 .admin-v2-schedule-nav .admin-v2-btn-primary {
   background: var(--vc-data-live);
   border-color: transparent;
-  color: var(--vc-bg-base);
+  color: var(--vc-text-on-accent);
   font-family: var(--vc-font-mono);
   font-weight: 600;
   letter-spacing: 0.08em;

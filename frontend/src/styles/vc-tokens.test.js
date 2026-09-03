@@ -138,7 +138,10 @@ describe('vc-tokens.css palettes', () => {
   const RULES = (hc) => ({
     '--vc-text-primary': 7,
     '--vc-text-secondary': hc ? 7 : 4.5,
-    '--vc-text-tertiary': hc ? 4.5 : 3,
+    // Tertiary is used as small text everywhere (captions, hints, stat
+    // labels), so it carries the body-text floor — the theme matrix (axe) found
+    // it at ~4:1 when it was pinned to the non-text 3:1.
+    '--vc-text-tertiary': hc ? 7 : 4.5,
     '--vc-data-live': hc ? 4.5 : 3,
     '--vc-state-complete': hc ? 4.5 : 3,
     '--vc-state-due': hc ? 4.5 : 3,
