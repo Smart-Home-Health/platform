@@ -39,7 +39,8 @@ import {
   VirusIcon,
   MenuIcon,
   BarChartIcon,
-  MessagesIcon
+  MessagesIcon,
+  AppearanceIcon,
 } from '../../components/Icons';
 import EntityModal, { EmField } from '../../components/vc/EntityModal';
 import '../../components/vc/entity-card.css';
@@ -52,6 +53,7 @@ import './vc-shell.css';
 import './vc-content.css';
 import ConnectionChip from '../../components/ConnectionChip';
 import PersonAvatar from '../../components/vc/PersonAvatar';
+import AppearanceControls from '../../components/vc/AppearanceControls';
 import useConnectionStatus from '../../hooks/useConnectionStatus';
 
 // Side navigation, grouped into labeled sections (mockup: Overview /
@@ -243,6 +245,7 @@ const AdminV2Layout = ({ children }) => {
     const saved = localStorage.getItem('adminV2SidebarCollapsed');
     return saved === 'true';
   });
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const dropdownRef = useRef(null);
@@ -613,6 +616,9 @@ const AdminV2Layout = ({ children }) => {
         <div className="admin-v2-sidebar-footer">
           {(!sidebarCollapsed || isMobile) && (
             <>
+              <button onClick={() => setAppearanceOpen(true)} className="admin-v2-back-link">
+                <AppearanceIcon size={14} /> Appearance
+              </button>
               <button onClick={() => { closeMobileMenu(); handleSwitchUser(); }} className="admin-v2-back-link">
                 <UsersIcon size={14} /> Switch User
               </button>
@@ -623,6 +629,9 @@ const AdminV2Layout = ({ children }) => {
           )}
           {sidebarCollapsed && !isMobile && (
             <>
+              <button onClick={() => setAppearanceOpen(true)} className="admin-v2-back-link" title="Appearance" aria-label="Appearance">
+                <AppearanceIcon size={14} />
+              </button>
               <button onClick={handleLogout} className="admin-v2-back-link" title="Log Out">
                 <BackArrowIcon size={14} />
               </button>
@@ -630,6 +639,13 @@ const AdminV2Layout = ({ children }) => {
           )}
         </div>
       </aside>
+
+      {/* Appearance: theme / contrast, every user, any page. */}
+      <EntityModal open={appearanceOpen} onOpenChange={setAppearanceOpen} title="Appearance">
+        <div className="em-form">
+          <AppearanceControls />
+        </div>
+      </EntityModal>
 
       {/* Main Content Area */}
       <div className="admin-v2-main">
