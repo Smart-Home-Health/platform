@@ -17,30 +17,19 @@
  */
 // Configuration → Environment: home location + environmental data connectors
 // (Open-Meteo outdoor weather). Setup-only page — charts/overlays are #49.
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import AdminV2Layout from './AdminV2Layout';
 import config, { apiFetch } from '../../config';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Alert } from '@/components/ui/alert';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
 import { LeafIcon, RefreshIcon, SearchIcon } from '../../components/Icons';
+import { EmField } from '../../components/vc/EntityModal';
+import { CfgSection, CfgGroup, CfgFields, CfgStat, CfgBadge } from './settings/CfgSection';
+import '../../components/vc/entity-card.css';
 import './AdminV2.css';
+import './settings/settings-page.css';
 
 // Open-Meteo's free geocoder (no key, CORS-enabled) — called directly from
 // the browser so the backend never proxies location searches.
 const GEOCODE_URL = 'https://geocoding-api.open-meteo.com/v1/search';
-
-const Stat = ({ label, value, hint }) => (
-  <div className="flex flex-col gap-1 rounded-lg border border-border bg-secondary/40 p-4">
-    <span className="text-xs uppercase tracking-wide text-muted-foreground">{label}</span>
-    <span className="text-lg font-semibold text-foreground break-all">{value}</span>
-    {hint && <span className="text-xs text-muted-foreground">{hint}</span>}
-  </div>
-);
 
 const formatWhen = (iso) => {
   if (!iso) return 'Never';
@@ -228,7 +217,7 @@ const AdminV2Environment = () => {
     return (
       <AdminV2Layout>
         <div className="admin-v2-page">
-          <div className="admin-v2-loading">Loading environment settings…</div>
+          <p className="cfg-loading">Loading environment settings…</p>
         </div>
       </AdminV2Layout>
     );
@@ -241,144 +230,126 @@ const AdminV2Environment = () => {
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
-        <div className="tw space-y-6">
-          {error && <Alert variant="destructive">{error}</Alert>}
-          {notice && <Alert variant="success">{notice}</Alert>}
+        <div className="cfg">
+          {error && <p className="em-error" role="alert">{error}</p>}
+          {notice && <p className="em-success" role="status">{notice}</p>}
 
-          <Card>
-            <CardHeader>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="text-muted-foreground" aria-hidden><LeafIcon size={22} /></span>
-                  <div className="flex flex-col gap-0.5">
-                    <CardTitle>Outdoor weather (Open-Meteo)</CardTitle>
-                    <p className="text-sm text-muted-foreground">
-                      Free hourly weather and air quality for your home location —
-                      pressure, temperature, humidity, AQI, pollen. No account or hardware needed.
-                    </p>
-                  </div>
+          <CfgSection
+            icon={<LeafIcon size={16} />}
+            title="Outdoor weather (Open-Meteo)"
+            subtitle="Free hourly weather and air quality for your home location — pressure, temperature, humidity, AQI, pollen. No account or hardware needed."
+            aside={
+              <>
+                <CfgBadge tone={connector?.enabled ? 'ok' : undefined}>
+                  {connector?.enabled ? 'Collecting' : 'Off'}
+                </CfgBadge>
+                <button type="button" className="cfg-ghost" onClick={() => loadConnectors()}>
+                  <RefreshIcon size={14} /> Refresh
+                </button>
+              </>
+            }
+            actions={
+              <>
+                <button type="button" className="em-cancel" onClick={testConnection}
+                        disabled={busy === 'test' || !hasCoords}>
+                  {busy === 'test' ? 'Testing…' : 'Test connection'}
+                </button>
+                <button type="button" className="em-cancel" onClick={startBackfill}
+                        disabled={busy === 'backfill' || !connector?.configured || backfill.status === 'running'}>
+                  {backfill.status === 'running' ? 'Backfill running…' : 'Import 90-day history'}
+                </button>
+                <button type="button" className="em-submit" onClick={saveConfig}
+                        disabled={busy === 'save'}>
+                  {busy === 'save' ? 'Saving…' : 'Save'}
+                </button>
+              </>
+            }
+          >
+            <CfgGroup title="Location">
+              <EmField label="Find your location" htmlFor="env-city-search">
+                <div className="cfg-search-row">
+                  <input
+                    id="env-city-search"
+                    className="em-input"
+                    placeholder="Search city or town…"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') runSearch(); }}
+                  />
+                  <button type="button" className="cfg-ghost" onClick={runSearch} disabled={searching}>
+                    <SearchIcon size={14} /> {searching ? 'Searching…' : 'Search'}
+                  </button>
                 </div>
-                <div className="flex items-center gap-3">
-                  <Badge variant={connector?.enabled ? 'success' : 'muted'}>
-                    {connector?.enabled ? 'Collecting' : 'Off'}
-                  </Badge>
-                  <Button variant="secondary" onClick={() => loadConnectors()} className="gap-1.5">
-                    <RefreshIcon size={16} /> Refresh
-                  </Button>
+              </EmField>
+
+              {searchResults && (
+                <div className="cfg-picklist">
+                  {searchResults.length === 0 && <p className="cfg-empty">No matches found.</p>}
+                  {searchResults.map((r) => (
+                    <button key={r.id} type="button" className="cfg-pick" onClick={() => pickResult(r)}>
+                      <span>{[r.name, r.admin1, r.country].filter(Boolean).join(', ')}</span>
+                      <span className="cfg-pick-meta">
+                        {r.latitude.toFixed(3)}, {r.longitude.toFixed(3)}
+                      </span>
+                    </button>
+                  ))}
                 </div>
+              )}
+
+              <CfgFields>
+                <EmField label="Latitude" htmlFor="env-lat">
+                  <input id="env-lat" className="em-input" type="number" step="0.0001" min="-90" max="90"
+                         value={latitude} onChange={(e) => setLatitude(e.target.value)} />
+                </EmField>
+                <EmField label="Longitude" htmlFor="env-lon">
+                  <input id="env-lon" className="em-input" type="number" step="0.0001" min="-180" max="180"
+                         value={longitude} onChange={(e) => setLongitude(e.target.value)} />
+                </EmField>
+                <EmField label="Label" htmlFor="env-label">
+                  <input id="env-label" className="em-input" placeholder="e.g. Home"
+                         value={locationLabel} onChange={(e) => setLocationLabel(e.target.value)} />
+                </EmField>
+              </CfgFields>
+
+              <label className="em-check-row" htmlFor="env-enabled">
+                <input id="env-enabled" type="checkbox" className="em-check"
+                       checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+                <span className="em-check-label">Collect weather data hourly</span>
+              </label>
+            </CfgGroup>
+
+            <CfgGroup title="Status">
+              <div className="cfg-stats">
+                <CfgStat
+                  label="Last poll"
+                  value={formatWhen(state.last_poll_at)}
+                  hint={state.last_status === 'error' ? undefined : 'Checks hourly while enabled'}
+                />
+                <CfgStat
+                  label="Last result"
+                  value={state.last_status
+                    ? (state.last_status === 'success'
+                      ? `OK — ${state.last_insert_count ?? 0} new readings`
+                      : 'Error')
+                    : '—'}
+                />
+                <CfgStat
+                  label="History import"
+                  value={backfill.status
+                    ? backfill.status.charAt(0).toUpperCase() + backfill.status.slice(1)
+                    : 'Not run'}
+                  hint={backfill.completed_at ? `Finished ${formatWhen(backfill.completed_at)}` : undefined}
+                />
               </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-5">
-                {/* Location search */}
-                <div className="space-y-2">
-                  <Label htmlFor="env-city-search">Find your location</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="env-city-search"
-                      placeholder="Search city or town…"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') runSearch(); }}
-                    />
-                    <Button variant="secondary" onClick={runSearch} disabled={searching} className="gap-1.5 shrink-0">
-                      <SearchIcon size={16} /> {searching ? 'Searching…' : 'Search'}
-                    </Button>
-                  </div>
-                  {searchResults && (
-                    <div className="rounded-lg border border-border divide-y divide-border">
-                      {searchResults.length === 0 && (
-                        <div className="p-3 text-sm text-muted-foreground">No matches found.</div>
-                      )}
-                      {searchResults.map((r) => (
-                        <button
-                          key={r.id}
-                          type="button"
-                          onClick={() => pickResult(r)}
-                          className="flex w-full items-center justify-between p-3 text-left text-sm hover:bg-secondary/60"
-                        >
-                          <span>{[r.name, r.admin1, r.country].filter(Boolean).join(', ')}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {r.latitude.toFixed(3)}, {r.longitude.toFixed(3)}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
 
-                {/* Coordinates */}
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="env-lat">Latitude</Label>
-                    <Input id="env-lat" type="number" step="0.0001" min="-90" max="90"
-                           value={latitude} onChange={(e) => setLatitude(e.target.value)} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="env-lon">Longitude</Label>
-                    <Input id="env-lon" type="number" step="0.0001" min="-180" max="180"
-                           value={longitude} onChange={(e) => setLongitude(e.target.value)} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="env-label">Label</Label>
-                    <Input id="env-label" placeholder="e.g. Home"
-                           value={locationLabel} onChange={(e) => setLocationLabel(e.target.value)} />
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <Checkbox id="env-enabled" checked={enabled}
-                            onCheckedChange={(v) => setEnabled(Boolean(v))} />
-                  <Label htmlFor="env-enabled">Collect weather data hourly</Label>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button onClick={saveConfig} disabled={busy === 'save'}>
-                    {busy === 'save' ? 'Saving…' : 'Save'}
-                  </Button>
-                  <Button variant="secondary" onClick={testConnection}
-                          disabled={busy === 'test' || !hasCoords}>
-                    {busy === 'test' ? 'Testing…' : 'Test connection'}
-                  </Button>
-                  <Button variant="secondary" onClick={startBackfill}
-                          disabled={busy === 'backfill' || !connector?.configured || backfill.status === 'running'}>
-                    {backfill.status === 'running' ? 'Backfill running…' : 'Import 90-day history'}
-                  </Button>
-                </div>
-
-                {/* Status */}
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                  <Stat
-                    label="Last poll"
-                    value={formatWhen(state.last_poll_at)}
-                    hint={state.last_status === 'error' ? undefined : 'Checks hourly while enabled'}
-                  />
-                  <Stat
-                    label="Last result"
-                    value={state.last_status
-                      ? (state.last_status === 'success'
-                        ? `OK — ${state.last_insert_count ?? 0} new readings`
-                        : 'Error')
-                      : '—'}
-                  />
-                  <Stat
-                    label="History import"
-                    value={backfill.status
-                      ? backfill.status.charAt(0).toUpperCase() + backfill.status.slice(1)
-                      : 'Not run'}
-                    hint={backfill.completed_at ? `Finished ${formatWhen(backfill.completed_at)}` : undefined}
-                  />
-                </div>
-
-                {state.last_status === 'error' && state.last_error && (
-                  <Alert variant="destructive">Last poll failed: {state.last_error}</Alert>
-                )}
-                {backfill.status === 'error' && backfill.error && (
-                  <Alert variant="destructive">Backfill failed: {backfill.error}</Alert>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+              {state.last_status === 'error' && state.last_error && (
+                <p className="em-error" role="alert">Last poll failed: {state.last_error}</p>
+              )}
+              {backfill.status === 'error' && backfill.error && (
+                <p className="em-error" role="alert">Backfill failed: {backfill.error}</p>
+              )}
+            </CfgGroup>
+          </CfgSection>
         </div>
       </div>
     </AdminV2Layout>

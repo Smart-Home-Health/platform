@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
 import { useAuth } from '../../contexts/AuthContext';
@@ -33,9 +33,10 @@ import {
 } from '../../components/Icons';
 import CameraLiveModal from '../../components/CameraLiveModal';
 import config, { API_BASE_URL, getApiBaseUrl } from '../../config';
-import { Button } from '@/components/ui/button';
-import { Alert } from '@/components/ui/alert';
+import '../../components/vc/entity-card.css';
 import './AdminV2.css';
+import './vc-dashboard.css'; // bedside-monitor skin (dark theme only)
+import PersonAvatar from '../../components/vc/PersonAvatar';
 
 // Calculate age from DOB
 const calculateAge = (dob) => {
@@ -47,15 +48,6 @@ const calculateAge = (dob) => {
     age--;
   }
   return age;
-};
-
-// Get initials from name
-const getInitials = (name) => {
-  return name
-    .split(' ')
-    .map(part => part[0])
-    .join('')
-    .toUpperCase();
 };
 
 const AdminV2Dashboard = () => {
@@ -181,13 +173,11 @@ const AdminV2Dashboard = () => {
       <div className="admin-v2-dashboard">
         {/* Error State */}
         {error && (
-          <div className="tw" style={{ marginBottom: '1.5rem' }}>
-            <Alert variant="destructive" className="flex items-center justify-between gap-3">
-              <span>Error loading dashboard: {error}</span>
-              <Button size="sm" className="shrink-0" onClick={fetchDashboardData}>
-                Retry
-              </Button>
-            </Alert>
+          <div className="em-error ec-page-alert em-alert-row" role="alert">
+            <span>Error loading dashboard: {error}</span>
+            <button type="button" className="em-submit" onClick={fetchDashboardData}>
+              Retry
+            </button>
           </div>
         )}
 
@@ -249,13 +239,9 @@ const AdminV2Dashboard = () => {
             <PatientsIcon size={48} />
             <h3>No patients yet</h3>
             <p>Add your first patient to get started</p>
-            <div className="tw">
-              <Button asChild>
-                <Link to="/care/patients/create">
-                  <PlusIcon size={16} /> Add Patient
-                </Link>
-              </Button>
-            </div>
+            <Link to="/care/patients/create" className="em-submit">
+              <PlusIcon size={16} /> Add Patient
+            </Link>
           </div>
         )}
 
@@ -287,9 +273,8 @@ const AdminV2Dashboard = () => {
               <div key={patient.id} className="admin-v2-patient-card">
                 <div className="admin-v2-patient-header">
                   <div className="admin-v2-patient-header-top">
-                    <div className="admin-v2-patient-avatar">
-                      {getInitials(patient.name)}
-                    </div>
+                    <PersonAvatar kind="patient" id={patient.id} seed={patient.avatar_seed}
+                                  photo={patient.avatar_photo} size={48} decorative />
                     <div className="admin-v2-patient-info">
                       <h3 className="admin-v2-patient-name">{patient.name}</h3>
                       <p className="admin-v2-patient-meta">
@@ -342,32 +327,34 @@ const AdminV2Dashboard = () => {
                   )}
                 </div>
 
-                {/* Due Counters — red when that category has an overdue item */}
+                {/* Due Counters. The vc skin colors by schedule state (idle /
+                    has-due / overdue), not by category; the legacy per-type
+                    classes stay for the light theme. */}
                 <div className="admin-v2-due-counters">
                   <Link
                     to={`/care/medications/schedule?patient=${patient.id}`}
-                    className={`admin-v2-due-item meds${patient.overdue_counts?.medications ? ' overdue' : ''}`}
+                    className={`admin-v2-due-item meds${(patient.due_counts?.medications || 0) > 0 ? ' has-due' : ''}${patient.overdue_counts?.medications ? ' overdue' : ''}`}
                   >
                     <p className="admin-v2-due-count">{patient.due_counts?.medications || 0}</p>
                     <p className="admin-v2-due-label">Meds</p>
                   </Link>
                   <Link
                     to={`/care/nutrition?patient=${patient.id}`}
-                    className={`admin-v2-due-item nutrition${patient.overdue_counts?.nutrition ? ' overdue' : ''}`}
+                    className={`admin-v2-due-item nutrition${(patient.due_counts?.nutrition || 0) > 0 ? ' has-due' : ''}${patient.overdue_counts?.nutrition ? ' overdue' : ''}`}
                   >
                     <p className="admin-v2-due-count">{patient.due_counts?.nutrition || 0}</p>
                     <p className="admin-v2-due-label">Nutrition</p>
                   </Link>
                   <Link
                     to={`/care/care-tasks/schedule?patient=${patient.id}`}
-                    className={`admin-v2-due-item tasks${patient.overdue_counts?.tasks ? ' overdue' : ''}`}
+                    className={`admin-v2-due-item tasks${(patient.due_counts?.tasks || 0) > 0 ? ' has-due' : ''}${patient.overdue_counts?.tasks ? ' overdue' : ''}`}
                   >
                     <p className="admin-v2-due-count">{patient.due_counts?.tasks || 0}</p>
                     <p className="admin-v2-due-label">Tasks</p>
                   </Link>
                   <Link
                     to={`/care/equipment?patient=${patient.id}`}
-                    className="admin-v2-due-item equip"
+                    className={`admin-v2-due-item equip${(patient.due_counts?.equipment || 0) > 0 ? ' has-due' : ''}`}
                   >
                     <p className="admin-v2-due-count">{patient.due_counts?.equipment || 0}</p>
                     <p className="admin-v2-due-label">Equip</p>
@@ -375,17 +362,13 @@ const AdminV2Dashboard = () => {
                 </div>
 
                 {/* Actions */}
-                <div className="admin-v2-patient-actions tw">
-                  <Button asChild variant="secondary" className="max-md:min-w-[120px] max-md:flex-1">
-                    <Link to={`/care/profile?patient=${patient.id}`}>
-                      View Details
-                    </Link>
-                  </Button>
-                  <Button asChild className="max-md:min-w-[120px] max-md:flex-1">
-                    <Link to={`/care/schedule?patient=${patient.id}`}>
-                      <CalendarIcon size={16} /> Schedule
-                    </Link>
-                  </Button>
+                <div className="admin-v2-patient-actions">
+                  <Link to={`/care/profile?patient=${patient.id}`} className="em-cancel">
+                    View Details
+                  </Link>
+                  <Link to={`/care/schedule?patient=${patient.id}`} className="em-submit">
+                    <CalendarIcon size={16} /> Schedule
+                  </Link>
                 </div>
               </div>
               );

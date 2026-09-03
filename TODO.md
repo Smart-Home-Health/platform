@@ -67,7 +67,7 @@ Low-effort now that theming is token-based (`.light`/`.dark` class on `<html>` +
 ### Keyboard navigation
 - [ ] Audit: every interactive element reachable via Tab in logical order; convert `<div onClick>` to real `<button>`/`<a>` (e.g. the Dashboard logo and any clickable divs).
 - [ ] Visible focus indicators on all interactive elements (tokens already expose `--ring`; ensure app-wide `:focus-visible` styling).
-- [ ] Modals: trap focus while open, restore focus to the trigger on close, `Esc` to close, no keyboard traps (`ModalBase` + shadcn `Dialog`).
+- [x] Modals: trap focus while open, restore focus to the trigger on close, `Esc` to close, no keyboard traps (`ModalBase` + shadcn `Dialog`). — `ModalBase` done 2026-08-31 (`role="dialog"`/`aria-modal`/`aria-labelledby`, Tab trap, focus restore, Escape with a `dismissible={false}` opt-out for hard gates, and it stands down while an `.em-panel`/`.em-multi-pop`/`.nip-root` is open above it). The shadcn `Dialog` half is moot — `ui/dialog` has no non-test importers left; `EntityModal` gets this from Radix.
 - [ ] Add a **skip-to-content** link at the top of the layout.
 - [ ] Custom controls (vital toggles, theme select, chart zoom/pan) fully operable without a mouse.
 

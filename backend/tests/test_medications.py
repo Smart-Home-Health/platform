@@ -55,6 +55,58 @@ def test_administer_deducts_quantity(admin_client, patient):
     assert resp.json().get("success") is True
 
 
+def test_administer_records_who_gave_the_dose(admin_client, admin_user, patient, db_session):
+    """`administered_by` is written.
+
+    The column has existed since the initial migration but nothing populated
+    it, so `completed_by` came back None for every medication on the daily
+    schedule while care tasks recorded it properly. The dose detail pane shows
+    this, so a blank would be a silent lie about who gave a dose.
+    """
+    from schemas.medication_log import MedicationLog
+
+    med_id = _make_med(admin_client, patient, quantity=10).json()["id"]
+    resp = admin_client.post(f"/api/medications/{med_id}/administer",
+                             json={"dose_amount": 2, "patient_id": patient.id})
+    assert resp.status_code == 200, resp.text
+
+    log = db_session.query(MedicationLog).filter(
+        MedicationLog.medication_id == med_id).one()
+    assert log.administered_by == admin_user.id
+
+
+def test_history_filters_by_medication_id_not_a_name_prefix(admin_client, patient):
+    """`medication_id` is exact where `medication_name` is a substring match.
+
+    Two medications sharing a prefix is ordinary (Pro-something), and the dose
+    detail pane must never show another drug's doses.
+    """
+    a_id = _make_med(admin_client, patient, name="Propranolol", quantity=10).json()["id"]
+    _make_med(admin_client, patient, name="Propranolol ER", quantity=10)
+
+    for med, dose in ((a_id, 1), (a_id, 2)):
+        admin_client.post(f"/api/medications/{med}/administer",
+                          json={"dose_amount": dose, "patient_id": patient.id})
+    b_id = _make_med(admin_client, patient, name="Propafenone", quantity=10).json()["id"]
+    admin_client.post(f"/api/medications/{b_id}/administer",
+                      json={"dose_amount": 1, "patient_id": patient.id})
+
+    by_name = admin_client.get(
+        f"/api/medications/history?patient_id={patient.id}&medication_name=Prop")
+    assert by_name.status_code == 200
+    assert {r["medication_name"] for r in by_name.json()["history"]} == {
+        "Propranolol", "Propafenone"}
+
+    by_id = admin_client.get(
+        f"/api/medications/history?patient_id={patient.id}&medication_id={a_id}")
+    assert by_id.status_code == 200
+    rows = by_id.json()["history"]
+    assert len(rows) == 2
+    assert {r["medication_id"] for r in rows} == {a_id}
+    # The pane renders this, so it has to come back on the record.
+    assert all("administered_by" in r for r in rows)
+
+
 def test_administer_blocked_when_insufficient_quantity(admin_client, patient):
     """Dose larger than on-hand quantity is hard-blocked with 409."""
     med_id = _make_med(admin_client, patient, quantity=1).json()["id"]

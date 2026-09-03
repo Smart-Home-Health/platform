@@ -17,13 +17,22 @@
 User management routes for CRUD operations on users
 Separate from auth routes which handle login/session management
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
+import json
 import logging
+import uuid
+
+import avatar_store
+from schemas.avatar import AvatarState
 
 from db import get_db
-from schemas.user import UserResponse, UserCreate, UserUpdate, UserListItem, AdminPasswordReset
+from schemas.user import (
+    UserResponse, UserCreate, UserUpdate, UserListItem, AdminPasswordReset,
+    UserActivityEntry,
+)
 from crud.users import (
     get_user_by_id, get_user_by_username, get_user_by_email,
     get_all_users, create_user, update_user, delete_user,
@@ -34,8 +43,8 @@ from crud.users import (
     create_permission, update_permission, delete_permission,
     assign_permission_to_role, set_force_password_reset, create_audit_log
 )
-from dependencies import get_current_user, require_permission, require_system_admin
-from models.users import User, Role, Permission
+from dependencies import get_current_account_id, get_current_user, require_permission, require_system_admin
+from models.users import User, Role, Permission, AuditLog
 from schemas.patient import Patient, PatientAccess, AccessLevel
 
 logger = logging.getLogger(__name__)
@@ -70,7 +79,9 @@ def list_users(
             force_password_reset=u.force_password_reset,
             roles=[{"id": r.id, "name": r.name, "display_name": r.display_name} for r in u.roles],
             created_at=u.created_at,
-            last_login=u.last_login
+            last_login=u.last_login,
+            avatar_seed=u.avatar_seed,
+            avatar_photo=u.avatar_photo,
         )
         # Attach patient_ids as extra field
         item_dict = item.model_dump()
@@ -526,6 +537,124 @@ def remove_user_role(
         )
 
 
+# ==================== Activity ====================
+
+# Actions one user performs *on* another. They are written against the actor,
+# so the subject is only in the details JSON — under whichever key name the
+# endpoint that wrote it happened to use.
+TARGETED_AUDIT_ACTIONS = {
+    "user.created", "user.updated", "user.deleted",
+    "user.password_reset.forced", "user.password_reset.admin_set",
+    "role.assigned", "role.removed",
+}
+_TARGET_DETAIL_KEYS = (
+    "target_user_id", "updated_user_id", "new_user_id", "deleted_user_id", "user_id",
+)
+
+
+def _audit_subject_id(entry: AuditLog) -> Optional[int]:
+    """The user an audit entry is *about*, or None if its details don't say."""
+    if not entry.details:
+        return None
+    try:
+        payload = json.loads(entry.details)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    for key in _TARGET_DETAIL_KEYS:
+        if key in payload:
+            try:
+                return int(payload[key])
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+@router.get("/{user_id}/activity", response_model=List[UserActivityEntry])
+def get_user_activity(
+    user_id: int,
+    limit: int = 25,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Recorded activity for one user, read straight from ``audit_logs``.
+
+    Two kinds of row belong to a user: the ones written against them (sign-in,
+    PIN attempts, lockouts, their own password reset) and the ones an
+    administrator's action wrote against the *administrator* while naming this
+    user in the details. Rows of the second kind carry ``actor_name``.
+
+    Note that role and care-profile assignment changes made through this router
+    are not audited at all, so they will not appear.
+    """
+    if not (
+        current_user.id == user_id
+        or current_user.is_superuser
+        or current_user.has_permission("users.read")
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not permitted to view this user's activity"
+        )
+
+    user = get_user_by_id(db, user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    limit = max(1, min(limit, 200))
+
+    own = (
+        db.query(AuditLog)
+        .filter(AuditLog.user_id == user_id)
+        .order_by(AuditLog.timestamp.desc())
+        .limit(limit)
+        .all()
+    )
+    # An admin's own actions on *other* people are logged against them; those
+    # belong on the other person's page, not on this one.
+    own = [
+        e for e in own
+        if e.action not in TARGETED_AUDIT_ACTIONS or _audit_subject_id(e) in (None, user_id)
+    ]
+
+    by_others = [
+        e for e in (
+            db.query(AuditLog)
+            .filter(AuditLog.action.in_(TARGETED_AUDIT_ACTIONS))
+            .filter(AuditLog.user_id != user_id)
+            .order_by(AuditLog.timestamp.desc())
+            .limit(limit * 10)
+            .all()
+        )
+        if _audit_subject_id(e) == user_id
+    ]
+
+    actor_ids = {e.user_id for e in by_others if e.user_id}
+    actors = (
+        {u.id: u for u in db.query(User).filter(User.id.in_(actor_ids)).all()}
+        if actor_ids else {}
+    )
+
+    entries = sorted(own + by_others, key=lambda e: e.timestamp, reverse=True)[:limit]
+    return [
+        UserActivityEntry(
+            id=e.id,
+            action=e.action,
+            timestamp=e.timestamp,
+            ip_address=e.ip_address,
+            actor_name=(
+                actors[e.user_id].full_name or actors[e.user_id].username
+                if e.user_id in actors else None
+            ),
+        )
+        for e in entries
+    ]
+
+
 # ==================== Patient Assignment Endpoints ====================
 
 
@@ -766,3 +895,98 @@ def delete_role(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error deleting role: {str(e)}"
         )
+
+
+# ==================== Avatars ====================
+# Generated avatars need no storage until an administrator shuffles one; photos
+# live on disk under PHOTOS_DIR (avatar_store.py). These endpoints are gated on
+# their own rather than riding on PUT /api/users/{id}.
+
+def _user_or_404(db: Session, user_id: int) -> User:
+    user = get_user_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+
+@router.post("/{user_id}/avatar/shuffle", response_model=AvatarState)
+def shuffle_user_avatar(
+    user_id: int,
+    current_user: User = Depends(require_permission("users.update")),
+    db: Session = Depends(get_db)
+):
+    """Re-roll the generated avatar (new random seed)"""
+    user = _user_or_404(db, user_id)
+    user.avatar_seed = str(uuid.uuid4())
+    db.commit()
+    db.refresh(user)
+    return AvatarState(avatar_seed=user.avatar_seed, avatar_photo=user.avatar_photo)
+
+
+@router.put("/{user_id}/avatar/photo", response_model=AvatarState)
+async def upload_user_avatar_photo(
+    user_id: int,
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_permission("users.update")),
+    db: Session = Depends(get_db)
+):
+    """Replace the profile photo (JPEG/PNG, 2 MB max; the browser pre-crops to 256px)"""
+    user = _user_or_404(db, user_id)
+    content = await file.read()
+    if len(content) > avatar_store.MAX_AVATAR_BYTES:
+        raise HTTPException(status_code=413, detail="Photo too large (2 MB max)")
+    media_type = avatar_store.sniff_image(content)
+    if not media_type:
+        raise HTTPException(status_code=415, detail="Only JPEG or PNG photos are supported")
+    previous = user.avatar_photo
+    user.avatar_photo = avatar_store.save_avatar("user", user.id, content, media_type)
+    db.commit()
+    db.refresh(user)
+    avatar_store.delete_avatar("user", user.id, previous)
+    return AvatarState(avatar_seed=user.avatar_seed, avatar_photo=user.avatar_photo)
+
+
+@router.delete("/{user_id}/avatar/photo", response_model=AvatarState)
+def delete_user_avatar_photo(
+    user_id: int,
+    current_user: User = Depends(require_permission("users.update")),
+    db: Session = Depends(get_db)
+):
+    """Remove the profile photo; the generated avatar shows again"""
+    user = _user_or_404(db, user_id)
+    previous = user.avatar_photo
+    user.avatar_photo = None
+    db.commit()
+    avatar_store.delete_avatar("user", user.id, previous)
+    return AvatarState(avatar_seed=user.avatar_seed, avatar_photo=None)
+
+
+@router.get("/{user_id}/avatar/photo/{filename}")
+def get_user_avatar_photo(
+    user_id: int,
+    filename: str,
+    account_id: int = Depends(get_current_account_id),
+    db: Session = Depends(get_db)
+):
+    """Serve the profile photo.
+
+    Account-level auth (not a user session) on purpose: the login picker shows
+    the household's faces before anyone has signed in. Only users of the same
+    account are visible, and only the filename currently on the row is served —
+    the path is built from the DB value, never from the URL.
+    """
+    user = get_user_by_id(db, user_id)
+    if (
+        not user
+        or user.account_id != account_id
+        or not user.avatar_photo
+        or not avatar_store.FILENAME_RE.match(filename)
+        or filename != user.avatar_photo
+    ):
+        raise HTTPException(status_code=404, detail="Photo not found")
+    path = avatar_store.avatar_path("user", user.id, user.avatar_photo)
+    return FileResponse(
+        path,
+        media_type=avatar_store.media_type_for(user.avatar_photo),
+        headers={"Cache-Control": avatar_store.AVATAR_CACHE_CONTROL},
+    )

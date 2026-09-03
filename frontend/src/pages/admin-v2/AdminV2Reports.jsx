@@ -15,22 +15,19 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React from 'react';
 import AdminV2Layout from './AdminV2Layout';
+import PatientGate from './components/PatientGate';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import AdminV2ReportsDayOverDay from './AdminV2ReportsDayOverDay';
 import './AdminV2.css';
+import './settings/settings-page.css';
 
 const AdminV2Reports = () => {
   const { selectedPatient } = useAdminPatient();
 
   const renderContent = () => {
     if (!selectedPatient) {
-      return (
-        <div className="admin-v2-monitoring-empty">
-          <p>Select a patient from the sidebar to view reports.</p>
-        </div>
-      );
+      return <PatientGate message="Choose a patient to view reports." />;
     }
 
     return <AdminV2ReportsDayOverDay patientId={selectedPatient.id} />;
@@ -38,16 +35,8 @@ const AdminV2Reports = () => {
 
   return (
     <AdminV2Layout>
-      <div className="admin-v2-monitoring">
-        <div className="admin-v2-monitoring-header">
-          <h1 className="admin-v2-page-title">Reports</h1>
-          {selectedPatient && (
-            <p className="admin-v2-page-subtitle">
-              Compare vitals across days for {selectedPatient.first_name} {selectedPatient.last_name}
-            </p>
-          )}
-        </div>
-        <div className="admin-v2-monitoring-content">
+      <div className="admin-v2-page">
+        <div className="cfg">
           {renderContent()}
         </div>
       </div>

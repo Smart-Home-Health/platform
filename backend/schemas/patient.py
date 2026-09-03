@@ -43,6 +43,10 @@ class Patient(Base):
     # HA user this patient record was created from (uuid4().hex) — provenance
     # so the HA-user directory offers "Add as patient" at most once per login.
     ha_user_id = Column(String(32), unique=True, nullable=True, index=True)
+    # Generated-avatar override (random UUID set by "shuffle design"; NULL means
+    # derive from "patient:<id>") and the uuid-named photo file under PHOTOS_DIR.
+    avatar_seed = Column(String(36), nullable=True)
+    avatar_photo = Column(String(64), nullable=True)
     created_at = Column(TIMESTAMP(timezone=True), nullable=False)
     updated_at = Column(TIMESTAMP(timezone=True), nullable=False)
     

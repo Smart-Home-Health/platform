@@ -1,0 +1,60 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+@import '../../../styles/vc-tokens.css';
+
+/* Shelf-count math row (packages × per-package + loose = total), shared by
+ * the Supplies count modal and the inventory-setup count step. Unscoped like
+ * the em-* set it sits beside — the modal renders in a Radix portal. */
+.supc-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.supc-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+.supc-cell .em-input {
+  width: 64px;
+  text-align: center;
+}
+.supc-label {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+  white-space: nowrap;
+}
+.supc-op,
+.supc-total {
+  padding-bottom: 0.6rem;
+  font-family: var(--vc-font-sans);
+  font-size: 12.5px;
+  color: var(--vc-text-secondary);
+  white-space: nowrap;
+}
+.supc-total strong {
+  font-family: var(--vc-font-mono);
+  color: var(--vc-text-primary);
+}

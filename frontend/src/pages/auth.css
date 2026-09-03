@@ -1,0 +1,589 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Auth surfaces (login / user select) — bedside-monitor aesthetic.
+ * Full-page dark by design, both app themes. Tokens only. */
+@import '../styles/vc-tokens.css';
+
+.vc-auth {
+  min-height: 100dvh;
+  background: var(--vc-bg-base);
+  color: var(--vc-text-primary);
+  font-family: var(--vc-font-mono);
+  display: flex;
+  flex-direction: column;
+}
+.vc-auth *,
+.vc-auth *::before,
+.vc-auth *::after { box-sizing: border-box; }
+.vc-auth button {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+}
+
+/* ---- Brand bar ---- */
+.au-brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--vc-line-hairline);
+}
+.au-brand-left {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  color: inherit;
+  text-decoration: none;
+}
+.au-brand-mark { display: grid; place-content: center; color: var(--vc-data-live); }
+.au-brand-name {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.au-brand-sub {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.au-online {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-state-complete);
+  white-space: nowrap;
+}
+.au-online-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--vc-state-complete);
+}
+
+/* ---- Main column ---- */
+.au-main {
+  flex: 1;
+  width: 100%;
+  max-width: 620px;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 2rem;
+}
+
+.au-eyebrow {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--vc-data-live);
+}
+.au-title {
+  margin: 0.5rem 0 0;
+  font-family: var(--vc-font-sans);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+  line-height: 1.15;
+}
+.au-subtitle {
+  margin: 0.7rem 0 0;
+  font-family: var(--vc-font-sans);
+  font-size: 15.5px;
+  line-height: 1.5;
+  color: var(--vc-text-secondary);
+  max-width: 34rem;
+}
+
+/* ---- Form bits ---- */
+.au-form { margin-top: 1.4rem; display: flex; flex-direction: column; gap: 0.9rem; }
+.au-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.au-input-wrap { position: relative; }
+/* Scoped to the wrap (not .vc-auth) so an embedded .tw island — the
+ * SecuritySetupWizard on the first-run success path — keeps its own inputs. */
+.au-input-wrap input[type='password'],
+.au-input-wrap input[type='text'],
+.au-input-wrap input[type='email'] {
+  width: 100%;
+  padding: 0.85rem 2.9rem 0.85rem 0.95rem;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 10px;
+  background: var(--vc-bg-surface);
+  color: var(--vc-text-primary);
+  font-family: var(--vc-font-mono);
+  /* 16px minimum: anything smaller makes iOS Safari zoom the page on focus
+   * (the same fix the intake item picker needed). */
+  font-size: 16px;
+  letter-spacing: 0.03em;
+}
+.au-input-wrap input:focus {
+  outline: none;
+  border-color: var(--vc-data-live);
+  box-shadow: 0 0 0 1px var(--vc-data-live);
+}
+.au-input-wrap input::placeholder { color: var(--vc-text-tertiary); }
+.au-input-wrap.plain input { padding-right: 0.95rem; }
+.au-eye {
+  position: absolute;
+  top: 50%;
+  right: 0.6rem;
+  transform: translateY(-50%);
+  display: grid;
+  place-content: center;
+  padding: 0.35rem;
+  border: none;
+  background: transparent;
+  color: var(--vc-text-secondary);
+  cursor: pointer;
+}
+.au-eye:hover { color: var(--vc-text-primary); }
+
+.au-error {
+  border: 1px solid var(--vc-state-due);
+  background: color-mix(in srgb, var(--vc-state-due) 10%, transparent);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  font-family: var(--vc-font-sans);
+  font-size: 13.5px;
+  color: var(--vc-text-primary);
+}
+
+.au-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.95rem 1rem;
+  border: none;
+  border-radius: 10px;
+  background: var(--vc-data-live);
+  color: var(--vc-bg-base);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.au-primary:hover { filter: brightness(1.08); }
+.au-primary:disabled { opacity: 0.55; cursor: default; }
+.au-caps {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--vc-data-live);
+}
+
+/* OR divider */
+.au-or {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin: 1.4rem 0;
+  color: var(--vc-text-secondary);
+}
+.au-or::before,
+.au-or::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--vc-line-hairline);
+}
+.au-or em {
+  font-style: normal;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 6px;
+}
+
+/* ---- Quick entry panel ---- */
+.au-quick {
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 12px;
+  padding: 1.1rem;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.4rem 0.9rem;
+}
+.au-quick-icon {
+  grid-row: span 2;
+  display: grid;
+  place-content: center;
+  width: 52px;
+  height: 52px;
+  border: 1px solid var(--vc-state-due);
+  border-radius: 50%;
+  color: var(--vc-state-due);
+}
+.au-quick-title {
+  align-self: end;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-state-due);
+}
+.au-quick-body {
+  margin: 0;
+  font-family: var(--vc-font-sans);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--vc-text-secondary);
+}
+.au-quick-btn {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 0.55rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--vc-state-due);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.au-quick-btn:hover { border-color: var(--vc-state-due); }
+.au-quick-btn:disabled { opacity: 0.55; cursor: default; }
+.au-quick-caps {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-state-due);
+}
+
+/* ---- Access banner (user select) ---- */
+.au-access {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin-top: 1.3rem;
+  padding: 0.75rem 0.95rem;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.au-access > svg { flex-shrink: 0; color: var(--vc-state-due); }
+.au-access.full > svg { color: var(--vc-state-complete); }
+.au-access-label { color: var(--vc-text-secondary); white-space: nowrap; }
+.au-access-state { white-space: nowrap; }
+.au-access-sep { align-self: stretch; border-left: 1px solid var(--vc-line-strong); }
+.au-access-state { color: var(--vc-state-due); }
+.au-access.full .au-access-state { color: var(--vc-state-complete); }
+.au-access-change {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: var(--vc-data-live);
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+  padding: 0.2rem;
+}
+.au-access-change:hover { text-decoration: underline; }
+
+/* ---- User cards ---- */
+.au-user-list { display: flex; flex-direction: column; gap: 0.8rem; margin-top: 1.3rem; }
+.vc-auth .user-card {
+  display: flex;
+  align-items: center;
+  gap: 0.95rem;
+  width: 100%;
+  padding: 0.95rem 1rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 12px;
+  background: var(--vc-bg-surface);
+  color: var(--vc-text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+.vc-auth .user-card:hover { border-color: var(--vc-line-strong); background: var(--vc-bg-raised); }
+.au-user-info { flex: 1; min-width: 0; }
+.au-user-name {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  overflow-wrap: break-word;
+}
+.au-user-roles {
+  margin-top: 0.3rem;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.au-role-chip {
+  padding: 0.1rem 0.45rem;
+  border: 1px solid var(--vc-state-due);
+  border-radius: 6px;
+  color: var(--vc-state-due);
+  font-weight: 700;
+}
+.au-user-chev { flex-shrink: 0; color: var(--vc-text-secondary); }
+.au-no-users {
+  margin-top: 1.3rem;
+  padding: 1rem;
+  border: 1px dashed var(--vc-line-strong);
+  border-radius: 12px;
+  font-family: var(--vc-font-sans);
+  font-size: 14px;
+  color: var(--vc-text-secondary);
+}
+
+/* ---- Credential mode ---- */
+.au-selected {
+  display: flex;
+  align-items: center;
+  gap: 0.95rem;
+  margin-top: 1.3rem;
+  padding: 0.95rem 1rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 12px;
+  background: var(--vc-bg-surface);
+}
+.au-selected .au-user-name { flex: 1; min-width: 0; }
+.au-ghost-btn {
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--vc-text-secondary);
+  padding: 0.45rem 0.75rem;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.au-ghost-btn:hover { border-color: var(--vc-line-strong); color: var(--vc-text-primary); }
+.au-hint {
+  display: block;
+  margin-top: 0.5rem;
+  font-family: var(--vc-font-sans);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--vc-text-secondary);
+}
+.au-toggle {
+  align-self: center;
+  border: none;
+  background: transparent;
+  color: var(--vc-data-live);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 0.3rem;
+}
+.au-toggle:hover { text-decoration: underline; }
+
+/* ---- Footer ---- */
+.au-footer { margin-top: 1.6rem; display: flex; flex-direction: column; align-items: center; gap: 0.9rem; }
+.au-account-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--vc-data-live);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--vc-data-live);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.au-account-btn:hover { background: color-mix(in srgb, var(--vc-data-live) 10%, transparent); }
+.au-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: none;
+  background: transparent;
+  color: var(--vc-text-secondary);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-decoration: none;
+  padding: 0.3rem;
+}
+.au-back:hover { color: var(--vc-text-primary); }
+.au-footnote {
+  font-size: 11.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+  text-align: center;
+}
+.au-continuing {
+  margin-top: 2.5rem;
+  text-align: center;
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+
+@media (max-width: 480px) {
+  .au-title { font-size: 25px; }
+  .au-brand-name { font-size: 12.5px; letter-spacing: 0.14em; }
+  .au-brand-sub { font-size: 10px; letter-spacing: 0.14em; }
+  .au-brand { padding: 0.85rem 1rem; }
+  .au-main { padding: 1.2rem 1rem 1.6rem; }
+  .au-access { gap: 0.5rem; padding: 0.7rem 0.7rem; font-size: 11px; letter-spacing: 0.07em; }
+}
+
+/* ---- First-run setup + forced password reset ----
+ * Same shell as login; the additions below are the field grid, grouped
+ * sections, the account-password tip, the HA-identity notice, the account
+ * login-id block and the wizard embed. Kept tight: hairline groups, 0.6rem
+ * gaps, no nested cards. */
+.au-form.au-dense { gap: 0.7rem; }
+.au-group { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.3rem; }
+.au-group-label {
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--vc-line-hairline);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.au-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem 0.75rem;
+}
+.au-grid .au-span { grid-column: 1 / -1; }
+.au-field { display: flex; flex-direction: column; gap: 0.35rem; min-width: 0; }
+.au-field .au-hint { margin-top: 0; font-size: 12px; }
+.au-label-row { display: flex; align-items: center; gap: 0.4rem; }
+.au-label-row label { cursor: pointer; }
+.au-tip-wrap { position: relative; display: inline-flex; }
+.au-tip {
+  display: inline-grid;
+  place-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--vc-text-tertiary);
+  cursor: pointer;
+}
+.au-tip:hover,
+.au-tip[aria-expanded='true'] { color: var(--vc-data-live); }
+.au-tip-box {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 5;
+  width: min(320px, 80vw);
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 8px;
+  background: var(--vc-bg-sheet);
+  font-family: var(--vc-font-sans);
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.45;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--vc-text-secondary);
+}
+.au-tip-box strong { color: var(--vc-text-primary); }
+.au-notice {
+  margin-top: 1rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid color-mix(in srgb, var(--vc-state-complete) 55%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--vc-state-complete) 10%, transparent);
+  font-family: var(--vc-font-sans);
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--vc-text-primary);
+}
+.au-notice strong { font-weight: 600; }
+.au-slug {
+  margin-top: 1.4rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-surface);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.au-slug-label { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--vc-text-tertiary); }
+.au-slug-value { font-size: 22px; font-weight: 700; letter-spacing: 0.04em; color: var(--vc-data-live); word-break: break-all; }
+.au-slug-note { font-family: var(--vc-font-sans); font-size: 12.5px; color: var(--vc-text-secondary); }
+.au-actions { margin-top: 1.2rem; display: flex; flex-direction: column; gap: 0.6rem; }
+.au-embed { margin-top: 1.2rem; }
+@media (max-width: 480px) {
+  .au-grid { grid-template-columns: 1fr; }
+}

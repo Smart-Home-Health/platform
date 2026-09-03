@@ -15,26 +15,19 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import AdminV2Layout from './AdminV2Layout';
 import { ChevronLeftIcon } from '../../components/Icons';
-import {
-  Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle,
-} from '@/components/ui/dialog';
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Alert } from '@/components/ui/alert';
-import { Field, FormRow } from '@/components/ui/field';
-import {
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
-} from '@/components/ui/select';
+import { EmField, EmSelect } from '../../components/vc/EntityModal';
+import ConfirmSheet from '../../components/vc/ConfirmSheet';
+import { CfgSection, CfgGroup, CfgFields, CfgBadge } from './settings/CfgSection';
 import { PermissionSelector } from './components/PermissionSelector';
+import '../../components/vc/entity-card.css';
 import './AdminV2.css';
+import './settings/settings-page.css';
 
 const emptyForm = {
   name: '', display_name: '', description: '', is_active: true, permission_ids: [],
@@ -178,7 +171,7 @@ export default function AdminV2RoleDetail() {
   if (loading) {
     return (
       <AdminV2Layout>
-        <div className="admin-v2-page"><div className="admin-v2-loading">Loading role…</div></div>
+        <div className="admin-v2-page"><p className="cfg-loading">Loading role…</p></div>
       </AdminV2Layout>
     );
   }
@@ -186,132 +179,126 @@ export default function AdminV2RoleDetail() {
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
-        <div className="tw space-y-6">
-          <div className="flex items-center justify-between gap-3">
+        <div className="cfg">
+          <div className="cfg-crumb">
             <button
-              className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+              type="button"
+              className="cfg-back"
               onClick={() => navigate('/care/configuration/users/roles')}
             >
-              <ChevronLeftIcon size={16} /> Roles
+              <ChevronLeftIcon size={14} /> Roles
             </button>
-            <div className="flex items-center gap-2">
-              {role?.is_system_role && <Badge variant="secondary">System role</Badge>}
+            <div className="cfg-crumb-tags">
+              {role?.is_system_role && <CfgBadge>System role</CfgBadge>}
               {typeof role?.user_count === 'number' && (
-                <Badge variant="secondary">{role.user_count} {role.user_count === 1 ? 'user' : 'users'}</Badge>
+                <CfgBadge>{role.user_count} {role.user_count === 1 ? 'user' : 'users'}</CfgBadge>
               )}
-              <Badge variant={role?.is_active ? 'success' : 'secondary'}>
+              <CfgBadge tone={role?.is_active ? 'ok' : undefined}>
                 {role?.is_active ? 'Active' : 'Inactive'}
-              </Badge>
+              </CfgBadge>
             </div>
           </div>
 
-          {error && <Alert variant="destructive" role="alert">{error}</Alert>}
-          {success && <Alert variant="success" role="status">{success}</Alert>}
+          {error && <p className="em-error" role="alert">{error}</p>}
+          {success && <p className="em-success" role="status">{success}</p>}
 
-          {/* Basic details */}
-          <Card>
-            <CardHeader>
-              <CardTitle>{role ? role.display_name : 'Role'}</CardTitle>
-              <p className="text-sm text-muted-foreground">{role?.name} · Basic details</p>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              <FormRow>
-                <Field label="Role Name (code)" htmlFor="rd-name" hint="Role code cannot be changed">
-                  <Input id="rd-name" value={formData.name} disabled />
-                </Field>
-                <Field label="Display Name" required htmlFor="rd-display">
-                  <Input
+          <CfgSection
+            title={role ? role.display_name : 'Role'}
+            subtitle={`${role?.name ?? ''} · Basic details`}
+            actions={
+              <>
+                {role && !role.is_system_role && hasPermission('roles.delete') && (
+                  <button type="button" className="em-danger" onClick={() => setShowDelete(true)}>
+                    Delete role
+                  </button>
+                )}
+                <button type="button" className="em-submit" onClick={saveDetails} disabled={savingDetails}>
+                  {savingDetails ? 'Saving…' : 'Save details'}
+                </button>
+              </>
+            }
+          >
+            <CfgGroup>
+              <CfgFields narrow>
+                <EmField label="Role Name (code)" htmlFor="rd-name" hint="Role code cannot be changed">
+                  <input id="rd-name" className="em-input" value={formData.name} disabled />
+                </EmField>
+                <EmField label="Display Name" required htmlFor="rd-display">
+                  <input
                     id="rd-display"
+                    className="em-input"
                     value={formData.display_name}
                     onChange={e => setFormData({ ...formData, display_name: e.target.value })}
                     required
                   />
-                </Field>
-              </FormRow>
+                </EmField>
+              </CfgFields>
 
-              <Field label="Description" htmlFor="rd-desc">
-                <Input
-                  id="rd-desc"
-                  value={formData.description}
-                  onChange={e => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Brief description of this role"
-                />
-              </Field>
+              {/* Wrapped so it shares the same 58rem measure as the rows
+                  above and below rather than spanning the whole card. */}
+              <CfgFields>
+                <EmField label="Description" htmlFor="rd-desc">
+                  <input
+                    id="rd-desc"
+                    className="em-input"
+                    value={formData.description}
+                    onChange={e => setFormData({ ...formData, description: e.target.value })}
+                    placeholder="Brief description of this role"
+                  />
+                </EmField>
+              </CfgFields>
 
-              <Field
-                label="Status"
-                hint={role?.is_system_role ? 'System roles cannot be deactivated' : undefined}
-              >
-                <Select
-                  value={formData.is_active ? 'active' : 'inactive'}
-                  onValueChange={(v) => setFormData({ ...formData, is_active: v === 'active' })}
-                  disabled={role?.is_system_role}
+              <CfgFields narrow>
+                <EmField
+                  label="Status"
+                  htmlFor="rd-status"
+                  hint={role?.is_system_role ? 'System roles cannot be deactivated' : undefined}
                 >
-                  <SelectTrigger className="sm:w-48"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="inactive">Inactive</SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
-            </CardContent>
-            <CardFooter className="flex flex-wrap gap-3">
-              <Button onClick={saveDetails} disabled={savingDetails}>
-                {savingDetails ? 'Saving…' : 'Save details'}
-              </Button>
-              {role && !role.is_system_role && hasPermission('roles.delete') && (
-                <Button variant="destructive" className="sm:ml-auto" onClick={() => setShowDelete(true)}>
-                  Delete role
-                </Button>
-              )}
-            </CardFooter>
-          </Card>
+                  <EmSelect
+                    id="rd-status"
+                    value={formData.is_active ? 'active' : 'inactive'}
+                    onChange={(e) => setFormData({ ...formData, is_active: e.target.value === 'active' })}
+                    disabled={role?.is_system_role}
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </EmSelect>
+                </EmField>
+              </CfgFields>
+            </CfgGroup>
+          </CfgSection>
 
-          {/* Permissions */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Permissions</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Choose what users with this role are allowed to do.
-              </p>
-            </CardHeader>
-            <CardContent>
+          <CfgSection
+            title="Permissions"
+            subtitle="Choose what users with this role are allowed to do."
+            actions={
+              <button type="button" className="em-submit" onClick={savePermissions} disabled={savingPerms}>
+                {savingPerms ? 'Saving…' : 'Save permissions'}
+              </button>
+            }
+          >
+            <CfgGroup>
               <PermissionSelector
                 permissionsByCategory={permissionsByCategory}
                 selectedIds={formData.permission_ids}
                 onToggle={handlePermissionToggle}
               />
-            </CardContent>
-            <CardFooter>
-              <Button onClick={savePermissions} disabled={savingPerms}>
-                {savingPerms ? 'Saving…' : 'Save permissions'}
-              </Button>
-            </CardFooter>
-          </Card>
+            </CfgGroup>
+          </CfgSection>
         </div>
 
-        {/* Delete confirmation */}
-        <Dialog open={showDelete} onOpenChange={(o) => { if (!o) setShowDelete(false); }}>
-          <DialogContent className="sm:max-w-[420px]">
-            <DialogHeader>
-              <DialogTitle>Delete Role</DialogTitle>
-            </DialogHeader>
-            <div className="flex flex-col gap-2 text-sm">
-              <p className="text-foreground">
-                Are you sure you want to delete the role <strong>{role?.display_name}</strong>?
-              </p>
-              <p className="text-muted-foreground">
-                This will remove the role from all users who have it assigned. This action cannot be undone.
-              </p>
-            </div>
-            <DialogFooter>
-              <Button variant="secondary" onClick={() => setShowDelete(false)}>Cancel</Button>
-              <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-                {deleting ? 'Deleting…' : 'Delete Role'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <ConfirmSheet
+          open={showDelete}
+          onOpenChange={(o) => { if (!o) setShowDelete(false); }}
+          title="Delete Role"
+          confirmLabel="Delete Role"
+          tone="destructive"
+          busy={deleting}
+          onConfirm={handleDelete}
+        >
+          Delete the role <strong>{role?.display_name}</strong>? This removes it from every
+          user who has it assigned and cannot be undone.
+        </ConfirmSheet>
       </div>
     </AdminV2Layout>
   );

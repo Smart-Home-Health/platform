@@ -19,6 +19,8 @@ Pydantic models for schedule-related API requests/responses
 from typing import List, Optional
 from pydantic import BaseModel
 
+from models.nutrition import NutritionIntakeItemPart
+
 
 class CompleteItemRequest(BaseModel):
     """Request model for completing a scheduled item (medication, nutrition, or care task)"""
@@ -35,6 +37,9 @@ class CompleteItemRequest(BaseModel):
     amount: Optional[float] = None
     amount_unit: Optional[str] = None
     item_name: Optional[str] = None
+    # Multi-item feed: when present, wins over amount/amount_unit/item_name
+    # and over the schedule's component mix.
+    items: Optional[List[NutritionIntakeItemPart]] = None
     # Set to True to bypass the >1h-early administration guard
     early_override: bool = False
     # Set to True to record the item as skipped rather than completed

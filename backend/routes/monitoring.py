@@ -17,11 +17,12 @@
 Monitoring and alerts routes
 """
 import logging
+import math
 from collections import defaultdict
 from fastapi import APIRouter, Depends, Body, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_
+from sqlalchemy import func, and_, text
 from typing import Optional, List
 from datetime import datetime, date, time, timedelta, timezone
 from utils.datetime_utils import resolve_tz_for_patient
@@ -172,6 +173,71 @@ async def analyze_pulse_ox_history(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error analyzing pulse ox data: {str(e)}")
+
+
+# Buckets the recent-history endpoint may snap to. Coarser than 5 minutes is
+# never needed: 24 h / 300 s ≈ 288 points.
+RECENT_BUCKET_STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 300]
+
+
+@router.get("/history/recent")
+async def get_recent_pulse_ox_history(
+        patient_id: int,
+        minutes: int = 15,
+        max_points: int = 600,
+        db: Session = Depends(get_db),
+        _: bool = Depends(require_read_access)
+):
+    """Recent pulse-ox series for the live dashboard charts, downsampled
+    server-side (TimescaleDB time_bucket) so any window returns a bounded
+    number of points. Excludes the in-band disconnect sentinel (spo2 = -1)."""
+    minutes = max(1, min(minutes, 1440))
+    max_points = max(50, min(max_points, 2000))
+    raw_bucket = math.ceil(minutes * 60 / max_points)
+    bucket_seconds = next((s for s in RECENT_BUCKET_STEPS if s >= raw_bucket), RECENT_BUCKET_STEPS[-1])
+
+    start = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+    params = {"pid": patient_id, "start": start}
+
+    if bucket_seconds == 1:
+        rows = db.execute(text("""
+            SELECT timestamp AS ts, spo2::float AS spo2, bpm::float AS bpm, pa AS perfusion
+            FROM pulse_ox_data
+            WHERE patient_id = :pid AND timestamp >= :start AND spo2 <> -1
+            ORDER BY timestamp
+        """), params).all()
+    else:
+        params["bucket"] = bucket_seconds
+        rows = db.execute(text("""
+            SELECT time_bucket(make_interval(secs => :bucket), timestamp) AS ts,
+                   AVG(spo2)::float AS spo2, AVG(bpm)::float AS bpm, AVG(pa)::float AS perfusion
+            FROM pulse_ox_data
+            WHERE patient_id = :pid AND timestamp >= :start AND spo2 <> -1
+            GROUP BY 1 ORDER BY 1
+        """), params).all()
+
+    def epoch_ms(ts):
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return int(ts.timestamp() * 1000)
+
+    points = [
+        {
+            "t": epoch_ms(r.ts),
+            "spo2": round(r.spo2, 1) if r.spo2 is not None else None,
+            "bpm": round(r.bpm, 1) if r.bpm is not None else None,
+            "perfusion": round(r.perfusion, 2) if r.perfusion is not None else None,
+        }
+        for r in rows
+    ]
+
+    return {
+        "patient_id": patient_id,
+        "minutes": minutes,
+        "bucket_seconds": bucket_seconds,
+        "count": len(points),
+        "points": points,
+    }
 
 
 @router.get("/history/raw/{date}", response_model=PulseOxDataResponse)
@@ -363,32 +429,32 @@ async def get_timeline_data(
             'notes': v.notes
         } for v in vitals_query]
 
-        # 7. Monitoring alerts for that day
-        all_alerts = get_monitoring_alerts(
-            db, limit=200, include_acknowledged=True, patient_id=patient_id
-        )
-        alerts = []
-        for a in all_alerts:
-            start_time = a.get('start_time')
-            if start_time:
-                if isinstance(start_time, str):
-                    alert_dt = datetime.fromisoformat(start_time)
-                else:
-                    alert_dt = start_time
-                # Check if alert falls within local day boundaries (in UTC)
-                naive_alert = alert_dt.replace(tzinfo=None) if alert_dt.tzinfo else alert_dt
-                if start_dt <= naive_alert <= end_dt:
-                    end_time = a.get('end_time')
-                    alerts.append({
-                        'start': start_time.isoformat() if hasattr(start_time, 'isoformat') else start_time,
-                        'end': end_time.isoformat() if end_time and hasattr(end_time, 'isoformat') else end_time,
-                        'spo2_alarm': a.get('spo2_alarm_triggered', False),
-                        'hr_alarm': a.get('hr_alarm_triggered', False),
-                        'spo2_min': a.get('spo2_min'),
-                        'bpm_min': a.get('bpm_min'),
-                        'oxygen_used': a.get('oxygen_used', False),
-                        'acknowledged': a.get('acknowledged', False)
-                    })
+        # 7. Monitoring alerts for that day.
+        #
+        # Queried against the day bounds like every other stream above. This
+        # used to pull the 200 most recent alerts for the patient and filter
+        # them down afterwards, which quietly returned nothing for any day
+        # sitting further than 200 alerts back — the timeline then showed a
+        # busy day as having none.
+        from schemas.monitoring_alert import MonitoringAlert
+        alert_rows = db.query(MonitoringAlert).filter(
+            MonitoringAlert.patient_id == patient_id,
+            MonitoringAlert.start_time >= start_dt,
+            MonitoringAlert.start_time <= end_dt
+        ).order_by(MonitoringAlert.start_time.asc()).all()
+        alerts = [{
+            'id': a.id,
+            'start': a.start_time.isoformat() if a.start_time else None,
+            # Null end means still open. Never synthesise one — a fabricated
+            # end becomes a fabricated duration downstream.
+            'end': a.end_time.isoformat() if a.end_time else None,
+            'spo2_alarm': bool(a.spo2_alarm_triggered),
+            'hr_alarm': bool(a.hr_alarm_triggered),
+            'spo2_min': a.spo2_min,
+            'bpm_min': a.bpm_min,
+            'oxygen_used': bool(a.oxygen_used),
+            'acknowledged': bool(a.acknowledged),
+        } for a in alert_rows]
 
         return {
             'date': date_str,

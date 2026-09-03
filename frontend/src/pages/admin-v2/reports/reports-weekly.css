@@ -1,0 +1,267 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Weekly summary, on top of the shared report chrome in report-surface.css.
+ * Only this page's own pieces live here: the vital cards, the care bars and
+ * the equipment row.
+ *
+ * The vitals are full-width charts rather than sparklines in a table cell —
+ * a week of daily points is unreadable at thumbnail size, and the page is
+ * allowed to scroll. */
+@import './report-surface.css';
+
+/* ---- week header ---- */
+
+/* Capped so the week doesn't stretch across a desktop the way it fills a phone. */
+.wk-head { display: flex; align-items: center; gap: 0.4rem; max-width: 460px; }
+.wk-period {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 0 0.6rem;
+  border: 1px solid var(--rpt-line);
+  border-radius: 10px;
+  background: var(--rpt-surface);
+  font-family: var(--vc-font-mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--rpt-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wk-nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border: 1px solid var(--rpt-line);
+  border-radius: 10px;
+  background: var(--rpt-surface);
+  color: var(--rpt-text-2);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.wk-nav:hover:not(:disabled) { color: var(--rpt-text); border-color: var(--rpt-accent); }
+.wk-nav:disabled { opacity: 0.4; cursor: default; }
+
+/* ---- vital cards ---- */
+
+.wk-rangebar { display: flex; justify-content: flex-end; }
+.wk-rangebar .rpt-toggle { margin-left: 0; }
+
+.wk-vital-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.7rem 0.8rem 0.4rem;
+}
+.wk-vital-name {
+  font-family: var(--vc-font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--wk-series, var(--rpt-accent));
+}
+.wk-vital-avg {
+  font-family: var(--vc-font-mono);
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--rpt-text);
+}
+.wk-vital-avg span { font-size: 11px; color: var(--rpt-text-3); margin-left: 0.15rem; }
+.wk-vital-range {
+  margin-left: auto;
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--rpt-text-3);
+  white-space: nowrap;
+}
+.wk-vital-range b { color: var(--rpt-text-2); font-weight: 700; }
+/* Only the reading that went under the configured alarm turns red. */
+.wk-vital-range b.breach { color: var(--rpt-breach); }
+.wk-vital-plot { height: 150px; padding: 0 0.5rem 0.4rem; }
+.wk-vital-foot {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.8rem 0.6rem;
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--rpt-text-3);
+}
+.wk-link {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 28px;
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--rpt-accent);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.wk-link:hover { color: var(--rpt-text); }
+
+/* ---- care bars ---- */
+
+.wk-group { padding: 0.7rem 0.8rem; border-top: 1px solid var(--rpt-line); }
+.wk-group:first-of-type { border-top: none; }
+.wk-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.45rem;
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--rpt-text);
+}
+.wk-group-count { margin-left: auto; font-size: 10px; color: var(--rpt-text-3); }
+.wk-bar {
+  display: flex;
+  height: 26px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--rpt-raised);
+}
+.wk-seg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--vc-bg-base);
+  overflow: hidden;
+}
+.wk-seg.ok { background: var(--rpt-ok); }
+/* Adherence never uses red — late, missed and skipped are all amber or grey. */
+.wk-seg.warn { background: var(--rpt-alarm); }
+.wk-seg.muted { background: var(--rpt-text-3); }
+.wk-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.45rem;
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--rpt-text-3);
+}
+.wk-legend span { display: inline-flex; align-items: center; gap: 0.3rem; }
+.wk-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  display: inline-block;
+}
+.wk-legend i.ok { background: var(--rpt-ok); }
+.wk-legend i.warn { background: var(--rpt-alarm); }
+.wk-legend i.muted { background: var(--rpt-text-3); }
+.wk-legend b { color: var(--rpt-text-2); }
+
+/* ---- bar charts ---- */
+
+.wk-plot { height: 190px; padding: 0.6rem; }
+.wk-note {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.8rem 0.7rem;
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--rpt-text-3);
+}
+
+/* ---- equipment + symptoms ---- */
+
+.wk-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.8rem;
+  border-top: 1px solid var(--rpt-line);
+  font-size: 13px;
+  color: var(--rpt-text);
+}
+.wk-row:first-of-type { border-top: none; }
+.wk-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wk-row-due {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--rpt-text-3);
+}
+.wk-row-due.overdue { color: var(--rpt-alarm); }
+.wk-clear {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.7rem 0.8rem;
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--rpt-ok);
+}
+
+.wk-shared {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--rpt-ok);
+  text-align: center;
+}
+
+/* Print: the summary is meant to be taken to an appointment. AdminV2.css drops
+   the app chrome (sidebar, headers, `.rpt-actions`); this drops what is left
+   that only exists to be pressed, and lets the cards use the page. */
+@media print {
+  .wk-nav, .wk-link { display: none !important; }
+  .rpt { max-width: none; }
+}

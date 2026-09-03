@@ -132,3 +132,84 @@ def test_update_user_rejects_non_digit_pin(admin_client, target_user):
         json={"full_name": "Target Test", "pin": "abcd"},
     )
     assert resp.status_code == 422
+
+
+# --- GET /api/users/{id}/activity -------------------------------------------
+def _audit(db_session, user_id, action, details=None, minutes_ago=0):
+    import json as _json
+    from datetime import datetime, timedelta
+    from models.users import AuditLog
+    entry = AuditLog(
+        user_id=user_id,
+        action=action,
+        details=_json.dumps(details) if details is not None else None,
+        timestamp=datetime.utcnow() - timedelta(minutes=minutes_ago),
+    )
+    db_session.add(entry)
+    db_session.commit()
+    return entry
+
+
+def test_activity_returns_the_users_own_events(admin_client, db_session, target_user):
+    _audit(db_session, target_user.id, "login.success", {"method": "password"}, minutes_ago=5)
+    _audit(db_session, target_user.id, "pin_auth.success", {"method": "pin"}, minutes_ago=1)
+
+    resp = admin_client.get(f"/api/users/{target_user.id}/activity")
+    assert resp.status_code == 200, resp.text
+    actions = [e["action"] for e in resp.json()]
+    # Newest first.
+    assert actions == ["pin_auth.success", "login.success"]
+    assert all(e["actor_name"] is None for e in resp.json())
+
+
+def test_activity_includes_admin_actions_naming_this_user(
+    admin_client, admin_user, db_session, target_user
+):
+    _audit(
+        db_session, admin_user.id, "user.password_reset.admin_set",
+        {"target_user_id": target_user.id, "username": target_user.username},
+    )
+
+    entries = admin_client.get(f"/api/users/{target_user.id}/activity").json()
+    assert [e["action"] for e in entries] == ["user.password_reset.admin_set"]
+    assert entries[0]["actor_name"] == "Admin Test"
+
+
+def test_activity_excludes_admin_actions_aimed_at_someone_else(
+    admin_client, admin_user, db_session, target_user
+):
+    # The admin resetting a third party's password is logged against the admin;
+    # it must not surface on the admin's own page as something done to them.
+    _audit(
+        db_session, admin_user.id, "user.password_reset.admin_set",
+        {"target_user_id": target_user.id},
+    )
+    _audit(db_session, admin_user.id, "login.success", {"method": "password"})
+
+    entries = admin_client.get(f"/api/users/{admin_user.id}/activity").json()
+    assert [e["action"] for e in entries] == ["login.success"]
+
+
+def test_activity_honours_limit(admin_client, db_session, target_user):
+    for i in range(6):
+        _audit(db_session, target_user.id, "login.success", minutes_ago=i)
+
+    assert len(admin_client.get(f"/api/users/{target_user.id}/activity?limit=3").json()) == 3
+
+
+def test_activity_readable_by_the_user_themselves(client, db_session, account, target_user):
+    from tests.conftest import _auth
+    _audit(db_session, target_user.id, "login.success")
+
+    own_client = _auth(client, target_user, account)
+    resp = own_client.get(f"/api/users/{target_user.id}/activity")
+    assert resp.status_code == 200
+    assert len(resp.json()) == 1
+
+
+def test_activity_denied_without_users_read(limited_client, target_user):
+    assert limited_client.get(f"/api/users/{target_user.id}/activity").status_code == 403
+
+
+def test_activity_unknown_user_404(admin_client):
+    assert admin_client.get("/api/users/999999/activity").status_code == 404

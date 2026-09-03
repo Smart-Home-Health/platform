@@ -26,7 +26,7 @@ from zoneinfo import ZoneInfo
 from db import get_db
 from dependencies import require_read_access
 from crud.scheduling import get_scheduled_medications, get_scheduled_care_tasks
-from utils.datetime_utils import resolve_tz_for_patient
+from utils.datetime_utils import resolve_tz_for_patient, make_utc
 
 
 def _pg_tz(db: Session, patient_id: int) -> str:
@@ -533,7 +533,26 @@ async def overnight_summary(
         # Estimate minutes below 90 — each sample is roughly 4 seconds apart
         time_below_90_min = round(below_90 * 4 / 60, 1)
 
+        # How much of the window the sensor actually covered: minutes that hold
+        # at least one reading. Counted rather than derived from the sample
+        # count, because readers differ in cadence — at 2s per sample a
+        # 4s-per-sample estimate reports a full night no matter how many gaps
+        # there were.
+        window_minutes = round((utc_end - utc_start).total_seconds() / 60, 1)
+        covered_minutes = db.execute(text("""
+            SELECT COUNT(DISTINCT date_trunc('minute', timestamp)) AS mins
+            FROM pulse_ox_data
+            WHERE patient_id = :pid
+              AND timestamp >= :start AND timestamp < :end
+              AND spo2 IS NOT NULL AND spo2 > 0
+              AND bpm IS NOT NULL AND bpm > 0
+        """), {"pid": patient_id, "start": utc_start, "end": utc_end}).scalar() or 0
+        coverage_minutes = round(min(float(covered_minutes), window_minutes), 1)
+
         vitals_summary = {
+            "sample_count": int(vitals_rows.sample_count),
+            "coverage_minutes": coverage_minutes,
+            "window_minutes": window_minutes,
             "spo2": {
                 "min": int(vitals_rows.spo2_min),
                 "avg": round(vitals_rows.spo2_avg, 1),
@@ -573,7 +592,7 @@ async def overnight_summary(
         SELECT id, start_time, end_time,
                spo2_min, spo2_max, bpm_min, bpm_max,
                spo2_alarm_triggered, hr_alarm_triggered,
-               oxygen_used, oxygen_highest, acknowledged
+               oxygen_used, oxygen_highest, acknowledged, end_source
         FROM monitoring_alerts
         WHERE patient_id = :pid
           AND start_time >= :start AND start_time < :end
@@ -588,16 +607,28 @@ async def overnight_summary(
     oxygen_highest_flow = 0
 
     for a in alert_rows:
-        end_t = a.end_time or utc_end
-        duration = (end_t - a.start_time).total_seconds() / 60
-        duration = round(duration, 1)
-        total_alert_minutes += duration
-        if duration > longest_alert_minutes:
-            longest_alert_minutes = duration
+        # start_time/end_time are timestamptz, so the driver hands back aware
+        # datetimes while the window bounds are naive UTC. Normalise before
+        # any arithmetic — subtracting the two kinds raises.
+        start_t = make_utc(a.start_time)
+        end_t = make_utc(a.end_time) if a.end_time else None
+
+        # An alert with no end_time was never closed. The episode itself is
+        # real, but its length is not knowable: the sensor data usually shows
+        # the desat recovered minutes later while the row stayed open, so
+        # running it to the end of the window would invent hours of alert
+        # time. Count the episode, leave the duration unknown, and keep it
+        # out of the totals.
+        duration = round((end_t - start_t).total_seconds() / 60, 1) if end_t else None
+        if duration is not None:
+            total_alert_minutes += duration
+            if duration > longest_alert_minutes:
+                longest_alert_minutes = duration
 
         if a.oxygen_used:
             oxygen_episodes += 1
-            oxygen_total_minutes += duration
+            if duration is not None:
+                oxygen_total_minutes += duration
             if a.oxygen_highest and a.oxygen_highest > oxygen_highest_flow:
                 oxygen_highest_flow = a.oxygen_highest
 
@@ -605,6 +636,11 @@ async def overnight_summary(
             "start_time": a.start_time.isoformat(),
             "end_time": a.end_time.isoformat() if a.end_time else None,
             "duration_minutes": duration,
+            "unclosed": end_t is None,
+            # The end was reconstructed from the sensor stream rather than
+            # watched happening, so the duration is an estimate.
+            "end_inferred": bool(a.end_source) and a.end_source.startswith("inferred"),
+            "end_source": a.end_source,
             "spo2_min": a.spo2_min,
             "spo2_max": a.spo2_max,
             "bpm_min": a.bpm_min,
@@ -898,6 +934,13 @@ async def overnight_summary(
             "total": len(alert_items),
             "total_duration_minutes": round(total_alert_minutes, 1),
             "longest_duration_minutes": round(longest_alert_minutes, 1),
+            # How many of those episodes have no end_time, and so contribute
+            # nothing to the durations above. Lets the UI say the totals cover
+            # only part of the night instead of silently under-reporting.
+            "unclosed": sum(1 for i in alert_items if i["unclosed"]),
+            # Of the episodes above, how many have an end we worked out after
+            # the fact. They do count toward the times, unlike unclosed ones.
+            "inferred": sum(1 for i in alert_items if i["end_inferred"]),
             "items": alert_items,
         },
         "oxygen": {
@@ -957,7 +1000,15 @@ async def weekly_summary(
             GROUP BY day ORDER BY day
         """), {"pid": patient_id, "start": utc_start, "end": utc_end}).all()
 
-        daily = [{"date": str(r.day), "avg": round(r.avg, 1)} for r in rows]
+        # Each day carries its own range, not just its mean: a week of 97%
+        # averages hides the night that dipped to 55, which is the thing the
+        # reader is looking for.
+        daily = [
+            {"date": str(r.day), "avg": round(r.avg, 1),
+             "low": round(float(r.lo), 1) if r.lo is not None else None,
+             "high": round(float(r.hi), 1) if r.hi is not None else None}
+            for r in rows
+        ]
         all_vals = [r.avg for r in rows if r.avg]
         vitals_result[key] = {
             "min": int(min(r.lo for r in rows)) if rows else None,
@@ -979,7 +1030,12 @@ async def weekly_summary(
         GROUP BY day ORDER BY day
     """), {"pid": patient_id, "start": utc_start, "end": utc_end}).all()
 
-    rr_daily = [{"date": str(r.day), "avg": round(r.avg, 1)} for r in rr_rows]
+    rr_daily = [
+        {"date": str(r.day), "avg": round(r.avg, 1),
+         "low": round(float(r.lo), 1) if r.lo is not None else None,
+         "high": round(float(r.hi), 1) if r.hi is not None else None}
+        for r in rr_rows
+    ]
     rr_vals = [r.avg for r in rr_rows if r.avg]
     vitals_result["respiratory_rate"] = {
         "min": round(min(r.lo for r in rr_rows), 1) if rr_rows else None,
@@ -1007,7 +1063,12 @@ async def weekly_summary(
             GROUP BY day ORDER BY day
         """), params).all()
 
-        daily = [{"date": str(r.day), "avg": round(r.avg, 1)} for r in rows]
+        daily = [
+            {"date": str(r.day), "avg": round(r.avg, 1),
+             "low": round(float(r.lo), 1) if r.lo is not None else None,
+             "high": round(float(r.hi), 1) if r.hi is not None else None}
+            for r in rows
+        ]
         vals = [r.avg for r in rows if r.avg]
         vitals_result[vtype] = {
             "min": round(min(r.lo for r in rows), 1) if rows else None,
@@ -1226,7 +1287,13 @@ async def weekly_summary(
         SELECT
             date(start_time AT TIME ZONE '{tz_name}') AS day,
             COUNT(*) AS cnt,
-            SUM(EXTRACT(EPOCH FROM (COALESCE(end_time, NOW()) - start_time)) / 60)::float AS total_min,
+            -- Unclosed alerts (end_time IS NULL) are counted in cnt but
+            -- excluded from the duration: COALESCE(..., NOW()) charged the
+            -- day for every minute since the row was opened, which for a
+            -- months-old orphan is a wildly inflated total.
+            SUM(EXTRACT(EPOCH FROM (end_time - start_time)) / 60)::float AS total_min,
+            SUM(CASE WHEN end_time IS NULL THEN 1 ELSE 0 END) AS unclosed,
+            SUM(CASE WHEN end_source LIKE 'inferred%' THEN 1 ELSE 0 END) AS inferred,
             SUM(CASE WHEN spo2_alarm_triggered THEN 1 ELSE 0 END) AS spo2_alarms,
             SUM(CASE WHEN hr_alarm_triggered THEN 1 ELSE 0 END) AS hr_alarms,
             SUM(CASE WHEN external_alarm_triggered THEN 1 ELSE 0 END) AS ext_alarms
@@ -1243,6 +1310,8 @@ async def weekly_summary(
         "hr_alarm": sum(r.hr_alarms for r in alert_summary_rows),
         "external": sum(r.ext_alarms for r in alert_summary_rows),
     }
+    alert_unclosed = sum(r.unclosed for r in alert_summary_rows)
+    alert_inferred = sum(r.inferred for r in alert_summary_rows)
     alert_daily = [{"date": str(r.day), "count": r.cnt} for r in alert_summary_rows]
 
     # --- Equipment due ---
@@ -1310,6 +1379,8 @@ async def weekly_summary(
         "alerts": {
             "total": alert_total,
             "total_duration_minutes": round(alert_total_min, 1),
+            "unclosed": alert_unclosed,
+            "inferred": alert_inferred,
             "by_type": alert_by_type,
             "daily_counts": alert_daily,
         },

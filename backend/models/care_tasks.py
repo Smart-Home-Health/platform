@@ -21,7 +21,9 @@ from pydantic import BaseModel, Field
 # Pydantic models for care tasks
 class CareTaskCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
-    category_id: int = Field(..., gt=0)
+    # Nullable in the table, and the form offers "no category" — requiring
+    # one here turned that choice into a 422.
+    category_id: Optional[int] = Field(None, gt=0)
     description: Optional[str] = None
     active: bool = True
     patient_id: Optional[int] = None
@@ -39,7 +41,7 @@ class CareTaskResponse(BaseModel):
     id: int
     patient_id: Optional[int]
     name: str
-    category_id: int
+    category_id: Optional[int] = None
     category_name: Optional[str]
     description: Optional[str]
     active: bool

@@ -22,17 +22,15 @@ matter when someone is looking), upserting one message per low medication via
 `dedupe_key` and auto-resolving when stock recovers.
 """
 import logging
-from datetime import timedelta
 from typing import Optional, List
 
-from croniter import croniter
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from crud.medications import get_medication_stock_status
 from models.user_messages import UserMessage, UserMessageAcknowledgement
 from models.users import User
 from schemas.medication import Medication
-from schemas.medication_schedule import MedicationSchedule
 from schemas.patient import Patient
 from utils.datetime_utils import utc_now
 
@@ -280,33 +278,6 @@ def delete_message(db: Session, message_id: int) -> bool:
 
 # --- Generators -------------------------------------------------------------
 
-def estimate_daily_consumption(db: Session, medication_id: int) -> float:
-    """Average dose units consumed per day across a med's active schedules,
-    projected over the next 7 days via croniter (so weekly patterns like
-    Mon/Wed/Fri average out correctly). Returns 0 if nothing is scheduled."""
-    schedules = db.query(MedicationSchedule).filter(
-        MedicationSchedule.medication_id == medication_id,
-        MedicationSchedule.active == True  # noqa: E712
-    ).all()
-
-    now = utc_now()
-    horizon = now + timedelta(days=7)
-    total = 0.0
-    for schedule in schedules:
-        dose = float(schedule.dose_amount or 0)
-        if dose <= 0:
-            continue
-        try:
-            cron = croniter(schedule.cron_expression, now)
-            occurrence = cron.get_next(type(now))
-            while occurrence < horizon:
-                total += dose
-                occurrence = cron.get_next(type(now))
-        except Exception as e:
-            logger.warning(f"Skipping bad cron '{schedule.cron_expression}' on schedule {schedule.id}: {e}")
-    return total / 7
-
-
 def sync_low_medication_messages(db: Session) -> None:
     """Upsert a low-stock message per tracked medication, keyed
     `low_med:{medication_id}`.
@@ -337,21 +308,13 @@ def sync_low_medication_messages(db: Session) -> None:
         dedupe_key = f"low_med:{med.id}"
         threshold = med.low_stock_threshold
         threshold_type = med.low_stock_threshold_type or 'quantity'
-        quantity = float(med.quantity)
-        out_of_stock = quantity <= 0
 
-        low = False
-        days_left = None
-        if not out_of_stock and threshold is not None:
-            if threshold_type == 'days':
-                daily_rate = estimate_daily_consumption(db, med.id)
-                if daily_rate > 0:
-                    days_left = quantity / daily_rate
-                    low = days_left <= float(threshold)
-            else:
-                low = quantity <= float(threshold)
+        status = get_medication_stock_status(db, med)
+        out_of_stock = status['out_of_stock']
+        low = status['low']
+        days_left = status['days_left']
 
-        if out_of_stock or low:
+        if low:
             unit = med.quantity_unit or 'units'
             patient_name = None
             if med.patient_id:
@@ -384,11 +347,15 @@ def sync_low_medication_messages(db: Session) -> None:
                 account_id=med.account_id,
                 data={
                     "medication_id": med.id,
+                    # The reader-facing surfaces name the medication in their
+                    # follow-up link ("Review Ojemda"); the title is prose, so
+                    # the name is carried as data rather than parsed back out.
+                    "medication_name": med.name,
                     "quantity": med.quantity,
                     "quantity_unit": med.quantity_unit,
                     "low_stock_threshold": threshold,
                     "low_stock_threshold_type": threshold_type,
-                    "days_left": round(days_left, 1) if days_left is not None else None,
+                    "days_left": days_left,
                     "patient_name": patient_name,
                 },
             )

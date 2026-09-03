@@ -15,8 +15,8 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useState, useRef, useEffect } from 'react';
-import { Link, useLocation, Outlet, useSearchParams, useNavigate } from 'react-router-dom';
+import { useState, useRef, useEffect } from 'react';
+import { Link, useLocation, useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import {
@@ -26,8 +26,6 @@ import {
   TasksIcon,
   EquipmentIcon,
   NutritionIcon,
-  ProvidersIcon,
-  BusinessesIcon,
   MonitoringIcon,
   ProfileIcon,
   ConfigIcon,
@@ -43,35 +41,63 @@ import {
   BarChartIcon,
   MessagesIcon
 } from '../../components/Icons';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Alert } from '@/components/ui/alert';
+import EntityModal, { EmField } from '../../components/vc/EntityModal';
+import '../../components/vc/entity-card.css';
 import './AdminV2.css';
+import './admin-nav.css'; // grouped-nav structure (both themes)
+// Bedside-monitor skin (dark theme only) + its fonts (shared entry, deduped
+// with the capture surface). Loaded after AdminV2.css so overrides win.
+import '../../styles/vcFonts';
+import './vc-shell.css';
+import './vc-content.css';
+import ConnectionChip from '../../components/ConnectionChip';
+import PersonAvatar from '../../components/vc/PersonAvatar';
+import useConnectionStatus from '../../hooks/useConnectionStatus';
 
-// Side navigation items - main app sections
-const sideNavItems = [
-  { path: '/care', label: 'Dashboard', Icon: DashboardIcon },
-  { path: '/care/schedule', label: 'Schedule', Icon: CalendarIcon, requiredPermissions: ['medications.read', 'care_tasks.read'] },
-  { path: '/care/vitals', label: 'Vitals', Icon: ClipboardListIcon, requiredPermissions: ['vitals.read', 'vitals.create'] },
-  { path: '/care/symptoms', label: 'Symptoms', Icon: VirusIcon, requiredPermissions: ['vitals.read', 'vitals.create'] },
-  { path: '/care/monitoring', label: 'Monitoring', Icon: MonitoringIcon, requiredPermissions: ['monitoring.read', 'monitoring.create', 'monitoring.update', 'monitoring.delete'] },
-  { path: '/care/messages', label: 'Messages', Icon: MessagesIcon },
-  { path: '/care/reports', label: 'Reports', Icon: BarChartIcon, requiredPermissions: ['vitals.read'] },
-  { path: '/care/medications', label: 'Medications', Icon: MedicationsIcon, requiredPermissions: ['medications.read', 'medications.create', 'medications.update', 'medications.delete'] },
-  { path: '/care/care-tasks', label: 'Care Tasks', Icon: TasksIcon, requiredPermissions: ['care_tasks.read', 'care_tasks.create', 'care_tasks.update', 'care_tasks.delete'] },
-  { path: '/care/equipment', label: 'Equipment & Supplies', Icon: EquipmentIcon, requiredPermissions: ['equipment.read', 'equipment.create', 'equipment.update', 'equipment.delete'] },
-  { path: '/care/nutrition', label: 'Nutrition', Icon: NutritionIcon, requiredPermissions: ['nutrition.read', 'nutrition.create', 'nutrition.update', 'nutrition.delete'] },
-  { path: '/care/profile', label: 'Profile', Icon: ProfileIcon },
-  { path: '/care/configuration', label: 'Configuration', Icon: ConfigIcon, systemAdminOnly: true },
+// Side navigation, grouped into labeled sections (mockup: Overview /
+// Clinical / Care / Records / Account). The flat list is derived below for
+// active-label and permission-filtering logic.
+const sideNavGroups = [
+  {
+    label: 'Overview',
+    items: [
+      { path: '/care', label: 'Dashboard', Icon: DashboardIcon },
+      { path: '/care/schedule', label: 'Schedule', Icon: CalendarIcon, requiredPermissions: ['medications.read', 'care_tasks.read'] },
+    ],
+  },
+  {
+    label: 'Clinical',
+    items: [
+      { path: '/care/vitals', label: 'Vitals', Icon: ClipboardListIcon, requiredPermissions: ['vitals.read', 'vitals.create'] },
+      { path: '/care/symptoms', label: 'Symptoms', Icon: VirusIcon, requiredPermissions: ['vitals.read', 'vitals.create'] },
+      { path: '/care/monitoring', label: 'Monitoring', Icon: MonitoringIcon, requiredPermissions: ['monitoring.read', 'monitoring.create', 'monitoring.update', 'monitoring.delete'] },
+    ],
+  },
+  {
+    label: 'Care',
+    items: [
+      { path: '/care/medications', label: 'Medications', Icon: MedicationsIcon, requiredPermissions: ['medications.read', 'medications.create', 'medications.update', 'medications.delete'] },
+      { path: '/care/nutrition', label: 'Nutrition', Icon: NutritionIcon, requiredPermissions: ['nutrition.read', 'nutrition.create', 'nutrition.update', 'nutrition.delete'] },
+      { path: '/care/care-tasks', label: 'Care Tasks', Icon: TasksIcon, requiredPermissions: ['care_tasks.read', 'care_tasks.create', 'care_tasks.update', 'care_tasks.delete'] },
+      { path: '/care/equipment', label: 'Equipment', Icon: EquipmentIcon, requiredPermissions: ['equipment.read', 'equipment.create', 'equipment.update', 'equipment.delete'] },
+    ],
+  },
+  {
+    label: 'Records',
+    items: [
+      { path: '/care/messages', label: 'Messages', Icon: MessagesIcon },
+      { path: '/care/reports', label: 'Reports', Icon: BarChartIcon, requiredPermissions: ['vitals.read'] },
+    ],
+  },
+  {
+    label: 'Account',
+    items: [
+      { path: '/care/profile', label: 'Profile', Icon: ProfileIcon },
+      { path: '/care/configuration', label: 'Configuration', Icon: ConfigIcon, systemAdminOnly: true },
+    ],
+  },
 ];
+const sideNavItems = sideNavGroups.flatMap((g) => g.items);
 
 // Get top nav items based on current section, permissions, and read access (restricted mode hides History/Active)
 const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin) => {
@@ -98,16 +124,14 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
     medications: [
       { path: '/care/medications', label: 'Overview' },
       { path: '/care/medications/schedule', label: 'Schedule' },
-      { path: '/care/medications/history', label: 'History' },
       { path: '/care/medications/manage', label: 'Manage' },
       ...(hasAnyPermission(['audit.read'])
         ? [{ path: '/care/schedule/undo-log', label: 'Undo' }] : []),
     ],
     'care-tasks': [
       { path: '/care/care-tasks', label: 'Overview' },
-      { path: '/care/care-tasks/manage', label: 'Manage' },
+      { path: '/care/care-tasks/manage', label: 'Tasks' },
       { path: '/care/care-tasks/schedule', label: 'Schedule' },
-      { path: '/care/care-tasks/history', label: 'History' },
       ...(hasAnyPermission(['audit.read'])
         ? [{ path: '/care/schedule/undo-log', label: 'Undo' }] : []),
     ],
@@ -121,10 +145,8 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
     nutrition: [
       { path: '/care/nutrition', label: 'Overview' },
       { path: '/care/nutrition/schedule', label: 'Schedule' },
-      { path: '/care/nutrition/intake', label: 'Intake' },
-      { path: '/care/nutrition/output', label: 'Output' },
-      { path: '/care/nutrition/schedules', label: 'Manage' },
-      { path: '/care/nutrition/goals', label: 'Goals' },
+      { path: '/care/nutrition/plan', label: 'Plan' },
+      { path: '/care/nutrition/items', label: 'Items' },
       ...(hasAnyPermission(['audit.read'])
         ? [{ path: '/care/schedule/undo-log', label: 'Undo' }] : []),
     ],
@@ -160,12 +182,26 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
       { path: '/care/configuration', label: 'General' },
       ...(isSystemAdmin
         ? [{ path: '/care/configuration/account', label: 'Account' }] : []),
-      ...(hasAnyPermission(['patients.read', 'patients.create', 'patients.update', 'patients.delete'])
-        ? [{ path: '/care/configuration/patients', label: 'Patients' }] : []),
-      ...(hasAnyPermission(['users.read', 'users.create', 'users.update', 'users.delete'])
-        ? [{ path: '/care/configuration/users', label: 'Users' }] : []),
-      ...(hasAnyPermission(['roles.read', 'roles.create', 'roles.update', 'roles.delete', 'users.read'])
-        ? [{ path: '/care/configuration/users/roles', label: 'Roles' }] : []),
+      // Care profiles, users and roles are one Directory page with three
+      // tabbed routes; the tab bar entry points at the first one the user can
+      // read, and stays lit on any of them.
+      ...(hasAnyPermission([
+        'patients.read', 'patients.create', 'patients.update', 'patients.delete',
+        'users.read', 'users.create', 'users.update', 'users.delete',
+        'roles.read', 'roles.create', 'roles.update', 'roles.delete',
+      ])
+        ? [{
+          path: hasAnyPermission(['patients.read', 'patients.create', 'patients.update', 'patients.delete'])
+            ? '/care/configuration/patients'
+            : hasAnyPermission(['users.read', 'users.create', 'users.update', 'users.delete'])
+              ? '/care/configuration/users'
+              : '/care/configuration/users/roles',
+          label: 'Directory',
+          matchPaths: [
+            '/care/configuration/patients',
+            '/care/configuration/users',
+          ],
+        }] : []),
       { path: '/care/configuration/mqtt', label: 'MQTT' },
       { path: '/care/configuration/home-assistant', label: 'Home Assistant' },
       { path: '/care/configuration/environment', label: 'Environment' },
@@ -196,6 +232,7 @@ const AdminV2Layout = ({ children }) => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user, logout, switchUser, hasReadAccess, unlockWithAccountPassword } = useAuth();
+  const connection = useConnectionStatus();
   const [showUnlockModal, setShowUnlockModal] = useState(false);
   const [unlockPassword, setUnlockPassword] = useState('');
   const [unlockError, setUnlockError] = useState('');
@@ -263,11 +300,6 @@ const AdminV2Layout = ({ children }) => {
       age--;
     }
     return age;
-  };
-
-  // Get initials from patient
-  const getInitials = (patient) => {
-    return `${patient.first_name?.[0] || ''}${patient.last_name?.[0] || ''}`.toUpperCase();
   };
 
   // Handle patient selection - update context and URL if on a patient-specific page
@@ -365,6 +397,12 @@ const AdminV2Layout = ({ children }) => {
     return location.pathname === path;
   };
 
+  // A top-nav entry that fronts several routes (Directory) stays lit on all of
+  // them, including their detail pages.
+  const isTopNavActive = (item) => (item.matchPaths
+    ? item.matchPaths.some((p) => location.pathname.startsWith(p))
+    : isExactMatch(item.path));
+
   const visibleNavItems = (hasReadAccess
     ? sideNavItems.filter(item => {
         if (!item.requiredPermissions) return true;
@@ -376,6 +414,14 @@ const AdminV2Layout = ({ children }) => {
           return hasAnyPermission(item.requiredPermissions);
         })
   ).filter(item => !item.systemAdminOnly || user?.is_system_admin);
+
+  // Grouped view of the same visible set; groups with no visible items vanish.
+  const visibleNavGroups = sideNavGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => visibleNavItems.includes(item)),
+    }))
+    .filter((group) => group.items.length > 0);
 
   const handleUnlockSubmit = async (e) => {
     e.preventDefault();
@@ -392,6 +438,7 @@ const AdminV2Layout = ({ children }) => {
   };
 
   const activeNavLabel = visibleNavItems.find((item) => isActiveLink(item.path))?.label || 'Dashboard';
+  const activeSubNavLabel = topNavItems.find((item) => isTopNavActive(item))?.label || null;
 
   return (
     <div className={`admin-v2-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${mobileMenuOpen ? 'mobile-menu-open' : ''}`}>
@@ -404,6 +451,22 @@ const AdminV2Layout = ({ children }) => {
 
       {/* Side Navigation - drawer on mobile, sidebar on desktop */}
       <aside className={`admin-v2-sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
+        {/* Mobile drawer header (hidden on desktop): labeled CLOSE + breadcrumb */}
+        <div className="admin-v2-drawer-header">
+          <button
+            type="button"
+            className="admin-v2-drawer-close"
+            onClick={closeMobileMenu}
+            aria-label="Close navigation"
+          >
+            <XIcon size={20} />
+            <span className="admin-v2-drawer-close-caption">Close</span>
+          </button>
+          <span className="admin-v2-drawer-title">
+            SHH <span className="admin-v2-drawer-title-sep">/</span> Navigation
+          </span>
+        </div>
+
         <div className="admin-v2-sidebar-header">
           <Link to="/" className="admin-v2-logo-link">
             {!sidebarCollapsed ? (
@@ -433,17 +496,19 @@ const AdminV2Layout = ({ children }) => {
           >
             {selectedPatient ? (
               <>
-                <div className="admin-v2-patient-selector-avatar">
-                  {getInitials(selectedPatient)}
-                </div>
+                <PersonAvatar kind="patient" id={selectedPatient.id} seed={selectedPatient.avatar_seed}
+                              photo={selectedPatient.avatar_photo} size={36} decorative />
                 <div className="admin-v2-patient-selector-details">
                   <span className="admin-v2-patient-selector-name">
                     {selectedPatient.first_name} {selectedPatient.last_name}
                   </span>
                   <span className="admin-v2-patient-selector-meta">
-                    {calculateAge(selectedPatient.date_of_birth) !== null 
+                    {calculateAge(selectedPatient.date_of_birth) !== null
                       ? `Age ${calculateAge(selectedPatient.date_of_birth)}`
                       : 'Age unknown'}
+                  </span>
+                  <span className={`admin-v2-patient-selector-status ${selectedPatient.is_active ? 'active' : ''}`}>
+                    {selectedPatient.is_active ? 'Care plan active' : 'Inactive'}
                   </span>
                 </div>
                 <ChevronRightIcon size={16} className={`admin-v2-patient-selector-arrow ${showPatientDropdown ? 'open' : ''}`} />
@@ -491,9 +556,8 @@ const AdminV2Layout = ({ children }) => {
                       className={`admin-v2-patient-dropdown-item ${selectedPatient?.id === patient.id ? 'selected' : ''}`}
                       onClick={() => handleSelectPatient(patient)}
                     >
-                      <div className="admin-v2-patient-dropdown-avatar">
-                        {getInitials(patient)}
-                      </div>
+                      <PersonAvatar kind="patient" id={patient.id} seed={patient.avatar_seed}
+                                    photo={patient.avatar_photo} size={32} decorative />
                       <div className="admin-v2-patient-dropdown-info">
                         <span className="name">{patient.first_name} {patient.last_name}</span>
                         <span className="age">
@@ -514,29 +578,36 @@ const AdminV2Layout = ({ children }) => {
         {/* Collapsed Patient Avatar */}
         {sidebarCollapsed && selectedPatient && (
           <div className="admin-v2-patient-collapsed" title={`${selectedPatient.first_name} ${selectedPatient.last_name}`}>
-            <div className="admin-v2-patient-selector-avatar">
-              {getInitials(selectedPatient)}
-            </div>
+            <PersonAvatar kind="patient" id={selectedPatient.id} seed={selectedPatient.avatar_seed}
+                          photo={selectedPatient.avatar_photo} size={36}
+                          name={`${selectedPatient.first_name} ${selectedPatient.last_name}`} />
           </div>
         )}
         
         <nav className="admin-v2-sidebar-nav">
-          {visibleNavItems.map((item) => {
-            const IconComponent = item.Icon;
-            return (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={`admin-v2-sidebar-link ${isActiveLink(item.path) ? 'active' : ''}`}
-                onClick={closeMobileMenu}
-              >
-                <span className="admin-v2-sidebar-icon">
-                  <IconComponent size={18} />
-                </span>
-                <span className="admin-v2-sidebar-label">{item.label}</span>
-              </Link>
-            );
-          })}
+          {visibleNavGroups.map((group) => (
+            <div key={group.label} className="admin-v2-nav-group">
+              <span className="admin-v2-nav-group-label">{group.label}</span>
+              <div className="admin-v2-nav-group-items">
+                {group.items.map((item) => {
+                  const IconComponent = item.Icon;
+                  return (
+                    <Link
+                      key={item.path}
+                      to={getNavUrl(item.path)}
+                      className={`admin-v2-sidebar-link ${isActiveLink(item.path) ? 'active' : ''}`}
+                      onClick={closeMobileMenu}
+                    >
+                      <span className="admin-v2-sidebar-icon">
+                        <IconComponent size={18} />
+                      </span>
+                      <span className="admin-v2-sidebar-label">{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
         
         <div className="admin-v2-sidebar-footer">
@@ -566,17 +637,30 @@ const AdminV2Layout = ({ children }) => {
             Grouped in one sticky container so they never overlap each other (two sibling
             sticky bars would collide at top:0 and one would hide the other). */}
         <div className="admin-v2-pinned-top">
-          {/* Mobile header - menu button and page title (visible only on small screens) */}
+          {/* Mobile header - labeled NAV button, section + patient context,
+              live connection chip (visible only on small screens) */}
           <header className="admin-v2-mobile-header">
             <button
               type="button"
               className="admin-v2-mobile-menu-btn"
               onClick={toggleSidebar}
-              aria-label="Open menu"
+              aria-label="Open navigation"
             >
-              <MenuIcon size={24} />
+              <MenuIcon size={20} />
+              <span className="admin-v2-mobile-menu-caption">Nav</span>
             </button>
-            <span className="admin-v2-mobile-header-title">{activeNavLabel}</span>
+            <div className="admin-v2-mobile-header-titles">
+              <span className="admin-v2-mobile-header-title">{activeNavLabel}</span>
+              {(selectedPatient || activeSubNavLabel) && (
+                <span className="admin-v2-mobile-header-sub">
+                  {[selectedPatient && `${selectedPatient.first_name} ${selectedPatient.last_name}`,
+                    activeSubNavLabel]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </span>
+              )}
+            </div>
+            <ConnectionChip connection={connection} stacked />
           </header>
 
           {/* Restricted mode banner */}
@@ -603,7 +687,7 @@ const AdminV2Layout = ({ children }) => {
                   <Link
                     key={item.path}
                     to={getNavUrl(item.path)}
-                    className={`admin-v2-topnav-link ${isExactMatch(item.path) ? 'active' : ''}`}
+                    className={`admin-v2-topnav-link ${isTopNavActive(item) ? 'active' : ''}`}
                   >
                     {item.label}
                   </Link>
@@ -620,37 +704,40 @@ const AdminV2Layout = ({ children }) => {
         </div>
 
         {/* Unlock modal */}
-        <Dialog open={showUnlockModal} onOpenChange={(o) => { if (!o && !unlockLoading) setShowUnlockModal(false); }}>
-          <DialogContent className="sm:max-w-[400px]">
-            <DialogHeader>
-              <DialogTitle>Unlock read access</DialogTitle>
-              <DialogDescription>Enter account password to view data.</DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleUnlockSubmit} className="flex flex-col gap-3">
-              {unlockError && <Alert variant="destructive">{unlockError}</Alert>}
-              <Input
+        <EntityModal
+          open={showUnlockModal}
+          onOpenChange={(o) => { if (!o && !unlockLoading) setShowUnlockModal(false); }}
+          title="Unlock read access"
+        >
+          <form onSubmit={handleUnlockSubmit} className="em-form">
+            <p className="em-hint">Enter account password to view data.</p>
+            {unlockError && <div className="em-error" role="alert">{unlockError}</div>}
+            <EmField label="Account password" htmlFor="layout-unlock-password">
+              <input
+                id="layout-unlock-password"
+                className="em-input"
                 type="password"
                 value={unlockPassword}
                 onChange={e => setUnlockPassword(e.target.value)}
                 placeholder="Account password"
                 autoFocus
               />
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => !unlockLoading && setShowUnlockModal(false)}
-                  disabled={unlockLoading}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={unlockLoading}>
-                  {unlockLoading ? 'Unlocking...' : 'Unlock'}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+            </EmField>
+            <div className="em-footer">
+              <button
+                type="button"
+                className="em-cancel"
+                onClick={() => !unlockLoading && setShowUnlockModal(false)}
+                disabled={unlockLoading}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="em-submit" disabled={unlockLoading}>
+                {unlockLoading ? 'Unlocking...' : 'Unlock'}
+              </button>
+            </div>
+          </form>
+        </EntityModal>
 
         {/* Page Content */}
         <main className={`admin-v2-content ${topNavItems.length > 0 ? 'with-topnav' : ''}`}>

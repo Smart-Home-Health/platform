@@ -23,13 +23,15 @@
 // flow): import -> review -> count -> done. Every piece of state is
 // checkpointed to sessionStorage — iOS discards backgrounded tabs on Photos
 // trips and reloads the SPA, so the wizard must survive a reload anywhere.
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
+import PatientGate from './components/PatientGate';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
-import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { BarcodeIcon, CheckIcon, PlusIcon, XIcon, EquipmentIcon } from '../../components/Icons';
+import { EmSelect } from '../../components/vc/EntityModal';
+import { CfgBadge } from './settings/CfgSection';
+import '../../components/vc/entity-card.css';
+import { BarcodeIcon, XIcon, EquipmentIcon } from '../../components/Icons';
 import PackingSlipCapture from './components/PackingSlipCapture';
 import CsvItemImport from './components/CsvItemImport';
 import SupplyCountFields from './components/SupplyCountFields';
@@ -448,48 +450,56 @@ const AdminV2InventorySetup = () => {
 
   // --- Render -----------------------------------------------------------------
   if (loadingPatients) {
-    return <AdminV2Layout><div className="admin-v2-loading">Loading patients...</div></AdminV2Layout>;
+    return (
+      <AdminV2Layout>
+        <div className="admin-v2-page"><p className="cfg-loading">Loading patients...</p></div>
+      </AdminV2Layout>
+    );
   }
   if (!selectedPatient) {
-    return <AdminV2Layout><div className="admin-v2-loading">Select a patient from the sidebar</div></AdminV2Layout>;
+    return (
+      <AdminV2Layout>
+        <div className="admin-v2-page">
+          <PatientGate message="Choose a patient to set up their inventory." />
+        </div>
+      </AdminV2Layout>
+    );
   }
 
   const BUCKET_CHIP = {
-    match: { label: 'Looks like one of yours', badge: 'admin-v2-badge-info' },
-    ready: { label: 'Looks solid', badge: 'admin-v2-badge-success' },
-    review: { label: 'Check this one', badge: 'admin-v2-badge-warning' },
-    noise: { label: 'Probably noise', badge: 'admin-v2-badge-danger' },
+    match: { label: 'Looks like one of yours', tone: 'live' },
+    ready: { label: 'Looks solid', tone: 'ok' },
+    review: { label: 'Check this one', tone: 'warn' },
+    noise: { label: 'Probably noise', tone: 'alert' },
   };
 
   const renderCard = (c) => (
-    <div key={c.key} className="admin-v2-card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div key={c.key} className="cfg-card pad">
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-          {c.itemNumber && <span className="admin-v2-text-muted">#{c.itemNumber}</span>}
-          {c.uom && <span className="admin-v2-badge">{c.uom}</span>}
-          {c.source === 'barcode' && (
-            <span className="admin-v2-badge admin-v2-badge-success"><CheckIcon size={12} /> scanned</span>
-          )}
-          {c.seenOnSlips > 1 && (
-            <span className="admin-v2-badge admin-v2-badge-info">Seen on {c.seenOnSlips} slips</span>
-          )}
-          {c.origin === 'csv' && <span className="admin-v2-badge">from your file</span>}
-          {c.origin === 'manual' && <span className="admin-v2-badge">typed in</span>}
+        <div className="cfg-crumb-tags">
+          {c.itemNumber && <span className="cfg-fine">#{c.itemNumber}</span>}
+          {c.uom && <CfgBadge>{c.uom}</CfgBadge>}
+          {c.source === 'barcode' && <CfgBadge tone="ok">scanned</CfgBadge>}
+          {c.seenOnSlips > 1 && <CfgBadge tone="live">Seen on {c.seenOnSlips} slips</CfgBadge>}
+          {c.origin === 'csv' && <CfgBadge>from your file</CfgBadge>}
+          {c.origin === 'manual' && <CfgBadge>typed in</CfgBadge>}
         </div>
         <button
-          className="admin-v2-btn admin-v2-btn-sm admin-v2-btn-secondary"
+          type="button"
+          className="cfg-iconbtn"
           onClick={() => setCardAction(c.key, 'skip')}
           title="Skip this one"
+          aria-label="Skip this one"
         >
           <XIcon size={14} />
         </button>
       </div>
 
-      <div className="tw" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <select
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <EmSelect
+          aria-label="What to do with this item"
           value={c.action === 'match' ? String(c.equipmentId || '') : c.action}
           onChange={(e) => setCardAction(c.key, e.target.value)}
-          style={{ width: '100%', padding: '8px' }}
         >
           <option value="add">Add to my supply list</option>
           <optgroup label="It's one of my supplies…">
@@ -498,48 +508,50 @@ const AdminV2InventorySetup = () => {
             ))}
           </optgroup>
           <option value="skip">Skip it</option>
-        </select>
+        </EmSelect>
         {c.action === 'match' && c.matchHow && (
-          <span className="admin-v2-badge admin-v2-badge-info" style={{ alignSelf: 'flex-start' }}>
-            our best guess — check it
-          </span>
+          <CfgBadge tone="live">our best guess — check it</CfgBadge>
         )}
 
         {c.action === 'add' && (
           <>
-            <label className="admin-v2-text-muted" style={{ fontSize: '0.75rem', marginBottom: -6 }}>
+            <label className="cfg-fine" style={{ marginBottom: -6 }}>
               What do you call it?
             </label>
             <input
               type="text"
+              className="em-input"
               value={c.name}
               placeholder="e.g. Trach ties"
               onChange={(e) => updateCard(c.key, 'name', e.target.value)}
-              style={{ width: '100%', padding: '8px' }}
             />
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              <select
-                value={c.category}
-                onChange={(e) => updateCard(c.key, 'category', e.target.value)}
-                style={{ padding: '8px', flex: '1 1 120px' }}
-              >
-                {CATEGORY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
+              <span style={{ flex: '1 1 120px' }}>
+                <EmSelect
+                  aria-label="Category"
+                  value={c.category}
+                  onChange={(e) => updateCard(c.key, 'category', e.target.value)}
+                >
+                  {CATEGORY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </EmSelect>
+              </span>
               <input
                 type="text"
+                className="em-input"
                 value={c.storageLocation}
                 placeholder="Where it lives (Vent shelf…)"
                 list="invsetup-locations"
                 onChange={(e) => updateCard(c.key, 'storageLocation', e.target.value)}
-                style={{ padding: '8px', flex: '2 1 160px' }}
+                style={{ flex: '2 1 160px' }}
               />
               <input
                 type="number" min="1" inputMode="numeric"
+                className="em-input"
                 value={c.unitSize}
                 placeholder="Per package"
                 title="How many come in one package?"
                 onChange={(e) => updateCard(c.key, 'unitSize', e.target.value)}
-                style={{ padding: '8px', width: 110 }}
+                style={{ width: 110 }}
               />
             </div>
           </>
@@ -557,120 +569,122 @@ const AdminV2InventorySetup = () => {
           ))}
         </datalist>
 
-        {error && (
-          <div className="tw" style={{ marginBottom: 12 }}>
-            <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>
-          </div>
-        )}
+        {error && <div className="em-error" role="alert">{error}</div>}
 
         {/* ------------------------------ Step 1 ------------------------------ */}
         {step === 'import' && (
-          <div className="admin-v2-section">
-            <div className="admin-v2-section-header"><h2>Let's build your supply list</h2></div>
-            <p className="admin-v2-text-muted">
+          <section className="cfg">
+            <div className="cfg-pagehead"><h2 className="cfg-h1">Let&apos;s build your supply list</h2></div>
+            <p className="cfg-pagehead-desc">
               Grab a few recent packing slips — even old ones. We read them; you just check our work.
               Counts come later; this step is only about what you use.
             </p>
 
-            <div className="tw" style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 560 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 560 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <label className="admin-v2-text-muted" style={{ fontSize: '0.8rem' }}>
+                <label className="cfg-fine" htmlFor="invsetup-supplier">
                   Who are these slips from?
                 </label>
-                <select
+                <EmSelect
+                  id="invsetup-supplier"
                   value={supplierId}
                   onChange={(e) => setSupplierId(e.target.value)}
-                  style={{ padding: '10px', width: '100%' }}
                 >
-                  <option value="">I'm not sure</option>
+                  <option value="">I&apos;m not sure</option>
                   {suppliers.map((s) => (
                     <option key={s.id} value={String(s.id)}>{s.name}</option>
                   ))}
-                </select>
+                </EmSelect>
               </div>
 
-              <Button size="lg" onClick={() => setScanChooser('slip')}>
-                <BarcodeIcon size={16} /> {slips.length ? 'Scan another slip' : 'Scan a packing slip'}
-              </Button>
-              <Button variant="secondary" size="lg" onClick={() => setShowCsv(true)}>
+              <button type="button" className="em-submit" onClick={() => setScanChooser('slip')}>
+                {slips.length ? 'Scan another slip' : 'Scan a packing slip'}
+              </button>
+              <button type="button" className="em-cancel" onClick={() => setShowCsv(true)}>
                 Upload a spreadsheet (CSV)
-              </Button>
-              <Button variant="secondary" size="lg" onClick={() => setShowManual((v) => !v)}>
-                <PlusIcon size={16} /> Type one in myself
-              </Button>
+              </button>
+              <button type="button" className="em-cancel" onClick={() => setShowManual((v) => !v)}>
+                Type one in myself
+              </button>
 
               {showManual && (
-                <div className="admin-v2-card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div className="cfg-card pad">
                   <input
-                    type="text" value={manual.name} placeholder="What do you call it? (required)"
+                    type="text" className="em-input" value={manual.name}
+                    placeholder="What do you call it? (required)"
                     onChange={(e) => setManual({ ...manual, name: e.target.value })}
-                    style={{ padding: '8px' }}
                   />
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                     <input
-                      type="text" value={manual.item_number} placeholder="Item # (if you know it)"
+                      type="text" className="em-input" value={manual.item_number}
+                      placeholder="Item # (if you know it)"
                       onChange={(e) => setManual({ ...manual, item_number: e.target.value })}
-                      style={{ padding: '8px', flex: '1 1 130px' }}
+                      style={{ flex: '1 1 130px' }}
                     />
                     <input
-                      type="text" value={manual.storage_location} placeholder="Where it lives"
+                      type="text" className="em-input" value={manual.storage_location}
+                      placeholder="Where it lives"
                       list="invsetup-locations"
                       onChange={(e) => setManual({ ...manual, storage_location: e.target.value })}
-                      style={{ padding: '8px', flex: '1 1 130px' }}
+                      style={{ flex: '1 1 130px' }}
                     />
                     <input
-                      type="number" min="1" value={manual.unit_size} placeholder="Per package"
+                      type="number" min="1" className="em-input" value={manual.unit_size}
+                      placeholder="Per package"
                       onChange={(e) => setManual({ ...manual, unit_size: e.target.value })}
-                      style={{ padding: '8px', width: 110 }}
+                      style={{ width: 110 }}
                     />
                   </div>
-                  <Button onClick={addManual} disabled={!manual.name.trim()}>
-                    <PlusIcon size={16} /> Add it to the pile
-                  </Button>
+                  <button type="button" className="em-submit" onClick={addManual} disabled={!manual.name.trim()}>
+                    Add it to the pile
+                  </button>
                 </div>
               )}
 
               {(slips.length > 0 || extraDrafts.length > 0) && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                <div className="cfg-crumb-tags">
                   {slips.map((slip, i) => (
-                    <span key={i} className="admin-v2-badge admin-v2-badge-success">
+                    <CfgBadge key={i} tone="ok">
                       Slip {i + 1} — {slipItemCount(slip)} item{slipItemCount(slip) === 1 ? '' : 's'}
-                    </span>
+                    </CfgBadge>
                   ))}
                   {extraDrafts.length > 0 && (
-                    <span className="admin-v2-badge admin-v2-badge-success">
-                      {extraDrafts.length} more from file/typing
-                    </span>
+                    <CfgBadge tone="ok">{extraDrafts.length} more from file/typing</CfgBadge>
                   )}
                 </div>
               )}
 
-              <Button
-                size="lg"
+              <button
+                type="button"
+                className="em-submit"
                 onClick={() => setScanChooser('review')}
                 disabled={slips.length === 0 && extraDrafts.length === 0}
               >
                 Done — show me what you found
-              </Button>
-              <Button variant="ghost" onClick={() => { sessionClear(...sessionKeys()); window.history.back(); }}>
+              </button>
+              <button
+                type="button"
+                className="em-cancel"
+                onClick={() => { sessionClear(...sessionKeys()); window.history.back(); }}
+              >
                 Cancel
-              </Button>
+              </button>
             </div>
-          </div>
+          </section>
         )}
 
         {/* ------------------------------ Step 2 ------------------------------ */}
         {step === 'review' && cards && (
-          <div className="admin-v2-section">
-            <div className="admin-v2-section-header"><h2>Here's what we found</h2></div>
-            <p className="admin-v2-text-muted">
+          <section className="cfg">
+            <div className="cfg-pagehead"><h2 className="cfg-h1">Here&apos;s what we found</h2></div>
+            <p className="cfg-pagehead-desc">
               One at a time: the slip line we read is on top, what we made of it is
               below. Fix, match, or skip — and if a line is garbled, grab the real
               item and scan the barcode on its box.
             </p>
 
             {cards.length === 0 ? (
-              <p className="admin-v2-text-muted">Nothing came through — go back and scan again.</p>
+              <p className="cfg-empty">Nothing came through — go back and scan again.</p>
             ) : (() => {
               const idx = Math.min(reviewIndex, cards.length - 1);
               const c = cards[idx];
@@ -681,21 +695,19 @@ const AdminV2InventorySetup = () => {
               return (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 560 }}>
                   {/* Position + confidence */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <strong>Item {idx + 1} of {cards.length}</strong>
-                    <span className={`admin-v2-badge ${chip.badge}`}>{chip.label}</span>
-                    {c.action === 'skip' && <span className="admin-v2-badge">skipping this one</span>}
+                  <div className="cfg-crumb-tags">
+                    <strong className="cfg-h1" style={{ fontSize: 13 }}>Item {idx + 1} of {cards.length}</strong>
+                    <CfgBadge tone={chip.tone}>{chip.label}</CfgBadge>
+                    {c.action === 'skip' && <CfgBadge>skipping this one</CfgBadge>}
                   </div>
 
                   {/* Evidence: the line OCR was looking at — photo strip first */}
-                  <div className="admin-v2-card" style={{ padding: 12 }}>
-                    <div className="admin-v2-text-muted" style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>
-                      What we saw on the slip
-                    </div>
+                  <div className="cfg-card pad">
+                    <div className="cfg-stat-label">What we saw on the slip</div>
                     {c.image && (
                       // Fixed readable height, swipe sideways for the rest of
                       // the line — a slip row is ~30x wider than it is tall.
-                      <div style={{ overflowX: 'auto', marginBottom: 8, borderRadius: 6, background: '#fff' }}>
+                      <div style={{ overflowX: 'auto', borderRadius: 4, background: '#fff' }}>
                         <img
                           src={c.image}
                           alt="The slip line this came from"
@@ -703,14 +715,14 @@ const AdminV2InventorySetup = () => {
                         />
                       </div>
                     )}
-                    <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.85rem', overflowWrap: 'anywhere' }}>
+                    <div style={{ fontFamily: 'var(--vc-font-mono)', fontSize: '0.85rem', overflowWrap: 'anywhere' }}>
                       {c.raw
                         || (c.source === 'barcode' ? `Line barcode: ${[c.uom, c.itemNumber].filter(Boolean).join(' ')}` : null)
                         || c.description
                         || 'Nothing readable — just a number fragment.'}
                     </div>
                     {c.source === 'barcode' && c.raw && (
-                      <div className="admin-v2-text-muted" style={{ fontSize: '0.78rem', marginTop: 4 }}>
+                      <div className="cfg-fine">
                         Plus its line barcode: {[c.uom, c.itemNumber].filter(Boolean).join(' ')}
                       </div>
                     )}
@@ -721,9 +733,10 @@ const AdminV2InventorySetup = () => {
 
                   {/* Barcode the physical box — straight into the scanner
                       confirmed on the way in, so a bad read is one tap to redo. */}
-                  <div className="tw flex flex-wrap items-center gap-2">
-                    <Button
-                      variant="secondary"
+                  <div className="cfg-crumb-tags">
+                    <button
+                      type="button"
+                      className="cfg-ghost"
                       onClick={() => {
                         if (reviewScanMode === 'camera') setShowItemScan(true);
                         else if (reviewScanMode === 'external') setShowExternalItem(true);
@@ -731,30 +744,28 @@ const AdminV2InventorySetup = () => {
                       }}
                     >
                       <BarcodeIcon size={16} /> {c.productBarcode ? "Rescan the item's barcode" : "Scan the item's barcode"}
-                    </Button>
+                    </button>
                     {reviewScanMode && (
-                      <Button variant="ghost" size="sm" onClick={() => setScanChooser('item')}>
+                      <button type="button" className="cfg-ghost" onClick={() => setScanChooser('item')}>
                         Switch scanner
-                      </Button>
+                      </button>
                     )}
                     {c.productBarcode && (
-                      <span className="admin-v2-badge admin-v2-badge-success">
-                        <CheckIcon size={12} /> box barcode saved · {c.productBarcode}
-                      </span>
+                      <CfgBadge tone="ok">box barcode saved · {c.productBarcode}</CfgBadge>
                     )}
                   </div>
 
                   {/* Forward / back */}
-                  <div className="tw flex items-center gap-2" style={{ justifyContent: 'space-between' }}>
-                    <Button variant="secondary" size="lg" disabled={idx === 0} onClick={() => setReviewIndex(idx - 1)}>
+                  <div className="cfg-toolbar">
+                    <button type="button" className="em-cancel" disabled={idx === 0} onClick={() => setReviewIndex(idx - 1)}>
                       Back
-                    </Button>
-                    <span className="admin-v2-text-muted" style={{ fontSize: '0.8rem', textAlign: 'center' }}>
+                    </button>
+                    <span className="cfg-fine" style={{ textAlign: 'center' }}>
                       {addCount} adding · {matchCount} matched · {skipCount} skipped
                     </span>
-                    <Button size="lg" disabled={idx >= cards.length - 1} onClick={() => setReviewIndex(idx + 1)}>
+                    <button type="button" className="em-submit" disabled={idx >= cards.length - 1} onClick={() => setReviewIndex(idx + 1)}>
                       Next
-                    </Button>
+                    </button>
                   </div>
 
                   <BarcodeScanDialog
@@ -772,65 +783,68 @@ const AdminV2InventorySetup = () => {
               );
             })()}
 
-            <div className="tw flex flex-wrap gap-2" style={{ marginTop: 14 }}>
-              <Button size="lg" onClick={handleSaveCatalog} disabled={saving || activeCards.length === 0}>
-                <CheckIcon size={16} /> {saving ? 'Saving…' : `Save my supply list (${activeCards.length})`}
-              </Button>
-              <Button variant="secondary" onClick={() => setStep('import')} disabled={saving}>
+            <div className="cfg-actions" style={{ marginTop: 14 }}>
+              <button
+                type="button"
+                className="em-submit"
+                onClick={handleSaveCatalog}
+                disabled={saving || activeCards.length === 0}
+              >
+                {saving ? 'Saving…' : `Save my supply list (${activeCards.length})`}
+              </button>
+              <button type="button" className="em-cancel" onClick={() => setStep('import')} disabled={saving}>
                 Back — scan more slips
-              </Button>
+              </button>
             </div>
             {activeCards.length === 0 && cards.length > 0 && (
-              <p className="admin-v2-text-muted" style={{ marginTop: 8 }}>
+              <p className="cfg-fine" style={{ marginTop: 8 }}>
                 Everything is set to skip — nothing would be saved.
               </p>
             )}
-          </div>
+          </section>
         )}
 
         {/* ------------------------------ Step 3 ------------------------------ */}
         {step === 'count' && (
-          <div className="admin-v2-section">
-            <div className="admin-v2-section-header"><h2>Now the closet: count what you have</h2></div>
-            <p className="admin-v2-text-muted">
-              Packages first, then loose ones. Skip anything you can't reach today —
+          <section className="cfg">
+            <div className="cfg-pagehead"><h2 className="cfg-h1">Now the closet: count what you have</h2></div>
+            <p className="cfg-pagehead-desc">
+              Packages first, then loose ones. Skip anything you can&apos;t reach today —
               you can always count later from the Supplies page.
             </p>
 
             {countRows().length === 0 ? (
-              <p className="admin-v2-text-muted">Nothing to count yet — add some supplies first.</p>
+              <p className="cfg-empty">Nothing to count yet — add some supplies first.</p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {countRows().map((eq) => {
                   const fields = countFieldsFor(eq);
                   const saved = counts[eq.id]?.saved;
                   return (
-                    <div key={eq.id} className="admin-v2-card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div key={eq.id} className="cfg-card pad">
                       <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
                         <div>
                           <strong>{eq.name}</strong>
                           {eq.storage_location && (
-                            <span className="admin-v2-text-muted" style={{ marginLeft: 8 }}>{eq.storage_location}</span>
+                            <span className="cfg-fine" style={{ marginLeft: 8 }}>{eq.storage_location}</span>
                           )}
                         </div>
-                        {saved && (
-                          <span className="admin-v2-badge admin-v2-badge-success">
-                            <CheckIcon size={12} /> counted
-                          </span>
-                        )}
+                        {saved && <CfgBadge tone="ok">counted</CfgBadge>}
                       </div>
                       <SupplyCountFields
                         value={fields}
                         onChange={(v) => setCountFields(eq.id, v)}
                         disabled={savingCountId === eq.id}
                       />
-                      <div className="tw flex gap-2">
-                        <Button
+                      <div className="cfg-actions">
+                        <button
+                          type="button"
+                          className="cfg-ghost"
                           onClick={() => saveCount(eq)}
                           disabled={savingCountId === eq.id}
                         >
                           {savingCountId === eq.id ? 'Saving…' : saved ? 'Save again' : 'Save count'}
-                        </Button>
+                        </button>
                       </div>
                     </div>
                   );
@@ -839,32 +853,32 @@ const AdminV2InventorySetup = () => {
             )}
 
             <div
-              className="tw flex flex-wrap items-center gap-2"
-              style={{ position: 'sticky', bottom: 0, background: 'var(--admin-v2-bg, inherit)', padding: '10px 0', marginTop: 12 }}
+              className="cfg-toolbar"
+              style={{ position: 'sticky', bottom: 0, background: 'var(--vc-bg-base)', padding: '10px 0', marginTop: 12 }}
             >
-              <span className="admin-v2-text-muted">
+              <span className="cfg-fine">
                 {savedCount} counted · {Math.max(0, countRows().length - savedCount)} left
               </span>
-              <Button size="lg" onClick={finish}>Finish up</Button>
+              <button type="button" className="em-submit" onClick={finish}>Finish up</button>
             </div>
-          </div>
+          </section>
         )}
 
         {/* ------------------------------ Step 4 ------------------------------ */}
         {step === 'done' && (
-          <div className="admin-v2-empty-state">
+          <div className="cfg-nopatient">
             <EquipmentIcon size={48} />
-            <h3>All set</h3>
-            <p className="admin-v2-text-muted">
+            <h2>All set</h2>
+            <p>
               Your supply list is ready. From now on, when a delivery arrives you just
               scan the slip and confirm the numbers.
             </p>
-            <div className="tw flex flex-wrap justify-center gap-2">
-              <Link to={`/care/equipment/inventory?patient=${patientId}`}>
-                <Button size="lg">See what's on hand</Button>
+            <div className="cfg-actions">
+              <Link className="em-submit" to={`/care/equipment/inventory?patient=${patientId}`}>
+                See what&apos;s on hand
               </Link>
-              <Link to={`/care/equipment/shipments?patient=${patientId}`}>
-                <Button variant="secondary" size="lg">Go to deliveries</Button>
+              <Link className="em-cancel" to={`/care/equipment/shipments?patient=${patientId}`}>
+                Go to deliveries
               </Link>
             </div>
           </div>

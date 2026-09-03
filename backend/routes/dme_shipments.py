@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from db import get_db
-from dependencies import get_current_user, require_permission
+from dependencies import get_current_user, get_optional_account_id, require_permission
 from models.users import User
 from crud import dme_shipments as crud
 
@@ -155,6 +155,7 @@ def parse_datetime(dt_str: Optional[str]) -> Optional[datetime]:
 async def create_shipment(
     data: ShipmentCreate,
     db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id),
     current_user: User = Depends(get_current_user)
 ):
     """Create a new DME shipment"""
@@ -172,7 +173,8 @@ async def create_shipment(
             warehouse_loc=data.warehouse_loc,
             notes=data.notes,
             created_by=current_user.id,
-            is_template=data.is_template
+            is_template=data.is_template,
+            account_id=account_id
         )
         
         if shipment:
@@ -192,7 +194,8 @@ async def list_shipments(
     is_template: Optional[bool] = None,
     skip: int = 0,
     limit: int = 50,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id)
 ):
     """List shipments with optional filters"""
     try:
@@ -204,7 +207,8 @@ async def list_shipments(
             is_backorder=is_backorder,
             is_template=is_template,
             skip=skip,
-            limit=limit
+            limit=limit,
+            account_id=account_id
         )
         return {"shipments": shipments}
     except Exception as e:
@@ -215,11 +219,12 @@ async def list_shipments(
 @router.get("/backorders", dependencies=[Depends(require_permission("shipments.read"))])
 async def get_pending_backorders(
     patient_id: Optional[int] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id)
 ):
     """Get all pending backorder shipments"""
     try:
-        backorders = crud.get_pending_backorders(db, patient_id=patient_id)
+        backorders = crud.get_pending_backorders(db, patient_id=patient_id, account_id=account_id)
         return {"backorders": backorders}
     except Exception as e:
         logger.error(f"Error fetching backorders: {e}")
@@ -231,7 +236,8 @@ async def get_alerts(
     patient_id: Optional[int] = None,
     alert_type: Optional[str] = None,
     resolved: Optional[str] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id)
 ):
     """Get shipment alerts with optional filters"""
     try:
@@ -239,7 +245,8 @@ async def get_alerts(
             db, 
             patient_id=patient_id,
             alert_type=alert_type,
-            resolved=resolved == 'true' if resolved else None
+            resolved=resolved == 'true' if resolved else None,
+            account_id=account_id
         )
         return {"alerts": alerts, "count": len(alerts)}
     except Exception as e:
@@ -250,11 +257,12 @@ async def get_alerts(
 @router.get("/inventory", dependencies=[Depends(require_permission("shipments.read"))])
 async def get_inventory(
     patient_id: Optional[int] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id)
 ):
     """Supplies-on-hand summary: per-equipment quantity vs par/reorder levels"""
     try:
-        items = crud.get_inventory_summary(db, patient_id=patient_id)
+        items = crud.get_inventory_summary(db, patient_id=patient_id, account_id=account_id)
         return {
             "inventory": items,
             "counts": {
@@ -271,11 +279,12 @@ async def get_inventory(
 @router.get("/{shipment_id}", dependencies=[Depends(require_permission("shipments.read"))])
 async def get_shipment(
     shipment_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id)
 ):
     """Get a specific shipment with all items and receipts"""
     try:
-        shipment = crud.get_shipment(db, shipment_id)
+        shipment = crud.get_shipment(db, shipment_id, account_id=account_id)
         if not shipment:
             raise HTTPException(status_code=404, detail="Shipment not found")
         return shipment
@@ -290,7 +299,8 @@ async def get_shipment(
 async def update_shipment(
     shipment_id: int,
     data: ShipmentUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id)
 ):
     """Update a shipment"""
     try:
@@ -301,7 +311,7 @@ async def update_shipment(
             if field in update_data and update_data[field]:
                 update_data[field] = parse_datetime(update_data[field])
         
-        success = crud.update_shipment(db, shipment_id, **update_data)
+        success = crud.update_shipment(db, shipment_id, account_id=account_id, **update_data)
         return {"success": success}
     except Exception as e:
         logger.error(f"Error updating shipment {shipment_id}: {e}")
@@ -312,7 +322,8 @@ async def update_shipment(
 async def patch_shipment(
     shipment_id: int,
     data: ShipmentUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id)
 ):
     """Partially update a shipment (e.g., change status)"""
     try:
@@ -323,7 +334,7 @@ async def patch_shipment(
             if field in update_data and update_data[field]:
                 update_data[field] = parse_datetime(update_data[field])
         
-        success = crud.update_shipment(db, shipment_id, **update_data)
+        success = crud.update_shipment(db, shipment_id, account_id=account_id, **update_data)
         if success:
             return {"success": True}
         else:
@@ -338,7 +349,8 @@ async def patch_shipment(
 @router.delete("/{shipment_id}", dependencies=[Depends(require_permission("shipments.delete"))])
 async def delete_shipment(
     shipment_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id)
 ):
     """
     Delete a shipment. Guarded: once anything has been received (receipts
@@ -362,7 +374,7 @@ async def delete_shipment(
         )
 
     try:
-        success = crud.delete_shipment(db, shipment_id)
+        success = crud.delete_shipment(db, shipment_id, account_id=account_id)
         return {"success": success}
     except Exception as e:
         logger.error(f"Error deleting shipment {shipment_id}: {e}")
@@ -372,12 +384,13 @@ async def delete_shipment(
 @router.post("/{shipment_id}/copy", dependencies=[Depends(require_permission("shipments.create"))])
 async def copy_shipment(
     shipment_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id)
 ):
     """Copy a shipment with all items as a new draft"""
     try:
         # Get the original shipment
-        original = crud.get_shipment(db, shipment_id)
+        original = crud.get_shipment(db, shipment_id, account_id=account_id)
         if not original:
             raise HTTPException(status_code=404, detail="Shipment not found")
         
@@ -392,6 +405,7 @@ async def copy_shipment(
             expected_delivery=None,
             tracking_number=None,
             ship_method=original.get('ship_method'),
+            account_id=account_id,
             warehouse_loc=original.get('warehouse_loc'),
             notes=f"Copied from shipment #{shipment_id}"
         )
@@ -415,7 +429,8 @@ async def copy_shipment(
                 unit_description=item.get('unit_description'),
                 unit_price=item.get('unit_price'),
                 lot_number=None,  # Clear lot number
-                notes=item.get('notes')
+                notes=item.get('notes'),
+                account_id=account_id
             )
         
         logger.info(f"Copied shipment {shipment_id} to new shipment {new_shipment.id}")
@@ -435,13 +450,15 @@ async def copy_shipment(
 async def add_shipment_item(
     shipment_id: int,
     data: ShipmentItemCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id)
 ):
     """Add an item to a shipment"""
     try:
         item = crud.add_shipment_item(
             db,
             shipment_id=shipment_id,
+            account_id=account_id,
             **data.model_dump()
         )
         
@@ -457,7 +474,8 @@ async def add_shipment_item(
 async def add_shipment_items_bulk(
     shipment_id: int,
     items: List[ShipmentItemCreate],
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id)
 ):
     """
     Add many items in one call — used by the invoice/packing-slip scanner to
@@ -470,7 +488,7 @@ async def add_shipment_items_bulk(
     created = []
     errors = []
     for entry in items:
-        item = crud.add_shipment_item(db, shipment_id=shipment_id, **entry.model_dump())
+        item = crud.add_shipment_item(db, shipment_id=shipment_id, account_id=account_id, **entry.model_dump())
         if item:
             created.append(item.id)
         else:
@@ -489,12 +507,13 @@ async def update_shipment_item(
     shipment_id: int,
     item_id: int,
     data: ShipmentItemUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id)
 ):
     """Update a shipment item"""
     try:
         update_data = data.model_dump(exclude_unset=True)
-        success = crud.update_shipment_item(db, item_id, **update_data)
+        success = crud.update_shipment_item(db, item_id, shipment_id=shipment_id, account_id=account_id, **update_data)
         return {"success": success}
     except Exception as e:
         logger.error(f"Error updating item {item_id}: {e}")
@@ -505,11 +524,12 @@ async def update_shipment_item(
 async def delete_shipment_item(
     shipment_id: int,
     item_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id)
 ):
     """Delete a shipment item"""
     try:
-        success = crud.delete_shipment_item(db, item_id)
+        success = crud.delete_shipment_item(db, item_id, shipment_id=shipment_id, account_id=account_id)
         return {"success": success}
     except Exception as e:
         logger.error(f"Error deleting item {item_id}: {e}")
@@ -523,6 +543,7 @@ async def receive_items(
     shipment_id: int,
     items: List[ReceiveItem],
     db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -540,7 +561,9 @@ async def receive_items(
                 condition=item_data.condition,
                 discrepancy_notes=item_data.discrepancy_notes,
                 lot_number=item_data.lot_number,
-                expiration_date=parse_datetime(item_data.expiration_date)
+                expiration_date=parse_datetime(item_data.expiration_date),
+                shipment_id=shipment_id,
+                account_id=account_id
             )
             
             if receipt:
@@ -561,12 +584,13 @@ async def receive_items(
 async def get_item_receipts(
     shipment_id: int,
     item_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id)
 ):
     """Get all receipts for a specific item"""
     try:
-        receipts = crud.get_item_receipts(db, item_id)
-        totals = crud.get_total_received(db, item_id)
+        receipts = crud.get_item_receipts(db, item_id, shipment_id=shipment_id, account_id=account_id)
+        totals = crud.get_total_received(db, item_id, shipment_id=shipment_id, account_id=account_id)
         return {
             "receipts": receipts,
             "totals": totals
@@ -582,6 +606,7 @@ async def get_item_receipts(
 async def finalize_shipment(
     shipment_id: int,
     db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -591,7 +616,7 @@ async def finalize_shipment(
     - Update status to complete or partial
     """
     try:
-        result = crud.finalize_shipment(db, shipment_id, finalized_by=current_user.id)
+        result = crud.finalize_shipment(db, shipment_id, finalized_by=current_user.id, account_id=account_id)
         return result
     except Exception as e:
         logger.error(f"Error finalizing shipment {shipment_id}: {e}")
@@ -603,11 +628,12 @@ async def finalize_shipment(
 @router.get("/{shipment_id}/alerts", dependencies=[Depends(require_permission("shipments.read"))])
 async def get_shipment_alerts(
     shipment_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id)
 ):
     """Get all alerts for a shipment"""
     try:
-        alerts = crud.get_shipment_alerts(db, shipment_id)
+        alerts = crud.get_shipment_alerts(db, shipment_id, account_id=account_id)
         return {"alerts": alerts}
     except Exception as e:
         logger.error(f"Error fetching alerts for shipment {shipment_id}: {e}")
@@ -619,6 +645,7 @@ async def resolve_alert(
     alert_id: int,
     data: ResolveAlert,
     db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id),
     current_user: User = Depends(get_current_user)
 ):
     """Mark an alert as resolved"""
@@ -627,7 +654,8 @@ async def resolve_alert(
             db,
             alert_id,
             resolved_by=current_user.id,
-            resolution_notes=data.resolution_notes
+            resolution_notes=data.resolution_notes,
+            account_id=account_id
         )
         return {"success": success}
     except Exception as e:
@@ -639,6 +667,7 @@ async def resolve_alert(
 async def create_followup_order(
     data: CreateFollowupOrder,
     db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id),
     current_user: User = Depends(get_current_user)
 ):
     """Create a follow-up order from one or more unresolved alerts"""
@@ -646,7 +675,8 @@ async def create_followup_order(
         result = crud.create_followup_order(
             db,
             alert_ids=data.alert_ids,
-            created_by=current_user.id
+            created_by=current_user.id,
+            account_id=account_id
         )
         return result
     except Exception as e:
@@ -661,6 +691,7 @@ async def create_delivery(
     template_id: int,
     data: CreateDelivery = Body(default=CreateDelivery()),
     db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id),
     current_user: User = Depends(get_current_user)
 ):
     """Create a delivery from a standing-order template ("the usual order")"""
@@ -669,7 +700,8 @@ async def create_delivery(
             db,
             template_id=template_id,
             expected_delivery=parse_datetime(data.expected_delivery),
-            created_by=current_user.id
+            created_by=current_user.id,
+            account_id=account_id
         )
         return result
     except Exception as e:
@@ -684,6 +716,7 @@ async def reconcile_shipment(
     shipment_id: int,
     data: ReconcileRequest,
     db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -707,7 +740,8 @@ async def reconcile_shipment(
             mode=data.mode,
             items=items,
             confirmed_delivery_date=parse_datetime(data.confirmed_delivery_date),
-            user_id=current_user.id
+            user_id=current_user.id,
+            account_id=account_id
         )
         return result
     except Exception as e:
@@ -729,6 +763,7 @@ async def upload_shipment_document(
     page_number: Optional[int] = Form(None),
     title: Optional[str] = Form(None),
     db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id),
     current_user: User = Depends(get_current_user)
 ):
     """Attach a packing-slip image/PDF to a shipment (repeat for multi-page slips)"""
@@ -747,7 +782,8 @@ async def upload_shipment_document(
         content_type=content_type,
         title=title or file.filename,
         page_number=page_number,
-        uploaded_by=current_user.id
+        uploaded_by=current_user.id,
+        account_id=account_id
     )
     if not doc:
         raise HTTPException(status_code=404, detail="Shipment not found")
@@ -757,20 +793,22 @@ async def upload_shipment_document(
 @router.get("/{shipment_id}/documents", dependencies=[Depends(require_permission("shipments.read"))])
 async def list_shipment_documents(
     shipment_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id)
 ):
     """List packing-slip documents attached to a shipment"""
-    return {"documents": crud.list_shipment_documents(db, shipment_id)}
+    return {"documents": crud.list_shipment_documents(db, shipment_id, account_id=account_id)}
 
 
 @router.get("/{shipment_id}/documents/{document_id}/raw", dependencies=[Depends(require_permission("shipments.read"))])
 async def get_shipment_document_raw(
     shipment_id: int,
     document_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id)
 ):
     """Serve the stored packing-slip blob for inline viewing"""
-    doc = crud.get_shipment_document(db, shipment_id, document_id)
+    doc = crud.get_shipment_document(db, shipment_id, document_id, account_id=account_id)
     if not doc or not doc.file_path:
         raise HTTPException(status_code=404, detail="Document not found")
     return FileResponse(doc.file_path, media_type=doc.content_type or "application/octet-stream")
@@ -780,10 +818,11 @@ async def get_shipment_document_raw(
 async def delete_shipment_document(
     shipment_id: int,
     document_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_optional_account_id)
 ):
     """Delete a packing-slip document (blob + metadata)"""
-    success = crud.delete_shipment_document(db, shipment_id, document_id)
+    success = crud.delete_shipment_document(db, shipment_id, document_id, account_id=account_id)
     if not success:
         raise HTTPException(status_code=404, detail="Document not found")
     return {"success": True}

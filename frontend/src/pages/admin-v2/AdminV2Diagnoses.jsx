@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
 import { PatientSelectorModal } from './components';
@@ -23,57 +23,24 @@ import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import {
-  PlusIcon,
-  EditIcon,
   TrashIcon,
-  CheckIcon,
   ClipboardListIcon,
-  NotesIcon
+  NotesIcon,
+  FileTextIcon,
+  CalendarIcon,
+  AlertIcon,
+  StethoscopeIcon,
 } from '../../components/Icons';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Alert } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
-import { Field, FormRow } from '@/components/ui/field';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
-import { cn } from '@/lib/utils';
+import EntityCard from '../../components/vc/EntityCard';
+import EntityToolbar from '../../components/vc/EntityToolbar';
+import EntityModal, { EmField, EmRow, EmSelect } from '../../components/vc/EntityModal';
 import './AdminV2.css';
 
-// Radix Select forbids an empty-string value, so use a sentinel for "none".
-const NONE = '__none__';
-
-const statusVariant = (status) => (
-  { active: 'success', resolved: 'muted', chronic: 'warning', in_remission: 'info', ruled_out: 'danger' }[status] || 'muted'
+// Tag tones per the vc color roles: amber = ongoing concern, green = resolved,
+// accent = in remission, muted for historical/ruled-out.
+const statusTone = (status) => (
+  { active: 'due', chronic: 'due', in_remission: 'accent', resolved: 'complete', ruled_out: 'idle' }[status] || 'idle'
 );
-const severityVariant = (severity) => (
-  { mild: 'success', moderate: 'warning', severe: 'danger', critical: 'danger' }[severity] || 'muted'
-);
-
-// Label/value row used inside the diagnosis cards.
-function Row({ label, value }) {
-  return (
-    <div className="flex justify-between gap-3">
-      <span className="shrink-0 text-muted-foreground">{label}:</span>
-      <span className="text-right text-foreground">{value}</span>
-    </div>
-  );
-}
 
 const AdminV2Diagnoses = () => {
   const { user } = useAuth();
@@ -187,7 +154,7 @@ const AdminV2Diagnoses = () => {
       fetchProviders();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helpers are recreated each render; effect is keyed on patient/filter changes only
-  }, [selectedPatient, activeTab, filterStatus, filterCategory]);
+  }, [selectedPatient, filterStatus, filterCategory]);
 
   const fetchLookupData = async () => {
     try {
@@ -216,7 +183,9 @@ const AdminV2Diagnoses = () => {
       setLoading(true);
       setError(null);
 
-      let url = `${config.apiUrl}/api/diagnoses/patient/${selectedPatient.id}?active_only=${activeTab === 'active'}`;
+      // Fetch active + inactive together so the count tabs are accurate;
+      // the tab split happens client-side.
+      let url = `${config.apiUrl}/api/diagnoses/patient/${selectedPatient.id}?active_only=false`;
       if (filterStatus) url += `&status=${encodeURIComponent(filterStatus)}`;
       if (filterCategory) url += `&category=${encodeURIComponent(filterCategory)}`;
 
@@ -464,10 +433,15 @@ const AdminV2Diagnoses = () => {
     setShowCreateModal(true);
   };
 
-  const filteredDiagnoses = diagnoses.filter(d =>
+  const matchesSearch = (d) =>
     d.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     d.icd10_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    d.category?.toLowerCase().includes(searchTerm.toLowerCase())
+    d.category?.toLowerCase().includes(searchTerm.toLowerCase());
+
+  const activeCount = diagnoses.filter((d) => d.active).length;
+  const inactiveCount = diagnoses.length - activeCount;
+  const filteredDiagnoses = diagnoses.filter(
+    (d) => (activeTab === 'active' ? d.active : !d.active) && matchesSearch(d)
   );
 
   const formatLabel = (str) => {
@@ -475,11 +449,70 @@ const AdminV2Diagnoses = () => {
     return str.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
   };
 
-  // Provider <Select> options, shared by the form + notes dialogs.
+  const badgeLabel = (str) => str.replace(/_/g, ' ').toUpperCase();
+
+  // People-style avatar: first letters of the first two words of the name.
+  const diagnosisInitials = (name) =>
+    (name || '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+
+  // The Primary tag occupies the card's single tag slot, so status joins the
+  // badges on primary diagnoses to stay visible. A 'primary' diagnosis_type
+  // badge is dropped there — the tag already says it.
+  const diagnosisBadges = (d) => [
+    ...(d.is_primary_diagnosis && d.status ? [badgeLabel(d.status)] : []),
+    ...(d.diagnosis_type && !(d.is_primary_diagnosis && d.diagnosis_type === 'primary')
+      ? [badgeLabel(d.diagnosis_type)]
+      : []),
+    ...(d.category ? [badgeLabel(d.category)] : []),
+  ];
+
+  const diagnosisDetails = (d) => [
+    { icon: <FileTextIcon size={18} />, label: 'ICD-10 code', value: d.icd10_code },
+    {
+      icon: <CalendarIcon size={18} />,
+      label: 'Diagnosed',
+      value: d.diagnosis_date ? new Date(d.diagnosis_date).toLocaleDateString() : null,
+    },
+    ...(d.severity
+      ? [{ icon: <AlertIcon size={18} />, label: 'Severity', value: formatLabel(d.severity) }]
+      : []),
+    ...(d.diagnosing_provider_name
+      ? [{ icon: <StethoscopeIcon size={18} />, label: 'Diagnosed by', value: d.diagnosing_provider_name }]
+      : []),
+    ...(d.managing_provider_name
+      ? [{ icon: <StethoscopeIcon size={18} />, label: 'Managed by', value: d.managing_provider_name }]
+      : []),
+    ...(d.notes_count > 0
+      ? [{
+          icon: <NotesIcon size={18} />,
+          label: 'Notes',
+          value: `${d.notes_count} follow-up note${d.notes_count !== 1 ? 's' : ''}`,
+        }]
+      : []),
+  ];
+
+  const diagnosisMenu = (d) => {
+    const items = [];
+    if (hasPermission('diagnoses.update')) {
+      items.push({ label: 'Edit', onClick: () => handleEdit(d) });
+      if (!d.is_primary_diagnosis && d.active) {
+        items.push({ label: 'Set primary', onClick: () => handleSetPrimary(d.id) });
+      }
+      if (!d.active) {
+        items.push({ label: 'Activate', onClick: () => handleActivate(d.id) });
+      }
+    }
+    if (d.active && hasPermission('diagnoses.delete')) {
+      items.push({ label: 'Deactivate', onClick: () => handleDelete(d.id), danger: true });
+    }
+    return items;
+  };
+
+  // Provider select options, shared by the form + notes dialogs.
   const providerOptions = providers.map(p => (
-    <SelectItem key={p.id} value={String(p.id)}>
+    <option key={p.id} value={String(p.id)}>
       {p.title} {p.first_name} {p.last_name} ({p.specialty || p.provider_type})
-    </SelectItem>
+    </option>
   ));
 
   if (loadingPatients) {
@@ -495,149 +528,75 @@ const AdminV2Diagnoses = () => {
       <div className="admin-v2-page">
         {selectedPatient ? (
           <>
-            {error && (
-              <div className="tw mb-4">
-                <Alert variant="destructive">{error}</Alert>
+            {error && <div className="em-error ec-page-alert">{error}</div>}
+
+            <EntityToolbar
+              counts={[
+                { key: 'active', label: 'Active', count: activeCount },
+                { key: 'inactive', label: 'Inactive', count: inactiveCount },
+              ]}
+              activeCount={activeTab}
+              onCountChange={setActiveTab}
+              search={searchTerm}
+              onSearchChange={setSearchTerm}
+              searchPlaceholder="Search diagnoses"
+              filter={[
+                {
+                  value: filterStatus,
+                  onChange: setFilterStatus,
+                  label: 'Status',
+                  options: [
+                    { value: '', label: 'All statuses' },
+                    ...diagnosisStatuses.map((s) => ({ value: s, label: formatLabel(s) })),
+                  ],
+                },
+                {
+                  value: filterCategory,
+                  onChange: setFilterCategory,
+                  label: 'Category',
+                  options: [
+                    { value: '', label: 'All categories' },
+                    ...diagnosisCategories.map((c) => ({ value: c, label: formatLabel(c) })),
+                  ],
+                },
+              ]}
+              onAdd={hasPermission('diagnoses.create') ? openCreateModal : undefined}
+              addLabel="Add diagnosis"
+            />
+
+            {loading ? (
+              <div className="ec-empty">Loading diagnoses…</div>
+            ) : filteredDiagnoses.length === 0 ? (
+              <div className="ec-empty">
+                {searchTerm
+                  ? 'No diagnoses match your search.'
+                  : `No ${activeTab} diagnoses for this patient.`}
+              </div>
+            ) : (
+              <div className="ec-grid">
+                {filteredDiagnoses.map((diagnosis) => (
+                  <EntityCard
+                    key={diagnosis.id}
+                    initials={diagnosisInitials(diagnosis.name)}
+                    title={diagnosis.name}
+                    badges={diagnosisBadges(diagnosis)}
+                    tag={diagnosis.is_primary_diagnosis
+                      ? { label: 'Primary' }
+                      : { label: formatLabel(diagnosis.status), tone: statusTone(diagnosis.status) }}
+                    inactive={!diagnosis.active}
+                    details={diagnosisDetails(diagnosis)}
+                    quickActions={[
+                      {
+                        icon: <NotesIcon size={18} />,
+                        label: diagnosis.notes_count > 0 ? `Notes (${diagnosis.notes_count})` : 'Notes',
+                        onClick: () => openNotesModal(diagnosis),
+                      },
+                    ]}
+                    menu={diagnosisMenu(diagnosis)}
+                  />
+                ))}
               </div>
             )}
-
-            {/* Tabs and Filters */}
-            <div className="admin-v2-controls-bar">
-              <div className="admin-v2-tabs">
-                <button
-                  className={`admin-v2-tab ${activeTab === 'active' ? 'active' : ''}`}
-                  onClick={() => setActiveTab('active')}
-                >
-                  Active ({diagnoses.filter(d => d.active).length})
-                </button>
-                <button
-                  className={`admin-v2-tab ${activeTab === 'inactive' ? 'active' : ''}`}
-                  onClick={() => setActiveTab('inactive')}
-                >
-                  Inactive ({diagnoses.filter(d => !d.active).length})
-                </button>
-              </div>
-
-              <div className="admin-v2-filters">
-                <input
-                  type="text"
-                  placeholder="Search diagnoses..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="admin-v2-search-input"
-                />
-                <select
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                  className="admin-v2-filter-select"
-                >
-                  <option value="">All Statuses</option>
-                  {diagnosisStatuses.map(status => (
-                    <option key={status} value={status}>{formatLabel(status)}</option>
-                  ))}
-                </select>
-                <select
-                  value={filterCategory}
-                  onChange={(e) => setFilterCategory(e.target.value)}
-                  className="admin-v2-filter-select"
-                >
-                  <option value="">All Categories</option>
-                  {diagnosisCategories.map(cat => (
-                    <option key={cat} value={cat}>{formatLabel(cat)}</option>
-                  ))}
-                </select>
-              </div>
-
-              {hasPermission('diagnoses.create') && (
-                <button
-                  className="admin-v2-btn admin-v2-btn-primary"
-                  onClick={openCreateModal}
-                >
-                  <PlusIcon size={16} /> Add Diagnosis
-                </button>
-              )}
-            </div>
-
-            {/* Diagnoses Cards Grid */}
-            <div className="tw mt-4">
-              {loading ? (
-                <p className="text-sm text-muted-foreground">Loading diagnoses...</p>
-              ) : filteredDiagnoses.length === 0 ? (
-                <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border py-12 text-center text-muted-foreground">
-                  <ClipboardListIcon size={48} />
-                  <h3 className="text-base font-semibold text-foreground">
-                    {searchTerm ? 'No diagnoses found matching your search.' : 'No diagnoses found for this patient.'}
-                  </h3>
-                  {hasPermission('diagnoses.create') && (
-                    <Button onClick={openCreateModal}>
-                      <PlusIcon size={16} /> Add First Diagnosis
-                    </Button>
-                  )}
-                </div>
-              ) : (
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {filteredDiagnoses.map(diagnosis => (
-                    <Card key={diagnosis.id} className={cn(!diagnosis.active && "opacity-60")}>
-                      <CardHeader className="gap-2 py-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <CardTitle className="text-sm">{diagnosis.name}</CardTitle>
-                          {diagnosis.is_primary_diagnosis && <Badge variant="info">PRIMARY</Badge>}
-                        </div>
-                        <div className="flex flex-wrap gap-1.5">
-                          <Badge variant={statusVariant(diagnosis.status)}>{formatLabel(diagnosis.status)}</Badge>
-                          {diagnosis.severity && (
-                            <Badge variant={severityVariant(diagnosis.severity)}>{formatLabel(diagnosis.severity)}</Badge>
-                          )}
-                        </div>
-                      </CardHeader>
-
-                      <CardContent className="flex flex-col gap-1.5 py-3 text-sm">
-                        {diagnosis.icd10_code && <Row label="ICD-10" value={diagnosis.icd10_code} />}
-                        {diagnosis.diagnosis_type && <Row label="Type" value={formatLabel(diagnosis.diagnosis_type)} />}
-                        {diagnosis.category && <Row label="Category" value={formatLabel(diagnosis.category)} />}
-                        {diagnosis.diagnosis_date && (
-                          <Row label="Diagnosed" value={new Date(diagnosis.diagnosis_date).toLocaleDateString()} />
-                        )}
-                        {diagnosis.diagnosing_provider_name && <Row label="Diagnosed by" value={diagnosis.diagnosing_provider_name} />}
-                        {diagnosis.managing_provider_name && <Row label="Managed by" value={diagnosis.managing_provider_name} />}
-                        {diagnosis.notes_count > 0 && (
-                          <Row label="Notes" value={`${diagnosis.notes_count} follow-up note${diagnosis.notes_count !== 1 ? 's' : ''}`} />
-                        )}
-                      </CardContent>
-
-                      <CardFooter className="flex-wrap justify-start gap-2 py-3">
-                        <Button size="sm" variant="ghost" onClick={() => openNotesModal(diagnosis)}>
-                          <NotesIcon size={14} /> Notes
-                        </Button>
-                        {hasPermission('diagnoses.update') && (
-                          <Button size="sm" variant="ghost" onClick={() => handleEdit(diagnosis)}>
-                            <EditIcon size={14} /> Edit
-                          </Button>
-                        )}
-                        {!diagnosis.is_primary_diagnosis && diagnosis.active && hasPermission('diagnoses.update') && (
-                          <Button size="sm" variant="ghost" onClick={() => handleSetPrimary(diagnosis.id)}>
-                            <CheckIcon size={14} /> Set Primary
-                          </Button>
-                        )}
-                        {diagnosis.active ? (
-                          hasPermission('diagnoses.delete') && (
-                            <Button size="sm" variant="ghost" className="text-[#ff7b72] hover:text-[#ff7b72]" onClick={() => handleDelete(diagnosis.id)}>
-                              <TrashIcon size={14} /> Deactivate
-                            </Button>
-                          )
-                        ) : (
-                          hasPermission('diagnoses.update') && (
-                            <Button size="sm" variant="ghost" className="text-[#3fb950] hover:text-[#3fb950]" onClick={() => handleActivate(diagnosis.id)}>
-                              <CheckIcon size={14} /> Activate
-                            </Button>
-                          )
-                        )}
-                      </CardFooter>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </div>
           </>
         ) : (
           <div className="admin-v2-placeholder-page">
@@ -659,201 +618,192 @@ const AdminV2Diagnoses = () => {
         )}
 
         {/* Create / Edit Dialog */}
-        <Dialog open={showCreateModal} onOpenChange={(o) => { if (!o) { setShowCreateModal(false); resetForm(); } }}>
-          <DialogContent className="sm:max-w-[720px]" aria-describedby={undefined}>
-            <DialogHeader>
-              <DialogTitle>{selectedDiagnosis ? 'Edit Diagnosis' : 'Add New Diagnosis'}</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-              {formError && <Alert variant="destructive">{formError}</Alert>}
+        <EntityModal
+          open={showCreateModal}
+          onOpenChange={(o) => { if (!o) { setShowCreateModal(false); resetForm(); } }}
+          title={selectedDiagnosis ? 'Edit diagnosis' : 'Add diagnosis'}
+          wide
+        >
+          <form onSubmit={handleSubmit} className="em-form">
+            {formError && <div className="em-error">{formError}</div>}
 
-              <Field label="Diagnosis Name" required htmlFor="dx-name">
-                <Input id="dx-name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="e.g., Type 2 Diabetes Mellitus" required />
-              </Field>
+            <EmField label="Diagnosis name" required htmlFor="dx-name">
+              <input id="dx-name" className="em-input" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="e.g., Type 2 Diabetes Mellitus" required />
+            </EmField>
 
-              <FormRow>
-                <Field label="ICD-10 Code" htmlFor="dx-icd">
-                  <Input id="dx-icd" value={formData.icd10_code} onChange={(e) => setFormData({ ...formData, icd10_code: e.target.value })} placeholder="e.g., E11.9" />
-                </Field>
-                <Field label="ICD-10 Description" htmlFor="dx-icd-desc">
-                  <Input id="dx-icd-desc" value={formData.icd10_description} onChange={(e) => setFormData({ ...formData, icd10_description: e.target.value })} placeholder="Official ICD-10 description" />
-                </Field>
-              </FormRow>
+            <EmRow>
+              <EmField label="ICD-10 code" htmlFor="dx-icd">
+                <input id="dx-icd" className="em-input" value={formData.icd10_code} onChange={(e) => setFormData({ ...formData, icd10_code: e.target.value })} placeholder="e.g., E11.9" />
+              </EmField>
+              <EmField label="ICD-10 description" htmlFor="dx-icd-desc">
+                <input id="dx-icd-desc" className="em-input" value={formData.icd10_description} onChange={(e) => setFormData({ ...formData, icd10_description: e.target.value })} placeholder="Official ICD-10 description" />
+              </EmField>
+            </EmRow>
 
-              <FormRow>
-                <Field label="Diagnosis Type" required>
-                  <Select value={formData.diagnosis_type} onValueChange={(v) => setFormData({ ...formData, diagnosis_type: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {diagnosisTypes.map(type => <SelectItem key={type} value={type}>{formatLabel(type)}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field label="Status" required>
-                  <Select value={formData.status} onValueChange={(v) => setFormData({ ...formData, status: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {diagnosisStatuses.map(status => <SelectItem key={status} value={status}>{formatLabel(status)}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </Field>
-              </FormRow>
+            <EmRow>
+              <EmField label="Diagnosis type" required htmlFor="dx-type">
+                <EmSelect id="dx-type" value={formData.diagnosis_type} onChange={(e) => setFormData({ ...formData, diagnosis_type: e.target.value })}>
+                  {diagnosisTypes.map(type => (
+                    <option key={type} value={type}>{formatLabel(type)}</option>
+                  ))}
+                </EmSelect>
+              </EmField>
+              <EmField label="Status" required htmlFor="dx-status">
+                <EmSelect id="dx-status" value={formData.status} onChange={(e) => setFormData({ ...formData, status: e.target.value })}>
+                  {diagnosisStatuses.map(status => (
+                    <option key={status} value={status}>{formatLabel(status)}</option>
+                  ))}
+                </EmSelect>
+              </EmField>
+            </EmRow>
 
-              <FormRow>
-                <Field label="Category">
-                  <Select value={formData.category || NONE} onValueChange={(v) => setFormData({ ...formData, category: v === NONE ? '' : v })}>
-                    <SelectTrigger><SelectValue placeholder="Select Category" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NONE}>Select Category</SelectItem>
-                      {diagnosisCategories.map(cat => <SelectItem key={cat} value={cat}>{formatLabel(cat)}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field label="Severity">
-                  <Select value={formData.severity || NONE} onValueChange={(v) => setFormData({ ...formData, severity: v === NONE ? '' : v })}>
-                    <SelectTrigger><SelectValue placeholder="Select Severity" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NONE}>Select Severity</SelectItem>
-                      {severityLevels.map(level => <SelectItem key={level} value={level}>{formatLabel(level)}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </Field>
-              </FormRow>
+            <EmRow>
+              <EmField label="Category" htmlFor="dx-category">
+                <EmSelect id="dx-category" value={formData.category} onChange={(e) => setFormData({ ...formData, category: e.target.value })}>
+                  <option value="">Select category</option>
+                  {diagnosisCategories.map(cat => (
+                    <option key={cat} value={cat}>{formatLabel(cat)}</option>
+                  ))}
+                </EmSelect>
+              </EmField>
+              <EmField label="Severity" htmlFor="dx-severity">
+                <EmSelect id="dx-severity" value={formData.severity} onChange={(e) => setFormData({ ...formData, severity: e.target.value })}>
+                  <option value="">Select severity</option>
+                  {severityLevels.map(level => (
+                    <option key={level} value={level}>{formatLabel(level)}</option>
+                  ))}
+                </EmSelect>
+              </EmField>
+            </EmRow>
 
-              <FormRow>
-                <Field label="Onset Date" htmlFor="dx-onset">
-                  <Input id="dx-onset" type="date" value={formData.onset_date} onChange={(e) => setFormData({ ...formData, onset_date: e.target.value })} />
-                </Field>
-                <Field label="Diagnosis Date" htmlFor="dx-date">
-                  <Input id="dx-date" type="date" value={formData.diagnosis_date} onChange={(e) => setFormData({ ...formData, diagnosis_date: e.target.value })} />
-                </Field>
-              </FormRow>
+            <EmRow>
+              <EmField label="Onset date" htmlFor="dx-onset">
+                <input id="dx-onset" className="em-input" type="date" value={formData.onset_date} onChange={(e) => setFormData({ ...formData, onset_date: e.target.value })} />
+              </EmField>
+              <EmField label="Diagnosis date" htmlFor="dx-date">
+                <input id="dx-date" className="em-input" type="date" value={formData.diagnosis_date} onChange={(e) => setFormData({ ...formData, diagnosis_date: e.target.value })} />
+              </EmField>
+            </EmRow>
 
-              <FormRow>
-                <Field label="Resolved Date" htmlFor="dx-resolved">
-                  <Input id="dx-resolved" type="date" value={formData.resolved_date} onChange={(e) => setFormData({ ...formData, resolved_date: e.target.value })} />
-                </Field>
-                <Field label="Diagnosing Provider">
-                  <Select
-                    value={formData.diagnosing_provider_id ? String(formData.diagnosing_provider_id) : NONE}
-                    onValueChange={(v) => setFormData({ ...formData, diagnosing_provider_id: v === NONE ? '' : v })}
-                  >
-                    <SelectTrigger><SelectValue placeholder="Select Provider" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NONE}>Select Provider</SelectItem>
-                      {providerOptions}
-                    </SelectContent>
-                  </Select>
-                </Field>
-              </FormRow>
-
-              <Field label="Managing Provider">
-                <Select
-                  value={formData.managing_provider_id ? String(formData.managing_provider_id) : NONE}
-                  onValueChange={(v) => setFormData({ ...formData, managing_provider_id: v === NONE ? '' : v })}
+            <EmRow>
+              <EmField label="Resolved date" htmlFor="dx-resolved">
+                <input id="dx-resolved" className="em-input" type="date" value={formData.resolved_date} onChange={(e) => setFormData({ ...formData, resolved_date: e.target.value })} />
+              </EmField>
+              <EmField label="Diagnosing provider" htmlFor="dx-diag-provider">
+                <EmSelect
+                  id="dx-diag-provider"
+                  value={formData.diagnosing_provider_id ? String(formData.diagnosing_provider_id) : ''}
+                  onChange={(e) => setFormData({ ...formData, diagnosing_provider_id: e.target.value })}
                 >
-                  <SelectTrigger><SelectValue placeholder="Select Provider" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NONE}>Select Provider</SelectItem>
-                    {providerOptions}
-                  </SelectContent>
-                </Select>
-              </Field>
+                  <option value="">Select provider</option>
+                  {providerOptions}
+                </EmSelect>
+              </EmField>
+            </EmRow>
 
-              <Field label="Clinical Notes" htmlFor="dx-notes">
-                <Textarea id="dx-notes" rows={3} value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Additional clinical notes..." />
-              </Field>
+            <EmField label="Managing provider" htmlFor="dx-mgr-provider">
+              <EmSelect
+                id="dx-mgr-provider"
+                value={formData.managing_provider_id ? String(formData.managing_provider_id) : ''}
+                onChange={(e) => setFormData({ ...formData, managing_provider_id: e.target.value })}
+              >
+                <option value="">Select provider</option>
+                {providerOptions}
+              </EmSelect>
+            </EmField>
 
-              <Field label="Treatment Plan" htmlFor="dx-plan">
-                <Textarea id="dx-plan" rows={3} value={formData.treatment_plan} onChange={(e) => setFormData({ ...formData, treatment_plan: e.target.value })} placeholder="Brief treatment approach..." />
-              </Field>
+            <EmField label="Clinical notes" htmlFor="dx-notes">
+              <textarea id="dx-notes" className="em-input" rows={3} value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} placeholder="Additional clinical notes..." />
+            </EmField>
 
-              <label className="flex w-fit cursor-pointer items-center gap-2">
-                <Checkbox checked={formData.is_primary_diagnosis} onCheckedChange={(v) => setFormData({ ...formData, is_primary_diagnosis: v === true })} />
-                <span className="text-sm text-foreground">Primary/Principal Diagnosis</span>
-              </label>
+            <EmField label="Treatment plan" htmlFor="dx-plan">
+              <textarea id="dx-plan" className="em-input" rows={3} value={formData.treatment_plan} onChange={(e) => setFormData({ ...formData, treatment_plan: e.target.value })} placeholder="Brief treatment approach..." />
+            </EmField>
 
-              <DialogFooter>
-                <Button type="button" variant="secondary" onClick={() => { setShowCreateModal(false); resetForm(); }}>Cancel</Button>
-                <Button type="submit" disabled={saving}>{saving ? 'Saving...' : (selectedDiagnosis ? 'Update Diagnosis' : 'Add Diagnosis')}</Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+            <label className="em-check-row">
+              <input type="checkbox" className="em-check" checked={formData.is_primary_diagnosis} onChange={(e) => setFormData({ ...formData, is_primary_diagnosis: e.target.checked })} />
+              <span className="em-check-label">Primary/principal diagnosis</span>
+            </label>
+
+            <div className="em-footer">
+              <button type="button" className="em-cancel" onClick={() => { setShowCreateModal(false); resetForm(); }}>
+                Cancel
+              </button>
+              <button type="submit" className="em-submit" disabled={saving}>
+                {saving ? 'Saving…' : (selectedDiagnosis ? 'Update diagnosis' : 'Add diagnosis')}
+              </button>
+            </div>
+          </form>
+        </EntityModal>
 
         {/* Notes Dialog */}
-        <Dialog
+        <EntityModal
           open={showNotesModal && !!selectedDiagnosis}
           onOpenChange={(o) => { if (!o) { setShowNotesModal(false); setSelectedDiagnosis(null); setDiagnosisNotes([]); } }}
+          title={`Follow-up notes: ${selectedDiagnosis?.name || ''}`}
+          wide
         >
-          <DialogContent className="sm:max-w-[640px]" aria-describedby={undefined}>
-            <DialogHeader>
-              <DialogTitle>Follow-up Notes: {selectedDiagnosis?.name}</DialogTitle>
-            </DialogHeader>
-
+          <div className="em-form">
             {/* Add Note Form */}
-            <div className="flex flex-col gap-3 rounded-md border border-border p-3">
-              <FormRow>
-                <Field label="Note Type">
-                  <Select value={newNoteType} onValueChange={setNewNoteType}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {noteTypes.map(type => <SelectItem key={type} value={type}>{formatLabel(type)}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field label="Provider (Optional)">
-                  <Select
-                    value={newNoteProviderId ? String(newNoteProviderId) : NONE}
-                    onValueChange={(v) => setNewNoteProviderId(v === NONE ? '' : v)}
-                  >
-                    <SelectTrigger><SelectValue placeholder="Select Provider" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NONE}>Select Provider</SelectItem>
-                      {providers.map(p => (
-                        <SelectItem key={p.id} value={String(p.id)}>{p.title} {p.first_name} {p.last_name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-              </FormRow>
-              <Field label="Note Content">
-                <Textarea rows={3} value={newNoteContent} onChange={(e) => setNewNoteContent(e.target.value)} placeholder="Enter note content..." />
-              </Field>
-              <div className="flex justify-end">
-                <Button onClick={handleAddNote} disabled={addingNote || !newNoteContent.trim()}>
-                  {addingNote ? 'Adding...' : 'Add Note'}
-                </Button>
-              </div>
+            <EmRow>
+              <EmField label="Note type" htmlFor="dx-note-type">
+                <EmSelect id="dx-note-type" value={newNoteType} onChange={(e) => setNewNoteType(e.target.value)}>
+                  {noteTypes.map(type => (
+                    <option key={type} value={type}>{formatLabel(type)}</option>
+                  ))}
+                </EmSelect>
+              </EmField>
+              <EmField label="Provider" optional htmlFor="dx-note-provider">
+                <EmSelect
+                  id="dx-note-provider"
+                  value={newNoteProviderId ? String(newNoteProviderId) : ''}
+                  onChange={(e) => setNewNoteProviderId(e.target.value)}
+                >
+                  <option value="">Select provider</option>
+                  {providers.map(p => (
+                    <option key={p.id} value={String(p.id)}>{p.title} {p.first_name} {p.last_name}</option>
+                  ))}
+                </EmSelect>
+              </EmField>
+            </EmRow>
+            <EmField label="Note content" htmlFor="dx-note-content">
+              <textarea id="dx-note-content" className="em-input" rows={3} value={newNoteContent} onChange={(e) => setNewNoteContent(e.target.value)} placeholder="Enter note content..." />
+            </EmField>
+            <div className="em-footer">
+              <button type="button" className="em-submit" onClick={handleAddNote} disabled={addingNote || !newNoteContent.trim()}>
+                {addingNote ? 'Adding…' : 'Add note'}
+              </button>
             </div>
 
             {/* Notes List */}
-            <div className="flex max-h-80 flex-col gap-3 overflow-y-auto">
-              {diagnosisNotes.length === 0 ? (
-                <p className="py-4 text-center text-sm text-muted-foreground">No notes yet for this diagnosis.</p>
-              ) : (
-                diagnosisNotes.map(note => (
-                  <div key={note.id} className="rounded-md border border-border p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="secondary">{formatLabel(note.note_type)}</Badge>
-                        {note.provider_name && <span className="text-xs text-muted-foreground">{note.provider_name}</span>}
-                        <span className="text-xs text-muted-foreground">{new Date(note.created_at).toLocaleString()}</span>
-                      </div>
-                      <Button size="sm" variant="ghost" className="text-[#ff7b72] hover:text-[#ff7b72]" onClick={() => handleDeleteNote(note.id)}>
-                        <TrashIcon size={14} />
-                      </Button>
-                    </div>
-                    <div className="mt-2 whitespace-pre-wrap text-sm text-foreground">{note.content}</div>
-                    {note.created_by_name && (
-                      <div className="mt-2 text-xs text-muted-foreground">Added by: {note.created_by_name}</div>
-                    )}
+            {diagnosisNotes.length === 0 ? (
+              <div className="ec-empty">No notes yet for this diagnosis.</div>
+            ) : (
+              diagnosisNotes.map(note => (
+                <div key={note.id} className="em-field">
+                  <div className="ec-detail">
+                    <span className="ec-badge">{formatLabel(note.note_type)}</span>
+                    {note.provider_name && <span className="ec-detail-label">{note.provider_name}</span>}
+                    <span className="ec-detail-label">{new Date(note.created_at).toLocaleString()}</span>
+                    <button
+                      type="button"
+                      className="em-cancel"
+                      style={{ marginLeft: 'auto' }}
+                      aria-label="Delete note"
+                      onClick={() => handleDeleteNote(note.id)}
+                    >
+                      <TrashIcon size={14} />
+                    </button>
                   </div>
-                ))
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
+                  <div style={{ whiteSpace: 'pre-wrap' }}>{note.content}</div>
+                  {note.created_by_name && (
+                    <div className="ec-detail-label">Added by: {note.created_by_name}</div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </EntityModal>
       </div>
     </AdminV2Layout>
   );

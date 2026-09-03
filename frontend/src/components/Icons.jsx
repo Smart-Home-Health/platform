@@ -15,7 +15,6 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React from 'react';
 
 // Original icons
 export const SettingsIcon = () => (
@@ -320,6 +319,13 @@ export const PlusIcon = ({ size = 20 }) => (
   </svg>
 );
 
+export const MinusIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="5" y1="12" x2="19" y2="12" />
+  </svg>
+);
+
 export const UsersIcon = ({ size = 20 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" 
        strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -408,6 +414,21 @@ export const PauseIcon = ({ size = 20 }) => (
        strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <rect x="6" y="4" width="4" height="16" rx="1" />
     <rect x="14" y="4" width="4" height="16" rx="1" />
+  </svg>
+);
+
+export const TagIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20.6 13.4 12 22l-9-9V3h10l7.6 7.6a2 2 0 0 1 0 2.8z" />
+    <circle cx="7.5" cy="7.5" r="1.5" />
+  </svg>
+);
+
+export const PlayIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polygon points="6 4 20 12 6 20 6 4" />
   </svg>
 );
 
@@ -553,6 +574,40 @@ export const FlameIcon = ({ size = 20 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" 
        strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
+  </svg>
+);
+
+export const ThermometerIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z" />
+  </svg>
+);
+
+export const LungsIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 4v9" />
+    <path d="M10 13c0 1.6-.1 3-.6 4.2-.4.9-1.3 1.5-2.3 1.5a2.6 2.6 0 0 1-2.6-2.7c.1-1.9.4-3.7 1-5.5.5-1.5 1.6-2.5 2.5-2.5.6 0 1 .6 1 1.4z" />
+    <path d="M14 13c0 1.6.1 3 .6 4.2.4.9 1.3 1.5 2.3 1.5a2.6 2.6 0 0 0 2.6-2.7c-.1-1.9-.4-3.7-1-5.5-.5-1.5-1.6-2.5-2.5-2.5-.6 0-1 .6-1 1.4z" />
+  </svg>
+);
+
+export const ScaleIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <path d="M7.5 12a4.5 4.5 0 0 1 9 0" />
+    <path d="M12 12 10.2 9.2" />
+  </svg>
+);
+
+export const WindIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12.8 19.6A2 2 0 1 0 14 16H2" />
+    <path d="M17.5 8a2.5 2.5 0 1 1 2 4H2" />
+    <path d="M9.8 4.4A2 2 0 1 1 11 8H2" />
   </svg>
 );
 
@@ -766,6 +821,16 @@ export const BarChartIcon = ({ size = 20 }) => (
   </svg>
 );
 
+// Pinning. Filled when pinned, outline when not — the fill state is the
+// affordance, so callers pass `filled` rather than swapping icons.
+export const StarIcon = ({ size = 20, filled = false }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24"
+       fill={filled ? 'currentColor' : 'none'} stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+  </svg>
+);
+
 export const TargetIcon = ({ size = 20 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" 
        strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -941,5 +1006,166 @@ export const BarcodeIcon = ({ size = 20 }) => (
     <line x1="14" y1="5" x2="14" y2="19" />
     <line x1="17" y1="5" x2="17" y2="14" />
     <line x1="20" y1="5" x2="20" y2="19" />
+  </svg>
+);
+export const BackspaceIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 5H9l-6 7 6 7h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1z" />
+    <line x1="12" y1="9" x2="17" y2="14" />
+    <line x1="17" y1="9" x2="12" y2="14" />
+  </svg>
+);
+export const CheckCircleIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="9" />
+    <polyline points="8.5 12.5 11 15 15.5 9.5" />
+  </svg>
+);
+export const MoreHorizontalIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <circle cx="5" cy="12" r="1.6" />
+    <circle cx="12" cy="12" r="1.6" />
+    <circle cx="19" cy="12" r="1.6" />
+  </svg>
+);
+export const PlusSquareIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3.5" y="3.5" width="17" height="17" rx="3" />
+    <line x1="12" y1="8.5" x2="12" y2="15.5" />
+    <line x1="8.5" y1="12" x2="15.5" y2="12" />
+  </svg>
+);
+export const FilterIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 5h16l-6.5 8v5.5L10.5 20v-7L4 5z" />
+  </svg>
+);
+export const BodyIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="4.5" r="2.2" />
+    <path d="M12 7.5v6.5M12 14l-2.5 6M12 14l2.5 6M6.5 9.5 12 8.2l5.5 1.3" />
+  </svg>
+);
+export const PhoneIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.9a2 2 0 0 1-.5 2.1L8.1 10a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.9.5 2.9.7a2 2 0 0 1 1.6 2z" />
+  </svg>
+);
+export const MailIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2.5" y="4.5" width="19" height="15" rx="2" />
+    <path d="m3 6 9 7 9-7" />
+  </svg>
+);
+export const StethoscopeIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M5 3v6a5 5 0 0 0 10 0V3M5 3H3.5M15 3h1.5M10 14v3a5 5 0 0 0 10 0v-2" />
+    <circle cx="20" cy="12.5" r="2" />
+  </svg>
+);
+export const GlobeIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="9" />
+    <path d="M3 12h18M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z" />
+  </svg>
+);
+export const MoreVerticalIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <circle cx="12" cy="5" r="1.6" />
+    <circle cx="12" cy="12" r="1.6" />
+    <circle cx="12" cy="19" r="1.6" />
+  </svg>
+);
+
+export const LockIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="4" y="11" width="16" height="10" rx="2" />
+    <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+  </svg>
+);
+
+export const UnlockIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="4" y="11" width="16" height="10" rx="2" />
+    <path d="M8 11V7a4 4 0 0 1 7.7-1.5" />
+  </svg>
+);
+
+export const EyeIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+
+export const EyeOffIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17.94 17.94A10.9 10.9 0 0 1 12 18.5C5.5 18.5 2 12 2 12a20 20 0 0 1 5.06-5.94" />
+    <path d="M9.9 5.24A10.4 10.4 0 0 1 12 5.5c6.5 0 10 6.5 10 6.5a19.9 19.9 0 0 1-3.22 4.31" />
+    <path d="M14.12 14.12A3 3 0 1 1 9.88 9.88" />
+    <line x1="2" y1="2" x2="22" y2="22" />
+  </svg>
+);
+
+export const BrandMarkIcon = ({ size = 32 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 10.5 12 3l9 7.5V21H3z" />
+    <polyline points="6 14.5 9 14.5 10.5 11 12.5 17 14 14.5 18 14.5" />
+  </svg>
+);
+
+/* Panel dock controls. The live dashboard opens its menus as a narrow panel
+   over the cards column and expands them across the charts; these two mark
+   that toggle. */
+export const ExpandPanelIcon = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="15 3 21 3 21 9" />
+    <polyline points="9 21 3 21 3 15" />
+    <line x1="21" y1="3" x2="14" y2="10" />
+    <line x1="3" y1="21" x2="10" y2="14" />
+  </svg>
+);
+
+export const CollapsePanelIcon = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="4 14 10 14 10 20" />
+    <polyline points="20 10 14 10 14 4" />
+    <line x1="14" y1="10" x2="21" y2="3" />
+    <line x1="3" y1="21" x2="10" y2="14" />
+  </svg>
+);
+
+export const VitalsCaptureIcon = ({ size = 26 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 12h4l2-5 3 10 2.5-6 1.5 3h5" />
+  </svg>
+);
+
+/* A scored tablet — the round kind you swallow. Distinct from TabletIcon, which
+   is a tablet *computer*. The score line is horizontal on purpose: a diagonal
+   line inside a circle is the universal "prohibited" sign, which is not what
+   you want next to a medication. */
+export const TabletPillIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="8" />
+    <line x1="6" y1="12" x2="18" y2="12" />
   </svg>
 );

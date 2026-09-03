@@ -2,6 +2,7 @@ import js from '@eslint/js'
 import globals from 'globals'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
+import react from 'eslint-plugin-react'
 
 export default [
   // public/ holds vendored assets (tesseract worker etc.), not our code.
@@ -18,13 +19,27 @@ export default [
       },
     },
     plugins: {
+      react,
       'react-hooks': reactHooks,
       'react-refresh': reactRefresh,
     },
     rules: {
       ...js.configs.recommended.rules,
       ...reactHooks.configs.recommended.rules,
-      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      // `<Button />` is a *use* of `Button`, but core ESLint cannot see that —
+      // only this rule marks JSX-referenced identifiers as read. Without it the
+      // unused-vars check has to be told to ignore every capitalised name
+      // (the Vite template's `varsIgnorePattern: '^[A-Z_]'`), which exempts
+      // essentially every component import and lets dead ones pile up unseen.
+      'react/jsx-uses-vars': 'error',
+      // …and the mirror image: core no-undef cannot see a JSX reference
+      // either, so `<Button />` with the import deleted passes lint and
+      // becomes a runtime ReferenceError (a blank page). This rule is what
+      // actually catches that.
+      'react/jsx-no-undef': 'error',
+      // `const { [field]: _, ...rest } = prev` is how a key gets dropped; the
+      // binding exists to be discarded, so only the rest siblings are a use.
+      'no-unused-vars': ['error', { ignoreRestSiblings: true }],
       'react-refresh/only-export-components': [
         'warn',
         { allowConstantExport: true },

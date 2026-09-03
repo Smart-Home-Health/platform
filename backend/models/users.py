@@ -80,6 +80,10 @@ class User(Base):
     # Home Assistant user id (uuid4().hex) this app user is linked to; a trusted
     # ingress request carrying this identity signs in as this user with no prompt.
     ha_user_id = Column(String(32), unique=True, nullable=True, index=True)
+    # Generated-avatar override (random UUID set by "shuffle design"; NULL means
+    # derive from "user:<id>") and the uuid-named photo file under PHOTOS_DIR.
+    avatar_seed = Column(String(36), nullable=True)
+    avatar_photo = Column(String(64), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     

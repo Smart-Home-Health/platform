@@ -23,11 +23,17 @@ import config, { apiFetch } from '../config';
 async function asJson(response, fallbackMessage) {
   if (!response.ok) {
     let detail = fallbackMessage;
+    let payload = null;
     try {
-      const body = await response.json();
-      detail = body.detail || body.error || fallbackMessage;
+      payload = await response.json();
+      detail = payload.detail || payload.error || fallbackMessage;
     } catch { /* non-JSON error body */ }
-    throw new Error(detail);
+    const error = new Error(detail);
+    // The out-of-stock 409 carries the supply, its count and its unit. The
+    // restock gate needs those, and they were being thrown away with the body.
+    error.status = response.status;
+    error.payload = payload;
+    throw error;
   }
   return response.json();
 }
@@ -37,6 +43,71 @@ export const equipmentService = {
     const qs = patientId ? `?patient_id=${patientId}` : '';
     const response = await apiFetch(`${config.apiUrl}/api/equipment${qs}`);
     return asJson(response, 'Failed to fetch supplies');
+  },
+
+  /** Change history across equipment, newest first. */
+  async changeHistory({ patientId = null, equipmentId = null, limit = 50 } = {}) {
+    const qs = new URLSearchParams();
+    if (patientId) qs.set('patient_id', patientId);
+    if (equipmentId) qs.set('equipment_id', equipmentId);
+    if (limit) qs.set('limit', limit);
+    const response = await apiFetch(`${config.apiUrl}/api/equipment/history?${qs}`);
+    return asJson(response, 'Failed to fetch equipment history');
+  },
+
+  /** Stocktakes across every supply, newest first. */
+  async recentCounts({ patientId = null, limit = 100 } = {}) {
+    const qs = new URLSearchParams();
+    if (patientId) qs.set('patient_id', patientId);
+    if (limit) qs.set('limit', limit);
+    const response = await apiFetch(`${config.apiUrl}/api/equipment/counts?${qs}`);
+    return asJson(response, 'Failed to fetch stock activity');
+  },
+
+  /** Record a scheduled change. Refused with a 409 when tracked stock is out. */
+  async logChange(equipmentId, changedAt) {
+    const response = await apiFetch(`${config.apiUrl}/api/equipment/${equipmentId}/change`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ changed_at: changedAt }),
+    });
+    return asJson(response, 'Failed to record the change');
+  },
+
+  async create(data) {
+    const response = await apiFetch(`${config.apiUrl}/api/equipment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return asJson(response, 'Failed to add the supply');
+  },
+
+  async remove(equipmentId) {
+    const response = await apiFetch(`${config.apiUrl}/api/equipment/${equipmentId}`, {
+      method: 'DELETE',
+    });
+    return asJson(response, 'Failed to remove the supply');
+  },
+
+  /** Add to what is on hand (a delta, not an absolute count). */
+  async receive(equipmentId, amount) {
+    const response = await apiFetch(`${config.apiUrl}/api/equipment/${equipmentId}/receive`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount }),
+    });
+    return asJson(response, 'Failed to record what arrived');
+  },
+
+  /** Take from what is on hand. Distinct from setCount, which is audited. */
+  async open(equipmentId, amount) {
+    const response = await apiFetch(`${config.apiUrl}/api/equipment/${equipmentId}/open`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount }),
+    });
+    return asJson(response, 'Failed to record what was used');
   },
 
   async update(equipmentId, data) {

@@ -19,25 +19,10 @@
 // vs seen-only fallback; import dialog wiring. Services and config mocked;
 // Radix dialogs rendered inline (portal/focus-trap noise).
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 
 // Radix (via ToggleList's Checkbox) probes element size; jsdom has no ResizeObserver.
 vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
-
-vi.mock('@/components/ui/dialog', () => ({
-  Dialog: ({ open, children }) => (open ? <div>{children}</div> : null),
-  DialogContent: ({ children }) => <div>{children}</div>,
-  DialogHeader: ({ children }) => <div>{children}</div>,
-  DialogTitle: ({ children }) => <h2>{children}</h2>,
-  DialogFooter: ({ children }) => <div>{children}</div>,
-}));
-vi.mock('@/components/ui/select', () => ({
-  Select: ({ children }) => <div>{children}</div>,
-  SelectTrigger: ({ children }) => <div>{children}</div>,
-  SelectValue: () => null,
-  SelectContent: ({ children }) => <div>{children}</div>,
-  SelectItem: ({ children }) => <div>{children}</div>,
-}));
 
 const apiFetch = vi.fn();
 vi.mock('../../../config', () => ({
@@ -95,6 +80,11 @@ const renderCard = async (props = {}) => {
     />
   );
   await waitFor(() => expect(getHaDirectory).toHaveBeenCalled());
+  // Waiting for the call is not waiting for the rows: the card renders from
+  // the resolved directory, so flush that resolution and the effects it runs
+  // before a test reaches for a button. Three tests below query synchronously
+  // straight after this, and under CI load one of them lost the race.
+  await act(async () => {});
 };
 
 describe('HAIdentitiesCard directory mode', () => {
@@ -206,6 +196,6 @@ describe('HAIdentitiesCard fallback mode', () => {
       <HAIdentitiesCard users={USERS} roles={ROLES} patients={PATIENTS} />
     );
     await waitFor(() => expect(getHaDirectory).toHaveBeenCalled());
-    expect(container.querySelector('.font-medium')).toBeNull();
+    expect(container.querySelector('.hai-name')).toBeNull();
   });
 });

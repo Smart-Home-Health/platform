@@ -19,21 +19,9 @@
 // DME packaging is weird (1 case = 30, 1 pack = 5, loose extras everywhere),
 // so the user counts in packaging units and we store base units. Controlled
 // and fetch-free — the wizard count step and the Supplies-page count modal share it.
-import React from 'react';
 import { countTotal } from '../../../lib/catalogImport';
-
-const numInput = {
-  width: '64px', textAlign: 'center', padding: '8px',
-};
-
-const FieldLabel = ({ children }) => (
-  <span
-    className="admin-v2-text-muted"
-    style={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}
-  >
-    {children}
-  </span>
-);
+import '../../../components/vc/entity-card.css';
+import './supply-count.css';
 
 /**
  * value: { packages, perPackage, loose } (strings ok — controlled inputs)
@@ -44,41 +32,41 @@ export default function SupplyCountFields({ value = {}, onChange, disabled = fal
   const total = countTotal(value);
 
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-        <FieldLabel>Packages</FieldLabel>
+    <div className="supc-row">
+      <label className="supc-cell">
+        <span className="supc-label">Packages</span>
         <input
           type="number" min="0" inputMode="numeric"
+          className="em-input"
           value={value.packages ?? ''}
           onChange={set('packages')}
           disabled={disabled}
-          style={numInput}
         />
-      </div>
-      <span style={{ paddingBottom: 8 }}>×</span>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-        <FieldLabel>In each</FieldLabel>
+      </label>
+      <span className="supc-op">×</span>
+      <label className="supc-cell">
+        <span className="supc-label">In each</span>
         <input
           type="number" min="1" inputMode="numeric"
+          className="em-input"
           value={value.perPackage ?? ''}
           placeholder="1"
           onChange={set('perPackage')}
           disabled={disabled}
-          style={numInput}
         />
-      </div>
-      <span style={{ paddingBottom: 8 }}>+</span>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-        <FieldLabel>Loose</FieldLabel>
+      </label>
+      <span className="supc-op">+</span>
+      <label className="supc-cell">
+        <span className="supc-label">Loose</span>
         <input
           type="number" min="0" inputMode="numeric"
+          className="em-input"
           value={value.loose ?? ''}
           onChange={set('loose')}
           disabled={disabled}
-          style={numInput}
         />
-      </div>
-      <span style={{ paddingBottom: 8, whiteSpace: 'nowrap' }}>
+      </label>
+      <span className="supc-total">
         = <strong>{total}</strong> total
       </span>
     </div>

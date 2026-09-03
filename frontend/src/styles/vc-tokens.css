@@ -1,0 +1,110 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Bedside-monitor design tokens (the "vc" aesthetic), shared by the vitals
+ * capture surface and the admin shell skin — the app-wide look pages migrate
+ * toward. Dark-only by design; consumers scope themselves to the dark theme.
+ * The one exception is the avatar palette at the bottom, which also carries
+ * light-theme values because generated avatars render inside the admin's
+ * light/dark cards. No raw hex outside token files. */
+:root {
+  /* Surfaces */
+  --vc-bg-base: #0a0e14;
+  --vc-bg-surface: #131a24;
+  --vc-bg-raised: #1b242f;
+  --vc-bg-sheet: #161e29;
+
+  /* Lines */
+  --vc-line-hairline: rgba(255, 255, 255, 0.1);
+  --vc-line-strong: rgba(255, 255, 255, 0.2);
+
+  /* Text */
+  --vc-text-primary: #e8edf3;
+  --vc-text-secondary: #9aa8b8;
+  --vc-text-tertiary: #6b7987; /* decorative only — never sole carrier of meaning */
+
+  /* Semantic state — roles, not colors */
+  --vc-data-live: #4da7bd;   /* live data, active focus, primary action (deliberately muted) */
+  --vc-state-complete: #3fbf6a;
+  --vc-state-due: #f0a52e;   /* needs confirmation / attention */
+  --vc-state-alert: #f0563c; /* clinical concern only */
+  --vc-state-idle: #6b7987;
+
+  --vc-font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --vc-font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+/* Generated-avatar palette (utils/identicon.js, components/vc/PersonAvatar).
+ * Eight muted mid-century hues — identity colours, deliberately disjoint from
+ * the semantic state colours above so a person never reads as an alert. Each
+ * avatar uses two of them on the neutral tile. Shape carries identity too, so
+ * this is never the sole differentiator.
+ *
+ * Two fixed sets (dark tile / warm paper tile, slightly deeper hues so every
+ * mark clears 3:1 on paper) and three mappings: dark by default, paper under
+ * the admin light theme (html.light), and dark again on surfaces that are dark
+ * whatever the theme (auth screens, the PIN challenge). */
+:root {
+  --vc-avatar-dark-tile: #1b242f;        /* = --vc-bg-raised */
+  --vc-avatar-dark-ink: #9aa8b8;         /* initials fallback text */
+  --vc-avatar-dark-mustard: #d9a441;
+  --vc-avatar-dark-teal: #4fa8a0;
+  --vc-avatar-dark-terracotta: #d0704f;
+  --vc-avatar-dark-olive: #9aa84b;
+  --vc-avatar-dark-dusty-blue: #6f93c2;
+  --vc-avatar-dark-plum: #a9729c;
+  --vc-avatar-dark-sage: #7fb39a;
+  --vc-avatar-dark-rust: #c4663a;
+
+  --vc-avatar-paper-tile: #ece7df;
+  --vc-avatar-paper-ink: #4a5568;
+  --vc-avatar-paper-mustard: #b8851f;
+  --vc-avatar-paper-teal: #2b827b;
+  --vc-avatar-paper-terracotta: #b85535;
+  --vc-avatar-paper-olive: #76852a;
+  --vc-avatar-paper-dusty-blue: #4a73a6;
+  --vc-avatar-paper-plum: #87537c;
+  --vc-avatar-paper-sage: #549178;
+  --vc-avatar-paper-rust: #a64d25;
+}
+:root,
+:root.light .vc-auth,
+:root.light .pc-body {
+  --vc-avatar-tile: var(--vc-avatar-dark-tile);
+  --vc-avatar-ink: var(--vc-avatar-dark-ink);
+  --vc-avatar-mustard: var(--vc-avatar-dark-mustard);
+  --vc-avatar-teal: var(--vc-avatar-dark-teal);
+  --vc-avatar-terracotta: var(--vc-avatar-dark-terracotta);
+  --vc-avatar-olive: var(--vc-avatar-dark-olive);
+  --vc-avatar-dusty-blue: var(--vc-avatar-dark-dusty-blue);
+  --vc-avatar-plum: var(--vc-avatar-dark-plum);
+  --vc-avatar-sage: var(--vc-avatar-dark-sage);
+  --vc-avatar-rust: var(--vc-avatar-dark-rust);
+}
+:root.light {
+  --vc-avatar-tile: var(--vc-avatar-paper-tile);
+  --vc-avatar-ink: var(--vc-avatar-paper-ink);
+  --vc-avatar-mustard: var(--vc-avatar-paper-mustard);
+  --vc-avatar-teal: var(--vc-avatar-paper-teal);
+  --vc-avatar-terracotta: var(--vc-avatar-paper-terracotta);
+  --vc-avatar-olive: var(--vc-avatar-paper-olive);
+  --vc-avatar-dusty-blue: var(--vc-avatar-paper-dusty-blue);
+  --vc-avatar-plum: var(--vc-avatar-paper-plum);
+  --vc-avatar-sage: var(--vc-avatar-paper-sage);
+  --vc-avatar-rust: var(--vc-avatar-paper-rust);
+}

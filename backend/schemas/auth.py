@@ -81,6 +81,9 @@ class AccountUserItem(BaseModel):
     # have no human-known password.
     ha_linked: bool = False
     roles: List[dict] = []
+    # Generated-avatar seed override + photo filename (see schemas/avatar.py).
+    avatar_seed: Optional[str] = None
+    avatar_photo: Optional[str] = None
 
 
 class LoginRequest(BaseModel):

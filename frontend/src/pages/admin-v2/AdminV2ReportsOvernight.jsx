@@ -15,91 +15,118 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+// Overnight: one night, read at a glance — what the night did (the strip), what
+// it looked like (two traces), what went wrong (episodes) and what was owed
+// (the checklist).
+//
+// Colour roles are the report ones: amber is the configured alarm and anything
+// to do with adherence, red is a reading that breached the alarm. Derivations
+// live in reports/overnight.js so the header figures and the handoff text can
+// be tested without a canvas.
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Chart from 'chart.js/auto';
 import annotationPlugin from 'chartjs-plugin-annotation';
 import config, { apiFetch } from '../../config';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import AdminV2Layout from './AdminV2Layout';
+import { useNavigate } from 'react-router-dom';
 import {
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  CheckIcon,
-  XIcon,
-  ClockIcon,
-  AlertIcon,
+  ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, ConfigIcon, ClockIcon,
+  FileTextIcon, MedicationIcon, CareTasksIcon, LinkIcon,
+  ExpandPanelIcon, CollapsePanelIcon,
 } from '../../components/Icons';
-import { Input } from '@/components/ui/input';
-import { Alert } from '@/components/ui/alert';
+import BottomSheet from '../capture/components/BottomSheet';
+import { useChartColors } from '../../hooks/useChartColors';
+import { alarmsFor } from './reports/dayOverDay';
 import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
-import './AdminV2.css';
+  DEFAULT_START_HOUR, DEFAULT_END_HOUR, STATUS_TONE,
+  windowLabel, windowHours, nightLabel, formatMinutes, formatTime,
+  coverage, careRollup, scheduledSpan, episodes, statTiles, buildHandoff,
+  toCsv, csvFileName,
+} from './reports/overnight';
+import './reports/reports-overnight.css';
 
 Chart.register(annotationPlugin);
 
-const HOUR_LABELS = [
-  '12a','1a','2a','3a','4a','5a','6a','7a','8a','9a','10a','11a',
-  '12p','1p','2p','3p','4p','5p','6p','7p','8p','9p','10p','11p',
-];
+const HOURS = Array.from({ length: 24 }, (_, i) => i);
+const EPISODE_PREVIEW = 2;
 
-function formatDateLabel(dateStr) {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const dt = new Date(y, m - 1, d);
-  return dt.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
-}
+// Why an episode's end had to be worked out afterwards. "Recovered" and "the
+// sensor stopped reporting" are different statements about the same number, so
+// the marker says which one it is rather than just flagging it as an estimate.
+const END_INFERRED_HINT = {
+  inferred_recovery: 'Ended when the readings had held steady — worked out from the sensor record',
+  inferred_monitoring_ended: 'Ended when the sensor stopped reporting, so the episode may have continued unseen',
+  inferred_no_data: 'No sensor readings for this episode, so no length could be established',
+};
 
-function StatusIcon({ status }) {
-  if (status === 'on_time' || status === 'completed') {
-    return <span className="overnight-status-icon on-time"><CheckIcon size={14} /></span>;
-  }
-  if (status === 'late') {
-    return <span className="overnight-status-icon late"><ClockIcon size={14} /></span>;
-  }
-  if (status === 'skipped') {
-    return <span className="overnight-status-icon skipped" title="Skipped">⊘</span>;
-  }
-  return <span className="overnight-status-icon missed"><XIcon size={14} /></span>;
-}
+const toDateStr = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+const hourLabel = (h) => {
+  const period = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12} ${period}`;
+};
 
 const AdminV2ReportsOvernight = () => {
   const { selectedPatient } = useAdminPatient();
+  const navigate = useNavigate();
+
   const now = new Date();
   const [reportDate, setReportDate] = useState(() => {
+    // Before noon you are still reading last night.
     const d = now.getHours() < 12 ? new Date(now.getTime() - 86400000) : now;
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return toDateStr(d);
   });
-  const [startHour, setStartHour] = useState(20);
-  const [endHour, setEndHour] = useState(8);
+  const [startHour, setStartHour] = useState(DEFAULT_START_HOUR);
+  const [endHour, setEndHour] = useState(DEFAULT_END_HOUR);
+
   const [data, setData] = useState(null);
+  const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const chartRef = useRef(null);
-  const chartInstance = useRef(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [markers, setMarkers] = useState(true);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [showAllEpisodes, setShowAllEpisodes] = useState(false);
+  const [openGroup, setOpenGroup] = useState(null); // 'medications' | 'care_tasks'
+  const [shared, setShared] = useState(null);
 
-  const prevDate = useCallback(() => {
-    const d = new Date(reportDate + 'T12:00:00');
-    d.setDate(d.getDate() - 1);
-    setReportDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
-  }, [reportDate]);
+  const rootRef = useRef(null);
+  const spo2Ref = useRef(null);
+  const hrRef = useRef(null);
+  const charts = useRef([]);
+  const chrome = useChartColors();
 
-  const nextDate = useCallback(() => {
-    const d = new Date(reportDate + 'T12:00:00');
-    d.setDate(d.getDate() + 1);
-    const today = new Date();
-    if (d > today) return;
-    setReportDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
-  }, [reportDate]);
+  const todayStr = toDateStr(now);
+  const alarms = useMemo(() => alarmsFor('spo2', settings), [settings]);
+
+  const shiftDate = useCallback((days) => {
+    setReportDate(prev => {
+      const d = new Date(`${prev}T12:00:00`);
+      d.setDate(d.getDate() + days);
+      const next = toDateStr(d);
+      return next > todayStr ? prev : next;
+    });
+  }, [todayStr]);
 
   useEffect(() => {
-    if (!selectedPatient) return;
+    let live = true;
+    apiFetch(`${config.apiUrl}/api/settings`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(s => { if (live && s) setSettings(s); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedPatient) return undefined;
+    let live = true;
     setLoading(true);
     setError(null);
+    setShared(null);
 
     const params = new URLSearchParams({
       patient_id: selectedPatient.id,
@@ -116,330 +143,553 @@ const AdminV2ReportsOvernight = () => {
         }
         return res.json();
       })
-      .then(setData)
-      .catch(e => { setError(e.message); setData(null); })
-      .finally(() => setLoading(false));
+      .then(d => { if (live) setData(d); })
+      .catch(e => { if (live) { setError(e.message); setData(null); } })
+      .finally(() => { if (live) setLoading(false); });
+
+    return () => { live = false; };
   }, [selectedPatient, reportDate, startHour, endHour]);
 
-  // Build chart
+  // Memoized because the chart effect keys on it: a fresh [] each render would
+  // tear down and rebuild both charts every time anything else moved.
+  const points = useMemo(() => data?.vitals_chart || [], [data]);
+  const eps = useMemo(() => episodes(data), [data]);
+  const tiles = useMemo(() => statTiles(data, alarms), [data, alarms]);
+  const cov = useMemo(() => coverage(data), [data]);
+  const care = useMemo(() => careRollup(data?.care_checklist), [data]);
+  const span = useMemo(() => scheduledSpan(data?.care_checklist), [data]);
+
+  // ---- charts: SpO2 and heart rate stacked, sharing one x range ----
   useEffect(() => {
-    if (!data?.vitals_chart?.length || !chartRef.current) return;
-    if (chartInstance.current) {
-      chartInstance.current.destroy();
-      chartInstance.current = null;
+    charts.current.forEach(c => c.destroy());
+    charts.current = [];
+    if (!points.length || !spo2Ref.current || !hrRef.current) return undefined;
+
+    const rootStyle = rootRef.current ? getComputedStyle(rootRef.current) : null;
+    const token = (name, fallback) => rootStyle?.getPropertyValue(name).trim() || fallback;
+    const alarmColor = token('--rpt-alarm', '#f0a52e');
+    const breachColor = token('--rpt-breach', '#f0563c');
+    const spo2Color = token('--rpt-accent', '#4da7bd');
+    const hrColor = token('--rpt-ok', '#3fbf6a');
+    const tooltipBg = token('--rpt-raised', chrome.cutout);
+    const gridSoft = `${chrome.grid}80`;
+
+    const xMin = points[0].ts;
+    const xMax = points[points.length - 1].ts;
+
+    const annotations = {};
+    if (markers) {
+      // The episodes as bands, and the point each one bottomed out at. Red is
+      // right here: an alert episode is the clinical concern the palette keeps
+      // it for.
+      eps.forEach((e, i) => {
+        annotations[`band${i}`] = {
+          type: 'box',
+          xMin: e.startMs / 1000,
+          xMax: (e.endMs ?? xMax * 1000) / 1000,
+          backgroundColor: `${breachColor}1f`,
+          borderColor: `${breachColor}4d`,
+          borderWidth: 1,
+        };
+        if (e.nadir != null) {
+          annotations[`nadir${i}`] = {
+            type: 'point',
+            xValue: e.startMs / 1000,
+            yValue: e.nadir,
+            radius: 4,
+            backgroundColor: breachColor,
+            borderColor: breachColor,
+          };
+        }
+      });
+    }
+    if (alarms.low != null) {
+      annotations.alarm = {
+        type: 'line',
+        yMin: alarms.low,
+        yMax: alarms.low,
+        borderColor: alarmColor,
+        borderWidth: 1,
+        borderDash: [6, 4],
+        label: {
+          display: true,
+          content: `Alarm ${alarms.low}%`,
+          position: 'end',
+          color: alarmColor,
+          backgroundColor: 'transparent',
+          font: { size: 10, family: 'IBM Plex Mono, monospace', weight: '700' },
+          yAdjust: 10,
+        },
+      };
     }
 
-    const points = data.vitals_chart;
-    const windowStart = points[0].ts;
-    const windowEnd = points[points.length - 1].ts;
-
-    const alertAnnotations = {};
-    (data.alerts?.items || []).forEach((a, i) => {
-      const aStart = new Date(a.start_time).getTime() / 1000;
-      const aEnd = a.end_time ? new Date(a.end_time).getTime() / 1000 : windowEnd;
-      alertAnnotations[`alert${i}`] = {
-        type: 'box',
-        xMin: aStart,
-        xMax: aEnd,
-        backgroundColor: 'rgba(248, 81, 73, 0.12)',
-        borderColor: 'rgba(248, 81, 73, 0.3)',
-        borderWidth: 1,
-      };
+    const timeAxis = (showLabels) => ({
+      type: 'linear',
+      min: xMin,
+      max: xMax,
+      grid: { color: gridSoft },
+      border: { color: chrome.grid },
+      ticks: {
+        display: showLabels,
+        maxTicksLimit: 8,
+        maxRotation: 0,
+        color: chrome.axis,
+        font: { size: 10, family: 'IBM Plex Mono, monospace' },
+        callback: (val) => {
+          const d = new Date(val * 1000);
+          return d.getMinutes() < 15 || d.getMinutes() > 45 ? hourLabel(d.getHours()) : '';
+        },
+      },
     });
 
-    const ctx = chartRef.current.getContext('2d');
-    chartInstance.current = new Chart(ctx, {
+    const common = (annotationSet) => ({
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        annotation: { annotations: annotationSet },
+        tooltip: {
+          backgroundColor: tooltipBg,
+          borderColor: chrome.grid,
+          borderWidth: 1,
+          titleColor: chrome.foreground,
+          bodyColor: chrome.foreground,
+          padding: 10,
+          titleFont: { size: 11, family: 'IBM Plex Mono, monospace', weight: '700' },
+          bodyFont: { size: 11, family: 'IBM Plex Mono, monospace' },
+          callbacks: { title: (items) => (items.length ? formatTime(items[0].parsed.x * 1000) : '') },
+        },
+      },
+    });
+
+    // The floor takes in the episode nadirs as well as the plotted line: the
+    // series is downsampled to a point every five minutes, so the reading an
+    // episode bottomed out at is often not in it — and its marker would sit
+    // below the axis.
+    const spo2Values = points.map(p => p.spo2);
+    const nadirs = eps.map(e => e.nadir).filter(n => n != null);
+    const spo2Floor = Math.min(alarms.low ?? 100, ...spo2Values, ...nadirs);
+
+    const spo2 = new Chart(spo2Ref.current.getContext('2d'), {
       type: 'line',
       data: {
-        datasets: [
-          {
-            label: 'SpO2 (%)',
-            data: points.map(p => ({ x: p.ts, y: p.spo2 })),
-            borderColor: '#58a6ff',
-            backgroundColor: '#58a6ff33',
-            borderWidth: 1.5,
-            pointRadius: 0,
-            pointHoverRadius: 3,
-            yAxisID: 'y',
-            tension: 0.3,
-          },
-          {
-            label: 'Heart Rate (bpm)',
-            data: points.map(p => ({ x: p.ts, y: p.hr })),
-            borderColor: '#f78166',
-            backgroundColor: '#f7816633',
-            borderWidth: 1.5,
-            pointRadius: 0,
-            pointHoverRadius: 3,
-            yAxisID: 'y1',
-            tension: 0.3,
-          },
-        ],
+        datasets: [{
+          label: 'SpO2',
+          data: points.map(p => ({ x: p.ts, y: p.spo2 })),
+          borderColor: spo2Color,
+          backgroundColor: spo2Color,
+          borderWidth: 1.5,
+          pointRadius: 0,
+          pointHoverRadius: 3,
+          tension: 0.25,
+        }],
       },
       options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
+        ...common(annotations),
         scales: {
-          x: {
-            type: 'linear',
-            min: windowStart,
-            max: windowEnd,
-            grid: { color: 'color-mix(in srgb, var(--foreground) 6%, transparent)' },
-            ticks: {
-              color: 'var(--muted-foreground)',
-              font: { size: 11 },
-              maxTicksLimit: 12,
-              callback: (val) => {
-                const d = new Date(val * 1000);
-                const h = d.getHours();
-                const m = d.getMinutes();
-                if (m !== 0) return '';
-                return HOUR_LABELS[h] || '';
-              },
-            },
-          },
+          x: timeAxis(false),
           y: {
-            type: 'linear',
-            position: 'left',
-            min: Math.max(0, (data.vitals_summary?.spo2?.min || 90) - 5),
+            min: Math.max(0, Math.floor(spo2Floor - 5)),
             max: 100,
-            title: { display: true, text: 'SpO2 %', color: '#58a6ff', font: { size: 11 } },
-            grid: { color: 'color-mix(in srgb, var(--foreground) 6%, transparent)' },
-            ticks: { color: '#58a6ff', font: { size: 10 } },
-          },
-          y1: {
-            type: 'linear',
-            position: 'right',
-            title: { display: true, text: 'HR bpm', color: '#f78166', font: { size: 11 } },
-            grid: { drawOnChartArea: false },
-            ticks: { color: '#f78166', font: { size: 10 } },
-          },
-        },
-        plugins: {
-          legend: {
-            labels: { usePointStyle: true, padding: 12, font: { size: 11 }, color: 'var(--foreground)' },
-          },
-          annotation: { annotations: alertAnnotations },
-          tooltip: {
-            callbacks: {
-              title: (items) => {
-                if (!items.length) return '';
-                const d = new Date(items[0].parsed.x * 1000);
-                return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-              },
+            title: {
+              display: true, text: 'SpO2 %', color: spo2Color,
+              font: { size: 10, family: 'IBM Plex Mono, monospace' },
             },
+            grid: { color: gridSoft },
+            border: { color: chrome.grid },
+            ticks: { color: chrome.axis, font: { size: 10, family: 'IBM Plex Mono, monospace' } },
           },
         },
       },
     });
 
+    const hr = new Chart(hrRef.current.getContext('2d'), {
+      type: 'line',
+      data: {
+        datasets: [{
+          label: 'Heart rate',
+          data: points.map(p => ({ x: p.ts, y: p.hr })),
+          borderColor: hrColor,
+          backgroundColor: hrColor,
+          borderWidth: 1.5,
+          pointRadius: 0,
+          pointHoverRadius: 3,
+          tension: 0.25,
+        }],
+      },
+      options: {
+        ...common({}),
+        scales: {
+          x: timeAxis(true),
+          y: {
+            title: {
+              display: true, text: 'HR bpm', color: hrColor,
+              font: { size: 10, family: 'IBM Plex Mono, monospace' },
+            },
+            grid: { color: gridSoft },
+            border: { color: chrome.grid },
+            ticks: { color: chrome.axis, font: { size: 10, family: 'IBM Plex Mono, monospace' } },
+          },
+        },
+      },
+    });
+
+    charts.current = [spo2, hr];
     return () => {
-      if (chartInstance.current) {
-        chartInstance.current.destroy();
-        chartInstance.current = null;
-      }
+      charts.current.forEach(c => c.destroy());
+      charts.current = [];
     };
+  }, [points, eps, markers, alarms, chrome, fullscreen]);
+
+  const exportCsv = useCallback(() => {
+    if (!data) return;
+    const blob = new Blob([toCsv(data)], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = csvFileName(data.date);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   }, [data]);
 
-  const renderContent = () => {
-    if (!selectedPatient) {
-      return <div className="admin-v2-monitoring-empty"><p>Select a patient from the sidebar to view the overnight report.</p></div>;
+  // Share sheet where the device has one (a phone at the bedside), clipboard
+  // everywhere else — either way the text is the same handoff.
+  const shareHandoff = useCallback(async () => {
+    if (!data) return;
+    const patientName = selectedPatient
+      ? [selectedPatient.first_name, selectedPatient.last_name].filter(Boolean).join(' ')
+      : null;
+    const text = buildHandoff(data, { patientName, startHour, endHour });
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'Overnight handoff', text });
+        setShared('Shared');
+        return;
+      }
+      await navigator.clipboard.writeText(text);
+      setShared('Copied to clipboard');
+    } catch {
+      // A cancelled share is not a failure worth shouting about.
+      setShared(null);
     }
-    if (loading) return <div className="overnight-loading">Loading overnight summary...</div>;
-    if (error) return <div className="tw"><Alert variant="destructive">{error}</Alert></div>;
-    if (!data) return null;
+  }, [data, selectedPatient, startHour, endHour]);
 
-    const vs = data.vitals_summary || {};
-    const alerts = data.alerts || {};
-    const oxygen = data.oxygen || {};
-    const meds = data.care_checklist?.medications || [];
-    const tasks = data.care_checklist?.care_tasks || [];
-    const symptoms = data.symptoms || [];
+  const vs = data?.vitals_summary || {};
+  const symptoms = data?.symptoms || [];
+  const visibleEpisodes = showAllEpisodes ? eps : eps.slice(0, EPISODE_PREVIEW);
+
+  const groups = [
+    { key: 'medications', label: 'Medications', Icon: MedicationIcon, items: data?.care_checklist?.medications || [], roll: care.meds },
+    { key: 'care_tasks', label: 'Care tasks', Icon: CareTasksIcon, items: data?.care_checklist?.care_tasks || [], roll: care.tasks },
+  ].filter(g => g.items.length > 0);
+
+  const body = () => {
+    if (!selectedPatient) {
+      return <div className="rpt-empty">Select a patient to see the overnight report</div>;
+    }
+    if (error) return <div className="rpt-error">{error}</div>;
+    if (loading && !data) return <div className="rpt-empty">Loading…</div>;
+    if (!data) return null;
 
     return (
       <>
-        {/* Summary cards */}
-        <div className="overnight-cards">
-          <div className={`overnight-card ${alerts.total > 0 ? 'danger' : 'ok'}`}>
-            <div className="overnight-card-value">{alerts.total}</div>
-            <div className="overnight-card-label">Alerts</div>
-            {alerts.total > 0 && (
-              <div className="overnight-card-detail">{alerts.total_duration_minutes} min total</div>
-            )}
-          </div>
-          <div className={`overnight-card ${vs.spo2?.min != null && vs.spo2.min < 90 ? 'danger' : 'ok'}`}>
-            <div className="overnight-card-value">{vs.spo2?.min ?? '--'}<span className="overnight-card-unit">%</span></div>
-            <div className="overnight-card-label">Lowest SpO2</div>
-            {vs.spo2?.time_below_90_minutes > 0 && (
-              <div className="overnight-card-detail">{vs.spo2.time_below_90_minutes} min &lt;90%</div>
-            )}
-          </div>
-          <div className="overnight-card">
-            <div className="overnight-card-value">
-              {oxygen.total_minutes > 0 ? `${oxygen.total_minutes}` : '0'}<span className="overnight-card-unit">min</span>
+        <div className="rpt-stats" style={{ '--rpt-stat-count': tiles.length }}>
+          {tiles.map(t => (
+            <div key={t.key} data-stat={t.key} className={`rpt-stat${t.tone ? ` ${t.tone}` : ''}`}>
+              <span className="rpt-stat-label">{t.label}</span>
+              <span className="rpt-stat-value">
+                {t.value}{t.unit && <span className="rpt-stat-unit">{t.unit}</span>}
+              </span>
+              <span className="rpt-stat-note">{t.note}</span>
             </div>
-            <div className="overnight-card-label">Oxygen Time</div>
-            {oxygen.highest_flow > 0 && (
-              <div className="overnight-card-detail">Peak {oxygen.highest_flow}L</div>
-            )}
-          </div>
-          <div className={`overnight-card ${data.compliance_pct != null && data.compliance_pct < 80 ? 'warning' : 'ok'}`}>
-            <div className="overnight-card-value">{data.compliance_pct != null ? `${data.compliance_pct}` : '--'}<span className="overnight-card-unit">%</span></div>
-            <div className="overnight-card-label">Compliance</div>
-            <div className="overnight-card-detail">{meds.length + tasks.length} items</div>
-          </div>
+          ))}
+          {cov && (
+            <div className="rpt-stats-foot">
+              Sensor coverage <strong>{formatMinutes(cov.minutes)}</strong> of {formatMinutes(cov.windowMinutes)}
+              {cov.pct !== null && <> · <strong>{cov.pct}%</strong></>}
+            </div>
+          )}
         </div>
 
-        {/* Vitals chart */}
-        {data.vitals_chart?.length > 0 && (
-          <div className="overnight-section">
-            <h3 className="overnight-section-title">Vitals</h3>
-            <div className="overnight-chart-container">
-              <canvas ref={chartRef} />
+        {points.length > 0 ? (
+          <section className={`rpt-card${fullscreen ? ' full' : ''}`}>
+            <div className="rpt-card-head">
+              <span className="rpt-card-title">Overnight vitals</span>
+              <button
+                type="button"
+                className="rpt-toggle"
+                onClick={() => setMarkers(v => !v)}
+                aria-pressed={markers}
+                aria-label="Event markers"
+              >
+                Markers
+                <span className={`rpt-switch${markers ? ' on' : ''}`}><span /></span>
+              </button>
+              <button
+                type="button"
+                className="rpt-icon-btn"
+                onClick={() => setFullscreen(v => !v)}
+                aria-label={fullscreen ? 'Exit full screen' : 'Full screen chart'}
+                aria-pressed={fullscreen}
+              >
+                {fullscreen ? <CollapsePanelIcon size={16} /> : <ExpandPanelIcon size={16} />}
+              </button>
             </div>
-            <div className="overnight-vitals-stats">
-              {vs.spo2 && (
-                <span className="overnight-stat">SpO2: {vs.spo2.min}–{vs.spo2.max}% (avg {vs.spo2.avg}%)</span>
-              )}
-              {vs.heart_rate && (
-                <span className="overnight-stat">HR: {vs.heart_rate.min}–{vs.heart_rate.max} bpm (avg {vs.heart_rate.avg})</span>
-              )}
+            <div className="ovn-plots">
+              <div className="rpt-plot ovn-plot"><canvas ref={spo2Ref} /></div>
+              <div className="rpt-plot ovn-plot hr"><canvas ref={hrRef} /></div>
             </div>
-          </div>
+            {/* The trace is one reading every five minutes, so a brief desat can
+                fall between two of its points — the nadir in the strip comes
+                from every sample and is the number to trust. */}
+            <div className="ovn-caption">Line plots one reading every 5 minutes</div>
+            <div className="ovn-averages">
+              {vs.spo2 && <span className="spo2">SpO2 avg <b>{vs.spo2.avg}%</b> · {vs.spo2.min}–{vs.spo2.max}%</span>}
+              {vs.heart_rate && <span className="hr">HR avg <b>{vs.heart_rate.avg}</b> · {vs.heart_rate.min}–{vs.heart_rate.max} bpm</span>}
+            </div>
+          </section>
+        ) : (
+          <div className="rpt-empty">No pulse-ox readings in this window</div>
         )}
 
-        {/* Alerts table */}
-        {alerts.items?.length > 0 && (
-          <div className="overnight-section">
-            <h3 className="overnight-section-title">Alert Details</h3>
-            <div className="overnight-alerts-table">
-              <div className="overnight-alert-header">
-                <span>Time</span><span>Duration</span><span>SpO2 Range</span><span>HR Range</span><span>O2</span>
-              </div>
-              {alerts.items.map((a, i) => (
-                <div key={i} className="overnight-alert-row">
-                  <span>{new Date(a.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
-                  <span>{a.duration_minutes} min</span>
-                  <span>{a.spo2_min}–{a.spo2_max}%</span>
-                  <span>{a.bpm_min}–{a.bpm_max}</span>
-                  <span>{a.oxygen_used ? `${a.oxygen_highest || ''}L` : '—'}</span>
-                </div>
-              ))}
+        {eps.length > 0 && (
+          <section className="rpt-card">
+            <div className="rpt-card-head">
+              {/* The strip's tile is the count; this card is the detail, so it
+                  does not repeat the same words back. */}
+              <span className="rpt-card-title">Episodes</span>
+              <span className="rpt-card-note">{eps.length}</span>
             </div>
-          </div>
-        )}
-
-        {/* Care checklist */}
-        {(meds.length > 0 || tasks.length > 0) && (
-          <div className="overnight-section">
-            <h3 className="overnight-section-title">Care Checklist</h3>
-            <div className="overnight-checklist-grid">
-              {meds.length > 0 && (
-                <div className="overnight-checklist-col">
-                  <h4 className="overnight-checklist-heading">Medications</h4>
-                  {meds.map((m, i) => (
-                    <div key={i} className={`overnight-checklist-item ${m.status}`}>
-                      <StatusIcon status={m.status} />
-                      <span className="overnight-checklist-name">{m.name}</span>
-                      <span className="overnight-checklist-time">{m.scheduled_time}</span>
-                      {m.status === 'skipped' && (
-                        <span className="overnight-checklist-actual">skipped</span>
-                      )}
-                      {m.status !== 'missed' && m.status !== 'skipped' && m.administered_at && (
-                        <span className="overnight-checklist-actual">given {m.administered_at}</span>
-                      )}
-                    </div>
+            <div className="ovn-card-sub">
+              {formatMinutes(data.alerts.total_duration_minutes)} across {eps.length}
+              {eps.length === 1 ? ' episode' : ' episodes'} · longest {formatMinutes(data.alerts.longest_duration_minutes)}
+              {/* Episodes that never got an end time have no duration, so the
+                  figures above cover only the rest. Say so rather than let the
+                  total read as the whole night. */}
+              {data.alerts.unclosed > 0 && (
+                <> · {data.alerts.unclosed} still open, not counted in the time</>
+              )}
+              {/* These do count toward the figures, but their end was worked
+                  out from the sensor record afterwards rather than watched
+                  happening, so the times are close rather than exact. */}
+              {data.alerts.inferred > 0 && (
+                <> · {data.alerts.inferred} ended by inference</>
+              )}
+            </div>
+            <div className="rpt-table-wrap">
+              <table className="rpt-table">
+                <thead>
+                  <tr><th>Started</th><th>Nadir</th><th>HR</th><th>Duration</th><th>O2</th></tr>
+                </thead>
+                <tbody>
+                  {visibleEpisodes.map((e, i) => (
+                    <tr key={`${e.start_time}-${i}`}>
+                      <td>{formatTime(e.start_time)}</td>
+                      <td className={alarms.low != null && e.nadir != null && e.nadir < alarms.low ? 'rpt-breach' : undefined}>
+                        {e.nadir != null ? `${e.nadir}%` : '—'}
+                      </td>
+                      <td>{e.bpm_min != null ? `${e.bpm_min}–${e.bpm_max}` : '—'}</td>
+                      {/* An inferred end is an estimate; mark it as one rather
+                          than let it sit next to measured durations unqualified. */}
+                      <td title={e.end_inferred ? END_INFERRED_HINT[e.end_source] : undefined}>
+                        {e.end_inferred ? '≈' : ''}{formatMinutes(e.duration_minutes)}
+                      </td>
+                      <td className="rpt-muted">{e.oxygen_used ? `${e.oxygen_highest || ''}L` : '—'}</td>
+                    </tr>
                   ))}
-                </div>
-              )}
-              {tasks.length > 0 && (
-                <div className="overnight-checklist-col">
-                  <h4 className="overnight-checklist-heading">Care Tasks</h4>
-                  {tasks.map((t, i) => (
-                    <div key={i} className={`overnight-checklist-item ${t.status}`}>
-                      <StatusIcon status={t.status} />
-                      <span className="overnight-checklist-name">{t.name}</span>
-                      <span className="overnight-checklist-time">{t.scheduled_time}</span>
-                      {t.status === 'skipped' && (
-                        <span className="overnight-checklist-actual">skipped</span>
-                      )}
-                      {t.status === 'completed' && t.completed_at && (
-                        <span className="overnight-checklist-actual">done {t.completed_at}</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
+                </tbody>
+              </table>
             </div>
-          </div>
+            {eps.length > EPISODE_PREVIEW && (
+              <button type="button" className="ovn-more" onClick={() => setShowAllEpisodes(v => !v)}>
+                {showAllEpisodes ? 'Show fewer' : `Show all ${eps.length}`}
+              </button>
+            )}
+          </section>
         )}
 
-        {/* Symptoms */}
+        {groups.length > 0 && (
+          <section className="rpt-card">
+            <div className="rpt-card-head">
+              <span className="rpt-card-title">Care checklist</span>
+              <span className={`rpt-card-note${care.done < care.total ? ' rpt-warn' : ' rpt-ok'}`}>
+                {care.done} of {care.total} completed
+              </span>
+            </div>
+            {groups.map(g => {
+              const open = openGroup === g.key;
+              return (
+                <div key={g.key} className="ovn-group">
+                  <button
+                    type="button"
+                    className="ovn-group-head"
+                    onClick={() => setOpenGroup(open ? null : g.key)}
+                    aria-expanded={open}
+                  >
+                    <span className={`ovn-group-icon${g.roll.done === g.roll.total ? ' done' : ''}`}>
+                      <g.Icon size={16} />
+                    </span>
+                    <span className="ovn-group-name">{g.label}</span>
+                    <span className="ovn-group-count">
+                      {g.roll.done} / {g.roll.total} completed
+                      {g.roll.missed > 0 && <> · <span className="miss">{g.roll.missed} missed</span></>}
+                    </span>
+                    <ChevronDownIcon size={15} className="rpt-chevron" style={open ? { transform: 'rotate(180deg)' } : undefined} />
+                  </button>
+                  {open && (
+                    <div className="ovn-items">
+                      {g.items.map((item, i) => (
+                        <div key={`${item.name}-${item.scheduled_time}-${i}`} className="ovn-item">
+                          <span className="ovn-item-time">{item.scheduled_time}</span>
+                          <span className="ovn-item-name">{item.name}</span>
+                          <span className={`ovn-item-status ${STATUS_TONE[item.status] || 'muted'}`}>
+                            {item.status === 'completed' || item.status === 'on_time'
+                              ? (item.administered_at || item.completed_at || 'done')
+                              : item.status}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {span && <div className="ovn-foot">Scheduled at {span}</div>}
+          </section>
+        )}
+
         {symptoms.length > 0 && (
-          <div className="overnight-section">
-            <h3 className="overnight-section-title">Symptoms Logged</h3>
+          <section className="rpt-card">
+            <div className="rpt-card-head">
+              <span className="rpt-card-title">Symptoms logged</span>
+              <span className="rpt-card-note">{symptoms.length}</span>
+            </div>
             {symptoms.map((s, i) => (
-              <div key={i} className="overnight-symptom">
-                <span className="overnight-symptom-type">{s.symptom_type}</span>
-                <span className="overnight-symptom-severity">Severity {s.severity}/10</span>
-                {s.description && <span className="overnight-symptom-desc">{s.description}</span>}
+              <div key={i} className="ovn-symptom">
+                <span className="ovn-symptom-type">{s.symptom_type}</span>
+                <span className="ovn-symptom-sev">{s.severity}/10</span>
+                {s.description && <span className="ovn-symptom-desc">{s.description}</span>}
               </div>
             ))}
-          </div>
+          </section>
         )}
+
+        <div className="rpt-actions">
+          <button
+            type="button"
+            className="rpt-btn"
+            onClick={() => navigate(`/care/monitoring/timeline?date=${reportDate}`)}
+          >
+            <ClockIcon size={15} />
+            View timeline
+          </button>
+          <button type="button" className="rpt-btn" onClick={exportCsv} disabled={!points.length}>
+            <FileTextIcon size={15} />
+            Export CSV
+          </button>
+          <button type="button" className="rpt-btn primary" onClick={shareHandoff}>
+            <LinkIcon size={15} />
+            Share handoff
+          </button>
+        </div>
+        {shared && <div className="ovn-shared">{shared}</div>}
       </>
     );
   };
 
   return (
     <AdminV2Layout>
-      <div className="admin-v2-monitoring">
-        <div className="admin-v2-monitoring-header">
-          <h1 className="admin-v2-page-title">Overnight Summary</h1>
-          {selectedPatient && (
-            <p className="admin-v2-page-subtitle">
-              Night of {formatDateLabel(reportDate)} for {selectedPatient.first_name} {selectedPatient.last_name}
-            </p>
-          )}
+      <div className="rpt ovn" ref={rootRef}>
+        <div className="ovn-head">
+          <button type="button" className="ovn-nav" onClick={() => shiftDate(-1)} aria-label="Previous night">
+            <ChevronLeftIcon size={16} />
+          </button>
+          <span className="ovn-date">{nightLabel(reportDate, startHour, endHour)}</span>
+          <button
+            type="button"
+            className="ovn-nav"
+            onClick={() => shiftDate(1)}
+            disabled={reportDate >= todayStr}
+            aria-label="Next night"
+          >
+            <ChevronRightIcon size={16} />
+          </button>
+          <span className="ovn-head-spacer" />
+          <button
+            type="button"
+            className="rpt-control icon"
+            onClick={() => setSheetOpen(true)}
+            aria-label="Report settings"
+            title="Report settings"
+          >
+            <ConfigIcon size={17} />
+            {(startHour !== DEFAULT_START_HOUR || endHour !== DEFAULT_END_HOUR) && (
+              <span className="rpt-dot-flag" />
+            )}
+          </button>
         </div>
 
-        {selectedPatient && (
-          <div className="overnight-controls">
-            <div className="overnight-date-nav tw">
-              <button className="dod-cal-nav" onClick={prevDate}><ChevronLeftIcon size={16} /></button>
-              <Input
-                type="date"
-                value={reportDate}
-                onChange={e => setReportDate(e.target.value)}
-                className="w-[160px]"
-              />
-              <button className="dod-cal-nav" onClick={nextDate}><ChevronRightIcon size={16} /></button>
+        <div className="rpt-window">
+          {windowLabel(startHour, endHour)} · <strong>{windowHours(startHour, endHour)}</strong>-hour window
+        </div>
+
+        {body()}
+
+        <BottomSheet
+          open={sheetOpen}
+          onOpenChange={(next) => { if (!next) setSheetOpen(false); }}
+          onSwipeDown={() => setSheetOpen(false)}
+          title="Report settings"
+        >
+          <div className="rpt-sheet">
+            <div className="rpt-field">
+              <span className="rpt-field-label">Night of</span>
+              <label className="rpt-control">
+                <span className="rpt-sr">Night of</span>
+                <input
+                  type="date"
+                  value={reportDate}
+                  max={todayStr}
+                  onChange={e => e.target.value && setReportDate(e.target.value)}
+                />
+              </label>
             </div>
-            <div className="overnight-hour-range tw">
-              <label className="dod-label">Window</label>
-              <div className="dod-hour-selects">
-                <Select value={String(startHour)} onValueChange={(v) => setStartHour(Number(v))}>
-                  <SelectTrigger className="w-[90px]"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {HOUR_LABELS.map((lbl, i) => <SelectItem key={i} value={String(i)}>{lbl}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <span className="dod-hour-sep">to</span>
-                <Select value={String(endHour)} onValueChange={(v) => setEndHour(Number(v))}>
-                  <SelectTrigger className="w-[90px]"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {HOUR_LABELS.map((lbl, i) => <SelectItem key={i} value={String(i)}>{lbl}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+
+            <div className="rpt-field">
+              <span className="rpt-field-label">Window</span>
+              <div className="rpt-range">
+                <label className="rpt-control">
+                  <span className="rpt-sr">Window start</span>
+                  <select value={String(startHour)} onChange={e => setStartHour(Number(e.target.value))}>
+                    {HOURS.map(h => <option key={h} value={String(h)}>{hourLabel(h)}</option>)}
+                  </select>
+                </label>
+                <span className="rpt-range-sep">to</span>
+                <label className="rpt-control">
+                  <span className="rpt-sr">Window end</span>
+                  <select value={String(endHour)} onChange={e => setEndHour(Number(e.target.value))}>
+                    {HOURS.map(h => <option key={h} value={String(h)}>{hourLabel(h)}</option>)}
+                  </select>
+                </label>
               </div>
             </div>
-          </div>
-        )}
 
-        <div className="admin-v2-monitoring-content">
-          {renderContent()}
-        </div>
+            <div className="vc-sheet-actions">
+              <button
+                type="button"
+                className="vc-btn secondary"
+                onClick={() => { setStartHour(DEFAULT_START_HOUR); setEndHour(DEFAULT_END_HOUR); }}
+                disabled={startHour === DEFAULT_START_HOUR && endHour === DEFAULT_END_HOUR}
+              >
+                Reset window
+              </button>
+              <button type="button" className="vc-btn primary" onClick={() => setSheetOpen(false)}>Done</button>
+            </div>
+          </div>
+        </BottomSheet>
       </div>
     </AdminV2Layout>
   );

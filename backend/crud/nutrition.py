@@ -20,8 +20,13 @@ from typing import List, Optional
 from utils.datetime_utils import utc_now, local_day_range_utc
 from schemas.nutrition_intake import NutritionIntake
 from schemas.patient import Patient
+from nutrition_vocab import (
+    to_ml, consistency_for_bristol, bristol_for_consistency,
+    location_from_flags, flags_for_location,
+)
 import logging
 import asyncio
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -469,10 +474,15 @@ def create_nutrition_intake(db: Session, intake_data: dict, patient_id: int = No
             care_task_log_id=intake_data.get('care_task_log_id'),
             schedule_id=intake_data.get('schedule_id'),
             scheduled_time=intake_data.get('scheduled_time'),
+            event_group_id=intake_data.get('event_group_id') or str(uuid.uuid4()),
+            item_id=intake_data.get('item_id'),
             item_name=intake_data['item_name'],
             item_type=intake_data['item_type'],
             amount=intake_data['amount'],
             amount_unit=intake_data['amount_unit'],
+            feed_route=intake_data.get('feed_route'),
+            rate_ml_per_hr=intake_data.get('rate_ml_per_hr'),
+            duration_minutes=intake_data.get('duration_minutes'),
             calories=intake_data.get('calories'),
             protein_grams=intake_data.get('protein_grams'),
             carbs_grams=intake_data.get('carbs_grams'),
@@ -510,6 +520,123 @@ def create_nutrition_intake(db: Session, intake_data: dict, patient_id: int = No
         logger.error(f"Error creating nutrition intake: {str(e)}")
         raise
 
+def create_nutrition_intake_event(
+    db: Session,
+    patient_id: int,
+    items: List[dict],
+    *,
+    consumed_at: Optional[datetime] = None,
+    meal_type: Optional[str] = None,
+    notes: Optional[str] = None,
+    care_task_log_id: Optional[int] = None,
+    recorded_by: Optional[int] = None,
+    schedule_id: Optional[int] = None,
+    scheduled_time: Optional[datetime] = None,
+) -> List[NutritionIntake]:
+    """Write one feed as N intake rows sharing an event_group_id, atomically.
+
+    Rows stay separate underneath — that is what keeps fluid and calorie math
+    honest — but they read back as one logged action. When `schedule_id` and
+    `scheduled_time` are given, every row carries them, so the feed shows as
+    completed on the schedule board via the existing occurrence matching.
+
+    Items with an `item_id` and no explicit facts get calories/macros scaled
+    server-side from the saved item's per-unit values.
+    """
+    if not items:
+        raise ValueError("An intake event needs at least one item.")
+
+    from crud.nutrition_library import _account_id_for_patient, _scaled
+    from schemas.nutrition_item import NutritionItem
+
+    when = consumed_at or utc_now()
+    group_id = str(uuid.uuid4())
+    account_id = _account_id_for_patient(db, patient_id)
+    fact_fields = ('calories', 'protein_grams', 'carbs_grams',
+                   'fat_grams', 'fiber_grams', 'sodium_mg')
+    created: List[NutritionIntake] = []
+
+    try:
+        for item_data in items:
+            facts = {f: item_data.get(f) for f in fact_fields}
+            item_id = item_data.get('item_id')
+            if item_id and all(v is None for v in facts.values()):
+                saved = db.query(NutritionItem).filter(NutritionItem.id == item_id).first()
+                if saved is not None:
+                    amount = item_data['amount']
+                    facts = {
+                        'calories': _scaled(saved.calories_per_unit, amount),
+                        'protein_grams': _scaled(saved.protein_per_unit, amount),
+                        'carbs_grams': _scaled(saved.carbs_per_unit, amount),
+                        'fat_grams': _scaled(saved.fat_per_unit, amount),
+                        'fiber_grams': _scaled(saved.fiber_per_unit, amount),
+                        'sodium_mg': _scaled(saved.sodium_per_unit, amount),
+                    }
+            intake = NutritionIntake(
+                account_id=account_id,
+                patient_id=patient_id,
+                care_task_log_id=care_task_log_id,
+                schedule_id=schedule_id,
+                scheduled_time=scheduled_time,
+                event_group_id=group_id,
+                item_id=item_id,
+                item_name=item_data['item_name'],
+                item_type=item_data['item_type'],
+                amount=item_data['amount'],
+                amount_unit=item_data['amount_unit'],
+                feed_route=item_data.get('feed_route'),
+                rate_ml_per_hr=item_data.get('rate_ml_per_hr'),
+                duration_minutes=item_data.get('duration_minutes'),
+                consumed_at=when,
+                meal_type=meal_type,
+                notes=notes,
+                recorded_by=recorded_by,
+                created_at=utc_now(),
+                updated_at=utc_now(),
+                **facts,
+            )
+            db.add(intake)
+            created.append(intake)
+
+        # A schedule-linked feed may carry a post-feed flush: queue its
+        # follow-up in the same transaction. Gated on scheduled_time so the
+        # flush's own completion (schedule_id set, scheduled_time None)
+        # cannot recursively queue another one.
+        if schedule_id and scheduled_time:
+            schedule = db.query(NutritionSchedule).filter(
+                NutritionSchedule.id == schedule_id).first()
+            if schedule is not None:
+                maybe_spawn_flush_followup(
+                    db, schedule,
+                    patient_id=patient_id,
+                    group_id=group_id,
+                    rows=items,
+                    consumed_at=when,
+                    feed_scheduled_time=scheduled_time,
+                    recorded_by=recorded_by,
+                )
+
+        db.commit()
+        for intake in created:
+            db.refresh(intake)
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error creating nutrition intake event: {str(e)}")
+        raise
+
+    logger.info(f"Created nutrition intake event for patient {patient_id}: "
+                f"{len(created)} row(s), group {group_id}")
+
+    # One publish per event, not per row (matches the bulk-completion path).
+    _publish_nutrition_mqtt(db, patient_id)
+    try:
+        from event_publisher import publish_due_counts_changed
+        publish_due_counts_changed("nutrition", patient_id)
+    except Exception as e:
+        logger.error(f"Failed to publish nutrition due-count change: {e}")
+
+    return created
+
 def get_nutrition_intake_by_id(db: Session, intake_id: int) -> Optional[NutritionIntake]:
     """Get a nutrition intake record by ID"""
     return db.query(NutritionIntake).filter(NutritionIntake.id == intake_id).first()
@@ -520,10 +647,18 @@ def get_patient_nutrition_intake(
     limit: int = 50,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
+    schedule_id: Optional[int] = None,
 ) -> List[NutritionIntake]:
     """Get nutrition intake records for a patient, optionally bounded by a
-    consumed_at date range (UTC datetimes)."""
+    consumed_at date range (UTC datetimes).
+
+    `schedule_id` narrows to the intakes recorded against one nutrition
+    schedule — what the dose panel shows as that item's history. Ad-hoc
+    intakes carry no schedule, so they are correctly excluded.
+    """
     query = db.query(NutritionIntake).filter(NutritionIntake.patient_id == patient_id)
+    if schedule_id is not None:
+        query = query.filter(NutritionIntake.schedule_id == schedule_id)
     if start_date:
         query = query.filter(NutritionIntake.consumed_at >= start_date)
     if end_date:
@@ -677,19 +812,35 @@ def update_nutrition_intake(db: Session, intake_id: int, update_data: dict) -> O
         logger.error(f"Error updating nutrition intake {intake_id}: {str(e)}")
         raise
 
-def delete_nutrition_intake(db: Session, intake_id: int) -> bool:
-    """Delete a nutrition intake record"""
+def delete_nutrition_intake(db: Session, intake_id: int, whole_event: bool = False) -> bool:
+    """Delete a nutrition intake record.
+
+    `whole_event` also removes the sibling rows of the same logged event (a
+    multi-item feed or applied preset). The default stays single-row so
+    correcting one line of a mix doesn't discard the rest.
+    """
     try:
         intake = db.query(NutritionIntake).filter(NutritionIntake.id == intake_id).first()
         if not intake:
             return False
-        
+
         patient_id = intake.patient_id
-        
-        db.delete(intake)
+
+        rows = [intake]
+        if whole_event and intake.event_group_id:
+            rows = db.query(NutritionIntake).filter(
+                NutritionIntake.event_group_id == intake.event_group_id,
+                NutritionIntake.patient_id == patient_id,
+            ).all()
+        for row in rows:
+            db.delete(row)
+        # Removing a whole feed removes its queued flush; removing a logged
+        # flush restores the follow-up to pending.
+        if whole_event and intake.event_group_id:
+            sync_flush_followups_on_void(db, [intake.event_group_id], None, utc_now())
         db.commit()
-        
-        logger.info(f"Deleted nutrition intake record: {intake_id}")
+
+        logger.info(f"Deleted nutrition intake record(s): {[r.id for r in rows]}")
 
         # Publish to MQTT
         _publish_nutrition_mqtt(db, patient_id)
@@ -752,6 +903,37 @@ def get_patient_nutrition_goals(db: Session, patient_id: int, active_only: bool 
     if active_only:
         query = query.filter(NutritionGoal.is_active == True)
     return query.order_by(desc(NutritionGoal.effective_date)).all()
+
+
+def get_water_suggestion(db: Session, patient_id: int,
+                         schedule_id: int = None, scheduled_time=None,
+                         followup_id: int = None):
+    """Today's dynamic water suggestion for one spot, or None.
+
+    Wraps the daily-board walk (which computes the whole water plan) and
+    picks out the matching row: a flagged schedule occurrence by
+    (schedule_id, HH:MM), or a pending flush by followup_id. Used by the
+    completion endpoints so a quick-complete pours the suggested amount,
+    not the nominal one.
+    """
+    from crud.scheduling import get_scheduled_nutrition
+    from utils.datetime_utils import resolve_tz_for_patient
+
+    tz = resolve_tz_for_patient(db, patient_id)
+    today = utc_now().astimezone(tz).date()
+    for row in get_scheduled_nutrition(db, today, patient_id, tz=tz):
+        if not row.get('fluid_dynamic'):
+            continue
+        if followup_id is not None:
+            if row.get('followup_id') == followup_id:
+                return row.get('suggested_amount')
+            continue
+        if (row.get('row_kind') == 'schedule'
+                and row.get('schedule_id') == schedule_id
+                and scheduled_time is not None
+                and row['scheduled_time'].strftime('%H:%M') == scheduled_time.strftime('%H:%M')):
+            return row.get('suggested_amount')
+    return None
 
 
 def get_current_nutrition_goal(db: Session, patient_id: int) -> Optional[NutritionGoal]:
@@ -828,11 +1010,14 @@ def get_patient_bathroom_mqtt_state(db: Session, patient_id: int) -> dict:
     if last is None:
         return {}
 
-    # A mixed diaper logs a urine row + a bowel row together — grouped by
-    # care_task_log_id (scheduled) or, for ad-hoc/PRN entries, the shared
-    # occurred_at timestamp (care_task_log_id is null in that case).
+    # A mixed diaper logs a urine row + a bowel row together. event_group_id
+    # records that association explicitly; the care_task_log_id / matching
+    # occurred_at fallbacks below only apply to rows written before that
+    # column existed.
     group_q = db.query(NutritionOutput).filter(NutritionOutput.patient_id == patient_id)
-    if last.care_task_log_id is not None:
+    if last.event_group_id:
+        group = group_q.filter(NutritionOutput.event_group_id == last.event_group_id).all()
+    elif last.care_task_log_id is not None:
         group = group_q.filter(NutritionOutput.care_task_log_id == last.care_task_log_id).all()
     else:
         group = group_q.filter(NutritionOutput.occurred_at == last.occurred_at).all()
@@ -871,11 +1056,50 @@ def _publish_bathroom_mqtt(db: Session, patient_id: int):
         logger.error(f"Error publishing bathroom MQTT for patient {patient_id}: {e}")
 
 
+def normalize_output_fields(db: Session, output_data: dict) -> dict:
+    """Keep the redundant output columns consistent with each other.
+
+    `location` and the is_diaper/is_catheter/is_accident booleans describe the
+    same thing, as do `bristol_scale` and `consistency`. Both pairs are kept
+    populated -- existing consumers read the older half -- so they are derived
+    here, in one place, rather than by each caller.
+    """
+    data = dict(output_data)
+
+    # location <-> booleans
+    if data.get('location'):
+        data.update(flags_for_location(data['location']))
+    else:
+        data['location'] = location_from_flags(
+            is_diaper=bool(data.get('is_diaper')),
+            is_catheter=bool(data.get('is_catheter')),
+            is_accident=bool(data.get('is_accident')),
+        )
+
+    # bristol <-> consistency
+    if data.get('bristol_scale') is not None:
+        data['consistency'] = consistency_for_bristol(data['bristol_scale'])
+    elif data.get('consistency'):
+        data['bristol_scale'] = bristol_for_consistency(data['consistency'])
+
+    # One row per save still belongs to an event.
+    if not data.get('event_group_id'):
+        data['event_group_id'] = str(uuid.uuid4())
+
+    # Denormalize the owning account so outputs can be scoped like intake.
+    if not data.get('account_id') and data.get('patient_id'):
+        patient = db.query(Patient).filter(Patient.id == data['patient_id']).first()
+        if patient is not None:
+            data['account_id'] = patient.account_id
+
+    return data
+
+
 def create_nutrition_output(db: Session, output_data: dict) -> NutritionOutput:
     """Create a new output log entry"""
     try:
         output = NutritionOutput(
-            **output_data,
+            **normalize_output_fields(db, output_data),
             created_at=utc_now(),
             updated_at=utc_now()
         )
@@ -957,19 +1181,28 @@ def get_output_summary(db: Session, patient_id: int, target_date: date = None, t
         'concerns': []
     }
     
+    # A mixed diaper is one physical change stored as two rows; count the
+    # change once. Rows predating the event_group_id column fall back to
+    # their own id so they still count individually.
+    diaper_groups = set()
+
     for output in outputs:
         if output.output_type == 'urine':
             summary['urine_count'] += 1
-            if output.amount and output.amount_unit == 'ml':
-                summary['urine_total_ml'] += output.amount
+            # Honour every volume unit, not just ml. Qualitative sizes
+            # ('smear', 'small', ...) return None and are skipped rather than
+            # being guessed at.
+            measured_ml = to_ml(output.amount, output.amount_unit)
+            if measured_ml is not None:
+                summary['urine_total_ml'] += measured_ml
         elif output.output_type == 'bowel':
             summary['bowel_count'] += 1
         elif output.output_type == 'vomit':
             summary['vomit_count'] += 1
-        
+
         if output.is_diaper:
-            summary['diaper_changes'] += 1
-        
+            diaper_groups.add(output.event_group_id or f'row-{output.id}')
+
         # Check for concerns
         if output.has_blood:
             summary['has_concerns'] = True
@@ -980,7 +1213,12 @@ def get_output_summary(db: Session, patient_id: int, target_date: date = None, t
         if output.pain_reported:
             summary['has_concerns'] = True
             summary['concerns'].append(f"Pain reported during {output.output_type}")
-    
+        if output.straining:
+            summary['has_concerns'] = True
+            summary['concerns'].append(f"Straining reported during {output.output_type}")
+
+    summary['diaper_changes'] = len(diaper_groups)
+
     return summary
 
 
@@ -1029,20 +1267,230 @@ def delete_nutrition_output(db: Session, output_id: int) -> bool:
 # NUTRITION SCHEDULES CRUD
 # =============================================
 
-from schemas.nutrition_schedule import NutritionSchedule
+from schemas.nutrition_schedule import NutritionSchedule, NutritionScheduleComponent
+
+
+def _set_schedule_components(db: Session, schedule: NutritionSchedule, components: List[dict]):
+    """Replace a schedule's whole component list (empty list clears it)."""
+    schedule.components.clear()
+    db.flush()
+    for order, comp in enumerate(components):
+        comp_data = dict(comp)
+        comp_data.setdefault('sort_order', order)
+        db.add(NutritionScheduleComponent(schedule_id=schedule.id, **comp_data))
+
+
+def schedule_components_as_intake_items(schedule: NutritionSchedule) -> List[dict]:
+    """A schedule's component mix as ready-to-log intake item dicts.
+
+    Names, types, and scaled facts come from each component's saved item, so
+    completion records the real nutritional content of the mix rather than
+    just the schedule's single default_calories.
+
+    Flush-flagged components are excluded: the post-feed flush is not given
+    with the meal — completing the feed spawns a follow-up event for it.
+    """
+    from crud.nutrition_library import _scaled
+
+    items = []
+    for comp in sorted(schedule.components, key=lambda c: c.sort_order):
+        item = comp.item
+        if item is None or comp.is_flush:
+            continue
+        items.append({
+            'item_id': item.id,
+            'item_name': item.name,
+            'item_type': item.item_type,
+            'amount': comp.amount,
+            'amount_unit': comp.amount_unit,
+            'feed_route': comp.feed_route,
+            'rate_ml_per_hr': comp.rate_ml_per_hr,
+            'duration_minutes': comp.duration_minutes,
+            'calories': _scaled(item.calories_per_unit, comp.amount),
+            'protein_grams': _scaled(item.protein_per_unit, comp.amount),
+            'carbs_grams': _scaled(item.carbs_per_unit, comp.amount),
+            'fat_grams': _scaled(item.fat_per_unit, comp.amount),
+            'fiber_grams': _scaled(item.fiber_per_unit, comp.amount),
+            'sodium_mg': _scaled(item.sodium_per_unit, comp.amount),
+        })
+    return items
+
+
+def schedule_flush_components(schedule: NutritionSchedule) -> List[dict]:
+    """The schedule's flush-flagged components — the water given AFTER the
+    feed, surfaced to the completion dialog as an informational note and
+    turned into a follow-up event when the feed is marked done."""
+    comps = []
+    for comp in sorted(schedule.components, key=lambda c: c.sort_order):
+        item = comp.item
+        if item is None or not comp.is_flush:
+            continue
+        comps.append({
+            'item_id': item.id,
+            'item_name': item.name,
+            'amount': comp.amount,
+            'amount_unit': comp.amount_unit,
+            'is_flush': True,
+        })
+    return comps
+
+
+FLUSH_FALLBACK_DURATION_MINUTES = 60.0
+
+
+def _feed_duration_minutes(rows: List[dict], schedule: NutritionSchedule) -> float:
+    """How long the feed runs, for scheduling the flush after it.
+
+    Precedence: an explicit duration on a logged row wins; else the whole
+    mix's fluid volume divided by the pump rate — for a tube-fed patient the
+    formula AND the juices all run through the pump, and items are not
+    always typed tube_feed, so neither sum nor rate is gated on the type.
+    Rate falls back from the logged rows to the schedule's components; with
+    no rate anywhere, a fixed fallback keeps the flush coming due.
+    """
+    explicit = [r['duration_minutes'] for r in rows
+                if r.get('duration_minutes') not in (None, 0)]
+    if explicit:
+        return float(max(explicit))
+
+    # to_ml refuses non-volume units (grams, servings), so food rows add no
+    # run time — only what actually flows through the pump counts.
+    total_ml = sum(to_ml(r.get('amount'), r.get('amount_unit')) or 0
+                   for r in rows)
+    rate = next((r['rate_ml_per_hr'] for r in rows
+                 if r.get('rate_ml_per_hr') not in (None, 0)), None)
+    if rate is None:
+        rate = next((c.rate_ml_per_hr for c in schedule.components
+                     if not c.is_flush and c.rate_ml_per_hr not in (None, 0)), None)
+    if total_ml and rate:
+        return total_ml / float(rate) * 60.0
+
+    return FLUSH_FALLBACK_DURATION_MINUTES
+
+
+def maybe_spawn_flush_followup(
+    db: Session,
+    schedule: NutritionSchedule,
+    *,
+    patient_id: int,
+    group_id: str,
+    rows: List[dict],
+    consumed_at: datetime,
+    feed_scheduled_time: Optional[datetime],
+    recorded_by: Optional[int] = None,
+):
+    """Queue the post-feed flush when this schedule carries one.
+
+    Session-add only — the caller owns the commit, so the follow-up rides
+    the same transaction as the feed's intake rows. Idempotent per feed
+    occurrence: a second completion of the same (schedule, scheduled_time)
+    does not queue a second flush.
+    """
+    from schemas.nutrition_flush_followup import NutritionFlushFollowup
+
+    flush_comps = schedule_flush_components(schedule)
+    if not flush_comps:
+        return None
+
+    existing = db.query(NutritionFlushFollowup).filter(
+        NutritionFlushFollowup.schedule_id == schedule.id,
+        NutritionFlushFollowup.feed_scheduled_time == feed_scheduled_time,
+        NutritionFlushFollowup.status == 'pending',
+    ).first()
+    if existing is not None:
+        return None
+
+    # Several flush components collapse into one event: it is one act of
+    # running water through the tube. Mixed units are summed in mL.
+    if len(flush_comps) == 1:
+        amount = flush_comps[0]['amount']
+        amount_unit = flush_comps[0]['amount_unit']
+    else:
+        amount = sum(_intake_amount_to_ml(c['amount'], c['amount_unit']) for c in flush_comps)
+        amount_unit = 'ml'
+
+    from crud.nutrition_library import _account_id_for_patient
+
+    duration = _feed_duration_minutes(rows, schedule)
+    followup = NutritionFlushFollowup(
+        account_id=_account_id_for_patient(db, patient_id),
+        patient_id=patient_id,
+        schedule_id=schedule.id,
+        feed_scheduled_time=feed_scheduled_time,
+        source_event_group_id=group_id,
+        item_id=flush_comps[0]['item_id'],
+        item_name=flush_comps[0]['item_name'],
+        amount=amount,
+        amount_unit=amount_unit,
+        due_at=consumed_at + timedelta(minutes=duration),
+        status='pending',
+        completed_by=None,
+        created_at=utc_now(),
+        updated_at=utc_now(),
+    )
+    db.add(followup)
+    logger.info(f"Queued flush follow-up for schedule {schedule.id} "
+                f"(feed group {group_id}, due in {round(duration, 1)} min)")
+    return followup
+
+
+def sync_flush_followups_on_void(db: Session, event_group_ids: List[str],
+                                 user_id: Optional[int], now: datetime) -> dict:
+    """Keep flush follow-ups consistent when intake events are voided.
+
+    Feed undo: pending follow-ups spawned by a voided feed are voided too.
+    Flush undo: follow-ups whose logged flush was voided go back to pending,
+    so the board shows the water as due again. Session-only; caller commits.
+    """
+    from schemas.nutrition_flush_followup import NutritionFlushFollowup
+
+    groups = [g for g in event_group_ids if g]
+    result = {'voided': [], 'restored': []}
+    if not groups:
+        return result
+
+    pending = db.query(NutritionFlushFollowup).filter(
+        NutritionFlushFollowup.source_event_group_id.in_(groups),
+        NutritionFlushFollowup.status == 'pending',
+    ).all()
+    for followup in pending:
+        followup.voided_at = now
+        followup.voided_by = user_id
+        followup.updated_at = now
+        result['voided'].append(followup.id)
+
+    completed = db.query(NutritionFlushFollowup).filter(
+        NutritionFlushFollowup.completed_intake_group_id.in_(groups),
+    ).all()
+    for followup in completed:
+        followup.status = 'pending'
+        followup.completed_intake_group_id = None
+        followup.completed_at = None
+        followup.completed_by = None
+        followup.updated_at = now
+        result['restored'].append(followup.id)
+
+    return result
+
 
 def create_nutrition_schedule(db: Session, schedule_data: dict) -> NutritionSchedule:
     """Create a new nutrition schedule"""
+    payload = dict(schedule_data)
+    components = payload.pop('components', None)
     try:
         schedule = NutritionSchedule(
-            **schedule_data,
+            **payload,
             created_at=utc_now(),
             updated_at=utc_now()
         )
         db.add(schedule)
+        db.flush()
+        if components:
+            _set_schedule_components(db, schedule, components)
         db.commit()
         db.refresh(schedule)
-        logger.info(f"Created nutrition schedule {schedule.id} for patient {schedule.patient_id}")
+        logger.info(f"Created nutrition schedule {schedule.id} for patient {schedule.patient_id} "
+                    f"with {len(components or [])} component(s)")
         return schedule
     except Exception as e:
         db.rollback()
@@ -1078,11 +1526,24 @@ def update_nutrition_schedule(db: Session, schedule_id: int, update_data: dict) 
         schedule = db.query(NutritionSchedule).filter(NutritionSchedule.id == schedule_id).first()
         if not schedule:
             return None
-        
-        for field, value in update_data.items():
-            if hasattr(schedule, field) and field not in ['id', 'created_at'] and value is not None:
-                setattr(schedule, field, value)
-        
+
+        payload = dict(update_data)
+        # When present, replaces the whole list; an empty list clears it
+        # (which is why it can't ride the value-is-not-None loop below).
+        components = payload.pop('components', None)
+
+        for field, value in payload.items():
+            if not hasattr(schedule, field) or field in ['id', 'created_at']:
+                continue
+            # The route dumps with exclude_unset, so a present-but-None
+            # clamp is an explicit clear, not an omission.
+            if value is None and field not in ('fluid_min_ml', 'fluid_max_ml'):
+                continue
+            setattr(schedule, field, value)
+
+        if components is not None:
+            _set_schedule_components(db, schedule, components)
+
         schedule.updated_at = utc_now()
         db.commit()
         db.refresh(schedule)
@@ -1126,4 +1587,73 @@ def delete_nutrition_schedule(db: Session, schedule_id: int) -> bool:
     except Exception as e:
         db.rollback()
         logger.error(f"Error deleting nutrition schedule {schedule_id}: {str(e)}")
+        raise
+
+
+def create_output_event(db: Session, event_data: dict) -> List[NutritionOutput]:
+    """Write one bathroom event as its 1-2 constituent rows, atomically.
+
+    The logging sheet used to fire two independent POSTs and hope both landed;
+    a failure between them left half an event in the record. Urine and stool
+    are still separate rows -- that is what keeps volume sums and BM counts
+    honest -- but they are written in one transaction under one
+    event_group_id.
+
+    `event_data` carries the shared fields plus `urine` / `stool` sub-dicts;
+    whichever are present decide which rows get written.
+    """
+    urine = event_data.pop('urine', None)
+    stool = event_data.pop('stool', None)
+    if not urine and not stool:
+        raise ValueError("An output event needs urine, stool, or both.")
+
+    shared = normalize_output_fields(db, event_data)
+    group_id = shared['event_group_id']
+    created: List[NutritionOutput] = []
+
+    try:
+        if urine:
+            row = dict(shared)
+            row.update(urine)
+            row['output_type'] = 'urine'
+            row['event_group_id'] = group_id
+            # Stool-only descriptors must not leak onto the urine row.
+            row['consistency'] = None
+            row['bristol_scale'] = None
+            row['color'] = None
+            created.append(NutritionOutput(**row, created_at=utc_now(), updated_at=utc_now()))
+
+        if stool:
+            row = dict(shared)
+            row.update(stool)
+            row['output_type'] = 'bowel'
+            row['event_group_id'] = group_id
+            # ...and urine descriptors must not leak onto the stool row.
+            row['clarity'] = None
+            row['catheter_bag_emptied'] = None
+            # A stool row in a diaper means the diaper was soiled.
+            row['diaper_soiled'] = shared.get('location') == 'diaper'
+            row['diaper_wetness'] = None
+            # Re-derive after the stool sub-dict supplied bristol/consistency.
+            if row.get('bristol_scale') is not None:
+                row['consistency'] = consistency_for_bristol(row['bristol_scale'])
+            elif row.get('consistency'):
+                row['bristol_scale'] = bristol_for_consistency(row['consistency'])
+            created.append(NutritionOutput(**row, created_at=utc_now(), updated_at=utc_now()))
+
+        for row_obj in created:
+            db.add(row_obj)
+        db.commit()
+        for row_obj in created:
+            db.refresh(row_obj)
+
+        logger.info(
+            f"Created output event {group_id} for patient {shared.get('patient_id')}: "
+            f"{len(created)} row(s)"
+        )
+        _publish_bathroom_mqtt(db, shared['patient_id'])
+        return created
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error creating output event: {str(e)}")
         raise

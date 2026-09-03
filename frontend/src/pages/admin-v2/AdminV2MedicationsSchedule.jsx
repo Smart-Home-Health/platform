@@ -15,30 +15,21 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
 import { PatientSelectorModal } from './components';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
-import {
-  MedicationsIcon,
-  ClockIcon,
-  CheckIcon,
-  XIcon
-} from '../../components/Icons';
+import { MedicationsIcon } from '../../components/Icons';
 import { checkAdministrationWindow, formatDurationMinutes } from '../../utils/timezone';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import ScheduleBoard from '../../components/schedule/ScheduleBoard';
+import { groupBySlot, recurrenceLabel } from '../../components/schedule/scheduleRollup';
+import ConfirmSheet from '../../components/vc/ConfirmSheet';
+import '../../components/vc/entity-card.css';
 import './AdminV2.css';
+import './settings/settings-page.css';
 
 const AdminV2MedicationsSchedule = () => {
   const { user } = useAuth();
@@ -140,19 +131,22 @@ const AdminV2MedicationsSchedule = () => {
     setShowPatientModal(false);
   };
 
-  // Status helpers
-  const getStatusInfo = (status) => {
-    const statusMap = {
-      'on_time': { label: 'On Time', color: '#238636', bg: 'rgba(35, 134, 54, 0.15)', border: '#238636' },
-      'completed': { label: 'Completed', color: '#238636', bg: 'rgba(35, 134, 54, 0.15)', border: '#238636' },
-      'warning': { label: 'Warning', color: '#9e6a03', bg: 'rgba(158, 106, 3, 0.15)', border: '#9e6a03' },
-      'late_early': { label: 'Late/Early', color: '#f85149', bg: 'rgba(248, 81, 73, 0.15)', border: '#f85149' },
-      'missed': { label: 'Missed', color: '#f85149', bg: 'rgba(248, 81, 73, 0.15)', border: '#f85149' },
-      'upcoming': { label: 'Upcoming', color: '#1f6feb', bg: 'rgba(31, 111, 235, 0.15)', border: '#1f6feb' },
-      'ready': { label: 'Ready', color: '#58a6ff', bg: 'rgba(88, 166, 255, 0.15)', border: '#58a6ff' },
-      'skipped': { label: 'Skipped', color: 'var(--muted-foreground)', bg: 'rgba(139, 148, 158, 0.15)', border: 'var(--muted-foreground)' }
-    };
-    return statusMap[status] || statusMap.upcoming;
+  // Status → ScheduleBoard tone (one of the six vc-content.css --sched-* families)
+  const STATUS_TONE = {
+    ready: 'ontime',
+    upcoming: 'pending',
+    missed: 'late',
+    on_time: 'completed',
+    warning: 'warning',
+    late_early: 'late',
+  };
+
+  const getStatusTone = (item) => {
+    if (item.is_completed) {
+      if (item.actual_dose === 0) return 'skipped';
+      return STATUS_TONE[item.status] || 'completed';
+    }
+    return STATUS_TONE[item.status] || 'pending';
   };
 
   const getStatusText = (item) => {
@@ -179,46 +173,61 @@ const AdminV2MedicationsSchedule = () => {
     });
   };
 
-  // Group medications by day and time
-  const groupMedications = (medications) => {
-    const groups = {};
-    
-    medications.forEach(item => {
-      const dateObj = new Date(item.scheduled_time);
-      const dayKey = dateObj.toLocaleDateString(undefined, { 
-        weekday: 'long', 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric' 
+  // Raw item -> ScheduleBoard row. Actions are built here since only the page
+  // knows permissions and what each status can still do.
+  const toRow = (item) => {
+    const actions = [];
+    if (!item.is_completed && hasPermission('medications.update')) {
+      actions.push({
+        key: 'take',
+        label: item.status === 'missed' ? 'Take Now' : 'Mark Taken',
+        tone: 'primary',
+        onClick: () => handleMarkTaken(item),
       });
-      const timeStr = dateObj.toLocaleTimeString(undefined, { 
-        hour: 'numeric', 
-        minute: '2-digit', 
-        hour12: true 
-      });
-      
-      if (!groups[dayKey]) groups[dayKey] = {};
-      if (!groups[dayKey][timeStr]) groups[dayKey][timeStr] = [];
-      groups[dayKey][timeStr].push(item);
-    });
-    
-    return groups;
+      if (item.status === 'missed') {
+        actions.push({ key: 'skip', label: 'Skip', tone: 'ghost', onClick: () => handleSkip(item) });
+      }
+    }
+    if (item.is_completed && item.log_id && hasPermission('medications.update')) {
+      actions.push({ key: 'undo', label: 'Undo', tone: 'ghost', onClick: () => handleUndo(item) });
+    }
+
+    return {
+      id: `${item.schedule_id}-${item.scheduled_time}`,
+      title: item.medication_name,
+      meta: [`${item.dose_amount} ${item.dose_unit || 'units'}`, item.concentration].filter(Boolean).join(' · '),
+      scheduleLine: item.actual_time
+        ? `Taken at ${new Date(item.actual_time).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true })}`
+        : recurrenceLabel(item.description),
+      statusLabel: getStatusText(item),
+      statusTone: getStatusTone(item),
+      completed: item.is_completed,
+      actions,
+    };
   };
 
-  // Sort time slots
-  const sortTimeSlots = (times) => {
-    return times.sort((a, b) => {
-      const parseTime = (t) => {
-        const match = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
-        if (!match) return 0;
-        let [, h, m, ampm] = match;
-        let hour = parseInt(h, 10);
-        if (/pm/i.test(ampm) && hour !== 12) hour += 12;
-        if (/am/i.test(ampm) && hour === 12) hour = 0;
-        return hour * 60 + parseInt(m, 10);
-      };
-      return parseTime(a) - parseTime(b);
+  // Day (real calendar date, timezone-correct via scheduled_time) then time
+  // slot (reusing scheduleRollup.js's groupBySlot — the same grouping the live
+  // dashboard's dose panel uses).
+  const buildDayGroups = (items) => {
+    const days = new Map();
+    items.forEach((item) => {
+      const dayKey = new Date(item.scheduled_time).toLocaleDateString(undefined, {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+      });
+      if (!days.has(dayKey)) days.set(dayKey, { key: dayKey, date: new Date(item.scheduled_time), items: [] });
+      days.get(dayKey).items.push(item);
     });
+    return [...days.values()]
+      .sort((a, b) => a.date - b.date)
+      .map((day) => ({
+        key: day.key,
+        label: day.key,
+        slots: groupBySlot(day.items).map((slot) => ({
+          time: slot.time,
+          items: slot.items.map(toRow),
+        })),
+      }));
   };
 
   const handleMarkTaken = async (medication) => {
@@ -339,244 +348,80 @@ const AdminV2MedicationsSchedule = () => {
   if (loadingPatients) {
     return (
       <AdminV2Layout>
-        <div className="admin-v2-loading">Loading patients...</div>
+        <div className="admin-v2-page">
+          <p className="cfg-loading">Loading patients...</p>
+        </div>
       </AdminV2Layout>
     );
   }
 
   const filteredMeds = getFilteredMedications();
-  const groupedMeds = groupMedications(filteredMeds);
-  const sortedDays = Object.keys(groupedMeds).sort((a, b) => new Date(a) - new Date(b));
+  const dayGroups = buildDayGroups(filteredMeds);
+
+  // Stat tiles double as status filters; the status colour rides on the dot.
+  const statTiles = [
+    { key: 'ready', label: 'Ready', count: stats.ready, dot: 'var(--vc-state-due)' },
+    { key: 'upcoming', label: 'Upcoming', count: stats.upcoming, dot: 'var(--vc-state-idle)' },
+    { key: 'missed', label: 'Missed', count: stats.missed, dot: 'var(--vc-state-alert)' },
+    { key: 'completed', label: 'Completed', count: stats.completed, dot: 'var(--vc-state-complete)' },
+  ];
 
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
         {selectedPatient ? (
-          <>
-            {/* Stats Row */}
-            <div className="admin-v2-summary-stats admin-v2-meds-schedule-summary">
-              <div 
-                className={`admin-v2-stat-card ${statusFilters.ready ? 'selected' : ''}`}
-                onClick={() => setStatusFilters(f => ({ ...f, ready: !f.ready }))}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(88, 166, 255, 0.15)' }}>
-                  <ClockIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.ready}</h4>
-                  <p>Ready</p>
-                </div>
-              </div>
-              <div 
-                className={`admin-v2-stat-card ${statusFilters.upcoming ? 'selected' : ''}`}
-                onClick={() => setStatusFilters(f => ({ ...f, upcoming: !f.upcoming }))}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(31, 111, 235, 0.15)' }}>
-                  <ClockIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.upcoming}</h4>
-                  <p>Upcoming</p>
-                </div>
-              </div>
-              <div 
-                className={`admin-v2-stat-card ${statusFilters.missed ? 'selected' : ''}`}
-                onClick={() => setStatusFilters(f => ({ ...f, missed: !f.missed }))}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(248, 81, 73, 0.15)' }}>
-                  <XIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.missed}</h4>
-                  <p>Missed</p>
-                </div>
-              </div>
-              <div 
-                className={`admin-v2-stat-card ${statusFilters.completed ? 'selected' : ''}`}
-                onClick={() => setStatusFilters(f => ({ ...f, completed: !f.completed }))}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(35, 134, 54, 0.15)' }}>
-                  <CheckIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.completed}</h4>
-                  <p>Completed</p>
-                </div>
-              </div>
+          <div className="cfg">
+            {/* Stats row — each tile toggles its status filter */}
+            <div className="cfg-stats row">
+              {statTiles.map(tile => (
+                <button
+                  key={tile.key}
+                  type="button"
+                  className="cfg-stat"
+                  aria-pressed={!!statusFilters[tile.key]}
+                  onClick={() => setStatusFilters(f => ({ ...f, [tile.key]: !f[tile.key] }))}
+                >
+                  <span className="cfg-stat-label">
+                    <span className="cfg-stat-dot" style={{ background: tile.dot }} aria-hidden="true" />
+                    {tile.label}
+                  </span>
+                  <span className="cfg-stat-value">{tile.count}</span>
+                </button>
+              ))}
             </div>
 
-            {/* Refresh Button */}
-            <div className="admin-v2-page-header tw">
-              <h3 style={{ margin: 0, color: 'var(--foreground)' }}>
+            <div className="cfg-toolbar">
+              <h3 className="cfg-toolbar-title">
                 Today & Yesterday ({filteredMeds.length} of {scheduledMedications.length})
               </h3>
-              <Button onClick={fetchSchedule} disabled={loading}>
+              <button type="button" className="cfg-ghost" onClick={fetchSchedule} disabled={loading}>
                 {loading ? 'Refreshing...' : 'Refresh'}
-              </Button>
+              </button>
             </div>
 
             {/* Schedule Content */}
-            {loading ? (
-              <div className="admin-v2-loading">Loading schedule...</div>
-            ) : error ? (
-              <div className="tw"><Alert variant="destructive">{error}</Alert></div>
-            ) : filteredMeds.length === 0 ? (
-              <div className="admin-v2-empty-state">
-                <MedicationsIcon size={48} />
-                <h3>No Scheduled Medications</h3>
-                <p className="admin-v2-text-muted">
-                  {scheduledMedications.length === 0 
-                    ? 'No medications scheduled for today or yesterday'
-                    : 'No medications match the selected filters'}
-                </p>
-              </div>
+            {error ? (
+              <div className="em-error">{error}</div>
             ) : (
-              <div className="admin-v2-schedule-list">
-                {sortedDays.map(dayKey => (
-                  <div key={dayKey} className="admin-v2-schedule-day">
-                    <div className="admin-v2-schedule-day-header">
-                      <h3>{dayKey}</h3>
-                    </div>
-                    
-                    {sortTimeSlots(Object.keys(groupedMeds[dayKey])).map(timeStr => (
-                      <div key={timeStr} className="admin-v2-schedule-time-group">
-                        <div className="admin-v2-schedule-time-header">
-                          <span className="admin-v2-schedule-time">{timeStr}</span>
-                          <span className="admin-v2-schedule-count-label">
-                            {groupedMeds[dayKey][timeStr].length} medication{groupedMeds[dayKey][timeStr].length !== 1 ? 's' : ''}
-                          </span>
-                        </div>
-                        
-                        <div className="admin-v2-schedule-items">
-                          {groupedMeds[dayKey][timeStr].map((item, idx) => {
-                            const statusInfo = getStatusInfo(item.status);
-                            const isCompleted = item.is_completed;
-                            
-                            return (
-                              <div 
-                                key={`${item.schedule_id}-${idx}`}
-                                className={`admin-v2-schedule-item ${isCompleted ? 'completed' : ''}`}
-                                style={{ 
-                                  borderLeftColor: statusInfo.border,
-                                  backgroundColor: statusInfo.bg
-                                }}
-                              >
-                                <div className="admin-v2-schedule-item-content">
-                                  <div className="admin-v2-schedule-item-main">
-                                    <span className="admin-v2-schedule-med-name">
-                                      {item.medication_name}
-                                      {item.concentration && (
-                                        <span className="admin-v2-schedule-concentration">
-                                          ({item.concentration})
-                                        </span>
-                                      )}
-                                    </span>
-                                    <span className="admin-v2-schedule-dose">
-                                      {item.dose_amount} {item.dose_unit || 'units'}
-                                    </span>
-                                  </div>
-                                  <div className="admin-v2-schedule-item-status">
-                                    <span 
-                                      className="admin-v2-schedule-status-badge"
-                                      style={{ 
-                                        backgroundColor: statusInfo.border,
-                                        color: '#fff'
-                                      }}
-                                    >
-                                      {getStatusText(item)}
-                                    </span>
-                                    {item.actual_time && (
-                                      <span className="admin-v2-schedule-actual-time">
-                                        Taken at {new Date(item.actual_time).toLocaleTimeString(undefined, { 
-                                          hour: 'numeric', 
-                                          minute: '2-digit', 
-                                          hour12: true 
-                                        })}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                                
-                                {!isCompleted && hasPermission('medications.update') && (
-                                  <div className="admin-v2-schedule-item-actions">
-                                    <button
-                                      className="admin-v2-btn admin-v2-btn-success admin-v2-btn-sm"
-                                      onClick={() => handleMarkTaken(item)}
-                                    >
-                                      {item.status === 'missed' ? 'Take Now' : 'Mark Taken'}
-                                    </button>
-                                    {item.status === 'missed' && (
-                                      <button
-                                        className="admin-v2-btn admin-v2-btn-sm"
-                                        onClick={() => handleSkip(item)}
-                                      >
-                                        Skip
-                                      </button>
-                                    )}
-                                  </div>
-                                )}
-                                {isCompleted && item.log_id && hasPermission('medications.update') && (
-                                  <div className="admin-v2-schedule-item-actions">
-                                    <button
-                                      className="admin-v2-btn admin-v2-btn-sm"
-                                      onClick={() => handleUndo(item)}
-                                    >
-                                      Undo
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
+              <ScheduleBoard
+                dayGroups={dayGroups}
+                loading={loading}
+                emptyText={
+                  scheduledMedications.length === 0
+                    ? 'No medications scheduled for today or yesterday'
+                    : 'No medications match the selected filters'
+                }
+              />
             )}
-
-            {/* Legend */}
-            <div className="admin-v2-schedule-legend">
-              <h4>Status Legend</h4>
-              <div className="admin-v2-legend-items">
-                <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: '#58a6ff' }}></span>
-                  <span>Ready to Take</span>
-                </div>
-                <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: '#1f6feb' }}></span>
-                  <span>Upcoming</span>
-                </div>
-                <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: '#f85149' }}></span>
-                  <span>Missed</span>
-                </div>
-                <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: '#238636' }}></span>
-                  <span>Completed</span>
-                </div>
-                <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: 'var(--muted-foreground)' }}></span>
-                  <span>Skipped</span>
-                </div>
-              </div>
-            </div>
-          </>
+          </div>
         ) : (
-          <div className="admin-v2-no-patient">
+          <div className="cfg-nopatient">
             <MedicationsIcon size={48} />
             <h2>Select a Patient</h2>
             <p>Choose a patient to view their daily medication schedule</p>
-            <div className="tw">
-              <Button onClick={() => setShowPatientModal(true)}>
-                Select Patient
-              </Button>
-            </div>
+            <button type="button" className="em-submit" onClick={() => setShowPatientModal(true)}>
+              Select Patient
+            </button>
           </div>
         )}
 
@@ -591,9 +436,9 @@ const AdminV2MedicationsSchedule = () => {
           />
         )}
 
-        {/* Off-window (early or late) administration confirmation modal */}
-        {windowConfirm.open && windowConfirm.medication && (() => {
-          const isLate = windowConfirm.check?.status === 'late';
+        {/* Off-window (early or late) administration confirmation */}
+        {windowConfirm.open && windowConfirm.medication && windowConfirm.check && (() => {
+          const isLate = windowConfirm.check.status === 'late';
           const title = isLate ? 'Warning: Late Administration' : 'Warning: Early Administration';
           const heading = isLate
             ? 'This medication was scheduled earlier'
@@ -607,37 +452,23 @@ const AdminV2MedicationsSchedule = () => {
           const confirmLabel = isLate ? 'Confirm Late Administration' : 'Confirm Early Administration';
           const close = () => setWindowConfirm({ open: false, medication: null, check: null });
           return (
-            <Dialog open={windowConfirm.open && !!windowConfirm.medication} onOpenChange={(o) => { if (!o) close(); }}>
-              <DialogContent className="sm:max-w-[480px]" aria-describedby={undefined}>
-                <DialogHeader>
-                  <DialogTitle>{title}</DialogTitle>
-                </DialogHeader>
-                {windowConfirm.medication && windowConfirm.check && (
-                  <Alert variant="warning">
-                    <AlertTitle className="text-[#f0883e]">{heading}</AlertTitle>
-                    <AlertDescription>
-                      <strong>{windowConfirm.medication.name}</strong> is scheduled for{' '}
-                      <strong>{windowConfirm.check.scheduledLocal}</strong>
-                      {' '}— that's <strong>{offsetText}</strong>.
-                      {' '}{consequence} Confirm this is intentional.
-                    </AlertDescription>
-                  </Alert>
-                )}
-                <DialogFooter>
-                  <Button type="button" variant="secondary" onClick={close}>Cancel</Button>
-                  <Button
-                    type="button"
-                    onClick={async () => {
-                      const med = windowConfirm.medication;
-                      close();
-                      await submitMarkTaken(med, true);
-                    }}
-                  >
-                    {confirmLabel}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+            <ConfirmSheet
+              open
+              onOpenChange={(o) => { if (!o) close(); }}
+              title={title}
+              confirmLabel={confirmLabel}
+              onConfirm={async () => {
+                const med = windowConfirm.medication;
+                close();
+                await submitMarkTaken(med, true);
+              }}
+            >
+              <strong className="cs-lead">{heading}</strong>
+              <strong>{windowConfirm.medication.name}</strong> is scheduled for{' '}
+              <strong>{windowConfirm.check.scheduledLocal}</strong>
+              {' '}— that&apos;s <strong>{offsetText}</strong>.
+              {' '}{consequence} Confirm this is intentional.
+            </ConfirmSheet>
           );
         })()}
       </div>

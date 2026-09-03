@@ -37,7 +37,8 @@ def create_symptom(
     duration: Optional[str] = None,
     description: Optional[str] = None,
     notes: Optional[str] = None,
-    timestamp: Optional[datetime] = None
+    timestamp: Optional[datetime] = None,
+    is_resolved: bool = False
 ) -> Symptom:
     """
     Create a new symptom record.
@@ -86,7 +87,8 @@ def create_symptom(
         duration=duration,
         description=description,
         notes=notes,
-        is_resolved=False,
+        is_resolved=is_resolved,
+        resolved_at=now if is_resolved else None,
         created_at=now
     )
     

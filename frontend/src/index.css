@@ -11,6 +11,11 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* iOS Safari inflates small text ("text autosizing") without this, blowing
+     the compact mono labels up past their layout and pushing dialogs wider
+     than the phone. Render the sizes as designed. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 /* Scoped with :not(:where(.tw *)) so the legacy app keeps these link styles at
@@ -38,26 +43,22 @@ h1 {
   line-height: 1.1;
 }
 
-/* Vite-starter button defaults. Scoped with :not(:where(.tw *)) so they keep
-   identical specificity for the existing app but never touch shadcn buttons
-   inside `.tw` subtrees. */
+/* The Vite-starter button defaults used to live here: 0.6em/1.2em padding, a
+   #1a1a1a background and a #646cff hover border, applied to every button the
+   app had not styled itself.
+
+   They were removed because the padding silently broke any fixed-size icon
+   button — on a 40px control with border-box sizing it left about 1.6px of
+   content box, shrinking a flex-centred SVG to nothing — and because the
+   purple hover border is not part of the design system.
+
+   What remains is font inheritance and the pointer cursor. A button with no
+   styling of its own now renders bare, which makes the surfaces still waiting
+   on a rebuild visible rather than passably wrong. */
 button:not(:where(.tw *)) {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
   font-family: inherit;
-  background-color: #1a1a1a;
+  font-size: 1em;
   cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:not(:where(.tw *)):hover {
-  border-color: #646cff;
-}
-button:not(:where(.tw *)):focus,
-button:not(:where(.tw *)):focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
 }
 
 @media (prefers-color-scheme: light) {

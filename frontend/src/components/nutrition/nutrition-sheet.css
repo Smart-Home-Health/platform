@@ -1,0 +1,633 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+/* The intake and bathroom logging sheets — vc-native, dark by design.
+   Replaces the .admin-v2-output-* block that used to live in AdminV2.css. */
+
+.nsheet { gap: 0.85rem; }
+
+.nsheet-sub {
+  margin: -0.35rem 0 0;
+  font-family: var(--vc-font-sans);
+  font-size: 13px;
+  color: var(--vc-text-secondary);
+}
+
+.nsheet-field { display: flex; flex-direction: column; gap: 0.35rem; }
+
+.nsheet-label {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.nsheet-req {
+  margin-left: 0.4rem;
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  color: var(--vc-state-due);
+}
+.nsheet-req::before { content: '· '; color: var(--vc-text-tertiary); }
+
+.nsheet-note {
+  margin: 0;
+  font-family: var(--vc-font-sans);
+  font-size: 12px;
+  color: var(--vc-text-tertiary);
+}
+
+/* Time row — reads as a stated value ("NOW · 5:15 PM"), with the picker kept
+   behind Edit so the common case is confirm-and-move-on. */
+.nsheet-when {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-surface);
+}
+.nsheet-when-icon { flex-shrink: 0; display: inline-flex; color: var(--vc-text-secondary); }
+.nsheet-when-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; }
+.nsheet-when-primary {
+  font-family: var(--vc-font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+.nsheet-when-primary em {
+  font-style: normal;
+  color: var(--vc-data-live);
+  margin-right: 0.35rem;
+}
+.nsheet-when-date {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.nsheet-when .em-input { flex: 1 1 auto; min-width: 0; }
+
+/* Urine / stool selectors — big, because they are the required choice. */
+/* Urine and stool are independent, so they stay checkboxes rather than joining
+   a segmented track — side by side, with an explicit tick when on. */
+.nsheet-toggles { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem; }
+
+.nsheet-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 48px;
+  padding: 0.5rem 0.7rem;
+  background: var(--vc-bg-surface);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.nsheet-toggle-label { flex: 1 1 auto; text-align: left; }
+.nsheet-toggle-check {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  border: 1px solid var(--vc-line-strong);
+  color: transparent;
+}
+.nsheet-toggle:hover:not(.on):not(:disabled) {
+  color: var(--vc-text-primary);
+  border-color: var(--vc-line-strong);
+}
+.nsheet-toggle.on {
+  border-color: var(--vc-data-live);
+  color: var(--vc-data-live);
+}
+.nsheet-toggle.on .nsheet-toggle-check {
+  background: var(--vc-data-live);
+  border-color: var(--vc-data-live);
+  color: var(--vc-bg-base);
+}
+.nsheet-toggle:disabled { opacity: 0.45; cursor: not-allowed; }
+.nsheet-toggle:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--vc-data-live);
+}
+
+/* Conditional detail sections */
+.nsheet-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.75rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--vc-bg-surface) 55%, transparent);
+}
+
+.nsheet-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.nsheet-card-head h4 {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+
+.nsheet-link {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-data-live);
+  text-align: right;
+}
+.nsheet-link:hover { text-decoration: underline; }
+.nsheet-link:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
+  border-radius: 4px;
+}
+
+/* Amount + unit on one line, with optional steppers. */
+.nsheet-amount { display: flex; gap: 0.4rem; align-items: stretch; }
+.nsheet-amount .em-input { flex: 1 1 auto; min-width: 0; }
+.nsheet-unit { flex: 0 0 clamp(84px, 26%, 128px); }
+
+.nsheet-step {
+  flex: 0 0 auto;
+  width: 44px;
+  /* index.css puts padding: 0.6em 1.2em on every non-Tailwind button; without
+     this the padding eats the fixed width and the icon shrinks to nothing. */
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--vc-bg-raised);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  color: var(--vc-text-secondary);
+  cursor: pointer;
+}
+.nsheet-step:hover { color: var(--vc-data-live); border-color: var(--vc-line-strong); }
+.nsheet-step:focus-visible {
+  outline: none;
+  border-color: var(--vc-data-live);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
+}
+
+/* Live preview of the entry being composed. */
+.nsheet-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--vc-data-live) 28%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--vc-data-live) 6%, var(--vc-bg-surface));
+}
+.nsheet-summary-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--vc-data-live) 35%, transparent);
+  color: var(--vc-data-live);
+}
+.nsheet-summary-text { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+.nsheet-summary-text strong {
+  font-family: var(--vc-font-mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-data-live);
+}
+.nsheet-summary-text span {
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+
+/* Save + another sits between Cancel and the primary action. */
+.nsheet-another { margin-left: auto; }
+.nsheet-another:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Saved-item search results */
+.nsheet-results {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: 190px;
+  overflow-y: auto;
+}
+.nsheet-result {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.55rem 0.7rem;
+  background: var(--vc-bg-raised);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--vc-text-primary);
+}
+.nsheet-result:hover { border-color: color-mix(in srgb, var(--vc-data-live) 50%, transparent); }
+.nsheet-result:focus-visible {
+  outline: none;
+  border-color: var(--vc-data-live);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
+}
+.nsheet-result-icon { flex-shrink: 0; display: inline-flex; color: var(--vc-data-live); }
+.nsheet-result-text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; flex: 1 1 auto; }
+.nsheet-result-name {
+  font-family: var(--vc-font-sans);
+  font-size: 13px;
+  font-weight: 600;
+}
+.nsheet-result-meta {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.nsheet-result-add { flex-shrink: 0; display: inline-flex; color: var(--vc-data-live); }
+
+/* Item search row: input plus the (not yet wired) scan affordance. */
+.nsheet-search { display: flex; gap: 0.5rem; align-items: stretch; }
+
+/* Opens the full-screen ItemPickerSheet — the one add affordance now that
+   search/scan/manual live in the picker. */
+.nitems-open-picker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.55rem;
+  background: transparent;
+  border: 1px dashed var(--vc-line-strong);
+  border-radius: 4px;
+  color: var(--vc-text-secondary);
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.nitems-open-picker:hover { color: var(--vc-text-primary); border-color: var(--vc-data-live); }
+.nsheet-search .em-input { flex: 1 1 auto; min-width: 0; }
+.nsheet-scan {
+  flex: 0 0 auto;
+  width: 48px;
+  /* index.css puts padding: 0.6em 1.2em on every non-Tailwind button; without
+     this the padding eats the fixed width and the icon shrinks to nothing. */
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--vc-bg-raised);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  color: var(--vc-text-tertiary);
+}
+.nsheet-scan:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Reusable-item toggle row */
+.nsheet-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.9rem;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-surface);
+}
+.nsheet-switch-text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.nsheet-switch-text strong {
+  font-family: var(--vc-font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vc-text-primary);
+}
+.nsheet-switch-text span {
+  font-family: var(--vc-font-sans);
+  font-size: 12px;
+  color: var(--vc-text-tertiary);
+}
+
+@media (max-width: 560px) {
+  /* The two output toggles stay side by side — stacking them pushed the whole
+     form down for a choice that reads better as a pair. */
+  .nsheet-toggle { padding: 0.5rem 0.55rem; letter-spacing: 0.06em; gap: 0.4rem; }
+  .nsheet-card-head { flex-direction: column; align-items: flex-start; gap: 0.35rem; }
+  .nsheet-link { text-align: left; }
+}
+
+/* Two-up number fields for the target sheet. */
+.nsheet-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.6rem;
+}
+.nsheet-unit-label {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.6rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-raised);
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+  white-space: nowrap;
+}
+.nsheet-card-head h4 { display: inline-flex; align-items: center; gap: 0.35rem; }
+
+/* ---- Multi-item feed editor (IntakeItemsEditor) ---- */
+
+.nitems-head { display: flex; align-items: center; justify-content: space-between; }
+.nitems-total {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+
+.nitems-row {
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-surface);
+  padding: 0.45rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.nitems-row.invalid { border-color: color-mix(in srgb, var(--vc-state-due) 55%, transparent); }
+
+.nitems-row-main {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.nitems-row-icon { flex-shrink: 0; display: inline-flex; color: var(--vc-data-live); }
+.nitems-row-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  font-family: var(--vc-font-sans);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--vc-text-primary);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nitems-row-name-input { flex: 1 1 auto; min-width: 0; }
+.nitems-row-amount { flex: 0 0 72px; width: 72px; min-width: 0; }
+.nitems-row-unit { flex: 0 0 auto; width: auto; min-width: 0; }
+.nitems-row-toggle,
+.nitems-row-remove {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-raised);
+  color: var(--vc-text-secondary);
+  cursor: pointer;
+  transition: color 0.12s ease, border-color 0.12s ease, transform 0.12s ease;
+}
+.nitems-row-toggle:hover, .nitems-row-remove:hover {
+  color: var(--vc-text-primary);
+  border-color: var(--vc-line-strong);
+}
+.nitems-row-toggle.open svg { transform: rotate(180deg); }
+.nitems-row-remove:hover { color: var(--vc-state-due); }
+
+.nitems-row-meta {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+  padding-left: 1.5rem;
+}
+
+.nitems-row-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  border-top: 1px solid var(--vc-line-hairline);
+  padding-top: 0.5rem;
+}
+
+.nitems-add-manual {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  align-self: flex-start;
+  padding: 0.4rem 0.6rem;
+  border: 1px dashed var(--vc-line-strong);
+  border-radius: 8px;
+  background: none;
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+.nitems-add-manual:hover {
+  color: var(--vc-text-primary);
+  border-color: var(--vc-data-live);
+}
+
+.nitems-scan-notice { color: var(--vc-text-secondary); }
+.nsheet-linked { color: var(--vc-data-live); }
+
+@media (max-width: 560px) {
+  /* Narrow screens: the name gets the first line to itself (next to the type
+     icon) and the amount / unit / buttons wrap onto a second line — five
+     things squeezed onto one line left the name at two characters wide. */
+  .nitems-row-main { flex-wrap: wrap; }
+  /* Number inputs and selects have an intrinsic min-width that beats
+     flex-shrink; without min-width: 0 the second line overflows the modal
+     sideways and drags the whole sheet with it. */
+  .nitems-row-main > * { min-width: 0; }
+  .nitems-row-name,
+  .nitems-row-name-input { flex: 1 1 calc(100% - 2rem); min-width: calc(100% - 2rem); }
+  .nitems-row-amount { flex: 1 1 5rem; width: auto; margin-left: 1.6rem; }
+  .nitems-row-unit { flex: 1 1 4.5rem; max-width: 7rem; }
+}
+
+/* ---- Feed target tracker (the spreadsheet's "N to go" cell, live) ---- */
+
+.nitems-target {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-raised);
+}
+.nitems-target-head {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.nitems-target-line { display: flex; flex-direction: column; gap: 0.25rem; }
+.nitems-target-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-family: var(--vc-font-mono);
+  font-size: 12px;
+}
+.nitems-target-label {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.nitems-target-given { flex: 1 1 auto; color: var(--vc-text-primary); font-weight: 600; }
+.nitems-target-missing {
+  flex: 0 0 auto;
+  font-weight: 700;
+  color: var(--vc-state-due);
+}
+.nitems-target-met {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-weight: 700;
+  color: var(--vc-data-live);
+}
+.nitems-target-track {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--vc-line-hairline);
+  overflow: hidden;
+}
+.nitems-target-fill {
+  height: 100%;
+  background: var(--vc-state-due);
+  transition: width 0.15s ease;
+}
+.nitems-target-fill.met { background: var(--vc-data-live); }
+
+/* Text companion to a barcode field — explicit trigger for scanners whose
+   wedge sends no terminator keystroke. */
+.nsheet-lookup {
+  flex: 0 0 auto;
+  padding: 0 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  background: var(--vc-bg-raised);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.nsheet-lookup:hover:not(:disabled) { color: var(--vc-data-live); border-color: var(--vc-line-strong); }
+.nsheet-lookup:disabled { opacity: 0.45; cursor: not-allowed; }
+.nsheet-lookup:focus-visible {
+  outline: none;
+  border-color: var(--vc-data-live);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
+}
+
+/* Schedule mix: the post-feed flush flag on a liquid row. */
+.nitems-flush-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-left: 1.5rem;
+  cursor: pointer;
+  font-family: var(--vc-font-sans);
+  font-size: 12px;
+  color: var(--vc-text-secondary);
+}
+.nitems-flush-toggle strong { color: var(--vc-text-primary); font-weight: 600; }
+.nitems-flush-toggle input:checked ~ span strong { color: var(--vc-data-live); }
+
+.nitems-flush-hint { padding-left: 1.5rem; }
+
+/* ---- Live-dashboard feed pane (NutritionFeedPane) ---- */
+.ldfeed-editor { margin: 0.6rem 0; display: flex; flex-direction: column; gap: 0.6rem; }
+.ldfeed-flush-hint {
+  margin: 0;
+  font-family: var(--vc-font-sans);
+  font-size: 12px;
+  color: var(--vc-text-tertiary);
+}

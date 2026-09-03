@@ -17,16 +17,8 @@
  */
 // "Count this supply" dialog for the Supplies page: package math in, one
 // audited absolute count out (POST /api/equipment/{id}/count).
-import React, { useEffect, useState } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { CheckIcon } from '../../../components/Icons';
+import { useEffect, useState } from 'react';
+import EntityModal from '../../../components/vc/EntityModal';
 import { equipmentService } from '../../../services/equipment';
 import { countTotal } from '../../../lib/catalogImport';
 import SupplyCountFields from './SupplyCountFields';
@@ -65,28 +57,26 @@ export default function SupplyCountModal({ open, onClose, item, onSaved }) {
   };
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose?.(); }}>
-      <DialogContent className="sm:max-w-[440px]" aria-describedby={undefined}>
-        <DialogHeader>
-          <DialogTitle>Count: {item.name}</DialogTitle>
-        </DialogHeader>
+    <EntityModal open onOpenChange={(o) => { if (!o) onClose?.(); }} title={`Count: ${item.name}`}>
+      <div className="em-form">
+        {error && <div className="em-error">{error}</div>}
 
-        {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
-
-        <p className="text-sm text-muted-foreground" style={{ margin: 0 }}>
+        <p className="em-hint">
           Count the unopened packages first, then anything loose.
           We currently have {item.quantity ?? 0} on record.
         </p>
 
         <SupplyCountFields value={fields} onChange={setFields} disabled={saving} />
 
-        <div className="flex flex-wrap gap-2">
-          <Button size="lg" onClick={handleSave} disabled={saving}>
-            <CheckIcon size={16} /> {saving ? 'Saving…' : 'Save count'}
-          </Button>
-          <Button variant="ghost" onClick={() => onClose?.()} disabled={saving}>Cancel</Button>
+        <div className="em-footer">
+          <button type="button" className="em-cancel" onClick={() => onClose?.()} disabled={saving}>
+            Cancel
+          </button>
+          <button type="button" className="em-submit" onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving…' : 'Save count'}
+          </button>
         </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </EntityModal>
   );
 }

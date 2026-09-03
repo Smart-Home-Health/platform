@@ -42,7 +42,12 @@ beforeEach(() => {
   onCancel.mockReset();
 });
 
-const pinInput = () => document.querySelector('input[type="password"]');
+const passwordInput = () => document.querySelector('input[type="password"]');
+// PIN mode has no text field: digits come from the on-screen pad (or a
+// hardware keyboard, see below).
+const tapPin = (digits) => {
+  for (const d of digits) fireEvent.click(screen.getByRole('button', { name: d }));
+};
 
 describe('PinChallengeModal', () => {
   it('renders nothing when closed', () => {
@@ -66,11 +71,44 @@ describe('PinChallengeModal', () => {
   it('verifies with a PIN and fires onSuccess', async () => {
     renderModal();
     fireEvent.click(await screen.findByText('Claude'));
-    fireEvent.change(pinInput(), { target: { value: '1234' } });
+    expect(document.querySelector('input')).toBeNull(); // no typeable field, nothing to autofill
+    tapPin('1234');
+    expect(screen.getByTestId('pc-pin-slots')).toHaveAttribute('aria-label', 'PIN: 4 of 8 digits entered');
     await act(async () => { fireEvent.click(screen.getByText('Verify')); });
 
     expect(selectUser).toHaveBeenCalledWith(1, '1234', null);
     expect(onSuccess).toHaveBeenCalled();
+  });
+
+  it('takes digits, Backspace and Enter from a hardware keyboard', async () => {
+    renderModal();
+    fireEvent.click(await screen.findByText('Claude'));
+    for (const k of ['1', '2', '3', '5', 'Backspace', '4']) fireEvent.keyDown(document, { key: k });
+    expect(screen.getByTestId('pc-pin-slots')).toHaveAttribute('aria-label', 'PIN: 4 of 8 digits entered');
+    await act(async () => { fireEvent.keyDown(document, { key: 'Enter' }); });
+    expect(selectUser).toHaveBeenCalledWith(1, '1234', null);
+  });
+
+  it('will not verify fewer than 4 digits, and caps at 8', async () => {
+    renderModal();
+    fireEvent.click(await screen.findByText('Claude'));
+    tapPin('123');
+    expect(screen.getByText('Verify')).toBeDisabled();
+    tapPin('456789');
+    expect(screen.getByTestId('pc-pin-slots')).toHaveAttribute('aria-label', 'PIN: 8 of 8 digits entered');
+    expect(screen.getByRole('button', { name: '9' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Backspace' })).toBeEnabled();
+  });
+
+  it('shows a rejected PIN (selectUser throws on 401) and clears the entry', async () => {
+    selectUser.mockRejectedValue(new Error('Invalid PIN'));
+    renderModal();
+    fireEvent.click(await screen.findByText('Claude'));
+    tapPin('0000');
+    await act(async () => { fireEvent.click(screen.getByText('Verify')); });
+    expect(await screen.findByText('Invalid PIN')).toBeInTheDocument();
+    expect(screen.getByTestId('pc-pin-slots')).toHaveAttribute('aria-label', 'PIN: 0 of 8 digits entered');
+    expect(onSuccess).not.toHaveBeenCalled();
   });
 
   it('requires a password for a user without a PIN', async () => {
@@ -78,7 +116,7 @@ describe('PinChallengeModal', () => {
     renderModal();
     fireEvent.click(await screen.findByText('NoPin'));
     expect(screen.getByText('Password')).toBeInTheDocument(); // password label, not PIN
-    fireEvent.change(pinInput(), { target: { value: 'secret' } });
+    fireEvent.change(passwordInput(), { target: { value: 'secret' } });
     await act(async () => { fireEvent.click(screen.getByText('Verify')); });
 
     expect(selectUser).toHaveBeenCalledWith(2, null, 'secret');
@@ -88,7 +126,7 @@ describe('PinChallengeModal', () => {
     selectUser.mockResolvedValue({ success: false, requiresPassword: true });
     renderModal();
     fireEvent.click(await screen.findByText('Claude'));
-    fireEvent.change(pinInput(), { target: { value: '1234' } });
+    tapPin('1234');
     await act(async () => { fireEvent.click(screen.getByText('Verify')); });
 
     expect(await screen.findByText('Password')).toBeInTheDocument();
@@ -100,7 +138,7 @@ describe('PinChallengeModal', () => {
     selectUser.mockResolvedValue({ success: false, error: 'Invalid PIN' });
     renderModal();
     fireEvent.click(await screen.findByText('Claude'));
-    fireEvent.change(pinInput(), { target: { value: '0000' } });
+    tapPin('0000');
     await act(async () => { fireEvent.click(screen.getByText('Verify')); });
 
     expect(await screen.findByText('Invalid PIN')).toBeInTheDocument();
@@ -109,7 +147,7 @@ describe('PinChallengeModal', () => {
   it('cancels from the picker', async () => {
     renderModal();
     await screen.findByText('Claude');
-    fireEvent.click(screen.getByText('×')); // ModalBase close
+    fireEvent.click(screen.getByLabelText('Close')); // ModalBase close
     expect(onCancel).toHaveBeenCalled();
   });
 });

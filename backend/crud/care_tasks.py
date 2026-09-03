@@ -349,7 +349,12 @@ def get_care_task_logs(db: Session, task_id=None, limit=50, start_date=None, end
             query = query.filter(CareTaskLog.care_task_id == task_id)
 
         if patient_id:
-            query = query.filter(CareTask.patient_id == patient_id)
+            # The patient the task was performed FOR, not the patient the task
+            # definition happens to belong to. Filtering on the definition meant
+            # completions of global tasks (care_task.patient_id IS NULL) never
+            # appeared in history at all, while another patient's completion of
+            # a shared task did. Every stats query already filters this way.
+            query = query.filter(CareTaskLog.patient_id == patient_id)
 
         if task_name:
             query = query.filter(CareTask.name.ilike(f"%{task_name}%"))
@@ -442,11 +447,14 @@ def get_care_task_completion_stats(db: Session, days=30, patient_id=None):
 
         stats = {}
         for log in logs:
+            # Keyed on the id, not the name: two tasks sharing a name were
+            # merging into one row, and the UI's key={task_id} then collided.
+            task_key = log.care_task_id
             task_name = log.care_task.name
             status = log.status
 
-            if task_name not in stats:
-                stats[task_name] = {
+            if task_key not in stats:
+                stats[task_key] = {
                     'task_id': log.care_task_id,
                     'task_name': task_name,
                     'category': log.care_task.category.name if log.care_task.category else None,
@@ -461,7 +469,7 @@ def get_care_task_completion_stats(db: Session, days=30, patient_id=None):
                     'other': 0,
                 }
 
-            entry = stats[task_name]
+            entry = stats[task_key]
             entry['total_logs'] += 1
 
             if status == 'completed':
@@ -575,6 +583,10 @@ def get_care_task_stats_by_user(db: Session, days=30, patient_id=None):
                 stats[key] = {
                     'user_id': key or None,
                     'name': label,
+                    # The panel reads user_name; keep `name` for older callers.
+                    'user_name': label,
+                    'avatar_seed': user.avatar_seed if user else None,
+                    'avatar_photo': user.avatar_photo if user else None,
                     'completed': 0,
                     'on_time': 0,
                     'late': 0,

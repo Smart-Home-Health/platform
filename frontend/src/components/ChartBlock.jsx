@@ -15,57 +15,93 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+import React, { useMemo } from "react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { CHART_CHROME } from "../contexts/DashboardThemeContext";
+import { pickTimeStep, buildTimeTicks, niceYDomain } from "../utils/chartAxis";
 
-export default function ChartBlock({ yLabel, color, dataset, showXaxis = true, showYaxis = true, chrome = CHART_CHROME.blue }) {
-  // Map colors to match value displays
-  const getColor = (colorName) => {
-    switch (colorName.toLowerCase()) {
-      case 'blue':
-        return '#1565C0';
-      case 'green':
-        return '#2E7D32';
-      case 'orange':
-        return '#EF6C00';
-      default:
-        return colorName;
-    }
-  };
-  
+// Series colors follow the vc state tokens (literals — recharts needs them)
+const SERIES_COLORS = {
+  blue: '#4da7bd',
+  green: '#3fbf6a',
+  orange: '#f0a52e',
+};
+const getColor = (colorName) => SERIES_COLORS[String(colorName).toLowerCase()] || colorName;
+
+const pad2 = (n) => String(n).padStart(2, '0');
+
+/* Streaming line chart for the live dashboard.
+ *
+ * The x domain is the wall-clock window [now - windowMs, now] with ticks on
+ * round boundaries (see utils/chartAxis) rather than recharts' data-derived
+ * default: labels then keep their text and slide, instead of renumbering on
+ * every incoming sample. `now` is supplied by the caller (useLiveVitalsBuffer's
+ * 1 Hz clock) so this component renders purely from its props.
+ *
+ * `dataset` is already trimmed to the window by the buffer hook — don't
+ * re-filter it here. */
+function ChartBlock({
+  yLabel,
+  color,
+  dataset,
+  showXaxis = true,
+  showYaxis = true,
+  // A tile-sized trace wants neither: its own card supplies the surface, and
+  // on a phone the tooltip latches on the tap that flipped the tile and then
+  // sits there over the reading.
+  showTooltip = true,
+  transparent = false,
+  chrome = CHART_CHROME,
+  windowMs = 5 * 60 * 1000,
+  now,
+}) {
   const chartColor = getColor(color);
-  
-  // Filter dataset to show only the last 5 minutes of data
-  const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
-  const filteredData = dataset.filter(point => point.x >= fiveMinutesAgo);
-  
-  // Calculate min and max values for auto-scaling Y axis
-  const calculateYDomain = () => {
-    if (filteredData.length === 0) return [0, 10]; // Default values if no data
-    
-    const yValues = filteredData.map(d => d.y);
-    let min = Math.min(...yValues);
-    let max = Math.max(...yValues);
-    
-    // Add some padding to the min/max values for better visualization
-    const padding = (max - min) * 0.1; // 10% padding
-    min = Math.max(0, min - padding); // Don't go below 0 for most medical metrics
-    max = max + padding;
-    
-    return [min, max];
+  const domainEnd = now ?? Date.now();
+  const domainStart = domainEnd - windowMs;
+
+  const step = pickTimeStep(windowMs);
+  const ticks = useMemo(
+    () => buildTimeTicks(domainStart, domainEnd, step),
+    [domainStart, domainEnd, step]
+  );
+  // Seconds only carry information when the ticks are closer together than a
+  // minute; above that they're noise that changes on every render.
+  const showSeconds = step < 60 * 1000;
+  const formatTick = (unixTime) => {
+    const d = new Date(unixTime);
+    const hm = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+    return showSeconds ? `${hm}:${pad2(d.getSeconds())}` : hm;
   };
-  
+
+  const yDomain = useMemo(() => niceYDomain(dataset.map(d => d.y)), [dataset]);
+
+  // Stable identities for the axis style objects (fresh literals would make
+  // every render look like a prop change to recharts).
+  const axisStyles = useMemo(() => ({
+    line: { stroke: chrome.grid },
+    tick: { fill: chrome.axis, fontSize: 10 },
+    tooltipContent: {
+      backgroundColor: chrome.tooltipBg,
+      border: `1px solid ${chrome.tooltipBorder}`,
+      borderRadius: '4px',
+    },
+    tooltipLabel: { color: chrome.tooltipText },
+  }), [chrome]);
+  const yAxisLabel = useMemo(
+    () => ({ value: yLabel, angle: -90, position: 'insideLeft', fill: chrome.axis, fontSize: 12 }),
+    [yLabel, chrome]
+  );
+  const seriesStyle = useMemo(() => ({ color: chartColor }), [chartColor]);
+
   return (
     <div style={{
       width: "100%",
       height: "100%",
       position: "relative",
-      backgroundColor: chrome.bg,
+      backgroundColor: transparent ? 'transparent' : chrome.bg,
       borderRadius: "0px"
     }}>
-      {/* Removed the title div that was here */}
-
-      {filteredData.length === 0 ? (
+      {dataset.length === 0 ? (
         <div style={{
           display: 'flex',
           justifyContent: 'center',
@@ -77,46 +113,52 @@ export default function ChartBlock({ yLabel, color, dataset, showXaxis = true, s
         </div>
       ) : (
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={filteredData}>
+          <LineChart data={dataset} margin={{ top: 5, right: 22, bottom: 5, left: 0 }}>
             {showXaxis && (
               <XAxis
                 dataKey="x"
                 type="number"
-                domain={['dataMin', 'dataMax']}
-                tickFormatter={(unixTime) => {
-                  const d = new Date(unixTime);
-                  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`;
-                }}
-                axisLine={{ stroke: chrome.grid }}
-                tickLine={{ stroke: chrome.grid }}
-                tick={{ fill: chrome.axis, fontSize: 10 }}
+                domain={[domainStart, domainEnd]}
+                ticks={ticks}
+                interval={0}
+                allowDataOverflow
+                tickFormatter={formatTick}
+                axisLine={axisStyles.line}
+                tickLine={axisStyles.line}
+                tick={axisStyles.tick}
               />
             )}
             {showYaxis && (
               <YAxis
-                domain={calculateYDomain()}
-                label={{ value: yLabel, angle: -90, position: 'insideLeft', fill: chrome.axis, fontSize: 12 }}
-                axisLine={{ stroke: chrome.grid }}
-                tickLine={{ stroke: chrome.grid }}
-                tick={{ fill: chrome.axis, fontSize: 10 }}
+                domain={yDomain}
+                allowDataOverflow
+                label={yAxisLabel}
+                axisLine={axisStyles.line}
+                tickLine={axisStyles.line}
+                tick={axisStyles.tick}
               />
             )}
-            <Tooltip
-              labelFormatter={(unixTime) => new Date(unixTime).toLocaleTimeString()}
-              contentStyle={{ backgroundColor: chrome.tooltipBg, border: `1px solid ${chrome.tooltipBorder}`, borderRadius: '4px' }}
-              itemStyle={{ color: chartColor }}
-              labelStyle={{ color: chrome.tooltipText }}
-            />
-            <Line 
-              type="monotone" 
-              dataKey="y" 
+            {showTooltip && (
+              <Tooltip
+                labelFormatter={(unixTime) => new Date(unixTime).toLocaleTimeString()}
+                contentStyle={axisStyles.tooltipContent}
+                itemStyle={seriesStyle}
+                labelStyle={axisStyles.tooltipLabel}
+              />
+            )}
+            <Line
+              type="monotone"
+              dataKey="y"
               stroke={chartColor}
               dot={false}
               isAnimationActive={false}
-              strokeWidth={2.5} // Keep only one strokeWidth property
+              strokeWidth={2.5}
             />
           </LineChart>
         </ResponsiveContainer>
       )}
     </div>
-  );}
+  );
+}
+
+export default React.memo(ChartBlock);

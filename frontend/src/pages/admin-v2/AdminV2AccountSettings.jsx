@@ -15,28 +15,19 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useTheme } from '../../contexts/ThemeContext';
 import { API_BASE_URL } from '../../config';
 import AdminV2Layout from './AdminV2Layout';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Alert } from '@/components/ui/alert';
-import { Field } from '@/components/ui/field';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
+import { SettingsIcon, BuildingIcon, KeyIcon, InfoIcon } from '../../components/Icons';
+import { EmField, EmSelect } from '../../components/vc/EntityModal';
+import { CfgSection, CfgGroup, CfgBadge } from './settings/CfgSection';
+import '../../components/vc/entity-card.css';
 import './AdminV2.css';
+import './settings/settings-page.css';
 
 export default function AdminV2AccountSettings() {
   const { user } = useAuth();
-  const { theme, setTheme } = useTheme();
   const [accountData, setAccountData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -176,9 +167,16 @@ export default function AdminV2AccountSettings() {
   if (user && !user.is_system_admin) {
     return (
       <AdminV2Layout>
-        <div style={{ padding: '2rem', color: 'var(--muted-foreground)', textAlign: 'center' }}>
-          <h3 style={{ color: 'var(--foreground)' }}>Access Denied</h3>
-          <p>Account settings are only available to system administrators.</p>
+        <div className="admin-v2-page">
+          <div className="cfg">
+            <CfgSection icon={<SettingsIcon size={16} />} title="Access Denied">
+              <CfgGroup>
+                <p className="cfg-empty">
+                  Account settings are only available to system administrators.
+                </p>
+              </CfgGroup>
+            </CfgSection>
+          </div>
         </div>
       </AdminV2Layout>
     );
@@ -188,7 +186,7 @@ export default function AdminV2AccountSettings() {
     return (
       <AdminV2Layout>
         <div className="admin-v2-page">
-          <div className="admin-v2-loading">Loading account settings...</div>
+          <p className="cfg-loading">Loading account settings...</p>
         </div>
       </AdminV2Layout>
     );
@@ -197,38 +195,27 @@ export default function AdminV2AccountSettings() {
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
-        <div className="tw grid gap-6 lg:grid-cols-2">
-          {/* Appearance Card (per-user theme preference) */}
-          <Card>
-            <CardHeader><CardTitle>Appearance</CardTitle></CardHeader>
-            <CardContent>
-              <Field
-                label="Theme"
-                htmlFor="theme"
-                hint="Applies to your profile and follows you across devices. “System” matches your device’s light/dark setting."
-              >
-                <Select value={theme} onValueChange={setTheme}>
-                  <SelectTrigger id="theme"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="light">Light</SelectItem>
-                    <SelectItem value="dark">Dark</SelectItem>
-                    <SelectItem value="system">System</SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
-            </CardContent>
-          </Card>
+        <div className="cfg cfg-cols">
 
-          {/* Account Details Card */}
-          <Card>
-            <CardHeader><CardTitle>Account Details</CardTitle></CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-                {error && <Alert variant="destructive">{error}</Alert>}
-                {success && <Alert variant="success">{success}</Alert>}
+          <CfgSection
+            icon={<BuildingIcon size={16} />}
+            title="Account Details"
+            actions={
+              <button type="submit" form="account-details-form" className="em-submit" disabled={saving}>
+                {saving ? 'Saving...' : 'Save Changes'}
+              </button>
+            }
+          >
+            <CfgGroup>
+              {/* The submit button lives in the section footer, so it reaches
+                  this form through the `form` attribute rather than nesting. */}
+              <form id="account-details-form" onSubmit={handleSubmit} className="cfg-form">
+                {error && <p className="em-error" role="alert">{error}</p>}
+                {success && <p className="em-success" role="status">{success}</p>}
 
-                <Field label="Account Name" htmlFor="name" hint="Display name for this account">
-                  <Input
+                <EmField label="Account Name" htmlFor="name" hint="Display name for this account">
+                  <input
+                    className="em-input"
                     type="text"
                     id="name"
                     value={name}
@@ -236,14 +223,15 @@ export default function AdminV2AccountSettings() {
                     placeholder="Enter account name"
                     required
                   />
-                </Field>
+                </EmField>
 
-                <Field
+                <EmField
                   label="Account ID (Login)"
                   htmlFor="slug"
                   hint="Used for logging in. Lowercase letters, numbers, and hyphens only."
                 >
-                  <Input
+                  <input
+                    className="em-input"
                     type="text"
                     id="slug"
                     value={slug}
@@ -252,70 +240,63 @@ export default function AdminV2AccountSettings() {
                     required
                     pattern="[a-z0-9-]+"
                   />
-                </Field>
+                </EmField>
 
-                <Field label="Timezone" htmlFor="timezone" hint="Default timezone for schedules and logs">
-                  <Select value={timezone} onValueChange={setTimezone}>
-                    <SelectTrigger id="timezone"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {timezones.map(tz => (
-                        <SelectItem key={tz} value={tz}>{tz}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-
-                <div className="flex justify-end">
-                  <Button type="submit" disabled={saving}>
-                    {saving ? 'Saving...' : 'Save Changes'}
-                  </Button>
-                </div>
+                <EmField label="Timezone" htmlFor="timezone" hint="Default timezone for schedules and logs">
+                  <EmSelect id="timezone" value={timezone} onChange={(e) => setTimezone(e.target.value)}>
+                    {timezones.map(tz => (
+                      <option key={tz} value={tz}>{tz}</option>
+                    ))}
+                  </EmSelect>
+                </EmField>
               </form>
-            </CardContent>
-          </Card>
+            </CfgGroup>
+          </CfgSection>
 
-          {/* Password Card */}
-          <Card>
-            <CardHeader><CardTitle>Account Password</CardTitle></CardHeader>
-            <CardContent>
+          <CfgSection icon={<KeyIcon size={16} />} title="Account Password">
+            <CfgGroup>
               {!showPasswordForm ? (
-                <div className="flex flex-col items-start gap-4">
+                <>
                   {accountData?.password_unset && (
-                    <Alert>
+                    <p className="cfg-note">
                       No account password has been set yet (setup was completed
                       through Home Assistant). Shared and LAN devices stay in
                       add-only mode until one is set — you can set it now without
                       a current password.
-                    </Alert>
+                    </p>
                   )}
-                  <p className="text-sm text-muted-foreground">
+                  <p className="cfg-group-hint">
                     The account password is used to log in at the account level before selecting a user profile.
                   </p>
-                  <Button variant="secondary" onClick={() => setShowPasswordForm(true)}>
-                    {accountData?.password_unset ? 'Set Password' : 'Change Password'}
-                  </Button>
-                </div>
+                  <div className="cfg-actions">
+                    <button type="button" className="em-cancel" onClick={() => setShowPasswordForm(true)}>
+                      {accountData?.password_unset ? 'Set Password' : 'Change Password'}
+                    </button>
+                  </div>
+                </>
               ) : (
-                <form onSubmit={handlePasswordChange} className="flex flex-col gap-4">
-                  {passwordError && <Alert variant="destructive">{passwordError}</Alert>}
-                  {passwordSuccess && <Alert variant="success">{passwordSuccess}</Alert>}
+                <form onSubmit={handlePasswordChange} className="cfg-form">
+                  {passwordError && <p className="em-error" role="alert">{passwordError}</p>}
+                  {passwordSuccess && <p className="em-success" role="status">{passwordSuccess}</p>}
 
                   {/* First human-set password after an HA-ingress setup: the
                       stored password is random, so there's nothing to verify. */}
                   {!accountData?.password_unset && (
-                    <Field label="Current Password" htmlFor="currentPassword">
-                      <Input
+                    <EmField label="Current Password" htmlFor="currentPassword">
+                      <input
+                        className="em-input"
                         type="password"
                         id="currentPassword"
                         value={currentPassword}
                         onChange={(e) => setCurrentPassword(e.target.value)}
                         required
                       />
-                    </Field>
+                    </EmField>
                   )}
 
-                  <Field label="New Password" htmlFor="newPassword" hint="Minimum 8 characters">
-                    <Input
+                  <EmField label="New Password" htmlFor="newPassword" hint="Minimum 8 characters">
+                    <input
+                      className="em-input"
                       type="password"
                       id="newPassword"
                       value={newPassword}
@@ -323,10 +304,11 @@ export default function AdminV2AccountSettings() {
                       minLength={8}
                       required
                     />
-                  </Field>
+                  </EmField>
 
-                  <Field label="Confirm New Password" htmlFor="confirmPassword">
-                    <Input
+                  <EmField label="Confirm New Password" htmlFor="confirmPassword">
+                    <input
+                      className="em-input"
                       type="password"
                       id="confirmPassword"
                       value={confirmPassword}
@@ -334,12 +316,12 @@ export default function AdminV2AccountSettings() {
                       minLength={8}
                       required
                     />
-                  </Field>
+                  </EmField>
 
-                  <div className="flex justify-end gap-2">
-                    <Button
+                  <div className="cfg-actions end">
+                    <button
                       type="button"
-                      variant="secondary"
+                      className="em-cancel"
                       onClick={() => {
                         setShowPasswordForm(false);
                         setCurrentPassword('');
@@ -349,57 +331,48 @@ export default function AdminV2AccountSettings() {
                       }}
                     >
                       Cancel
-                    </Button>
-                    <Button type="submit" disabled={savingPassword}>
+                    </button>
+                    <button type="submit" className="em-submit" disabled={savingPassword}>
                       {savingPassword ? 'Changing...' : 'Change Password'}
-                    </Button>
+                    </button>
                   </div>
                 </form>
               )}
-            </CardContent>
-          </Card>
+            </CfgGroup>
+          </CfgSection>
 
-          {/* Account Info Card */}
-          <Card>
-            <CardHeader><CardTitle>Account Information</CardTitle></CardHeader>
-            <CardContent>
-              <dl className="flex flex-col divide-y divide-border text-sm">
-                <div className="flex items-center justify-between py-2">
-                  <dt className="text-muted-foreground">Account ID</dt>
-                  <dd className="font-medium text-foreground">{accountData?.id}</dd>
+          <CfgSection icon={<InfoIcon size={16} />} title="Account Information">
+            <CfgGroup>
+              <dl className="cfg-facts">
+                <div>
+                  <dt>Account ID</dt>
+                  <dd>{accountData?.id}</dd>
                 </div>
-                <div className="flex items-center justify-between py-2">
-                  <dt className="text-muted-foreground">Created</dt>
-                  <dd className="font-medium text-foreground">
+                <div>
+                  <dt>Created</dt>
+                  <dd>
                     {accountData?.created_at
                       ? new Date(accountData.created_at).toLocaleDateString()
                       : 'Unknown'}
                   </dd>
                 </div>
-                <div className="flex items-center justify-between py-2">
-                  <dt className="text-muted-foreground">Status</dt>
+                <div>
+                  <dt>Status</dt>
                   <dd>
-                    <span
-                      className={
-                        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium " +
-                        (accountData?.is_active
-                          ? "bg-success/20 text-[#3fb950]"
-                          : "bg-destructive/20 text-[#ff7b72]")
-                      }
-                    >
+                    <CfgBadge tone={accountData?.is_active ? 'ok' : 'alert'}>
                       {accountData?.is_active ? 'Active' : 'Inactive'}
-                    </span>
+                    </CfgBadge>
                   </dd>
                 </div>
                 {accountData?.organization && (
-                  <div className="flex items-center justify-between py-2">
-                    <dt className="text-muted-foreground">Organization</dt>
-                    <dd className="font-medium text-foreground">{accountData.organization.name}</dd>
+                  <div>
+                    <dt>Organization</dt>
+                    <dd>{accountData.organization.name}</dd>
                   </div>
                 )}
               </dl>
-            </CardContent>
-          </Card>
+            </CfgGroup>
+          </CfgSection>
         </div>
       </div>
     </AdminV2Layout>

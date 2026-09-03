@@ -15,55 +15,21 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import AdminV2Layout from '../AdminV2Layout';
 import { useAdminPatient } from '../../../contexts/AdminPatientContext';
 import { getSettings, setSetting, updateSettings } from '../../../services/settings';
 import config from '../../../config';
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Alert } from '@/components/ui/alert';
-import { Field, FormRow } from '@/components/ui/field';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
+import { ConfigIcon, PatientsIcon, InfoIcon } from '../../../components/Icons';
+import { EmField, EmSelect } from '../../../components/vc/EntityModal';
+import { CfgSection, CfgGroup, CfgFields } from './CfgSection';
+import '../../../components/vc/entity-card.css';
 import '../AdminV2.css';
+import './settings-page.css';
 
-// Radix Select forbids an empty-string value, so use a sentinel for "no vital".
+// The native select needs a sentinel rather than an empty value so "no vital"
+// is a real option rather than a blank first row.
 const NONE = '__none__';
-
-// Section header used inside each settings Card.
-const SectionHeader = ({ icon, title, subtitle, saved }) => (
-  <CardHeader>
-    <div className="flex items-center justify-between gap-3">
-      <div className="flex items-center gap-3">
-        <span className="text-xl" aria-hidden>{icon}</span>
-        <div className="flex flex-col gap-0.5">
-          <CardTitle>{title}</CardTitle>
-          {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
-        </div>
-      </div>
-      {saved && <span className="text-sm font-medium text-[#3fb950]">Saved!</span>}
-    </div>
-  </CardHeader>
-);
-
-// A labelled group within a settings Card.
-const SettingsGroup = ({ title, description, children }) => (
-  <div className="flex flex-col gap-4 border-b border-border pb-6 last:border-b-0 last:pb-0">
-    <div className="flex flex-col gap-1">
-      <h4 className="text-sm font-semibold text-foreground">{title}</h4>
-      {description && <p className="text-sm text-muted-foreground">{description}</p>}
-    </div>
-    {children}
-  </div>
-);
 
 /**
  * General Settings page for Admin V2
@@ -74,7 +40,6 @@ const AdminV2SettingsGeneral = () => {
 
   // App-wide settings
   const [appSettings, setAppSettings] = useState({
-    chart_time_range: '5m',
     show_statistics: true,
     perfusion_as_percent: false,
     dashboard_chart_1_vital: '',
@@ -219,7 +184,6 @@ const AdminV2SettingsGeneral = () => {
 
     try {
       const settingsToUpdate = {
-        chart_time_range: appSettings.chart_time_range,
         show_statistics: appSettings.show_statistics,
         perfusion_as_percent: appSettings.perfusion_as_percent,
         dashboard_chart_1_vital: appSettings.dashboard_chart_1_vital,
@@ -274,7 +238,7 @@ const AdminV2SettingsGeneral = () => {
     return (
       <AdminV2Layout>
         <div className="admin-v2-page">
-          <div className="admin-v2-loading">Loading settings...</div>
+          <p className="cfg-loading">Loading settings...</p>
         </div>
       </AdminV2Layout>
     );
@@ -283,205 +247,182 @@ const AdminV2SettingsGeneral = () => {
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
-        <div className="tw space-y-6">
-          {error && <Alert variant="destructive">{error}</Alert>}
+        <div className="cfg">
+          {error && <p className="em-error" role="alert">{error}</p>}
 
-          {/* Application Settings */}
-          <Card>
-            <SectionHeader
-              icon="⚙️"
-              title="Application Settings"
-              subtitle="These settings apply to the entire application"
-              saved={successApp}
-            />
-            <CardContent className="flex flex-col gap-6">
-              <SettingsGroup title="Dashboard Display">
-                <FormRow>
-                  <Field
-                    label="Chart Time Range"
-                    hint="Amount of historical data shown in SpO₂, Heart Rate, and Perfusion charts"
-                  >
-                    <Select
-                      value={appSettings.chart_time_range}
-                      onValueChange={(v) => handleAppInputChange('chart_time_range', v)}
-                    >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1m">1 Minute</SelectItem>
-                        <SelectItem value="3m">3 Minutes</SelectItem>
-                        <SelectItem value="5m">5 Minutes</SelectItem>
-                        <SelectItem value="10m">10 Minutes</SelectItem>
-                        <SelectItem value="30m">30 Minutes</SelectItem>
-                        <SelectItem value="1h">1 Hour</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </Field>
-
-                  <Field label="Day Start Hour" hint="When daily tracking (calories, water) resets">
-                    <Select
-                      value={String(appSettings.day_start_hour)}
-                      onValueChange={(v) => handleAppInputChange('day_start_hour', v)}
-                    >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {Array.from({ length: 24 }, (_, i) => (
-                          <SelectItem key={i} value={String(i)}>
-                            {i === 0 ? '12:00 AM' : i < 12 ? `${i}:00 AM` : i === 12 ? '12:00 PM' : `${i - 12}:00 PM`}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                </FormRow>
-
-                <FormRow>
-                  <Field
-                    label="Inactivity Lock"
-                    hint="Where the admin UI returns after 5 minutes of inactivity"
-                  >
-                    <Select
-                      value={appSettings.idle_lock_target}
-                      onValueChange={(v) => handleAppInputChange('idle_lock_target', v)}
-                    >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="select-user">Lock to User Select</SelectItem>
-                        <SelectItem value="live">Lock to Live Dashboard</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                </FormRow>
-
-                <div className="flex flex-col gap-3 sm:flex-row sm:gap-8">
-                  <label className="flex cursor-pointer items-center gap-2">
-                    <Checkbox
-                      checked={appSettings.show_statistics}
-                      onCheckedChange={(v) => handleAppInputChange('show_statistics', v === true)}
-                    />
-                    <span className="text-sm text-foreground">Show Value Statistics (Min/Max/Avg)</span>
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-2">
-                    <Checkbox
-                      checked={appSettings.perfusion_as_percent}
-                      onCheckedChange={(v) => handleAppInputChange('perfusion_as_percent', v === true)}
-                    />
-                    <span className="text-sm text-foreground">Display Perfusion as Percent (%)</span>
-                  </label>
-                </div>
-              </SettingsGroup>
-
-              <SettingsGroup
-                title="Dashboard Sub-Charts"
-                description="Choose which vitals to display in the two sub-charts below the main dashboard. Each vital can only be used once."
-              >
-                <FormRow>
-                  {[1, 2].map((n) => {
-                    const key = `dashboard_chart_${n}_vital`;
-                    return (
-                      <Field key={n} label={`Chart ${n} - Vital Type`}>
-                        <Select
-                          value={appSettings[key] || NONE}
-                          onValueChange={(v) => handleAppInputChange(key, v === NONE ? '' : v)}
-                        >
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value={NONE}>Select a vital type...</SelectItem>
-                            {getAvailableVitalsForChart(n).map((vital) => (
-                              <SelectItem key={vital} value={vital}>
-                                {formatVitalDisplayName(vital)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </Field>
-                    );
-                  })}
-                </FormRow>
-              </SettingsGroup>
-            </CardContent>
-            <CardFooter>
-              <Button onClick={saveAppSettings} disabled={isSavingApp}>
+          <CfgSection
+            icon={<ConfigIcon size={16} />}
+            title="Application Settings"
+            subtitle="These settings apply to the entire application"
+            saved={successApp}
+            actions={
+              <button type="button" className="em-submit" onClick={saveAppSettings} disabled={isSavingApp}>
                 {isSavingApp ? 'Saving...' : 'Save Application Settings'}
-              </Button>
-            </CardFooter>
-          </Card>
-
-          {/* Patient Settings */}
-          <Card>
-            <SectionHeader
-              icon="👤"
-              title="Patient Settings"
-              subtitle={selectedPatient
-                ? `Settings for ${selectedPatient.first_name} ${selectedPatient.last_name}`
-                : 'Default settings applied to all patients'}
-              saved={successPatient}
-            />
-            <CardContent className="flex flex-col gap-6">
-              <SettingsGroup
-                title="Vital Sign Alert Thresholds"
-                description="Alerts will trigger when readings fall outside these ranges"
-              >
-                <FormRow cols={4}>
-                  <Field label="Min SpO₂ (%)">
-                    <Input type="number" min="80" max="100" value={patientSettings.min_spo2}
-                      onChange={(e) => handlePatientInputChange('min_spo2', e.target.value)} />
-                  </Field>
-                  <Field label="Max SpO₂ (%)">
-                    <Input type="number" min="80" max="100" value={patientSettings.max_spo2}
-                      onChange={(e) => handlePatientInputChange('max_spo2', e.target.value)} />
-                  </Field>
-                  <Field label="Min Heart Rate (BPM)">
-                    <Input type="number" min="30" max="200" value={patientSettings.min_bpm}
-                      onChange={(e) => handlePatientInputChange('min_bpm', e.target.value)} />
-                  </Field>
-                  <Field label="Max Heart Rate (BPM)">
-                    <Input type="number" min="30" max="250" value={patientSettings.max_bpm}
-                      onChange={(e) => handlePatientInputChange('max_bpm', e.target.value)} />
-                  </Field>
-                </FormRow>
-              </SettingsGroup>
-
-              <SettingsGroup title="Daily Nutrition Targets">
-                <FormRow>
-                  <Field label="Daily Calories (kcal)" hint="Target daily calorie intake">
-                    <Input type="number" min="500" max="5000" step="100" value={patientSettings.daily_calories}
-                      onChange={(e) => handlePatientInputChange('daily_calories', e.target.value)} />
-                  </Field>
-                  <Field label="Daily Water (ml)" hint="Target daily water intake">
-                    <Input type="number" min="500" max="5000" step="100" value={patientSettings.daily_water}
-                      onChange={(e) => handlePatientInputChange('daily_water', e.target.value)} />
-                  </Field>
-                </FormRow>
-              </SettingsGroup>
-            </CardContent>
-            <CardFooter>
-              <Button onClick={savePatientSettings} disabled={isSavingPatient}>
-                {isSavingPatient ? 'Saving...' : 'Save Patient Settings'}
-              </Button>
-            </CardFooter>
-          </Card>
-
-          {/* About */}
-          <Card>
-            <SectionHeader icon="ℹ️" title="About" subtitle="Smart Home Health" />
-            <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
-              <p>
-                This software is free and open source, licensed under the{' '}
-                <strong className="text-foreground">GNU Affero General Public License v3.0</strong>. Under
-                AGPL section 13, the complete source code for this application is available to you:
-              </p>
-              <p>
-                <a
-                  className="text-ring underline-offset-4 hover:underline"
-                  href="https://github.com/Smart-Home-Health/smart-home-health-hub"
-                  target="_blank"
-                  rel="noopener noreferrer"
+              </button>
+            }
+          >
+            <CfgGroup title="Dashboard Display">
+              <CfgFields narrow>
+                <EmField
+                  label="Day Start Hour"
+                  htmlFor="cfg-day-start"
+                  hint="When daily tracking (calories, water) resets"
                 >
-                  github.com/Smart-Home-Health/smart-home-health-hub
-                </a>
-              </p>
-            </CardContent>
-          </Card>
+                  <EmSelect
+                    id="cfg-day-start"
+                    value={String(appSettings.day_start_hour)}
+                    onChange={(e) => handleAppInputChange('day_start_hour', e.target.value)}
+                  >
+                    {Array.from({ length: 24 }, (_, i) => (
+                      <option key={i} value={String(i)}>
+                        {i === 0 ? '12:00 AM' : i < 12 ? `${i}:00 AM` : i === 12 ? '12:00 PM' : `${i - 12}:00 PM`}
+                      </option>
+                    ))}
+                  </EmSelect>
+                </EmField>
+
+                <EmField
+                  label="Inactivity Lock"
+                  htmlFor="cfg-idle-lock"
+                  hint="Where the admin UI returns after 5 minutes of inactivity"
+                >
+                  <EmSelect
+                    id="cfg-idle-lock"
+                    value={appSettings.idle_lock_target}
+                    onChange={(e) => handleAppInputChange('idle_lock_target', e.target.value)}
+                  >
+                    <option value="select-user">Lock to User Select</option>
+                    <option value="live">Lock to Live Dashboard</option>
+                  </EmSelect>
+                </EmField>
+              </CfgFields>
+
+              <div className="cfg-checks">
+                <label className="em-check-row">
+                  <input
+                    type="checkbox"
+                    className="em-check"
+                    checked={appSettings.show_statistics}
+                    onChange={(e) => handleAppInputChange('show_statistics', e.target.checked)}
+                  />
+                  <span className="em-check-label">Show Value Statistics (Min/Max/Avg)</span>
+                </label>
+                <label className="em-check-row">
+                  <input
+                    type="checkbox"
+                    className="em-check"
+                    checked={appSettings.perfusion_as_percent}
+                    onChange={(e) => handleAppInputChange('perfusion_as_percent', e.target.checked)}
+                  />
+                  <span className="em-check-label">Display Perfusion as Percent (%)</span>
+                </label>
+              </div>
+            </CfgGroup>
+
+            <CfgGroup
+              title="Dashboard Sub-Charts"
+              hint="Choose which vitals to display in the two sub-charts below the main dashboard. Each vital can only be used once."
+            >
+              <CfgFields narrow>
+                {[1, 2].map((n) => {
+                  const key = `dashboard_chart_${n}_vital`;
+                  return (
+                    <EmField key={n} label={`Chart ${n} - Vital Type`} htmlFor={`cfg-chart-${n}`}>
+                      <EmSelect
+                        id={`cfg-chart-${n}`}
+                        value={appSettings[key] || NONE}
+                        onChange={(e) => handleAppInputChange(key, e.target.value === NONE ? '' : e.target.value)}
+                      >
+                        <option value={NONE}>Select a vital type...</option>
+                        {getAvailableVitalsForChart(n).map((vital) => (
+                          <option key={vital} value={vital}>{formatVitalDisplayName(vital)}</option>
+                        ))}
+                      </EmSelect>
+                    </EmField>
+                  );
+                })}
+              </CfgFields>
+            </CfgGroup>
+          </CfgSection>
+
+          <CfgSection
+            icon={<PatientsIcon size={16} />}
+            title="Patient Settings"
+            subtitle={selectedPatient
+              ? `Settings for ${selectedPatient.first_name} ${selectedPatient.last_name}`
+              : 'Default settings applied to all patients'}
+            saved={successPatient}
+            actions={
+              <button type="button" className="em-submit" onClick={savePatientSettings} disabled={isSavingPatient}>
+                {isSavingPatient ? 'Saving...' : 'Save Patient Settings'}
+              </button>
+            }
+          >
+            <CfgGroup
+              title="Vital Sign Alert Thresholds"
+              hint="Alerts will trigger when readings fall outside these ranges"
+            >
+              <CfgFields>
+                <EmField label="Min SpO₂ (%)" htmlFor="cfg-min-spo2">
+                  <input id="cfg-min-spo2" className="em-input" type="number" min="80" max="100"
+                    value={patientSettings.min_spo2}
+                    onChange={(e) => handlePatientInputChange('min_spo2', e.target.value)} />
+                </EmField>
+                <EmField label="Max SpO₂ (%)" htmlFor="cfg-max-spo2">
+                  <input id="cfg-max-spo2" className="em-input" type="number" min="80" max="100"
+                    value={patientSettings.max_spo2}
+                    onChange={(e) => handlePatientInputChange('max_spo2', e.target.value)} />
+                </EmField>
+                <EmField label="Min Heart Rate (BPM)" htmlFor="cfg-min-bpm">
+                  <input id="cfg-min-bpm" className="em-input" type="number" min="30" max="200"
+                    value={patientSettings.min_bpm}
+                    onChange={(e) => handlePatientInputChange('min_bpm', e.target.value)} />
+                </EmField>
+                <EmField label="Max Heart Rate (BPM)" htmlFor="cfg-max-bpm">
+                  <input id="cfg-max-bpm" className="em-input" type="number" min="30" max="250"
+                    value={patientSettings.max_bpm}
+                    onChange={(e) => handlePatientInputChange('max_bpm', e.target.value)} />
+                </EmField>
+              </CfgFields>
+            </CfgGroup>
+
+            <CfgGroup title="Daily Nutrition Targets">
+              <CfgFields narrow>
+                <EmField label="Daily Calories (kcal)" htmlFor="cfg-daily-cal" hint="Target daily calorie intake">
+                  <input id="cfg-daily-cal" className="em-input" type="number" min="500" max="5000" step="100"
+                    value={patientSettings.daily_calories}
+                    onChange={(e) => handlePatientInputChange('daily_calories', e.target.value)} />
+                </EmField>
+                <EmField label="Daily Water (ml)" htmlFor="cfg-daily-water" hint="Target daily water intake">
+                  <input id="cfg-daily-water" className="em-input" type="number" min="500" max="5000" step="100"
+                    value={patientSettings.daily_water}
+                    onChange={(e) => handlePatientInputChange('daily_water', e.target.value)} />
+                </EmField>
+              </CfgFields>
+            </CfgGroup>
+          </CfgSection>
+
+          <CfgSection icon={<InfoIcon size={16} />} title="About" subtitle="Smart Home Health">
+            <CfgGroup>
+              <div className="cfg-prose">
+                <p>
+                  This software is free and open source, licensed under the{' '}
+                  <strong>GNU Affero General Public License v3.0</strong>. Under AGPL section 13,
+                  the complete source code for this application is available to you:
+                </p>
+                <p>
+                  <a
+                    className="cfg-link"
+                    href="https://github.com/Smart-Home-Health/smart-home-health-hub"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    github.com/Smart-Home-Health/smart-home-health-hub
+                  </a>
+                </p>
+              </div>
+            </CfgGroup>
+          </CfgSection>
         </div>
       </div>
     </AdminV2Layout>

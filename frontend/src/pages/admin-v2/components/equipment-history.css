@@ -1,0 +1,269 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Equipment history timeline. Builds on the shipments/overview vocabulary
+ * (sh-btn, sh-search, sh-empty) rather than restating it. Dark-only. */
+
+:root:not(.light) .eh-controls {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+:root:not(.light) .eh-controls .sh-search { flex: 1; min-width: 220px; }
+
+:root:not(.light) .eh-range {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+:root:not(.light) .eh-range-label {
+  font-size: 0.6rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+
+:root:not(.light) .eh-range select { min-width: 160px; }
+
+:root:not(.light) .eh-summary {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+
+/* --- timeline --- */
+
+:root:not(.light) .eh-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+:root:not(.light) .eh-day {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  gap: 12px;
+}
+@media (max-width: 640px) {
+  :root:not(.light) .eh-day { grid-template-columns: 1fr; gap: 6px; }
+}
+
+:root:not(.light) .eh-day-rail { padding-top: 14px; }
+
+:root:not(.light) .eh-day-label {
+  font-family: var(--vc-font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+:root:not(.light) .eh-day-label.is-today { color: var(--vc-state-due); }
+
+:root:not(.light) .eh-day-events {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 12px;
+}
+
+/* --- one event: node in a gutter, card beside it --- */
+
+:root:not(.light) .eh-event {
+  position: relative;
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  align-items: start;
+  gap: 10px;
+}
+
+/* The rule joining consecutive events. Drawn from the node downward so it
+ * never runs past the last card. */
+:root:not(.light) .eh-event::before {
+  content: '';
+  position: absolute;
+  left: 21px;
+  top: 42px;
+  bottom: -12px;
+  width: 2px;
+  background: var(--vc-line-hairline);
+}
+:root:not(.light) .eh-day-events > .eh-event:last-child::before { display: none; }
+
+:root:not(.light) .eh-node {
+  display: grid;
+  place-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+  border: 1px solid currentColor;
+  background: var(--vc-bg-surface);
+  z-index: 1;
+}
+
+/* Type carries the colour, so the kind is legible before the label is read.
+ * Each also has a distinct icon and a written kind, so colour is never the
+ * only thing saying what an event is. */
+:root:not(.light) .eh-event.kind-stock .eh-node { color: var(--vc-state-due); }
+:root:not(.light) .eh-event.kind-delivery .eh-node { color: var(--vc-state-complete); }
+:root:not(.light) .eh-event.kind-change .eh-node { color: var(--vc-data-live); }
+
+:root:not(.light) .eh-card {
+  padding: 12px 14px;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 10px;
+  background: var(--vc-bg-surface);
+}
+
+:root:not(.light) .eh-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+:root:not(.light) .eh-kind {
+  font-family: var(--vc-font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+:root:not(.light) .kind-stock .eh-kind { color: var(--vc-state-due); }
+:root:not(.light) .kind-delivery .eh-kind { color: var(--vc-state-complete); }
+:root:not(.light) .kind-change .eh-kind { color: var(--vc-data-live); }
+
+:root:not(.light) .eh-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--vc-font-mono);
+  font-size: 0.75rem;
+  color: var(--vc-text-secondary);
+  white-space: nowrap;
+}
+
+:root:not(.light) .eh-toggle {
+  display: grid;
+  place-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 5px;
+  color: var(--vc-text-secondary);
+  cursor: pointer;
+}
+:root:not(.light) .eh-toggle:hover {
+  background: color-mix(in srgb, var(--vc-text-primary) 8%, transparent);
+  color: var(--vc-text-primary);
+}
+:root:not(.light) .eh-toggle[aria-expanded='false'] svg { transform: rotate(-90deg); }
+
+:root:not(.light) .eh-line {
+  margin: 8px 0 0;
+  font-size: 0.95rem;
+  color: var(--vc-text-primary);
+}
+:root:not(.light) .eh-line strong { font-weight: 600; }
+
+:root:not(.light) .eh-num {
+  font-family: var(--vc-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+:root:not(.light) .eh-num.is-down { color: var(--vc-state-due); }
+:root:not(.light) .eh-num.is-up { color: var(--vc-state-complete); }
+
+:root:not(.light) .eh-status { margin-left: 10px; }
+
+:root:not(.light) .eh-meta {
+  margin: 4px 0 0;
+  font-size: 0.8rem;
+  color: var(--vc-text-secondary);
+}
+
+:root:not(.light) .eh-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+  padding: 0;
+  background: none;
+  border: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-data-live);
+  cursor: pointer;
+}
+:root:not(.light) .eh-link:hover { text-decoration: underline; }
+
+/* --- the items inside a change set --- */
+
+:root:not(.light) .eh-set {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 4px;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-raised);
+}
+
+:root:not(.light) .eh-set li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 9px;
+  font-size: 0.87rem;
+  color: var(--vc-text-primary);
+}
+:root:not(.light) .eh-set li + li { border-top: 1px solid var(--vc-line-hairline); }
+
+:root:not(.light) .eh-set-num {
+  font-family: var(--vc-font-mono);
+  font-size: 0.72rem;
+  color: var(--vc-text-tertiary);
+  min-width: 14px;
+}
+
+:root:not(.light) .eh-set-name { flex: 1; }
+
+:root:not(.light) .eh-set-note {
+  font-size: 0.78rem;
+  color: var(--vc-text-secondary);
+}
+
+:root:not(.light) .eh-set-tag {
+  font-family: var(--vc-font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-data-live);
+  white-space: nowrap;
+}

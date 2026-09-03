@@ -73,3 +73,30 @@ def test_delete_symptom(admin_client, patient):
 
 def test_requires_auth(client):
     assert client.get("/api/symptoms").status_code == 401
+
+
+def test_create_symptom_already_resolved(admin_client, patient):
+    """The capture form can log a symptom that has already passed."""
+    resp = admin_client.post("/api/symptoms", json={
+        "patient_id": patient.id,
+        "symptom_type": "cough",
+        "severity": 3,
+        "is_resolved": True,
+    })
+    assert resp.status_code == 201
+    sid = resp.json()["id"]
+    detail = admin_client.get(f"/api/symptoms/{sid}").json()
+    assert detail["is_resolved"] is True
+    assert detail["resolved_at"] is not None
+
+
+def test_create_symptom_defaults_active(admin_client, patient):
+    resp = admin_client.post("/api/symptoms", json={
+        "patient_id": patient.id,
+        "symptom_type": "pain",
+        "severity": 5,
+    })
+    assert resp.status_code == 201
+    sid = resp.json()["id"]
+    detail = admin_client.get(f"/api/symptoms/{sid}").json()
+    assert detail["is_resolved"] is False

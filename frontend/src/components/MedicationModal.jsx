@@ -15,42 +15,36 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import ModalBase from './ModalBase';
 import config from '../config';
 import { useAdminPatient } from '../contexts/AdminPatientContext';
-import ScheduleList from './schedule/ScheduleList';
+import { useAuth } from '../contexts/AuthContext';
+import DoseScheduleView from './schedule/DoseScheduleView';
+import DoseDetailPane from './schedule/DoseDetailPane';
+import PanelViewSwitcher from './section-panel/PanelViewSwitcher';
+import PrnPicker from './section-panel/PrnPicker';
+import { medicationRows } from './section-panel/prnRows';
+import './section-panel/section-panel.css';
 import { computeScheduleStatus } from './schedule/scheduleStatus';
+import { rollupSchedule } from './schedule/scheduleRollup';
 import { checkAdministrationWindow, formatDurationMinutes, getCurrentLocalDateTime } from '../utils/timezone';
 import MedicationDoseModal from '../pages/admin-v2/components/MedicationDoseModal';
 import UpdateQuantityModal from '../pages/admin-v2/components/UpdateQuantityModal';
-import { Button } from '@/components/ui/button';
-import { Alert } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
+import ConfirmSheet from './vc/ConfirmSheet';
 
 const OFF_WINDOW_ERRORS = ['early_administration', 'late_administration', 'off_window_administration'];
 
 const MedicationModal = ({ onClose }) => {
   const { selectedPatient } = useAdminPatient();
   const [tab, setTab] = useState('scheduled');
+  // Which dose the detail pane is showing. Kept here rather than in the view so
+  // it survives the refetch after recording.
+  const [selectedId, setSelectedId] = useState(null);
+  const { user } = useAuth();
   const [scheduled, setScheduled] = useState([]);          // raw `medications` rows from /api/schedule/daily
   const [activeMedications, setActiveMedications] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' && window.innerWidth <= 768);
 
   // Off-window confirm (shared shape for single + bulk completion).
   const [windowConfirm, setWindowConfirm] = useState({ open: false, title: '', heading: '', detail: '', onConfirm: null });
@@ -59,12 +53,6 @@ const MedicationModal = ({ onClose }) => {
   // PRN: pick an as-needed med, then the shared dose modal collects dose/time.
   const [prnPickerOpen, setPrnPickerOpen] = useState(false);
   const [prnMed, setPrnMed] = useState(null);
-
-  useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth <= 768);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
 
   useEffect(() => {
     if (!selectedPatient) return;
@@ -133,6 +121,40 @@ const MedicationModal = ({ onClose }) => {
     });
   }, [scheduled]);
 
+  // A dose's normalized id embeds log_id, which appears the moment the dose is
+  // recorded — so selecting by id would drop the selection on the refetch that
+  // follows. Key on the schedule slot instead, which is stable.
+  const doseKey = (raw) => `${raw?.schedule_id ?? 'prn'}-${raw?.scheduled_time}`;
+  const selectedItem = useMemo(
+    () => scheduledItems.find(i => doseKey(i._raw) === selectedId) || null,
+    [scheduledItems, selectedId]
+  );
+  const recordingAs = user?.full_name || user?.username || null;
+
+  // The menu shows what each view is holding, so you can choose without
+  // opening both: how much is outstanding, and how many profiles there are.
+  const viewOptions = useMemo(() => {
+    const { counts } = rollupSchedule(scheduledItems);
+    const outstanding = counts.missed + counts.due;
+    return [
+      {
+        value: 'scheduled',
+        label: 'Scheduled',
+        sublabel: "Today's administration tasks",
+        note: counts.missed > 0
+          ? `${counts.missed} missed`
+          : (outstanding > 0 ? `${outstanding} due` : 'All done'),
+        tone: counts.missed > 0 || outstanding > 0 ? 'due' : 'given',
+      },
+      {
+        value: 'active',
+        label: 'Active medications',
+        sublabel: 'All current medication profiles',
+        count: activeMedications.length,
+      },
+    ];
+  }, [scheduledItems, activeMedications.length]);
+
   const formatTimestamp = (iso) => {
     if (!iso) return null;
     try {
@@ -145,7 +167,7 @@ const MedicationModal = ({ onClose }) => {
   };
 
   // ===== Completion / skip (unified endpoints) =====
-  const submitMed = async (med, { override = false, skip = false } = {}) => {
+  const submitMed = async (med, { override = false, skip = false, note } = {}) => {
     if (!selectedPatient) return;
     try {
       const res = await fetch(`${config.apiUrl}/api/schedule/complete/medication`, {
@@ -158,14 +180,14 @@ const MedicationModal = ({ onClose }) => {
           patient_id: selectedPatient.id,
           dose_amount: skip ? 0 : (med.dose_amount ?? null),
           completed_at: null,
-          notes: skip ? 'Dose skipped via live dashboard' : 'Administered via live dashboard',
+          notes: note || (skip ? 'Dose skipped via live dashboard' : 'Administered via live dashboard'),
           early_override: override,
         }),
       });
       if (res.ok) { fetchSchedule(); fetchActiveMedications(); return; }
       const err = await res.json().catch(() => ({}));
       if (res.status === 409 && err.error === 'insufficient_quantity') {
-        setQtyGate({ open: true, info: err, retry: () => submitMed(med, { override, skip }) });
+        setQtyGate({ open: true, info: err, retry: () => submitMed(med, { override, skip, note }) });
         return;
       }
       if (res.status === 409 && OFF_WINDOW_ERRORS.includes(err.error) && !override && !skip) {
@@ -180,7 +202,7 @@ const MedicationModal = ({ onClose }) => {
               ? `${formatDurationMinutes(Math.abs(check.minutesOffset))} ago`
               : `${formatDurationMinutes(check.minutesOffset)} from now`
           }.`,
-          onConfirm: () => submitMed(med, { override: true }),
+          onConfirm: () => submitMed(med, { override: true, note }),
         });
         return;
       }
@@ -284,54 +306,55 @@ const MedicationModal = ({ onClose }) => {
   return (
     <>
       <ModalBase isOpen={true} onClose={onClose} title={
-        isMobile ? (
-          <div className="tw flex w-full gap-2">
-            <Select value={tab} onValueChange={setTab}>
-              <SelectTrigger className="flex-1"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="scheduled">Scheduled</SelectItem>
-                <SelectItem value="active">Active ({activeMedications.length})</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button
-              onClick={openPrnPicker}
-              disabled={!selectedPatient || prnMedications.length === 0}
-              className="shrink-0 bg-[#6f42c1] text-white hover:bg-[#6f42c1]/90"
-            >PRN</Button>
-          </div>
-        ) : (
-          <div className="tw flex w-full items-center gap-2">
-            <Button size="sm" variant={tab === 'scheduled' ? 'default' : 'secondary'} onClick={() => setTab('scheduled')}>Scheduled</Button>
-            <Button size="sm" variant={tab === 'active' ? 'default' : 'secondary'} onClick={() => setTab('active')}>Active ({activeMedications.length})</Button>
-            <Button
-              size="sm"
-              onClick={openPrnPicker}
-              disabled={!selectedPatient || prnMedications.length === 0}
-              className="bg-[#6f42c1] text-white hover:bg-[#6f42c1]/90"
-            >PRN</Button>
-          </div>
-        )
+        <span className="mp-modal-title">
+          <span>Medications</span>
+          <span className="mp-modal-title-sub">
+            {selectedPatient
+              ? `${selectedPatient.first_name} ${selectedPatient.last_name} \u00b7 ${tab === 'active' ? 'Active' : 'Schedule'}`
+              : 'No patient selected'}
+          </span>
+        </span>
       }>
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-          {/* Patient banner */}
-          <div className="tw" style={{ marginBottom: 16 }}>
-            <Alert variant={selectedPatient ? 'default' : 'warning'}>
-              {selectedPatient
-                ? <>Viewing medications for: {selectedPatient.first_name} {selectedPatient.last_name}</>
-                : 'No patient selected'}
-            </Alert>
-          </div>
+          {!selectedPatient && (
+            <div className="ld-dose-empty">No patient selected</div>
+          )}
 
-          <div style={{ flex: 1, overflow: 'auto' }}>
+          <PanelViewSwitcher
+            views={viewOptions}
+            value={tab}
+            onChange={setTab}
+            actions={[{
+              label: 'PRN',
+              count: prnMedications.length,
+              onClick: openPrnPicker,
+              disabled: !selectedPatient || prnMedications.length === 0,
+              title: prnMedications.length === 0
+                ? 'No as-needed medications for this patient'
+                : 'Give an as-needed medication',
+            }]}
+          />
+
+          <div className="ld-panel-scroll">
             {tab === 'scheduled' && (
-              <ScheduleList
+              <DoseScheduleView
                 items={scheduledItems}
                 loading={loading}
-                title="Scheduled Medications"
                 emptyText="No scheduled medications for today"
-                onMarkComplete={(item) => submitMed(item._raw)}
-                onSkip={(item) => submitMed(item._raw, { skip: true })}
-                onMarkAll={(items) => submitBulk(items.map(i => i._raw))}
+                selectedId={selectedItem?.id || null}
+                onSelect={(item) => setSelectedId(item ? doseKey(item._raw) : null)}
+                onRecord={(item, opts) => submitMed(item._raw, opts)}
+                onSkip={(item, opts) => submitMed(item._raw, { ...opts, skip: true })}
+                onRecordAll={(items) => submitBulk(items.map(i => i._raw))}
+                detail={(
+                  <DoseDetailPane
+                    item={selectedItem}
+                    patientId={selectedPatient?.id}
+                    recordingAs={recordingAs}
+                    onRecord={(item, opts) => submitMed(item._raw, opts)}
+                    onSkip={(item, opts) => submitMed(item._raw, { ...opts, skip: true })}
+                  />
+                )}
               />
             )}
             {tab === 'active' && (
@@ -346,57 +369,27 @@ const MedicationModal = ({ onClose }) => {
       </ModalBase>
 
       {/* Off-window confirm (single + bulk) */}
-      <Dialog open={windowConfirm.open} onOpenChange={(o) => { if (!o) closeWindowConfirm(); }}>
-        <DialogContent className="sm:max-w-[440px]" aria-describedby={undefined}>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <span className="flex h-7 w-7 items-center justify-center rounded-md bg-[rgba(240,136,62,0.2)] text-[#f0883e]">⚠</span>
-              {windowConfirm.title}
-            </DialogTitle>
-          </DialogHeader>
-          <Alert variant="warning">
-            <div className="mb-1.5 font-semibold text-[#f0883e]">{windowConfirm.heading}</div>
-            <div>{windowConfirm.detail}</div>
-          </Alert>
-          <DialogFooter>
-            <Button variant="secondary" onClick={closeWindowConfirm}>Cancel</Button>
-            <Button onClick={() => { const fn = windowConfirm.onConfirm; closeWindowConfirm(); fn && fn(); }}>
-              Administer Anyway
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmSheet
+        open={windowConfirm.open}
+        onOpenChange={(o) => { if (!o) closeWindowConfirm(); }}
+        title={windowConfirm.title}
+        confirmLabel="Administer anyway"
+        onConfirm={() => { const fn = windowConfirm.onConfirm; closeWindowConfirm(); fn && fn(); }}
+      >
+        <strong className="cs-lead">{windowConfirm.heading}</strong>
+        {windowConfirm.detail}
+      </ConfirmSheet>
 
-      {/* PRN pick: choose an as-needed med */}
-      <Dialog open={prnPickerOpen} onOpenChange={(o) => { if (!o) setPrnPickerOpen(false); }}>
-        <DialogContent className="sm:max-w-[480px]" aria-describedby={undefined}>
-          <DialogHeader>
-            <DialogTitle>Give a PRN (as-needed) medication</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col gap-2">
-            {prnMedications.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No as-needed medications for this patient.</p>
-            ) : prnMedications.map(med => (
-              <Button
-                key={med.id}
-                type="button"
-                variant="secondary"
-                onClick={() => pickPrnMed(med)}
-                className="h-auto w-full justify-between whitespace-normal px-4 py-3 text-left"
-              >
-                <span className="flex min-w-0 flex-col">
-                  <strong>{med.name}</strong>
-                  <span className="text-xs font-normal text-muted-foreground">
-                    {med.concentration ? `${med.concentration} • ` : ''}
-                    {med.quantity ?? '—'} {med.quantity_unit || ''} on hand
-                  </span>
-                </span>
-                <Badge className="ml-2 shrink-0">Give</Badge>
-              </Button>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* PRN step 1: choose an as-needed med (step 2 is MedicationDoseModal) */}
+      <PrnPicker
+        open={prnPickerOpen}
+        onOpenChange={(o) => { if (!o) setPrnPickerOpen(false); }}
+        patientName={selectedPatient
+          ? `${selectedPatient.first_name} ${selectedPatient.last_name}`.trim()
+          : null}
+        rows={medicationRows(prnMedications)}
+        onSelect={pickPrnMed}
+      />
 
       {/* Shared dose modal for the chosen PRN med */}
       <MedicationDoseModal

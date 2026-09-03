@@ -23,6 +23,8 @@ from sqlalchemy.orm import Session
 from schemas.care_task import CareTask
 from schemas.care_task_schedule import CareTaskSchedule
 from schemas.care_task_log import CareTaskLog
+from nutrition_vocab import LOCATION_LABELS, to_ml
+from care_task_vocab import is_nutrition_category
 from crud.patients import get_active_patient
 from utils.datetime_utils import (
     utc_now,
@@ -1074,8 +1076,26 @@ def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset
 
         scheduled_nutrition = []
 
+        from crud.nutrition import schedule_components_as_intake_items, schedule_flush_components
+
         for schedule in schedules:
             try:
+                # The feed's component mix, as ready-to-log item dicts with
+                # scaled facts, so the completion form can prefill without a
+                # second request. Computed once per schedule, shared by every
+                # firing of it. Flush-flagged components surface separately —
+                # they are given after the feed, not with it.
+                components = schedule_components_as_intake_items(schedule)
+                flush_comps = schedule_flush_components(schedule)
+
+                # The spot's nominal fluid, for the dynamic water budget:
+                # what this schedule pours when taken as planned.
+                nominal_fluid = (
+                    sum(to_ml(c['amount'], c['amount_unit']) or 0 for c in components)
+                    if components
+                    else (to_ml(schedule.default_amount, schedule.default_amount_unit) or 0)
+                )
+
                 # Walk croniter forward from just before the local-day window in UTC.
                 base_time = local_start_utc - timedelta(hours=1)
                 cron = croniter(schedule.cron_expression, base_time)
@@ -1099,6 +1119,7 @@ def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset
                         'default_amount': schedule.default_amount,
                         'default_amount_unit': schedule.default_amount_unit,
                         'default_calories': schedule.default_calories,
+                        'components': components,
                         # Real UTC datetime — the frontend converts to local
                         # for display and hour/minute bucketing.
                         'scheduled_time': next_time_utc,
@@ -1112,6 +1133,21 @@ def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset
                         'is_prn': False,
                         'intake_type': 'intake',
                         'log_id': log.id if log else None,
+                        'row_kind': 'schedule',
+                        'followup_id': None,
+                        'skipped': False,
+                        'flush_components': flush_comps,
+                        # Water-budget bookkeeping (stripped before return):
+                        # an uncompleted flagged spot competes for the
+                        # remaining need; an uncompleted feed's fluid is
+                        # still expected and held back from it.
+                        **({'_water_spot': {
+                                'nominal': nominal_fluid or (schedule.fluid_max_ml or 0),
+                                'min': schedule.fluid_min_ml or 0,
+                                'max': schedule.fluid_max_ml or nominal_fluid or 0,
+                            }} if (log is None and schedule.fills_fluid_goal) else {}),
+                        **({'_food_fluid_ml': nominal_fluid}
+                           if (log is None and not schedule.fills_fluid_goal) else {}),
                     })
             except Exception as cron_error:
                 logger.error(f"Error processing nutrition cron expression {schedule.cron_expression}: {cron_error}")
@@ -1155,6 +1191,69 @@ def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset
                 'is_prn': True,
                 'intake_type': 'intake',
                 'log_id': intake.id,
+                'row_kind': 'prn',
+                'followup_id': None,
+                'skipped': False,
+            })
+
+        # One-off post-feed flush follow-ups whose due time falls in the
+        # local-day window (the soft-delete filter hides voided ones). Board
+        # state comes from the followup row itself — its logged intake
+        # carries no scheduled_time, so cron matching never sees it.
+        from schemas.nutrition_flush_followup import NutritionFlushFollowup
+
+        followups = db.query(NutritionFlushFollowup).filter(
+            NutritionFlushFollowup.patient_id == patient_id,
+            NutritionFlushFollowup.due_at >= local_start_utc,
+            NutritionFlushFollowup.due_at < local_end_utc,
+        ).all()
+
+        # The undo button needs a real intake log_id; one row of the flush's
+        # logged event is enough (undo fans out over the group).
+        completed_groups = [f.completed_intake_group_id for f in followups
+                            if f.completed_intake_group_id]
+        flush_log_ids = {}
+        if completed_groups:
+            for gid, min_id in (
+                db.query(NutritionIntake.event_group_id, func.min(NutritionIntake.id))
+                .filter(NutritionIntake.event_group_id.in_(completed_groups))
+                .group_by(NutritionIntake.event_group_id)
+                .all()
+            ):
+                flush_log_ids[gid] = min_id
+
+        for f in followups:
+            due = f.due_at if f.due_at.tzinfo else f.due_at.replace(tzinfo=timezone.utc)
+            completed_at = f.completed_at
+            if completed_at is not None and completed_at.tzinfo is None:
+                completed_at = completed_at.replace(tzinfo=timezone.utc)
+            scheduled_nutrition.append({
+                'schedule_id': f.schedule_id,
+                'name': f"{f.schedule.name} flush" if f.schedule else (f.item_name or 'Water flush'),
+                'schedule_type': 'hydration',
+                'default_item_name': f.item_name,
+                'default_amount': f.amount,
+                'default_amount_unit': f.amount_unit,
+                'default_calories': None,
+                'components': [],
+                'scheduled_time': due,
+                'instructions': None,
+                'notes': f.notes,
+                'cron_expression': None,
+                'completed': f.status == 'completed',
+                'completed_at': completed_at.isoformat() if (f.status == 'completed' and completed_at) else None,
+                'completed_by': f.completed_by if f.status == 'completed' else None,
+                'is_prn': False,
+                'intake_type': 'intake',
+                'log_id': flush_log_ids.get(f.completed_intake_group_id),
+                'row_kind': 'flush',
+                'followup_id': f.id,
+                'skipped': f.status == 'skipped',
+                **({'_water_spot': {
+                        'nominal': to_ml(f.amount, f.amount_unit) or 0,
+                        'min': 0,
+                        'max': to_ml(f.amount, f.amount_unit) or 0,
+                    }} if f.status == 'pending' else {}),
             })
 
         prn_outputs = db.query(NutritionOutput).filter(
@@ -1213,40 +1312,48 @@ def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset
                 'intake_type': 'output',
                 'log_id': output.id,
                 'output_type': output.output_type,
+                'row_kind': 'output',
+                'followup_id': None,
+                'skipped': False,
                 # Carry the source row so merge can reach diaper flag + amounts.
                 '_source': output,
             })
 
-        # Merge diaper outputs within a 3-minute sliding window. Non-diaper
-        # outputs (vomit, accidents not in a diaper, etc.) are never merged.
-        merge_window = timedelta(minutes=3)
-        diaper_rows = sorted(
-            [r for r in staged_outputs if r['_source'].is_diaper],
-            key=lambda r: r['scheduled_time'],
-        )
-        non_diaper_rows = [r for r in staged_outputs if not r['_source'].is_diaper]
+        # Rows written by one logging action share an event_group_id, so the
+        # association is read rather than re-guessed from a time window. Rows
+        # predating that column fall back to their own id and stay standalone.
+        groups = {}
+        order = []
+        for row in staged_outputs:
+            key = row['_source'].event_group_id or f"row-{row['log_id']}"
+            if key not in groups:
+                groups[key] = []
+                order.append(key)
+            groups[key].append(row)
 
-        groups = []
-        for row in diaper_rows:
-            if groups and (row['scheduled_time'] - groups[-1][0]['scheduled_time']) <= merge_window:
-                groups[-1].append(row)
-            else:
-                groups.append([row])
-
-        for group in groups:
+        for key in order:
+            group = sorted(groups[key], key=lambda r: r['scheduled_time'])
             if len(group) == 1:
                 merged = group[0]
                 merged.pop('_source', None)
                 scheduled_nutrition.append(merged)
                 continue
-            # Build a synthesized "mixed diaper" row. Use the earliest time
-            # so chronological sort is stable; carry member log_ids in a
-            # composite log_id so the frontend row key stays unique.
+
+            # Synthesized multi-output row. Use the earliest time so the
+            # chronological sort is stable; carry member log_ids in a composite
+            # log_id so the frontend row key stays unique and the undo endpoint
+            # can still fan out across the members.
             types = [r['output_type'] for r in group]
             ids = [r['log_id'] for r in group]
+            location = group[0]['_source'].location or (
+                'diaper' if group[0]['_source'].is_diaper else 'restroom'
+            )
+            label = LOCATION_LABELS.get(location, 'Output')
+            for r in group:
+                r.pop('_source', None)
             scheduled_nutrition.append({
                 'schedule_id': None,
-                'name': f"Mixed diaper ({' + '.join(types)})",
+                'name': f"Mixed {label.lower()} ({' + '.join(types)})",
                 'schedule_type': 'output',
                 'default_item_name': None,
                 'default_amount': None,
@@ -1262,18 +1369,125 @@ def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset
                 'is_prn': True,
                 'intake_type': 'output',
                 'log_id': f"mixed-{'-'.join(str(i) for i in ids)}",
-                'output_type': 'mixed_diaper',
+                'output_type': 'mixed_diaper' if location == 'diaper' else 'mixed_output',
+                'row_kind': 'output',
+                'followup_id': None,
+                'skipped': False,
             })
 
-        for row in non_diaper_rows:
-            row.pop('_source', None)
-            scheduled_nutrition.append(row)
+        _apply_water_budget(db, patient_id, scheduled_nutrition,
+                            local_start_utc, local_end_utc)
 
         return sorted(scheduled_nutrition, key=lambda x: x['scheduled_time'])
 
     except Exception as e:
         logger.error(f"Error getting scheduled nutrition: {e}")
         return []
+
+
+def _fill_water_spots(need, spots):
+    """Split `need` mL across spots proportionally to their nominal sizes,
+    honoring per-spot [min, max]. Iterative so a capped spot's leftover share
+    flows to the others. Returns {key: mL}."""
+    alloc = {s['key']: float(s['min'] or 0) for s in spots}
+    remaining = need - sum(alloc.values())
+    pool = [s for s in spots if float(s['max'] or 0) > alloc[s['key']]]
+    while remaining > 0.5 and pool:
+        total = sum((s['nominal'] or 1) for s in pool)
+        distributed = 0.0
+        capped = []
+        for s in pool:
+            share = remaining * (s['nominal'] or 1) / total
+            room = float(s['max']) - alloc[s['key']]
+            take = min(share, room)
+            alloc[s['key']] += take
+            distributed += take
+            if take >= room - 1e-9:
+                capped.append(s['key'])
+        remaining -= distributed
+        if not capped:
+            break
+        pool = [s for s in pool if s['key'] not in capped]
+    return alloc
+
+
+def _apply_water_budget(db, patient_id, rows, local_start_utc, local_end_utc):
+    """Annotate the day's nutrition rows with dynamic water suggestions.
+
+    A spot flagged fills_fluid_goal (and every pending flush) has no fixed
+    amount: its suggestion is what is left of the daily fluid target after
+    what was already logged (juices included) and what is still expected
+    from uncompleted feeds, split across the remaining spots proportionally
+    to their nominal sizes. Computed on read, never stored — an undo or an
+    extra smoothie reshapes the next suggestion by itself.
+    """
+    spot_rows = [r for r in rows if r.get('_water_spot')]
+
+    def strip(row):
+        row.pop('_water_spot', None)
+        row.pop('_food_fluid_ml', None)
+        row.setdefault('fluid_dynamic', False)
+        row.setdefault('suggested_amount', None)
+        row.setdefault('water_plan', None)
+
+    if not spot_rows:
+        for r in rows:
+            strip(r)
+        return
+
+    from crud.nutrition import get_current_nutrition_goal
+    from crud.nutrition_plan import effective_fluid_target
+    goal = get_current_nutrition_goal(db, patient_id)
+    # Combined target: a water-only goal is lifted by the food schedules'
+    # expected fluid so both sides of the comparison count the same thing.
+    target, target_parts = effective_fluid_target(db, patient_id, goal)
+    if not target:
+        for r in rows:
+            strip(r)
+        return
+
+    # Fluid already in, bucketed the way the daily summary buckets (a feed
+    # logged late still belongs to the day it was meant for).
+    from schemas.nutrition_intake import NutritionIntake as NI
+    bucket = func.coalesce(NI.scheduled_time, NI.consumed_at)
+    logged = sum(
+        to_ml(amount, unit) or 0
+        for amount, unit in db.query(NI.amount, NI.amount_unit).filter(
+            NI.patient_id == patient_id,
+            bucket >= local_start_utc,
+            bucket < local_end_utc,
+        ).all()
+    )
+    expected_food = sum(r.get('_food_fluid_ml') or 0 for r in rows)
+    remaining = max(0.0, float(target) - logged - expected_food)
+
+    specs = []
+    for idx, r in enumerate(spot_rows):
+        spec = dict(r['_water_spot'])
+        spec['key'] = idx
+        specs.append(spec)
+    alloc = _fill_water_spots(remaining, specs)
+
+    plan = {
+        'target_ml': round(float(target)),
+        # The lift arithmetic, when the target came from a water-only goal.
+        'target_parts': target_parts,
+        'logged_ml': round(logged),
+        'expected_food_ml': round(expected_food),
+        'remaining_ml': round(remaining),
+        'spots_remaining': len(spot_rows),
+    }
+    for idx, r in enumerate(spot_rows):
+        spec = specs[idx]
+        raw = alloc.get(idx, 0.0)
+        # Pourable numbers: nearest 5 mL, kept inside the clamps.
+        suggested = round(raw / 5.0) * 5
+        suggested = max(spec['min'] or 0, min(suggested, spec['max'] or suggested))
+        r['fluid_dynamic'] = True
+        r['suggested_amount'] = suggested
+        r['water_plan'] = plan
+    for r in rows:
+        strip(r)
 
 
 def get_due_and_upcoming_nutrition_count(db: Session, patient_id=None, tz=None):
@@ -1339,7 +1553,7 @@ def get_nutrition_schedule_counts(db: Session, patient_id=None, tz=None):
             # overlapping per-UTC-date fetches.
             if not (bounds['yesterday_start_utc'] <= scheduled_time < bounds['today_end_utc']):
                 continue
-            key = (item.get('schedule_id'), scheduled_time)
+            key = (item.get('schedule_id'), scheduled_time, item.get('followup_id'))
             if key in seen:
                 continue
             seen.add(key)
@@ -1347,6 +1561,9 @@ def get_nutrition_schedule_counts(db: Session, patient_id=None, tz=None):
             if item.get('is_prn'):
                 continue
             if item.get('completed'):
+                continue
+            # An explicitly skipped flush is decided, not due.
+            if item.get('skipped'):
                 continue
 
             diff_seconds = (scheduled_time - now).total_seconds()
@@ -1399,7 +1616,7 @@ def get_nutrition_due_now_late_counts(db: Session, patient_id=None, tz=None):
 
             if not (bounds['yesterday_start_utc'] <= scheduled_time < bounds['today_end_utc']):
                 continue
-            key = (item.get('schedule_id'), scheduled_time)
+            key = (item.get('schedule_id'), scheduled_time, item.get('followup_id'))
             if key in seen:
                 continue
             seen.add(key)
@@ -1407,6 +1624,9 @@ def get_nutrition_due_now_late_counts(db: Session, patient_id=None, tz=None):
             if item.get('is_prn'):
                 continue
             if item.get('completed'):
+                continue
+            # An explicitly skipped flush is decided, not due.
+            if item.get('skipped'):
                 continue
 
             diff_seconds = (scheduled_time - now).total_seconds()
@@ -1420,3 +1640,66 @@ def get_nutrition_due_now_late_counts(db: Session, patient_id=None, tz=None):
         logger.error(f"Error getting due_now/late nutrition counts: {e}")
         return {'due_now': 0, 'late': 0}
 
+
+
+# =====================
+# CANONICAL CARE-TASK DAY ITEM
+# =====================
+
+def canonical_care_task_item(raw: dict) -> dict:
+    """One shape for "a care task on a day", whichever producer built it.
+
+    Three views render this — the care-tasks schedule board, the live
+    dashboard's care-task panel, and the combined daily schedule — over two
+    producers that used different names for the same fields:
+    ``care_task_name``/``is_completed``/``completed_time`` in one and
+    ``name``/``completed``/``completed_at`` in the other. Each view learned one
+    dialect, so a field added in one place stayed invisible in the others.
+
+    The ``name``/``completed`` spelling wins because the dashboard already
+    speaks it. ``is_nutrition`` is resolved here too, so no caller has to
+    re-guess it from the category name.
+    """
+    def pick(*keys, default=None):
+        for key in keys:
+            if key in raw and raw[key] is not None:
+                return raw[key]
+        return default
+
+    scheduled = pick('scheduled_time')
+    if hasattr(scheduled, 'isoformat'):
+        scheduled_iso = scheduled.isoformat()
+        hour, minute = scheduled.hour, scheduled.minute
+    else:
+        scheduled_iso, hour, minute = scheduled, None, None
+
+    completed_at = pick('completed_at', 'completed_time')
+    if hasattr(completed_at, 'isoformat'):
+        completed_at = completed_at.isoformat()
+
+    category_name = pick('category_name', 'care_task_category_name')
+
+    return {
+        'schedule_id': pick('schedule_id'),
+        'care_task_id': pick('care_task_id'),
+        'name': pick('name', 'care_task_name'),
+        'description': pick('description', 'care_task_description'),
+        'schedule_description': pick('schedule_description'),
+        'category_id': pick('category_id'),
+        'category_name': category_name,
+        'category_color': pick('category_color', 'care_task_category_color'),
+        'scheduled_time': scheduled_iso,
+        'hour': hour,
+        'minute': minute,
+        'completed': bool(pick('completed', 'is_completed', default=False)),
+        'status': pick('status'),
+        'completed_at': completed_at,
+        'completed_by': pick('completed_by', 'performed_by'),
+        'log_id': pick('log_id'),
+        'is_prn': bool(pick('is_prn', default=False)),
+        'is_yesterday': bool(pick('is_yesterday', default=False)),
+        # Resolved once, server-side, from the one keyword list.
+        'is_nutrition': is_nutrition_category(category_name),
+        'notes': pick('notes'),
+        'type': 'care_task',
+    }

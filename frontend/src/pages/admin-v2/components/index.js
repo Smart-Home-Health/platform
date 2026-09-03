@@ -17,10 +17,24 @@
  */
 export { default as PatientHeader } from './PatientHeader';
 export { default as PatientSelectorModal } from './PatientSelectorModal';
-export { default as IntakeModal } from './IntakeModal';
-export { default as OutputModal } from './OutputModal';
+// The nutrition logging forms now live in components/nutrition as a single
+// adaptive sheet each, shared by the admin pages, the live dashboard and the
+// care-task flow.
+export { default as IntakeSheet } from '../../../components/nutrition/IntakeSheet';
+export { default as OutputSheet } from '../../../components/nutrition/OutputSheet';
+export { default as NutritionIntakeTab } from './NutritionIntakeTab';
+export { default as NutritionOutputTab } from './NutritionOutputTab';
+export { default as NutritionPlanTab } from './NutritionPlanTab';
+export { default as NutritionItemsTab } from './NutritionItemsTab';
+export { default as GoalHistoryModal } from './GoalHistoryModal';
+export { default as NutritionHistoryModal } from './NutritionHistoryModal';
+export { default as CareTasksTab } from './CareTasksTab';
+export { default as CareTasksOverviewPanel } from './CareTasksOverviewPanel';
+export { default as CareTaskHistoryModal } from './CareTaskHistoryModal';
 export { default as MedicationDoseModal } from './MedicationDoseModal';
 export { default as UpdateQuantityModal } from './UpdateQuantityModal';
 export { default as CareTaskCompleteModal } from './CareTaskCompleteModal';
 export { default as VentImportPanel } from './VentImportPanel';
 export { default as NutritionOverview } from './NutritionOverview';
+export { default as MedStockBar } from './MedStockBar';
+export { default as MedicationHistoryModal } from './MedicationHistoryModal';

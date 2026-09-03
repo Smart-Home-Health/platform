@@ -1,0 +1,529 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Care-profile hub + section chrome (Configuration → Care Profiles), shared
+ * by the user pages — the same kind of record hub. The bespoke row/tile
+ * system the cfg chassis has no analog for lives here; everything reads the
+ * vc tokens directly and, like every vc surface, is dark-only. */
+@import '../../../styles/vc-tokens.css';
+
+/* ---------- Shared lettering ---------- */
+.cp-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.cp-title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--vc-text-primary);
+}
+.cp-name {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--vc-text-primary);
+  overflow-wrap: anywhere;
+}
+.cp-eyebrow,
+.cp-title,
+.cp-name,
+.cp-row-title,
+.cp-meta-label,
+.cp-count-value,
+.cp-count-label,
+.cp-action {
+  font-family: var(--vc-font-mono);
+}
+.cp-title,
+.cp-name,
+.cp-row-title {
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+/* ---------- Identity card ---------- */
+.cp-identity {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+.cp-subtitle {
+  margin: 0.3rem 0 0;
+  font-size: 0.85rem;
+  color: var(--vc-text-secondary);
+}
+.cp-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.7rem 1.25rem;
+}
+.cp-meta-label {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.cp-meta-value {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.9rem;
+  color: var(--vc-text-primary);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Setup counters ---------- */
+.cp-counts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+.cp-count {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--vc-text-primary) 4%, transparent);
+  min-width: 0;
+}
+.cp-count-icon { display: flex; color: var(--vc-text-secondary); }
+.cp-count-value {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--vc-text-primary);
+  line-height: 1;
+}
+.cp-count-label {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+
+/* ---------- Section rows ---------- */
+.cp-rows { display: flex; flex-direction: column; }
+.cp-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: flex-start;
+  gap: 0.9rem;
+  padding: 1rem;
+  border-top: 1px solid var(--vc-line-hairline);
+  color: inherit;
+  text-decoration: none;
+  transition: background-color 0.15s ease;
+}
+.cp-row:first-child { border-top: 0; }
+.cp-row:hover { background: color-mix(in srgb, var(--vc-text-primary) 5%, transparent); }
+.cp-row:focus-visible {
+  outline: 2px solid var(--vc-data-live);
+  outline-offset: -2px;
+}
+.cp-tile {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 4px;
+  color: var(--vc-text-secondary);
+}
+.cp-row-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.cp-row-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--vc-text-primary);
+}
+.cp-row-blurb {
+  margin: 0.3rem 0 0;
+  font-size: 0.85rem;
+  color: var(--vc-text-secondary);
+}
+.cp-facts {
+  margin: 0.3rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+}
+.cp-fact {
+  display: block;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--vc-text-secondary);
+}
+.cp-action {
+  display: inline-block;
+  margin-top: 0.35rem;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-data-live);
+}
+.cp-chevron {
+  align-self: center;
+  display: flex;
+  color: var(--vc-text-secondary);
+}
+
+/* Status tone: carried by the tile and the counter icon, never by a stripe. */
+.cp-tile[data-tone='success'],
+.cp-count[data-tone='success'] .cp-count-icon { border-color: color-mix(in srgb, var(--vc-state-complete) 60%, transparent); color: var(--vc-state-complete); }
+.cp-tile[data-tone='warning'],
+.cp-count[data-tone='warning'] .cp-count-icon { border-color: color-mix(in srgb, var(--vc-state-due) 65%, transparent); color: var(--vc-state-due); }
+.cp-tile[data-tone='danger'],
+.cp-count[data-tone='danger'] .cp-count-icon { border-color: color-mix(in srgb, var(--vc-state-alert) 60%, transparent); color: var(--vc-state-alert); }
+
+/* ---------- Measurements: stat strip, callout, tabs, rows ---------- */
+.cp-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.cp-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.65rem 0.5rem;
+  border-left: 1px solid var(--vc-line-hairline);
+  text-align: center;
+  min-width: 0;
+}
+.cp-stat:first-child { border-left: 0; }
+.cp-stat-value {
+  font-size: 1.2rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--vc-text-primary);
+}
+.cp-stat-label {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.cp-stat[data-tone='warning'] .cp-stat-value,
+.cp-stat[data-tone='warning'] .cp-stat-label { color: var(--vc-state-due); }
+.cp-stat-value,
+.cp-stat-label { font-family: var(--vc-font-mono); }
+
+.cp-callout {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.55rem 0.85rem;
+  border: 0;
+  border-top: 1px solid var(--vc-line-hairline);
+  background: color-mix(in srgb, var(--vc-state-due) 10%, transparent);
+  color: var(--vc-text-primary);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+.cp-callout:hover { background: color-mix(in srgb, var(--vc-state-due) 16%, transparent); }
+.cp-callout-icon { display: flex; color: var(--vc-state-due); }
+.cp-callout-text { flex: 1; min-width: 0; font-size: 0.85rem; color: var(--vc-state-due); }
+.cp-callout-text { font-family: var(--vc-font-mono); }
+
+.cp-tabs {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 4px;
+  background: var(--vc-bg-surface);
+}
+.cp-tab {
+  padding: 0.45rem 0.5rem;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vc-text-secondary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.cp-tab { font-family: var(--vc-font-mono); }
+.cp-tab:hover { color: var(--vc-text-primary); }
+.cp-tab[aria-selected='true'] {
+  border-color: color-mix(in srgb, var(--vc-data-live) 55%, transparent);
+  background: color-mix(in srgb, var(--vc-data-live) 12%, transparent);
+  color: var(--vc-data-live);
+}
+.cp-tab:focus-visible { outline: 2px solid var(--vc-data-live); outline-offset: -2px; }
+/* A tab or a button can be a Link; neither should pick up a link underline. */
+a.cp-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+a[data-slot='button'] { text-decoration: none; }
+
+/* Measurement rows put the status in its own column so the name and its range
+ * summary stay on consecutive lines. */
+/* Name and status share the first line, the range summary sits under the name.
+ * On a phone the status keeps the first line and the summary takes the whole
+ * second one, so a row stays two lines wide-screen or not. */
+.cp-row-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'title status'
+    'summary status';
+  align-items: center;
+  column-gap: 1rem;
+  min-width: 0;
+}
+.cp-row-body > .cp-row-title { grid-area: title; }
+.cp-row-body > .cp-row-blurb,
+.cp-row-body > .cp-row-summary { grid-area: summary; }
+.cp-row-summary { display: block; min-width: 0; }
+/* A row whose summary runs to several lines: the tile and the status badge
+ * belong beside the name, not floating halfway down the facts. */
+.cp-row-body-stacked { align-items: start; }
+.cp-row.cp-row-stacked { align-items: flex-start; }
+.cp-row-body > .cp-row-status { grid-area: status; }
+.cp-row-title-plain {
+  display: block;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.cp-row-title-plain {
+  font-family: inherit;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.cp-row-blurb { display: block; }
+
+/* Compact variant for list-heavy pages (measurements): a smaller tile, the
+ * status on one line, and enough padding to stay tappable without turning six
+ * measurements into a page and a half of scrolling. */
+.cp-row-compact {
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.55rem 0.85rem;
+}
+.cp-row-compact .cp-tile { width: 36px; height: 36px; border-radius: 4px; }
+.cp-row-compact .cp-row-title { font-size: 0.88rem; }
+.cp-row-compact .cp-row-blurb { margin-top: 0.05rem; font-size: 0.78rem; }
+.cp-row-compact .cp-row-status { flex-direction: row; align-items: center; gap: 0.45rem; }
+
+/* A row that is a button rather than a link. */
+.cp-row-button {
+  width: 100%;
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.cp-row-static { align-items: center; }
+.cp-row-main {
+  display: block;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.cp-row-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+.cp-status {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.cp-status { font-family: var(--vc-font-mono); }
+.cp-status[data-tone='success'] { color: var(--vc-state-complete); }
+.cp-status[data-tone='warning'] { color: var(--vc-state-due); }
+.cp-status[data-tone='danger'] { color: var(--vc-state-alert); }
+
+.cp-limit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.85rem;
+  border-bottom: 1px solid var(--vc-line-hairline);
+}
+.cp-limit-row:last-child { border-bottom: 0; }
+.cp-limit-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 6rem));
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+/* ---------- Advanced disclosure ---------- */
+.cp-advanced summary {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.75rem 0.85rem;
+  cursor: pointer;
+  list-style: none;
+  color: var(--vc-text-primary);
+}
+.cp-advanced summary::-webkit-details-marker { display: none; }
+.cp-advanced summary:focus-visible { outline: 2px solid var(--vc-data-live); outline-offset: -2px; }
+.cp-advanced-marker { margin-left: auto; display: flex; color: var(--vc-text-secondary); transition: transform 0.15s ease; }
+.cp-advanced[open] .cp-advanced-marker { transform: rotate(180deg); }
+
+@media (max-width: 640px) {
+  .cp-row { padding: 0.9rem 0.75rem; gap: 0.7rem; }
+  .cp-row-compact { padding: 0.55rem 0.7rem; gap: 0.6rem; }
+  .cp-row-body {
+    grid-template-areas:
+      'title status'
+      'summary summary';
+    column-gap: 0.5rem;
+  }
+  .cp-row-compact .cp-row-status { gap: 0.3rem; }
+  .cp-row-compact .cp-status { font-size: 10px; }
+  .cp-tile { width: 44px; height: 44px; border-radius: 4px; }
+  /* Keep the three counters on one line — stacked, they push the sections
+   * below the fold on a phone. */
+  .cp-counts { gap: 0.4rem; }
+  .cp-count { flex-direction: column; align-items: flex-start; gap: 0.3rem; padding: 0.55rem 0.5rem; }
+  .cp-count-label { font-size: 9px; letter-spacing: 0.06em; }
+  /* The four counts stay on one line on a phone — stacked two-by-two they
+   * pushed the measurements themselves off the screen. */
+  .cp-stat { padding: 0.55rem 0.25rem; }
+  .cp-stat-value { font-size: 1.05rem; }
+  .cp-stat-label { font-size: 8.5px; letter-spacing: 0.04em; }
+  /* Three tabs on a 430px phone, inside a padded card: shrink the lettering
+   * rather than let a two-word tab wrap and double the control's height. */
+  .cp-tab {
+    font-size: clamp(0.58rem, 2.5vw, 0.7rem);
+    letter-spacing: 0.02em;
+    padding: 0.5rem 0.2rem;
+  }
+  .cp-limit-row { flex-direction: column; align-items: stretch; gap: 0.5rem; }
+  .cp-limit-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Hard-limits row lettering (name over its source line). */
+.cp-limit-name { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+
+/* Padded card body + dividers for the hub pages (cfg-card provides the box). */
+.cp-card-pad { display: flex; flex-direction: column; gap: 0.75rem; padding: 0.85rem; }
+.cp-divide { border-top: 1px solid var(--vc-line-hairline); padding-top: 0.75rem; }
+.cp-identity-name { display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; }
+.cp-count-text { min-width: 0; }
+.cp-rows.boxed {
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.cp-advanced-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+  border-top: 1px solid var(--vc-line-hairline);
+  padding: 0.85rem;
+}
+
+/* Tab panel column and a spread row (text left, action right). */
+.cp-panel { display: flex; flex-direction: column; gap: 0.9rem; }
+.cp-spread {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.cp-spread-text { min-width: 0; }
+/* One labelled bounds pair inside the measurement editor. */
+.cp-bounds { display: flex; flex-direction: column; gap: 0.5rem; }
+/* Completion-rule rows: hairline-divided check rows inside the boxed list. */
+.cp-rule-row {
+  padding: 0.5rem 0.7rem;
+  border-top: 1px solid var(--vc-line-hairline);
+}
+.cp-rule-row:first-child { border-top: 0; }
+/* Inline action rows; .end pushes them to the right edge. */
+.cp-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.cp-actions.end { justify-content: flex-end; }
+/* Generic hairline-divided spread row inside a boxed list. */
+.cp-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.7rem;
+  border-top: 1px solid var(--vc-line-hairline);
+}
+.cp-list-row:first-child { border-top: 0; }
+.cp-list-main { min-width: 0; }
+.cp-list-mono {
+  display: block;
+  font-family: var(--vc-font-mono);
+  font-size: 0.72rem;
+  color: var(--vc-text-secondary);
+  overflow-wrap: anywhere;
+}
+/* Scrolling body for a long list inside a modal. */
+.cp-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+/* Broker connection line: tile beside its status text. */
+.cp-conn { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.cp-conn-text { flex: 1 1 0; min-width: 0; }
+.cp-list-row .em-select-wrap { flex: 0 0 auto; min-width: 8rem; }

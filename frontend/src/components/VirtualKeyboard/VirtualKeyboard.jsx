@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Keyboard from 'react-simple-keyboard';
 import 'react-simple-keyboard/build/css/index.css';
 import { useActiveInput } from '../../contexts/ActiveInputContext';
@@ -108,14 +108,19 @@ export default function VirtualKeyboard({ show }) {
     setLayoutName(numericMode ? 'numpad' : 'default');
   }, [numericMode]);
 
+  // The keyboard only renders while an input is focused, so the height
+  // publisher must key on that too — with [show, collapsed] alone the root
+  // did not exist yet on the first run and --vkb-height stayed 0, leaving
+  // the docked panels (and dialogs) underneath the keyboard.
+  const visible = show && !!activeInput;
   useEffect(() => {
     const root = document.documentElement;
-    if (!show) {
+    if (!visible) {
       root.style.setProperty('--vkb-height', '0px');
-      return;
+      return undefined;
     }
     const el = rootRef.current;
-    if (!el) return;
+    if (!el) return undefined;
     const update = () => {
       root.style.setProperty('--vkb-height', `${el.offsetHeight}px`);
     };
@@ -126,7 +131,7 @@ export default function VirtualKeyboard({ show }) {
       ro.disconnect();
       root.style.setProperty('--vkb-height', '0px');
     };
-  }, [show, collapsed]);
+  }, [visible, collapsed]);
 
   const onKeyPress = useCallback((button) => {
     const target = activeInput || lastInputRef.current;

@@ -1,0 +1,242 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Caregiver verification. Sized for the narrow dock stop, because that is
+ * where it lives on the live dashboard: this prompt gates *actions*, never the
+ * reading of vitals, so it takes the cards column and leaves the board intact.
+ *
+ * Rendered outside the `.tw` island, so box-sizing and the bare <button> paint
+ * are asserted here. `:where()` keeps that reset at element specificity so the
+ * component classes below outrank it. */
+@import '../../styles/vc-tokens.css';
+
+.pc-body, .pc-body * { box-sizing: border-box; }
+:where(.pc-body) button {
+  font-family: var(--vc-font-mono);
+  padding: 0;
+  border: 1px solid transparent;
+  background: none;
+  color: inherit;
+}
+
+.pc-body { display: flex; flex-direction: column; gap: 0.9rem; }
+
+.pc-intro {
+  margin: 0;
+  font-family: var(--vc-font-sans);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--vc-text-secondary);
+}
+
+.pc-error {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--vc-state-alert) 55%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--vc-state-alert) 12%, transparent);
+  color: var(--vc-text-primary);
+  font-family: var(--vc-font-sans);
+  font-size: 12.5px;
+}
+
+.pc-loading {
+  padding: 1.5rem;
+  text-align: center;
+  color: var(--vc-text-tertiary);
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* One user per row: at the narrow stop a grid of cards would give each name a
+   sliver, and the name is the whole point of the choice. */
+.pc-users { display: flex; flex-direction: column; gap: 0.5rem; }
+.pc-user {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 10px;
+  background: var(--vc-bg-surface);
+  color: var(--vc-text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+.pc-user:hover { border-color: var(--vc-data-live); background: var(--vc-bg-raised); }
+.pc-user-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Amber: needing a password is a step, not a fault. */
+.pc-user-note {
+  flex-shrink: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-state-due);
+}
+
+.pc-form { display: flex; flex-direction: column; gap: 0.75rem; }
+.pc-chosen {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--vc-data-live) 45%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--vc-data-live) 10%, transparent);
+}
+.pc-chosen-text { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.pc-chosen-label {
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.pc-chosen-name {
+  font-family: var(--vc-font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--vc-text-primary);
+}
+
+.pc-label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.pc-input {
+  width: 100%;
+  min-height: 46px;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 8px;
+  background: var(--vc-bg-base);
+  color: var(--vc-text-primary);
+  font-family: var(--vc-font-mono);
+  font-size: 16px;
+}
+.pc-input:focus {
+  outline: none;
+  border-color: var(--vc-data-live);
+  box-shadow: 0 0 0 1px var(--vc-data-live);
+}
+
+/* PIN entry: masked slots over the shared vc keypad (components/vc/keypad.css). */
+.pc-pin { display: flex; flex-direction: column; }
+.pc-pin-slots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 52px;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 8px;
+  background: var(--vc-bg-base);
+}
+.pc-pin-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 32px;
+  border-bottom: 2px solid var(--vc-line-hairline);
+  font-family: var(--vc-font-mono);
+  font-size: 18px;
+  line-height: 1;
+  color: var(--vc-text-primary);
+}
+.pc-pin-slot.filled { border-bottom-color: var(--vc-text-secondary); }
+.pc-pin-slot.active { border-bottom-color: var(--vc-data-live); }
+/* the minimum: a hairline after the fourth slot */
+.pc-pin-slot.min { margin-right: 0.35rem; position: relative; }
+.pc-pin-slot.min::after {
+  content: '';
+  position: absolute;
+  right: -0.35rem;
+  top: 4px;
+  bottom: 4px;
+  width: 1px;
+  background: var(--vc-line-hairline);
+}
+.pc-pin-hint {
+  margin-top: 0.35rem;
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+  text-align: center;
+}
+.pc-pin .vc-keypad { margin: 0.6rem 0 0; }
+.pc-pin .vc-key { min-height: 48px; font-size: 20px; }
+
+.pc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.pc-actions-right { display: flex; gap: 0.5rem; margin-left: auto; }
+.pc-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 0.9rem;
+  border-radius: 8px;
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.pc-btn.ghost { border: 1px solid var(--vc-line-strong); color: var(--vc-text-secondary); }
+.pc-btn.ghost:hover { color: var(--vc-text-primary); border-color: var(--vc-text-tertiary); }
+.pc-btn.primary {
+  border: 1px solid var(--vc-data-live);
+  background: color-mix(in srgb, var(--vc-data-live) 18%, transparent);
+  color: var(--vc-text-primary);
+}
+.pc-btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--vc-data-live) 30%, transparent); }
+.pc-btn.primary:disabled { opacity: 0.45; cursor: default; }

@@ -1,0 +1,255 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Bedside-monitor ("vc") skin for the admin shell: sidebar, hamburger
+ * header, sub-nav strip. DARK THEME ONLY — every rule is scoped to
+ * :root:not(.light), so users on the light theme keep the existing look
+ * until the aesthetic gets a designed light variant. Tokens come from
+ * src/styles/vc-tokens.css. Page CONTENT is untouched here; pages migrate
+ * to the aesthetic individually. */
+@import '../../styles/vc-tokens.css';
+
+/* ---------- Sidebar ---------- */
+:root:not(.light) .admin-v2-sidebar {
+  background: var(--vc-bg-base);
+  border-right: 1px solid var(--vc-line-hairline);
+}
+
+:root:not(.light) .admin-v2-logo-text {
+  font-family: var(--vc-font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+  white-space: nowrap;
+}
+
+:root:not(.light) .admin-v2-sidebar-header {
+  border-bottom: 1px solid var(--vc-line-hairline);
+}
+
+:root:not(.light) .admin-v2-sidebar-toggle {
+  color: var(--vc-text-secondary);
+}
+
+:root:not(.light) .admin-v2-sidebar-link {
+  font-family: var(--vc-font-sans);
+  color: var(--vc-text-secondary);
+  border-radius: 8px;
+}
+:root:not(.light) .admin-v2-sidebar-link:hover {
+  background: var(--vc-bg-raised);
+  color: var(--vc-text-primary);
+}
+:root:not(.light) .admin-v2-sidebar-link.active {
+  background: var(--vc-bg-surface);
+  color: var(--vc-data-live);
+  box-shadow: inset 2px 0 0 var(--vc-data-live);
+}
+
+:root:not(.light) .admin-v2-sidebar-footer {
+  border-top: 1px solid var(--vc-line-hairline);
+}
+:root:not(.light) .admin-v2-back-link {
+  color: var(--vc-text-secondary);
+}
+:root:not(.light) .admin-v2-back-link:hover {
+  color: var(--vc-text-primary);
+}
+
+/* ---------- Patient selector ---------- */
+:root:not(.light) .admin-v2-patient-selector-btn {
+  background: var(--vc-bg-surface);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+}
+:root:not(.light) .admin-v2-patient-selector-btn:hover {
+  border-color: var(--vc-line-strong);
+  background: var(--vc-bg-surface);
+}
+:root:not(.light) .admin-v2-patient-selector-name {
+  font-family: var(--vc-font-mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+:root:not(.light) .admin-v2-patient-selector-meta {
+  color: var(--vc-text-tertiary);
+}
+:root:not(.light) .admin-v2-patient-selector-avatar {
+  background: var(--vc-bg-raised);
+  color: var(--vc-data-live);
+  font-family: var(--vc-font-mono);
+}
+:root:not(.light) .admin-v2-patient-dropdown {
+  background: var(--vc-bg-raised);
+  border: 1px solid var(--vc-line-strong);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+:root:not(.light) .admin-v2-patient-dropdown-header {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+  border-bottom: 1px solid var(--vc-line-hairline);
+}
+:root:not(.light) .admin-v2-patient-dropdown-clear {
+  background: transparent;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 999px;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+:root:not(.light) .admin-v2-patient-dropdown-clear:hover {
+  border-color: color-mix(in srgb, var(--vc-state-due) 50%, transparent);
+  color: var(--vc-state-due);
+}
+:root:not(.light) .admin-v2-patient-dropdown-info .name {
+  font-family: var(--vc-font-mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+:root:not(.light) .admin-v2-patient-dropdown-info .age {
+  font-size: 11px;
+  color: var(--vc-text-secondary);
+}
+:root:not(.light) .admin-v2-patient-dropdown-item:hover {
+  background: var(--vc-bg-surface);
+}
+:root:not(.light) .admin-v2-patient-dropdown-item.selected {
+  background: var(--vc-bg-surface);
+  box-shadow: inset 2px 0 0 var(--vc-data-live);
+}
+:root:not(.light) .admin-v2-patient-dropdown-item.selected .name {
+  color: var(--vc-data-live);
+}
+:root:not(.light) .admin-v2-patient-dropdown-loading,
+:root:not(.light) .admin-v2-patient-dropdown-empty {
+  color: var(--vc-text-secondary);
+}
+
+/* ---------- Mobile header (hamburger) ---------- */
+:root:not(.light) .admin-v2-mobile-header {
+  background: var(--vc-bg-surface);
+  border-bottom: 1px solid var(--vc-line-hairline);
+}
+:root:not(.light) .admin-v2-mobile-menu-btn {
+  background: transparent;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  color: var(--vc-text-primary);
+}
+:root:not(.light) .admin-v2-mobile-header-title {
+  font-family: var(--vc-font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+:root:not(.light) .admin-v2-sidebar-overlay {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+/* ---------- Grouped nav + drawer (dark colors for admin-nav.css) ---------- */
+:root:not(.light) .admin-v2-nav-group + .admin-v2-nav-group {
+  border-top-color: var(--vc-line-hairline);
+}
+:root:not(.light) .admin-v2-nav-group-label {
+  font-family: var(--vc-font-mono);
+  color: var(--vc-text-tertiary);
+}
+:root:not(.light) .admin-v2-drawer-header {
+  background: var(--vc-bg-surface);
+  border-bottom-color: var(--vc-line-hairline);
+}
+:root:not(.light) .admin-v2-drawer-close {
+  border-color: var(--vc-line-hairline);
+  color: var(--vc-text-primary);
+}
+:root:not(.light) .admin-v2-drawer-close-caption { font-family: var(--vc-font-mono); }
+:root:not(.light) .admin-v2-drawer-title {
+  font-family: var(--vc-font-mono);
+  color: var(--vc-text-primary);
+}
+:root:not(.light) .admin-v2-drawer-title-sep { color: var(--vc-text-tertiary); }
+:root:not(.light) .admin-v2-patient-selector-status { color: var(--vc-text-tertiary); }
+:root:not(.light) .admin-v2-patient-selector-status.active { color: var(--vc-state-complete); }
+:root:not(.light) .admin-v2-mobile-menu-caption { font-family: var(--vc-font-mono); }
+:root:not(.light) .admin-v2-mobile-header-sub {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+
+/* ---------- Sub-nav strip (Record | History …) ---------- */
+:root:not(.light) .admin-v2-topnav {
+  background: var(--vc-bg-base);
+  border-bottom: 1px solid var(--vc-line-hairline);
+}
+:root:not(.light) .admin-v2-topnav-link {
+  font-family: var(--vc-font-mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+:root:not(.light) .admin-v2-topnav-link:hover {
+  color: var(--vc-text-primary);
+}
+:root:not(.light) .admin-v2-topnav-link.active {
+  color: var(--vc-data-live);
+  border-bottom-color: var(--vc-data-live);
+}
+
+/* ---------- Restricted-mode banner ---------- */
+:root:not(.light) .admin-v2-restricted-banner {
+  background: transparent;
+  border-bottom: 1px solid var(--vc-line-hairline);
+  color: var(--vc-state-due);
+}
+:root:not(.light) .admin-v2-unlock-btn {
+  background: var(--vc-state-due);
+  border: none;
+  border-radius: 8px;
+  color: var(--vc-bg-base);
+  font-family: var(--vc-font-mono);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ---------- Content ground ---------- */
+:root:not(.light) .admin-v2-content {
+  background: var(--vc-bg-base);
+}

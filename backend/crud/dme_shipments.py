@@ -20,12 +20,59 @@ import logging
 from datetime import datetime
 from typing import Optional, List
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, or_
 from schemas.dme_shipment import DMEShipment, DMEShipmentItem, DMEReceiptItem, DMEShipmentAlert, DMEShipmentDocument
 from schemas.equipment import Equipment
 import document_store
 
 logger = logging.getLogger('crud')
+
+
+# --- Account scoping ---
+#
+# A shipment belongs to a patient, and a patient belongs to an account, so
+# unlike equipment there is no such thing as a shared shipment: the filter is
+# equality, not "mine or global". Requests without an account (a single-tenant
+# install, where every patient's account_id is NULL too) skip the filter, which
+# is the convention the rest of the CRUD layer already follows.
+#
+# Everything reachable by id — items, receipts, alerts, documents — is reached
+# through its shipment, so scoping the shipment lookup is what closes the
+# boundary. Callers that hold only an item or alert id must resolve the parent
+# shipment through these helpers rather than querying the child table directly.
+
+def _scope_to_account(query, account_id: Optional[int]):
+    """Restrict a DMEShipment query to one account."""
+    if account_id is None:
+        return query
+    return query.filter(DMEShipment.account_id == account_id)
+
+
+def _owned_shipment(db: Session, shipment_id: int, account_id: Optional[int]) -> Optional[DMEShipment]:
+    """The shipment, or None if it does not exist or belongs to another account."""
+    query = db.query(DMEShipment).filter(DMEShipment.id == shipment_id)
+    return _scope_to_account(query, account_id).first()
+
+
+def _owned_item(
+    db: Session,
+    item_id: int,
+    shipment_id: Optional[int] = None,
+    account_id: Optional[int] = None,
+) -> Optional[DMEShipmentItem]:
+    """An item, confirmed to sit on the named shipment and inside the account.
+
+    The item routes take both ids in the path but only ever used the item's,
+    so a caller could edit, delete or receive against a line belonging to a
+    different shipment — and a different account — by naming one of their own.
+    """
+    query = db.query(DMEShipmentItem).filter(DMEShipmentItem.id == item_id)
+    if shipment_id is not None:
+        query = query.filter(DMEShipmentItem.shipment_id == shipment_id)
+    if account_id is not None:
+        query = query.join(DMEShipment, DMEShipmentItem.shipment_id == DMEShipment.id) \
+                     .filter(DMEShipment.account_id == account_id)
+    return query.first()
 
 
 # --- Shipment CRUD ---
@@ -47,11 +94,13 @@ def create_shipment(
     created_by: Optional[int] = None,
     is_template: bool = False,
     template_source_id: Optional[int] = None,
-    status: str = 'draft'
+    status: str = 'draft',
+    account_id: Optional[int] = None
 ) -> Optional[DMEShipment]:
     """Create a new DME shipment"""
     try:
         shipment = DMEShipment(
+            account_id=account_id,
             patient_id=patient_id,
             supplier_id=supplier_id,
             po_number=po_number,
@@ -82,10 +131,10 @@ def create_shipment(
         return None
 
 
-def get_shipment(db: Session, shipment_id: int) -> Optional[dict]:
+def get_shipment(db: Session, shipment_id: int, account_id: Optional[int] = None) -> Optional[dict]:
     """Get a shipment with all related data"""
     try:
-        shipment = db.query(DMEShipment).filter(DMEShipment.id == shipment_id).first()
+        shipment = _owned_shipment(db, shipment_id, account_id)
         if not shipment:
             return None
         
@@ -103,11 +152,12 @@ def list_shipments(
     is_backorder: Optional[bool] = None,
     is_template: Optional[bool] = None,
     skip: int = 0,
-    limit: int = 50
+    limit: int = 50,
+    account_id: Optional[int] = None
 ) -> List[dict]:
     """List shipments with optional filters"""
     try:
-        query = db.query(DMEShipment)
+        query = _scope_to_account(db.query(DMEShipment), account_id)
 
         if patient_id is not None:
             query = query.filter(DMEShipment.patient_id == patient_id)
@@ -132,11 +182,12 @@ def list_shipments(
 def update_shipment(
     db: Session,
     shipment_id: int,
+    account_id: Optional[int] = None,
     **kwargs
 ) -> bool:
     """Update shipment fields"""
     try:
-        shipment = db.query(DMEShipment).filter(DMEShipment.id == shipment_id).first()
+        shipment = _owned_shipment(db, shipment_id, account_id)
         if not shipment:
             return False
         
@@ -160,10 +211,10 @@ def update_shipment(
         return False
 
 
-def delete_shipment(db: Session, shipment_id: int) -> bool:
+def delete_shipment(db: Session, shipment_id: int, account_id: Optional[int] = None) -> bool:
     """Delete a shipment and all related items (and packing-slip blobs)"""
     try:
-        shipment = db.query(DMEShipment).filter(DMEShipment.id == shipment_id).first()
+        shipment = _owned_shipment(db, shipment_id, account_id)
         if not shipment:
             return False
 
@@ -200,10 +251,15 @@ def add_shipment_item(
     unit_description: Optional[str] = None,
     unit_price: Optional[float] = None,
     lot_number: Optional[str] = None,
-    notes: Optional[str] = None
+    notes: Optional[str] = None,
+    account_id: Optional[int] = None
 ) -> Optional[DMEShipmentItem]:
     """Add an item to a shipment"""
     try:
+        if account_id is not None and not _owned_shipment(db, shipment_id, account_id):
+            logger.error(f"Shipment {shipment_id} not found in account {account_id}")
+            return None
+
         item = DMEShipmentItem(
             shipment_id=shipment_id,
             equipment_id=equipment_id,
@@ -240,10 +296,16 @@ def add_shipment_item(
         return None
 
 
-def update_shipment_item(db: Session, item_id: int, **kwargs) -> bool:
+def update_shipment_item(
+    db: Session,
+    item_id: int,
+    shipment_id: Optional[int] = None,
+    account_id: Optional[int] = None,
+    **kwargs
+) -> bool:
     """Update a shipment item"""
     try:
-        item = db.query(DMEShipmentItem).filter(DMEShipmentItem.id == item_id).first()
+        item = _owned_item(db, item_id, shipment_id, account_id)
         if not item:
             return False
         
@@ -266,10 +328,15 @@ def update_shipment_item(db: Session, item_id: int, **kwargs) -> bool:
         return False
 
 
-def delete_shipment_item(db: Session, item_id: int) -> bool:
+def delete_shipment_item(
+    db: Session,
+    item_id: int,
+    shipment_id: Optional[int] = None,
+    account_id: Optional[int] = None,
+) -> bool:
     """Delete a shipment item"""
     try:
-        item = db.query(DMEShipmentItem).filter(DMEShipmentItem.id == item_id).first()
+        item = _owned_item(db, item_id, shipment_id, account_id)
         if not item:
             return False
         
@@ -293,17 +360,18 @@ def receive_item(
     condition: str = 'good',
     discrepancy_notes: Optional[str] = None,
     lot_number: Optional[str] = None,
-    expiration_date: Optional[datetime] = None
+    expiration_date: Optional[datetime] = None,
+    shipment_id: Optional[int] = None,
+    account_id: Optional[int] = None
 ) -> Optional[DMEReceiptItem]:
     """
     Record receipt of an item. Updates equipment quantity immediately.
     Can be called multiple times for partial receiving across sessions.
     """
     try:
-        # Get the shipment item
-        shipment_item = db.query(DMEShipmentItem).filter(
-            DMEShipmentItem.id == shipment_item_id
-        ).first()
+        # Receiving writes to inventory, so the line has to be confirmed as
+        # part of the shipment named in the request, in this account.
+        shipment_item = _owned_item(db, shipment_item_id, shipment_id, account_id)
         if not shipment_item:
             logger.error(f"Shipment item {shipment_item_id} not found")
             return None
@@ -357,9 +425,18 @@ def receive_item(
         return None
 
 
-def get_item_receipts(db: Session, shipment_item_id: int) -> List[dict]:
+def get_item_receipts(
+    db: Session,
+    shipment_item_id: int,
+    shipment_id: Optional[int] = None,
+    account_id: Optional[int] = None,
+) -> List[dict]:
     """Get all receipts for a shipment item"""
     try:
+        if (shipment_id is not None or account_id is not None) and \
+                not _owned_item(db, shipment_item_id, shipment_id, account_id):
+            return []
+
         receipts = db.query(DMEReceiptItem).filter(
             DMEReceiptItem.shipment_item_id == shipment_item_id
         ).order_by(DMEReceiptItem.received_at).all()
@@ -370,13 +447,23 @@ def get_item_receipts(db: Session, shipment_item_id: int) -> List[dict]:
         return []
 
 
-def get_total_received(db: Session, shipment_item_id: int) -> dict:
+def get_total_received(
+    db: Session,
+    shipment_item_id: int,
+    shipment_id: Optional[int] = None,
+    account_id: Optional[int] = None,
+) -> dict:
     """Get total quantities received for a shipment item by condition"""
+    empty = {'good': 0, 'damaged': 0, 'wrong_item': 0, 'short': 0, 'extra': 0, 'total': 0}
     try:
+        if (shipment_id is not None or account_id is not None) and \
+                not _owned_item(db, shipment_item_id, shipment_id, account_id):
+            return empty
+
         receipts = db.query(DMEReceiptItem).filter(
             DMEReceiptItem.shipment_item_id == shipment_item_id
         ).all()
-        
+
         totals = {'good': 0, 'damaged': 0, 'wrong_item': 0, 'short': 0, 'extra': 0}
         for r in receipts:
             if r.condition in totals:
@@ -394,7 +481,8 @@ def get_total_received(db: Session, shipment_item_id: int) -> dict:
 def finalize_shipment(
     db: Session,
     shipment_id: int,
-    finalized_by: Optional[int] = None
+    finalized_by: Optional[int] = None,
+    account_id: Optional[int] = None
 ) -> dict:
     """
     Finalize a shipment:
@@ -403,7 +491,7 @@ def finalize_shipment(
     - Update shipment status to 'complete' or 'partial'
     """
     try:
-        shipment = db.query(DMEShipment).filter(DMEShipment.id == shipment_id).first()
+        shipment = _owned_shipment(db, shipment_id, account_id)
         if not shipment:
             return {'success': False, 'error': 'Shipment not found'}
         
@@ -479,7 +567,8 @@ def finalize_shipment(
                 is_backorder=True,
                 parent_shipment_id=shipment_id,
                 notes=f"Backorder items from shipment #{shipment_id}",
-                created_by=finalized_by
+                created_by=finalized_by,
+                account_id=shipment.account_id
             )
             
             if backorder_shipment:
@@ -547,31 +636,23 @@ def _create_alert(
         return None
 
 
-def get_shipment_alerts(db: Session, shipment_id: int) -> List[dict]:
+def get_shipment_alerts(
+    db: Session,
+    shipment_id: int,
+    account_id: Optional[int] = None,
+) -> List[dict]:
     """Get all alerts for a shipment"""
     try:
+        if account_id is not None and not _owned_shipment(db, shipment_id, account_id):
+            return []
+
         alerts = db.query(DMEShipmentAlert).filter(
             DMEShipmentAlert.shipment_id == shipment_id
         ).order_by(DMEShipmentAlert.created_at).all()
-        
+
         return [_alert_to_dict(a) for a in alerts]
     except Exception as e:
         logger.error(f"Error fetching alerts for shipment {shipment_id}: {e}")
-        return []
-
-
-def get_unresolved_alerts(db: Session, patient_id: Optional[int] = None) -> List[dict]:
-    """Get all unresolved alerts, optionally filtered by patient"""
-    try:
-        query = db.query(DMEShipmentAlert).filter(DMEShipmentAlert.resolved == False)
-        
-        if patient_id is not None:
-            query = query.join(DMEShipment).filter(DMEShipment.patient_id == patient_id)
-        
-        alerts = query.order_by(DMEShipmentAlert.created_at.desc()).all()
-        return [_alert_to_dict(a) for a in alerts]
-    except Exception as e:
-        logger.error(f"Error fetching unresolved alerts: {e}")
         return []
 
 
@@ -579,21 +660,27 @@ def get_alerts(
     db: Session,
     patient_id: Optional[int] = None,
     alert_type: Optional[str] = None,
-    resolved: Optional[bool] = None
+    resolved: Optional[bool] = None,
+    account_id: Optional[int] = None
 ) -> List[dict]:
     """Get alerts with filters"""
     try:
         query = db.query(DMEShipmentAlert)
-        
+
         if resolved is not None:
             query = query.filter(DMEShipmentAlert.resolved == resolved)
-        
+
         if alert_type:
             query = query.filter(DMEShipmentAlert.alert_type == alert_type)
-        
-        if patient_id is not None:
-            query = query.join(DMEShipment).filter(DMEShipment.patient_id == patient_id)
-        
+
+        # One join carries both scopes — joining DMEShipment twice would raise.
+        if patient_id is not None or account_id is not None:
+            query = query.join(DMEShipment, DMEShipmentAlert.shipment_id == DMEShipment.id)
+            if patient_id is not None:
+                query = query.filter(DMEShipment.patient_id == patient_id)
+            if account_id is not None:
+                query = query.filter(DMEShipment.account_id == account_id)
+
         alerts = query.order_by(DMEShipmentAlert.created_at.desc()).all()
         return [_alert_to_dict(a) for a in alerts]
     except Exception as e:
@@ -605,14 +692,20 @@ def resolve_alert(
     db: Session,
     alert_id: int,
     resolved_by: Optional[int] = None,
-    resolution_notes: Optional[str] = None
+    resolution_notes: Optional[str] = None,
+    account_id: Optional[int] = None
 ) -> bool:
     """Mark an alert as resolved"""
     try:
-        alert = db.query(DMEShipmentAlert).filter(DMEShipmentAlert.id == alert_id).first()
+        query = db.query(DMEShipmentAlert).filter(DMEShipmentAlert.id == alert_id)
+        if account_id is not None:
+            query = query.join(
+                DMEShipment, DMEShipmentAlert.shipment_id == DMEShipment.id
+            ).filter(DMEShipment.account_id == account_id)
+        alert = query.first()
         if not alert:
             return False
-        
+
         alert.resolved = True
         alert.resolved_at = datetime.utcnow()
         alert.resolved_by = resolved_by
@@ -630,27 +723,31 @@ def resolve_alert(
 def create_followup_order(
     db: Session,
     alert_ids: List[int],
-    created_by: Optional[int] = None
+    created_by: Optional[int] = None,
+    account_id: Optional[int] = None
 ) -> Optional[dict]:
     """
     Create a follow-up order from one or more alerts.
     Groups alerts by original shipment's supplier/patient.
     """
     try:
-        alerts = db.query(DMEShipmentAlert).filter(
+        alert_query = db.query(DMEShipmentAlert).filter(
             DMEShipmentAlert.id.in_(alert_ids),
             DMEShipmentAlert.resolved == False
-        ).all()
-        
+        )
+        if account_id is not None:
+            alert_query = alert_query.join(
+                DMEShipment, DMEShipmentAlert.shipment_id == DMEShipment.id
+            ).filter(DMEShipment.account_id == account_id)
+        alerts = alert_query.all()
+
         if not alerts:
             return {'success': False, 'error': 'No valid unresolved alerts found'}
-        
+
         # Get original shipment info
         first_alert = alerts[0]
-        original_shipment = db.query(DMEShipment).filter(
-            DMEShipment.id == first_alert.shipment_id
-        ).first()
-        
+        original_shipment = _owned_shipment(db, first_alert.shipment_id, account_id)
+
         if not original_shipment:
             return {'success': False, 'error': 'Original shipment not found'}
         
@@ -660,7 +757,8 @@ def create_followup_order(
             patient_id=original_shipment.patient_id,
             supplier_id=original_shipment.supplier_id,
             notes=f"Follow-up order for alerts from shipment #{original_shipment.id}",
-            created_by=created_by
+            created_by=created_by,
+            account_id=original_shipment.account_id
         )
         
         if not followup:
@@ -718,14 +816,18 @@ def create_followup_order(
         return {'success': False, 'error': str(e)}
 
 
-def get_pending_backorders(db: Session, patient_id: Optional[int] = None) -> List[dict]:
+def get_pending_backorders(
+    db: Session,
+    patient_id: Optional[int] = None,
+    account_id: Optional[int] = None,
+) -> List[dict]:
     """Get all pending backorder shipments"""
     try:
-        query = db.query(DMEShipment).filter(
+        query = _scope_to_account(db.query(DMEShipment), account_id).filter(
             DMEShipment.is_backorder == True,
             DMEShipment.status.in_(['ordered', 'shipped'])
         )
-        
+
         if patient_id is not None:
             query = query.filter(DMEShipment.patient_id == patient_id)
         
@@ -742,7 +844,8 @@ def create_delivery_from_template(
     db: Session,
     template_id: int,
     expected_delivery: Optional[datetime] = None,
-    created_by: Optional[int] = None
+    created_by: Optional[int] = None,
+    account_id: Optional[int] = None
 ) -> Optional[dict]:
     """
     Create a delivery from a standing-order template ("the usual monthly order").
@@ -750,9 +853,12 @@ def create_delivery_from_template(
     the expectation is everything arrives as usual; reconcile adjusts from there.
     """
     try:
-        template = db.query(DMEShipment).filter(
-            DMEShipment.id == template_id,
-            DMEShipment.is_template == True
+        template = _scope_to_account(
+            db.query(DMEShipment).filter(
+                DMEShipment.id == template_id,
+                DMEShipment.is_template == True
+            ),
+            account_id,
         ).first()
         if not template:
             return {'success': False, 'error': 'Standing order not found'}
@@ -767,7 +873,8 @@ def create_delivery_from_template(
             notes=None,
             created_by=created_by,
             template_source_id=template_id,
-            status='ordered'
+            status='ordered',
+            account_id=template.account_id
         )
         if not delivery:
             return {'success': False, 'error': 'Failed to create delivery'}
@@ -804,7 +911,8 @@ def reconcile_shipment(
     mode: str = 'same_as_usual',
     items: Optional[List[dict]] = None,
     confirmed_delivery_date: Optional[datetime] = None,
-    user_id: Optional[int] = None
+    user_id: Optional[int] = None,
+    account_id: Optional[int] = None
 ) -> dict:
     """
     Confirm a delivery in one call, collapsing receive + finalize:
@@ -816,7 +924,7 @@ def reconcile_shipment(
     backorder shipment, status partial/complete.
     """
     try:
-        shipment = db.query(DMEShipment).filter(DMEShipment.id == shipment_id).first()
+        shipment = _owned_shipment(db, shipment_id, account_id)
         if not shipment:
             return {'success': False, 'error': 'Shipment not found'}
         if shipment.is_template:
@@ -873,9 +981,9 @@ def reconcile_shipment(
             shipment.actual_delivery = confirmed_delivery_date
         db.commit()
 
-        result = finalize_shipment(db, shipment_id, finalized_by=user_id)
+        result = finalize_shipment(db, shipment_id, finalized_by=user_id, account_id=account_id)
         if result.get('success'):
-            result['alerts'] = get_shipment_alerts(db, shipment_id)
+            result['alerts'] = get_shipment_alerts(db, shipment_id, account_id=account_id)
         return result
     except Exception as e:
         logger.error(f"Error reconciling shipment {shipment_id}: {e}")
@@ -892,11 +1000,12 @@ def add_shipment_document(
     content_type: str,
     title: Optional[str] = None,
     page_number: Optional[int] = None,
-    uploaded_by: Optional[int] = None
+    uploaded_by: Optional[int] = None,
+    account_id: Optional[int] = None
 ) -> Optional[dict]:
     """Store a packing-slip image/PDF blob and attach its metadata row."""
     try:
-        shipment = db.query(DMEShipment).filter(DMEShipment.id == shipment_id).first()
+        shipment = _owned_shipment(db, shipment_id, account_id)
         if not shipment:
             return None
 
@@ -928,9 +1037,16 @@ def add_shipment_document(
         return None
 
 
-def list_shipment_documents(db: Session, shipment_id: int) -> List[dict]:
+def list_shipment_documents(
+    db: Session,
+    shipment_id: int,
+    account_id: Optional[int] = None,
+) -> List[dict]:
     """List document metadata for a shipment (ordered by page)"""
     try:
+        if account_id is not None and not _owned_shipment(db, shipment_id, account_id):
+            return []
+
         docs = db.query(DMEShipmentDocument).filter(
             DMEShipmentDocument.shipment_id == shipment_id
         ).order_by(DMEShipmentDocument.page_number.nullslast(), DMEShipmentDocument.id).all()
@@ -940,18 +1056,30 @@ def list_shipment_documents(db: Session, shipment_id: int) -> List[dict]:
         return []
 
 
-def get_shipment_document(db: Session, shipment_id: int, document_id: int) -> Optional[DMEShipmentDocument]:
-    """Fetch a single document row (scoped to the shipment)"""
+def get_shipment_document(
+    db: Session,
+    shipment_id: int,
+    document_id: int,
+    account_id: Optional[int] = None,
+) -> Optional[DMEShipmentDocument]:
+    """Fetch a single document row (scoped to the shipment, and to the account)"""
+    if account_id is not None and not _owned_shipment(db, shipment_id, account_id):
+        return None
     return db.query(DMEShipmentDocument).filter(
         DMEShipmentDocument.id == document_id,
         DMEShipmentDocument.shipment_id == shipment_id
     ).first()
 
 
-def delete_shipment_document(db: Session, shipment_id: int, document_id: int) -> bool:
+def delete_shipment_document(
+    db: Session,
+    shipment_id: int,
+    document_id: int,
+    account_id: Optional[int] = None,
+) -> bool:
     """Delete a document row and its blob"""
     try:
-        doc = get_shipment_document(db, shipment_id, document_id)
+        doc = get_shipment_document(db, shipment_id, document_id, account_id)
         if not doc:
             return False
         if doc.file_path:
@@ -968,16 +1096,28 @@ def delete_shipment_document(db: Session, shipment_id: int, document_id: int) ->
 
 # --- Inventory summary ---
 
-def get_inventory_summary(db: Session, patient_id: Optional[int] = None) -> List[dict]:
+def get_inventory_summary(
+    db: Session,
+    patient_id: Optional[int] = None,
+    account_id: Optional[int] = None,
+) -> List[dict]:
     """
     Per-equipment on-hand view: quantity vs par_level / reorder_point with a
     derived status (ok | low | reorder). Reconciled deliveries keep this live
     via receive_item()'s Equipment.quantity updates.
+
+    This reads the equipment table, so it scopes the way the equipment module
+    does — an account's own rows plus the shared ones with no account — rather
+    than the strict equality the shipment tables use. Filtering these strictly
+    would hide shared supplies that the equipment page itself lists.
     """
     try:
         query = db.query(Equipment)
         if patient_id is not None:
             query = query.filter(Equipment.patient_id == patient_id)
+        if account_id is not None:
+            query = query.filter(or_(Equipment.account_id == account_id,
+                                     Equipment.account_id.is_(None)))
         rows = query.order_by(Equipment.name).all()
 
         result = []

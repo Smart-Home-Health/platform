@@ -15,35 +15,24 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
-import { PatientSelectorModal, IntakeModal, OutputModal } from './components';
+import { PatientSelectorModal, IntakeSheet, OutputSheet } from './components';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
-import {
-  NutritionIcon,
-  ClockIcon,
-  CheckIcon,
-  XIcon
-} from '../../components/Icons';
+import { NutritionIcon, LiquidIcon, ToiletIcon } from '../../components/Icons';
 import { computeScheduleStatus } from '../../components/schedule/scheduleStatus';
-import {
-  checkAdministrationWindow,
-  formatDurationMinutes,
-  getCurrentLocalDateTime,
-} from '../../utils/timezone';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Alert } from '@/components/ui/alert';
+import { nutritionService } from '../../services/nutrition';
+import ScheduleBoard from '../../components/schedule/ScheduleBoard';
+import { groupBySlot } from '../../components/schedule/scheduleRollup';
+import { getCurrentLocalDateTime } from '../../utils/timezone';
+import EntityModal from '../../components/vc/EntityModal';
+import '../../components/vc/entity-card.css';
 import './AdminV2.css';
+import './settings/settings-page.css';
+import './vc-schedule.css';
 
 // Daily nutrition schedule view (today + yesterday), the admin counterpart of
 // the live-dashboard NutritionModal, rendered with the same admin-v2 schedule
@@ -75,8 +64,9 @@ const AdminV2NutritionSchedule = () => {
     completed: false
   });
 
-  // Off-window confirm (mirrors the live nutrition modal)
-  const [windowConfirm, setWindowConfirm] = useState({ open: false, item: null, check: null });
+  // Completing an item opens the full intake form pre-linked to the row —
+  // amounts adjustable, mix prefilled — never a bare submit.
+  const [completeFeed, setCompleteFeed] = useState(null);
 
   // PRN flow: 'pick' opens the choice screen; 'intake'/'output' delegate to
   // the shared AdminV2 modal of the same name.
@@ -163,7 +153,13 @@ const AdminV2NutritionSchedule = () => {
       else bucket = 'upcoming'; // 'pending'
       const detail = [];
       if (item.default_item) detail.push(item.default_item);
-      if (item.default_amount != null) {
+      if (item.fluid_dynamic && !item.completed && item.suggested_amount != null) {
+        // Dynamic water spot: the amount is computed from what is left of
+        // the daily fluid target, so show that instead of the nominal.
+        detail.push(item.suggested_amount > 0
+          ? `suggested ${item.suggested_amount} ${item.default_amount_unit || 'ml'}`
+          : 'goal met — skip?');
+      } else if (item.default_amount != null) {
         detail.push(`${item.default_amount}${item.default_amount_unit ? ' ' + item.default_amount_unit : ''}`);
       }
       if (item.default_calories != null) detail.push(`${item.default_calories} kcal`);
@@ -171,18 +167,16 @@ const AdminV2NutritionSchedule = () => {
     });
   }, [scheduled]);
 
-  // Status display helpers (same palette as the meds schedule page)
-  const getStatusInfo = (bucket) => {
-    const statusMap = {
-      'completed': { label: 'Completed', color: '#238636', bg: 'rgba(35, 134, 54, 0.15)', border: '#238636' },
-      'missed': { label: 'Missed', color: '#f85149', bg: 'rgba(248, 81, 73, 0.15)', border: '#f85149' },
-      'upcoming': { label: 'Upcoming', color: '#1f6feb', bg: 'rgba(31, 111, 235, 0.15)', border: '#1f6feb' },
-      'ready': { label: 'Ready', color: '#58a6ff', bg: 'rgba(88, 166, 255, 0.15)', border: '#58a6ff' }
-    };
-    return statusMap[bucket] || statusMap.upcoming;
+  // Bucket -> ScheduleBoard tone
+  const BUCKET_TONE = {
+    ready: 'ontime',
+    upcoming: 'pending',
+    missed: 'late',
+    completed: 'completed',
   };
 
   const getStatusText = (item) => {
+    if (item._status === 'skipped') return 'Skipped';
     if (item._bucket === 'completed') return item.is_prn ? 'PRN Logged' : 'Completed';
     if (item._bucket === 'missed') return 'Missed';
     if (item._bucket === 'ready') return 'Ready';
@@ -191,87 +185,96 @@ const AdminV2NutritionSchedule = () => {
 
   const filteredItems = items.filter(item => statusFilters[item._bucket]);
 
-  // Group by day and time (same shape as the meds schedule page)
-  const groupItems = (list) => {
-    const groups = {};
-    list.forEach(item => {
-      const dateObj = new Date(item.scheduled_time);
-      const dayKey = dateObj.toLocaleDateString(undefined, {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      });
-      const timeStr = dateObj.toLocaleTimeString(undefined, {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true
-      });
-      if (!groups[dayKey]) groups[dayKey] = {};
-      if (!groups[dayKey][timeStr]) groups[dayKey][timeStr] = [];
-      groups[dayKey][timeStr].push(item);
-    });
-    return groups;
-  };
-
-  const sortTimeSlots = (times) => {
-    return times.sort((a, b) => {
-      const parseTime = (t) => {
-        const match = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
-        if (!match) return 0;
-        let [, h, m, ampm] = match;
-        let hour = parseInt(h, 10);
-        if (/pm/i.test(ampm) && hour !== 12) hour += 12;
-        if (/am/i.test(ampm) && hour === 12) hour = 0;
-        return hour * 60 + parseInt(m, 10);
-      };
-      return parseTime(a) - parseTime(b);
-    });
-  };
-
-  // ===== Complete scheduled item =====
-  const submitComplete = async (item, earlyOverride = false) => {
+  // Post-feed flush follow-ups have their own actions: Run (logs the water)
+  // and Skip (recorded — the mix already carried enough water today).
+  const runFlush = async (item) => {
     try {
-      const res = await fetch(`${config.apiUrl}/api/schedule/complete/nutrition`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          schedule_id: item.schedule_id,
-          scheduled_time: item.scheduled_time,
-          patient_id: selectedPatient.id,
-          user_id: user?.id || null,
-          completed_at: null,
-          notes: 'Completed via admin schedule',
-          early_override: earlyOverride,
-        }),
-      });
-      if (res.ok) {
-        fetchSchedule();
-        return;
-      }
-      const errorData = await res.json().catch(() => ({}));
-      const offWindow = res.status === 409 && (
-        errorData.error === 'early_administration' ||
-        errorData.error === 'late_administration' ||
-        errorData.error === 'off_window_administration'
-      );
-      if (offWindow && !earlyOverride) {
-        setWindowConfirm({
-          open: true,
-          item,
-          check: checkAdministrationWindow(item.scheduled_time),
-        });
-        return;
-      }
-      alert(errorData.detail || errorData.error || 'Failed to mark as completed');
+      await nutritionService.completeFlush(item.followup_id, { user_id: user?.id || undefined });
+      fetchSchedule();
     } catch (err) {
-      console.error('Error completing nutrition item:', err);
-      alert('Error connecting to server');
+      console.error('Error running flush:', err);
     }
   };
 
-  const handleMarkCompleted = (item) => submitComplete(item, false);
+  const skipFlush = async (item) => {
+    try {
+      await nutritionService.skipFlush(item.followup_id, { user_id: user?.id || undefined });
+      fetchSchedule();
+    } catch (err) {
+      console.error('Error skipping flush:', err);
+    }
+  };
+
+  const rowActions = (item) => {
+    if (item._bucket === 'completed' || item.is_prn || !hasPermission('nutrition.update')) return [];
+    if (item.row_kind === 'flush') {
+      return [
+        { key: 'run', label: 'Run Flush', tone: 'primary', onClick: () => runFlush(item) },
+        { key: 'skip', label: 'Skip', tone: 'ghost', onClick: () => skipFlush(item) },
+      ];
+    }
+    return [{
+      key: 'complete',
+      label: item._bucket === 'missed' ? 'Complete Now' : 'Mark Complete',
+      tone: 'primary',
+      onClick: () => handleMarkCompleted(item),
+    }];
+  };
+
+  // Raw (normalized) item -> ScheduleBoard row.
+  const toRow = (item) => ({
+    id: item.row_kind === 'flush'
+      ? `flush-${item.followup_id}`
+      : `${item.schedule_id ?? 'prn'}-${item.scheduled_time}`,
+    title: item.name,
+    meta: item._detail || undefined,
+    prn: item.is_prn,
+    scheduleLine: item.completed_at
+      ? `Completed at ${new Date(item.completed_at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true })}`
+      : undefined,
+    statusLabel: getStatusText(item),
+    statusTone: item._status === 'skipped' ? 'skipped' : (BUCKET_TONE[item._bucket] || 'pending'),
+    completed: item._bucket === 'completed',
+    actions: rowActions(item),
+  });
+
+  // Day (real calendar date) then time slot, reusing scheduleRollup.js's
+  // groupBySlot — the same grouping the live dashboard's dose panel uses.
+  const buildDayGroups = (list) => {
+    const days = new Map();
+    list.forEach((item) => {
+      const dayKey = new Date(item.scheduled_time).toLocaleDateString(undefined, {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+      });
+      if (!days.has(dayKey)) days.set(dayKey, { key: dayKey, date: new Date(item.scheduled_time), items: [] });
+      days.get(dayKey).items.push(item);
+    });
+    return [...days.values()]
+      .sort((a, b) => a.date - b.date)
+      .map((day) => ({
+        key: day.key,
+        label: day.key,
+        slots: groupBySlot(day.items).map((slot) => ({
+          time: slot.time,
+          items: slot.items.map(toRow),
+        })),
+      }));
+  };
+
+  // ===== Complete scheduled item =====
+  // Opens the shared intake form pre-linked to the occurrence (mix
+  // prefilled, target tracked, time and note editable). Logging the event
+  // marks the feed complete — no separate confirm dialog; the filled form
+  // IS the deliberate act, and its editable time records when the feed
+  // actually ran.
+  const handleMarkCompleted = (item) => setCompleteFeed(item);
+
+  const closeComplete = () => setCompleteFeed(null);
+
+  const onCompleteSaved = () => {
+    closeComplete();
+    fetchSchedule();
+  };
 
   // ===== PRN entry =====
   const openPrnPicker = () => {
@@ -297,226 +300,85 @@ const AdminV2NutritionSchedule = () => {
   if (loadingPatients) {
     return (
       <AdminV2Layout>
-        <div className="admin-v2-loading">Loading patients...</div>
+        <div className="admin-v2-page">
+          <p className="cfg-loading">Loading patients...</p>
+        </div>
       </AdminV2Layout>
     );
   }
 
-  const grouped = groupItems(filteredItems);
-  const sortedDays = Object.keys(grouped).sort((a, b) => new Date(a) - new Date(b));
+  const dayGroups = buildDayGroups(filteredItems);
+
+  // Stat tiles double as status filters; the status colour rides on the dot.
+  const statTiles = [
+    { key: 'ready', label: 'Ready', count: stats.ready, dot: 'var(--vc-state-due)' },
+    { key: 'upcoming', label: 'Upcoming', count: stats.upcoming, dot: 'var(--vc-state-idle)' },
+    { key: 'missed', label: 'Missed', count: stats.missed, dot: 'var(--vc-state-alert)' },
+    { key: 'completed', label: 'Completed', count: stats.completed, dot: 'var(--vc-state-complete)' },
+  ];
 
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
         {selectedPatient ? (
-          <>
-            {/* Stats Row */}
-            <div className="admin-v2-summary-stats admin-v2-meds-schedule-summary">
-              <div
-                className={`admin-v2-stat-card ${statusFilters.ready ? 'selected' : ''}`}
-                onClick={() => setStatusFilters(f => ({ ...f, ready: !f.ready }))}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(88, 166, 255, 0.15)' }}>
-                  <ClockIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.ready}</h4>
-                  <p>Ready</p>
-                </div>
-              </div>
-              <div
-                className={`admin-v2-stat-card ${statusFilters.upcoming ? 'selected' : ''}`}
-                onClick={() => setStatusFilters(f => ({ ...f, upcoming: !f.upcoming }))}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(31, 111, 235, 0.15)' }}>
-                  <ClockIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.upcoming}</h4>
-                  <p>Upcoming</p>
-                </div>
-              </div>
-              <div
-                className={`admin-v2-stat-card ${statusFilters.missed ? 'selected' : ''}`}
-                onClick={() => setStatusFilters(f => ({ ...f, missed: !f.missed }))}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(248, 81, 73, 0.15)' }}>
-                  <XIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.missed}</h4>
-                  <p>Missed</p>
-                </div>
-              </div>
-              <div
-                className={`admin-v2-stat-card ${statusFilters.completed ? 'selected' : ''}`}
-                onClick={() => setStatusFilters(f => ({ ...f, completed: !f.completed }))}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(35, 134, 54, 0.15)' }}>
-                  <CheckIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.completed}</h4>
-                  <p>Completed</p>
-                </div>
-              </div>
+          <div className="cfg">
+            {/* Stats row — each tile toggles its status filter */}
+            <div className="cfg-stats row">
+              {statTiles.map(tile => (
+                <button
+                  key={tile.key}
+                  type="button"
+                  className="cfg-stat"
+                  aria-pressed={!!statusFilters[tile.key]}
+                  onClick={() => setStatusFilters(f => ({ ...f, [tile.key]: !f[tile.key] }))}
+                >
+                  <span className="cfg-stat-label">
+                    <span className="cfg-stat-dot" style={{ background: tile.dot }} aria-hidden="true" />
+                    {tile.label}
+                  </span>
+                  <span className="cfg-stat-value">{tile.count}</span>
+                </button>
+              ))}
             </div>
 
-            {/* PRN + Refresh Buttons */}
-            <div className="admin-v2-page-header tw">
-              <h3 style={{ margin: 0, color: 'var(--foreground)' }}>
+            <div className="cfg-toolbar">
+              <h3 className="cfg-toolbar-title">
                 Today & Yesterday ({filteredItems.length} of {items.length})
               </h3>
-              <div className="tw flex items-center gap-2">
+              <div className="cfg-toolbar-actions">
                 {hasPermission('nutrition.create') && (
-                  <Button
-                    onClick={openPrnPicker}
-                    className="bg-[#6f42c1] text-white hover:bg-[#6f42c1]/90"
-                  >PRN</Button>
+                  <button type="button" className="cfg-ghost" onClick={openPrnPicker}>PRN</button>
                 )}
-                <Button onClick={fetchSchedule} disabled={loading}>
+                <button type="button" className="cfg-ghost" onClick={fetchSchedule} disabled={loading}>
                   {loading ? 'Refreshing...' : 'Refresh'}
-                </Button>
+                </button>
               </div>
             </div>
 
             {/* Schedule Content */}
-            {loading ? (
-              <div className="admin-v2-loading">Loading schedule...</div>
-            ) : error ? (
-              <div className="tw"><Alert variant="destructive">{error}</Alert></div>
-            ) : filteredItems.length === 0 ? (
-              <div className="admin-v2-empty-state">
-                <NutritionIcon size={48} />
-                <h3>No Scheduled Nutrition</h3>
-                <p className="admin-v2-text-muted">
-                  {items.length === 0
-                    ? 'No nutrition scheduled for today or yesterday'
-                    : 'No items match the selected filters'}
-                </p>
-              </div>
+            {error ? (
+              <div className="em-error">{error}</div>
             ) : (
-              <div className="admin-v2-schedule-list">
-                {sortedDays.map(dayKey => (
-                  <div key={dayKey} className="admin-v2-schedule-day">
-                    <div className="admin-v2-schedule-day-header">
-                      <h3>{dayKey}</h3>
-                    </div>
-
-                    {sortTimeSlots(Object.keys(grouped[dayKey])).map(timeStr => (
-                      <div key={timeStr} className="admin-v2-schedule-time-group">
-                        <div className="admin-v2-schedule-time-header">
-                          <span className="admin-v2-schedule-time">{timeStr}</span>
-                          <span className="admin-v2-schedule-count-label">
-                            {grouped[dayKey][timeStr].length} item{grouped[dayKey][timeStr].length !== 1 ? 's' : ''}
-                          </span>
-                        </div>
-
-                        <div className="admin-v2-schedule-items">
-                          {grouped[dayKey][timeStr].map((item, idx) => {
-                            const statusInfo = getStatusInfo(item._bucket);
-                            const isCompleted = item._bucket === 'completed';
-
-                            return (
-                              <div
-                                key={`${item.schedule_id ?? 'prn'}-${item.scheduled_time}-${idx}`}
-                                className={`admin-v2-schedule-item ${isCompleted ? 'completed' : ''}`}
-                                style={{
-                                  borderLeftColor: statusInfo.border,
-                                  backgroundColor: statusInfo.bg
-                                }}
-                              >
-                                <div className="admin-v2-schedule-item-content">
-                                  <div className="admin-v2-schedule-item-main">
-                                    <span className="admin-v2-schedule-med-name">
-                                      {item.name}
-                                    </span>
-                                    {item._detail && (
-                                      <span className="admin-v2-schedule-dose">
-                                        {item._detail}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="admin-v2-schedule-item-status">
-                                    <span
-                                      className="admin-v2-schedule-status-badge"
-                                      style={{
-                                        backgroundColor: statusInfo.border,
-                                        color: '#fff'
-                                      }}
-                                    >
-                                      {getStatusText(item)}
-                                    </span>
-                                    {item.completed_at && (
-                                      <span className="admin-v2-schedule-actual-time">
-                                        Completed at {new Date(item.completed_at).toLocaleTimeString(undefined, {
-                                          hour: 'numeric',
-                                          minute: '2-digit',
-                                          hour12: true
-                                        })}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-
-                                {!isCompleted && !item.is_prn && hasPermission('nutrition.update') && (
-                                  <div className="admin-v2-schedule-item-actions">
-                                    <button
-                                      className="admin-v2-btn admin-v2-btn-success admin-v2-btn-sm"
-                                      onClick={() => handleMarkCompleted(item)}
-                                    >
-                                      {item._bucket === 'missed' ? 'Complete Now' : 'Mark Complete'}
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
+              <ScheduleBoard
+                dayGroups={dayGroups}
+                loading={loading}
+                emptyText={
+                  items.length === 0
+                    ? 'No nutrition scheduled for today or yesterday'
+                    : 'No items match the selected filters'
+                }
+              />
             )}
 
-            {/* Legend */}
-            <div className="admin-v2-schedule-legend">
-              <h4>Status Legend</h4>
-              <div className="admin-v2-legend-items">
-                <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: '#58a6ff' }}></span>
-                  <span>Ready</span>
-                </div>
-                <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: '#1f6feb' }}></span>
-                  <span>Upcoming</span>
-                </div>
-                <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: '#f85149' }}></span>
-                  <span>Missed</span>
-                </div>
-                <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: '#238636' }}></span>
-                  <span>Completed</span>
-                </div>
-              </div>
-            </div>
-          </>
+          </div>
         ) : (
-          <div className="admin-v2-no-patient">
+          <div className="cfg-nopatient">
             <NutritionIcon size={48} />
             <h2>Select a Patient</h2>
             <p>Choose a patient to view their daily nutrition schedule</p>
-            <div className="tw">
-              <Button onClick={() => setShowPatientModal(true)}>
-                Select Patient
-              </Button>
-            </div>
+            <button type="button" className="em-submit" onClick={() => setShowPatientModal(true)}>
+              Select Patient
+            </button>
           </div>
         )}
 
@@ -531,79 +393,38 @@ const AdminV2NutritionSchedule = () => {
           />
         )}
 
-        {/* Off-window confirm */}
-        {windowConfirm.open && windowConfirm.item && windowConfirm.check && (() => {
-          const isLate = windowConfirm.check.status === 'late';
-          const title = isLate ? 'Confirm Late Completion' : 'Confirm Early Completion';
-          const heading = isLate
-            ? 'This nutrition item was scheduled earlier'
-            : 'This nutrition item is scheduled later';
-          const offsetText = isLate
-            ? `${formatDurationMinutes(Math.abs(windowConfirm.check.minutesOffset))} ago`
-            : `${formatDurationMinutes(windowConfirm.check.minutesOffset)} from now`;
-          const close = () => setWindowConfirm({ open: false, item: null, check: null });
-          return (
-            <Dialog open onOpenChange={(o) => { if (!o) close(); }}>
-              <DialogContent className="sm:max-w-[440px]" aria-describedby={undefined}>
-                <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-md bg-[rgba(240,136,62,0.2)] text-[#f0883e]">⚠</span>
-                    {title}
-                  </DialogTitle>
-                </DialogHeader>
-                <Alert variant="warning">
-                  <div className="mb-1.5 font-semibold text-[#f0883e]">{heading}</div>
-                  <div>
-                    <strong>{windowConfirm.item.name}</strong> is scheduled for{' '}
-                    <strong>{windowConfirm.check.scheduledLocal}</strong> — that's{' '}
-                    <strong>{offsetText}</strong>.
-                  </div>
-                </Alert>
-                <DialogFooter>
-                  <Button variant="secondary" onClick={close}>Cancel</Button>
-                  <Button
-                    onClick={async () => {
-                      const item = windowConfirm.item;
-                      close();
-                      await submitComplete(item, true);
-                    }}
-                  >Complete Anyway</Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          );
-        })()}
+        {/* Complete a scheduled item: the shared intake form, pre-linked
+            to the tapped occurrence with its mix as the starting rows. */}
+        <IntakeSheet
+          open={!!completeFeed}
+          onClose={closeComplete}
+          onSaved={onCompleteSaved}
+          patient={selectedPatient}
+          prefillFeed={completeFeed}
+        />
 
         {/* PRN pick: intake vs output */}
-        <Dialog open={prnMode === 'pick'} onOpenChange={(o) => { if (!o) closePrn(); }}>
-          <DialogContent className="sm:max-w-[480px]" aria-describedby={undefined}>
-            <DialogHeader>
-              <DialogTitle>Log Ad-Hoc Nutrition</DialogTitle>
-            </DialogHeader>
-            <div className="grid grid-cols-2 gap-3">
-              <Button
-                type="button"
-                onClick={() => setPrnMode('intake')}
-                className="h-auto flex-col gap-1.5 py-6 text-base font-bold"
-              >
-                <span className="text-2xl leading-none">↓</span>
+        <EntityModal
+          open={prnMode === 'pick'}
+          onOpenChange={(o) => { if (!o) closePrn(); }}
+          title="Log Ad-Hoc Nutrition"
+        >
+          <div className="em-form">
+            <div className="sch-choices">
+              <button type="button" className="sch-choice primary" onClick={() => setPrnMode('intake')}>
+                <LiquidIcon size={22} />
                 Log Intake
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setPrnMode('output')}
-                className="h-auto flex-col gap-1.5 py-6 text-base font-bold"
-              >
-                <span className="text-2xl leading-none">↑</span>
+              </button>
+              <button type="button" className="sch-choice" onClick={() => setPrnMode('output')}>
+                <ToiletIcon size={22} />
                 Log Output
-              </Button>
+              </button>
             </div>
-          </DialogContent>
-        </Dialog>
+          </div>
+        </EntityModal>
 
         {/* Shared AdminV2 intake form */}
-        <IntakeModal
+        <IntakeSheet
           open={prnMode === 'intake'}
           onClose={closePrn}
           onSaved={onPrnSaved}
@@ -612,7 +433,7 @@ const AdminV2NutritionSchedule = () => {
         />
 
         {/* Shared AdminV2 output form */}
-        <OutputModal
+        <OutputSheet
           open={prnMode === 'output'}
           onClose={closePrn}
           onSaved={onPrnSaved}

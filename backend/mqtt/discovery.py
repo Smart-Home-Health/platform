@@ -109,22 +109,61 @@ BADGE_SENSORS: Dict[str, List[Tuple[str, str, str]]] = {
 }
 
 
-def _all_section_entities() -> List[Tuple[str, str, str]]:
+# Entities an older build published that the current one does not: blood
+# pressure used to be one sensor before it expanded into systolic/diastolic/MAP.
+# Kept so un-discovery still prunes them; never planned for publishing.
+_LEGACY_ENTITIES: List[Tuple[str, str, str, str]] = [
+    ("blood_pressure", "sensor", "blood_pressure", "Blood Pressure"),
+]
+
+_BP_COMPONENTS = ("systolic", "diastolic", "map")
+
+
+def entity_plan(sections: Dict[str, str]) -> List[Tuple[str, str, str, str]]:
     """
-    Every (section_key, sensor_type, entity_suffix) this module can ever
-    publish for a patient — the inventory un-discovery prunes against.
+    (section_key, sensor_type, entity_suffix, display_name) for every entity
+    the given section permissions would publish, in publish order.
+
+    This is the same expansion the publish loop below performs — one sensor per
+    shared section, except blood pressure (3), nutrition (6) and the badge
+    counts (2 each). Callers that need to say how many entities a config
+    produces read it from here rather than counting sections.
     """
-    entities: List[Tuple[str, str, str]] = []
-    for section_key, (_tpl, _unit, _name, sensor_type) in SECTION_DISCOVERY.items():
-        entities.append((section_key, sensor_type, section_key))
-    for component in ("systolic", "diastolic", "map"):
-        entities.append(("blood_pressure", "sensor", f"blood_pressure_{component}"))
-    for _tpl, _unit, _name, suffix in NUTRITION_SENSORS:
-        entities.append(("nutrition", "sensor", f"nutrition_{suffix}"))
-    for section_key, sensors in BADGE_SENSORS.items():
-        for _tpl, _name, suffix in sensors:
-            entities.append((section_key, "sensor", suffix))
-    return entities
+    plan: List[Tuple[str, str, str, str]] = []
+    for section_key, perm in (sections or {}).items():
+        if perm not in ("get", "both"):
+            continue
+        if section_key == "blood_pressure":
+            for component, (_tpl, _unit, display_name) in zip(_BP_COMPONENTS, BLOOD_PRESSURE_SENSORS):
+                plan.append((section_key, "sensor", f"blood_pressure_{component}", display_name))
+            continue
+        if section_key == "nutrition":
+            for _tpl, _unit, display_name, suffix in NUTRITION_SENSORS:
+                plan.append((section_key, "sensor", f"nutrition_{suffix}", display_name))
+            continue
+        if section_key in BADGE_SENSORS:
+            for _tpl, display_name, suffix in BADGE_SENSORS[section_key]:
+                plan.append((section_key, "sensor", suffix, display_name))
+            continue
+        config = SECTION_DISCOVERY.get(section_key)
+        if not config:
+            continue
+        _tpl, _unit, display_name, sensor_type = config
+        plan.append((section_key, sensor_type,
+                     section_key.replace(" ", "_").lower(), display_name))
+    return plan
+
+
+def _all_section_entities() -> List[Tuple[str, str, str, str]]:
+    """
+    Every (section_key, sensor_type, entity_suffix, display_name) this module
+    can ever publish for a patient — the inventory un-discovery prunes against.
+    """
+    every_section = {
+        key: "get" for key in
+        (set(SECTION_DISCOVERY) | set(BADGE_SENSORS) | {"nutrition"})
+    }
+    return entity_plan(every_section) + _LEGACY_ENTITIES
 
 
 def _remove_entity(mqtt_client, discovery_prefix: str, sensor_type: str,
@@ -150,7 +189,7 @@ def remove_mqtt_discovery_for_patient(mqtt_client, patient_id: int,
         return
     discovery_prefix = "homeassistant"
     device_ident = _safe_device_id(patient_name, patient_id)
-    for _section, sensor_type, suffix in _all_section_entities():
+    for _section, sensor_type, suffix, _name in _all_section_entities():
         _remove_entity(mqtt_client, discovery_prefix, sensor_type,
                        f"{device_ident}_{suffix}")
     for reader_id in reader_ids or []:
@@ -341,7 +380,7 @@ def send_mqtt_discovery(mqtt_client, patient_id: Optional[int] = None) -> bool:
         # --- Un-discovery: delete entities for sections that are off, so a
         # toggled-off section doesn't linger in HA as a stuck "Unknown" entity
         # (its discovery config is retained on the broker otherwise). ---
-        for section_key, sensor_type, suffix in _all_section_entities():
+        for section_key, sensor_type, suffix, _name in _all_section_entities():
             if sections.get(section_key) in ("get", "both"):
                 continue
             _remove_entity(mqtt_client, discovery_prefix, sensor_type,

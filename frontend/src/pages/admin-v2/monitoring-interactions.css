@@ -1,0 +1,38 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+@import '../../styles/vc-tokens.css';
+
+/* Medication-interaction analysis. Only the control strip and the pre/post
+   arrow live here — the result cards are still inline-styled, but on --vc-*
+   tokens now rather than the raw legacy palette they read outside `.tw`. */
+
+.mi-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  margin-bottom: 1.5rem;
+}
+
+/* The glyph this replaced was a text "→" at 1.2rem; the icon inherits
+   currentColor, so the muted tone has to be set on the wrapper. */
+.mi-arrow {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: var(--vc-text-secondary);
+}

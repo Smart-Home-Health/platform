@@ -15,25 +15,21 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
-import { PatientHeader, PatientSelectorModal } from './components';
-import { TasksIcon, ClockIcon, CheckIcon, XIcon } from '../../components/Icons';
+import { PatientSelectorModal } from './components';
+import { TasksIcon } from '../../components/Icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import config from '../../config';
 import { checkAdministrationWindow, formatDurationMinutes } from '../../utils/timezone';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import ScheduleBoard from '../../components/schedule/ScheduleBoard';
+import { groupBySlot } from '../../components/schedule/scheduleRollup';
+import ConfirmSheet from '../../components/vc/ConfirmSheet';
+import '../../components/vc/entity-card.css';
 import './AdminV2.css';
+import './settings/settings-page.css';
 
 const AdminV2CareTasksSchedule = () => {
   const { user } = useAuth();
@@ -115,13 +111,13 @@ const AdminV2CareTasksSchedule = () => {
       setError(null);
       
       const response = await fetch(
-        `${config.apiUrl}/api/care-task-schedules/daily?patient_id=${selectedPatient.id}`,
+        `${config.apiUrl}/api/care-tasks/day?patient_id=${selectedPatient.id}`,
         { credentials: 'include' }
       );
 
       if (response.ok) {
         const data = await response.json();
-        setScheduledTasks(data.scheduled_care_tasks || []);
+        setScheduledTasks(data.items || []);
       } else {
         setError('Failed to fetch schedule');
       }
@@ -139,28 +135,35 @@ const AdminV2CareTasksSchedule = () => {
     setShowPatientModal(false);
   };
 
-  // Status helpers
-  const getStatusInfo = (status) => {
-    const statusMap = {
-      'pending': { label: 'Pending', color: '#1f6feb', bg: 'rgba(31, 111, 235, 0.15)', border: '#1f6feb' },
-      'due_warning': { label: 'Due Warning', color: '#9e6a03', bg: 'rgba(158, 106, 3, 0.15)', border: '#9e6a03' },
-      'due_on_time': { label: 'Due On Time', color: '#238636', bg: 'rgba(35, 134, 54, 0.15)', border: '#238636' },
-      'due_late': { label: 'Due Late', color: '#f85149', bg: 'rgba(248, 81, 73, 0.15)', border: '#f85149' },
-      'upcoming': { label: 'Upcoming', color: '#58a6ff', bg: 'rgba(88, 166, 255, 0.15)', border: '#58a6ff' },
-      'missed': { label: 'Missed', color: '#f85149', bg: 'rgba(248, 81, 73, 0.15)', border: '#f85149' },
-      'completed': { label: 'Completed', color: '#238636', bg: 'rgba(35, 134, 54, 0.15)', border: '#238636' },
-      'skipped': { label: 'Skipped', color: 'var(--muted-foreground)', bg: 'rgba(139, 148, 158, 0.15)', border: 'var(--muted-foreground)' }
-    };
-    return statusMap[status] || statusMap.upcoming;
+  // Status -> ScheduleBoard tone/label
+  const STATUS_TONE = {
+    pending: 'pending',
+    due_warning: 'warning',
+    due_on_time: 'ontime',
+    due_late: 'late',
+    upcoming: 'pending',
+    missed: 'late',
+    completed: 'completed',
+    skipped: 'skipped',
+  };
+  const STATUS_LABEL = {
+    pending: 'Pending',
+    due_warning: 'Due Warning',
+    due_on_time: 'Due On Time',
+    due_late: 'Due Late',
+    upcoming: 'Upcoming',
+    missed: 'Missed',
+    completed: 'Completed',
+    skipped: 'Skipped',
   };
 
+  const getStatusTone = (item) => STATUS_TONE[item.status] || 'pending';
+
   const getStatusText = (item) => {
-    if (item.is_completed) {
-      if (item.status === 'skipped') return 'Skipped';
-      return 'Completed';
+    if (item.completed) {
+      return item.status === 'skipped' ? 'Skipped' : 'Completed';
     }
-    const statusInfo = getStatusInfo(item.status);
-    return statusInfo.label;
+    return STATUS_LABEL[item.status] || item.status;
   };
 
   const getFilteredTasks = () => {
@@ -172,44 +175,60 @@ const AdminV2CareTasksSchedule = () => {
     });
   };
 
-  // Group tasks by day and time
-  const groupTasks = (tasks) => {
-    const groups = {};
-    
-    tasks.forEach(item => {
-      const dateObj = new Date(item.scheduled_time);
-      const dayKey = dateObj.toLocaleDateString(undefined, { 
-        weekday: 'long', 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric' 
+  // Raw item -> ScheduleBoard row.
+  const toRow = (item) => {
+    const actions = [];
+    // The endpoints behind these require care_tasks.perform, not update:
+    // gating on update hid the buttons from users who could complete a
+    // task, and showed them to users whose click would 403.
+    if (!item.completed && hasPermission('care_tasks.perform')) {
+      actions.push({
+        key: 'complete',
+        label: item.status === 'missed' ? 'Complete Now' : 'Mark Complete',
+        tone: 'primary',
+        onClick: () => handleMarkCompleted(item),
       });
-      const timeStr = dateObj.toLocaleTimeString(undefined, { 
-        hour: 'numeric', 
-        minute: '2-digit', 
-        hour12: true 
-      });
-      
-      if (!groups[dayKey]) groups[dayKey] = {};
-      if (!groups[dayKey][timeStr]) groups[dayKey][timeStr] = [];
-      groups[dayKey][timeStr].push(item);
-    });
-    
-    return groups;
+      actions.push({ key: 'skip', label: 'Skip', tone: 'ghost', onClick: () => handleSkipTask(item) });
+    }
+
+    return {
+      id: `${item.schedule_id}-${item.scheduled_time}`,
+      title: item.name,
+      meta: item.description || undefined,
+      categoryColor: item.category_color,
+      categoryLabel: item.category_name,
+      prn: item.is_prn,
+      scheduleLine: item.completed_at
+        ? `Completed at ${new Date(item.completed_at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true })}`
+        : undefined,
+      statusLabel: getStatusText(item),
+      statusTone: getStatusTone(item),
+      completed: item.completed,
+      actions,
+    };
   };
 
-  // Sort time slots
-  const sortTimeSlots = (times) => {
-    return times.sort((a, b) => {
-      const parseTime = (t) => {
-        const [time, period] = t.split(' ');
-        let [hours, minutes] = time.split(':').map(Number);
-        if (period === 'PM' && hours !== 12) hours += 12;
-        if (period === 'AM' && hours === 12) hours = 0;
-        return hours * 60 + minutes;
-      };
-      return parseTime(a) - parseTime(b);
+  // Day (real calendar date) then time slot, reusing scheduleRollup.js's
+  // groupBySlot — the same grouping the live dashboard's dose panel uses.
+  const buildDayGroups = (tasks) => {
+    const days = new Map();
+    tasks.forEach((item) => {
+      const dayKey = new Date(item.scheduled_time).toLocaleDateString(undefined, {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+      });
+      if (!days.has(dayKey)) days.set(dayKey, { key: dayKey, date: new Date(item.scheduled_time), items: [] });
+      days.get(dayKey).items.push(item);
     });
+    return [...days.values()]
+      .sort((a, b) => a.date - b.date)
+      .map((day) => ({
+        key: day.key,
+        label: day.key,
+        slots: groupBySlot(day.items).map((slot) => ({
+          time: slot.time,
+          items: slot.items.map(toRow),
+        })),
+      }));
   };
 
   const handleMarkCompleted = async (task) => {
@@ -299,277 +318,91 @@ const AdminV2CareTasksSchedule = () => {
   if (loadingPatients) {
     return (
       <AdminV2Layout>
-        <div className="admin-v2-loading">Loading patients...</div>
+        <div className="admin-v2-page">
+          <p className="cfg-loading">Loading patients...</p>
+        </div>
       </AdminV2Layout>
     );
   }
 
   const filteredTasks = getFilteredTasks();
-  const groupedTasks = groupTasks(filteredTasks);
-  const sortedDays = Object.keys(groupedTasks).sort((a, b) => new Date(a) - new Date(b));
+  const dayGroups = buildDayGroups(filteredTasks);
+
+  // Stat tiles double as status filters; a tile that spans several statuses
+  // toggles them together. Status colour rides on the dot; PRN is an identity
+  // (avatar palette), not a state.
+  const statTiles = [
+    { key: 'ready', label: 'Ready', count: stats.ready, dot: 'var(--vc-state-due)', keys: ['due_on_time', 'due_warning', 'due_late'] },
+    { key: 'upcoming', label: 'Upcoming', count: stats.upcoming, dot: 'var(--vc-state-idle)', keys: ['pending', 'upcoming'] },
+    { key: 'missed', label: 'Missed', count: stats.missed, dot: 'var(--vc-state-alert)', keys: ['missed'] },
+    { key: 'completed', label: 'Completed', count: stats.completed, dot: 'var(--vc-state-complete)', keys: ['completed'] },
+    { key: 'skipped', label: 'Skipped', count: stats.skipped, dot: 'var(--vc-state-idle)', keys: ['skipped'] },
+    { key: 'prn', label: 'PRN', count: stats.prn, dot: 'var(--vc-avatar-plum)', keys: ['prn'] },
+  ];
 
   return (
     <AdminV2Layout>
       <div className="admin-v2-page">
         {selectedPatient ? (
-          <>
-            {/* Stats Row */}
-            <div className="admin-v2-summary-stats admin-v2-care-tasks-stat-summary">
-              <div 
-                className={`admin-v2-stat-card ${statusFilters.due_on_time && statusFilters.due_warning && statusFilters.due_late ? 'selected' : ''}`}
-                onClick={() => setStatusFilters(f => ({ 
-                  ...f, 
-                  due_on_time: !f.due_on_time,
-                  due_warning: !f.due_warning,
-                  due_late: !f.due_late
-                }))}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(35, 134, 54, 0.15)' }}>
-                  <ClockIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.ready}</h4>
-                  <p>Ready</p>
-                </div>
-              </div>
-              <div 
-                className={`admin-v2-stat-card ${statusFilters.pending && statusFilters.upcoming ? 'selected' : ''}`}
-                onClick={() => setStatusFilters(f => ({ 
-                  ...f, 
-                  pending: !f.pending,
-                  upcoming: !f.upcoming
-                }))}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(88, 166, 255, 0.15)' }}>
-                  <ClockIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.upcoming}</h4>
-                  <p>Upcoming</p>
-                </div>
-              </div>
-              <div 
-                className={`admin-v2-stat-card ${statusFilters.missed ? 'selected' : ''}`}
-                onClick={() => setStatusFilters(f => ({ ...f, missed: !f.missed }))}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(248, 81, 73, 0.15)' }}>
-                  <XIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.missed}</h4>
-                  <p>Missed</p>
-                </div>
-              </div>
-              <div
-                className={`admin-v2-stat-card ${statusFilters.completed ? 'selected' : ''}`}
-                onClick={() => setStatusFilters(f => ({ ...f, completed: !f.completed }))}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(35, 134, 54, 0.15)' }}>
-                  <CheckIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.completed}</h4>
-                  <p>Completed</p>
-                </div>
-              </div>
-              <div
-                className={`admin-v2-stat-card ${statusFilters.skipped ? 'selected' : ''}`}
-                onClick={() => setStatusFilters(f => ({ ...f, skipped: !f.skipped }))}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(139, 148, 158, 0.15)' }}>
-                  <XIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.skipped}</h4>
-                  <p>Skipped</p>
-                </div>
-              </div>
-              <div
-                className={`admin-v2-stat-card ${statusFilters.prn ? 'selected' : ''}`}
-                onClick={() => setStatusFilters(f => ({ ...f, prn: !f.prn }))}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="admin-v2-stat-icon" style={{ background: 'rgba(111, 66, 193, 0.15)' }}>
-                  <TasksIcon size={20} />
-                </div>
-                <div className="admin-v2-stat-info">
-                  <h4>{stats.prn}</h4>
-                  <p>PRN</p>
-                </div>
-              </div>
+          <div className="cfg">
+            {/* Stats row — each tile toggles its status filter(s) */}
+            <div className="cfg-stats row">
+              {statTiles.map(tile => {
+                const pressed = tile.keys.every(k => statusFilters[k]);
+                return (
+                  <button
+                    key={tile.key}
+                    type="button"
+                    className="cfg-stat"
+                    aria-pressed={pressed}
+                    onClick={() => setStatusFilters(f => {
+                      const next = { ...f };
+                      for (const k of tile.keys) next[k] = !pressed;
+                      return next;
+                    })}
+                  >
+                    <span className="cfg-stat-label">
+                      <span className="cfg-stat-dot" style={{ background: tile.dot }} aria-hidden="true" />
+                      {tile.label}
+                    </span>
+                    <span className="cfg-stat-value">{tile.count}</span>
+                  </button>
+                );
+              })}
             </div>
 
-            {/* Refresh Button */}
-            <div className="admin-v2-page-header tw">
-              <h3 style={{ margin: 0, color: 'var(--foreground)' }}>
+            <div className="cfg-toolbar">
+              <h3 className="cfg-toolbar-title">
                 Today & Yesterday ({filteredTasks.length} of {scheduledTasks.length})
               </h3>
-              <Button onClick={fetchSchedule} disabled={loading}>
+              <button type="button" className="cfg-ghost" onClick={fetchSchedule} disabled={loading}>
                 {loading ? 'Refreshing...' : 'Refresh'}
-              </Button>
+              </button>
             </div>
 
             {/* Schedule Content */}
-            {loading ? (
-              <div className="admin-v2-loading">Loading schedule...</div>
-            ) : error ? (
-              <div className="tw"><Alert variant="destructive">{error}</Alert></div>
-            ) : filteredTasks.length === 0 ? (
-              <div className="admin-v2-empty-state">
-                <TasksIcon size={48} />
-                <h3>No Scheduled Care Tasks</h3>
-                <p className="admin-v2-text-muted">
-                  {scheduledTasks.length === 0 
-                    ? 'No care tasks scheduled for today or yesterday'
-                    : 'No care tasks match the selected filters'}
-                </p>
-              </div>
+            {error ? (
+              <div className="em-error">{error}</div>
             ) : (
-              <div className="admin-v2-schedule-list">
-                {sortedDays.map(dayKey => (
-                  <div key={dayKey} className="admin-v2-schedule-day">
-                    <div className="admin-v2-schedule-day-header">
-                      <h3>{dayKey}</h3>
-                    </div>
-                    
-                    {sortTimeSlots(Object.keys(groupedTasks[dayKey])).map(timeStr => (
-                      <div key={timeStr} className="admin-v2-schedule-time-group">
-                        <div className="admin-v2-schedule-time-header">
-                          <span className="admin-v2-schedule-time">{timeStr}</span>
-                          <span className="admin-v2-schedule-count-label">
-                            {groupedTasks[dayKey][timeStr].length} task{groupedTasks[dayKey][timeStr].length !== 1 ? 's' : ''}
-                          </span>
-                        </div>
-                        
-                        <div className="admin-v2-schedule-items">
-                          {groupedTasks[dayKey][timeStr].map((item, idx) => {
-                            const statusInfo = getStatusInfo(item.status);
-                            const isCompleted = item.is_completed;
-                            const categoryColor = item.care_task_category_color || '#6f42c1';
-                            
-                            return (
-                              <div 
-                                key={`${item.schedule_id}-${idx}`}
-                                className={`admin-v2-schedule-item ${isCompleted ? 'completed' : ''}`}
-                                style={{ 
-                                  borderLeftColor: categoryColor,
-                                  backgroundColor: statusInfo.bg
-                                }}
-                              >
-                                <div className="admin-v2-schedule-item-content">
-                                  <div className="admin-v2-schedule-item-main">
-                                    <span className="admin-v2-schedule-med-name">
-                                      {item.care_task_name}
-                                    </span>
-                                    {item.care_task_description && (
-                                      <span className="admin-v2-schedule-dose" style={{ opacity: 0.8 }}>
-                                        {item.care_task_description}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="admin-v2-schedule-item-status">
-                                    {item.is_prn && (
-                                      <span
-                                        className="admin-v2-schedule-status-badge"
-                                        style={{ backgroundColor: '#6f42c1', color: '#fff' }}
-                                        title="Completed as-needed (PRN), not a scheduled occurrence"
-                                      >
-                                        PRN
-                                      </span>
-                                    )}
-                                    <span
-                                      className="admin-v2-schedule-status-badge"
-                                      style={{
-                                        backgroundColor: statusInfo.border,
-                                        color: '#fff'
-                                      }}
-                                    >
-                                      {getStatusText(item)}
-                                    </span>
-                                    {item.completed_time && (
-                                      <span className="admin-v2-schedule-actual-time">
-                                        Completed at {new Date(item.completed_time).toLocaleTimeString(undefined, { 
-                                          hour: 'numeric', 
-                                          minute: '2-digit', 
-                                          hour12: true 
-                                        })}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                                
-                                {!isCompleted && hasPermission('care_tasks.update') && (
-                                  <div className="admin-v2-schedule-item-actions">
-                                    <button
-                                      className="admin-v2-btn admin-v2-btn-success admin-v2-btn-sm"
-                                      onClick={() => handleMarkCompleted(item)}
-                                    >
-                                      {item.status === 'missed' ? 'Complete Now' : 'Mark Complete'}
-                                    </button>
-                                    <button
-                                      className="admin-v2-btn admin-v2-btn-sm"
-                                      onClick={() => handleSkipTask(item)}
-                                    >
-                                      Skip
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
+              <ScheduleBoard
+                dayGroups={dayGroups}
+                loading={loading}
+                emptyText={
+                  scheduledTasks.length === 0
+                    ? 'No care tasks scheduled for today or yesterday'
+                    : 'No care tasks match the selected filters'
+                }
+              />
             )}
-
-            {/* Legend */}
-            <div className="admin-v2-schedule-legend">
-              <h4>Status Legend</h4>
-              <div className="admin-v2-legend-items">
-                <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: '#238636' }}></span>
-                  <span>Due On Time</span>
-                </div>
-                <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: '#9e6a03' }}></span>
-                  <span>Due Warning</span>
-                </div>
-                <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: '#f85149' }}></span>
-                  <span>Due Late / Missed</span>
-                </div>
-                <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: '#58a6ff' }}></span>
-                  <span>Upcoming</span>
-                </div>
-                <div className="admin-v2-legend-item">
-                  <span className="admin-v2-legend-dot" style={{ backgroundColor: 'var(--muted-foreground)' }}></span>
-                  <span>Skipped</span>
-                </div>
-              </div>
-              <div className="admin-v2-legend-category-note">
-                <strong>Category Colors:</strong> Left border indicates task category
-              </div>
-            </div>
-          </>
+          </div>
         ) : (
-          <div className="admin-v2-no-patient">
+          <div className="cfg-nopatient">
             <TasksIcon size={48} />
             <h2>Select a Patient</h2>
             <p>Choose a patient to view their daily care tasks schedule</p>
-            <div className="tw">
-              <Button onClick={() => setShowPatientModal(true)}>
-                Select Patient
-              </Button>
-            </div>
+            <button type="button" className="em-submit" onClick={() => setShowPatientModal(true)}>
+              Select Patient
+            </button>
           </div>
         )}
 
@@ -584,50 +417,36 @@ const AdminV2CareTasksSchedule = () => {
           />
         )}
 
-        {/* Off-window (early or late) completion confirmation Dialog */}
-        {(() => {
-          const isLate = windowConfirm.check?.status === 'late';
+        {/* Off-window (early or late) completion confirmation */}
+        {windowConfirm.open && windowConfirm.task && windowConfirm.check && (() => {
+          const isLate = windowConfirm.check.status === 'late';
           const title = isLate ? 'Warning: Late Completion' : 'Warning: Early Completion';
           const heading = isLate
             ? 'This care task was scheduled earlier'
             : 'This care task is scheduled later';
-          const offsetText = windowConfirm.check && (isLate
+          const offsetText = isLate
             ? `${formatDurationMinutes(Math.abs(windowConfirm.check.minutesOffset))} ago`
-            : `${formatDurationMinutes(windowConfirm.check.minutesOffset)} from now`);
+            : `${formatDurationMinutes(windowConfirm.check.minutesOffset)} from now`;
           const confirmLabel = isLate ? 'Confirm Late Completion' : 'Confirm Early Completion';
           const close = () => setWindowConfirm({ open: false, task: null, check: null });
           return (
-            <Dialog open={windowConfirm.open && !!windowConfirm.task} onOpenChange={(o) => { if (!o) close(); }}>
-              <DialogContent className="sm:max-w-[480px]" aria-describedby={undefined}>
-                <DialogHeader>
-                  <DialogTitle>{title}</DialogTitle>
-                </DialogHeader>
-                {windowConfirm.task && windowConfirm.check && (
-                  <Alert variant="warning">
-                    <AlertTitle className="text-[#f0883e]">{heading}</AlertTitle>
-                    <AlertDescription>
-                      <strong>{windowConfirm.task.care_task_name || windowConfirm.task.name}</strong> is scheduled for{' '}
-                      <strong>{windowConfirm.check.scheduledLocal}</strong>
-                      {' '}— that's <strong>{offsetText}</strong>.
-                      {' '}Confirm this is intentional before marking it complete.
-                    </AlertDescription>
-                  </Alert>
-                )}
-                <DialogFooter>
-                  <Button type="button" variant="secondary" onClick={close}>Cancel</Button>
-                  <Button
-                    type="button"
-                    onClick={async () => {
-                      const task = windowConfirm.task;
-                      close();
-                      await submitMarkCompleted(task, true);
-                    }}
-                  >
-                    {confirmLabel}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+            <ConfirmSheet
+              open
+              onOpenChange={(o) => { if (!o) close(); }}
+              title={title}
+              confirmLabel={confirmLabel}
+              onConfirm={async () => {
+                const task = windowConfirm.task;
+                close();
+                await submitMarkCompleted(task, true);
+              }}
+            >
+              <strong className="cs-lead">{heading}</strong>
+              <strong>{windowConfirm.task.name}</strong> is scheduled for{' '}
+              <strong>{windowConfirm.check.scheduledLocal}</strong>
+              {' '}— that&apos;s <strong>{offsetText}</strong>.
+              {' '}Confirm this is intentional before marking it complete.
+            </ConfirmSheet>
           );
         })()}
       </div>

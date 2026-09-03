@@ -1,0 +1,79 @@
+@import '../../../styles/vc-tokens.css';
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+/* AvatarEditor — PersonAvatar plus a corner edit button that opens a tiny
+ * menu. Lives on the vc hub pages (care profile hub, user detail) and reads
+ * the vc tokens directly. */
+.ave {
+  position: relative;
+  display: inline-block;
+  flex: 0 0 auto;
+}
+.ave-edit {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 999px;
+  background: var(--vc-bg-surface);
+  color: var(--vc-text-primary);
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+.ave-edit:hover { background: var(--vc-bg-raised); }
+.ave-edit:disabled { opacity: 0.5; cursor: default; }
+.ave-edit:focus-visible { outline: 2px solid var(--vc-data-live); outline-offset: 1px; }
+
+.ave-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-width: 190px;
+  padding: 4px;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-sheet);
+  color: var(--vc-text-primary);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+}
+.ave-item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.5rem 0.65rem;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ave-item:hover { background: var(--vc-bg-raised); color: var(--vc-text-primary); }
+.ave-item:disabled { opacity: 0.5; cursor: default; }
+.ave-item.danger { color: var(--vc-state-alert); }

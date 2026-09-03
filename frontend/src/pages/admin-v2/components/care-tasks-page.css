@@ -1,0 +1,284 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+/* Care tasks page — vc-native, matching the nutrition surfaces. */
+
+.ctp { display: flex; flex-direction: column; }
+
+.ctp-actions { display: flex; justify-content: flex-end; margin: -0.25rem 0 0.6rem; }
+
+.ctp-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.5rem;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-data-live);
+}
+.ctp-link:hover { text-decoration: underline; }
+.ctp-link:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
+}
+
+/* The category reads as a dot beside its name — the colour never carries the
+   meaning on its own. */
+.ctp-cat {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0 0.9rem 0.3rem;
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+
+/* ---------- completion history ---------- */
+.cth { gap: 0.7rem; }
+
+.cth-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.1rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-surface);
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.cth-totals strong {
+  color: var(--vc-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.cth-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+.cth-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-surface);
+}
+.cth-icon {
+  flex-shrink: 0;
+  display: grid;
+  place-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--vc-line-hairline);
+  color: var(--vc-text-secondary);
+}
+/* Green for on time, amber for off it. Adherence timing is never red — a late
+   task is a timing fact, not a clinical alarm. */
+.cth-icon.ok { color: var(--vc-state-complete); }
+.cth-icon.due { color: var(--vc-state-due); }
+
+.cth-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 0.12rem; }
+.cth-name {
+  font-family: var(--vc-font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vc-text-primary);
+}
+.cth-meta,
+.cth-notes {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--vc-text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cth-notes { font-family: var(--vc-font-sans); font-size: 12px; }
+
+.cth-tag {
+  flex-shrink: 0;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--vc-line-strong);
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.cth-tag.ok {
+  color: var(--vc-state-complete);
+  border-color: color-mix(in srgb, var(--vc-state-complete) 50%, transparent);
+}
+.cth-tag.due {
+  color: var(--vc-state-due);
+  border-color: color-mix(in srgb, var(--vc-state-due) 50%, transparent);
+}
+
+/* ---------- overview ---------- */
+.cto { display: flex; flex-direction: column; gap: 0.55rem; }
+
+.cto-head { display: flex; align-items: center; gap: 0.6rem; }
+.cto-head .vseg-field { flex: 1 1 auto; }
+
+.cto-card {
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-surface);
+  overflow: hidden;
+}
+.cto-card-head { padding: 0.5rem 0.7rem; border-bottom: 1px solid var(--vc-line-hairline); }
+.cto-card-head h3 {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+
+.cto-headline {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.75rem 0.7rem 0.4rem;
+  flex-wrap: wrap;
+}
+.cto-rate {
+  font-family: var(--vc-font-mono);
+  font-size: 30px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+/* Holding, slipping, or well short — amber and not red, because adherence is
+   a timing measure rather than a clinical alarm. */
+.cto-rate.ok { color: var(--vc-state-complete); }
+.cto-rate.due { color: var(--vc-state-due); }
+.cto-rate.low { color: var(--vc-state-due); }
+.cto-rate-note {
+  font-family: var(--vc-font-sans);
+  font-size: 12.5px;
+  color: var(--vc-text-tertiary);
+}
+
+.cto-breakdown {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 1px solid var(--vc-line-hairline);
+}
+.cto-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.6rem 0.3rem;
+  border-right: 1px solid var(--vc-line-hairline);
+}
+.cto-stat:last-child { border-right: none; }
+.cto-stat-icon { display: inline-flex; color: var(--vc-text-tertiary); }
+.cto-stat.ok .cto-stat-icon { color: var(--vc-state-complete); }
+.cto-stat.due .cto-stat-icon { color: var(--vc-state-due); }
+.cto-stat-value {
+  font-family: var(--vc-font-mono);
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-text-primary);
+}
+.cto-stat-label {
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+  white-space: nowrap;
+}
+
+.cto-rows { list-style: none; margin: 0; padding: 0.4rem 0.7rem 0.6rem; display: flex; flex-direction: column; gap: 0.4rem; }
+.cto-row { display: flex; align-items: center; gap: 0.55rem; }
+.cto-row-icon { flex-shrink: 0; display: inline-flex; color: var(--vc-text-tertiary); }
+.cto-row-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; }
+.cto-row-name {
+  font-family: var(--vc-font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vc-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cto-row-meta {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.cto-row-bar {
+  flex: 0 0 clamp(56px, 22%, 120px);
+  height: 6px;
+  border-radius: 3px;
+  background: var(--vc-bg-raised);
+  overflow: hidden;
+}
+.cto-row-fill { display: block; height: 100%; border-radius: 3px; background: var(--vc-state-due); }
+.cto-row-fill.ok { background: var(--vc-state-complete); }
+.cto-row-rate,
+.cto-row-count {
+  flex-shrink: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-text-secondary);
+}
+.cto-row-rate.ok { color: var(--vc-state-complete); }
+.cto-row-rate.due, .cto-row-rate.low { color: var(--vc-state-due); }
+
+@media (max-width: 560px) {
+  .cto-row-bar { flex-basis: 48px; }
+  .cto-stat-label { font-size: 8.5px; letter-spacing: 0.06em; }
+}

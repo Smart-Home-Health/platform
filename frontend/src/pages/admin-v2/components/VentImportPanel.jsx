@@ -15,28 +15,23 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import config from '../../../config';
-import { CheckIcon, ClockIcon, RefreshIcon } from '../../../components/Icons';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Field } from '@/components/ui/field';
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { CheckIcon, ChevronDownIcon, ChevronRightIcon, ClockIcon, RefreshIcon } from '../../../components/Icons';
+import EntityModal, { EmField } from '../../../components/vc/EntityModal';
+import { CfgBadge } from '../settings/CfgSection';
+import '../vc-schedule.css';
+import './vent-import.css';
 
 const PROGRESS_STATUSES = new Set(['queued', 'extracting', 'parsing']);
 
-const STATUS_COLORS = {
-  queued:     { color: '#f0b400', bg: 'rgba(240,180,0,0.12)', label: 'Queued' },
-  extracting: { color: '#3b82f6', bg: 'rgba(59,130,246,0.12)', label: 'Extracting' },
-  parsing:    { color: '#3b82f6', bg: 'rgba(59,130,246,0.12)', label: 'Parsing' },
-  completed:  { color: '#3fb950', bg: 'rgba(63,185,80,0.12)', label: 'Completed' },
-  failed:     { color: '#dc3545', bg: 'rgba(220,53,69,0.12)', label: 'Failed' },
+// Status → cfg-badge tone; the colour rides on the badge, never a stripe.
+const STATUS_BADGE = {
+  queued:     { tone: 'warn', label: 'Queued' },
+  extracting: { tone: 'live', label: 'Extracting' },
+  parsing:    { tone: 'live', label: 'Parsing' },
+  completed:  { tone: 'ok', label: 'Completed' },
+  failed:     { tone: 'alert', label: 'Failed' },
 };
 
 const fmtBytes = (n) => {
@@ -293,111 +288,83 @@ const VentImportPanel = ({ open, onClose, patientId, integrationId, integrationN
 
   return (
     <>
-      <Dialog open onOpenChange={(o) => { if (!o) onClose?.(); }}>
-        <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-[760px]" aria-describedby={undefined}>
-          <DialogHeader>
-            <DialogTitle>{integrationName} — Log Imports</DialogTitle>
-          </DialogHeader>
-
-          {error && <Alert variant="destructive">{error}</Alert>}
+      <EntityModal
+        open
+        onOpenChange={(o) => { if (!o) onClose?.(); }}
+        title={`${integrationName} — Log Imports`}
+        wide
+      >
+        <div className="em-form">
+          {error && <div className="em-error" role="alert">{error}</div>}
 
           {/* Upload form */}
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-secondary/50 p-3">
-            <Input
+          <div className="vent-upload">
+            <input
               ref={fileInputRef}
+              className="em-input"
               type="file"
               accept=".tar,.tar.gz,.tgz"
               onChange={e => setSelectedFile(e.target.files?.[0] || null)}
               disabled={uploading}
-              className="min-w-[200px] flex-1 cursor-pointer"
             />
-            <Button
+            <button
+              type="button"
+              className="em-submit"
               onClick={handleUpload}
               disabled={uploading || !selectedFile}
             >
               {uploading ? 'Uploading…' : 'Upload'}
-            </Button>
-            <Button
-              variant="secondary"
-              size="icon"
+            </button>
+            <button
+              type="button"
+              className="cfg-iconbtn"
               onClick={fetchImports}
               disabled={loading}
               title="Refresh"
+              aria-label="Refresh"
             >
               <RefreshIcon size={14} className={loading ? 'spinning' : ''} />
-            </Button>
-            <Button
-              variant="secondary"
-              className="border-[#a371f7]/50 bg-[#a371f7]/10 font-semibold text-[#d2a8ff] hover:bg-[#a371f7]/20"
+            </button>
+            <button
+              type="button"
+              className="cfg-ghost"
               onClick={openCalibrationModal}
               title="Calibrate the vent's clock vs. real time"
             >
               <ClockIcon size={14} /> Calibrate Clock
-            </Button>
+            </button>
           </div>
 
           {/* Imports list */}
           {imports.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border p-8 text-center text-muted-foreground">
-              No imports yet. Upload a tar/tar.gz export above.
-            </div>
+            <p className="cfg-empty">No imports yet. Upload a tar/tar.gz export above.</p>
           ) : (
-            <div className="flex flex-col gap-2.5">
+            <div className="vent-rows">
               {imports.map(row => {
-                const st = STATUS_COLORS[row.status] || STATUS_COLORS.queued;
-                const inProgress = PROGRESS_STATUSES.has(row.status);
+                const st = STATUS_BADGE[row.status] || STATUS_BADGE.queued;
                 const fileCount = row.summary?.file_count;
                 return (
-                  <div key={row.id} style={{
-                    background: 'var(--background)',
-                    border: '1px solid color-mix(in srgb, var(--foreground) 8%, transparent)',
-                    borderLeft: `5px solid ${st.color}`,
-                    borderRadius: 10, padding: '12px 14px',
-                    display: 'flex', flexDirection: 'column', gap: 8,
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-                      <span style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 6,
-                        padding: '3px 10px', borderRadius: 12,
-                        background: st.bg, color: st.color,
-                        border: `1px solid ${st.color}40`,
-                        fontSize: 12, fontWeight: 700,
-                      }}>
-                        {inProgress ? <ClockIcon size={12} /> : (row.status === 'completed' ? <CheckIcon size={12} /> : null)}
-                        {st.label}
-                      </span>
-                      <span style={{ color: 'var(--muted-foreground)', fontSize: 12 }}>
-                        {fmtDate(row.uploaded_at)}
-                      </span>
+                  <div key={row.id} className="cfg-card pad">
+                    <div className="vent-row-head">
+                      <CfgBadge tone={st.tone}>{st.label}</CfgBadge>
+                      <span className="vent-when">{fmtDate(row.uploaded_at)}</span>
                     </div>
 
-                    <div style={{ color: 'var(--foreground)', fontSize: 14, fontWeight: 600, wordBreak: 'break-all' }}>
+                    <div className="vent-file">
                       {row.file_name}
-                      <span style={{ color: 'var(--muted-foreground)', fontWeight: 400, marginLeft: 8, fontSize: 12 }}>
-                        {fmtBytes(row.file_size_bytes)}
-                      </span>
+                      <span className="vent-size">{fmtBytes(row.file_size_bytes)}</span>
                     </div>
 
                     {row.status === 'completed' && (
-                      <div style={{ color: 'var(--foreground)', fontSize: 13, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                      <div className="cfg-crumb-tags">
                         {row.summary?.sample_count != null && (
-                          <span style={{
-                            display: 'inline-block', padding: '2px 8px', borderRadius: 10,
-                            background: 'rgba(63,185,80,0.15)', color: '#9ae6b4',
-                            border: '1px solid rgba(63,185,80,0.4)',
-                            fontSize: 11, fontWeight: 700,
-                          }}>{(row.summary.sample_count).toLocaleString()} samples</span>
+                          <CfgBadge tone="ok">{(row.summary.sample_count).toLocaleString()} samples</CfgBadge>
                         )}
                         {row.summary?.dictionary_count != null && (
-                          <span style={{
-                            display: 'inline-block', padding: '2px 8px', borderRadius: 10,
-                            background: 'rgba(96,165,250,0.15)', color: '#93c5fd',
-                            border: '1px solid rgba(96,165,250,0.4)',
-                            fontSize: 11, fontWeight: 700,
-                          }}>{row.summary.dictionary_count} params</span>
+                          <CfgBadge tone="live">{row.summary.dictionary_count} params</CfgBadge>
                         )}
                         {row.summary?.batch_files_parsed != null && (
-                          <span style={{ color: 'var(--muted-foreground)', fontSize: 12 }}>
+                          <span className="vent-range">
                             {row.summary.batch_files_parsed}/{fileCount} files
                             {row.summary.batch_files_skipped_existing > 0 && (
                               <> · {row.summary.batch_files_skipped_existing} already imported</>
@@ -408,68 +375,55 @@ const VentImportPanel = ({ open, onClose, patientId, integrationId, integrationN
                           </span>
                         )}
                         {row.summary?.calibration?.status === 'anchored' && (
-                          <span style={{
-                            display: 'inline-block', padding: '2px 8px', borderRadius: 10,
-                            background: 'rgba(167,113,247,0.15)', color: '#d2a8ff',
-                            border: '1px solid rgba(167,113,247,0.4)',
-                            fontSize: 11, fontWeight: 700,
-                          }}>clock anchored ({Math.round(row.summary.calibration.offset_seconds)}s)</span>
+                          <CfgBadge tone="ok">
+                            clock anchored ({Math.round(row.summary.calibration.offset_seconds)}s)
+                          </CfgBadge>
                         )}
                         {row.summary?.calibration && row.summary.calibration.status !== 'anchored' && (
-                          <span style={{
-                            display: 'inline-block', padding: '2px 8px', borderRadius: 10,
-                            background: 'rgba(240,180,0,0.12)', color: '#f0b400',
-                            border: '1px solid rgba(240,180,0,0.4)',
-                            fontSize: 11, fontWeight: 700,
-                          }}>
+                          <CfgBadge tone="warn">
                             {row.summary.calibration.status === 'archive_predates_mark'
                               ? 'clock not anchored — file exported before mark event'
                               : 'clock not anchored — no mark event in file'}
-                          </span>
+                          </CfgBadge>
                         )}
                       </div>
                     )}
                     {row.status === 'completed' && row.summary?.earliest_sample_raw && (
-                      <div style={{ color: 'var(--muted-foreground)', fontSize: 12 }}>
+                      <div className="vent-range">
                         {fmtDate(row.summary.earliest_sample_raw)} → {fmtDate(row.summary.latest_sample_raw)} (vent time)
                       </div>
                     )}
 
                     {row.status === 'failed' && row.error && (
-                      <div style={{ color: '#feb2b2', fontSize: 13 }}>
-                        {row.error}
-                      </div>
+                      <div className="em-error" role="alert">{row.error}</div>
                     )}
 
-                    <div className="mt-0.5 flex justify-end gap-2 border-t border-border pt-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 border border-destructive/50 px-3 text-xs text-[#feb2b2] hover:bg-destructive/10"
+                    <div className="vent-row-foot">
+                      <button
+                        type="button"
+                        className="cfg-ghost danger"
                         onClick={() => handleDelete(row.id)}
                       >
                         Delete
-                      </Button>
+                      </button>
                     </div>
                   </div>
                 );
               })}
             </div>
           )}
-        </DialogContent>
-      </Dialog>
+        </div>
+      </EntityModal>
 
       {/* Calibration sub-modal */}
-      <Dialog open={calModalOpen} onOpenChange={(o) => { if (!o) closeCalibrationModal(); }}>
-        <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-[480px]" aria-describedby={undefined}>
-          <DialogHeader>
-            <DialogTitle>Calibrate Vent Clock</DialogTitle>
-          </DialogHeader>
-
-          {calibration.loading && (
-            <p className="py-4 text-center text-muted-foreground">Loading…</p>
-          )}
-          {calibration.error && <Alert variant="destructive">{calibration.error}</Alert>}
+      <EntityModal
+        open={calModalOpen}
+        onOpenChange={(o) => { if (!o) closeCalibrationModal(); }}
+        title="Calibrate Vent Clock"
+      >
+        <div className="em-form">
+          {calibration.loading && <p className="cfg-empty">Loading…</p>}
+          {calibration.error && <div className="em-error" role="alert">{calibration.error}</div>}
 
           {!calibration.loading && calibration.settings && (() => {
             const s = calibration.settings || {};
@@ -479,12 +433,11 @@ const VentImportPanel = ({ open, onClose, patientId, integrationId, integrationN
               <>
                 {/* Status banner */}
                 {off != null ? (
-                  <Alert variant="success">
-                    <AlertTitle>Offset: {fmtOffset(off)} ({Math.round(off)}s)</AlertTitle>
-                    <AlertDescription>
-                      Anchored at {fmtDate(s.clock_calibrated_at)} against vent time {fmtDate(s.clock_calibration_anchor)}.
-                    </AlertDescription>
-                  </Alert>
+                  <div className="em-success" role="status">
+                    <strong>Offset: {fmtOffset(off)} ({Math.round(off)}s)</strong>{' '}
+                    — anchored at {fmtDate(s.clock_calibrated_at)} against vent
+                    time {fmtDate(s.clock_calibration_anchor)}.
+                  </div>
                 ) : pending ? (() => {
                   // If an upload already tried (and failed) to anchor this
                   // pending calibration, say why instead of just "waiting".
@@ -493,13 +446,13 @@ const VentImportPanel = ({ open, onClose, patientId, integrationId, integrationN
                     i.summary.calibration.status !== 'anchored'
                   )?.summary?.calibration;
                   return (
-                    <Alert variant="warning">
-                      <AlertTitle className="text-[#f0b400]">Calibration pending</AlertTitle>
-                      <AlertDescription>
+                    <div className="sch-warn" role="alert">
+                      <p className="sch-warn-title">Calibration pending</p>
+                      <p className="sch-warn-body">
                         Waiting for an upload containing the manual-mark event you paired with the tap
                         at {fmtDate(pending)}.
                         {lastCal?.status === 'archive_predates_mark' && (
-                          <> The last upload's data ends at vent
+                          <> The last upload&apos;s data ends at vent
                           time {fmtDate(lastCal.archive_end_vent_time)} — it was exported <em>before</em> you
                           marked the event. Export a fresh file from the vent and upload it.</>
                         )}
@@ -507,85 +460,80 @@ const VentImportPanel = ({ open, onClose, patientId, integrationId, integrationN
                           <> The last upload contained no mark events at all — make sure to press the
                           manual-mark (event) button on the vent, then export and upload again.</>
                         )}
-                      </AlertDescription>
-                    </Alert>
+                      </p>
+                    </div>
                   );
                 })() : (
-                  <Alert>
-                    Not calibrated. Vent sample timestamps reflect the vent's clock as-is.
-                  </Alert>
+                  <p className="cfg-note">
+                    Not calibrated. Vent sample timestamps reflect the vent&apos;s clock as-is.
+                  </p>
                 )}
 
                 {/* Tap-in-unison */}
                 <div>
-                  <div className="mb-1 text-sm font-semibold">Tap-in-unison</div>
-                  <p className="mb-2.5 text-xs text-muted-foreground">
+                  <h4 className="vent-section-title">Tap-in-unison</h4>
+                  <p className="em-hint">
                     Press the manual-mark button on your VOCSN <em>at the same time</em> as tapping below.
                     The next upload will anchor the offset to that event automatically.
                   </p>
-                  <Button
+                  <button
                     type="button"
+                    className={`em-submit vent-tap${tapFlash ? ' flash' : ''}`}
                     onPointerDown={submitTapUnison}
-                    className={`h-auto w-full py-5 text-base font-bold text-white transition-colors ${
-                      tapFlash
-                        ? 'bg-[#3fb950] hover:bg-[#3fb950]'
-                        : 'bg-[#6f42c1] hover:bg-[#6f42c1]/90'
-                    }`}
                   >
-                    {tapFlash ? '✓ Tap recorded' : 'Tap Now'}
-                  </Button>
+                    {tapFlash ? <><CheckIcon size={18} /> Tap recorded</> : 'Tap Now'}
+                  </button>
                 </div>
 
                 {/* Manual entry */}
                 <div>
-                  <Button
+                  <button
                     type="button"
-                    variant="link"
-                    className="h-auto p-0 text-[13px] font-medium text-[#93c5fd]"
+                    className="vent-manual-toggle"
                     onClick={() => setShowManual(v => !v)}
                   >
-                    {showManual ? '▾' : '▸'} Or enter the vent's current time manually
-                  </Button>
+                    {showManual ? <ChevronDownIcon size={12} /> : <ChevronRightIcon size={12} />}
+                    {' '}Or enter the vent&apos;s current time manually
+                  </button>
                   {showManual && (
-                    <div className="mt-2.5 flex flex-col gap-3 rounded-lg border border-border bg-secondary/50 p-3">
-                      <Field label="Your phone time now">
-                        <Input
+                    <div className="vent-manual">
+                      <EmField label="Your phone time now" htmlFor="vent-cal-real">
+                        <input
+                          id="vent-cal-real"
+                          className="em-input"
                           type="datetime-local"
                           value={manualForm.real_time}
                           onChange={e => setManualForm(f => ({ ...f, real_time: e.target.value }))}
                         />
-                      </Field>
-                      <Field label="Vent's currently-displayed time">
-                        <Input
+                      </EmField>
+                      <EmField label="Vent's currently-displayed time" htmlFor="vent-cal-vent">
+                        <input
+                          id="vent-cal-vent"
+                          className="em-input"
                           type="datetime-local"
                           value={manualForm.vent_time}
                           onChange={e => setManualForm(f => ({ ...f, vent_time: e.target.value }))}
                         />
-                      </Field>
-                      <Button onClick={submitManualCalibration} className="w-full">
+                      </EmField>
+                      <button type="button" className="em-submit" onClick={submitManualCalibration}>
                         Save Offset
-                      </Button>
+                      </button>
                     </div>
                   )}
                 </div>
 
                 {(off != null || pending) && (
-                  <div className="flex justify-end border-t border-border pt-3">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="border border-destructive/50 text-[#feb2b2] hover:bg-destructive/10"
-                      onClick={clearCalibration}
-                    >
+                  <div className="vent-row-foot">
+                    <button type="button" className="cfg-ghost danger" onClick={clearCalibration}>
                       Clear calibration
-                    </Button>
+                    </button>
                   </div>
                 )}
               </>
             );
           })()}
-        </DialogContent>
-      </Dialog>
+        </div>
+      </EntityModal>
     </>
   );
 };

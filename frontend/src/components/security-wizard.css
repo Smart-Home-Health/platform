@@ -1,0 +1,180 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+@import '../styles/vc-tokens.css';
+
+/* Guided HTTPS setup wizard (Configuration → Security + first run). Reads the
+ * vc tokens directly and pairs with the shared em-* form vocabulary. */
+.sw { display: flex; flex-direction: column; gap: 1rem; }
+.sw-stack { display: flex; flex-direction: column; gap: 0.75rem; }
+
+/* One of the three setup paths. */
+.sw-path {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.75rem 0.85rem;
+  background: var(--vc-bg-raised);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 4px;
+  color: var(--vc-text-primary);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+.sw-path:hover { border-color: var(--vc-data-live); }
+.sw-path-icon { display: flex; margin-top: 2px; color: var(--vc-text-secondary); }
+.sw-path-body { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
+.sw-path-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--vc-font-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.sw-path-desc { font-size: 12.5px; line-height: 1.45; color: var(--vc-text-secondary); }
+
+/* Info / instruction boxes. */
+.sw-note {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  background: var(--vc-bg-raised);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 4px;
+  padding: 0.6rem 0.7rem;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--vc-text-secondary);
+}
+.sw-note strong, .sw-note .sw-strong { color: var(--vc-text-primary); }
+.sw-note ol { margin: 0; padding-left: 1.2rem; display: flex; flex-direction: column; gap: 0.25rem; }
+.sw-link { color: var(--vc-data-live); text-decoration: none; }
+.sw-link:hover { text-decoration: underline; }
+
+.sw-field { display: flex; flex-direction: column; gap: 0.35rem; }
+.sw-field-row { display: flex; align-items: center; gap: 0.5rem; }
+.sw-field-row .em-input { flex: 1 1 auto; min-width: 0; }
+.sw-suffix { white-space: nowrap; font-size: 12.5px; color: var(--vc-text-secondary); }
+
+.sw-linklike {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--vc-text-secondary);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.sw-linklike:hover { color: var(--vc-text-primary); }
+
+.sw-advanced {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 4px;
+  padding: 0.7rem 0.8rem;
+}
+
+.sw-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
+
+/* Issuance progress checklist. */
+.sw-steps { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0.5rem; }
+.sw-steps li { display: flex; align-items: center; gap: 0.5rem; font-size: 12.5px; color: var(--vc-text-primary); }
+.sw-steps li[data-state='pending'] { color: var(--vc-text-secondary); }
+.sw-step-done { display: flex; color: var(--vc-state-complete); }
+.sw-step-active { display: flex; color: var(--vc-data-live); animation: sw-pulse 1.2s ease-in-out infinite; }
+.sw-step-pending {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 1px solid var(--vc-line-strong);
+}
+@keyframes sw-pulse { 50% { opacity: 0.4; } }
+
+/* Success: the secure address, front and centre. */
+.sw-addr {
+  border: 1px solid var(--vc-line-hairline);
+  background: var(--vc-bg-raised);
+  border-radius: 4px;
+  padding: 0.8rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.sw-addr-label {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.sw-addr a {
+  font-family: var(--vc-font-mono);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--vc-data-live);
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+.sw-addr a:hover { text-decoration: underline; }
+.sw-addr p { margin: 0; font-size: 12.5px; color: var(--vc-text-secondary); }
+
+.sw-pre {
+  margin: 0;
+  overflow-x: auto;
+  border: 1px solid var(--vc-line-hairline);
+  background: var(--vc-bg-raised);
+  border-radius: 4px;
+  padding: 0.6rem 0.7rem;
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--vc-text-primary);
+}
+
+/* Status checklist rows (proxy step). */
+.sw-checks { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0.5rem; }
+.sw-checks li { display: flex; align-items: center; gap: 0.5rem; font-size: 12.5px; color: var(--vc-text-primary); }
+.sw-check-ok { display: flex; color: var(--vc-state-complete); }
+.sw-check-warn { display: flex; color: var(--vc-state-due); }
+.sw-check-dim { display: flex; color: var(--vc-text-tertiary); }
+
+/* Small "Recommended" pill on a path card. */
+.sw-badge {
+  border: 1px solid color-mix(in srgb, var(--vc-data-live) 45%, transparent);
+  color: var(--vc-data-live);
+  border-radius: 999px;
+  padding: 0 0.45rem;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}

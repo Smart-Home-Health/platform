@@ -23,7 +23,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from db import get_db
-from dependencies import require_read_access
+from dependencies import require_read_access, get_current_user
 from models.medications import (
     MedicationCreate,
     MedicationUpdate,
@@ -35,12 +35,13 @@ from models.medications import (
     ProviderInfo,
     PharmacyInfo,
 )
-from crud.medications import (add_medication, get_active_medications, get_inactive_medications, update_medication, 
-                  delete_medication, add_medication_schedule, get_medication_schedules, 
-                  get_all_medication_schedules, update_medication_schedule, delete_medication_schedule, 
+from crud.medications import (add_medication, get_active_medications, get_inactive_medications, update_medication,
+                  delete_medication, add_medication_schedule, get_medication_schedules,
+                  get_all_medication_schedules, update_medication_schedule, delete_medication_schedule,
                   toggle_medication_schedule_active, get_daily_medication_schedule, administer_medication,
                   get_medication_history, get_medication_names_for_dropdown,
-                  get_due_and_upcoming_medications_count, set_low_stock_days_for_scheduled_meds)
+                  get_due_and_upcoming_medications_count, set_low_stock_days_for_scheduled_meds,
+                  get_medication_stock_status)
 from pydantic import BaseModel, Field
 from crud.settings import get_setting
 from models import Medication
@@ -199,6 +200,7 @@ async def get_admin_active_medications_endpoint(patient_id: Optional[int] = None
         result = []
         for med in medications:
             schedules = get_medication_schedules(db, med.id)
+            stock = get_medication_stock_status(db, med)
             result.append({
                 'id': med.id,
                 'patient_id': med.patient_id,
@@ -208,6 +210,9 @@ async def get_admin_active_medications_endpoint(patient_id: Optional[int] = None
                 'quantity_unit': med.quantity_unit,
                 'low_stock_threshold': med.low_stock_threshold,
                 'low_stock_threshold_type': med.low_stock_threshold_type,
+                'stock_low': stock['low'],
+                'days_left': stock['days_left'],
+                'daily_rate': stock['daily_rate'],
                 'instructions': med.instructions,
                 'start_date': med.start_date.isoformat() if med.start_date else None,
                 'end_date': med.end_date.isoformat() if med.end_date else None,
@@ -295,10 +300,17 @@ async def apply_low_stock_days_bulk(data: BulkLowStockDaysRequest, db: Session =
 
 @router.put("/medications/{med_id}")
 async def update_medication_endpoint(med_id: int, data: MedicationUpdate, db: Session = Depends(get_db)):
-    """Update an existing medication."""
-    # Filter out None values
-    update_data = {k: v for k, v in data.model_dump().items() if v is not None}
-    
+    """Update an existing medication.
+
+    Uses exclude_unset rather than dropping None, so a field the caller
+    deliberately cleared is distinguishable from one they did not mention.
+    Dropping None meant the low-stock alert could be set but never turned off,
+    and a prescriber or pharmacy could be attached but never detached -- the
+    request succeeded, the value stayed, and the reloaded form showed the old
+    one back. Same rule the care-task and shipment routes already follow.
+    """
+    update_data = data.model_dump(exclude_unset=True)
+
     success = update_medication(db, med_id, **update_data)
     if not success:
         return JSONResponse(status_code=404, content={"detail": "Medication not found"})
@@ -333,7 +345,9 @@ async def toggle_medication_active_endpoint(med_id: int, db: Session = Depends(g
 
 
 @router.post("/medications/{med_id}/administer")
-async def administer_medication_endpoint(med_id: int, data: MedicationAdminister, db: Session = Depends(get_db)):
+async def administer_medication_endpoint(med_id: int, data: MedicationAdminister,
+                                         db: Session = Depends(get_db),
+                                         current_user=Depends(get_current_user)):
     """Record a medication administration and deduct from quantity. Pass patient_id when administering a patient-specific medication without a global current patient."""
     # A dose can't be given in the future — reject an administered_at past now
     # (catches the date-left-on-today slip). Not overridable.
@@ -357,6 +371,7 @@ async def administer_medication_endpoint(med_id: int, data: MedicationAdminister
         result = administer_medication(
             db, med_id, data.dose_amount, data.schedule_id, data.scheduled_time, data.notes,
             patient_id=data.patient_id, administered_at=data.administered_at,
+            administered_by=getattr(current_user, 'id', None),
         )
     except InsufficientMedicationQuantityError as e:
         # Refuse — the caller must update on-hand quantity first.
@@ -493,6 +508,7 @@ async def get_medication_history_endpoint(
     end_date: Optional[str] = None,
     status_filter: Optional[str] = None,
     patient_id: Optional[int] = None,
+    medication_id: Optional[int] = None,
     db: Session = Depends(get_db),
     _: bool = Depends(require_read_access)
 ):
@@ -506,6 +522,9 @@ async def get_medication_history_endpoint(
     - end_date: Filter by end date (YYYY-MM-DD format)
     - status_filter: Filter by status ('late', 'early', 'skipped', 'on-time')
     - patient_id: Filter by patient ID
+    - medication_id: Filter to exactly one medication. Callers that already
+      hold the id (the dose panel does — every schedule row carries it) should
+      use this rather than medication_name, which is a substring match.
     """
     try:
         history = get_medication_history(
@@ -515,7 +534,8 @@ async def get_medication_history_endpoint(
             start_date=start_date,
             end_date=end_date,
             status_filter=status_filter,
-            patient_id=patient_id
+            patient_id=patient_id,
+            medication_id=medication_id
         )
         return {"history": history, "count": len(history)}
     except Exception as e:

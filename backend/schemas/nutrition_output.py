@@ -16,7 +16,7 @@
 """
 SQLAlchemy model for patient output logs - bowel movements, urination tracking
 """
-from sqlalchemy import Column, Integer, Float, String, ForeignKey, TIMESTAMP, Boolean, Text
+from sqlalchemy import Column, Integer, SmallInteger, Float, String, ForeignKey, TIMESTAMP, Boolean, Text
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from schemas import Base
@@ -27,15 +27,32 @@ class NutritionOutput(Base):
     __tablename__ = 'nutrition_outputs'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
+    account_id = Column(Integer, ForeignKey('accounts.id', ondelete='CASCADE'), nullable=True, index=True)
     patient_id = Column(Integer, ForeignKey('patients.id'), nullable=False)
     care_task_log_id = Column(Integer, ForeignKey('care_task_log.id'), nullable=True)  # Link to care task completion
     
     # Output type: 'urine', 'bowel', 'vomit', 'other'
     output_type = Column(String(50), nullable=False)
+
+    # One physical event (e.g. a mixed diaper) is stored as one row per
+    # output_type. This groups those rows explicitly instead of re-guessing the
+    # association from a time window -- which four separate call sites used to
+    # do, with four different rules that disagreed with each other.
+    event_group_id = Column(String(36), nullable=True, index=True)
+
+    # Where it happened: 'restroom', 'diaper', 'catheter', 'accident'. Kept in
+    # sync with the is_diaper / is_catheter / is_accident booleans below, which
+    # remain readable by existing consumers. See nutrition_vocab.
+    location = Column(String(20), nullable=True)
     
     # Bowel movement specifics
     # consistency: 'solid', 'soft', 'loose', 'watery', 'diarrhea', 'constipated', 'pellets'
+    # Derived from bristol_scale on write (nutrition_vocab.consistency_for_bristol)
+    # and still populated for the monitoring timeline and overview renderers.
     consistency = Column(String(50), nullable=True)
+
+    # Standardized Bristol stool scale, 1-7. What the rebuilt sheet collects.
+    bristol_scale = Column(SmallInteger, nullable=True)
     
     # Color tracking (important for health monitoring)
     # 'brown', 'dark_brown', 'light_brown', 'yellow', 'green', 'red', 'black', 'clay', 'other'

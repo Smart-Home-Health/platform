@@ -1,0 +1,31 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+/* Live camera modal body. Empty/error states and the snapshot link reuse
+ * the panel vocabulary (ld-dose-empty, em-error, ld-dose-linkbtn). */
+@import '../../styles/vc-tokens.css';
+
+.cam-panel { display: flex; flex-direction: column; gap: 0.6rem; }
+.cam-meta {
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.cam-meta strong { color: var(--vc-text-primary); font-weight: 600; }
+.cam-panel .ld-dose-linkbtn { margin-left: 0; align-self: flex-start; text-decoration: none; }

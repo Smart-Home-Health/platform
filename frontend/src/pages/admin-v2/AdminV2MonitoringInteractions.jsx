@@ -15,19 +15,16 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import { API_BASE_URL } from '../../config';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Alert } from '@/components/ui/alert';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
+import { ChevronRightIcon } from '../../components/Icons';
+import SegmentedControl from '../../components/vc/SegmentedControl';
+import { EmField, EmSelect } from '../../components/vc/EntityModal';
+import { CfgFields } from './settings/CfgSection';
+import '../../components/vc/entity-card.css';
+import './settings/settings-page.css';
+import './monitoring-interactions.css';
 import './AdminV2.css';
 
 const WINDOW_PRESETS = [
@@ -106,7 +103,7 @@ export default function AdminV2MonitoringInteractions() {
 
   if (!selectedPatient) {
     return (
-      <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--muted-foreground)' }}>
+      <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--vc-text-secondary)' }}>
         <p>Select a patient to view medication-vital interactions.</p>
       </div>
     );
@@ -124,92 +121,78 @@ export default function AdminV2MonitoringInteractions() {
   return (
     <div style={{ padding: '0.5rem 0' }}>
       {/* Header + controls */}
-      <div className="tw" style={{ marginBottom: '1.5rem' }}>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, minWidth: 200 }}>
-            <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--muted-foreground)', marginBottom: '0.35rem' }}>Medication</label>
-            <Select
-              value={selectedMedId != null ? String(selectedMedId) : undefined}
-              onValueChange={(v) => setSelectedMedId(Number(v))}
+      <div className="mi-controls">
+        <CfgFields>
+          <EmField label="Medication" htmlFor="mi-med">
+            <EmSelect
+              id="mi-med"
+              value={selectedMedId != null ? String(selectedMedId) : ''}
+              onChange={(e) => setSelectedMedId(e.target.value ? Number(e.target.value) : null)}
               disabled={medsLoading}
             >
-              <SelectTrigger><SelectValue placeholder="Select medication" /></SelectTrigger>
-              <SelectContent>
-                {medications.map(m => (
-                  <SelectItem key={m.id} value={String(m.id)}>{m.name} {m.concentration} ({m.dose_count} doses)</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+              <option value="">Select medication</option>
+              {medications.map(m => (
+                <option key={m.id} value={String(m.id)}>
+                  {m.name} {m.concentration} ({m.dose_count} doses)
+                </option>
+              ))}
+            </EmSelect>
+          </EmField>
+        </CfgFields>
 
-        {/* Window presets */}
-        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          {WINDOW_PRESETS.map((p, i) => (
-            <Button
-              key={i}
-              size="sm"
-              variant={activePreset === i && !showCustom ? 'default' : 'secondary'}
-              onClick={() => {
-                setActivePreset(i);
-                setShowCustom(false);
-                setPreStart(p.preStart);
-                setPreEnd(p.preEnd);
-                setPostStart(p.postStart);
-                setPostEnd(p.postEnd);
-              }}
-              title={p.desc}
-            >
-              {p.label}
-            </Button>
-          ))}
-          <Button
-            size="sm"
-            variant={showCustom ? 'default' : 'secondary'}
-            onClick={() => setShowCustom(v => !v)}
-          >
-            Custom
-          </Button>
-        </div>
+        {/* Window presets. A radiogroup rather than a row of buttons: the
+            choices are mutually exclusive, and arrow-key movement comes free. */}
+        <SegmentedControl
+          label="Window"
+          size="sm"
+          value={showCustom ? 'custom' : String(activePreset)}
+          onChange={(v) => {
+            if (v === 'custom') { setShowCustom(true); return; }
+            const i = Number(v);
+            const p = WINDOW_PRESETS[i];
+            setActivePreset(i);
+            setShowCustom(false);
+            setPreStart(p.preStart);
+            setPreEnd(p.preEnd);
+            setPostStart(p.postStart);
+            setPostEnd(p.postEnd);
+          }}
+          options={[
+            ...WINDOW_PRESETS.map((p, i) => ({ value: String(i), label: p.label, title: p.desc })),
+            { value: 'custom', label: 'Custom', title: 'Set the window bounds by hand' },
+          ]}
+        />
 
         {showCustom && (
-          <div style={{ display: 'flex', gap: '1rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--muted-foreground)', marginBottom: '0.35rem' }}>Before start (min)</label>
-              <Input type="number" className="w-[90px]"
+          <CfgFields>
+            <EmField label="Before start (min)" htmlFor="mi-pre-start">
+              <input id="mi-pre-start" className="em-input" type="number"
                      value={preStart} onChange={e => setPreStart(Number(e.target.value))} min={5} max={10080} />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--muted-foreground)', marginBottom: '0.35rem' }}>Before end (min)</label>
-              <Input type="number" className="w-[90px]"
+            </EmField>
+            <EmField label="Before end (min)" htmlFor="mi-pre-end">
+              <input id="mi-pre-end" className="em-input" type="number"
                      value={preEnd} onChange={e => setPreEnd(Number(e.target.value))} min={0} max={60} />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--muted-foreground)', marginBottom: '0.35rem' }}>After start (min)</label>
-              <Input type="number" className="w-[90px]"
+            </EmField>
+            <EmField label="After start (min)" htmlFor="mi-post-start">
+              <input id="mi-post-start" className="em-input" type="number"
                      value={postStart} onChange={e => setPostStart(Number(e.target.value))} min={0} max={1440} />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--muted-foreground)', marginBottom: '0.35rem' }}>After end (min)</label>
-              <Input type="number" className="w-[90px]"
+            </EmField>
+            <EmField label="After end (min)" htmlFor="mi-post-end">
+              <input id="mi-post-end" className="em-input" type="number"
                      value={postEnd} onChange={e => setPostEnd(Number(e.target.value))} min={30} max={10080} />
-            </div>
-          </div>
+            </EmField>
+          </CfgFields>
         )}
       </div>
 
-      {error && (
-        <div className="tw" style={{ marginBottom: '1rem' }}>
-          <Alert variant="destructive">{error}</Alert>
-        </div>
-      )}
+      {error && <div className="em-error ec-page-alert" role="alert">{error}</div>}
 
       {loading && <div className="admin-v2-loading">Analyzing dose events...</div>}
 
       {results && !loading && (
         <>
           {/* Summary */}
-          <div style={{ fontSize: '0.85rem', color: 'var(--muted-foreground)', marginBottom: '1rem' }}>
+          <div style={{ fontSize: '0.85rem', color: 'var(--vc-text-secondary)', marginBottom: '1rem' }}>
             {results.total_dose_events} dose events analyzed
             {results.metrics.length > 0 && (
               <> &mdash; {results.metrics.filter(m => m.significant).length} significant correlation{results.metrics.filter(m => m.significant).length !== 1 ? 's' : ''} found</>
@@ -227,7 +210,7 @@ export default function AdminV2MonitoringInteractions() {
           )}
 
           {results.metrics.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--muted-foreground)' }}>
+            <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--vc-text-secondary)' }}>
               Not enough data to analyze. Need at least 3 dose events with matching vital readings in the selected time windows.
             </div>
           ) : (
@@ -236,10 +219,10 @@ export default function AdminV2MonitoringInteractions() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
                   <span style={{
                     width: 10, height: 10, borderRadius: '50%',
-                    background: SOURCE_COLORS[source] || 'var(--muted-foreground)',
+                    background: SOURCE_COLORS[source] || 'var(--vc-text-secondary)',
                     display: 'inline-block',
                   }} />
-                  <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--foreground)' }}>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--vc-text-primary)' }}>
                     {SOURCE_LABELS[source] || source}
                   </span>
                 </div>
@@ -263,14 +246,14 @@ function MetricCard({ metric, sourceColor }) {
   const arrow = isUp ? '↑' : m.delta < 0 ? '↓' : '→';
   const deltaColor = m.significant
     ? (isUp ? '#f0883e' : '#3fb950')
-    : 'var(--muted-foreground)';
+    : 'var(--vc-text-secondary)';
 
   return (
     <div className="admin-v2-card" style={{ borderTop: `3px solid ${m.significant ? sourceColor : 'transparent'}` }}>
       <div className="admin-v2-card-header" style={{ borderBottom: 'none', paddingBottom: 0 }}>
         <div>
-          <h3 style={{ fontSize: '0.95rem', margin: 0, color: 'var(--foreground)' }}>{m.display_name}</h3>
-          {m.units && <span style={{ fontSize: '0.75rem', color: 'var(--muted-foreground)' }}>{m.units}</span>}
+          <h3 style={{ fontSize: '0.95rem', margin: 0, color: 'var(--vc-text-primary)' }}>{m.display_name}</h3>
+          {m.units && <span style={{ fontSize: '0.75rem', color: 'var(--vc-text-secondary)' }}>{m.units}</span>}
         </div>
         <span className={`admin-v2-badge ${m.significant ? 'admin-v2-badge-success' : 'admin-v2-badge-muted'}`}
               style={{ fontSize: '0.7rem' }}>
@@ -283,7 +266,7 @@ function MetricCard({ metric, sourceColor }) {
           <span style={{ fontSize: '1.6rem', fontWeight: 700, color: deltaColor }}>
             {arrow} {Math.abs(m.delta).toFixed(1)}
           </span>
-          <span style={{ fontSize: '0.8rem', color: 'var(--muted-foreground)', marginLeft: '0.35rem' }}>
+          <span style={{ fontSize: '0.8rem', color: 'var(--vc-text-secondary)', marginLeft: '0.35rem' }}>
             ({m.pct_change > 0 ? '+' : ''}{m.pct_change}%)
           </span>
         </div>
@@ -291,22 +274,22 @@ function MetricCard({ metric, sourceColor }) {
         {/* Pre → Post */}
         <div style={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          background: 'var(--secondary)', borderRadius: 6, padding: '0.5rem 0.75rem',
+          background: 'var(--vc-bg-raised)', borderRadius: 6, padding: '0.5rem 0.75rem',
           fontSize: '0.85rem',
         }}>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ color: 'var(--muted-foreground)', fontSize: '0.7rem', marginBottom: 2 }}>Before</div>
-            <div style={{ color: 'var(--foreground)', fontWeight: 600 }}>{m.pre_mean}</div>
+            <div style={{ color: 'var(--vc-text-secondary)', fontSize: '0.7rem', marginBottom: 2 }}>Before</div>
+            <div style={{ color: 'var(--vc-text-primary)', fontWeight: 600 }}>{m.pre_mean}</div>
           </div>
-          <div style={{ color: 'var(--muted-foreground)', fontSize: '1.2rem' }}>→</div>
+          <span className="mi-arrow" aria-hidden="true"><ChevronRightIcon size={16} /></span>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ color: 'var(--muted-foreground)', fontSize: '0.7rem', marginBottom: 2 }}>After</div>
-            <div style={{ color: 'var(--foreground)', fontWeight: 600 }}>{m.post_mean}</div>
+            <div style={{ color: 'var(--vc-text-secondary)', fontSize: '0.7rem', marginBottom: 2 }}>After</div>
+            <div style={{ color: 'var(--vc-text-primary)', fontWeight: 600 }}>{m.post_mean}</div>
           </div>
         </div>
 
         {/* Stats row */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem', fontSize: '0.78rem', color: 'var(--muted-foreground)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem', fontSize: '0.78rem', color: 'var(--vc-text-secondary)' }}>
           <span>p = {m.p_value < 0.001 ? '<0.001' : m.p_value.toFixed(3)}</span>
           <span>{m.n_events} paired events</span>
         </div>

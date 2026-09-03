@@ -251,7 +251,8 @@ def delete_medication(db: Session, med_id):
         return False
 
 
-def administer_medication(db: Session, med_id, dose_amount, schedule_id=None, scheduled_time=None, notes=None, patient_id=None, administered_at=None):
+def administer_medication(db: Session, med_id, dose_amount, schedule_id=None, scheduled_time=None,
+                          notes=None, patient_id=None, administered_at=None, administered_by=None):
     try:
         med = db.query(Medication).filter(Medication.id == med_id).first()
         if not med or med.quantity is None or dose_amount is None:
@@ -342,6 +343,10 @@ def administer_medication(db: Session, med_id, dose_amount, schedule_id=None, sc
             scheduled_time=scheduled_time,
             administered_early=administered_early,
             administered_late=administered_late,
+            # Who gave the dose. The column has existed since the initial
+            # migration but nothing ever wrote it, so `completed_by` came back
+            # None for every medication while care tasks recorded it properly.
+            administered_by=administered_by,
             notes=notes,
             created_at=now
         )
@@ -1046,7 +1051,7 @@ def get_medication_schedule_counts(db: Session, patient_id=None, tz=None):
         return {'due': 0, 'overdue': 0}
 
 
-def get_medication_history(db: Session, limit=25, medication_name=None, start_date=None, end_date=None, status_filter=None, patient_id=None):
+def get_medication_history(db: Session, limit=25, medication_name=None, start_date=None, end_date=None, status_filter=None, patient_id=None, medication_id=None):
     """
     Get medication administration history with filtering options
     
@@ -1058,6 +1063,9 @@ def get_medication_history(db: Session, limit=25, medication_name=None, start_da
         end_date: Filter by end date (YYYY-MM-DD format)  
         status_filter: Filter by status ('late', 'early', 'skipped', 'on-time')
         patient_id: Filter by patient ID
+        medication_id: Filter to exactly one medication. Prefer this over
+            medication_name when the caller already knows the id — the name
+            filter is a substring match, so 'Pro' also returns Propranolol.
     
     Returns:
         List of medication administration records with related data
@@ -1070,6 +1078,13 @@ def get_medication_history(db: Session, limit=25, medication_name=None, start_da
         if patient_id:
             query = query.filter(MedicationLog.patient_id == patient_id)
         
+        # Filter to one medication by id (exact; see the docstring on why this
+        # is not the same as filtering by name). Explicit None check rather
+        # than truthiness — the parameter is Optional[int], and "not provided"
+        # is the only case that should skip the filter.
+        if medication_id is not None:
+            query = query.filter(MedicationLog.medication_id == medication_id)
+
         # Filter by medication name (partial match, case insensitive)
         if medication_name:
             query = query.filter(Medication.name.ilike(f'%{medication_name}%'))
@@ -1125,6 +1140,9 @@ def get_medication_history(db: Session, limit=25, medication_name=None, start_da
                 'scheduled_time': _utc_iso(log.scheduled_time),
                 'is_scheduled': log.is_scheduled,
                 'status': status,
+                # Now that administer paths write it, surface it — the dose
+                # detail pane shows who gave each dose.
+                'administered_by': log.administered_by,
                 'notes': log.notes,
                 'patient_id': log.patient_id,
                 'schedule_id': log.schedule_id,
@@ -1132,7 +1150,69 @@ def get_medication_history(db: Session, limit=25, medication_name=None, start_da
             })
         
         return result
-    
+
     except Exception as e:
         logger.error(f"Error getting medication history: {e}")
         return []
+
+
+def estimate_daily_consumption(db: Session, medication_id: int) -> float:
+    """Average dose units consumed per day across a med's active schedules,
+    projected over the next 7 days via croniter (so weekly patterns like
+    Mon/Wed/Fri average out correctly). Returns 0 if nothing is scheduled."""
+    schedules = db.query(MedicationSchedule).filter(
+        MedicationSchedule.medication_id == medication_id,
+        MedicationSchedule.active == True  # noqa: E712
+    ).all()
+
+    now = utc_now()
+    horizon = now + timedelta(days=7)
+    total = 0.0
+    for schedule in schedules:
+        dose = float(schedule.dose_amount or 0)
+        if dose <= 0:
+            continue
+        try:
+            cron = croniter(schedule.cron_expression, now)
+            occurrence = cron.get_next(type(now))
+            while occurrence < horizon:
+                total += dose
+                occurrence = cron.get_next(type(now))
+        except Exception as e:
+            logger.warning(f"Skipping bad cron '{schedule.cron_expression}' on schedule {schedule.id}: {e}")
+    return total / 7
+
+
+def get_medication_stock_status(db: Session, med: Medication) -> dict:
+    """Single source of truth for "is this medication low on stock", shared by
+    the low-stock Messages generator (crud/user_messages.py) and the admin
+    medications list endpoints, so alerts and UI always agree.
+
+    threshold_type 'quantity' compares the raw on-hand amount; 'days' projects
+    days of supply left from the med's active schedules and compares against
+    the threshold in days (meds with no scheduled consumption can't be
+    projected, so days_left is None and low stays False for them).
+    """
+    threshold = med.low_stock_threshold
+    threshold_type = med.low_stock_threshold_type or 'quantity'
+    quantity = float(med.quantity) if med.quantity is not None else 0.0
+    out_of_stock = quantity <= 0
+
+    low = False
+    days_left = None
+    daily_rate = None
+    if not out_of_stock and threshold is not None:
+        if threshold_type == 'days':
+            daily_rate = estimate_daily_consumption(db, med.id)
+            if daily_rate > 0:
+                days_left = quantity / daily_rate
+                low = days_left <= float(threshold)
+        else:
+            low = quantity <= float(threshold)
+
+    return {
+        'out_of_stock': out_of_stock,
+        'low': out_of_stock or low,
+        'days_left': round(days_left, 1) if days_left is not None else None,
+        'daily_rate': daily_rate,
+    }

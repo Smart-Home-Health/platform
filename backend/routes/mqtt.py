@@ -324,6 +324,85 @@ async def test_mqtt_connection(settings: MQTTConnectionTest):
         )
 
 
+@router.get("/status")
+async def get_mqtt_status(db: Session = Depends(get_db)):
+    """Read-only view of the hub's broker link.
+
+    Deliberately not /settings: the per-patient sharing page shows whether the
+    hub is connected and to what, but the broker itself is configured in one
+    place (Configuration > MQTT) and no credential is returned here.
+    """
+    connected = False
+    try:
+        from main import get_modules
+        mqtt_module = get_modules().get("mqtt")
+        connected = bool(
+            mqtt_module and mqtt_module.mqtt_manager
+            and mqtt_module.mqtt_manager.is_connected()
+        )
+    except Exception as e:  # module not up yet / import cycle during startup
+        logger.warning(f"MQTT status check failed: {e}")
+
+    enabled_raw = get_setting(db, 'mqtt_enabled')
+    port_raw = get_setting(db, 'mqtt_port')
+    try:
+        port = int(port_raw) if port_raw not in (None, '') else None
+    except (TypeError, ValueError):
+        port = None
+    return {
+        "enabled": enabled_raw is True or enabled_raw == 'true',
+        "connected": connected,
+        "broker": get_setting(db, 'mqtt_broker') or None,
+        "port": port,
+        "base_topic": get_setting(db, 'mqtt_base_topic') or 'shh',
+        "discovery_enabled": get_setting(db, 'mqtt_discovery_enabled') in (True, 'true'),
+    }
+
+
+@router.get("/patients/{patient_id}/entities")
+async def list_patient_mqtt_entities(
+    patient_id: int,
+    db: Session = Depends(get_db),
+    _: bool = Depends(require_full_auth),
+    __: bool = Depends(require_read_access),
+    account_id: int = Depends(get_current_account_id),
+):
+    """The Home Assistant entities this patient's current sharing config publishes.
+
+    Built from the same expansion the discovery publisher uses, so the count
+    shown in the UI is the count that actually reaches HA — one sensor per
+    shared section, except blood pressure (3), nutrition (6) and each badge
+    count (2).
+    """
+    from mqtt.discovery import entity_plan
+
+    patient = db.query(Patient).filter(
+        Patient.id == patient_id,
+        Patient.account_id == account_id,
+    ).first()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    mqtt_integration = _get_or_create_mqtt_integration(db)
+    pi = (
+        db.query(PatientIntegration)
+        .filter(
+            PatientIntegration.patient_id == patient_id,
+            PatientIntegration.integration_id == mqtt_integration.id,
+            PatientIntegration.account_id == account_id,
+        )
+        .first()
+    )
+    settings = (pi.settings or {}) if pi else {}
+    sections = settings.get("sections") or {}
+    shared = bool(pi and pi.is_enabled and settings.get("enabled"))
+    entities = [
+        {"section": section, "type": sensor_type, "key": suffix, "name": name}
+        for section, sensor_type, suffix, name in entity_plan(sections)
+    ] if shared else []
+    return {"patient_id": patient_id, "count": len(entities), "entities": entities}
+
+
 @router.get("/patients", response_model=list[MQTTPatientConfigResponse])
 async def list_mqtt_patients(
     db: Session = Depends(get_db),

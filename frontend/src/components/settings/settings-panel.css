@@ -1,0 +1,97 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+/* Live-dashboard Settings panel (Dashboard + Thresholds views).
+ *
+ * Tight on purpose: 4px radii, half-rem padding, each section one hairline
+ * box with flat fields inside. Numbers live in the token block so a later
+ * density pass can retarget every st-* rule at once. Field vocabulary comes
+ * from entity-card.css (em-field / em-input / em-check-row); this sheet only
+ * squares it to the panel's radius and stacks em-row at the narrow stop —
+ * the viewport query in entity-card.css never fires for a docked panel. */
+@import '../../styles/vc-tokens.css';
+
+.st-panel {
+  --st-radius: 4px;
+  --st-pad: 0.5rem;
+  --st-pad-x: 0.6rem;
+  --st-gap: 0.4rem;
+
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.st-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: calc(var(--st-pad) + env(safe-area-inset-bottom, 0px));
+}
+
+.st-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--st-gap);
+}
+.st-section {
+  background: var(--vc-bg-surface);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: var(--st-radius);
+  padding: var(--st-pad) var(--st-pad-x);
+  display: flex;
+  flex-direction: column;
+  gap: var(--st-gap);
+}
+.st-section-title {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.st-section-hint {
+  margin: 0;
+  font-family: var(--vc-font-sans);
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--vc-text-secondary);
+}
+.st-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--st-gap);
+  padding-top: 0.1rem;
+}
+
+/* entity-card.css sets border-box only inside .em-panel; the fields are
+ * used bare here, so the panel has to say it too or 100%-wide inputs
+ * overflow their section by their own padding. */
+.st-panel *, .st-panel *::before, .st-panel *::after { box-sizing: border-box; }
+
+/* square the shared field vocabulary to the panel */
+.st-panel .em-input { border-radius: var(--st-radius); min-height: 36px; }
+.st-panel .em-error,
+.st-panel .em-success { border-radius: var(--st-radius); padding: 0.45rem 0.6rem; font-size: 12.5px; }
+.st-panel .em-check-row { gap: 0.5rem; }
+.st-panel .em-check { width: 18px; height: 18px; border-radius: var(--st-radius); }
+.st-panel .em-check-label { font-size: 13px; }
+.st-panel .ld-dose-btn { border-radius: var(--st-radius); }
+.st-panel.narrow .em-row { grid-template-columns: 1fr; }

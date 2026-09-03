@@ -15,119 +15,134 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+// Day over day: the same hours, compared across up to seven days.
+//
+// Layout follows the report mockup — controls, the days you picked, one chart,
+// the numbers under it — but the colours are ours. Day series carry identity
+// only, so the palette deliberately excludes amber and red: on this page amber
+// is the configured alarm line and red is a day that breached it.
+//
+// Derivations (per-day average, low, coverage, the y range and the CSV) live in
+// reports/dayOverDay.js so they can be tested without a canvas.
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import Chart from 'chart.js/auto';
 import zoomPlugin from 'chartjs-plugin-zoom';
+import annotationPlugin from 'chartjs-plugin-annotation';
 import config, { apiFetch } from '../../config';
 import {
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  XIcon,
+  ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, XIcon, PlusIcon,
+  FilterIcon, CalendarIcon, ClockIcon, VitalsChartIcon,
+  FileTextIcon, ClipboardListIcon, BarChartIcon,
+  ExpandPanelIcon, CollapsePanelIcon,
 } from '../../components/Icons';
-import { Button } from '@/components/ui/button';
-import { Alert } from '@/components/ui/alert';
+import BottomSheet from '../capture/components/BottomSheet';
+import { useChartColors } from '../../hooks/useChartColors';
 import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
+  MAX_DAYS, VITAL_TYPES, AGGREGATIONS, SOURCE_LABELS, seriesColor,
+  alarmsFor, formatDayLabel, formatHourLabel, hourWindowLabel,
+  summarizeDays, yDomain, breaches, toCsv, csvFileName,
+} from './reports/dayOverDay';
+import './reports/reports-dod.css';
 
-Chart.register(zoomPlugin);
+Chart.register(zoomPlugin, annotationPlugin);
 
-const VITAL_TYPES = [
-  { value: 'spo2', label: 'SpO2', unit: '%' },
-  { value: 'heart_rate', label: 'Heart Rate', unit: 'bpm' },
-  { value: 'respiratory_rate', label: 'Respiratory Rate', unit: '/min' },
-  { value: 'blood_pressure', label: 'Blood Pressure (MAP)', unit: 'mmHg' },
-  { value: 'temperature', label: 'Temperature', unit: '°F' },
-  { value: 'weight', label: 'Weight', unit: 'lbs' },
-];
+const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
-const DATE_COLORS = [
-  '#e91e63',
-  '#3f51b5',
-  '#4CAF50',
-  '#FF9800',
-  '#9C27B0',
-  '#00BCD4',
-  '#FF5722',
-];
+const daysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
+const firstDayOfMonth = (year, month) => new Date(year, month, 1).getDay();
+const toDateStr = (year, month, day) =>
+  `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
-const SOURCE_LABELS = {
-  pulse_ox: 'Pulse Ox',
-  vent: 'Ventilator',
-  manual: 'Manual',
-  none: 'No Data',
+/* Marks where the tooltip is reading from. Chart.js has no crosshair of its
+ * own, and without one a three-day comparison is a guess about which hour the
+ * numbers belong to. */
+const crosshair = {
+  id: 'dodCrosshair',
+  afterDatasetsDraw(chart) {
+    const active = chart.tooltip?.getActiveElements?.() || [];
+    if (!active.length) return;
+    const x = active[0].element.x;
+    const { top, bottom } = chart.chartArea;
+    const ctx = chart.ctx;
+    ctx.save();
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = chart.options.plugins.dodCrosshairColor || 'rgba(255,255,255,0.35)';
+    ctx.beginPath();
+    ctx.moveTo(x, top);
+    ctx.lineTo(x, bottom);
+    ctx.stroke();
+    ctx.restore();
+  },
 };
 
-const HOUR_LABELS = [
-  '12a','1a','2a','3a','4a','5a','6a','7a','8a','9a','10a','11a',
-  '12p','1p','2p','3p','4p','5p','6p','7p','8p','9p','10p','11p',
-];
-
-function formatDateLabel(dateStr) {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const dt = new Date(y, m - 1, d);
-  return dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-}
-
-function daysInMonth(year, month) {
-  return new Date(year, month + 1, 0).getDate();
-}
-
-function firstDayOfMonth(year, month) {
-  return new Date(year, month, 1).getDay();
-}
-
-function toDateStr(year, month, day) {
-  return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-}
-
 const AdminV2ReportsDayOverDay = ({ patientId }) => {
-  // Source of truth: each entry remembers the color slot it was assigned at
-  // selection time, so a date keeps its color regardless of sort order or
+  // Source of truth: each entry remembers the colour slot it was assigned at
+  // selection time, so a date keeps its colour regardless of sort order or
   // later selections. `selectedDates` (sorted) is derived for queries/display.
   const [selection, setSelection] = useState([]); // [{ date, color }]
-  const [vitalType, setVitalType] = useState('spo2');
-  const [reportData, setReportData] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  // The weekly summary links here per vital ("Compare days"), so the URL can
+  // name one; anything unrecognised falls back rather than querying nonsense.
+  const [searchParams] = useSearchParams();
+  const [vitalType, setVitalType] = useState(() => {
+    const wanted = searchParams.get('vital');
+    return VITAL_TYPES.some(v => v.value === wanted) ? wanted : 'spo2';
+  });
+  const [aggregation, setAggregation] = useState('hour');
   const [startHour, setStartHour] = useState(0);
   const [endHour, setEndHour] = useState(23);
-  const [aggregation, setAggregation] = useState('hour');
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- 'now' is also read in render (todayStr) and initial calendar state; memoizing it would pin the clock at mount
+  const [reportData, setReportData] = useState(null);
+  const [settings, setSettings] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const [sheet, setSheet] = useState(null); // 'days' | 'filters' | null
+  const [view, setView] = useState('chart'); // 'chart' | 'data'
+  const [fullscreen, setFullscreen] = useState(false);
+
+  // Read fresh each render: it seeds the calendar and decides which days are
+  // still in the future, so memoizing it would pin the clock at mount.
   const now = new Date();
   const [calYear, setCalYear] = useState(now.getFullYear());
   const [calMonth, setCalMonth] = useState(now.getMonth());
+  const todayStr = toDateStr(now.getFullYear(), now.getMonth(), now.getDate());
 
+  const rootRef = useRef(null);
   const chartRef = useRef(null);
   const chartInstance = useRef(null);
   const fetchTimer = useRef(null);
+  const chrome = useChartColors();
 
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-
-  // Sorted date strings for the API query and chip ordering.
-  const selectedDates = useMemo(
-    () => selection.map(s => s.date).sort(),
-    [selection],
-  );
-  // date -> color slot index (stable across selections).
+  const selectedDates = useMemo(() => selection.map(s => s.date).sort(), [selection]);
   const colorByDate = useMemo(
     () => Object.fromEntries(selection.map(s => [s.date, s.color])),
     [selection],
   );
+  const colorFor = useCallback(ds => seriesColor(colorByDate[ds] ?? 0), [colorByDate]);
+
+  const vital = VITAL_TYPES.find(v => v.value === vitalType) || VITAL_TYPES[0];
+  const agg = AGGREGATIONS.find(a => a.value === aggregation) || AGGREGATIONS[0];
+  const windowed = useMemo(() => ({ startHour, endHour }), [startHour, endHour]);
+  const alarms = useMemo(() => alarmsFor(vitalType, settings), [vitalType, settings]);
+  const rows = useMemo(
+    () => summarizeDays(reportData?.days, windowed),
+    [reportData, windowed],
+  );
+  const domain = useMemo(
+    () => yDomain(rows, { vitalType, alarms }),
+    [rows, vitalType, alarms],
+  );
+  const filtersOn = startHour !== 0 || endHour !== 23;
 
   const toggleDate = useCallback((dateStr) => {
     setSelection(prev => {
-      if (prev.some(s => s.date === dateStr)) {
-        return prev.filter(s => s.date !== dateStr);
-      }
-      if (prev.length >= 7) return prev;
-      // Reuse the lowest free color slot so the next pick takes red if red
-      // was just freed; otherwise grow to the next color.
+      if (prev.some(s => s.date === dateStr)) return prev.filter(s => s.date !== dateStr);
+      if (prev.length >= MAX_DAYS) return prev;
+      // Reuse the lowest free colour slot, so removing a day and picking
+      // another hands the new one the colour that just came free.
       const used = new Set(prev.map(s => s.color));
       let color = 0;
       while (used.has(color)) color++;
@@ -139,43 +154,36 @@ const AdminV2ReportsDayOverDay = ({ patientId }) => {
     setSelection(prev => prev.filter(s => s.date !== dateStr));
   }, []);
 
-  const colorFor = useCallback(
-    (dateStr) => DATE_COLORS[(colorByDate[dateStr] ?? 0) % DATE_COLORS.length],
-    [colorByDate],
-  );
-
   const prevMonth = useCallback(() => {
     setCalMonth(prev => {
-      if (prev === 0) {
-        setCalYear(y => y - 1);
-        return 11;
-      }
+      if (prev === 0) { setCalYear(y => y - 1); return 11; }
       return prev - 1;
     });
   }, []);
 
+  const atCurrentMonth = calYear === now.getFullYear() && calMonth === now.getMonth();
   const nextMonth = useCallback(() => {
-    const maxYear = now.getFullYear();
-    const maxMonth = now.getMonth();
+    if (atCurrentMonth) return;
     setCalMonth(prev => {
-      const newMonth = prev === 11 ? 0 : prev + 1;
-      const newYear = prev === 11 ? calYear + 1 : calYear;
-      if (newYear > maxYear || (newYear === maxYear && newMonth > maxMonth)) {
-        return prev;
-      }
-      if (prev === 11) setCalYear(y => y + 1);
-      return newMonth;
+      if (prev === 11) { setCalYear(y => y + 1); return 0; }
+      return prev + 1;
     });
-  }, [calYear, now]);
+  }, [atCurrentMonth]);
 
-  // Fetch data when dates or vital type change
+  // The alarm lines come from the same account settings the live monitor
+  // alarms on, so the report can't disagree with the board.
+  useEffect(() => {
+    let live = true;
+    apiFetch(`${config.apiUrl}/api/settings`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(s => { if (live && s) setSettings(s); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, []);
+
   useEffect(() => {
     if (fetchTimer.current) clearTimeout(fetchTimer.current);
-
-    if (selectedDates.length === 0) {
-      setReportData(null);
-      return;
-    }
+    if (selectedDates.length === 0) { setReportData(null); return; }
 
     fetchTimer.current = setTimeout(async () => {
       setLoading(true);
@@ -204,157 +212,131 @@ const AdminV2ReportsDayOverDay = ({ patientId }) => {
     return () => { if (fetchTimer.current) clearTimeout(fetchTimer.current); };
   }, [selectedDates, vitalType, patientId, aggregation]);
 
-  // Build chart
+  // ---- chart ----
   useEffect(() => {
-    if (!reportData || !chartRef.current) return;
-
+    if (view !== 'chart' || !reportData || !chartRef.current) return;
     if (chartInstance.current) {
       chartInstance.current.destroy();
       chartInstance.current = null;
     }
+    if (!rows.length) return;
 
-    const days = reportData.days || [];
-    if (days.length === 0) return;
+    // Canvas can't read CSS variables, so the theme colours are resolved off
+    // the mounted root — which is where the light/dark token swap happens.
+    const rootStyle = rootRef.current ? getComputedStyle(rootRef.current) : null;
+    const token = (name, fallback) => rootStyle?.getPropertyValue(name).trim() || fallback;
+    const alarmColor = token('--rpt-alarm', '#f0a52e');
+    const tooltipBg = token('--rpt-raised', chrome.cutout);
+    const gridSoft = `${chrome.grid}80`;
 
-    const agg = reportData.aggregation || 'hour';
-    const datasets = days.map((day, idx) => {
-      const color = DATE_COLORS[(colorByDate[day.date] ?? idx) % DATE_COLORS.length];
-      const hourly = day.hourly || [];
-      const points = hourly
-        .filter(h => h.avg !== null && h.avg !== undefined && h.hour >= startHour && h.hour < endHour + 1)
-        .map(h => ({ x: h.hour, y: h.avg }));
-      const isSparse = points.length <= 4;
-      const isRaw = agg === 'none';
-
+    const isRaw = (reportData.aggregation || 'hour') === 'none';
+    const datasets = rows.map(row => {
+      const color = colorFor(row.date);
+      const sparse = row.points.length <= 4;
       return {
-        label: formatDateLabel(day.date),
-        data: points,
+        label: formatDayLabel(row.date),
+        data: row.points.map(b => ({ x: b.hour, y: b.avg })),
         borderColor: color,
-        backgroundColor: color + '33',
+        backgroundColor: color,
         borderWidth: isRaw ? 1 : 2,
-        pointRadius: isSparse ? 5 : 0,
-        pointHoverRadius: 5,
+        pointRadius: sparse ? 4 : 0,
+        pointHoverRadius: 4,
         pointHitRadius: 8,
-        pointBackgroundColor: color,
         fill: false,
-        tension: isSparse ? 0 : 0.3,
+        tension: sparse ? 0 : 0.3,
         spanGaps: true,
       };
     });
 
-    // Compute y-axis range
-    let allVals = [];
-    datasets.forEach(ds => ds.data.forEach(p => allVals.push(p.y)));
-
-    let yMin, yMax;
-    if (allVals.length === 0) {
-      yMin = 0;
-      yMax = 100;
-    } else {
-      const dataMin = Math.min(...allVals);
-      const dataMax = Math.max(...allVals);
-      const padding = Math.max((dataMax - dataMin) * 0.1, 1);
-
-      if (reportData.vital_type === 'spo2') {
-        yMin = Math.max(0, Math.min(dataMin - padding, 85));
-        yMax = 100;
-      } else {
-        yMin = Math.max(0, dataMin - padding);
-        yMax = dataMax + padding;
-      }
-    }
-
-    // Canvas can't resolve CSS variables (or color-mix), so read the theme
-    // colors off the DOM and pass real hex strings to Chart.js. Keeps the
-    // chart legible in both dark and light themes.
-    const themeStyle = getComputedStyle(document.documentElement);
-    const cssVar = (name, fallback) =>
-      themeStyle.getPropertyValue(name).trim() || fallback;
-    const colorFg = cssVar('--foreground', '#e6edf3');
-    const colorMuted = cssVar('--muted-foreground', '#8b949e');
-    const colorBorder = cssVar('--border', '#30363d');
-    const colorGrid = colorBorder + '80'; // ~50% opacity for subtle gridlines
+    const annotations = {};
+    domain.lines.forEach(line => {
+      annotations[line.key] = {
+        type: 'line',
+        yMin: line.value,
+        yMax: line.value,
+        borderColor: alarmColor,
+        borderWidth: 1,
+        borderDash: [6, 4],
+        label: {
+          display: true,
+          content: `${line.key === 'low' ? 'Alarm' : 'Alarm high'} ${line.value}${reportData.unit || ''}`,
+          position: 'end',
+          color: alarmColor,
+          backgroundColor: 'transparent',
+          font: { size: 10, family: 'IBM Plex Mono, monospace', weight: '700' },
+          yAdjust: line.key === 'low' ? 10 : -10,
+        },
+      };
+    });
 
     const ctx = chartRef.current.getContext('2d');
     chartInstance.current = new Chart(ctx, {
       type: 'line',
       data: { datasets },
+      plugins: [crosshair],
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        interaction: {
-          mode: 'index',
-          intersect: false,
-        },
+        interaction: { mode: 'index', intersect: false },
         scales: {
           x: {
             type: 'linear',
             min: startHour,
             max: endHour,
-            title: { display: true, text: 'Hour of Day', font: { size: 12 }, color: colorMuted },
-            grid: { color: colorGrid },
+            grid: { color: gridSoft },
+            border: { color: chrome.grid },
             ticks: {
-              stepSize: agg === 'hour' ? 1 : agg === '15min' ? 0.5 : undefined,
+              stepSize: aggregation === 'hour' ? 2 : undefined,
               autoSkip: true,
-              maxTicksLimit: 24,
-              color: colorMuted,
-              font: { size: 11 },
+              maxTicksLimit: 12,
               maxRotation: 0,
-              callback: (val) => {
-                const h = Math.floor(val);
-                const m = Math.round((val - h) * 60);
-                if (m === 0) return HOUR_LABELS[h] || '';
-                const period = h >= 12 ? 'p' : 'a';
-                const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-                return `${h12}:${String(m).padStart(2, '0')}${period}`;
-              },
+              color: chrome.axis,
+              font: { size: 10, family: 'IBM Plex Mono, monospace' },
+              callback: (val) => formatHourLabel(val),
             },
           },
           y: {
             type: 'linear',
-            min: yMin,
-            max: yMax,
+            min: domain.min,
+            max: domain.max,
             title: {
               display: true,
-              text: `${VITAL_TYPES.find(v => v.value === reportData.vital_type)?.label || ''} (${reportData.unit || ''})`,
-              font: { size: 12 },
-              color: colorMuted,
+              text: `${vital.label} (${reportData.unit || vital.unit})`,
+              color: chrome.axis,
+              font: { size: 10, family: 'IBM Plex Mono, monospace' },
             },
-            grid: { color: colorGrid },
-            ticks: { color: colorMuted, font: { size: 11 } },
+            grid: { color: gridSoft },
+            border: { color: chrome.grid },
+            ticks: { color: chrome.axis, font: { size: 10, family: 'IBM Plex Mono, monospace' } },
           },
         },
         plugins: {
-          legend: {
-            position: 'top',
-            labels: { usePointStyle: true, padding: 15, font: { size: 12 }, color: colorFg },
-          },
+          dodCrosshairColor: chrome.axis,
+          annotation: { annotations },
+          legend: { display: false },
           tooltip: {
+            usePointStyle: true,
+            backgroundColor: tooltipBg,
+            borderColor: chrome.grid,
+            borderWidth: 1,
+            titleColor: chrome.foreground,
+            bodyColor: chrome.foreground,
+            padding: 10,
+            titleFont: { size: 11, family: 'IBM Plex Mono, monospace', weight: '700' },
+            bodyFont: { size: 11, family: 'IBM Plex Mono, monospace' },
             callbacks: {
-              title: (items) => {
-                if (items.length > 0) {
-                  const h = items[0].parsed.x;
-                  return HOUR_LABELS[h] ? HOUR_LABELS[h].replace('a', ' AM').replace('p', ' PM') : `Hour ${h}`;
-                }
-                return '';
-              },
+              title: (items) => (items.length ? formatHourLabel(items[0].parsed.x) : ''),
               label: (item) => {
-                const dayData = days[item.datasetIndex];
-                const src = dayData ? SOURCE_LABELS[dayData.source] || dayData.source : '';
-                return `${item.dataset.label}: ${item.parsed.y} ${reportData.unit || ''}  (${src})`;
+                const row = rows[item.datasetIndex];
+                const src = row ? SOURCE_LABELS[row.source] || row.source : '';
+                return `${item.dataset.label}  ${item.parsed.y}${reportData.unit || ''}${src ? ` · ${src}` : ''}`;
               },
             },
           },
           zoom: {
             pan: { enabled: true, mode: 'x' },
-            zoom: {
-              wheel: { enabled: true },
-              pinch: { enabled: true },
-              mode: 'x',
-            },
-            limits: {
-              x: { min: startHour, max: endHour, minRange: 1 },
-            },
+            zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' },
+            limits: { x: { min: startHour, max: endHour, minRange: 1 } },
           },
         },
       },
@@ -366,185 +348,338 @@ const AdminV2ReportsDayOverDay = ({ patientId }) => {
         chartInstance.current = null;
       }
     };
-  }, [reportData, startHour, endHour, colorByDate]);
+  }, [reportData, rows, domain, colorFor, startHour, endHour, aggregation, vital, chrome, view]);
 
-  // Calendar grid
-  const numDays = daysInMonth(calYear, calMonth);
-  const startDay = firstDayOfMonth(calYear, calMonth);
-  const calendarCells = [];
-  for (let i = 0; i < startDay; i++) {
-    calendarCells.push(null);
-  }
-  for (let d = 1; d <= numDays; d++) {
-    calendarCells.push(d);
-  }
+  const exportCsv = useCallback(() => {
+    if (!reportData) return;
+    const blob = new Blob([toCsv(reportData, windowed)], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = csvFileName(vitalType, selectedDates);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }, [reportData, windowed, vitalType, selectedDates]);
 
-  const monthLabel = new Date(calYear, calMonth, 1).toLocaleDateString('en-US', {
-    month: 'long',
-    year: 'numeric',
-  });
+  // ---- calendar cells ----
+  const cells = useMemo(() => {
+    const out = [];
+    for (let i = 0; i < firstDayOfMonth(calYear, calMonth); i++) out.push(null);
+    for (let d = 1; d <= daysInMonth(calYear, calMonth); d++) out.push(d);
+    return out;
+  }, [calYear, calMonth]);
+  const monthLabel = new Date(calYear, calMonth, 1)
+    .toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
-  const sourceByDate = {};
-  if (reportData?.days) {
-    reportData.days.forEach(d => { sourceByDate[d.date] = d.source; });
-  }
+  const unit = reportData?.unit || vital.unit;
+  const fmt = (n) => (n === null || n === undefined ? '—' : `${Math.round(n * 10) / 10}${unit}`);
 
   return (
-    <div className="dod-report">
-      <div className="dod-controls">
-        <div className="dod-vital-select tw">
-          <label className="dod-label">Vital Type</label>
-          <Select value={vitalType} onValueChange={setVitalType}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {VITAL_TYPES.map(vt => (
-                <SelectItem key={vt.value} value={vt.value}>{vt.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+    <div className="rpt dod" ref={rootRef}>
+      <div className="rpt-controls">
+        <label className="rpt-control">
+          <VitalsChartIcon size={16} />
+          <span className="rpt-sr">Vital</span>
+          <select value={vitalType} onChange={e => setVitalType(e.target.value)}>
+            {VITAL_TYPES.map(vt => <option key={vt.value} value={vt.value}>{vt.label}</option>)}
+          </select>
+          <ChevronDownIcon size={14} className="rpt-chevron" />
+        </label>
 
-        <div className="dod-vital-select tw">
-          <label className="dod-label">Aggregation</label>
-          <Select value={aggregation} onValueChange={setAggregation}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="hour">Hourly</SelectItem>
-              <SelectItem value="15min">15 min</SelectItem>
-              <SelectItem value="5min">5 min</SelectItem>
-              <SelectItem value="none">Raw</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        <label className="rpt-control">
+          <ClockIcon size={16} />
+          <span className="rpt-sr">Aggregation</span>
+          <select value={aggregation} onChange={e => setAggregation(e.target.value)}>
+            {AGGREGATIONS.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
+          </select>
+          <ChevronDownIcon size={14} className="rpt-chevron" />
+        </label>
 
-        <div className="dod-hour-range tw">
-          <label className="dod-label">Hour Range</label>
-          <div className="dod-hour-selects">
-            <Select
-              value={String(startHour)}
-              onValueChange={(v) => {
-                const n = Number(v);
-                setStartHour(n);
-                if (n > endHour) setEndHour(n);
-              }}
-            >
-              <SelectTrigger className="w-[90px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {HOUR_LABELS.map((lbl, i) => (
-                  <SelectItem key={i} value={String(i)}>{lbl}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <span className="dod-hour-sep">to</span>
-            <Select
-              value={String(endHour)}
-              onValueChange={(v) => {
-                const n = Number(v);
-                setEndHour(n);
-                if (n < startHour) setStartHour(n);
-              }}
-            >
-              <SelectTrigger className="w-[90px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {HOUR_LABELS.map((lbl, i) => (
-                  <SelectItem key={i} value={String(i)}>{lbl}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {(startHour !== 0 || endHour !== 23) && (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => { setStartHour(0); setEndHour(23); }}
-              >
-                Reset
-              </Button>
-            )}
-          </div>
-        </div>
-
-        <div className="dod-calendar">
-          <div className="dod-calendar-header">
-            <button className="dod-cal-nav" onClick={prevMonth}><ChevronLeftIcon size={16} /></button>
-            <span className="dod-cal-month">{monthLabel}</span>
-            <button className="dod-cal-nav" onClick={nextMonth}><ChevronRightIcon size={16} /></button>
-          </div>
-          <div className="dod-calendar-weekdays">
-            {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
-              <span key={d} className="dod-weekday">{d}</span>
-            ))}
-          </div>
-          <div className="dod-calendar-grid">
-            {calendarCells.map((day, i) => {
-              if (day === null) {
-                return <span key={`empty-${i}`} className="dod-cal-cell dod-cal-empty" />;
-              }
-              const ds = toDateStr(calYear, calMonth, day);
-              const isFuture = ds > todayStr;
-              const isSelected = colorByDate[ds] !== undefined;
-              const bgColor = isSelected ? colorFor(ds) : undefined;
-
-              return (
-                <button
-                  key={ds}
-                  className={`dod-cal-cell${isSelected ? ' selected' : ''}${isFuture ? ' disabled' : ''}${ds === todayStr ? ' today' : ''}`}
-                  style={isSelected ? { backgroundColor: bgColor, borderColor: bgColor, color: '#fff' } : undefined}
-                  disabled={isFuture}
-                  onClick={() => toggleDate(ds)}
-                >
-                  {day}
-                </button>
-              );
-            })}
-          </div>
-          {selectedDates.length >= 7 && (
-            <p className="dod-cal-limit">Maximum 7 dates selected</p>
-          )}
-        </div>
+        {/* Icon-only so the two pickers and this fit one phone row; the dot
+            says the hours have been narrowed without spending a word on it. */}
+        <button
+          type="button"
+          className="rpt-control icon"
+          onClick={() => setSheet('filters')}
+          aria-label={filtersOn ? 'Filters — hours narrowed' : 'Filters'}
+          title="Filters"
+        >
+          <FilterIcon size={17} />
+          {filtersOn && <span className="rpt-dot-flag" />}
+        </button>
       </div>
 
-      {selectedDates.length > 0 && (
-        <div className="dod-chips">
-          {selectedDates.map((ds) => {
-            const color = colorFor(ds);
-            const src = sourceByDate[ds];
-            return (
-              <span key={ds} className="dod-chip" style={{ borderColor: color }}>
-                <span className="dod-chip-dot" style={{ backgroundColor: color }} />
-                <span className="dod-chip-label">{formatDateLabel(ds)}</span>
-                {src && src !== 'none' && (
-                  <span className="dod-chip-source">{SOURCE_LABELS[src] || src}</span>
-                )}
-                <button className="dod-chip-remove" onClick={() => removeDate(ds)}>
-                  <XIcon size={12} />
-                </button>
+      <div className="rpt-window">
+        {hourWindowLabel(startHour, endHour)} · <strong>{selectedDates.length}</strong>
+        {selectedDates.length === 1 ? ' day selected' : ' days selected'}
+      </div>
+
+      <div className="dod-chips">
+        {/* Chips stay short so several fit a phone row: dot, day, remove. What
+            recorded the day is a column in the table below, not repeated here. */}
+        {selectedDates.map(ds => (
+          <span key={ds} className="dod-chip" style={{ '--dod-series': colorFor(ds) }}>
+            <span className="dod-dot" aria-hidden="true" />
+            {formatDayLabel(ds)}
+            <button
+              type="button"
+              className="dod-chip-x"
+              onClick={() => removeDate(ds)}
+              aria-label={`Remove ${formatDayLabel(ds)}`}
+            >
+              <XIcon size={12} />
+            </button>
+          </span>
+        ))}
+        <button
+          type="button"
+          className="dod-add"
+          onClick={() => setSheet('days')}
+          disabled={selectedDates.length >= MAX_DAYS}
+        >
+          <PlusIcon size={14} />
+          {selectedDates.length >= MAX_DAYS ? `${MAX_DAYS} day maximum` : 'Add day'}
+        </button>
+      </div>
+
+      {error && <div className="rpt-error">{error}</div>}
+
+      {selectedDates.length === 0 ? (
+        <div className="rpt-empty">Add a day to compare</div>
+      ) : loading && !reportData ? (
+        <div className="rpt-empty">Loading…</div>
+      ) : !rows.some(r => r.points.length) ? (
+        <div className="rpt-empty">No {vital.label} recorded on the selected days</div>
+      ) : (
+        <>
+          <section className={`rpt-card${fullscreen ? ' full' : ''}`}>
+            <div className="rpt-card-head">
+              <span className="rpt-card-title">
+                {vital.label} by {aggregation === 'hour' ? 'hour' : 'time'}
               </span>
-            );
-          })}
-        </div>
+              <span className="rpt-card-note">{agg.note}</span>
+              <button
+                type="button"
+                className="rpt-icon-btn"
+                onClick={() => setFullscreen(v => !v)}
+                aria-label={fullscreen ? 'Exit full screen' : 'Full screen chart'}
+                aria-pressed={fullscreen}
+              >
+                {fullscreen ? <CollapsePanelIcon size={16} /> : <ExpandPanelIcon size={16} />}
+              </button>
+            </div>
+            {view === 'chart' ? (
+              <div className="rpt-plot dod-plot"><canvas ref={chartRef} /></div>
+            ) : (
+              <div className="dod-data-scroll">
+                <table className="rpt-table dod-data-table">
+                  <thead>
+                    <tr>
+                      <th>Day</th><th>Time</th><th>Avg</th><th>Min</th><th>Max</th><th>Samples</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.flatMap(row => row.points.map(b => (
+                      <tr key={`${row.date}-${b.hour}`}>
+                        <td>
+                          <span className="dod-day-cell" style={{ '--dod-series': colorFor(row.date) }}>
+                            <span className="dod-dot" aria-hidden="true" />
+                            <span className="dod-day-name">{formatDayLabel(row.date)}</span>
+                          </span>
+                        </td>
+                        <td>{formatHourLabel(b.hour)}</td>
+                        <td>{fmt(b.avg)}</td>
+                        <td>{b.min == null ? '—' : fmt(b.min)}</td>
+                        <td>{b.max == null ? '—' : fmt(b.max)}</td>
+                        <td className="rpt-muted">{b.count ?? '—'}</td>
+                      </tr>
+                    )))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          <div className="rpt-table-wrap">
+            <table className="rpt-table">
+              <thead>
+                <tr>
+                  <th>Day</th><th>Avg</th><th>Low</th><th>High</th><th>Coverage</th><th>Source</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(row => {
+                  const breach = breaches(row, alarms);
+                  return (
+                    <tr key={row.date}>
+                      <td>
+                        <span className="dod-day-cell" style={{ '--dod-series': colorFor(row.date) }}>
+                          <span className="dod-dot" aria-hidden="true" />
+                          <span className="dod-day-name">{formatDayLabel(row.date)}</span>
+                        </span>
+                      </td>
+                      <td>{fmt(row.avg)}</td>
+                      <td className={breach.low ? 'rpt-breach' : undefined}>{fmt(row.low)}</td>
+                      <td className={breach.high ? 'rpt-breach' : undefined}>{fmt(row.high)}</td>
+                      <td className="rpt-muted">
+                        {row.coverage ? `${row.coverage}h` : '—'}
+                      </td>
+                      <td className="rpt-muted">{SOURCE_LABELS[row.source] || row.source || '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="rpt-actions">
+            <button type="button" className="rpt-btn" onClick={() => setView(v => (v === 'chart' ? 'data' : 'chart'))}>
+              {view === 'chart' ? <ClipboardListIcon size={15} /> : <BarChartIcon size={15} />}
+              {view === 'chart' ? 'View data' : 'View chart'}
+            </button>
+            <button type="button" className="rpt-btn" onClick={exportCsv} disabled={!reportData}>
+              <FileTextIcon size={15} />
+              Export CSV
+            </button>
+          </div>
+        </>
       )}
 
-      <div className="dod-chart-area">
-        {loading && (
-          <div className="dod-loading">Loading...</div>
-        )}
-        {error && (
-          <div className="tw"><Alert variant="destructive">{error}</Alert></div>
-        )}
-        {!loading && !error && selectedDates.length === 0 && (
-          <div className="dod-empty">
-            Select dates from the calendar and a vital type to compare day-over-day trends.
+      {/* Day picker. The calendar used to sit permanently in the controls; it
+          moved behind "Add day" so the chart and its numbers get the page. */}
+      <BottomSheet
+        open={sheet === 'days'}
+        onOpenChange={(next) => { if (!next) setSheet(null); }}
+        onSwipeDown={() => setSheet(null)}
+        title="Add a day"
+      >
+        <div className="rpt-sheet">
+          <div className="dod-cal">
+            <div className="dod-cal-head">
+              <button type="button" className="dod-cal-nav" onClick={prevMonth} aria-label="Previous month">
+                <ChevronLeftIcon size={16} />
+              </button>
+              <span className="dod-cal-month">{monthLabel}</span>
+              <button
+                type="button"
+                className="dod-cal-nav"
+                onClick={nextMonth}
+                disabled={atCurrentMonth}
+                aria-label="Next month"
+              >
+                <ChevronRightIcon size={16} />
+              </button>
+            </div>
+            <div className="dod-cal-grid">
+              {WEEKDAYS.map(d => <span key={d} className="dod-cal-weekday">{d}</span>)}
+              {cells.map((day, i) => {
+                if (day === null) return <span key={`e${i}`} className="dod-cal-cell empty" />;
+                const ds = toDateStr(calYear, calMonth, day);
+                const on = colorByDate[ds] !== undefined;
+                const full = !on && selectedDates.length >= MAX_DAYS;
+                return (
+                  <button
+                    key={ds}
+                    type="button"
+                    className={`dod-cal-cell${on ? ' on' : ''}${ds === todayStr ? ' today' : ''}`}
+                    style={on ? { '--dod-series': colorFor(ds) } : undefined}
+                    disabled={ds > todayStr || full}
+                    aria-pressed={on}
+                    onClick={() => toggleDate(ds)}
+                  >
+                    {day}
+                  </button>
+                );
+              })}
+            </div>
+            {selectedDates.length >= MAX_DAYS && (
+              <p className="dod-cal-note">{MAX_DAYS} days is the maximum — remove one to add another</p>
+            )}
           </div>
-        )}
-        {!loading && !error && selectedDates.length > 0 && reportData && (
-          <div className="dod-chart-container">
-            <canvas ref={chartRef} />
+          <div className="vc-sheet-actions">
+            <button type="button" className="vc-btn primary" onClick={() => setSheet(null)}>Done</button>
           </div>
-        )}
-        {!loading && !error && selectedDates.length > 0 && !reportData && (
-          <div className="dod-empty">No data available for the selected dates.</div>
-        )}
-      </div>
+        </div>
+      </BottomSheet>
+
+      <BottomSheet
+        open={sheet === 'filters'}
+        onOpenChange={(next) => { if (!next) setSheet(null); }}
+        onSwipeDown={() => setSheet(null)}
+        title="Filters"
+      >
+        <div className="rpt-sheet">
+          <div className="rpt-field">
+            <span className="rpt-field-label">Vital</span>
+            <label className="rpt-control">
+              <VitalsChartIcon size={16} />
+              <select value={vitalType} onChange={e => setVitalType(e.target.value)}>
+                {VITAL_TYPES.map(vt => <option key={vt.value} value={vt.value}>{vt.label}</option>)}
+              </select>
+              <ChevronDownIcon size={14} className="rpt-chevron" />
+            </label>
+          </div>
+
+          <div className="rpt-field">
+            <span className="rpt-field-label">Aggregation</span>
+            <label className="rpt-control">
+              <ClockIcon size={16} />
+              <select value={aggregation} onChange={e => setAggregation(e.target.value)}>
+                {AGGREGATIONS.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
+              </select>
+              <ChevronDownIcon size={14} className="rpt-chevron" />
+            </label>
+          </div>
+
+          <div className="rpt-field">
+            <span className="rpt-field-label">Hours</span>
+            <div className="rpt-range">
+              <label className="rpt-control">
+                <CalendarIcon size={15} />
+                <span className="rpt-sr">First hour</span>
+                <select
+                  value={String(startHour)}
+                  onChange={e => {
+                    const n = Number(e.target.value);
+                    setStartHour(n);
+                    if (n > endHour) setEndHour(n);
+                  }}
+                >
+                  {HOURS.map(h => <option key={h} value={String(h)}>{formatHourLabel(h)}</option>)}
+                </select>
+              </label>
+              <span className="rpt-range-sep">to</span>
+              <label className="rpt-control">
+                <span className="rpt-sr">Last hour</span>
+                <select
+                  value={String(endHour)}
+                  onChange={e => {
+                    const n = Number(e.target.value);
+                    setEndHour(n);
+                    if (n < startHour) setStartHour(n);
+                  }}
+                >
+                  {HOURS.map(h => <option key={h} value={String(h)}>{formatHourLabel(h)}</option>)}
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <div className="vc-sheet-actions">
+            <button
+              type="button"
+              className="vc-btn secondary"
+              onClick={() => { setStartHour(0); setEndHour(23); }}
+              disabled={!filtersOn}
+            >
+              Reset hours
+            </button>
+            <button type="button" className="vc-btn primary" onClick={() => setSheet(null)}>Done</button>
+          </div>
+        </div>
+      </BottomSheet>
     </div>
   );
 };

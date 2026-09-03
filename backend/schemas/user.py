@@ -150,6 +150,8 @@ class UserResponse(UserBase):
     last_activity: Optional[datetime] = None
     last_full_password_login: Optional[datetime] = None
     preferences: Optional[dict] = None
+    avatar_seed: Optional[str] = None
+    avatar_photo: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     roles: List[RoleResponse] = []
@@ -161,6 +163,21 @@ class UserResponse(UserBase):
 class UserWithPermissions(UserResponse):
     """User response with calculated permissions"""
     permissions: List[str] = []
+
+
+class UserActivityEntry(BaseModel):
+    """One recorded event on a user's account, as the user screen reads it.
+
+    Sourced from ``audit_logs`` only — there is no synthesised activity here.
+    ``actor_name`` is set when somebody *else* caused the entry (an
+    administrator resetting a password, say) and is None for the user's own
+    sign-in events.
+    """
+    id: int
+    action: str
+    timestamp: datetime
+    ip_address: Optional[str] = None
+    actor_name: Optional[str] = None
 
 
 class RoleListItem(BaseModel):
@@ -183,6 +200,8 @@ class UserListItem(BaseModel):
     roles: List[RoleListItem] = []
     created_at: Optional[datetime] = None
     last_login: Optional[datetime] = None
+    avatar_seed: Optional[str] = None
+    avatar_photo: Optional[str] = None
     
     class Config:
         from_attributes = True

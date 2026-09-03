@@ -1,0 +1,300 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+/* Care-task sheets and modals — vc-native, matching the nutrition sheets. */
+
+.ct-sched { gap: 0.75rem; }
+
+.ct-empty,
+.ct-note {
+  margin: 0;
+  font-family: var(--vc-font-sans);
+  font-size: 12.5px;
+  color: var(--vc-text-tertiary);
+}
+
+.ct-row { display: flex; gap: 0.5rem; align-items: flex-end; }
+.ct-row > * { flex: 1 1 0; min-width: 0; }
+
+/* ---------- schedule list ---------- */
+.ct-sched-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+
+.ct-sched-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-surface);
+}
+.ct-sched-row.paused { opacity: 0.62; }
+
+.ct-sched-icon { flex-shrink: 0; display: inline-flex; color: var(--vc-text-secondary); }
+.ct-sched-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 0.12rem; }
+.ct-sched-when {
+  font-family: var(--vc-font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+.ct-sched-desc,
+.ct-sched-prefill {
+  font-family: var(--vc-font-sans);
+  font-size: 12px;
+  color: var(--vc-text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Prefill is worth seeing at a glance: it is the difference between a feed
+   that fills the intake sheet in and one that opens it blank. */
+.ct-sched-prefill { color: var(--vc-data-live); }
+
+.ct-sched-tag {
+  flex-shrink: 0;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--vc-line-strong);
+  color: var(--vc-text-tertiary);
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.ct-sched-actions { flex-shrink: 0; display: flex; gap: 0.2rem; }
+
+.ct-icon-btn {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: grid;
+  place-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--vc-text-secondary);
+  cursor: pointer;
+}
+.ct-icon-btn:hover { color: var(--vc-data-live); border-color: var(--vc-line-hairline); }
+.ct-icon-btn.danger:hover { color: var(--vc-state-alert); }
+.ct-icon-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
+}
+
+.ct-add-btn {
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  background: transparent;
+  border: 1px dashed color-mix(in srgb, var(--vc-data-live) 45%, transparent);
+  border-radius: 8px;
+  color: var(--vc-data-live);
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.ct-add-btn:hover { background: color-mix(in srgb, var(--vc-data-live) 10%, transparent); }
+.ct-add-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
+}
+
+/* ---------- inline schedule form ---------- */
+.ct-sched-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--vc-data-live) 30%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--vc-bg-surface) 55%, transparent);
+}
+.ct-sched-form-title {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+.ct-sched-form-foot { display: flex; justify-content: flex-end; gap: 0.5rem; }
+
+/* ---------- category swatches ---------- */
+.ct-cat-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.ct-cat-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-surface);
+}
+/* The colour rides in a dot beside the name, never as a stripe down the side:
+   a stripe alone leaves the category unreadable to anyone who cannot separate
+   the hues. */
+.ct-cat-dot {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 1px solid var(--vc-line-strong);
+}
+.ct-cat-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--vc-font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vc-text-primary);
+}
+.ct-cat-count {
+  flex-shrink: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+
+.ct-swatches { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.ct-swatch {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+.ct-swatch.on { border-color: var(--vc-text-primary); }
+.ct-swatch:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
+}
+
+.ct-cat-swatch-field { display: flex; flex-direction: column; gap: 0.35rem; }
+.ct-swatch { display: grid; place-content: center; color: var(--vc-bg-base); }
+
+.ct-cat-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-surface);
+  font-family: var(--vc-font-sans);
+  font-size: 12.5px;
+  color: var(--vc-text-secondary);
+}
+
+/* ---------- dashboard: as-needed task picker ---------- */
+.ctm-group-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--vc-line-hairline);
+}
+.ctm-group-head h4 {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+.ctm-group-dot {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid var(--vc-line-strong);
+}
+.ctm-group-count {
+  flex-shrink: 0;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--vc-bg-raised);
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-text-secondary);
+}
+
+.ctm-group-list { display: flex; flex-direction: column; gap: 0.4rem; }
+
+.ctm-task {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  text-align: left;
+  background: var(--vc-bg-surface);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.ctm-task:hover { border-color: color-mix(in srgb, var(--vc-data-live) 50%, transparent); }
+.ctm-task:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
+}
+.ctm-task-text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.ctm-task-name {
+  font-family: var(--vc-font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--vc-text-primary);
+}
+.ctm-task-desc {
+  font-family: var(--vc-font-sans);
+  font-size: 12.5px;
+  line-height: 1.3;
+  color: var(--vc-text-secondary);
+}
+/* Completing is the affirmative action, so it takes the done tone rather than
+   a hardcoded green. */
+.ctm-task-action {
+  flex-shrink: 0;
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--vc-state-complete) 50%, transparent);
+  background: color-mix(in srgb, var(--vc-state-complete) 14%, transparent);
+  color: var(--vc-state-complete);
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}

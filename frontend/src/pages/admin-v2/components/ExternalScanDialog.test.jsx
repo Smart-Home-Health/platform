@@ -21,14 +21,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 
-// Radix portals + focus traps are noise here — render the shell inline.
-vi.mock('@/components/ui/dialog', () => ({
-  Dialog: ({ children }) => <div>{children}</div>,
-  DialogContent: ({ children }) => <div>{children}</div>,
-  DialogHeader: ({ children }) => <div>{children}</div>,
-  DialogTitle: ({ children }) => <h2>{children}</h2>,
-}));
-
 import ExternalScanDialog, { IDLE_COMMIT_MS, MIN_AUTO_COMMIT_LEN } from './ExternalScanDialog';
 
 const input = () => screen.getByLabelText('Barcode input');

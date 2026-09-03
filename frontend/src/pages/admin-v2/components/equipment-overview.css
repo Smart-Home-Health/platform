@@ -1,0 +1,423 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Equipment overview. Builds on the shipments page vocabulary (sh-btn,
+ * sd-section, sc-rail) rather than restating it. Dark-only, like the rest of
+ * the vc skin. */
+
+:root:not(.light) .eo-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+:root:not(.light) .eo-sub {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+  color: var(--vc-text-secondary);
+}
+
+:root:not(.light) .eo-head-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* --- stat tiles --- */
+
+:root:not(.light) .eo-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 10px;
+  background: var(--vc-bg-surface);
+  overflow: hidden;
+}
+@media (max-width: 720px) {
+  :root:not(.light) .eo-stats { grid-template-columns: repeat(2, 1fr); }
+}
+
+:root:not(.light) .eo-stat {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 2px 14px;
+  padding: 16px 18px;
+  background: none;
+  border: 0;
+  border-left: 1px solid var(--vc-line-hairline);
+  text-align: left;
+  color: var(--vc-text-secondary);
+  cursor: pointer;
+}
+:root:not(.light) .eo-stat:first-child { border-left: 0; }
+:root:not(.light) .eo-stat > svg { grid-row: span 2; }
+:root:not(.light) .eo-stat:hover {
+  background: color-mix(in srgb, var(--vc-text-primary) 5%, transparent);
+}
+:root:not(.light) .eo-stat:focus-visible {
+  outline: 2px solid var(--vc-data-live);
+  outline-offset: -2px;
+}
+
+:root:not(.light) .eo-stat-value {
+  font-family: var(--vc-font-mono);
+  font-size: 1.7rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.05;
+  color: var(--vc-text-primary);
+}
+:root:not(.light) .eo-stat-value.tone-due { color: var(--vc-state-due); }
+:root:not(.light) .eo-stat-value.tone-alert { color: var(--vc-state-alert); }
+:root:not(.light) .eo-stat-value.tone-accent { color: var(--vc-data-live); }
+
+:root:not(.light) .eo-stat-label {
+  font-size: 0.63rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+/* --- two-column grid --- */
+
+:root:not(.light) .eo-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  :root:not(.light) .eo-grid { grid-template-columns: 1fr; }
+}
+
+/* Panels that read better full width on a wide screen. */
+:root:not(.light) .eo-span { grid-column: 1; }
+@media (max-width: 900px) {
+  :root:not(.light) .eo-span { grid-column: auto; }
+}
+
+/* --- attention rows --- */
+
+:root:not(.light) .eo-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+:root:not(.light) .eo-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--vc-line-hairline);
+  flex-wrap: wrap;
+}
+:root:not(.light) .eo-row:first-child { border-top: 0; }
+
+:root:not(.light) .eo-row-icon {
+  display: grid;
+  place-content: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 7px;
+  background: var(--vc-bg-raised);
+  color: var(--vc-text-secondary);
+}
+
+:root:not(.light) .eo-row-text {
+  flex: 1;
+  min-width: 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+:root:not(.light) .eo-row-name {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--vc-text-primary);
+}
+
+:root:not(.light) .eo-row-sub {
+  font-size: 0.75rem;
+  color: var(--vc-text-secondary);
+}
+
+:root:not(.light) .eo-row-flags { display: flex; gap: 6px; flex-wrap: wrap; }
+
+:root:not(.light) .eo-flag {
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 1px solid currentColor;
+}
+:root:not(.light) .eo-flag.tone-alert { color: var(--vc-state-alert); }
+:root:not(.light) .eo-flag.tone-due { color: var(--vc-state-due); }
+:root:not(.light) .eo-flag.tone-idle { color: var(--vc-text-tertiary); }
+
+:root:not(.light) .eo-row-qty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  min-width: 58px;
+}
+
+:root:not(.light) .eo-qty {
+  font-family: var(--vc-font-mono);
+  font-size: 1.1rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-text-primary);
+}
+:root:not(.light) .eo-qty.tone-alert { color: var(--vc-state-alert); }
+
+:root:not(.light) .eo-qty-label {
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+
+:root:not(.light) .eo-more {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 10px 0 0;
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--vc-line-hairline);
+  font-family: var(--vc-font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-data-live);
+  cursor: pointer;
+}
+
+/* --- incoming shipment --- */
+
+:root:not(.light) .eo-ship-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+:root:not(.light) .eo-ship-supplier {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--vc-text-primary);
+}
+
+:root:not(.light) .eo-ship-id {
+  margin: 2px 0 0;
+  font-family: var(--vc-font-mono);
+  font-size: 0.78rem;
+  color: var(--vc-text-secondary);
+}
+
+:root:not(.light) .eo-ship-facts {
+  display: flex;
+  gap: 26px;
+  margin: 0;
+}
+:root:not(.light) .eo-ship-facts dt {
+  font-size: 0.6rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+:root:not(.light) .eo-ship-facts dd {
+  margin: 3px 0 0;
+  font-family: var(--vc-font-mono);
+  font-size: 0.9rem;
+  color: var(--vc-text-primary);
+}
+
+/* --- readiness bars --- */
+
+:root:not(.light) .eo-bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+:root:not(.light) .eo-bar-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) 2fr auto;
+  align-items: center;
+  gap: 12px;
+}
+
+:root:not(.light) .eo-bar-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+:root:not(.light) .eo-bar-track {
+  height: 7px;
+  border-radius: 999px;
+  background: var(--vc-bg-raised);
+  overflow: hidden;
+}
+
+:root:not(.light) .eo-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--vc-state-complete);
+}
+/* Under half stocked is worth noticing, so the bar changes role as well as
+ * length — a length alone is hard to judge at a glance. */
+:root:not(.light) .eo-bar-fill.tone-due { background: var(--vc-state-due); }
+
+:root:not(.light) .eo-bar-value {
+  font-family: var(--vc-font-mono);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-text-primary);
+  min-width: 40px;
+  text-align: right;
+}
+
+:root:not(.light) .eo-warn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--vc-state-due);
+}
+
+/* --- upcoming timeline --- */
+
+:root:not(.light) .eo-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(150px, 1fr);
+  gap: 14px;
+  overflow-x: auto;
+}
+@media (max-width: 720px) {
+  :root:not(.light) .eo-timeline {
+    grid-auto-flow: row;
+    grid-auto-columns: auto;
+  }
+}
+
+:root:not(.light) .eo-tl-step {
+  position: relative;
+  padding-top: 18px;
+  border-top: 1px dashed var(--vc-line-strong);
+}
+
+:root:not(.light) .eo-tl-node {
+  position: absolute;
+  top: -6px;
+  left: 0;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid var(--vc-state-idle);
+  background: var(--vc-bg-surface);
+}
+:root:not(.light) .eo-tl-step.is-today .eo-tl-node {
+  border-color: var(--vc-state-due);
+  background: var(--vc-state-due);
+}
+:root:not(.light) .eo-tl-step.is-today { border-top-color: var(--vc-state-due); }
+
+:root:not(.light) .eo-tl-date {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--vc-font-mono);
+  font-size: 0.86rem;
+  color: var(--vc-text-primary);
+}
+
+:root:not(.light) .eo-tl-today {
+  font-size: 0.58rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--vc-state-due);
+}
+
+:root:not(.light) .eo-tl-items {
+  list-style: disc;
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 0.82rem;
+  color: var(--vc-text-secondary);
+}
+:root:not(.light) .eo-tl-items li { margin-bottom: 3px; }
+
+:root:not(.light) .eo-tl-late {
+  margin-left: 6px;
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vc-state-alert);
+}
+
+/* --- recent activity --- */
+
+:root:not(.light) .eo-activity {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+:root:not(.light) .eo-activity li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--vc-line-hairline);
+  color: var(--vc-text-secondary);
+  font-size: 0.85rem;
+}
+:root:not(.light) .eo-activity li:first-child { border-top: 0; }
+
+:root:not(.light) .eo-act-text { flex: 1; color: var(--vc-text-primary); }
+
+:root:not(.light) .eo-act-when {
+  font-family: var(--vc-font-mono);
+  font-size: 0.74rem;
+  white-space: nowrap;
+}

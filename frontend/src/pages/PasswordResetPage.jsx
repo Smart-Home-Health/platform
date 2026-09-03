@@ -15,19 +15,21 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import logoImage from '../assets/logo2.png';
-import './LoginPage.css';
-
 /**
- * Forced first-login password reset.
+ * Forced first-login password reset, on the shared AuthShell.
  *
- * Reached from UserSelectionPage when the backend reports requires_password_reset.
- * The user sets a new password and (optionally) a PIN; on success the backend
- * clears the flag and issues a full session, and we continue to the intended page.
+ * Reached from UserSelectionPage when the backend reports
+ * requires_password_reset (never by URL — without router state it bounces
+ * back to /select-user). The user sets a new password and optionally a PIN;
+ * on success the backend clears the flag and issues a full session, and we
+ * continue to the intended page.
  */
+import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import AuthShell from './AuthShell';
+import './auth.css';
+
 export default function PasswordResetPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -106,103 +108,74 @@ export default function PasswordResetPage() {
     }
   };
 
-  return (
-    <div className="login-page">
-      <div className="login-container">
-        <Link to="/" className="login-logo">
-          <img src={logoImage} alt="Smart Home Health Logo" />
-          <span>Smart Home Health</span>
-        </Link>
-
-        <div className="login-card">
-          <div className="login-header">
-            <h2>Set Your Password</h2>
-            <p>
-              {fullName
-                ? `Welcome, ${fullName}. Please choose a new password to continue.`
-                : 'Please choose a new password to continue.'}
-            </p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="login-form">
-            {error && <div className="error-message">{error}</div>}
-
-            {!carriedPassword && (
-              <div className="form-group">
-                <label htmlFor="currentPassword">Current Password</label>
-                <input
-                  type="password"
-                  id="currentPassword"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  placeholder="Enter your current password"
-                  autoFocus
-                  required
-                />
-              </div>
-            )}
-
-            <div className="form-group">
-              <label htmlFor="newPassword">New Password</label>
-              <input
-                type="password"
-                id="newPassword"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="At least 8 characters"
-                autoFocus={!!carriedPassword}
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="confirmPassword">Confirm New Password</label>
-              <input
-                type="password"
-                id="confirmPassword"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Re-enter new password"
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="pin">PIN (optional)</label>
-              <input
-                type="password"
-                id="pin"
-                inputMode="numeric"
-                value={pin}
-                onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
-                placeholder="4-8 digits for quick sign-in"
-                maxLength={8}
-                pattern="\d*"
-              />
-            </div>
-
-            {pin && (
-              <div className="form-group">
-                <label htmlFor="confirmPin">Confirm PIN</label>
-                <input
-                  type="password"
-                  id="confirmPin"
-                  inputMode="numeric"
-                  value={confirmPin}
-                  onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ''))}
-                  placeholder="Re-enter PIN"
-                  maxLength={8}
-                  pattern="\d*"
-                />
-              </div>
-            )}
-
-            <button type="submit" className="submit-button" disabled={loading}>
-              {loading ? 'Saving...' : 'Save & Continue'}
-            </button>
-          </form>
-        </div>
+  const field = (id, label, props) => (
+    <div className="au-field">
+      <label className="au-label" htmlFor={id}>{label}</label>
+      <div className="au-input-wrap plain">
+        <input type="password" id={id} {...props} />
       </div>
     </div>
+  );
+
+  return (
+    <AuthShell>
+      <div className="au-eyebrow">First sign-in</div>
+      <h2 className="au-title">Set Your Password</h2>
+      <p className="au-subtitle">
+        {fullName
+          ? `Welcome, ${fullName}. Choose a new password to continue.`
+          : 'Choose a new password to continue.'}
+      </p>
+
+      <form onSubmit={handleSubmit} className="au-form au-dense">
+        {error && <div className="au-error">{error}</div>}
+
+        {!carriedPassword && field('currentPassword', 'Current password', {
+          value: currentPassword,
+          onChange: (e) => setCurrentPassword(e.target.value),
+          placeholder: 'Enter your current password',
+          autoFocus: true,
+          required: true,
+        })}
+
+        {field('newPassword', 'New password', {
+          value: newPassword,
+          onChange: (e) => setNewPassword(e.target.value),
+          placeholder: 'At least 8 characters',
+          autoFocus: !!carriedPassword,
+          required: true,
+        })}
+
+        {field('confirmPassword', 'Confirm new password', {
+          value: confirmPassword,
+          onChange: (e) => setConfirmPassword(e.target.value),
+          placeholder: 'Re-enter new password',
+          required: true,
+        })}
+
+        <div className="au-grid">
+          {field('pin', 'PIN (optional)', {
+            inputMode: 'numeric',
+            value: pin,
+            onChange: (e) => setPin(e.target.value.replace(/\D/g, '')),
+            placeholder: '4–8 digits for quick sign-in',
+            maxLength: 8,
+            pattern: '\\d*',
+          })}
+          {pin && field('confirmPin', 'Confirm PIN', {
+            inputMode: 'numeric',
+            value: confirmPin,
+            onChange: (e) => setConfirmPin(e.target.value.replace(/\D/g, '')),
+            placeholder: 'Re-enter PIN',
+            maxLength: 8,
+            pattern: '\\d*',
+          })}
+        </div>
+
+        <button type="submit" className="au-primary" disabled={loading}>
+          {loading ? 'Saving…' : 'Save & continue'}
+        </button>
+      </form>
+    </AuthShell>
   );
 }

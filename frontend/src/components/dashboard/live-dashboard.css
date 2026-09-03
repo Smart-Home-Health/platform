@@ -1,0 +1,620 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Live dashboard layout (bedside-monitor rebuild). Scoped under .live-dash,
+ * built exclusively on the --dash-* variables (defined from vc tokens in
+ * App.css). Series/alarm literals stay at their call sites. */
+
+.live-dash {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  background: var(--dash-bg);
+  color: var(--dash-text);
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+/* ---- Top bar (extends .header-section from App.css) ---- */
+.ld-topbar {
+  box-sizing: border-box; /* App.css .header-section is width:100% + our padding */
+  height: auto !important;
+  min-height: 60px;
+  flex-shrink: 0;
+  gap: 1.1rem;
+  padding: 0 1rem !important;
+}
+.ld-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: none;
+  border: none;
+  color: var(--dash-text);
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
+}
+.ld-brand-mark { display: grid; place-content: center; color: #4da7bd; }
+.ld-brand-name {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.ld-topbar-caption {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dash-text-dim);
+}
+.ld-patient {
+  background: none;
+  border: none;
+  border-left: 1px solid var(--dash-border);
+  padding: 0.2rem 0 0.2rem 1.1rem;
+  color: var(--dash-text);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  min-width: 0;
+}
+.ld-patient-name {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+.ld-patient:hover .ld-patient-name { color: #4da7bd; }
+.ld-page-label {
+  border-left: 1px solid var(--dash-border);
+  padding: 0.2rem 0 0.2rem 1.1rem;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.ld-page-label > span:last-child { display: block; margin-top: 0.15rem; }
+.ld-topbar-spacer { flex: 1; }
+.ld-actions { display: flex; align-items: center; gap: 0.15rem; }
+.ld-actions-divider {
+  align-self: center;
+  height: 26px;
+  border-left: 1px solid var(--dash-border-strong);
+  margin: 0 0.45rem;
+}
+.ld-action svg { width: 26px; height: 26px; }
+.ld-clock {
+  flex-shrink: 0;
+  text-align: right;
+  border-left: 1px solid var(--dash-border);
+  padding-left: 1.1rem;
+  white-space: nowrap;
+}
+.ld-clock-time {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.ld-clock-date {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dash-text-muted);
+}
+
+/* ---- Main grid ---- */
+.ld-main {
+  /* Header row shared by the tiles column and the charts toolbar so each
+   * stat tile lines up with its chart row. */
+  --ld-head-h: 52px;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(230px, 320px) minmax(0, 1fr) minmax(300px, 400px);
+  gap: 0.9rem;
+  padding: 0.9rem 1rem;
+  overflow: hidden;
+}
+.ld-main.locked { grid-template-columns: minmax(210px, 320px); justify-content: center; }
+
+/* ---- Stat tiles ---- */
+/* Same row template as .ld-charts (header + 3 equal rows, no row gap) so the
+ * tiles track the chart rows; the visual gap between tiles is a margin. */
+.ld-tiles {
+  display: grid;
+  grid-template-rows: calc(var(--ld-head-h) + 1px) repeat(3, minmax(0, 1fr));
+  min-height: 0;
+}
+.ld-tiles-head {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  border: 1px solid var(--dash-border);
+  border-radius: 12px;
+  background: var(--dash-surface);
+  padding: 0 1rem;
+  min-width: 0;
+}
+.ld-tiles-head-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dash-text-muted);
+  white-space: nowrap;
+}
+.ld-tiles-head-range {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dash-text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ld-tile {
+  margin: 0.45rem 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--dash-border);
+  border-radius: 12px;
+  background: var(--dash-surface);
+  padding: 0.85rem 1rem;
+}
+.ld-tiles-head + .ld-tile { margin-top: 0.9rem; }
+.ld-tile:last-child { margin-bottom: 0; }
+.ld-tile-head { display: flex; align-items: center; justify-content: space-between; }
+.ld-tile-label {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ld-accent);
+}
+.ld-tile-tick { width: 18px; border-top: 3px solid var(--ld-accent); border-radius: 2px; }
+.ld-tile-source {
+  margin-top: 0.2rem;
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dash-text-dim);
+}
+.ld-tile-value-row {
+  /* Size container: the value scales with the space left between the caption
+   * and the stats row (definite via flex:1 in a definite-height tile), so it
+   * can't overlap either. Wrap + align-content centres the single line. */
+  container-type: size;
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  align-content: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 0;
+}
+.ld-tile-value {
+  /* Scale with the tile: ~40% of its height, capped by width so three digits
+   * plus the unit always fit; falls back to the vh clamp without cq support. */
+  font-size: clamp(44px, 6.5vh, 76px);
+  font-size: clamp(36px, min(88cqh, 34cqw), 170px);
+  font-weight: 700;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+.ld-tile-unit {
+  font-size: 16px;
+  font-size: clamp(16px, 20cqh, 34px);
+  color: var(--ld-accent);
+  font-weight: 600;
+}
+.ld-tile-stats {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border-top: 1px solid var(--dash-border);
+  padding-top: 0.55rem;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.ld-tile-stats em {
+  display: block;
+  font-style: normal;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dash-text-dim);
+  margin-bottom: 0.15rem;
+}
+
+/* ---- Charts column ---- */
+.ld-charts {
+  display: grid;
+  grid-template-rows: calc(var(--ld-head-h) + 1px) repeat(3, minmax(0, 1fr));
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--dash-border);
+  border-radius: 12px;
+  background: var(--dash-surface);
+  overflow: hidden;
+}
+.ld-charts-toolbar {
+  box-sizing: border-box;
+  height: calc(var(--ld-head-h) + 1px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 0 0.9rem;
+  border-bottom: 1px solid var(--dash-border);
+  overflow: hidden;
+}
+.ld-range-tabs { display: flex; gap: 0.2rem; }
+.ld-range-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--dash-text-muted);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.4rem 0.7rem;
+  cursor: pointer;
+}
+.ld-range-tab:hover { color: var(--dash-text); }
+.ld-range-tab.active { color: #4da7bd; border-bottom-color: #4da7bd; }
+.ld-stream {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.ld-stream-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.ld-stream-streaming { color: #3fbf6a; }
+.ld-stream-stalled { color: #f0a52e; }
+.ld-stream-offline { color: #6b7987; }
+
+.ld-chart-stack { display: contents; }
+.ld-chart {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem 0.6rem 0.2rem;
+}
+.ld-chart + .ld-chart { border-top: 1px solid var(--dash-border); }
+.ld-chart-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dash-text-muted);
+  padding: 0.1rem 0.3rem 0.25rem;
+}
+.ld-chart > div:last-child { flex: 1; min-height: 0; }
+
+/* ---- Right column ---- */
+.ld-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.ld-cards > * {
+  box-sizing: border-box;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--dash-border);
+  border-radius: 12px;
+  background: var(--dash-surface);
+  padding: 0.8rem;
+}
+
+/* ---- Status strip ---- */
+.ld-strip {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 1.6rem;
+  padding: 0.45rem 1rem;
+  border-top: 1px solid var(--dash-border);
+  background: var(--dash-surface);
+  overflow-x: auto;
+}
+.ld-strip-seg { display: flex; align-items: center; gap: 0.55rem; white-space: nowrap; }
+.ld-strip-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dash-text-dim);
+}
+.ld-strip-value {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.ld-strip-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.ld-tone-ok { color: #3fbf6a; }
+.ld-tone-due { color: #f0a52e; }
+.ld-tone-alert { color: #f0563c; }
+
+/* ---- Docked modal panels (desktop) ----
+ * A menu doesn't cover the board, it takes a seat in it. Two stops:
+ *   narrow   — exactly the cards column's footprint (the default on open)
+ *   expanded — also takes the charts column
+ * The vitals tiles, top bar and status strip stay visible in both.
+ *
+ * App.css's base rule still carries the OLD layout's magic numbers (top: 10vh
+ * for a 10%-tall header, left: 25vw for a 25% values column); both are gone,
+ * so anchor to the real geometry instead — Dashboard.jsx measures it into
+ * these variables. The doubled `.live-dash` selector wins on specificity
+ * regardless of sheet order (App.css is injected after this one — same trick
+ * as the mobile rules below).
+ * Breakpoint matches ModalBase's own `window.innerWidth <= 768` test, which
+ * switches the overlay to its full-screen `.mobile` variant. */
+@media (min-width: 769px) {
+  .live-dash .mb-overlay.docked {
+    top: var(--ld-panel-top, 60px);
+    left: var(--ld-panel-left, 0px);
+    right: var(--ld-panel-right, 0px);
+    /* Reserve the in-app keyboard's height so the panel shrinks above it. */
+  bottom: calc(var(--ld-panel-bottom, 0px) + var(--vkb-height, 0px));
+    width: auto;
+    height: auto;
+    /* The panel *is* the surface — no scrim, the board stays legible. */
+    background: none;
+    backdrop-filter: none;
+    transition: left 160ms ease;
+  }
+  .live-dash .mb-overlay.docked.expanded {
+    left: var(--ld-panel-left-wide, 0px);
+  }
+
+  /* Undocked panels (`dock={false}`) take the rest of the board, but still
+     start after the vitals column: the pulse ox keeps streaming while the
+     board is locked, so an unlock prompt must not cover live readings. */
+  .live-dash .mb-overlay:not(.docked):not(.mobile) {
+    top: var(--ld-panel-top, 60px);
+    left: var(--ld-panel-left, 0px);
+    right: 0;
+    /* Reserve the in-app keyboard's height so the panel shrinks above it. */
+  bottom: calc(var(--ld-panel-bottom, 0px) + var(--vkb-height, 0px));
+    width: auto;
+    height: auto;
+    /* The board's own gates (unlock, patient picker) fill their region
+       edge-to-edge rather than sitting as a centred panel inside it — the
+       region is already bounded by the vitals column it must not cover.
+       modal-base.css centres the plain-desktop shape for admin surfaces,
+       which have no such bounding. */
+    display: block;
+    padding: 0;
+  }
+  .live-dash .mb-overlay:not(.docked):not(.mobile) > .mb-panel {
+    height: 100%;
+    max-width: none;
+    border: none;
+    border-radius: 0;
+  }
+
+  /* Docked panels wear the same chrome as the cards they stand in for. */
+  .live-dash .mb-panel.docked {
+    border: 1px solid var(--dash-border);
+    border-radius: 12px;
+    background: var(--dash-surface);
+  }
+  .live-dash .mb-head.docked {
+    border-bottom: 1px solid var(--dash-border);
+    background: none;
+    padding: 0.7rem 0.5rem 0.7rem 1rem;
+    gap: 0.5rem;
+  }
+  .live-dash .mb-head.docked .mb-title {
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--dash-text-muted);
+  }
+  /* The one inner scroller of a docked panel body. min-height: 0 is the
+     whole point — without it the flex child can't shrink below its content
+     and overflow never engages, so the outer .mb-body scrolls the list
+     and the side pane as one document. */
+  .ld-panel-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+
+  .live-dash .mb-body.docked {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 0.85rem 1rem;
+  }
+}
+
+/* ---- Mobile ---- */
+@media (max-width: 768px) {
+  /* Doubled selector: App.css's .dashboard-wrapper (100vh, overflow hidden)
+   * is injected after this sheet, so a bare .live-dash loses the tie. */
+  .dashboard-wrapper.live-dash { height: auto; min-height: 100dvh; overflow-y: auto; }
+  .ld-main {
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+    padding: 0.75rem;
+  }
+  /* Stacked flow needs natural heights — flex-basis 0 collapses the column */
+  .ld-tiles, .ld-tile { flex: none; }
+  .ld-tiles { display: flex; flex-direction: column; gap: 0.9rem; }
+  .ld-tile, .ld-tiles-head + .ld-tile { margin: 0; min-height: 150px; }
+  .ld-tile-value-row { container-type: normal; }
+  .ld-tile-value-row { padding: 0.5rem 0; }
+  .ld-tile-value { font-size: 54px; }
+  .ld-tile-unit { font-size: 16px; }
+
+  /* The head carries the range tabs here, so it stops being decoration. */
+  .ld-tiles-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    height: auto;
+    padding: 0 0.1rem 0.1rem;
+    border: none;
+    background: none;
+  }
+  .ld-range-tabs.compact { gap: 0.15rem; }
+  .ld-range-tabs.compact .ld-range-tab { padding: 0.3rem 0.5rem; font-size: 10px; }
+
+  /* A tile that can flip is still a tile: strip the button paint index.css
+     gives every bare <button> and keep the card's own box. */
+  .ld-tile-flip {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .ld-tile-flip.flipped { min-height: 210px; }
+
+  /* Value and trace share one box rather than taking turns: the number is the
+     ground, the line is drawn over it. */
+  .ld-tile-plot { position: relative; flex: 1; min-height: 120px; margin: 0.35rem 0 0.15rem; }
+  .ld-tile-ghost {
+    position: absolute;
+    inset: 0;
+    /* Over the trace, not behind it — the line reads through the number
+       rather than the number hiding under the chart's own surface. */
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+    pointer-events: none;
+  }
+  /* The tile's own accent at low alpha, not grey — a greyed number reads as
+     stale, and this one is live. */
+  .ld-tile-ghost-value {
+    font-family: var(--vc-font-mono);
+    font-size: 76px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: color-mix(in srgb, var(--ld-accent, #9aa8b8) 26%, transparent);
+    font-variant-numeric: tabular-nums;
+  }
+  .ld-tile-ghost-unit {
+    align-self: flex-end;
+    padding-bottom: 0.9rem;
+    font-family: var(--vc-font-mono);
+    font-size: 16px;
+    font-weight: 700;
+    color: color-mix(in srgb, var(--ld-accent, #9aa8b8) 26%, transparent);
+  }
+  .ld-tile-trace { position: absolute; inset: 0; }
+
+  /* Four segments at desktop spacing run off a 390px screen. Tighten and let
+     them wrap onto a second line rather than clipping the last one. */
+  .ld-strip {
+    flex-wrap: wrap;
+    gap: 0.35rem 0.9rem;
+    padding: 0.45rem 0.75rem calc(0.45rem + env(safe-area-inset-bottom, 0px));
+  }
+  .ld-strip-seg { gap: 0.35rem; }
+  .ld-strip-label { font-size: 9px; }
+  .ld-strip-value { font-size: 10.5px; gap: 0.3rem; }
+
+  .ld-clock, .ld-page-label { display: none; }
+}
+
+/* Mid-width: the page label yields before anything clips */
+@media (max-width: 1450px) {
+  .ld-page-label { display: none; }
+}
+@media (max-width: 1150px) and (min-width: 769px) {
+  .ld-patient-name { max-width: 130px; }
+  .ld-topbar { gap: 0.7rem; }
+  .ld-action svg { width: 22px; height: 22px; }
+}
+
+/* ---- Mobile modal header ----
+ * App.css styles this bar for the pre-vc app: a 65px band with a #60a5fa
+ * "← Back" that belongs to no palette here. It appears on every section on a
+ * phone, so its weight is felt across the whole board. Tighter, and on-token.
+ * Specificity is doubled deliberately — App.css is injected after this sheet. */
+.live-dash .mb-head.mobile {
+  height: auto;
+  min-height: 0;
+  padding: 0.55rem 0.75rem;
+  gap: 0.6rem;
+  border-bottom: 1px solid var(--dash-border);
+  background: none;
+}
+.live-dash .mb-head .mb-back {
+  flex-shrink: 0;
+  min-height: 34px;
+  padding: 0 0.6rem;
+  border: 1px solid var(--dash-border);
+  border-radius: 8px;
+  background: var(--dash-surface);
+  color: var(--dash-text-muted);
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  gap: 0.3rem;
+}
+.live-dash .mb-head .mb-back:hover {
+  background: var(--dash-surface-2);
+  color: var(--dash-text);
+  border-color: var(--dash-border-strong);
+}
+/* The title carries the section, so it gets the space the button gives back. */
+.live-dash .mb-head.mobile .mb-title { font-size: 12.5px; min-width: 0; }

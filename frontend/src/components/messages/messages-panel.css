@@ -1,0 +1,707 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Messages, one styling for both hosts: the admin page and the dashboard's
+ * docked panel.
+ *
+ * Severity is carried by the badge and the icon. There is deliberately no
+ * coloured bar down the side of the card — the stripe is decoration standing in
+ * for a label, and the badge already says the level in words.
+ *
+ * The dashboard is dark always; admin follows the user's theme. So the palette
+ * is a local token layer that defaults to the app's own light-capable variables
+ * and is swapped to the vc tokens under dark (`:root:not(.light)`, the admin
+ * convention) or under `.force-dark` (how the live board pins itself dark
+ * regardless of theme).
+ *
+ * Rendered outside the `.tw` island, so box-sizing and the bare <button> paint
+ * are asserted; `:where()` keeps that reset at element specificity. */
+@import '../../styles/vc-tokens.css';
+
+.mx-board {
+  --mx-surface: var(--vc-bg-surface);
+  --mx-raised: var(--vc-bg-raised);
+  --mx-line: var(--vc-line-hairline);
+  --mx-line-strong: var(--vc-line-strong);
+  --mx-text: var(--vc-text-primary);
+  --mx-text-2: var(--vc-text-secondary);
+  --mx-text-3: var(--vc-text-tertiary);
+  --mx-accent: var(--vc-data-live);
+  --mx-critical: var(--vc-state-alert);
+  --mx-warning: var(--vc-state-due);
+  --mx-info: var(--vc-data-live);
+}
+
+.mx-board, .mx-board * { box-sizing: border-box; }
+:where(.mx-board) button {
+  font-family: var(--vc-font-mono);
+  padding: 0;
+  border: 1px solid transparent;
+  background: none;
+  color: inherit;
+}
+
+.mx-board {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  /* Capped rather than full-bleed: on a 1920px admin page an un-capped card
+     runs the message body out to a line nobody tracks across. */
+  max-width: 1040px;
+  font-family: var(--vc-font-sans);
+  color: var(--mx-text);
+}
+
+.mx-sr {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ---- toolbar ---- */
+
+.mx-toolbar { display: flex; flex-direction: column; gap: 0.6rem; }
+
+.mx-tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--mx-line);
+  border-radius: 10px;
+  background: var(--mx-surface);
+}
+.mx-tab {
+  flex: 1;
+  min-height: 36px;
+  padding: 0 0.6rem;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--mx-text-3);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.mx-tab:hover { color: var(--mx-text); }
+.mx-tab.active {
+  background: var(--mx-raised);
+  border-color: var(--mx-line-strong);
+  color: var(--mx-text);
+}
+.mx-tab-count { color: var(--mx-accent); font-size: 10.5px; }
+
+.mx-toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.mx-source {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.mx-source select {
+  appearance: none;
+  width: 100%;
+  min-height: 38px;
+  padding: 0 2rem 0 0.7rem;
+  border: 1px solid var(--mx-line);
+  border-radius: 8px;
+  background: var(--mx-surface);
+  color: var(--mx-text-2);
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.mx-source select:disabled { cursor: default; opacity: 0.6; }
+.mx-source select:hover:not(:disabled) { border-color: var(--mx-accent); }
+.mx-source svg {
+  position: absolute;
+  right: 0.6rem;
+  pointer-events: none;
+  color: var(--mx-text-3);
+}
+/* The OS draws the option list, so tell it which scheme to paint. */
+:root:not(.light) .mx-board .mx-source select,
+.force-dark .mx-board .mx-source select { color-scheme: dark; }
+
+/* ---- groups ---- */
+
+.mx-group { display: flex; flex-direction: column; gap: 0.5rem; }
+.mx-group-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--mx-text-3);
+}
+.mx-group-count { color: var(--mx-accent); }
+.mx-cards { display: flex; flex-direction: column; gap: 0.6rem; }
+
+/* ---- card ---- */
+
+.mx-card {
+  border: 1px solid var(--mx-line);
+  border-radius: 10px;
+  background: var(--mx-surface);
+  overflow: hidden;
+}
+.mx-card.busy { opacity: 0.6; }
+
+.mx-card-top {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 0.8rem 0;
+  min-width: 0;
+}
+.mx-badge {
+  flex-shrink: 0;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid;
+  border-radius: 6px;
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.mx-badge.critical {
+  color: var(--mx-critical);
+  border-color: color-mix(in srgb, var(--mx-critical) 60%, transparent);
+  background: color-mix(in srgb, var(--mx-critical) 12%, transparent);
+}
+.mx-badge.warning {
+  color: var(--mx-warning);
+  border-color: color-mix(in srgb, var(--mx-warning) 60%, transparent);
+  background: color-mix(in srgb, var(--mx-warning) 12%, transparent);
+}
+.mx-badge.info {
+  color: var(--mx-info);
+  border-color: color-mix(in srgb, var(--mx-info) 55%, transparent);
+  background: color-mix(in srgb, var(--mx-info) 10%, transparent);
+}
+.mx-cat {
+  min-width: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--mx-text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mx-card-main {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.6rem 0.8rem 0.75rem;
+}
+.mx-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid;
+  border-radius: 10px;
+}
+.mx-icon.critical {
+  color: var(--mx-critical);
+  border-color: color-mix(in srgb, var(--mx-critical) 35%, transparent);
+  background: color-mix(in srgb, var(--mx-critical) 8%, transparent);
+}
+.mx-icon.warning {
+  color: var(--mx-warning);
+  border-color: color-mix(in srgb, var(--mx-warning) 35%, transparent);
+  background: color-mix(in srgb, var(--mx-warning) 8%, transparent);
+}
+.mx-icon.info {
+  color: var(--mx-info);
+  border-color: color-mix(in srgb, var(--mx-info) 32%, transparent);
+  background: color-mix(in srgb, var(--mx-info) 8%, transparent);
+}
+
+.mx-card-text { min-width: 0; display: flex; flex-direction: column; gap: 0.25rem; }
+.mx-title {
+  margin: 0;
+  font-family: var(--vc-font-sans);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--mx-text);
+}
+.mx-body {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--mx-text-2);
+  white-space: pre-wrap;
+}
+.mx-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.15rem;
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--mx-text-3);
+}
+.mx-dot { color: var(--mx-line-strong); }
+.mx-snoozed {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mx-warning);
+}
+
+/* ---- actions ---- */
+
+.mx-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.8rem;
+  border-top: 1px solid var(--mx-line);
+}
+.mx-card-actions-main {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-width: 0;
+  flex: 1;
+}
+.mx-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 34px;
+  padding: 0 0.75rem;
+  border-radius: 8px;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.mx-btn.primary {
+  border: 1px solid var(--mx-accent);
+  background: color-mix(in srgb, var(--mx-accent) 16%, transparent);
+  color: var(--mx-text);
+}
+.mx-btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--mx-accent) 28%, transparent); }
+.mx-btn.ghost { border: 1px solid var(--mx-line-strong); color: var(--mx-text-2); }
+.mx-btn.ghost:hover:not(:disabled) { color: var(--mx-text); border-color: var(--mx-accent); }
+.mx-btn.danger {
+  border: 1px solid color-mix(in srgb, var(--mx-critical) 55%, transparent);
+  color: var(--mx-critical);
+}
+.mx-btn.danger:hover:not(:disabled) { background: color-mix(in srgb, var(--mx-critical) 12%, transparent); }
+.mx-btn.sm { min-height: 28px; padding: 0 0.55rem; font-size: 9.5px; }
+.mx-btn:disabled { opacity: 0.45; cursor: default; }
+
+.mx-link {
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 34px;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mx-accent);
+  cursor: pointer;
+}
+.mx-link:hover { color: var(--mx-text); }
+.mx-note {
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mx-text-3);
+}
+
+.mx-more {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  margin-left: auto;
+  border: 1px solid var(--mx-line-strong);
+  border-radius: 50%;
+  color: var(--mx-text-3);
+  cursor: pointer;
+}
+.mx-more:hover, .mx-more.open { color: var(--mx-text); border-color: var(--mx-accent); }
+
+.mx-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.6rem 0.8rem 0.7rem;
+  border-top: 1px solid var(--mx-line);
+  background: var(--mx-raised);
+}
+.mx-menu-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.mx-menu-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--mx-text-3);
+}
+.mx-menu-opts { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-left: auto; }
+
+/* ---- states ---- */
+
+.mx-empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mx-text-3);
+}
+.mx-error {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--mx-critical) 55%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mx-critical) 12%, transparent);
+  color: var(--mx-text);
+  font-size: 12.5px;
+}
+
+.mx-foot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding-top: 0.2rem;
+}
+.mx-foot-label {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mx-text-3);
+}
+
+/* ---- narrow dock stop ----
+   One column of controls and a smaller icon; the actions wrap under the text
+   rather than competing with it for the same 380px line. */
+.mx-board.dense .mx-tab { font-size: 9.5px; letter-spacing: 0.08em; padding: 0 0.35rem; }
+.mx-board.dense .mx-icon { width: 34px; height: 34px; border-radius: 8px; }
+.mx-board.dense .mx-card-main { gap: 0.6rem; padding: 0.5rem 0.65rem 0.65rem; }
+.mx-board.dense .mx-card-top { padding: 0.55rem 0.65rem 0; }
+.mx-board.dense .mx-title { font-size: 13.5px; }
+.mx-board.dense .mx-body { font-size: 12px; }
+.mx-board.dense .mx-card-actions { padding: 0.5rem 0.65rem; flex-wrap: wrap; }
+.mx-board.dense .mx-btn.primary { flex: 1; }
+
+/* ---- compose sheet ----
+   Rides the capture surface's bottom sheet (.vc-sheet chrome), so it is dark
+   like every other sheet in the app rather than following the admin theme.
+   Only the form inside is defined here. */
+
+.mx-compose {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding-top: 0.7rem;
+  font-family: var(--vc-font-sans);
+  color: var(--vc-text-primary);
+}
+.mx-compose * { box-sizing: border-box; }
+.mx-compose .mx-error { color: var(--vc-text-primary); }
+
+.mx-compose-sub {
+  margin: -0.3rem 0 0;
+  font-size: 13px;
+  color: var(--vc-text-secondary);
+}
+
+.mx-field { display: flex; flex-direction: column; gap: 0.4rem; }
+.mx-field-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+/* Required is the one thing that stops a post, so it gets the accent; optional
+   recedes instead of shouting the same way. */
+.mx-req { color: var(--vc-data-live); }
+.mx-opt { color: var(--vc-text-tertiary); }
+
+.mx-input {
+  width: 100%;
+  min-height: 48px;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 10px;
+  background: var(--vc-bg-base);
+  color: var(--vc-text-primary);
+  font-family: var(--vc-font-sans);
+  font-size: 15px;
+}
+.mx-input::placeholder { color: var(--vc-text-tertiary); }
+.mx-input:focus {
+  outline: none;
+  border-color: var(--vc-data-live);
+}
+.mx-textarea { min-height: 110px; resize: vertical; line-height: 1.45; }
+.mx-count {
+  align-self: flex-end;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+
+/* Priority: segmented, and each level wears the colour it will have on the
+   card — urgent is the one red the palette reserves for real concern. */
+.mx-seg {
+  display: flex;
+  gap: 0.3rem;
+  padding: 0.3rem;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 10px;
+  background: var(--vc-bg-base);
+}
+.mx-seg-btn {
+  padding: 0;
+  flex: 1;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  color: var(--vc-text-secondary);
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.mx-seg-btn:hover { color: var(--vc-text-primary); }
+.mx-seg-btn.on.info {
+  background: color-mix(in srgb, var(--vc-data-live) 22%, transparent);
+  border-color: var(--vc-data-live);
+  color: var(--vc-text-primary);
+}
+.mx-seg-btn.on.warning {
+  background: color-mix(in srgb, var(--vc-state-due) 20%, transparent);
+  border-color: var(--vc-state-due);
+  color: var(--vc-text-primary);
+}
+.mx-seg-btn.on.critical {
+  background: color-mix(in srgb, var(--vc-state-alert) 20%, transparent);
+  border-color: var(--vc-state-alert);
+  color: var(--vc-text-primary);
+}
+
+.mx-card-block {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 10px;
+  background: var(--vc-bg-surface);
+  padding: 0.7rem 0.8rem;
+  gap: 0.6rem;
+}
+.mx-block-head {
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.mx-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--vc-line-hairline);
+}
+.mx-card-block .mx-toggle-row:first-of-type { border-top: none; padding-top: 0; }
+.mx-toggle-row.disabled { opacity: 0.5; }
+.mx-toggle-text { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.mx-toggle-label { font-size: 14.5px; color: var(--vc-text-primary); }
+.mx-toggle-hint { font-size: 12px; color: var(--vc-text-tertiary); }
+
+.mx-switch {
+  flex-shrink: 0;
+  position: relative;
+  width: 52px;
+  height: 30px;
+  margin-left: auto;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 999px;
+  background: var(--vc-bg-base);
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.mx-switch.on { background: var(--vc-data-live); border-color: var(--vc-data-live); }
+.mx-switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--vc-text-tertiary);
+  transition: transform 120ms ease, background 120ms ease;
+}
+.mx-switch.on .mx-switch-knob { transform: translateX(22px); background: var(--vc-text-primary); }
+.mx-switch:disabled { cursor: default; opacity: 0.5; }
+
+.mx-choices { display: flex; flex-direction: column; gap: 0.4rem; }
+.mx-choice {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 10px;
+  background: var(--vc-bg-base);
+  color: var(--vc-text-secondary);
+  text-align: left;
+  cursor: pointer;
+}
+.mx-choice.on {
+  border-color: var(--vc-data-live);
+  background: color-mix(in srgb, var(--vc-data-live) 12%, transparent);
+  color: var(--vc-data-live);
+}
+.mx-choice-text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; flex: 1; }
+.mx-choice-label {
+  font-family: var(--vc-font-mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+.mx-choice-hint { font-family: var(--vc-font-sans); font-size: 12px; color: var(--vc-text-tertiary); }
+
+.mx-compose-note {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--vc-text-tertiary);
+}
+.mx-compose-note svg { flex-shrink: 0; color: var(--vc-data-live); }
+.mx-compose-note strong {
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+
+/* The action row sticks to the bottom of the sheet so Post is reachable
+   without scrolling back down a long form. */
+.mx-compose-actions {
+  position: sticky;
+  bottom: 0;
+  padding: 0.7rem 0 0;
+  margin-top: 0.2rem;
+  border-top: 1px solid var(--vc-line-hairline);
+  background: var(--vc-bg-sheet);
+}
+
+/* ---- confirm sheet ---- */
+.mx-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding-top: 0.8rem;
+  font-family: var(--vc-font-sans);
+  color: var(--vc-text-primary);
+}
+.mx-confirm p { margin: 0; font-size: 14px; color: var(--vc-text-secondary); }
+.mx-confirm strong { color: var(--vc-text-primary); }
+.vc-btn.mx-danger {
+  background: var(--vc-state-alert);
+  color: var(--vc-bg-base);
+  flex: 1.6;
+}
+.vc-btn.mx-danger:hover { border-color: transparent; }
+
+/* The lone overflow button on an archived card sits in the header row. */
+.mx-card-top .mx-more { width: 28px; height: 28px; margin-left: auto; }

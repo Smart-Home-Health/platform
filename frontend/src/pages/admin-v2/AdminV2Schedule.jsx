@@ -18,7 +18,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
-import { PatientSelectorModal, IntakeModal, OutputModal, MedicationDoseModal, UpdateQuantityModal, CareTaskCompleteModal } from './components';
+import { PatientSelectorModal, IntakeSheet, OutputSheet, MedicationDoseModal, UpdateQuantityModal, CareTaskCompleteModal } from './components';
+import IntakeItemsEditor from '../../components/nutrition/IntakeItemsEditor';
+import { nutritionService } from '../../services/nutrition';
+import {
+  feedTarget, rowIsValid, rowToItemPayload, rowsFromScheduleRow,
+} from '../../components/nutrition/intakeItemRows';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
@@ -35,27 +40,11 @@ import {
   UndoIcon
 } from '../../components/Icons';
 import { getCurrentLocalDateTime, localDateTimeToUTC, checkAdministrationWindow, formatDurationMinutes } from '../../utils/timezone';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
-import { Field, FormRow } from '@/components/ui/field';
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
+import EntityModal, { EmField } from '../../components/vc/EntityModal';
+import '../../components/vc/entity-card.css';
+import './settings/settings-page.css';
 import './AdminV2.css';
+import './vc-schedule.css'; // bedside-monitor skin (dark theme only)
 
 const AdminV2Schedule = () => {
   const { user } = useAuth();
@@ -108,6 +97,14 @@ const AdminV2Schedule = () => {
     amount: '',
     amount_unit: '',
     item_name: ''
+  });
+  // Nutrition completion is multi-item: the feed's component mix (or its
+  // single legacy default) as editable rows, adjusted per feed.
+  const [completeItems, setCompleteItems] = useState([]);
+
+  // Post-feed flush follow-up: run (log the water) or skip (recorded).
+  const [flushModal, setFlushModal] = useState({
+    open: false, item: null, amount: '', notes: '', busy: false, error: null,
   });
 
   // PRN / Quick-log modal state
@@ -312,11 +309,19 @@ const AdminV2Schedule = () => {
       notes: '',
       dose_amount: item.dose_amount || '',
       dose_unit: item.dose_unit || '',
-      amount: item.default_amount || '',
+      // A dynamic water spot prefills today's suggestion, not its nominal.
+      amount: (item.fluid_dynamic && item.suggested_amount != null)
+        ? item.suggested_amount
+        : (item.default_amount || ''),
       amount_unit: item.default_amount_unit || '',
       item_name: item.default_item || item.name || ''
     });
-    
+
+    // Nutrition: the feed's expected mix (or its single default) as rows.
+    if (type === 'nutrition') {
+      setCompleteItems(rowsFromScheduleRow(item));
+    }
+
     setShowCompleteModal(true);
   };
 
@@ -410,12 +415,9 @@ const AdminV2Schedule = () => {
           ...(type === 'medication' && {
             dose_amount: item.dose_amount,
             dose_unit: item.dose_unit
-          }),
-          ...(type === 'nutrition' && {
-            amount: item.default_amount,
-            amount_unit: item.default_amount_unit,
-            item_name: item.default_item
           })
+          // Nutrition sends no item fields: the backend expands each feed's
+          // component mix (or its legacy single default) itself.
         }));
         
         const response = await fetch(`${config.apiUrl}/api/schedule/complete/bulk`, {
@@ -438,6 +440,10 @@ const AdminV2Schedule = () => {
             })
           }));
           setShowCompleteModal(false);
+          // Any flush-flagged feed in the batch queued a follow-up row.
+          if (type === 'nutrition' && items.some(i => i.flush_components?.length)) {
+            fetchSchedule();
+          }
         } else {
           const data = await response.json().catch(() => ({}));
           alert(data.detail || 'Failed to record completion.');
@@ -463,9 +469,9 @@ const AdminV2Schedule = () => {
               dose_unit: completeFormData.dose_unit
             }),
             ...(type === 'nutrition' && {
-              amount: completeFormData.amount,
-              amount_unit: completeFormData.amount_unit,
-              item_name: completeFormData.item_name
+              // The full mix as adjusted in the dialog — one intake row per
+              // item, grouped server-side under one event.
+              items: completeItems.map(rowToItemPayload)
             })
           })
         });
@@ -486,6 +492,11 @@ const AdminV2Schedule = () => {
               )
             }));
             setShowCompleteModal(false);
+            // A flush-flagged feed queued a follow-up row server-side;
+            // refetch so it appears at its computed time.
+            if (type === 'nutrition' && (result.flush_followup || item.flush_components?.length)) {
+              fetchSchedule();
+            }
           } else {
             alert(result.error || 'Failed to record completion.');
           }
@@ -504,6 +515,46 @@ const AdminV2Schedule = () => {
   // Legacy handlers that now open modal (keeping for backwards compatibility if needed)
   const handleCompleteItem = (type, item) => {
     openCompleteModal(type, item);
+  };
+
+  // ---- Post-feed flush follow-up ----
+
+  const openFlushModal = (item) => setFlushModal({
+    open: true,
+    item,
+    // A pending flush prefills today's suggestion (what is left of the
+    // fluid goal) over its queued nominal — 0 means the goal is met.
+    amount: (item.fluid_dynamic && item.suggested_amount != null)
+      ? String(item.suggested_amount)
+      : (item.default_amount != null ? String(item.default_amount) : ''),
+    notes: '',
+    busy: false,
+    error: null,
+  });
+
+  const closeFlushModal = () => setFlushModal((m) => ({ ...m, open: false }));
+
+  const submitFlush = async (skip) => {
+    const { item, amount, notes } = flushModal;
+    if (!item?.followup_id) return;
+    setFlushModal((m) => ({ ...m, busy: true, error: null }));
+    try {
+      if (skip) {
+        await nutritionService.skipFlush(item.followup_id, {
+          notes: notes || undefined, user_id: user?.id || undefined,
+        });
+      } else {
+        await nutritionService.completeFlush(item.followup_id, {
+          amount: amount ? Number(amount) : undefined,
+          notes: notes || undefined,
+          user_id: user?.id || undefined,
+        });
+      }
+      setFlushModal((m) => ({ ...m, open: false, busy: false }));
+      fetchSchedule();
+    } catch (err) {
+      setFlushModal((m) => ({ ...m, busy: false, error: err.message }));
+    }
   };
 
   const handleCompleteHour = (hour, type) => {
@@ -743,9 +794,7 @@ const AdminV2Schedule = () => {
         {selectedPatient ? (
           <>
             {error && (
-              <div className="tw" style={{ marginBottom: '1rem' }}>
-                <Alert variant="destructive">{error}</Alert>
-              </div>
+              <div className="em-error" role="alert" style={{ marginBottom: '1rem' }}>{error}</div>
             )}
 
             {/* Date Navigation */}
@@ -1002,19 +1051,32 @@ const AdminV2Schedule = () => {
                               )}
                               {nutritionByHour[hour].map((item, idx) => {
                                 // PRN intakes/outputs have no schedule_id — key off log_id.
-                                const rowId = item.schedule_id ?? `prn-${item.intake_type || 'intake'}-${item.log_id}`;
+                                // Flush follow-ups key off their own id.
+                                const isFlush = item.row_kind === 'flush';
+                                const rowId = isFlush
+                                  ? `flush-${item.followup_id}`
+                                  : (item.schedule_id ?? `prn-${item.intake_type || 'intake'}-${item.log_id}`);
                                 const itemKey = `nutrition-${rowId}-${item.scheduled_time}`;
                                 const isPrn = !!item.is_prn;
                                 const isOutput = item.intake_type === 'output';
+                                const isSkipped = !!item.skipped;
+                                const isActionable = !item.completed && !isPrn && !isSkipped;
                                 return (
                                   <React.Fragment key={`nutr-${rowId}-${idx}`}>
                                     {idx > 0 && <div className="admin-v2-schedule-divider" />}
                                     <div
-                                      className={`admin-v2-schedule-item ${item.completed ? 'completed' : 'clickable'} ${completing[itemKey] ? 'completing' : ''}`}
-                                      onClick={(e) => { e.stopPropagation(); if (!item.completed && !isPrn) handleCompleteItem('nutrition', item); }}
+                                      className={`admin-v2-schedule-item ${item.completed ? 'completed' : (isActionable ? 'clickable' : '')} ${isSkipped ? 'skipped' : ''} ${completing[itemKey] ? 'completing' : ''}`}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (!isActionable) return;
+                                        if (isFlush) openFlushModal(item);
+                                        else handleCompleteItem('nutrition', item);
+                                      }}
                                       role="button"
-                                      tabIndex={item.completed || isPrn ? -1 : 0}
-                                      title={isPrn ? (isOutput ? 'Output logged ad-hoc' : 'Intake logged ad-hoc') : undefined}
+                                      tabIndex={isActionable ? 0 : -1}
+                                      title={isPrn ? (isOutput ? 'Output logged ad-hoc' : 'Intake logged ad-hoc')
+                                        : isFlush ? 'Post-feed flush — run or skip'
+                                          : undefined}
                                     >
                                       <div className="admin-v2-schedule-item-header">
                                         {(() => {
@@ -1035,7 +1097,43 @@ const AdminV2Schedule = () => {
                                             {isOutput ? 'PRN Out' : 'PRN In'}
                                           </span>
                                         )}
-                                        {(item.default_amount || item.default_item) && (
+                                        {isFlush && (
+                                          <span
+                                            className="admin-v2-badge admin-v2-badge-prn admin-v2-badge-prn-in"
+                                            title="Post-feed water flush"
+                                          >
+                                            Flush
+                                          </span>
+                                        )}
+                                        {isSkipped && (
+                                          <span className="admin-v2-badge" title="Deliberately not run">
+                                            Skipped
+                                          </span>
+                                        )}
+                                        {item.components?.length ? (
+                                          <span
+                                            className="admin-v2-schedule-item-dose"
+                                            title={item.components.map((c) => `${c.item_name} ${c.amount} ${c.amount_unit}`).join(' + ')}
+                                          >
+                                            {item.components.length > 1
+                                              ? `${item.components.length} items`
+                                              : `${item.components[0].item_name} ${item.components[0].amount} ${item.components[0].amount_unit || ''}`}
+                                          </span>
+                                        ) : (item.fluid_dynamic && !item.completed && item.suggested_amount != null) ? (
+                                          // Dynamic water spot: the amount is computed from
+                                          // what is left of the daily fluid target.
+                                          <span
+                                            className="admin-v2-schedule-item-dose"
+                                            title={item.water_plan
+                                              ? `Target ${item.water_plan.target_ml} mL · logged ${item.water_plan.logged_ml} · ${item.water_plan.expected_food_ml} coming from feeds · ${item.water_plan.spots_remaining} spot${item.water_plan.spots_remaining === 1 ? '' : 's'} left`
+                                              : undefined}
+                                          >
+                                            {item.default_item && <span>{item.default_item} </span>}
+                                            {item.suggested_amount > 0
+                                              ? `suggested ${item.suggested_amount} ${item.default_amount_unit || 'ml'}${item.default_amount ? ` (of ${item.default_amount})` : ''}`
+                                              : 'goal met — skip?'}
+                                          </span>
+                                        ) : (item.default_amount || item.default_item) && (
                                           <span className="admin-v2-schedule-item-dose">
                                             {item.default_item && <span>{item.default_item}</span>}
                                             {item.default_amount && (
@@ -1186,14 +1284,12 @@ const AdminV2Schedule = () => {
             </div>
           </>
         ) : (
-          <div className="schedule-select-patient">
+          <div className="cfg-nopatient">
             <h2>Select a Patient</h2>
             <p>Choose a patient to view their daily schedule</p>
-            <div className="tw">
-              <Button onClick={() => setShowPatientModal(true)}>
-                Select Patient
-              </Button>
-            </div>
+            <button type="button" className="em-submit" onClick={() => setShowPatientModal(true)}>
+              Select Patient
+            </button>
           </div>
         )}
 
@@ -1209,109 +1305,90 @@ const AdminV2Schedule = () => {
         )}
 
         {/* Completion Confirmation Dialog */}
-        <Dialog open={showCompleteModal} onOpenChange={(o) => { if (!o) setShowCompleteModal(false); }}>
-          <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-[480px]" aria-describedby={undefined}>
-            <DialogHeader>
-              <DialogTitle>
-                {completeModalData.isBulk
-                  ? `Complete ${completeModalData.items.length} ${completeModalData.type === 'medication' ? 'Medication' : completeModalData.type === 'nutrition' ? 'Nutrition' : 'Care Task'}${completeModalData.items.length > 1 ? 's' : ''}`
-                  : `Complete ${completeModalData.type === 'medication' ? 'Medication' : completeModalData.type === 'nutrition' ? 'Nutrition' : 'Care Task'}`
-                }
-              </DialogTitle>
-            </DialogHeader>
-
-            {/* Item Summary */}
-            <div className="rounded-md bg-secondary p-4">
+        <EntityModal
+          open={showCompleteModal}
+          onOpenChange={(o) => { if (!o) setShowCompleteModal(false); }}
+          title={completeModalData.isBulk
+            ? `Complete ${completeModalData.items.length} ${completeModalData.type === 'medication' ? 'Medication' : completeModalData.type === 'nutrition' ? 'Nutrition' : 'Care Task'}${completeModalData.items.length > 1 ? 's' : ''}`
+            : `Complete ${completeModalData.type === 'medication' ? 'Medication' : completeModalData.type === 'nutrition' ? 'Nutrition' : 'Care Task'}`}
+        >
+          <div className="em-form">
+            <div className="sch-summary">
               {completeModalData.items.map((item, idx) => (
-                <div
-                  key={idx}
-                  className={`flex items-center justify-between ${idx > 0 ? 'mt-2 border-t border-border pt-2' : ''}`}
-                >
-                  <span className="font-medium">{item.name}</span>
-                  <span className="text-sm text-muted-foreground">
-                    Scheduled: {String(item.hour).padStart(2, '0')}:{String(item.minute).padStart(2, '0')}
+                <div key={idx} className="sch-summary-row">
+                  <span className="sch-summary-name">{item.name}</span>
+                  <span className="sch-summary-when">
+                    Scheduled {String(item.hour).padStart(2, '0')}:{String(item.minute).padStart(2, '0')}
                   </span>
                 </div>
               ))}
             </div>
 
-            {/* Completion Time */}
-            <Field label="Completed At" required hint="Adjust if completed at a different time">
-              <Input
+            <EmField label="Completed At" required htmlFor="sch-completed-at"
+                     hint="Adjust if completed at a different time">
+              <input
+                id="sch-completed-at"
+                className="em-input"
                 type="datetime-local"
                 value={completeFormData.completed_at}
-                onChange={e => setCompleteFormData({...completeFormData, completed_at: e.target.value})}
+                onChange={e => setCompleteFormData({ ...completeFormData, completed_at: e.target.value })}
               />
-            </Field>
+            </EmField>
 
-            {/* Medication-specific fields */}
             {completeModalData.type === 'medication' && !completeModalData.isBulk && (
-              <Field label="Dose Amount">
-                <div className="flex items-center gap-2">
-                  <Input
+              <EmField label="Dose Amount" htmlFor="sch-dose">
+                <span className="sch-dose">
+                  <input
+                    id="sch-dose"
+                    className="em-input"
                     type="number"
                     step="0.1"
                     value={completeFormData.dose_amount}
-                    onChange={e => setCompleteFormData({...completeFormData, dose_amount: e.target.value})}
+                    onChange={e => setCompleteFormData({ ...completeFormData, dose_amount: e.target.value })}
                     placeholder="Amount given"
-                    className="flex-1"
                   />
-                  <span className="shrink-0 text-sm text-muted-foreground">
-                    {completeFormData.dose_unit || 'units'}
-                  </span>
-                </div>
-              </Field>
+                  <span className="sch-dose-unit">{completeFormData.dose_unit || 'units'}</span>
+                </span>
+              </EmField>
             )}
 
-            {/* Nutrition-specific fields */}
+            {/* Nutrition: the feed's mix as editable rows — adjust amounts,
+                drop what was refused, add the extra juice that was given. */}
             {completeModalData.type === 'nutrition' && !completeModalData.isBulk && (
               <>
-                <Field label="Item Name">
-                  <Input
-                    type="text"
-                    value={completeFormData.item_name}
-                    onChange={e => setCompleteFormData({...completeFormData, item_name: e.target.value})}
-                    placeholder="What was consumed?"
-                  />
-                </Field>
-                <FormRow>
-                  <Field label="Amount">
-                    <Input
-                      type="number"
-                      step="0.1"
-                      value={completeFormData.amount}
-                      onChange={e => setCompleteFormData({...completeFormData, amount: e.target.value})}
-                      placeholder="Amount"
-                    />
-                  </Field>
-                  <Field label="Unit">
-                    <Select
-                      value={completeFormData.amount_unit || undefined}
-                      onValueChange={v => setCompleteFormData({...completeFormData, amount_unit: v})}
-                    >
-                      <SelectTrigger><SelectValue placeholder="Select..." /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ml">ml</SelectItem>
-                        <SelectItem value="oz">oz</SelectItem>
-                        <SelectItem value="cups">cups</SelectItem>
-                        <SelectItem value="grams">grams</SelectItem>
-                        <SelectItem value="servings">servings</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                </FormRow>
+                <IntakeItemsEditor
+                  patient={selectedPatient}
+                  items={completeItems}
+                  onChange={setCompleteItems}
+                  title="What was given"
+                  // The feed's planned totals: a live "given / target, N to go"
+                  // panel tracks the mix while amounts are adjusted.
+                  target={feedTarget(completeModalData.items[0])}
+                  targetLabel={completeModalData.items[0]?.name}
+                  idPrefix="complete"
+                />
+                {completeModalData.items[0]?.flush_components?.length > 0 && (
+                  <p className="sch-note">
+                    {completeModalData.items[0].flush_components
+                      .map((c) => `${c.item_name} (${c.amount} ${c.amount_unit})`)
+                      .join(' + ')}{' '}
+                    will be scheduled as a flush after this feed — based on the
+                    tube-feed rate, or one hour if no rate is set.
+                  </p>
+                )}
               </>
             )}
 
-            {/* Notes */}
-            <Field label="Notes (optional)">
-              <Textarea
+            <EmField label="Notes (optional)" htmlFor="sch-notes">
+              <textarea
+                id="sch-notes"
+                className="em-input"
                 value={completeFormData.notes}
-                onChange={e => setCompleteFormData({...completeFormData, notes: e.target.value})}
+                onChange={e => setCompleteFormData({ ...completeFormData, notes: e.target.value })}
                 placeholder="Any additional notes..."
                 rows={2}
               />
-            </Field>
+            </EmField>
 
             {/* Off-window (early or late) administration warning */}
             {(() => {
@@ -1335,13 +1412,13 @@ const AdminV2Schedule = () => {
                 const direction = kind === 'early' ? 'before' : 'after';
                 return (
                   <>
-                    <div className="mb-1.5">
+                    <p className="sch-warn-body">
                       {group.length === 1
                         ? `You are about to log this ${typeLabel} more than 1 hour ${direction} its scheduled time.`
                         : `${group.length} items are being logged more than 1 hour ${direction} their scheduled time.`}
                       {' '}Giving a {typeLabel} {kind} can be unsafe. Confirm this is intentional before continuing.
-                    </div>
-                    <ul className="mb-2 list-disc pl-5 text-xs">
+                    </p>
+                    <ul className="sch-warn-list">
                       {group.map(({ item, check }, idx) => (
                         <li key={`${kind}-${idx}`}>
                           <strong>{item.name}</strong> — scheduled {check.scheduledLocal}
@@ -1358,24 +1435,18 @@ const AdminV2Schedule = () => {
                   ? 'Warning: early administration'
                   : 'Warning: late administration';
               return (
-                <Alert variant="warning">
-                  <AlertTitle className="text-[#f0883e]">{headerText}</AlertTitle>
-                  <AlertDescription>
-                    {renderGroup(earlyItems, 'early')}
-                    {renderGroup(lateItems, 'late')}
-                  </AlertDescription>
-                </Alert>
+                <div className="sch-warn" role="alert">
+                  <p className="sch-warn-title">{headerText}</p>
+                  {renderGroup(earlyItems, 'early')}
+                  {renderGroup(lateItems, 'late')}
+                </div>
               );
             })()}
 
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setShowCompleteModal(false)}
-              >
+            <div className="em-footer">
+              <button type="button" className="em-cancel" onClick={() => setShowCompleteModal(false)}>
                 Cancel
-              </Button>
+              </button>
               {(() => {
                 const completedAtUtc = completeFormData.completed_at
                   ? localDateTimeToUTC(completeFormData.completed_at)
@@ -1386,6 +1457,9 @@ const AdminV2Schedule = () => {
                 const hasEarly = statuses.some(s => s === 'early');
                 const hasLate = statuses.some(s => s === 'late');
                 const isOffWindow = hasEarly || hasLate;
+                const nutritionInvalid = completeModalData.type === 'nutrition'
+                  && !completeModalData.isBulk
+                  && (completeItems.length === 0 || !completeItems.every(rowIsValid));
                 const saving = Object.values(completing).some(v => v);
                 const label = saving
                   ? 'Saving...'
@@ -1397,59 +1471,50 @@ const AdminV2Schedule = () => {
                         ? 'Confirm Late Administration'
                         : 'Mark Complete';
                 return (
-                  <Button
+                  <button
                     type="button"
+                    className={`em-submit${isOffWindow ? ' warn' : ''}`}
                     onClick={handleSubmitCompletion}
-                    disabled={saving}
-                    className={isOffWindow ? 'bg-[#bb8009] text-[var(--background)] hover:bg-[#bb8009]/90' : undefined}
+                    disabled={saving || nutritionInvalid}
                   >
                     {label}
-                  </Button>
+                  </button>
                 );
               })()}
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            </div>
+          </div>
+        </EntityModal>
 
         {/* PRN / Quick-log Dialog */}
-        <Dialog open={prnModal.open} onOpenChange={(o) => { if (!o) closePrnModal(); }}>
-          <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-[480px]" aria-describedby={undefined}>
-            <DialogHeader>
-              <DialogTitle>
-                {prnModal.type === 'medication' && 'Log PRN Medication'}
-                {prnModal.type === 'nutrition' && 'Log Nutrition'}
-                {prnModal.type === 'care-task' && 'Log Care Task'}
-                {prnModal.hour != null && (
-                  <span className="ml-2 text-sm font-normal text-muted-foreground">
-                    — {formatHour(prnModal.hour)}
-                  </span>
-                )}
-              </DialogTitle>
-            </DialogHeader>
-
-            {prnError && <Alert variant="destructive">{prnError}</Alert>}
+        <EntityModal
+          open={prnModal.open}
+          onOpenChange={(o) => { if (!o) closePrnModal(); }}
+          title={
+            <>
+              {prnModal.type === 'medication' && 'Log PRN Medication'}
+              {prnModal.type === 'nutrition' && 'Log Nutrition'}
+              {prnModal.type === 'care-task' && 'Log Care Task'}
+              {prnModal.hour != null && ` — ${formatHour(prnModal.hour)}`}
+            </>
+          }
+        >
+          <div className="em-form">
+            {prnError && <p className="em-error" role="alert">{prnError}</p>}
 
             {/* ───────────── Medication ───────────── */}
             {prnModal.type === 'medication' && prnModal.mode === 'pick' && (
               prnMedsLoading ? (
-                <p className="text-sm text-muted-foreground">Loading PRN medications...</p>
+                <p className="sch-empty">Loading PRN medications…</p>
               ) : prnMeds.length === 0 ? (
-                <p className="py-2 text-center text-muted-foreground">
-                  No PRN (as-needed) medications for this patient.
-                </p>
+                <p className="sch-empty">No PRN (as-needed) medications for this patient.</p>
               ) : (
-                <div className="flex flex-col gap-2">
+                <div className="cfg-picklist">
                   {prnMeds.map(med => (
-                    <Button
-                      key={med.id}
-                      type="button"
-                      variant="secondary"
-                      className="h-auto w-full justify-between whitespace-normal px-4 py-3 text-left"
-                      onClick={() => pickPrnMed(med)}
-                    >
-                      <span className="flex min-w-0 flex-col">
-                        <strong>{med.name}</strong>
-                        <span className="text-xs font-normal text-muted-foreground">
+                    <button key={med.id} type="button" className="cfg-pick"
+                            onClick={() => pickPrnMed(med)}>
+                      <span className="cfg-pick-main">
+                        <span className="cfg-pick-name">{med.name}</span>
+                        <span className="sch-pick-sub">
                           {med.concentration ? `${med.concentration} • ` : ''}
                           Last given: {med.last_administered
                             ? new Date(med.last_administered).toLocaleString(undefined, {
@@ -1458,8 +1523,8 @@ const AdminV2Schedule = () => {
                             : 'never'}
                         </span>
                       </span>
-                      <Badge className="ml-2 shrink-0">Give</Badge>
-                    </Button>
+                      <span className="cfg-pick-meta">Give</span>
+                    </button>
                   ))}
                 </div>
               )
@@ -1467,70 +1532,47 @@ const AdminV2Schedule = () => {
 
             {/* ───────────── Nutrition ───────────── */}
             {prnModal.type === 'nutrition' && prnModal.mode === 'pick' && (
-              <div className="grid grid-cols-2 gap-4">
-                <Button
-                  type="button"
-                  className="h-auto flex-col gap-2 py-6"
-                  onClick={() => { closePrnModal(); setShowPrnIntakeModal(true); }}
-                >
-                  <NutritionIcon size={24} />
-                  <span>Log Intake</span>
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="h-auto flex-col gap-2 py-6"
-                  onClick={() => { closePrnModal(); setShowPrnOutputModal(true); }}
-                >
-                  <NutritionIcon size={24} />
-                  <span>Log Output</span>
-                </Button>
+              <div className="sch-choices">
+                <button type="button" className="sch-choice primary"
+                        onClick={() => { closePrnModal(); setShowPrnIntakeModal(true); }}>
+                  <NutritionIcon size={22} />
+                  Log Intake
+                </button>
+                <button type="button" className="sch-choice"
+                        onClick={() => { closePrnModal(); setShowPrnOutputModal(true); }}>
+                  <NutritionIcon size={22} />
+                  Log Output
+                </button>
               </div>
             )}
 
             {/* ───────────── Care tasks ───────────── */}
             {prnModal.type === 'care-task' && prnModal.mode === 'pick' && (
               prnCareTasksLoading ? (
-                <p className="text-sm text-muted-foreground">Loading care tasks...</p>
+                <p className="sch-empty">Loading care tasks…</p>
               ) : prnCareTasks.length === 0 ? (
-                <div className="flex flex-col items-center gap-2 py-4 text-muted-foreground">
-                  <TasksIcon size={48} />
-                  <p>No active care tasks for this patient.</p>
-                </div>
+                <p className="sch-empty">No active care tasks for this patient.</p>
               ) : (
-                <div className="flex flex-col gap-4">
+                <div>
                   {groupCareTasksByCategory(prnCareTasks).map(group => (
-                    <div key={group.id ?? 'uncat'}>
-                      <div
-                        className="mb-1.5 flex items-center gap-2 text-xs font-bold uppercase tracking-wide"
-                        style={{ color: group.color }}
-                      >
-                        <span
-                          className="h-2.5 w-2.5 rounded-full"
-                          style={{ backgroundColor: group.color }}
-                        />
+                    <div key={group.id ?? 'uncat'} className="sch-group">
+                      {/* Category colour rides on the dot, not a stripe. */}
+                      <div className="sch-group-head">
+                        <span className="sch-dot" style={{ backgroundColor: group.color }} aria-hidden="true" />
                         {group.name}
                       </div>
-                      <div className="flex flex-col gap-2">
+                      <div className="cfg-picklist">
                         {group.tasks.map(task => (
-                          <Button
-                            key={task.id}
-                            type="button"
-                            variant="secondary"
-                            className="h-auto w-full justify-between whitespace-normal px-4 py-3 text-left"
-                            style={{ borderLeft: `4px solid ${group.color}` }}
-                            onClick={() => pickPrnCareTask(task)}
-                          >
-                            <span className="flex min-w-0 flex-col">
-                              <strong>{task.name}</strong>
+                          <button key={task.id} type="button" className="cfg-pick"
+                                  onClick={() => pickPrnCareTask(task)}>
+                            <span className="cfg-pick-main">
+                              <span className="cfg-pick-name">{task.name}</span>
                               {task.description && (
-                                <span className="text-xs font-normal leading-snug text-muted-foreground">
-                                  {task.description}
-                                </span>
+                                <span className="sch-pick-sub">{task.description}</span>
                               )}
                             </span>
-                            <Badge className="ml-2 shrink-0">Log</Badge>
-                          </Button>
+                            <span className="cfg-pick-meta">Log</span>
+                          </button>
                         ))}
                       </div>
                     </div>
@@ -1539,22 +1581,20 @@ const AdminV2Schedule = () => {
               )
             )}
 
-            <DialogFooter>
-              <Button type="button" variant="secondary" onClick={closePrnModal}>
-                Close
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            <div className="em-footer">
+              <button type="button" className="em-cancel" onClick={closePrnModal}>Close</button>
+            </div>
+          </div>
+        </EntityModal>
         {/* Shared sub-modals launched from the PRN flow */}
-        <IntakeModal
+        <IntakeSheet
           open={showPrnIntakeModal}
           onClose={() => setShowPrnIntakeModal(false)}
           onSaved={fetchSchedule}
           patient={selectedPatient}
           defaultDateTime={prnNutritionDefaultDt}
         />
-        <OutputModal
+        <OutputSheet
           open={showPrnOutputModal}
           onClose={() => setShowPrnOutputModal(false)}
           onSaved={fetchSchedule}
@@ -1584,6 +1624,67 @@ const AdminV2Schedule = () => {
           task={careTaskModalTask}
           defaultDateTime={careTaskModalDefaultDt}
         />
+
+        {/* Post-feed flush: run it (logs the water) or skip it (recorded —
+            smoothie-heavy mixes already carry enough water). */}
+        <EntityModal
+          open={flushModal.open}
+          onOpenChange={(o) => { if (!o) closeFlushModal(); }}
+          title={flushModal.item?.name || 'Water flush'}
+        >
+          <div className="em-form">
+            {flushModal.error && <p className="em-error" role="alert">{flushModal.error}</p>}
+
+            {flushModal.item?.fluid_dynamic && flushModal.item?.water_plan && (
+              // The suggestion shows its work so a caregiver can sanity-check
+              // it against the day before pouring.
+              <p className="sch-note">
+                {flushModal.item.suggested_amount > 0
+                  ? `Suggested ${flushModal.item.suggested_amount} mL of the queued ${flushModal.item.default_amount ?? '—'}: `
+                  : 'Fluid goal already met — skip? '}
+                target {flushModal.item.water_plan.target_ml} mL,
+                logged {flushModal.item.water_plan.logged_ml},
+                {' '}{flushModal.item.water_plan.expected_food_ml} still coming from feeds.
+              </p>
+            )}
+
+            <EmField label={`Amount (${flushModal.item?.default_amount_unit || 'ml'})`} htmlFor="sch-flush-amount">
+              <input
+                id="sch-flush-amount"
+                className="em-input"
+                type="number"
+                step="any"
+                min="0"
+                value={flushModal.amount}
+                onChange={(e) => setFlushModal((m) => ({ ...m, amount: e.target.value }))}
+              />
+            </EmField>
+
+            <EmField label="Notes (optional)" htmlFor="sch-flush-notes">
+              <textarea
+                id="sch-flush-notes"
+                className="em-input"
+                rows={2}
+                value={flushModal.notes}
+                onChange={(e) => setFlushModal((m) => ({ ...m, notes: e.target.value }))}
+                placeholder="Anything worth passing on..."
+              />
+            </EmField>
+
+            <div className="em-footer">
+              <button type="button" className="em-cancel" onClick={closeFlushModal}>Cancel</button>
+              <button type="button" className="em-cancel" disabled={flushModal.busy}
+                      onClick={() => submitFlush(true)}>
+                Skip — not needed
+              </button>
+              <button type="button" className="em-submit"
+                      disabled={flushModal.busy || !Number(flushModal.amount)}
+                      onClick={() => submitFlush(false)}>
+                {flushModal.busy ? 'Saving...' : 'Run flush'}
+              </button>
+            </div>
+          </div>
+        </EntityModal>
       </div>
     </AdminV2Layout>
   );

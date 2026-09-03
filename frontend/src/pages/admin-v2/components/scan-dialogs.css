@@ -1,0 +1,80 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+@import '../../../styles/vc-tokens.css';
+
+/* Shared chrome for the barcode scan dialogs (camera + external wedge). */
+
+/* The always-focused capture field a wedge scanner "types" into. */
+.scd-capture {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 4px;
+  background: var(--vc-bg-raised);
+  padding: 0.5rem 0.7rem;
+  color: var(--vc-text-secondary);
+}
+.scd-capture input {
+  width: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--vc-text-primary);
+  font-family: var(--vc-font-mono);
+  /* 16px minimum: smaller makes iOS zoom the dialog when the field focuses. */
+  font-size: 16px;
+}
+.scd-capture input::placeholder { color: var(--vc-text-tertiary); }
+
+/* Scanned-code rows in multi mode. */
+.scd-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-height: 12rem;
+  overflow-y: auto;
+}
+.scd-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 4px;
+  padding: 0.3rem 0.5rem;
+}
+.scd-row-main { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.scd-code {
+  font-family: var(--vc-font-mono);
+  font-size: 12px;
+  color: var(--vc-text-primary);
+  overflow-wrap: anywhere;
+}
+
+/* "Last used" caption under the preselected scanner choice. */
+.scd-last {
+  text-align: center;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.scd-choice { display: flex; flex-direction: column; gap: 0.25rem; }

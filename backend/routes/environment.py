@@ -26,7 +26,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from db import get_db
-from dependencies import require_full_auth, require_read_access
+from dependencies import (require_full_auth, require_read_access,
+                          require_permission, get_current_user,
+                          get_current_account_id)
 from crud.environment import (
     BUCKET_INTERVALS, DEFAULT_LIMIT, MAX_LIMIT,
     get_locations, get_observations, get_observations_bucketed,
@@ -35,6 +37,7 @@ from environment import metrics as env_metrics
 from environment import service as env_service
 from environment.registry import registry
 from models.environment import BackfillRequest, ConnectorConfigUpdate
+from pydantic import BaseModel
 
 logger = logging.getLogger("app")
 
@@ -195,3 +198,68 @@ async def start_backfill(
 
     asyncio.create_task(run_backfill(slug, body.days))
     return {"status": "started", "days": body.days}
+
+
+# ---------------------------------------------------------------------------
+# Per-patient room bounds (what counts as a bad room for this patient).
+# ---------------------------------------------------------------------------
+
+class EnvRangeUpdate(BaseModel):
+    metric: str
+    caution_min: Optional[float] = None
+    caution_max: Optional[float] = None
+    critical_min: Optional[float] = None
+    critical_max: Optional[float] = None
+    note: Optional[str] = None
+
+
+class EnvRangesUpdate(BaseModel):
+    patient_id: int
+    ranges: list[EnvRangeUpdate]
+
+
+def _scoped_patient(db: Session, patient_id: int, account_id):
+    from schemas.patient import Patient
+    q = db.query(Patient).filter(Patient.id == patient_id)
+    if account_id is not None:
+        q = q.filter((Patient.account_id == account_id) | (Patient.account_id.is_(None)))
+    return q.first()
+
+
+def _ranges_payload(db: Session, patient_id: int):
+    from crud.env_ranges import resolve_env_ranges
+    return {"patient_id": patient_id, "ranges": resolve_env_ranges(db, patient_id)}
+
+
+@router.get("/ranges")
+async def get_env_ranges(
+    patient_id: int = Query(...),
+    db: Session = Depends(get_db),
+    account_id=Depends(get_current_account_id),
+):
+    """Resolved room bounds for a patient — defaults where nothing is set.
+
+    Not gated on require_read_access, matching /api/vitals/ranges: the
+    timeline flags a bad room in monitoring mode too, and a read-restricted
+    session losing the bounds would silently turn the flags off rather than
+    hide them.
+    """
+    if not _scoped_patient(db, patient_id, account_id):
+        raise HTTPException(status_code=404, detail="Patient not found")
+    return _ranges_payload(db, patient_id)
+
+
+@router.put("/ranges", dependencies=[Depends(require_permission("patients.update"))])
+async def put_env_ranges(
+    body: EnvRangesUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+    account_id=Depends(get_current_account_id),
+):
+    from crud.env_ranges import upsert_patient_env_ranges
+    if not _scoped_patient(db, body.patient_id, account_id):
+        raise HTTPException(status_code=404, detail="Patient not found")
+    upsert_patient_env_ranges(db, body.patient_id,
+                              [r.model_dump() for r in body.ranges],
+                              set_by=getattr(current_user, "id", None))
+    return _ranges_payload(db, body.patient_id)

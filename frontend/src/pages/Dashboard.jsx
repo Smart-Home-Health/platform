@@ -15,28 +15,24 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useState, useEffect, useRef } from "react";
-import ChartBlock from "../components/ChartBlock";
-import ClockCard from "../components/ClockCard";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import DynamicVitalsCard from "../components/DynamicVitalsCard";
 import ModalBase from "../components/ModalBase";
 import SettingsForm from "../components/SettingsForm";
-import {
-  SettingsIcon,
-  MinimalistVentIcon,
-  MinimalistPulseOxIcon,
-  HistoryIcon,
-  MedicationIcon,
-  NutritionIcon,
-  CareTasksIcon,
-  MessagesIcon,
-  CameraIcon
-} from "../components/Icons";
-import logoImage from '../assets/logo2.png';
+import TopBar from "../components/dashboard/TopBar";
+import CaptureVitalsModal from "../components/dashboard/CaptureVitalsModal";
+import DashboardNavDrawer from "../components/dashboard/DashboardNavDrawer";
+import { ModalDockProvider } from "../contexts/ModalDockContext";
+import { buildTopBarActions } from "../components/dashboard/topBarActions";
+import StatTile from "../components/dashboard/StatTile";
+import LiveCharts from "../components/dashboard/LiveCharts";
+import StatusStrip from "../components/dashboard/StatusStrip";
+import ChartBlock from "../components/ChartBlock";
+import useLiveVitalsBuffer, { CHART_RANGES } from "../hooks/useLiveVitalsBuffer";
 import config from '../config';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Alert } from '@/components/ui/alert';
+import "../components/dashboard/live-dashboard.css";
+import "../components/dashboard/dock-panel.css";
+import '../components/vc/entity-card.css';
 import AlertsModal from "../components/AlertsModal";
 import EquipmentModal from "../components/EquipmentModal";
 import HistoryModal from "../components/HistoryModal";
@@ -59,11 +55,14 @@ export default function Dashboard() {
   const { isAuthenticated, readRestricted, unlockWithAccountPassword } = useAuth();
   const { patients, selectedPatient, selectPatient, loadingPatients } = useAdminPatient();
   const { requirePinAuth, pinChallengeOpen } = usePinChallenge();
-  const { scheme, chartChrome } = useDashboardTheme();
+  const { chartChrome } = useDashboardTheme();
 
   // Add mobile detection state
   const [isMobile, setIsMobile] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  // Which phone tiles are showing their trace instead of just the number.
+  const [flippedTiles, setFlippedTiles] = useState({});
+  const toggleTile = (key) => setFlippedTiles(f => ({ ...f, [key]: !f[key] }));
 
   // Add state for modal
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -82,6 +81,28 @@ export default function Dashboard() {
   // actually does something.
   const needsUnlock = !!readRestricted;
   const unlockModalOpen = needsUnlock || actionUnlockOpen;
+
+  // Live chart buffer: server-side backfill + WS ticks, range tabs.
+  const buffer = useLiveVitalsBuffer(selectedPatient?.id, !needsUnlock);
+
+  // Sparkline for a flipped phone tile: the same ChartBlock the desktop column
+  // uses, with its axes off so the trace reads against the ghosted value.
+  const tileChart = (dataset, color) => (
+    <ChartBlock
+      dataset={dataset}
+      color={color}
+      showXaxis={false}
+      showYaxis={false}
+      showTooltip={false}
+      transparent
+      chrome={chartChrome}
+      windowMs={buffer.rangeDef.minutes * 60 * 1000}
+      now={buffer.now}
+    />
+  );
+  // The mount-time WS closure reaches the current pushTick through a ref.
+  const pushTickRef = useRef(buffer.pushTick);
+  pushTickRef.current = buffer.pushTick;
 
   // Patient selection
   const [showPatientModal, setShowPatientModal] = useState(false);
@@ -104,13 +125,11 @@ export default function Dashboard() {
     body_temp: null
   });
 
-  const [datasets, setDatasets] = useState({
-    spo2: [],
-    bpm: [],
-    perfusion: []
-  });
+  // WebSocket link state for the status strip. The pulse ox reports its own
+  // disconnect in-band as spo2 === -1.
+  const [wsStatus, setWsStatus] = useState('closed');
+  const [sensorOffline, setSensorOffline] = useState(false);
 
-  const [chartTimeRange, setChartTimeRange] = useState('5m');
   const [perfusionAsPercent, setPerfusionAsPercent] = useState(false);
   const [showStatistics, setShowStatistics] = useState(true);
   
@@ -143,7 +162,11 @@ export default function Dashboard() {
   const [isCareTaskModalOpen, setIsCareTaskModalOpen] = useState(false);
   const [isMessagesModalOpen, setIsMessagesModalOpen] = useState(false);
   const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
+  const [isCaptureModalOpen, setIsCaptureModalOpen] = useState(false);
   const [hasCamera, setHasCamera] = useState(false);
+  // Docked panels open on the narrow stop (over the cards column) and expand
+  // over the charts on request; every open starts narrow again.
+  const [panelExpanded, setPanelExpanded] = useState(false);
   const [isAlarmActive, setIsAlarmActive] = useState(false);
   const [isAlarmBlinking, setIsAlarmBlinking] = useState(false);
   const alarmBlinkInterval = useRef(null);
@@ -166,6 +189,76 @@ export default function Dashboard() {
     }
     return () => root.style.setProperty('--auth-banner-height', '0px');
   }, [isMobile, authModalActive]);
+
+  // Menus open as a panel docked into the board, not a slab over it, so the
+  // vitals stay readable. Two stops: narrow sits exactly on the cards column,
+  // expanded also takes the charts. Both are measured rather than written as
+  // vw constants — the columns are a grid (`minmax(230px, 320px)` /
+  // `minmax(300px, 400px)`), so no viewport fraction is right at every width.
+  // Consumed by .live-dash .mb-overlay in live-dashboard.css.
+  //
+  // Written to <html>, not to the board element: the capture panel's entry
+  // sheet portals to <body>, outside the board, and still has to line up with
+  // the panel. The board fills the viewport, so its offsets are the viewport's.
+  const boardRef = useRef(null);
+  useLayoutEffect(() => {
+    const root = boardRef.current;
+    if (!root) return undefined;
+    const target = document.documentElement;
+
+    const measure = () => {
+      const topbar = root.querySelector('.ld-topbar');
+      const main = root.querySelector('.ld-main');
+      const charts = root.querySelector('.ld-charts');
+      const cards = root.querySelector('.ld-cards');
+      const strip = root.querySelector('.ld-strip');
+      const set = (name, px) => target.style.setProperty(name, `${Math.round(px)}px`);
+      const board = root.getBoundingClientRect();
+
+      // Locked (a single centred tiles column) and any state without the
+      // charts/cards columns: dock to the right of the tiles rather than over
+      // them. An auth prompt gates *actions*, not the reading of vitals — the
+      // pulse ox keeps streaming while the board is locked, so covering the
+      // tiles would hide live values that are there to be seen.
+      if (!main || !charts || !cards) {
+        const tiles = root.querySelector('.ld-tiles');
+        const gap = main ? parseFloat(getComputedStyle(main).columnGap) || 0 : 0;
+        const left = tiles ? tiles.getBoundingClientRect().right - board.left + gap : 0;
+        set('--ld-panel-top', topbar?.offsetHeight ?? 60);
+        set('--ld-panel-bottom', strip?.offsetHeight ?? 0);
+        set('--ld-panel-left', left);
+        set('--ld-panel-left-wide', left);
+        set('--ld-panel-right', 0);
+        return;
+      }
+
+      const chartsBox = charts.getBoundingClientRect();
+      const cardsBox = cards.getBoundingClientRect();
+      // Anchor to the grid's content box so the panel sits inside the board's
+      // padding like the cards it replaces, rather than bleeding to the edge.
+      set('--ld-panel-top', chartsBox.top - board.top);
+      set('--ld-panel-bottom', board.bottom - chartsBox.bottom);
+      set('--ld-panel-right', board.right - cardsBox.right);
+      set('--ld-panel-left', cardsBox.left - board.left);
+      set('--ld-panel-left-wide', chartsBox.left - board.left);
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    ['.ld-topbar', '.ld-tiles', '.ld-charts', '.ld-cards', '.ld-strip']
+      .map(sel => root.querySelector(sel))
+      .concat(root)
+      .filter(Boolean)
+      .forEach(el => observer.observe(el));
+    return () => {
+      observer.disconnect();
+      ['--ld-panel-top', '--ld-panel-bottom', '--ld-panel-left',
+        '--ld-panel-left-wide', '--ld-panel-right']
+        .forEach(name => target.style.removeProperty(name));
+    };
+    // Re-measure when the board's structure changes (lock state adds/removes
+    // the charts and cards columns, which resizes the tiles column).
+  }, [needsUnlock, isMobile]);
 
   // Enforce 24h unlock window (client-side)
   useEffect(() => {
@@ -236,8 +329,10 @@ export default function Dashboard() {
     navigate(location.pathname + location.search, { replace: true, state: {} });
   }, [location.state, isAuthenticated, needsUnlock, navigate, location.pathname, location.search]);
 
-  // Function to fetch chart data for a specific vital type
-  const fetchChartData = async (vitalType, chartNumber) => {
+  // Function to fetch chart data for a specific vital type.
+  // Memoized so the `onSaved` callbacks handed to the (memoized) vitals cards
+  // keep a stable identity across the dashboard's ~1 Hz re-renders.
+  const fetchChartData = useCallback(async (vitalType, chartNumber) => {
     try {
       // Skip fetching data for nutrition - it has its own real-time data source
       if (vitalType === 'nutrition') {
@@ -310,7 +405,7 @@ export default function Dashboard() {
     } catch (error) {
       console.error(`Error fetching chart data for ${vitalType}:`, error);
     }
-  };
+  }, [selectedPatient?.id, needsUnlock]);
 
   // Load chart time range and perfusion display settings
   useEffect(() => {
@@ -323,10 +418,6 @@ export default function Dashboard() {
         if (response.ok) {
           const settings = await response.json();
           console.log('All settings loaded:', settings);
-          if (settings.chart_time_range) {
-            console.log('Found chart_time_range setting:', settings.chart_time_range);
-            setChartTimeRange(settings.chart_time_range);
-          }
           if (settings.perfusion_as_percent !== undefined) {
             let perfusionValue = settings.perfusion_as_percent;
             if (perfusionValue === "True" || perfusionValue === "true") perfusionValue = true;
@@ -385,9 +476,6 @@ export default function Dashboard() {
           const response = await fetch(`${config.apiUrl}/api/settings`, { credentials: 'include' });
           if (response.ok) {
             const settings = await response.json();
-            if (settings.chart_time_range) {
-              setChartTimeRange(settings.chart_time_range);
-            }
             if (settings.perfusion_as_percent !== undefined) {
               let perfusionValue = settings.perfusion_as_percent;
               if (perfusionValue === "True" || perfusionValue === "true") perfusionValue = true;
@@ -431,25 +519,13 @@ export default function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on modal close/unlock/patient change only
   }, [isSettingsModalOpen, needsUnlock, selectedPatient?.id]);
 
-  // Convert time range to data points
-  const getMaxDataPoints = () => {
-    switch (chartTimeRange) {
-      case '1m': return 60;
-      case '3m': return 180;
-      case '5m': return 300;
-      case '10m': return 600;
-      case '30m': return 1800;
-      case '1h': return 3600;
-      default: return 300;
-    }
-  };
-
   // Account-scoped equipment due count (matches Equipment List API)
   // All dashboard "due" badges are scoped to the patient on screen via REST so
   // one patient's due items don't leak into another's view. (The WebSocket
   // state carries global counts that ignore the viewer's patient, so we don't
   // use those for the badges.) A ref keeps the current patient id reachable
-  // from the mount-time WebSocket closure for live refreshes.
+  // from the mount-time WebSocket closure — for the due-count refreshes AND for
+  // picking this patient's readings out of the sensor_update broadcast.
   const dueCountPatientRef = useRef(null);
 
   const fetchDueCount = (path, setter, pid) => {
@@ -487,8 +563,20 @@ export default function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on patient change only
   }, [selectedPatient?.id]);
 
-  // Detect Frigate integration for the current patient so we can swap the
-  // Messages icon for a live camera icon when one is configured.
+  // Switching patients must not leave the previous patient's numbers on screen
+  // attributed to the new one. Clear immediately and wait for a broadcast that
+  // actually carries an entry for this patient — a stale 97% wearing the wrong
+  // name is worse than "--".
+  useEffect(() => {
+    setSensorValues({ spo2: null, bpm: null, perfusion: null, skin_temp: null, body_temp: null });
+    setSensorOffline(false);
+    setIsAlarmActive(false);
+    prevAlarmActive.current = false;
+  }, [selectedPatient?.id]);
+
+  // Detect Frigate integration for the current patient: the Live Camera action
+  // appears only when a camera is actually configured. (It used to take the
+  // Messages slot rather than add one, which hid the messages list entirely.)
   useEffect(() => {
     let cancelled = false;
     setHasCamera(false);
@@ -515,17 +603,24 @@ export default function Dashboard() {
 
   const wsRef = useRef(null);
   useEffect(() => {
-    const url = config.wsUrl;
-    console.log(`Connecting to WebSocket at: ${url}`);
-    const ws = new WebSocket(url);
-    wsRef.current = ws;
+    let disposed = false;
+    let ws = null;
+    let retryTimer = null;
+    let retryDelay = 1000;
 
-    ws.onopen = () => console.log("WebSocket connected");
-
-    ws.onmessage = (event) => {
+    const handleMessage = (event) => {
       const msg = JSON.parse(event.data);
       if (msg.type === "sensor_update" && msg.state) {
-        const alarmActive = !!msg.state.alarm;
+        // Read THIS patient's entry, never the top-level spo2/bpm/perfusion:
+        // those are last-writer-wins across every reader on the system, so on a
+        // board showing patient A they can be patient B's numbers the moment B's
+        // reader publishes. `patient_readings` is keyed by patient id and each
+        // entry carries its own alarm flags. Same reasoning as the chart data
+        // below. No entry = this patient has no live source right now, which is
+        // shown as "--" rather than someone else's vitals.
+        const pid = dueCountPatientRef.current;
+        const reading = pid != null ? msg.state.patient_readings?.[String(pid)] : null;
+        const alarmActive = !!reading?.alarm;
 
         if (!prevAlarmActive.current && alarmActive) {
           setIsAlarmBlinking(true);
@@ -534,48 +629,38 @@ export default function Dashboard() {
         setIsAlarmActive(alarmActive);
         prevAlarmActive.current = alarmActive;
 
+        // The pulse ox reports its own disconnect in-band as -1 readings —
+        // surface that as "sensor offline" instead of rendering -1.
+        const offline = reading?.spo2 === -1 || reading?.bpm === -1;
+        setSensorOffline(offline);
+        const clean = (v) => (v === -1 || v == null ? null : v);
+
         setSensorValues({
-          spo2: msg.state.spo2,
-          bpm: msg.state.bpm,
-          perfusion: msg.state.perfusion,
-          skin_temp: msg.state.skin_temp,
-          body_temp: msg.state.body_temp
+          spo2: clean(reading?.spo2),
+          bpm: clean(reading?.bpm),
+          perfusion: offline ? null : reading?.perfusion ?? null,
+          skin_temp: reading?.skin_temp ?? null,
+          body_temp: reading?.body_temp ?? null
         });
 
-        const now = Date.now();
-
-        setDatasets(prev => {
-          const newState = { ...prev };
-          const maxDataPoints = getMaxDataPoints();
-
-          if (msg.state.spo2 !== null && msg.state.spo2 !== undefined) {
-            newState.spo2 = [...prev.spo2, { x: now, y: msg.state.spo2 }].slice(-maxDataPoints);
-          }
-
-          if (msg.state.bpm !== null && msg.state.bpm !== undefined) {
-            newState.bpm = [...prev.bpm, { x: now, y: msg.state.bpm }].slice(-maxDataPoints);
-          }
-
-          if (msg.state.perfusion !== null && msg.state.perfusion !== undefined) {
-            newState.perfusion = [...prev.perfusion, { x: now, y: msg.state.perfusion }].slice(-maxDataPoints);
-          }
-
-          return newState;
+        pushTickRef.current({
+          t: Date.now(),
+          spo2: clean(reading?.spo2),
+          bpm: clean(reading?.bpm),
+          perfusion: offline ? null : reading?.perfusion ?? null,
         });
 
         if (msg.state.alerts_count !== undefined) {
           setPulseOxAlerts(msg.state.alerts_count);
         }
-        
-        if (msg.state.dashboard_chart_1) {
-          setDashboardChart1(msg.state.dashboard_chart_1);
-        }
-        
-        if (msg.state.dashboard_chart_2) {
-          setDashboardChart2(msg.state.dashboard_chart_2);
-        }
+        // NOTE: msg.state.dashboard_chart_1/2 are deliberately ignored — the
+        // server builds them without a patient filter, so consuming them here
+        // would leak other patients' vitals into the cards. The cards use the
+        // patient-scoped REST fetch instead (fetchChartData). The same is true
+        // of the top-level spo2/bpm/perfusion — see the patient_readings lookup
+        // above.
       }
-      
+
       else if (msg.type === "alarm_update") {
         const alarmActive = !!(msg.alarm1 || msg.alarm2);
         setIsAlarmActive(alarmActive);
@@ -605,16 +690,38 @@ export default function Dashboard() {
       }
     };
 
-    ws.onclose = () => {
-      if (wsRef.current === ws) wsRef.current = null;
-      console.log("WebSocket disconnected");
+    // Reconnect with capped exponential backoff — a dropped socket used to be
+    // permanent until reload. Alarm state carries across via prevAlarmActive;
+    // request_state on (re)open resyncs immediately.
+    const connect = () => {
+      if (disposed) return;
+      const url = config.wsUrl;
+      console.log(`Connecting to WebSocket at: ${url}`);
+      ws = new WebSocket(url);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        retryDelay = 1000;
+        setWsStatus('open');
+        try { ws.send(JSON.stringify({ type: 'request_state' })); } catch { /* just wait for the next tick */ }
+      };
+      ws.onmessage = handleMessage;
+      ws.onclose = () => {
+        if (wsRef.current === ws) wsRef.current = null;
+        if (disposed) return;
+        setWsStatus('reconnecting');
+        retryTimer = setTimeout(connect, retryDelay);
+        retryDelay = Math.min(retryDelay * 2, 30000);
+      };
     };
+    connect();
 
     return () => {
-      if (wsRef.current === ws) {
-        ws.close();
-        wsRef.current = null;
-      }
+      disposed = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      if (ws) ws.close();
+      wsRef.current = null;
+      setWsStatus('closed');
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only WebSocket connection; adding the render-recreated helpers would tear down and reopen the live socket every render
   }, []);
@@ -670,7 +777,10 @@ export default function Dashboard() {
     setIsCareTaskModalOpen(false);
     setIsMessagesModalOpen(false);
     setIsCameraModalOpen(false);
+    setIsCaptureModalOpen(false);
     setIsMobileMenuOpen(false);
+    // Each panel opens at the narrow stop; expanding is a per-visit choice.
+    setPanelExpanded(false);
   };
 
   // Open a specific top-nav modal after user selection redirect
@@ -801,6 +911,13 @@ export default function Dashboard() {
     setIsNutritionModalOpen(true);
   };
 
+  const handleCaptureClick = async () => {
+    if (isCaptureModalOpen) { setIsCaptureModalOpen(false); return; }
+    if (!(await requireUnlockAndFreshUser())) return;
+    closeAllModals();
+    setIsCaptureModalOpen(true);
+  };
+
   // Add this function to handle alert acknowledgment
   const handleAlertAcknowledged = () => {
     fetch(`${config.apiUrl}/api/monitoring/alerts/count`, { credentials: 'include' })
@@ -842,34 +959,91 @@ export default function Dashboard() {
     }
   };
 
+  // Tile AVG/MIN/MAX from the chart buffer (zeros excluded, matching the old
+  // stat behavior).
+  const tileStats = (pts, fmtAvg, fmtMinMax = fmtAvg) => {
+    if (!showStatistics) return null;
+    const clean = pts.filter(p => p.y !== 0);
+    if (!clean.length) return { avg: '--', min: '--', max: '--' };
+    return {
+      avg: fmtAvg(calculateAvg(clean)),
+      min: fmtMinMax(calculateMin(clean)),
+      max: fmtMinMax(calculateMax(clean)),
+    };
+  };
+
+  const reloadChart1 = useCallback(
+    () => fetchChartData(dashboardChart1.vital_type, 1),
+    [fetchChartData, dashboardChart1.vital_type]
+  );
+  const reloadChart2 = useCallback(
+    () => fetchChartData(dashboardChart2.vital_type, 2),
+    [fetchChartData, dashboardChart2.vital_type]
+  );
+
+  const topBarActions = buildTopBarActions({
+    pulseOxAlerts, medicationDueCount, nutritionDueCount, careTaskDueCount, equipmentDueCount,
+    hasCamera,
+    modalOpen: {
+      alerts: isPulseOxModalOpen, medications: isMedicationModalOpen, nutrition: isNutritionModalOpen,
+      careTasks: isCareTaskModalOpen, equipment: isVentModalOpen, history: isHistoryModalOpen,
+      camera: isCameraModalOpen, messages: isMessagesModalOpen, capture: isCaptureModalOpen,
+    },
+    handlers: {
+      alerts: handlePulseOxClick, medications: handleMedicationClick, nutrition: handleNutritionClick,
+      careTasks: handleCareTaskClick, equipment: handleVentClick, history: handleHistoryClick,
+      camera: handleCameraClick, messages: handleMessagesClick, capture: handleCaptureClick,
+    },
+  });
+
+  // Panels dock into the board on desktop; mobile keeps the full-screen sheet.
+  const modalDock = useMemo(() => ({
+    docked: !isMobile,
+    expanded: panelExpanded,
+    toggleExpand: () => setPanelExpanded(v => !v),
+    setExpanded: setPanelExpanded,
+  }), [isMobile, panelExpanded]);
+
   return (
-    <div className={`dashboard-wrapper force-dark theme-${scheme}`}>
+    <ModalDockProvider value={modalDock}>
+    <div className="dashboard-wrapper force-dark live-dash" ref={boardRef}>
+      {/* Auth gates take the whole board rather than docking beside it — an
+          unlock prompt is not something to work alongside. */}
       <ModalBase
         isOpen={unlockModalOpen}
         onClose={() => { if (!needsUnlock) setActionUnlockOpen(false); }}
         title="Unlock"
+        dock={false}
+        dismissible={false}
       >
-        <form onSubmit={handleUnlockSubmit} className="tw">
-          <div className="flex flex-col gap-3">
-            <p className="m-0 text-sm text-muted-foreground">
+        <form onSubmit={handleUnlockSubmit} className="em-inline">
+          <div className="em-form">
+            <p className="em-hint">
               {needsUnlock
                 ? 'Enter the account unlock password to view dashboard data.'
                 : 'Enter the account password to continue.'}
             </p>
             {unlockError && (
-              <Alert variant="destructive">{unlockError}</Alert>
+              <div className="em-error" role="alert">{unlockError}</div>
             )}
-            <Input
+            <input
+              className="em-input"
               type="password"
+              aria-label="Account password"
               value={unlockPassword}
               onChange={(e) => setUnlockPassword(e.target.value)}
               placeholder="Account password"
               autoFocus
               disabled={unlockLoading}
             />
-            <Button type="submit" className="w-full" disabled={unlockLoading || !unlockPassword}>
+            <button
+              type="submit"
+              className="em-submit"
+              style={{ width: '100%' }}
+              disabled={unlockLoading || !unlockPassword}
+            >
               {unlockLoading ? 'Unlocking…' : 'Unlock'}
-            </Button>
+            </button>
           </div>
         </form>
       </ModalBase>
@@ -878,6 +1052,8 @@ export default function Dashboard() {
         isOpen={!unlockModalOpen && showPatientModal}
         onClose={() => { if (selectedPatient) setShowPatientModal(false); }}
         title="Select Patient"
+        dock={false}
+        dismissible={false}
       >
         {loadingPatients ? (
           <div>Loading patients…</div>
@@ -920,198 +1096,32 @@ export default function Dashboard() {
         )}
       </ModalBase>
 
-      <div className={`header-section${isAlarmBlinking ? ' alarm-blink' : ''}${isAlarmActive ? ' alarm-active' : ''}`}>
-        {isMobile ? (
-          // Mobile Header
-          <>
-            <div className="mobile-logo-container" onClick={() => navigate('/care')} style={{ cursor: 'pointer' }}>
-              <img src={logoImage} alt="Logo" className="header-logo" />
-              <div className="logo-text">Smart Home Health</div>
-            </div>
-            
-            <button 
-              className="mobile-menu-button"
-              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              aria-label="Menu"
-            >
-              <div className={`hamburger ${isMobileMenuOpen ? 'open' : ''}`}>
-                <span></span>
-                <span></span>
-                <span></span>
-              </div>
-            </button>
-          </>
-        ) : (
-          // Desktop Header
-          <>
-            <div className="logo-container" onClick={() => navigate('/care')} style={{ cursor: 'pointer' }}>
-              <img src={logoImage} alt="Logo" className="header-logo" />
-              <div className="logo-text">Smart Home Health</div>
-            </div>
-            
-            <div className="menu-container">
-              <div className="icon-wrapper">
-                <button 
-                  className={`menu-button ${isPulseOxModalOpen ? 'active' : ''}`}
-                  onClick={handlePulseOxClick}
-                  aria-label="Alerts"
-                >
-                  <MinimalistPulseOxIcon />
-                  {pulseOxAlerts > 0 && <div className="badge">{pulseOxAlerts}</div>}
-                </button>
-              </div>
-              
-              <div className="icon-wrapper">
-                <button
-                  className={`menu-button ${isMedicationModalOpen ? 'active' : ''}`}
-                  onClick={handleMedicationClick}
-                  aria-label="Medication Tracker"
-                >
-                  <MedicationIcon />
-                  {medicationDueCount > 0 && <div className="badge">{medicationDueCount}</div>}
-                </button>
-              </div>
+      <TopBar
+        isMobile={isMobile}
+        isAlarmBlinking={isAlarmBlinking}
+        isAlarmActive={isAlarmActive}
+        patientName={selectedPatient ? [selectedPatient.first_name, selectedPatient.last_name].filter(Boolean).join(' ') : ''}
+        onBrandClick={() => navigate('/care')}
+        onPatientClick={() => setShowPatientModal(true)}
+        actions={topBarActions}
+        settingsActive={isSettingsModalOpen}
+        onSettingsClick={handleSettingsClick}
+        isMobileMenuOpen={isMobileMenuOpen}
+        onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+      />
 
-              <div className="icon-wrapper">
-                <button
-                  className={`menu-button ${isNutritionModalOpen ? 'active' : ''}`}
-                  onClick={handleNutritionClick}
-                  aria-label="Nutrition"
-                >
-                  <NutritionIcon />
-                  {nutritionDueCount > 0 && <div className="badge">{nutritionDueCount}</div>}
-                </button>
-              </div>
+      {/* Phone navigation. Rendered from the same action list as the top bar
+          (see DashboardNavDrawer) rather than a hand-written copy of it. */}
+      <DashboardNavDrawer
+        open={isMobile && isMobileMenuOpen}
+        onClose={() => setIsMobileMenuOpen(false)}
+        actions={topBarActions}
+        patientName={selectedPatient
+          ? [selectedPatient.first_name, selectedPatient.last_name].filter(Boolean).join(' ')
+          : null}
+        onSettings={handleSettingsClick}
+      />
 
-              <div className="icon-wrapper">
-                <button
-                  className={`menu-button ${isCareTaskModalOpen ? 'active' : ''}`}
-                  onClick={handleCareTaskClick}
-                  aria-label="Care Tasks"
-                >
-                  <CareTasksIcon />
-                  {careTaskDueCount > 0 && <div className="badge">{careTaskDueCount}</div>}
-                </button>
-              </div>
-              
-              <div className="icon-wrapper">
-                <button 
-                  className={`menu-button ${isVentModalOpen ? 'active' : ''}`}
-                  onClick={handleVentClick}
-                  aria-label="Ventilator"
-                >
-                  <MinimalistVentIcon />
-                  {equipmentDueCount > 0 && <div className="badge">{equipmentDueCount}</div>}
-                </button>
-              </div>
-              
-              <div className="icon-wrapper">
-                <button 
-                  className={`menu-button ${isHistoryModalOpen ? 'active' : ''}`}
-                  onClick={handleHistoryClick}
-                  aria-label="History"
-                >
-                  <HistoryIcon />
-                </button>
-              </div>
-
-              <div className="icon-wrapper">
-                {hasCamera ? (
-                  <button
-                    className={`menu-button ${isCameraModalOpen ? 'active' : ''}`}
-                    onClick={handleCameraClick}
-                    aria-label="Live Camera"
-                  >
-                    <CameraIcon />
-                  </button>
-                ) : (
-                  <button
-                    className={`menu-button ${isMessagesModalOpen ? 'active' : ''}`}
-                    onClick={handleMessagesClick}
-                    aria-label="Messages"
-                  >
-                    <MessagesIcon />
-                  </button>
-                )}
-              </div>
-
-              <div className="icon-wrapper">
-                <button 
-                  className={`menu-button ${isSettingsModalOpen ? 'active' : ''}`}
-                  onClick={handleSettingsClick}
-                  aria-label="Settings"
-                >
-                  <SettingsIcon />
-                </button>
-              </div>
-            </div>
-            
-            <div className="datetime-container">
-              <ClockCard />
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Mobile Menu Overlay */}
-      {isMobile && isMobileMenuOpen && (
-        <div className="mobile-menu-overlay" onClick={() => setIsMobileMenuOpen(false)}>
-          <div className="mobile-menu" onClick={(e) => e.stopPropagation()}>
-            <div className="mobile-menu-item" onClick={() => { handlePulseOxClick(); setIsMobileMenuOpen(false); }}>
-              <MinimalistPulseOxIcon />
-              <span>Alerts</span>
-              {pulseOxAlerts > 0 && <div className="mobile-badge">{pulseOxAlerts}</div>}
-            </div>
-            
-            <div className="mobile-menu-item" onClick={() => { handleMedicationClick(); setIsMobileMenuOpen(false); }}>
-              <MedicationIcon />
-              <span>Medications</span>
-              {medicationDueCount > 0 && <div className="mobile-badge">{medicationDueCount}</div>}
-            </div>
-
-            <div className="mobile-menu-item" onClick={() => { handleNutritionClick(); setIsMobileMenuOpen(false); }}>
-              <NutritionIcon />
-              <span>Nutrition</span>
-              {nutritionDueCount > 0 && <div className="mobile-badge">{nutritionDueCount}</div>}
-            </div>
-
-            <div className="mobile-menu-item" onClick={() => { handleCareTaskClick(); setIsMobileMenuOpen(false); }}>
-              <CareTasksIcon />
-              <span>Care Tasks</span>
-              {careTaskDueCount > 0 && <div className="mobile-badge">{careTaskDueCount}</div>}
-            </div>
-            
-            <div className="mobile-menu-item" onClick={() => { handleVentClick(); setIsMobileMenuOpen(false); }}>
-              <MinimalistVentIcon />
-              <span>Equipment</span>
-              {equipmentDueCount > 0 && <div className="mobile-badge">{equipmentDueCount}</div>}
-            </div>
-            
-            <div className="mobile-menu-item" onClick={() => { handleHistoryClick(); setIsMobileMenuOpen(false); }}>
-              <HistoryIcon />
-              <span>History</span>
-            </div>
-            
-            {hasCamera ? (
-              <div className="mobile-menu-item" onClick={() => { handleCameraClick(); setIsMobileMenuOpen(false); }}>
-                <CameraIcon />
-                <span>Live Camera</span>
-              </div>
-            ) : (
-              <div className="mobile-menu-item" onClick={() => { handleMessagesClick(); setIsMobileMenuOpen(false); }}>
-                <MessagesIcon />
-                <span>Messages</span>
-              </div>
-            )}
-            
-            <div className="mobile-menu-item" onClick={() => { handleSettingsClick(); setIsMobileMenuOpen(false); }}>
-              <SettingsIcon />
-              <span>Settings</span>
-            </div>
-          </div>
-        </div>
-      )}
-      
       {/* Compact vitals banner shown only while an auth modal is up on
           mobile, so the 3 large readings stay visible above the modal. */}
       {isMobile && authModalActive && (
@@ -1134,253 +1144,119 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className={`dashboard-container ${isMobile ? 'mobile' : ''}`}>
-        {isMobile ? (
-          // Mobile Layout - Only show the three value cards
-          <div className="mobile-values-container">
-            <div className="value-display spo2">
-              <h3 className="value-title">SpO₂</h3>
-              <div className="value-content">
-                <div className="value">{sensorValues.spo2 ?? "--"}</div>
-                <div className="unit">%</div>
+      <div className={`ld-main${needsUnlock ? ' locked' : ''}`}>
+        <div className="ld-tiles">
+          {/* Sits in the same row as the chart toolbar so tiles align with
+              their chart rows; also names the window the AVG/MIN/MAX cover. */}
+          <div className="ld-tiles-head">
+            <span className="ld-tiles-head-title">Live Vitals</span>
+            {!needsUnlock && (isMobile ? (
+              /* The chart toolbar carried the range tabs, and phones no longer
+                 render it — but the range still drives AVG/MIN/MAX and every
+                 flipped trace, so it moves here rather than disappearing. */
+              <div className="ld-range-tabs compact" role="tablist" aria-label="Chart time range">
+                {CHART_RANGES.map(r => (
+                  <button
+                    key={r.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={buffer.range === r.key}
+                    className={`ld-range-tab${buffer.range === r.key ? ' active' : ''}`}
+                    onClick={() => buffer.setRange(r.key)}
+                  >
+                    {r.label}
+                  </button>
+                ))}
               </div>
-              {showStatistics && (
-                <div className="value-stats">
-                  {datasets.spo2.length > 0 ? (
-                    <>
-                      <span>
-                        Avg: {calculateAvg(datasets.spo2.filter(item => item.y !== 0)).toFixed(1)}%
-                      </span>
-                      <span>
-                        Min: {calculateMin(datasets.spo2.filter(item => item.y !== 0)).toFixed(0)}%
-                      </span>
-                      <span>
-                        Max: {calculateMax(datasets.spo2.filter(item => item.y !== 0)).toFixed(0)}%
-                      </span>
-                    </>
-                  ) : (
-                    <span>No data available</span>
-                  )}
-                </div>
-              )}
-            </div>
-            
-            <div className="value-display bpm">
-              <h3 className="value-title">Heart Rate</h3>
-              <div className="value-content">
-                <div className="value">{sensorValues.bpm ?? "--"}</div>
-                <div className="unit">BPM</div>
-              </div>
-              {showStatistics && (
-                <div className="value-stats">
-                  {datasets.bpm.length > 0 ? (
-                    <>
-                      <span>
-                        Avg: {calculateAvg(datasets.bpm.filter(item => item.y !== 0)).toFixed(0)}
-                      </span>
-                      <span>
-                        Min: {calculateMin(datasets.bpm.filter(item => item.y !== 0)).toFixed(0)}
-                      </span>
-                      <span>
-                        Max: {calculateMax(datasets.bpm.filter(item => item.y !== 0)).toFixed(0)}
-                      </span>
-                    </>
-                  ) : (
-                    <span>No data available</span>
-                  )}
-                </div>
-              )}
-            </div>
-            
-            <div className="value-display perfusion">
-              <h3 className="value-title">Perfusion</h3>
-              <div className="value-content">
-                <div className="value">{sensorValues.perfusion ?? "--"}</div>
-                <div className="unit">{perfusionAsPercent ? "%" : "PI"}</div>
-              </div>
-              {showStatistics && (
-                <div className="value-stats">
-                  {datasets.perfusion.length > 0 ? (
-                    <>
-                      <span>
-                        Avg: {calculateAvg(datasets.perfusion.filter(item => item.y !== 0)).toFixed(1)}
-                      </span>
-                      <span>
-                        Min: {calculateMin(datasets.perfusion.filter(item => item.y !== 0)).toFixed(1)}
-                      </span>
-                      <span>
-                        Max: {calculateMax(datasets.perfusion.filter(item => item.y !== 0)).toFixed(1)}
-                      </span>
-                    </>
-                  ) : (
-                    <span>No data available</span>
-                  )}
-                </div>
-              )}
-            </div>
+            ) : (
+              <span className="ld-tiles-head-range">Stats · {buffer.rangeDef.label}</span>
+            ))}
           </div>
-        ) : (
-          // Desktop Layout - Full layout with charts
-          <>
-            <div className="values-column">
-              <div className="value-display spo2">
-                <h3 className="value-title">SpO₂</h3>
-                <div className="value-content">
-                  <div className="value">{sensorValues.spo2 ?? "--"}</div>
-                  <div className="unit">%</div>
-                </div>
-                {showStatistics && (
-                  <div className="value-stats">
-                    {datasets.spo2.length > 0 ? (
-                      <>
-                        <span>
-                          Avg: {calculateAvg(datasets.spo2.filter(item => item.y !== 0)).toFixed(1)}%
-                        </span>
-                        <span>
-                          Min: {calculateMin(datasets.spo2.filter(item => item.y !== 0)).toFixed(0)}%
-                        </span>
-                        <span>
-                          Max: {calculateMax(datasets.spo2.filter(item => item.y !== 0)).toFixed(0)}%
-                        </span>
-                      </>
-                    ) : (
-                      <span>No data available</span>
-                    )}
-                  </div>
-                )}
-              </div>
-              
-              <div className="value-display bpm">
-                <h3 className="value-title">Heart Rate</h3>
-                <div className="value-content">
-                  <div className="value">{sensorValues.bpm ?? "--"}</div>
-                  <div className="unit">BPM</div>
-                </div>
-                {showStatistics && (
-                  <div className="value-stats">
-                    {datasets.bpm.length > 0 ? (
-                      <>
-                        <span>
-                          Avg: {calculateAvg(datasets.bpm.filter(item => item.y !== 0)).toFixed(0)}
-                        </span>
-                        <span>
-                          Min: {calculateMin(datasets.bpm.filter(item => item.y !== 0)).toFixed(0)}
-                        </span>
-                        <span>
-                          Max: {calculateMax(datasets.bpm.filter(item => item.y !== 0)).toFixed(0)}
-                        </span>
-                      </>
-                    ) : (
-                      <span>No data available</span>
-                    )}
-                  </div>
-                )}
-              </div>
-              
-              <div className="value-display perfusion">
-                <h3 className="value-title">Perfusion</h3>
-                <div className="value-content">
-                  <div className="value">{sensorValues.perfusion ?? "--"}</div>
-                  <div className="unit">{perfusionAsPercent ? "%" : "PI"}</div>
-                </div>
-                {showStatistics && (
-                  <div className="value-stats">
-                    {datasets.perfusion.length > 0 ? (
-                      <>
-                        <span>
-                          Avg: {calculateAvg(datasets.perfusion.filter(item => item.y !== 0)).toFixed(1)}
-                        </span>
-                        <span>
-                          Min: {calculateMin(datasets.perfusion.filter(item => item.y !== 0)).toFixed(1)}
-                        </span>
-                        <span>
-                          Max: {calculateMax(datasets.perfusion.filter(item => item.y !== 0)).toFixed(1)}
-                        </span>
-                      </>
-                    ) : (
-                      <span>No data available</span>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
+          <StatTile
+            label="SpO₂"
+            source="Pulse ox · live"
+            value={sensorValues.spo2}
+            unit="%"
+            accent="#4da7bd"
+            stats={tileStats(buffer.series.spo2, v => `${v.toFixed(1)}%`, v => `${v.toFixed(0)}%`)}
+            chart={isMobile && !needsUnlock ? tileChart(buffer.series.spo2, 'blue') : null}
+            flipped={!!flippedTiles.spo2}
+            onFlip={isMobile && !needsUnlock ? () => toggleTile('spo2') : null}
+          />
+          <StatTile
+            label="Heart Rate"
+            source="Pulse ox · live"
+            value={sensorValues.bpm}
+            unit="bpm"
+            accent="#3fbf6a"
+            stats={tileStats(buffer.series.bpm, v => v.toFixed(0))}
+            chart={isMobile && !needsUnlock ? tileChart(buffer.series.bpm, 'green') : null}
+            flipped={!!flippedTiles.bpm}
+            onFlip={isMobile && !needsUnlock ? () => toggleTile('bpm') : null}
+          />
+          <StatTile
+            label="Perfusion Index"
+            source="PI · live"
+            value={sensorValues.perfusion}
+            unit={perfusionAsPercent ? '%' : 'PI'}
+            accent="#f0a52e"
+            stats={tileStats(buffer.series.perfusion, v => v.toFixed(1))}
+            chart={isMobile && !needsUnlock ? tileChart(buffer.series.perfusion, 'orange') : null}
+            flipped={!!flippedTiles.perfusion}
+            onFlip={isMobile && !needsUnlock ? () => toggleTile('perfusion') : null}
+          />
+        </div>
 
-            {!needsUnlock && <div className="charts-column">
-              <div className="chart-block">
-                <div className="chart-inner">
-                  <ChartBlock
-                    title="SpO₂ Monitor"
-                    yLabel="SpO2"
-                    yMin={40}
-                    yMax={100}
-                    color="blue"
-                    dataset={datasets.spo2}
-                    showXaxis={false}
-                    showYaxis={true}
-                    chrome={chartChrome}
-                  />
-                </div>
-              </div>
+        {/* Phones show the three tiles and nothing else: each tile is its own
+            chart now, and the mini cards do not survive the narrow column. Not
+            rendered rather than hidden, so a phone never pays to lay out four
+            recharts trees it will not show. */}
+        {!needsUnlock && !isMobile && (
+          <LiveCharts
+            range={buffer.range}
+            setRange={buffer.setRange}
+            rangeDef={buffer.rangeDef}
+            series={buffer.series}
+            streaming={buffer.streaming}
+            chrome={chartChrome}
+            perfusionAsPercent={perfusionAsPercent}
+            now={buffer.now}
+          />
+        )}
 
-              <div className="chart-block">
-                <div className="chart-inner">
-                  <ChartBlock
-                    title="BPM"
-                    yLabel="BPM"
-                    yMin={40}
-                    yMax={160}
-                    color="green"
-                    dataset={datasets.bpm}
-                    showXaxis={false}
-                    showYaxis={true}
-                    chrome={chartChrome}
-                  />
-                </div>
-              </div>
-
-              <div className="chart-block">
-                <div className="chart-inner">
-                  <ChartBlock
-                    title="Perfusion Monitor"
-                    yLabel={perfusionAsPercent ? "PAI (%)" : "PAI (PI)"}
-                    yMin={40}
-                    yMax={160}
-                    color="orange"
-                    dataset={datasets.perfusion}
-                    showXaxis={true}
-                    showYaxis={true}
-                    chrome={chartChrome}
-                  />
-                </div>
-              </div>
-            </div>}
-
-            {!needsUnlock && <div className="right-column">
-              <div className="dynamic-chart-container">
-                <DynamicVitalsCard
-                  vitalType={dashboardChart1.vital_type}
-                  data={dashboardChart1.data}
-                  title={formatVitalDisplayName(dashboardChart1.vital_type)}
-                  patientId={selectedPatient?.id}
-                  chrome={chartChrome}
-                  onSaved={() => fetchChartData(dashboardChart1.vital_type, 1)}
-                />
-              </div>
-
-              <div className="dynamic-chart-container">
-                <DynamicVitalsCard
-                  vitalType={dashboardChart2.vital_type}
-                  data={dashboardChart2.data}
-                  title={formatVitalDisplayName(dashboardChart2.vital_type)}
-                  patientId={selectedPatient?.id}
-                  chrome={chartChrome}
-                  onSaved={() => fetchChartData(dashboardChart2.vital_type, 2)}
-                />
-              </div>
-            </div>}
-          </>
+        {!needsUnlock && !isMobile && (
+          <div className="ld-cards">
+            <DynamicVitalsCard
+              vitalType={dashboardChart1.vital_type}
+              data={dashboardChart1.data}
+              title={formatVitalDisplayName(dashboardChart1.vital_type)}
+              patientId={selectedPatient?.id}
+              chrome={chartChrome}
+              onSaved={reloadChart1}
+            />
+            <DynamicVitalsCard
+              vitalType={dashboardChart2.vital_type}
+              data={dashboardChart2.data}
+              title={formatVitalDisplayName(dashboardChart2.vital_type)}
+              patientId={selectedPatient?.id}
+              chrome={chartChrome}
+              onSaved={reloadChart2}
+            />
+          </div>
         )}
       </div>
+
+      {/* Portal target for screen-level auth prompts. Inside `.live-dash` so
+          they inherit the board's dark tokens and its measured panel geometry
+          instead of landing on <body> in the app's default palette. */}
+      <div id="ld-auth-slot" />
+
+      <StatusStrip
+        wsStatus={wsStatus}
+        lastTickAt={buffer.lastTickAt}
+        sensorOffline={sensorOffline}
+        patientId={selectedPatient?.id}
+      />
 
       {/* Settings Modal */}
       {isSettingsModalOpen && (
@@ -1389,10 +1265,9 @@ export default function Dashboard() {
 
       {/* Equipment Modal */}
       {isVentModalOpen && (
-        <EquipmentModal 
-          isOpen={isVentModalOpen} 
-          onClose={() => { setIsVentModalOpen(false); fetchEquipmentDueCount(); }} 
-          equipmentDueCount={equipmentDueCount} 
+        <EquipmentModal
+          isOpen={isVentModalOpen}
+          onClose={() => { setIsVentModalOpen(false); fetchEquipmentDueCount(); }}
         />
       )}
 
@@ -1439,6 +1314,19 @@ export default function Dashboard() {
       {isCareTaskModalOpen && (
         <CareTaskModal onClose={() => setIsCareTaskModalOpen(false)} />
       )}
+
+      {/* Capture Vitals — the live SpO2/HR are offered as a connected
+          snapshot, so they are read straight off the board's sensor state. */}
+      {isCaptureModalOpen && selectedPatient?.id && (
+        <CaptureVitalsModal
+          patient={selectedPatient}
+          sensorValues={sensorValues}
+          streaming={buffer.streaming.status === 'streaming'}
+          onClose={() => setIsCaptureModalOpen(false)}
+          onSaved={() => { reloadChart1(); reloadChart2(); }}
+        />
+      )}
     </div>
+    </ModalDockProvider>
   );
 }

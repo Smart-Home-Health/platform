@@ -32,6 +32,28 @@ from events import WebSocketEvent, StateSync, EventSource, SensorUpdate, AlarmPa
 
 logger = logging.getLogger("websocket_module")
 
+
+def reading_alarm_flags(reading: dict, min_spo2: int, max_spo2: int,
+                        min_bpm: int, max_bpm: int) -> dict:
+    """SpO2/BPM alarm flags for one set of readings.
+
+    Shared by the global state and by each per-patient entry so the two can
+    never drift apart. A -1 is the pulse ox reporting its own disconnect in
+    band, not a reading, so it never raises an alarm.
+    """
+    s = reading.get('spo2')
+    b = reading.get('bpm')
+    s_alarm = bool(
+        isinstance(s, (int, float)) and s != -1 and (s < min_spo2 or s > max_spo2)
+    )
+    b_alarm = bool(
+        isinstance(b, (int, float)) and b != -1 and (b < min_bpm or b > max_bpm)
+    )
+    # Only vitals feed the combined flag, so the banner clears once SpO2 and BPM
+    # are both back in range.
+    return {'spo2_alarm': s_alarm, 'bpm_alarm': b_alarm, 'alarm': s_alarm or b_alarm}
+
+
 class WebSocketModule:
     """Manages WebSocket connections and broadcasts state updates."""
     
@@ -386,23 +408,19 @@ class WebSocketModule:
             min_bpm = int(settings_dict.get('min_bpm', {}).get('value', 55))
             max_bpm = int(settings_dict.get('max_bpm', {}).get('value', 155))
 
-            spo2_val = state.get('spo2')
-            bpm_val = state.get('bpm')
-
-            state['spo2_alarm'] = False
-            state['bpm_alarm'] = False
-
-            if isinstance(spo2_val, (int, float)) and spo2_val != -1 and spo2_val is not None:
-                state['spo2_alarm'] = spo2_val < min_spo2 or spo2_val > max_spo2
-
-            if isinstance(bpm_val, (int, float)) and bpm_val != -1 and bpm_val is not None:
-                state['bpm_alarm'] = bpm_val < min_bpm or bpm_val > max_bpm
-
-            # Combined alarm flag: only vitals (SpO2/BPM) so banner clears when O2 and BPM are normal
-            state['alarm'] = state['spo2_alarm'] or state['bpm_alarm']
-            # Per-patient readings for care dashboard (keys as strings for JSON)
+            state.update(reading_alarm_flags(state, min_spo2, max_spo2, min_bpm, max_bpm))
+            # Per-patient readings for care dashboard (keys as strings for JSON).
+            # Each entry carries its OWN alarm flags, evaluated against the same
+            # thresholds as the global ones above. The top-level spo2/bpm are
+            # last-writer-wins across every reader, so a consumer that scopes
+            # itself to one patient (the live dashboard) would otherwise inherit
+            # another patient's alarm state along with it.
             state['patient_readings'] = {
-                str(pid): data for pid, data in self.patient_readings.items()
+                str(pid): {
+                    **data,
+                    **reading_alarm_flags(data, min_spo2, max_spo2, min_bpm, max_bpm),
+                }
+                for pid, data in self.patient_readings.items()
             }
             
             logger.debug(f"Built full state with {len(state)} keys")

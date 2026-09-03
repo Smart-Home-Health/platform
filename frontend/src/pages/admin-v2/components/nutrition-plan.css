@@ -1,0 +1,413 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+/* Nutrition plan + goal history — vc-native, matching the overview's cards. */
+
+.nplan { display: flex; flex-direction: column; gap: 0.55rem; }
+
+.nplan-card {
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-surface);
+  overflow: hidden;
+}
+.nplan-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border-bottom: 1px solid var(--vc-line-hairline);
+}
+.nplan-card-head h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+.nplan-head-actions { display: flex; align-items: center; gap: 0.5rem; }
+
+.nplan-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: none;
+  border: none;
+  padding: 0.2rem 0.1rem;
+  cursor: pointer;
+  border-radius: 4px;
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-data-live);
+}
+.nplan-link:hover { text-decoration: underline; }
+.nplan-link:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vc-data-live) 30%, transparent);
+}
+
+.nplan-card-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.9rem;
+  padding: 0.55rem 0.7rem;
+  border-top: 1px solid var(--vc-line-hairline);
+  font-family: var(--vc-font-sans);
+  font-size: 12px;
+  color: var(--vc-text-tertiary);
+}
+.nplan-card-foot span { display: inline-flex; align-items: center; gap: 0.35rem; }
+.nplan-note { font-style: italic; }
+
+.nplan-empty {
+  margin: 0;
+  padding: 1rem 0.7rem;
+  font-family: var(--vc-font-sans);
+  font-size: 13px;
+  color: var(--vc-text-tertiary);
+}
+
+/* ---------- targets ---------- */
+.nplan-targets {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+}
+.nplan-target {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.6rem 0.5rem;
+  border-right: 1px solid var(--vc-line-hairline);
+  text-align: center;
+  min-width: 0;
+}
+.nplan-target:last-child { border-right: none; }
+.nplan-target-label {
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nplan-target.fluids .nplan-target-label { color: var(--vc-data-live); }
+.nplan-target.calories .nplan-target-label { color: var(--vc-state-due); }
+.nplan-target-value {
+  font-family: var(--vc-font-mono);
+  font-size: clamp(14px, 4vw, 17px);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-text-primary);
+  white-space: nowrap;
+}
+.nplan-target-value em {
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--vc-text-secondary);
+  margin-left: 0.2rem;
+}
+
+/* ---------- coverage ---------- */
+.nplan-coverage { display: flex; flex-direction: column; gap: 0.7rem; padding: 0.7rem; }
+.nplan-cov {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+}
+.nplan-cov-icon { display: inline-flex; }
+.nplan-cov-icon.fluids { color: var(--vc-data-live); }
+.nplan-cov-icon.calories { color: var(--vc-state-due); }
+.nplan-cov-label {
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.nplan-cov-value {
+  text-align: right;
+  font-family: var(--vc-font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-text-primary);
+}
+.nplan-cov-value em {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--vc-text-tertiary);
+}
+.nplan-cov-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+/* Green means the plan adds up; amber means it falls short. Neither is red —
+   an under-covered plan is a gap to close, not a clinical alarm. */
+.nplan-cov-tag.covered {
+  color: var(--vc-state-complete);
+  border: 1px solid color-mix(in srgb, var(--vc-state-complete) 50%, transparent);
+  background: color-mix(in srgb, var(--vc-state-complete) 12%, transparent);
+}
+.nplan-cov-tag.short {
+  color: var(--vc-state-due);
+  border: 1px solid color-mix(in srgb, var(--vc-state-due) 50%, transparent);
+  background: color-mix(in srgb, var(--vc-state-due) 12%, transparent);
+}
+.nplan-cov-track {
+  grid-column: 1 / -1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--vc-bg-raised);
+  overflow: hidden;
+}
+.nplan-cov-fill { height: 100%; border-radius: 3px; }
+.nplan-cov-fill.fluids { background: var(--vc-data-live); }
+.nplan-cov-fill.calories { background: var(--vc-state-due); }
+.nplan-cov-fill.covered { background: var(--vc-state-complete); }
+.nplan-cov-events {
+  grid-column: 1 / -1;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+
+/* ---------- schedules ---------- */
+.nplan-schedules { display: flex; flex-direction: column; }
+
+/* ---------- goal history ---------- */
+.nplan-history { gap: 0.85rem; }
+.nplan-history-sub {
+  margin: -0.25rem 0 0;
+  font-family: var(--vc-font-sans);
+  font-size: 12.5px;
+  color: var(--vc-text-secondary);
+}
+
+.nplan-charts { display: flex; flex-direction: column; gap: 0.6rem; }
+.nplan-chart {
+  margin: 0;
+  padding: 0.6rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-surface);
+}
+.nplan-chart figcaption {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 0.3rem;
+}
+.nplan-chart.fluids figcaption { color: var(--vc-data-live); }
+.nplan-chart.calories figcaption { color: var(--vc-state-due); }
+.nplan-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+
+.nplan-chart-line { stroke-width: 2; stroke-linecap: round; }
+.nplan-chart.fluids .nplan-chart-line { stroke: var(--vc-data-live); }
+.nplan-chart.calories .nplan-chart-line { stroke: var(--vc-state-due); }
+/* Dashed: the target jumped here, it did not drift. */
+.nplan-chart-riser { stroke: var(--vc-line-strong); stroke-width: 1; stroke-dasharray: 2 2; }
+.nplan-chart.fluids .nplan-chart-dot { fill: var(--vc-data-live); }
+.nplan-chart.calories .nplan-chart-dot { fill: var(--vc-state-due); }
+.nplan-chart-value {
+  font-family: var(--vc-font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  fill: var(--vc-text-secondary);
+  text-anchor: middle;
+}
+
+.nplan-versions { list-style: none; margin: 0; padding: 0; }
+.nplan-version { position: relative; display: flex; gap: 0.7rem; padding-bottom: 0.5rem; }
+.nplan-version-rail {
+  flex: 0 0 auto;
+  position: relative;
+  width: 9px;
+  margin-top: 0.35rem;
+}
+.nplan-version-rail::before {
+  content: '';
+  position: absolute;
+  left: 1px;
+  top: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--vc-line-strong);
+}
+.nplan-version.current .nplan-version-rail::before { background: var(--vc-data-live); }
+.nplan-version:not(:last-child) .nplan-version-rail::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 9px;
+  bottom: -0.5rem;
+  width: 1px;
+  background: var(--vc-line-hairline);
+}
+
+.nplan-version-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-surface);
+}
+.nplan-version.current .nplan-version-body {
+  border-color: color-mix(in srgb, var(--vc-data-live) 40%, transparent);
+}
+.nplan-version-head { display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem; }
+.nplan-version-tag {
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--vc-state-complete) 50%, transparent);
+  color: var(--vc-state-complete);
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.nplan-version-dates {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vc-text-secondary);
+}
+.nplan-version-values { display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem; }
+.nplan-version-metric { display: flex; flex-direction: column; gap: 0.1rem; }
+.nplan-version-metric-label {
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.nplan-version-metric.fluids .nplan-version-metric-label { color: var(--vc-data-live); }
+.nplan-version-metric.calories .nplan-version-metric-label { color: var(--vc-state-due); }
+.nplan-version-metric-value {
+  font-family: var(--vc-font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--vc-text-primary);
+}
+.nplan-version-note {
+  margin: 0;
+  font-family: var(--vc-font-sans);
+  font-size: 12px;
+  color: var(--vc-text-tertiary);
+}
+
+@media (max-width: 560px) {
+  .nplan-targets { grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); }
+  .nplan-cov { grid-template-columns: auto auto 1fr; }
+  .nplan-cov-tag { grid-column: 3 / 4; justify-self: end; }
+  .nplan-cov-value { grid-column: 1 / -1; text-align: left; }
+}
+
+/* ---- Schedules summary row + full-screen list sheet ---- */
+/* The card grid moved behind this one flat row so Targets and Coverage stay
+   on screen; the list itself opens as the item-picker-style sheet. */
+.nplan-schedules-open {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.55rem 0.6rem;
+  background: transparent;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 4px;
+  color: var(--vc-text-primary);
+  font-size: 14px;
+  cursor: pointer;
+}
+.nplan-schedules-open:hover { border-color: var(--vc-data-live); }
+.nplan-schedules-open svg { color: var(--vc-text-secondary); }
+
+/* Sheet rows: the row body edits; pause/resume and delete trail it. */
+.sls-row { cursor: default; padding-right: 0; }
+.sls-row:hover { background: transparent; }
+.sls-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.sls-row-main:hover .nip-item-name { color: var(--vc-data-live); }
+.sls-row-when { text-transform: none; letter-spacing: 0; }
+.sls-row-action {
+  flex-shrink: 0;
+  display: grid;
+  place-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 4px;
+  color: var(--vc-text-secondary);
+  cursor: pointer;
+}
+.sls-row-action:hover { color: var(--vc-text-primary); border-color: var(--vc-line-strong); }
+.sls-row-action.danger:hover { color: var(--vc-state-alert); border-color: var(--vc-state-alert); }
+.sls-done { flex: 1; }

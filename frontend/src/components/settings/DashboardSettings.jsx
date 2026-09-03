@@ -15,440 +15,161 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import React, { useState, useEffect } from 'react';
+// What the live board shows: the min/max/avg line under each tile, the two
+// sub-chart vitals, and whether perfusion reads as % or PI. Saved as one
+// batch through the settings service.
+import { useState, useEffect } from 'react';
 import { getSettings, updateSettings } from '../../services/settings';
-import config from '../../config';
+import config, { apiFetch } from '../../config';
+import { EmField, EmRow, EmSelect } from '../vc/EntityModal';
+import '../schedule/schedule-panel.css';
+import './settings-panel.css';
 
-/**
- * Dashboard settings component for configuring what's displayed on the main dashboard
- */
-const DashboardSettings = () => {
-  const [formData, setFormData] = useState({
-    chart_time_range: '5m', // '1m', '3m', '5m', '10m', '30m', '1h'
-    show_alerts_count: true,
+const VITAL_LABELS = {
+  blood_pressure: 'Blood pressure',
+  temperature: 'Temperature',
+  bathroom: 'Bathroom',
+  weight: 'Weight',
+  calories: 'Calories',
+  water: 'Water intake',
+  nutrition: 'Nutrition (calories & water)',
+};
+const vitalLabel = (v) => VITAL_LABELS[v] || v.charAt(0).toUpperCase() + v.slice(1);
+
+// Settings arrive as strings; these are the booleans the form owns.
+const asBool = (v) => (v === 'True' || v === 'true' ? true : v === 'False' || v === 'false' ? false : v);
+
+export default function DashboardSettings() {
+  const [form, setForm] = useState({
     show_statistics: true,
-    perfusion_as_percent: false, // true = show %, false = show PI
-    dashboard_chart_1_vital: '', // First sub-chart vital type
-    dashboard_chart_2_vital: '', // Second sub-chart vital type
+    perfusion_as_percent: false,
+    dashboard_chart_1_vital: '',
+    dashboard_chart_2_vital: '',
   });
-
-  const [availableVitals, setAvailableVitals] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [vitals, setVitals] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(false);
+  const [saved, setSaved] = useState(false);
 
-  // Load dashboard settings on component mount
   useEffect(() => {
-    const loadDashboardSettings = async () => {
+    let cancelled = false;
+    (async () => {
       try {
-        setIsLoading(true);
-        
-        // Load both settings and available vitals in parallel
-        const [settingsResponse, vitalsResponse, nutritionCheckResponse] = await Promise.all([
+        const [settings, typesRes, nutritionRes] = await Promise.all([
           getSettings(),
-          fetch(`${config.apiUrl}/api/vitals/types`, { credentials: 'include' }),
-          fetch(`${config.apiUrl}/api/nutrition/has-data`, { credentials: 'include' })
+          apiFetch(`${config.apiUrl}/api/vitals/types`),
+          apiFetch(`${config.apiUrl}/api/nutrition/has-data`),
         ]);
-        
-        // Process vitals response
-        let vitalsData = [];
-        if (vitalsResponse.ok) {
-          vitalsData = await vitalsResponse.json();
-        }
-        
-        // Add default vital types that are always available
-        const defaultVitals = ['blood_pressure', 'temperature'];
-        const allVitals = [...new Set([...defaultVitals, ...vitalsData])];
-        
-        // Add nutrition if there's data
-        if (nutritionCheckResponse.ok) {
-          const nutritionCheck = await nutritionCheckResponse.json();
-          if (nutritionCheck.has_data) {
-            allVitals.push('nutrition');
-          }
-        }
-        
-        setAvailableVitals(allVitals);
-        
-        const dashboardFormData = {};
-        for (const [key, value] of Object.entries(settingsResponse)) {
-          // Only include dashboard-related settings
+        const types = typesRes.ok ? await typesRes.json() : [];
+        const all = [...new Set(['blood_pressure', 'temperature', ...types])];
+        if (nutritionRes.ok && (await nutritionRes.json())?.has_data) all.push('nutrition');
+        if (cancelled) return;
+        setVitals(all);
+        const next = {};
+        for (const [key, value] of Object.entries(settings || {})) {
           if (key.startsWith('show_') || key.includes('chart_') || key.includes('dashboard_') || key.includes('perfusion_')) {
-            let processedValue = value;
-            
-            // Convert string boolean values to actual booleans
-            if (processedValue === "True" || processedValue === "true") {
-              processedValue = true;
-            } else if (processedValue === "False" || processedValue === "false") {
-              processedValue = false;
-            }
-            
-            dashboardFormData[key] = processedValue;
+            next[key] = asBool(value);
           }
         }
-        
-        // Always update state with loaded settings, even if some are missing
-        // This ensures boolean false values properly override defaults
-        setFormData(prev => ({
-          ...prev,
-          ...dashboardFormData
-        }));
-        
+        setForm((prev) => ({ ...prev, ...next }));
         setError(null);
-      } catch (err) {
-        console.error("Error loading dashboard settings:", err);
-        setError("Failed to load dashboard settings. Please try again.");
+      } catch {
+        if (!cancelled) setError('Could not load the dashboard settings.');
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setLoading(false);
       }
-    };
-
-    loadDashboardSettings();
+    })();
+    return () => { cancelled = true; };
   }, []);
 
-  const handleInputChange = (key, value) => {
-    setFormData(prev => ({
-      ...prev,
-      [key]: value
-    }));
+  const set = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
+  // Each vital can drive only one sub-chart.
+  const optionsFor = (chart) => {
+    const other = form[chart === 1 ? 'dashboard_chart_2_vital' : 'dashboard_chart_1_vital'];
+    return vitals.filter((v) => v !== other);
   };
 
-  // Helper function to get available options for each chart dropdown
-  const getAvailableVitalsForChart = (chartNumber) => {
-    const otherChartKey = chartNumber === 1 ? 'dashboard_chart_2_vital' : 'dashboard_chart_1_vital';
-    const otherChartValue = formData[otherChartKey];
-    
-    return availableVitals.filter(vital => vital !== otherChartValue || vital === '');
-  };
-
-  // Helper function to format vital display names
-  const formatVitalDisplayName = (vital) => {
-    const displayNames = {
-      'blood_pressure': 'Blood Pressure',
-      'temperature': 'Temperature',
-      'bathroom': 'Bathroom',
-      'weight': 'Weight',
-      'calories': 'Calories',
-      'water': 'Water Intake',
-      'nutrition': 'Nutrition (Calories & Water)'
-    };
-    
-    return displayNames[vital] || vital.charAt(0).toUpperCase() + vital.slice(1);
-  };
-
-  const handleSubmit = async () => {
+  const submit = async (e) => {
+    e.preventDefault();
     setError(null);
-    setSuccess(false);
-    setIsSubmitting(true);
-
+    setSaved(false);
+    setSaving(true);
     try {
-      // Convert numeric inputs to numbers
-      const settingsToUpdate = {
-        chart_time_range: formData.chart_time_range,
-        show_alerts_count: formData.show_alerts_count,
-        show_statistics: formData.show_statistics,
-        perfusion_as_percent: formData.perfusion_as_percent,
-        dashboard_chart_1_vital: formData.dashboard_chart_1_vital,
-        dashboard_chart_2_vital: formData.dashboard_chart_2_vital,
-      };
-
-      await updateSettings(settingsToUpdate);
-
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 3000);
-    } catch (err) {
-      console.error("Error saving dashboard settings:", err);
-      setError("Failed to save dashboard settings. Please try again.");
+      await updateSettings({
+        show_statistics: form.show_statistics,
+        perfusion_as_percent: form.perfusion_as_percent,
+        dashboard_chart_1_vital: form.dashboard_chart_1_vital,
+        dashboard_chart_2_vital: form.dashboard_chart_2_vital,
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch {
+      setError('Could not save the dashboard settings.');
     } finally {
-      setIsSubmitting(false);
+      setSaving(false);
     }
   };
 
-  if (isLoading) {
-    return <div style={{ color: 'var(--dash-text)', textAlign: 'center', padding: '20px' }}>Loading dashboard settings...</div>;
-  }
+  if (loading) return <div className="ld-dose-empty">Loading settings…</div>;
 
   return (
-    <div>
-      <h3 style={{ 
-        color: 'var(--dash-text)', 
-        fontSize: '1.25rem', 
-        marginBottom: '16px',
-        fontWeight: '600'
-      }}>Dashboard Configuration</h3>
-      
-      {/* Chart Time Range and Display Options */}
-      <div style={{ marginBottom: '24px' }}>
-        <h4 style={{ 
-          color: 'var(--dash-text)', 
-          fontSize: '1.1rem', 
-          marginBottom: '12px',
-          fontWeight: '500'
-        }}>Chart Display Settings</h4>
-        
-        <div style={{ marginBottom: '16px' }}>
-          <label style={{ 
-            color: 'var(--dash-text-muted)', 
-            fontSize: '13px', 
-            fontWeight: '500', 
-            marginBottom: '6px', 
-            display: 'block' 
-          }}>Time Range Displayed in Charts</label>
-          <select
-            value={formData.chart_time_range}
-            onChange={(e) => handleInputChange('chart_time_range', e.target.value)}
-            style={{
-              width: '100%',
-              padding: '10px 12px',
-              backgroundColor: 'var(--dash-surface-2)',
-              border: '1px solid var(--dash-border-strong)',
-              borderRadius: '6px',
-              color: 'var(--dash-text)',
-              fontSize: '14px',
-              outline: 'none',
-              cursor: 'pointer',
-              boxSizing: 'border-box'
-            }}
-          >
-            <option value="1m">1 Minute</option>
-            <option value="3m">3 Minutes</option>
-            <option value="5m">5 Minutes</option>
-            <option value="10m">10 Minutes</option>
-            <option value="30m">30 Minutes</option>
-            <option value="1h">1 Hour</option>
-          </select>
-          <div style={{ 
-            color: 'var(--dash-text-muted)', 
-            fontSize: '12px', 
-            marginTop: '6px',
-            fontStyle: 'italic'
-          }}>
-            Controls how much historical data is shown in the SpO₂, Heart Rate, and Perfusion charts
-          </div>
-        </div>
+    <form className="st-form" onSubmit={submit} noValidate>
+      {error && <div className="em-error">{error}</div>}
+      {saved && <div className="em-success">Dashboard settings saved.</div>}
 
-        <div style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: '10px', 
-          padding: '12px',
-          backgroundColor: 'var(--dash-surface)',
-          borderRadius: '6px',
-          border: '1px solid var(--dash-border-strong)'
-        }}>
+      <section className="st-section">
+        <h3 className="st-section-title">Vital tiles</h3>
+        <label className="em-check-row">
           <input
             type="checkbox"
-            checked={formData.show_statistics}
-            onChange={(e) => handleInputChange('show_statistics', e.target.checked)}
-            style={{
-              width: '18px',
-              height: '18px',
-              accentColor: '#007bff',
-              cursor: 'pointer'
-            }}
+            className="em-check"
+            checked={!!form.show_statistics}
+            onChange={(e) => set('show_statistics', e.target.checked)}
           />
-          <label style={{ 
-            color: 'var(--dash-text)', 
-            fontSize: '14px', 
-            fontWeight: '500',
-            cursor: 'pointer'
-          }}>Show Value Statistics (Min/Max/Avg)</label>
-        </div>
-        <div style={{ 
-          color: 'var(--dash-text-muted)', 
-          fontSize: '12px', 
-          marginTop: '6px',
-          fontStyle: 'italic'
-        }}>
-          Display minimum, maximum, and average statistics below each vital sign value
-        </div>
+          <span className="em-check-label">Show min / max / avg under each value</span>
+        </label>
+        <p className="st-section-hint">The line under each tile summarises the selected chart range.</p>
+      </section>
+
+      <section className="st-section">
+        <h3 className="st-section-title">Sub-charts</h3>
+        <p className="st-section-hint">Two vitals chart under the live traces; each can be used once.</p>
+        <EmRow>
+          <EmField label="Chart 1" htmlFor="st-chart-1">
+            <EmSelect id="st-chart-1" value={form.dashboard_chart_1_vital} onChange={(e) => set('dashboard_chart_1_vital', e.target.value)}>
+              <option value="">Choose a vital…</option>
+              {optionsFor(1).map((v) => <option key={v} value={v}>{vitalLabel(v)}</option>)}
+            </EmSelect>
+          </EmField>
+          <EmField label="Chart 2" htmlFor="st-chart-2">
+            <EmSelect id="st-chart-2" value={form.dashboard_chart_2_vital} onChange={(e) => set('dashboard_chart_2_vital', e.target.value)}>
+              <option value="">Choose a vital…</option>
+              {optionsFor(2).map((v) => <option key={v} value={v}>{vitalLabel(v)}</option>)}
+            </EmSelect>
+          </EmField>
+        </EmRow>
+      </section>
+
+      <section className="st-section">
+        <h3 className="st-section-title">Perfusion</h3>
+        <label className="em-check-row">
+          <input
+            type="checkbox"
+            className="em-check"
+            checked={!!form.perfusion_as_percent}
+            onChange={(e) => set('perfusion_as_percent', e.target.checked)}
+          />
+          <span className="em-check-label">Show perfusion as a percentage</span>
+        </label>
+        <p className="st-section-hint">Unchecked shows PI (perfusion index).</p>
+      </section>
+
+      <div className="st-actions">
+        <button type="submit" className="ld-dose-btn primary" disabled={saving}>
+          {saving ? 'Saving…' : 'Save dashboard'}
+        </button>
       </div>
-
-        {/* Card Display Options */}
-        <div style={{ marginBottom: '24px' }}>
-          <h4 style={{ 
-            color: 'var(--dash-text)', 
-            fontSize: '1.1rem', 
-            marginBottom: '12px',
-            fontWeight: '500'
-          }}>Dashboard Charts</h4>
-          
-          {/* Sub-chart Selection */}
-          <div style={{ marginBottom: '16px' }}>
-            <h5 style={{ 
-              color: 'var(--dash-text-muted)', 
-              fontSize: '1rem', 
-              marginBottom: '8px',
-              fontWeight: '500'
-            }}>Vital Charts Selection</h5>
-            <div style={{ 
-              color: 'var(--dash-text-muted)', 
-              fontSize: '12px', 
-              marginBottom: '12px',
-              fontStyle: 'italic'
-            }}>
-              Choose which vitals to display in the two sub-charts. Each vital can only be used once.
-            </div>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              <div>
-                <label style={{ 
-                  color: 'var(--dash-text-muted)', 
-                  fontSize: '13px', 
-                  fontWeight: '500', 
-                  marginBottom: '6px', 
-                  display: 'block' 
-                }}>Chart 1 - Vital Type</label>
-                <select
-                  value={formData.dashboard_chart_1_vital}
-                  onChange={(e) => handleInputChange('dashboard_chart_1_vital', e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    backgroundColor: 'var(--dash-surface-2)',
-                    border: '1px solid var(--dash-border-strong)',
-                    borderRadius: '6px',
-                    color: 'var(--dash-text)',
-                    fontSize: '14px',
-                    outline: 'none',
-                    cursor: 'pointer',
-                    boxSizing: 'border-box'
-                  }}
-                >
-                  <option value="">Select a vital type...</option>
-                  {getAvailableVitalsForChart(1).map(vital => (
-                    <option key={vital} value={vital}>
-                      {formatVitalDisplayName(vital)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              
-              <div>
-                <label style={{ 
-                  color: 'var(--dash-text-muted)', 
-                  fontSize: '13px', 
-                  fontWeight: '500', 
-                  marginBottom: '6px', 
-                  display: 'block' 
-                }}>Chart 2 - Vital Type</label>
-                <select
-                  value={formData.dashboard_chart_2_vital}
-                  onChange={(e) => handleInputChange('dashboard_chart_2_vital', e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    backgroundColor: 'var(--dash-surface-2)',
-                    border: '1px solid var(--dash-border-strong)',
-                    borderRadius: '6px',
-                    color: 'var(--dash-text)',
-                    fontSize: '14px',
-                    outline: 'none',
-                    cursor: 'pointer',
-                    boxSizing: 'border-box'
-                  }}
-                >
-                  <option value="">Select a vital type...</option>
-                  {getAvailableVitalsForChart(2).map(vital => (
-                    <option key={vital} value={vital}>
-                      {formatVitalDisplayName(vital)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Perfusion Display Mode */}
-        <div style={{ marginBottom: '24px' }}>
-          <h4 style={{ 
-            color: 'var(--dash-text)', 
-            fontSize: '1.1rem', 
-            marginBottom: '12px',
-            fontWeight: '500'
-          }}>Perfusion Display</h4>
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '10px', 
-            padding: '12px',
-            backgroundColor: 'var(--dash-surface)',
-            borderRadius: '6px',
-            border: '1px solid var(--dash-border-strong)'
-          }}>
-            <input
-              type="checkbox"
-              checked={formData.perfusion_as_percent}
-              onChange={(e) => handleInputChange('perfusion_as_percent', e.target.checked)}
-              style={{
-                width: '18px',
-                height: '18px',
-                accentColor: '#007bff',
-                cursor: 'pointer'
-              }}
-            />
-            <label style={{ 
-              color: 'var(--dash-text)', 
-              fontSize: '14px', 
-              fontWeight: '500',
-              cursor: 'pointer'
-            }}>Display Perfusion as Percent (%)</label>
-          </div>
-          <div style={{ 
-            color: 'var(--dash-text-muted)', 
-            fontSize: '12px', 
-            marginTop: '6px',
-            fontStyle: 'italic'
-          }}>
-            When checked, perfusion displays with "%" symbol. When unchecked, displays "PI" (Perfusion Index).
-          </div>
-        </div>
-
-        {error && (
-          <div style={{ 
-            backgroundColor: '#fed7d7', 
-            color: '#c53030', 
-            padding: '10px 12px', 
-            borderRadius: '6px', 
-            marginBottom: '12px',
-            fontSize: '13px'
-          }}>{error}</div>
-        )}
-        {success && (
-          <div style={{ 
-            backgroundColor: '#c6f6d5', 
-            color: '#2f855a', 
-            padding: '10px 12px', 
-            borderRadius: '6px', 
-            marginBottom: '12px',
-            fontSize: '13px'
-          }}>Dashboard settings saved successfully!</div>
-        )}
-        
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
-          <button 
-            onClick={handleSubmit}
-            disabled={isSubmitting}
-            style={{
-              backgroundColor: '#007bff',
-              color: 'var(--dash-text)',
-              border: 'none',
-              borderRadius: '6px',
-              padding: '10px 24px',
-              fontSize: '14px',
-              fontWeight: '500',
-              cursor: isSubmitting ? 'not-allowed' : 'pointer',
-              opacity: isSubmitting ? 0.6 : 1,
-              transition: 'all 0.2s ease'
-            }}
-          >
-            {isSubmitting ? 'Saving...' : 'Save Dashboard Settings'}
-          </button>
-        </div>
-    </div>
+    </form>
   );
-};
-
-export default DashboardSettings;
+}

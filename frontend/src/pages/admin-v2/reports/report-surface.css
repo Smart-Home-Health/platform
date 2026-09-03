@@ -1,0 +1,442 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Chrome shared by the report pages: the palette, the box reset, and the
+ * controls/cards/tables/buttons/sheets they both draw from. Page-specific
+ * pieces stay in the page's own file (`.dod-*`, `.ovn-*`).
+ *
+ * Reports are read in admin, which follows the user's theme, so the palette is
+ * a local token layer over the app's own light-capable variables, swapped to
+ * the vc tokens under dark.
+ *
+ * Colour roles: series colours carry identity only, amber marks a configured
+ * alarm, red marks a reading that breached one. */
+@import '../../../styles/vc-tokens.css';
+
+.rpt {
+  --rpt-surface: var(--vc-bg-surface);
+  --rpt-raised: var(--vc-bg-raised);
+  --rpt-line: var(--vc-line-hairline);
+  --rpt-text: var(--vc-text-primary);
+  --rpt-text-2: var(--vc-text-secondary);
+  --rpt-text-3: var(--vc-text-tertiary);
+  --rpt-accent: var(--vc-data-live);
+  --rpt-alarm: var(--vc-state-due);
+  --rpt-breach: var(--vc-state-alert);
+  --rpt-ok: var(--vc-state-complete);
+  --rpt-plot: #0f1620;
+}
+
+.rpt, .rpt * { box-sizing: border-box; }
+:where(.rpt) button {
+  font-family: var(--vc-font-mono);
+  padding: 0;
+  border: 1px solid transparent;
+  background: none;
+  color: inherit;
+}
+
+.rpt {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  max-width: 1100px;
+  font-family: var(--vc-font-sans);
+  color: var(--rpt-text);
+}
+
+.rpt-sr {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ---- controls ----
+   One row, always: pickers share the width and icon buttons stay square. */
+
+.rpt-controls { display: flex; flex-wrap: nowrap; align-items: center; gap: 0.4rem; }
+.rpt-control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 260px;
+  min-height: 46px;
+  padding: 0 0.75rem;
+  border: 1px solid var(--rpt-line);
+  border-radius: 10px;
+  background: var(--rpt-surface);
+  color: var(--rpt-text);
+  font-family: var(--vc-font-mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.rpt-control:hover:not(:disabled) { border-color: var(--rpt-accent); }
+.rpt-control:disabled { opacity: 0.45; cursor: default; }
+.rpt-control > svg:first-child { color: var(--rpt-accent); flex-shrink: 0; }
+.rpt-control.icon {
+  flex: 0 0 46px;
+  width: 46px;
+  padding: 0;
+  justify-content: center;
+  color: var(--rpt-accent);
+}
+.rpt-control.wide { max-width: none; }
+.rpt-control select {
+  appearance: none;
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+.rpt-control select:focus-visible { outline: 2px solid var(--rpt-accent); outline-offset: 2px; }
+.rpt-chevron { color: var(--rpt-text-3); flex-shrink: 0; }
+:root:not(.light) .rpt select,
+.force-dark .rpt select { color-scheme: dark; }
+
+/* A dot rather than a count: what is behind it is a setting, not a tally. */
+.rpt-dot-flag {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--rpt-accent);
+}
+
+.rpt-window {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--rpt-text-3);
+}
+.rpt-window strong { color: var(--rpt-accent); font-weight: 700; }
+
+/* ---- stat strip ---- */
+
+/* All across one row at any width — wrapping leaves a hole in the grid and puts
+   a border where a reader sees a divider between two unrelated figures. The
+   page sets how many. */
+.rpt-stats {
+  display: grid;
+  grid-template-columns: repeat(var(--rpt-stat-count, 5), minmax(0, 1fr));
+  border: 1px solid var(--rpt-line);
+  border-radius: 12px;
+  background: var(--rpt-surface);
+  overflow: hidden;
+}
+.rpt-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  align-items: center;
+  padding: 0.7rem 0.3rem;
+  border-right: 1px solid var(--rpt-line);
+  text-align: center;
+  min-width: 0;
+}
+.rpt-stat:last-of-type { border-right: none; }
+.rpt-stat-label {
+  font-family: var(--vc-font-mono);
+  font-size: 8.5px;
+  line-height: 1.25;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--rpt-text-3);
+}
+.rpt-stat-value {
+  font-family: var(--vc-font-mono);
+  font-size: clamp(17px, 4.6vw, 26px);
+  font-weight: 700;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  color: var(--rpt-text);
+}
+.rpt-stat-value .rpt-stat-unit { font-size: 0.55em; font-weight: 600; color: var(--rpt-text-3); }
+.rpt-stat.breach .rpt-stat-value { color: var(--rpt-breach); }
+.rpt-stat.warn .rpt-stat-value { color: var(--rpt-alarm); }
+.rpt-stat.ok .rpt-stat-value { color: var(--rpt-text); }
+.rpt-stat-note {
+  font-family: var(--vc-font-mono);
+  font-size: 9px;
+  line-height: 1.25;
+  letter-spacing: 0.04em;
+  color: var(--rpt-text-3);
+}
+.rpt-stats-foot {
+  grid-column: 1 / -1;
+  padding: 0.5rem;
+  border-top: 1px solid var(--rpt-line);
+  text-align: center;
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--rpt-text-3);
+}
+.rpt-stats-foot strong { color: var(--rpt-text-2); font-weight: 700; }
+
+/* ---- cards ---- */
+
+.rpt-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--rpt-line);
+  border-radius: 12px;
+  background: var(--rpt-surface);
+  overflow: hidden;
+}
+.rpt-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.7rem 0.8rem;
+  border-bottom: 1px solid var(--rpt-line);
+}
+.rpt-card-title {
+  font-family: var(--vc-font-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--rpt-text);
+}
+.rpt-card-note {
+  margin-left: auto;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--rpt-text-3);
+  white-space: nowrap;
+}
+.rpt-icon-btn {
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--rpt-line);
+  border-radius: 8px;
+  color: var(--rpt-text-2);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.rpt-icon-btn:hover { color: var(--rpt-text); border-color: var(--rpt-accent); }
+
+.rpt-plot {
+  position: relative;
+  padding: 0.6rem;
+  background: var(--rpt-plot);
+}
+
+/* Full-screen chart: the same card, taken out of the page flow. */
+.rpt-card.full {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  border-radius: 0;
+  background: var(--rpt-surface);
+}
+
+/* A switch for chart options — event markers, daily range. Borrows the
+   compose sheet's shape so switches read the same everywhere. */
+.rpt-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--rpt-text-3);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.rpt-switch {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  border: 1px solid var(--rpt-line);
+  border-radius: 999px;
+  background: var(--rpt-raised);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.rpt-switch.on { background: var(--rpt-accent); border-color: var(--rpt-accent); }
+.rpt-switch span {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--rpt-text-3);
+  transition: transform 120ms ease, background 120ms ease;
+}
+.rpt-switch.on span { transform: translateX(18px); background: var(--rpt-text); }
+
+/* ---- tables ---- */
+
+.rpt-table-wrap { overflow-x: auto; }
+.rpt-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--vc-font-mono);
+}
+.rpt-table th, .rpt-table td {
+  padding: 0.6rem 0.7rem;
+  text-align: right;
+  border-bottom: 1px solid var(--rpt-line);
+  white-space: nowrap;
+}
+.rpt-table th:first-child, .rpt-table td:first-child { text-align: left; }
+.rpt-table thead th {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--rpt-text-3);
+}
+.rpt-table tbody td { font-size: 12.5px; color: var(--rpt-text); font-variant-numeric: tabular-nums; }
+.rpt-table tbody tr:last-child td { border-bottom: none; }
+/* Written against the cell: `.rpt-table tbody td` sets a colour of its own and
+   would otherwise win on specificity. */
+.rpt-table tbody td.rpt-muted { color: var(--rpt-text-3); }
+.rpt-table tbody td.rpt-breach { color: var(--rpt-breach); font-weight: 700; }
+.rpt-table tbody td.rpt-warn { color: var(--rpt-alarm); font-weight: 700; }
+.rpt-muted { color: var(--rpt-text-3); }
+.rpt-breach { color: var(--rpt-breach); }
+.rpt-warn { color: var(--rpt-alarm); }
+.rpt-ok { color: var(--rpt-ok); }
+
+/* ---- buttons ---- */
+
+.rpt-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.rpt-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  flex: 1 1 160px;
+  min-height: 44px;
+  padding: 0 0.9rem;
+  border: 1px solid var(--rpt-line);
+  border-radius: 10px;
+  background: var(--rpt-surface);
+  color: var(--rpt-accent);
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.rpt-btn:hover:not(:disabled) { border-color: var(--rpt-accent); }
+.rpt-btn:disabled { color: var(--rpt-text-3); cursor: default; }
+.rpt-btn.primary {
+  border-color: var(--rpt-accent);
+  background: color-mix(in srgb, var(--rpt-accent) 16%, transparent);
+  color: var(--rpt-text);
+}
+.rpt-btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--rpt-accent) 26%, transparent); }
+.rpt-btn.sm { min-height: 34px; flex: 0 0 auto; font-size: 9.5px; padding: 0 0.6rem; }
+
+/* ---- states ---- */
+
+.rpt-empty {
+  padding: 2.5rem 1rem;
+  text-align: center;
+  font-family: var(--vc-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--rpt-text-3);
+}
+.rpt-error {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--rpt-breach) 55%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--rpt-breach) 12%, transparent);
+  color: var(--rpt-text);
+  font-size: 12.5px;
+}
+
+/* ---- sheets ----
+   These portal to <body>, outside `.rpt`, so the button reset above does not
+   reach them and index.css's bare-button rule does: it pays out 1.2em of
+   inline padding, which on a fixed-width icon button eats the whole content
+   box and collapses the icon to zero width. Everything drawn in a sheet states
+   its own box. */
+
+.rpt-sheet, .rpt-sheet * { box-sizing: border-box; }
+:where(.rpt-sheet) button {
+  font-family: var(--vc-font-mono);
+  padding: 0;
+  border: 1px solid transparent;
+  background: none;
+  color: inherit;
+}
+.rpt-sheet { display: flex; flex-direction: column; gap: 0.9rem; padding-top: 0.8rem; }
+.rpt-field { display: flex; flex-direction: column; gap: 0.4rem; }
+.rpt-field-label {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+.rpt-range { display: flex; align-items: center; gap: 0.5rem; }
+.rpt-sheet .rpt-control {
+  flex: 1;
+  max-width: none;
+  background: var(--vc-bg-base);
+  border-color: var(--vc-line-strong);
+  color: var(--vc-text-primary);
+}
+.rpt-range-sep {
+  font-family: var(--vc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}

@@ -15,116 +15,59 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { createContext, useContext, useEffect } from 'react';
 
 /**
- * Live-dashboard color scheme.
+ * Live-dashboard chart chrome.
  *
- * Deliberately separate from the admin `ThemeContext` (which is per-user and
- * DB-backed). This one is session-only: whoever is viewing the live dashboard
- * picks a scheme that reads well on their screen, and it resets when the tab/
- * session closes. No backend, no persistence beyond sessionStorage.
- *
- * App.css styling follows a CSS class on `.dashboard-wrapper` (`theme-<scheme>`);
- * the Recharts charts need literal colors, so the chrome (bg/axis/grid/tooltip/
- * text) is supplied here via `chartChrome`. Vital *series* colors stay constant
- * across themes and live at the chart call sites.
+ * The live board is dark-only by design (bedside-monitor aesthetic, aligned
+ * with the vc tokens in styles/vc-tokens.css). Recharts needs literal colors,
+ * so the chrome (bg/axis/grid/tooltip/text) is supplied here; the CSS side
+ * resolves through the `--dash-*` variables in App.css, which are defined
+ * from the same vc token values. Vital *series* colors stay at call sites.
  */
 
-const SCHEMES = ['blue', 'dark', 'light'];
-const DEFAULT_SCHEME = 'blue';
-const STORAGE_KEY = 'dashboardColorScheme';
-
-// Theme-aware chart "chrome" — everything except the vivid series colors.
-// `blue` mirrors the dashboard's historical hardcoded values, so the default
-// look is unchanged.
+// Mirrors vc-tokens.css: bg-base #0a0e14, surface #131a24, sheet #161e29,
+// text-primary #e8edf3, secondary #9aa8b8, tertiary #6b7987.
 export const CHART_CHROME = {
-  blue: {
-    bg: '#161e2e',
-    axis: '#999',
-    grid: '#333',
-    tooltipBg: '#161e2e',
-    tooltipBorder: '#333',
-    tooltipText: '#fff',
-    text: '#fff',
-    textMuted: '#ccc',
-    textDim: '#888',
-    border: '#333',
-  },
-  dark: {
-    bg: '#0d1117',
-    axis: '#8b949e',
-    grid: '#30363d',
-    tooltipBg: '#161b22',
-    tooltipBorder: '#30363d',
-    tooltipText: '#e6edf3',
-    text: '#e6edf3',
-    textMuted: '#8b949e',
-    textDim: '#6e7681',
-    border: '#30363d',
-  },
-  light: {
-    bg: '#ffffff',
-    axis: '#57606a',
-    grid: '#d0d7de',
-    tooltipBg: '#ffffff',
-    tooltipBorder: '#d0d7de',
-    tooltipText: '#1f2328',
-    text: '#1f2328',
-    textMuted: '#57606a',
-    textDim: '#6e7781',
-    border: '#d0d7de',
-  },
+  bg: '#0f1620',
+  axis: '#6b7987',
+  grid: 'rgba(255, 255, 255, 0.08)',
+  tooltipBg: '#161e29',
+  tooltipBorder: 'rgba(255, 255, 255, 0.2)',
+  tooltipText: '#e8edf3',
+  text: '#e8edf3',
+  textMuted: '#9aa8b8',
+  textDim: '#6b7987',
+  border: 'rgba(255, 255, 255, 0.1)',
 };
 
-const DashboardThemeContext = createContext({
-  scheme: DEFAULT_SCHEME,
-  setScheme: () => {},
-  chartChrome: CHART_CHROME[DEFAULT_SCHEME],
-});
+// Hoisted (not an inline literal in the Provider) so consumers see a stable
+// context value — the live dashboard re-renders ~1 Hz and a fresh object would
+// invalidate every memoized chart below it.
+const CONTEXT_VALUE = { chartChrome: CHART_CHROME };
 
-function getStored() {
-  try {
-    const v = sessionStorage.getItem(STORAGE_KEY);
-    return SCHEMES.includes(v) ? v : DEFAULT_SCHEME;
-  } catch {
-    return DEFAULT_SCHEME;
-  }
-}
+const DashboardThemeContext = createContext(CONTEXT_VALUE);
 
 export function DashboardThemeProvider({ children }) {
-  // Initialize from sessionStorage so the very first paint is correct.
-  const [scheme, setSchemeState] = useState(getStored);
-
-  const setScheme = useCallback((next) => {
-    const value = SCHEMES.includes(next) ? next : DEFAULT_SCHEME;
-    setSchemeState(value);
-    try {
-      sessionStorage.setItem(STORAGE_KEY, value);
-    } catch {
-      /* sessionStorage unavailable (private mode / iframe) — state still applies */
-    }
-  }, []);
-
   // Radix overlays (Dialog/Select/Popover) portal into <body>, outside the
-  // wrapper, so they can't inherit the board scheme. Mirror it onto <html> via
-  // a `dash-scheme-*` class while the dashboard is mounted (see App.css). Scoped
-  // to /live since the provider unmounts on navigation away.
+  // dashboard wrapper, so they can't inherit the board's dark tokens. Pin
+  // them dark on <html> while the live dashboard is mounted (see the
+  // `:root.dash-scheme-dark` block in App.css).
+  //
+  // The `vc-form-skin` body class that used to go on here as well is gone with
+  // vc-forms.css — that sheet only ever restyled the shadcn `ui/` primitives
+  // through their `data-slot` hooks, and those were deleted 2026-08-31.
   useEffect(() => {
     const el = document.documentElement;
-    const cls = `dash-scheme-${scheme}`;
-    el.classList.add(cls);
-    return () => el.classList.remove(cls);
-  }, [scheme]);
-
-  const value = {
-    scheme,
-    setScheme,
-    chartChrome: CHART_CHROME[scheme] || CHART_CHROME[DEFAULT_SCHEME],
-  };
+    el.classList.add('dash-scheme-dark');
+    return () => {
+      el.classList.remove('dash-scheme-dark');
+    };
+  }, []);
 
   return (
-    <DashboardThemeContext.Provider value={value}>
+    <DashboardThemeContext.Provider value={CONTEXT_VALUE}>
       {children}
     </DashboardThemeContext.Provider>
   );
@@ -133,5 +76,3 @@ export function DashboardThemeProvider({ children }) {
 export function useDashboardTheme() {
   return useContext(DashboardThemeContext);
 }
-
-export const DASHBOARD_SCHEMES = SCHEMES;

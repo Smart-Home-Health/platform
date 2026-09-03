@@ -1,0 +1,174 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/* Day-over-day, on top of the shared report chrome in report-surface.css.
+ * Only the pieces this page alone draws live here: the day chips and the
+ * calendar in the "add day" sheet. */
+@import './report-surface.css';
+
+/* ---- day chips ---- */
+
+.dod-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.dod-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 30px;
+  padding: 0 0.15rem 0 0.4rem;
+  border: 1px solid var(--rpt-line);
+  border-radius: 10px;
+  background: var(--rpt-surface);
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--rpt-text);
+}
+.dod-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dod-series, var(--rpt-accent));
+  flex-shrink: 0;
+}
+.dod-chip-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: var(--rpt-text-3);
+  cursor: pointer;
+}
+.dod-chip-x:hover { color: var(--rpt-breach); background: var(--rpt-raised); }
+
+.dod-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 30px;
+  padding: 0 0.5rem;
+  border: 1px dashed var(--rpt-line);
+  border-radius: 10px;
+  color: var(--rpt-accent);
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.dod-add:hover { border-color: var(--rpt-accent); border-style: solid; }
+.dod-add:disabled { color: var(--rpt-text-3); cursor: default; }
+
+/* ---- chart + data table ---- */
+
+.dod-plot { height: 340px; }
+.rpt-card.full .dod-plot { flex: 1; height: auto; }
+.dod-data-scroll { max-height: 420px; overflow: auto; }
+.dod-data-table td, .dod-data-table th { font-size: 11.5px; }
+.dod-data-table thead th { position: sticky; top: 0; background: var(--rpt-surface); }
+
+.dod-day-cell { display: inline-flex; align-items: center; gap: 0.5rem; }
+.dod-day-name {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ---- calendar (in the "add day" sheet) ---- */
+
+.dod-cal { display: flex; flex-direction: column; gap: 0.5rem; }
+.dod-cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.dod-cal-month {
+  font-family: var(--vc-font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vc-text-primary);
+}
+.dod-cal-nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  background: none;
+  border: 1px solid var(--vc-line-strong);
+  border-radius: 8px;
+  color: var(--vc-text-secondary);
+  cursor: pointer;
+}
+.dod-cal-nav:hover:not(:disabled) { color: var(--vc-text-primary); border-color: var(--vc-data-live); }
+.dod-cal-nav:disabled { opacity: 0.4; cursor: default; }
+.dod-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.dod-cal-weekday {
+  text-align: center;
+  font-family: var(--vc-font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-text-tertiary);
+}
+.dod-cal-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0;
+  border: 1px solid var(--vc-line-hairline);
+  border-radius: 8px;
+  background: var(--vc-bg-base);
+  color: var(--vc-text-primary);
+  font-family: var(--vc-font-mono);
+  font-size: 13px;
+  cursor: pointer;
+}
+.dod-cal-cell:hover:not(:disabled) { border-color: var(--vc-data-live); }
+.dod-cal-cell.today { border-color: var(--vc-line-strong); font-weight: 700; }
+/* The selected day carries its own series colour, so the calendar and the
+   chart agree at a glance. */
+.dod-cal-cell.on {
+  border-color: var(--dod-series);
+  background: color-mix(in srgb, var(--dod-series) 22%, transparent);
+  color: var(--vc-text-primary);
+  font-weight: 700;
+}
+.dod-cal-cell:disabled { color: var(--vc-text-tertiary); opacity: 0.45; cursor: default; }
+.dod-cal-cell.empty { border: none; background: none; cursor: default; }
+.dod-cal-note {
+  margin: 0;
+  font-family: var(--vc-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vc-state-due);
+}
