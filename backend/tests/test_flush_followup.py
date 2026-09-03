@@ -37,6 +37,18 @@ def _local_today():
     return datetime.now(ZoneInfo("America/New_York")).date()
 
 
+def _feed_time():
+    # A feed time whose ~52-min flush still lands on today's board. In the
+    # last hour of the account-local day the follow-up would cross midnight
+    # (test_flush_crossing_midnight_* covers that on purpose), so back the
+    # feed up two hours — still today, still in the past for the guards.
+    now = _now_utc()
+    tz = ZoneInfo("America/New_York")
+    if (now + timedelta(hours=1)).astimezone(tz).date() != now.astimezone(tz).date():
+        now -= timedelta(hours=2)
+    return now
+
+
 @pytest.fixture
 def flush_items(admin_client, patient):
     """Formula (with a pump rate) plus the flush water."""
@@ -259,10 +271,14 @@ def test_second_completion_of_the_same_occurrence_spawns_once(admin_client, pati
 # =====================
 
 def _complete_feed(admin_client, patient, flush_items, **kw):
+    # The tests below read the flush back off *today's* board, so complete
+    # at a feed time whose follow-up stays on it — and at that time, not the
+    # wall clock, since the flush is due consumed_at + feed duration.
+    kw.setdefault("when", _feed_time())
     body, when = _flush_schedule(admin_client, patient, flush_items, **kw)
     result = admin_client.post("/api/schedule/complete/nutrition", json={
         "schedule_id": body["id"], "scheduled_time": when.isoformat(),
-        "patient_id": patient.id,
+        "patient_id": patient.id, "completed_at": when.isoformat(),
     }).json()
     return body, when, result["flush_followup"]["id"]
 
