@@ -23,11 +23,9 @@
  * coloured bar down the side of the card — the stripe is decoration standing in
  * for a label, and the badge already says the level in words.
  *
- * The dashboard is dark always; admin follows the user's theme. So the palette
- * is a local token layer that defaults to the app's own light-capable variables
- * and is swapped to the vc tokens under dark (`:root:not(.light)`, the admin
- * convention) or under `.force-dark` (how the live board pins itself dark
- * regardless of theme).
+ * The palette is a local token layer (`--mx-*`) defined from the vc tokens,
+ * so the board and the admin read identically and the theme is chosen once,
+ * in styles/vc-tokens.css.
  *
  * Rendered outside the `.tw` island, so box-sizing and the bare <button> paint
  * are asserted; `:where()` keeps that reset at element specificity. */
@@ -153,7 +151,7 @@
   color: var(--mx-text-3);
 }
 /* The OS draws the option list, so tell it which scheme to paint. */
-:root:not(.light) .mx-board .mx-source select,
+.mx-board .mx-source select,
 .force-dark .mx-board .mx-source select { color-scheme: dark; }
 
 /* ---- groups ---- */

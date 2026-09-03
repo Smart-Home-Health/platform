@@ -23,10 +23,10 @@
  * classes picks it up — the medications / care-tasks / nutrition families
  * are built almost entirely from them.
  *
- * DARK THEME ONLY. Scoped `:root:is(:not(.light), .dash-scheme-dark)` — the
- * admin's html theme class OR the live board's `dash-scheme-dark`, which is
- * dark-only whatever the saved theme (same specificity as `:not(.light)`).
- * Tokens from src/styles/vc-tokens.css; no raw hex.
+ * Theme-agnostic: tokens from src/styles/vc-tokens.css, no raw hex, and
+ * never scoped to a theme class — the palette (dark / light / high-contrast)
+ * is picked in the token file by the class on <html>, so a rule here reads
+ * the same on every surface, the live board included.
  *
  * Color roles: schedule adherence is NEVER red — due/late/missed are
  * amber (--vc-state-due); green means done/active; cyan is the live or
@@ -34,13 +34,8 @@
  * actions. */
 @import '../../styles/vc-tokens.css';
 
-/* ---------- ScheduleList status palette (consumed as inline-style vars) ----------
-   `.force-dark` is included because the live dashboard pins itself dark through
-   that class rather than through the html theme class. Without it, a user whose
-   theme is light gets ScheduleList's bootstrap *light* fallbacks on the dark
-   board. */
-:root:is(:not(.light), .dash-scheme-dark),
-.force-dark {
+/* ---------- ScheduleList status palette (consumed as inline-style vars) ---------- */
+:root {
   --sched-ontime-bg: color-mix(in srgb, var(--vc-state-due) 8%, var(--vc-bg-raised));
   --sched-ontime-border: color-mix(in srgb, var(--vc-state-due) 55%, transparent);
   --sched-ontime-text: var(--vc-text-primary);
@@ -70,8 +65,8 @@
 }
 
 /* Legend dots / stat-icon chips on the schedule pages consume these as
- * inline-style vars (bootstrap-ish fallbacks keep the light theme). */
-:root:is(:not(.light), .dash-scheme-dark) {
+ * inline-style vars. */
+:root {
   --sched-ontime-chip: color-mix(in srgb, var(--vc-state-due) 15%, transparent);
   --sched-pending-chip: var(--vc-bg-raised);
   --sched-warning-chip: color-mix(in srgb, var(--vc-state-due) 20%, transparent);
@@ -81,27 +76,27 @@
 }
 
 /* ---------- Page headers / sections ---------- */
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-page-header h1,
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-section-title {
+.admin-v2-page-header h1,
+.admin-v2-section-title {
   font-family: var(--vc-font-mono);
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--vc-text-primary);
 }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-text-muted { color: var(--vc-text-secondary); }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-loading,
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-empty-state,
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-no-patient { color: var(--vc-text-secondary); }
+.admin-v2-text-muted { color: var(--vc-text-secondary); }
+.admin-v2-loading,
+.admin-v2-empty-state,
+.admin-v2-no-patient { color: var(--vc-text-secondary); }
 
 /* ---------- Tables ---------- */
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-table-container {
+.admin-v2-table-container {
   background: var(--vc-bg-surface);
   border: 1px solid var(--vc-line-hairline);
   border-radius: 10px;
   box-shadow: none;
 }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-table th {
+.admin-v2-table th {
   background: var(--vc-bg-surface);
   color: var(--vc-text-secondary);
   font-family: var(--vc-font-mono);
@@ -111,86 +106,86 @@
   text-transform: uppercase;
   border-bottom: 1px solid var(--vc-line-strong);
 }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-table td {
+.admin-v2-table td {
   border-bottom: 1px solid var(--vc-line-hairline);
   color: var(--vc-text-primary);
 }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-table tr:hover { background: var(--vc-bg-raised); }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-table tr.inactive-row td { color: var(--vc-text-tertiary); }
+.admin-v2-table tr:hover { background: var(--vc-bg-raised); }
+.admin-v2-table tr.inactive-row td { color: var(--vc-text-tertiary); }
 
 /* ---------- Stat cards as filter chips ---------- */
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-stat-card.selected {
+.admin-v2-stat-card.selected {
   border-color: color-mix(in srgb, var(--vc-data-live) 55%, transparent);
   box-shadow: inset 0 -2px 0 var(--vc-data-live);
 }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-stat-card.selected .admin-v2-stat-info h4 {
+.admin-v2-stat-card.selected .admin-v2-stat-info h4 {
   color: var(--vc-data-live);
 }
 
 /* ---------- Action buttons (table row + card controls) ---------- */
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-action-btn {
+.admin-v2-action-btn {
   background: transparent;
   border: 1px solid var(--vc-line-hairline);
   border-radius: 8px;
   color: var(--vc-text-secondary);
 }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-action-btn:hover {
+.admin-v2-action-btn:hover {
   border-color: var(--vc-line-strong);
   background: var(--vc-bg-raised);
   color: var(--vc-text-primary);
 }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-action-btn-delete:hover {
+.admin-v2-action-btn-delete:hover {
   border-color: color-mix(in srgb, var(--vc-state-alert) 60%, transparent);
   color: var(--vc-state-alert);
 }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-action-btn-success:hover,
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-action-btn.resume:hover {
+.admin-v2-action-btn-success:hover,
+.admin-v2-action-btn.resume:hover {
   border-color: color-mix(in srgb, var(--vc-state-complete) 60%, transparent);
   color: var(--vc-state-complete);
 }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-action-btn-warning:hover,
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-action-btn.pause:hover {
+.admin-v2-action-btn-warning:hover,
+.admin-v2-action-btn.pause:hover {
   border-color: color-mix(in srgb, var(--vc-state-due) 60%, transparent);
   color: var(--vc-state-due);
 }
 
 /* ---------- Buttons ---------- */
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-btn {
+.admin-v2-btn {
   border-radius: 8px;
   font-family: var(--vc-font-mono);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-btn-primary {
+.admin-v2-btn-primary {
   background: var(--vc-data-live);
   border-color: transparent;
   color: var(--vc-bg-base);
 }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-btn-primary:hover {
+.admin-v2-btn-primary:hover {
   background: color-mix(in srgb, var(--vc-data-live) 85%, var(--vc-text-primary));
 }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-btn-secondary,
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-btn-ghost {
+.admin-v2-btn-secondary,
+.admin-v2-btn-ghost {
   background: transparent;
   border: 1px solid var(--vc-line-strong);
   color: var(--vc-text-primary);
 }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-btn-secondary:hover,
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-btn-ghost:hover { background: var(--vc-bg-raised); }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-btn-danger {
+.admin-v2-btn-secondary:hover,
+.admin-v2-btn-ghost:hover { background: var(--vc-bg-raised); }
+.admin-v2-btn-danger {
   background: var(--vc-state-alert);
   border-color: transparent;
   color: var(--vc-text-primary);
 }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-btn-danger-ghost {
+.admin-v2-btn-danger-ghost {
   background: transparent;
   border: 1px solid color-mix(in srgb, var(--vc-state-alert) 55%, transparent);
   color: var(--vc-state-alert);
 }
 
 /* ---------- Badges: outline pills, roles not rainbow ---------- */
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-badge {
+.admin-v2-badge {
   background: transparent;
   border: 1px solid var(--vc-line-strong);
   border-radius: 999px;
@@ -201,32 +196,32 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-badge-success {
+.admin-v2-badge-success {
   border-color: color-mix(in srgb, var(--vc-state-complete) 50%, transparent);
   color: var(--vc-state-complete);
 }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-badge-warning {
+.admin-v2-badge-warning {
   border-color: color-mix(in srgb, var(--vc-state-due) 50%, transparent);
   color: var(--vc-state-due);
 }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-badge-danger,
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-badge-critical {
+.admin-v2-badge-danger,
+.admin-v2-badge-critical {
   border-color: color-mix(in srgb, var(--vc-state-alert) 50%, transparent);
   color: var(--vc-state-alert);
 }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-badge-info,
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-badge-primary {
+.admin-v2-badge-info,
+.admin-v2-badge-primary {
   border-color: color-mix(in srgb, var(--vc-data-live) 50%, transparent);
   color: var(--vc-data-live);
 }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-badge-secondary,
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-badge-muted {
+.admin-v2-badge-secondary,
+.admin-v2-badge-muted {
   border-color: var(--vc-line-hairline);
   color: var(--vc-text-tertiary);
 }
 
 /* Active/inactive status pills (meds, schedules, tasks) — dot + outline */
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-status-badge {
+.admin-v2-status-badge {
   background: transparent;
   border: 1px solid var(--vc-line-strong);
   border-radius: 999px;
@@ -240,25 +235,25 @@
   align-items: center;
   gap: 0.35rem;
 }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-status-badge::before {
+.admin-v2-status-badge::before {
   content: '';
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: currentColor;
 }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-status-badge.active {
+.admin-v2-status-badge.active {
   color: var(--vc-state-complete);
   border-color: color-mix(in srgb, var(--vc-state-complete) 45%, transparent);
 }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-status-badge.inactive {
+.admin-v2-status-badge.inactive {
   color: var(--vc-text-tertiary);
   border-color: var(--vc-line-hairline);
 }
 
 /* History dose-status badges: 'danger' here means a LATE dose — schedule
  * adherence, so amber, not red. */
-:root:is(:not(.light), .dash-scheme-dark) .history-status-badge {
+.history-status-badge {
   border-radius: 999px;
   font-family: var(--vc-font-mono);
   font-size: 10px;
@@ -266,30 +261,30 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
-:root:is(:not(.light), .dash-scheme-dark) .history-status-badge.success {
+.history-status-badge.success {
   background: color-mix(in srgb, var(--vc-state-complete) 14%, transparent);
   color: var(--vc-state-complete);
 }
-:root:is(:not(.light), .dash-scheme-dark) .history-status-badge.warning {
+.history-status-badge.warning {
   background: color-mix(in srgb, var(--vc-state-due) 14%, transparent);
   color: var(--vc-state-due);
 }
-:root:is(:not(.light), .dash-scheme-dark) .history-status-badge.danger {
+.history-status-badge.danger {
   background: color-mix(in srgb, var(--vc-state-due) 22%, transparent);
   color: var(--vc-state-due);
 }
-:root:is(:not(.light), .dash-scheme-dark) .history-status-badge.muted {
+.history-status-badge.muted {
   background: var(--vc-bg-raised);
   color: var(--vc-text-tertiary);
 }
 
 /* ---------- History pages: filter bar, stats row, table cells ---------- */
-:root:is(:not(.light), .dash-scheme-dark) .history-filter-bar {
+.history-filter-bar {
   background: var(--vc-bg-surface);
   border: 1px solid var(--vc-line-hairline);
   border-radius: 10px;
 }
-:root:is(:not(.light), .dash-scheme-dark) .history-filter-group label {
+.history-filter-group label {
   font-family: var(--vc-font-mono);
   font-size: 10px;
   font-weight: 500;
@@ -297,15 +292,15 @@
   text-transform: uppercase;
   color: var(--vc-text-secondary);
 }
-:root:is(:not(.light), .dash-scheme-dark) .history-filter-input,
-:root:is(:not(.light), .dash-scheme-dark) .history-filter-select {
+.history-filter-input,
+.history-filter-select {
   background: var(--vc-bg-raised);
   border: 1px solid var(--vc-line-hairline);
   border-radius: 8px;
   color: var(--vc-text-primary);
 }
-:root:is(:not(.light), .dash-scheme-dark) .history-filter-input:focus,
-:root:is(:not(.light), .dash-scheme-dark) .history-filter-select:focus {
+.history-filter-input:focus,
+.history-filter-select:focus {
   border-color: var(--vc-data-live);
   outline: none;
   /* visible focus ring — border recolor alone is too weak (WCAG focus
@@ -315,18 +310,18 @@
 
 /* Stats row: mono tabular values; 'danger' counts late/missed doses —
  * schedule adherence, so amber, not red */
-:root:is(:not(.light), .dash-scheme-dark) .history-stat {
+.history-stat {
   background: var(--vc-bg-surface);
   border: 1px solid var(--vc-line-hairline);
   border-radius: 10px;
 }
-:root:is(:not(.light), .dash-scheme-dark) .history-stat-value {
+.history-stat-value {
   font-family: var(--vc-font-mono);
   font-variant-numeric: tabular-nums;
   font-weight: 400;
   color: var(--vc-text-primary);
 }
-:root:is(:not(.light), .dash-scheme-dark) .history-stat-label {
+.history-stat-label {
   font-family: var(--vc-font-mono);
   font-size: 10px;
   font-weight: 500;
@@ -334,37 +329,37 @@
   text-transform: uppercase;
   color: var(--vc-text-secondary);
 }
-:root:is(:not(.light), .dash-scheme-dark) .history-stat.success .history-stat-value { color: var(--vc-state-complete); }
-:root:is(:not(.light), .dash-scheme-dark) .history-stat.warning .history-stat-value { color: var(--vc-state-due); }
-:root:is(:not(.light), .dash-scheme-dark) .history-stat.danger .history-stat-value { color: var(--vc-state-due); }
-:root:is(:not(.light), .dash-scheme-dark) .history-stat.muted .history-stat-value { color: var(--vc-text-tertiary); }
+.history-stat.success .history-stat-value { color: var(--vc-state-complete); }
+.history-stat.warning .history-stat-value { color: var(--vc-state-due); }
+.history-stat.danger .history-stat-value { color: var(--vc-state-due); }
+.history-stat.muted .history-stat-value { color: var(--vc-text-tertiary); }
 
 /* Table cell text */
-:root:is(:not(.light), .dash-scheme-dark) .history-med-name { color: var(--vc-text-primary); }
-:root:is(:not(.light), .dash-scheme-dark) .history-med-concentration { color: var(--vc-text-secondary); }
-:root:is(:not(.light), .dash-scheme-dark) .history-dose {
+.history-med-name { color: var(--vc-text-primary); }
+.history-med-concentration { color: var(--vc-text-secondary); }
+.history-dose {
   font-family: var(--vc-font-mono);
   font-variant-numeric: tabular-nums;
   color: var(--vc-text-secondary);
 }
-:root:is(:not(.light), .dash-scheme-dark) .history-dose.skipped {
+.history-dose.skipped {
   color: var(--vc-text-tertiary);
   text-decoration: line-through;
 }
-:root:is(:not(.light), .dash-scheme-dark) .history-datetime {
+.history-datetime {
   font-family: var(--vc-font-mono);
   font-variant-numeric: tabular-nums;
   color: var(--vc-text-secondary);
 }
-:root:is(:not(.light), .dash-scheme-dark) .history-unscheduled {
+.history-unscheduled {
   font-family: var(--vc-font-mono);
   font-size: 9.5px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--vc-text-tertiary);
 }
-:root:is(:not(.light), .dash-scheme-dark) .history-notes { color: var(--vc-text-secondary); }
-:root:is(:not(.light), .dash-scheme-dark) .history-category-badge {
+.history-notes { color: var(--vc-text-secondary); }
+.history-category-badge {
   background: transparent;
   border: 1px solid var(--vc-line-strong);
   border-radius: 999px;
@@ -376,7 +371,7 @@
 }
 
 /* Vitals history source badge (manual / device / integrations) */
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-source-badge {
+.admin-v2-source-badge {
   background: transparent;
   border: 1px solid var(--vc-line-hairline);
   border-radius: 999px;
@@ -386,21 +381,21 @@
   text-transform: uppercase;
   color: var(--vc-text-secondary);
 }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-source-badge.device,
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-source-badge.sensor {
+.admin-v2-source-badge.device,
+.admin-v2-source-badge.sensor {
   border-color: color-mix(in srgb, var(--vc-data-live) 45%, transparent);
   color: var(--vc-data-live);
 }
 
 /* ---------- List cards (manage pages) ---------- */
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-med-card {
+.admin-v2-med-card {
   background: var(--vc-bg-surface);
   border: 1px solid var(--vc-line-hairline);
   border-radius: 10px;
   box-shadow: none;
 }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-med-card-inactive { opacity: 0.65; }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-med-card-label {
+.admin-v2-med-card-inactive { opacity: 0.65; }
+.admin-v2-med-card-label {
   font-family: var(--vc-font-mono);
   font-size: 10px;
   font-weight: 500;
@@ -410,57 +405,57 @@
 }
 
 /* ---------- Filters / day picker ---------- */
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-filter-card {
+.admin-v2-filter-card {
   background: var(--vc-bg-surface);
   border: 1px solid var(--vc-line-hairline);
   border-radius: 10px;
 }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-day-btn {
+.admin-v2-day-btn {
   background: transparent;
   border: 1px solid var(--vc-line-hairline);
   border-radius: 8px;
   color: var(--vc-text-secondary);
   font-family: var(--vc-font-mono);
 }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-day-btn:hover { border-color: var(--vc-line-strong); }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-day-btn.selected {
+.admin-v2-day-btn:hover { border-color: var(--vc-line-strong); }
+.admin-v2-day-btn.selected {
   background: color-mix(in srgb, var(--vc-data-live) 15%, transparent);
   border-color: var(--vc-data-live);
   color: var(--vc-data-live);
 }
 
 /* ---------- Schedule summary cards + legend + progress ---------- */
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-schedule-summary-card {
+.admin-v2-schedule-summary-card {
   background: var(--vc-bg-surface);
   border: 1px solid var(--vc-line-hairline);
   border-radius: 10px;
 }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-schedule-summary-title {
+.admin-v2-schedule-summary-title {
   font-family: var(--vc-font-mono);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--vc-text-primary);
 }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-schedule-summary-detail { color: var(--vc-text-secondary); }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-schedule-legend {
+.admin-v2-schedule-summary-detail { color: var(--vc-text-secondary); }
+.admin-v2-schedule-legend {
   background: var(--vc-bg-surface);
   border: 1px solid var(--vc-line-hairline);
   border-radius: 10px;
 }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-legend-item { color: var(--vc-text-secondary); }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-schedule-progress-bar.success { background: var(--vc-state-complete); }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-schedule-progress-bar.good { background: var(--vc-data-live); }
-:root:is(:not(.light), .dash-scheme-dark) .admin-v2-schedule-progress-bar.warning { background: var(--vc-state-due); }
+.admin-v2-legend-item { color: var(--vc-text-secondary); }
+.admin-v2-schedule-progress-bar.success { background: var(--vc-state-complete); }
+.admin-v2-schedule-progress-bar.good { background: var(--vc-data-live); }
+.admin-v2-schedule-progress-bar.warning { background: var(--vc-state-due); }
 
 /* ---------- Medication stock bar (Overview / Manage entity cards) ---------- */
-:root:is(:not(.light), .dash-scheme-dark) .med-stock {
+.med-stock {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
   padding: 0 0.9rem 0.7rem;
   font-family: var(--vc-font-mono);
 }
-:root:is(:not(.light), .dash-scheme-dark) .med-stock-label {
+.med-stock-label {
   display: flex;
   justify-content: space-between;
   gap: 0.5rem;
@@ -468,27 +463,27 @@
   letter-spacing: 0.04em;
   color: var(--vc-text-secondary);
 }
-:root:is(:not(.light), .dash-scheme-dark) .med-stock-label .med-stock-status { text-transform: uppercase; font-weight: 600; }
-:root:is(:not(.light), .dash-scheme-dark) .med-stock-label.low .med-stock-status { color: var(--vc-state-due); }
-:root:is(:not(.light), .dash-scheme-dark) .med-stock-label.ok .med-stock-status { color: var(--vc-state-complete); }
-:root:is(:not(.light), .dash-scheme-dark) .med-stock-bar {
+.med-stock-label .med-stock-status { text-transform: uppercase; font-weight: 600; }
+.med-stock-label.low .med-stock-status { color: var(--vc-state-due); }
+.med-stock-label.ok .med-stock-status { color: var(--vc-state-complete); }
+.med-stock-bar {
   height: 6px;
   border-radius: 3px;
   background: var(--vc-bg-raised);
   overflow: hidden;
 }
-:root:is(:not(.light), .dash-scheme-dark) .med-stock-fill {
+.med-stock-fill {
   height: 100%;
   border-radius: 3px;
   background: var(--vc-state-complete);
   transition: width 0.3s ease;
 }
-:root:is(:not(.light), .dash-scheme-dark) .med-stock-fill.low { background: var(--vc-state-due); }
+.med-stock-fill.low { background: var(--vc-state-due); }
 
 /* ---------- Nutrition schedule: off-window confirm ---------- */
 /* Replaces a hard-coded amber hex and a text warning glyph. Amber is the
    attention role here — schedule timing is never red. */
-:root:is(:not(.light), .dash-scheme-dark) .nsched-warn-badge {
+.nsched-warn-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -498,7 +493,7 @@
   color: var(--vc-state-due);
   background: color-mix(in srgb, var(--vc-state-due) 20%, transparent);
 }
-:root:is(:not(.light), .dash-scheme-dark) .nsched-warn-heading {
+.nsched-warn-heading {
   margin-bottom: 0.375rem;
   font-weight: 600;
   color: var(--vc-state-due);
