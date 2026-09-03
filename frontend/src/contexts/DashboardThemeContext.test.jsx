@@ -15,7 +15,8 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-// Live-dashboard chart chrome (dark-only, aligned with the vc tokens).
+// Live-dashboard chart chrome: var(--vc-*) references, so the SVG charts
+// follow the palette on <html> without the provider touching the DOM.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import {
@@ -24,12 +25,15 @@ import {
   CHART_CHROME,
 } from './DashboardThemeContext';
 
+const seen = [];
 function Probe() {
-  const { chartChrome } = useDashboardTheme();
-  return <span data-testid="bg">{chartChrome.bg}</span>;
+  const value = useDashboardTheme();
+  seen.push(value);
+  return <span data-testid="bg">{value.chartChrome.bg}</span>;
 }
 
 beforeEach(() => {
+  seen.length = 0;
   document.documentElement.className = '';
   document.body.className = '';
 });
@@ -48,20 +52,37 @@ describe('DashboardThemeProvider', () => {
     expect(screen.getByTestId('bg').textContent).toBe(CHART_CHROME.bg);
   });
 
-  it('pins portaled overlays dark while mounted', () => {
+  it('leaves <html> alone — the palette class is ThemeProvider\'s', () => {
+    document.documentElement.className = 'light hc';
     const { unmount } = render(
       <DashboardThemeProvider>
         <Probe />
       </DashboardThemeProvider>
     );
-    expect(document.documentElement.classList.contains('dash-scheme-dark')).toBe(true);
-    unmount();
+    expect(document.documentElement.className).toBe('light hc');
     expect(document.documentElement.classList.contains('dash-scheme-dark')).toBe(false);
+    unmount();
+    expect(document.documentElement.className).toBe('light hc');
   });
 
-  it('exposes a complete chrome for recharts consumers', () => {
+  it('keeps one referentially stable value across re-renders', () => {
+    const { rerender } = render(
+      <DashboardThemeProvider>
+        <Probe />
+      </DashboardThemeProvider>
+    );
+    rerender(
+      <DashboardThemeProvider>
+        <Probe />
+      </DashboardThemeProvider>
+    );
+    expect(seen.length).toBe(2);
+    expect(seen[0]).toBe(seen[1]);
+  });
+
+  it('exposes a complete chrome of token references for recharts consumers', () => {
     for (const key of ['bg', 'axis', 'grid', 'tooltipBg', 'tooltipBorder', 'tooltipText', 'text', 'textMuted', 'textDim', 'border']) {
-      expect(CHART_CHROME[key], key).toBeTruthy();
+      expect(CHART_CHROME[key], key).toMatch(/^var\(--vc-[a-z-]+\)$/);
     }
   });
 });

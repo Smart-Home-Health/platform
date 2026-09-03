@@ -30,9 +30,11 @@ import annotationPlugin from 'chartjs-plugin-annotation';
 import zoomPlugin from 'chartjs-plugin-zoom';
 import config, { apiFetch } from '../../config';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
+import { useThemeTokens } from '../../hooks/useThemeTokens';
+import { readToken } from '../../utils/themeTokens';
 import { alarmsFor } from './reports/dayOverDay';
 import {
-  PLOT_GUTTER, PLOT_RPAD, CHROME, niceScale, thresholdLine, stackedChartOptions,
+  PLOT_GUTTER, PLOT_RPAD, chartChrome, niceScale, thresholdLine, stackedChartOptions,
 } from './monitoringChart';
 import {
   ENV_LANES, ENV_METRIC_KEYS, buildEnvSpans, worstStatus, describeSpan,
@@ -62,12 +64,12 @@ Chart.register(annotationPlugin, zoomPlugin);
  * mean something. */
 const SIGNALS = {
   spo2: {
-    label: 'SpO2', axisLabel: 'SPO2 %', color: '#4da7bd',
+    label: 'SpO2', axisLabel: 'SPO2 %', color: 'var(--vc-series-spo2)', token: '--vc-series-spo2',
     alarmKey: 'spo2', unit: '%', decimals: 1,
     defaultMin: 86, defaultMax: 100, minPad: 2, clampMax: 100,
   },
   bpm: {
-    label: 'Heart Rate', axisLabel: 'HEART RATE BPM', color: '#3fbf6a',
+    label: 'Heart Rate', axisLabel: 'HEART RATE BPM', color: 'var(--vc-series-hr)', token: '--vc-series-hr',
     alarmKey: 'heart_rate', unit: 'bpm', decimals: 0,
     defaultMin: 55, defaultMax: 120, minPad: 4, clampMax: null,
   },
@@ -77,12 +79,12 @@ const SIGNAL_KEYS = ['spo2', 'bpm'];
 /* Event lanes. Alerts keep the alert red because that is the role; the rest
  * take the categorical ramp so a lane colour never reads as a state. */
 const LANES = {
-  alerts: { label: 'Alerts', color: '#f0563c', Icon: AlertIcon },
-  medications: { label: 'Meds', color: '#7f9fd4', Icon: PillIcon },
-  care_tasks: { label: 'Care', color: '#4dc3b3', Icon: CheckCircleIcon },
-  nutrition_intake: { label: 'Feeds', color: '#a8c94a', Icon: DropletIcon },
-  nutrition_output: { label: 'Output', color: '#d98cc4', Icon: ToiletIcon },
-  vitals: { label: 'Vitals', color: '#9b8cf0', Icon: VitalsIcon },
+  alerts: { label: 'Alerts', color: 'var(--vc-state-alert)', Icon: AlertIcon },
+  medications: { label: 'Meds', color: 'var(--vc-series-5)', Icon: PillIcon },
+  care_tasks: { label: 'Care', color: 'var(--vc-series-4)', Icon: CheckCircleIcon },
+  nutrition_intake: { label: 'Feeds', color: 'var(--vc-series-7)', Icon: DropletIcon },
+  nutrition_output: { label: 'Output', color: 'var(--vc-series-6)', Icon: ToiletIcon },
+  vitals: { label: 'Vitals', color: 'var(--vc-series-3)', Icon: VitalsIcon },
 };
 const LANE_KEYS = Object.keys(LANES);
 const COLLAPSED_LANES = 4;
@@ -851,6 +853,8 @@ const SignalChart = ({
   signalKey, points, view, bounds, alerts, alarms, cursor, showAxis, onViewChange,
 }) => {
   const cfg = SIGNALS[signalKey];
+  // Canvas needs literal colours; `version` bumps when the palette changes.
+  const { version } = useThemeTokens();
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
   const onViewChangeRef = useRef(onViewChange);
@@ -873,13 +877,14 @@ const SignalChart = ({
     if (!canvas) return undefined;
 
     const annotations = {};
+    const chrome = chartChrome();
     (alerts || []).forEach((a, i) => {
       annotations[`band${i}`] = {
         type: 'box',
         xMin: a.ts,
         xMax: a.end ?? bounds.end,
-        backgroundColor: CHROME.band,
-        borderColor: CHROME.bandEdge,
+        backgroundColor: chrome.band,
+        borderColor: chrome.bandEdge,
         borderWidth: 0,
         drawTime: 'beforeDatasetsDraw',
       };
@@ -894,7 +899,7 @@ const SignalChart = ({
           label: cfg.axisLabel,
           data: points,
           parsing: false,
-          borderColor: cfg.color,
+          borderColor: readToken(cfg.token),
           borderWidth: 1.4,
           pointRadius: 0,
           pointHitRadius: 0,
@@ -912,7 +917,7 @@ const SignalChart = ({
     return () => { chart.destroy(); chartRef.current = null; };
     // View is applied imperatively below so a pan doesn't rebuild the chart.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [points, alerts, alarms, bounds, showAxis, cfg, yRange]);
+  }, [points, alerts, alarms, bounds, showAxis, cfg, yRange, version]);
 
   // Both charts follow one window. Guarded so the chart that raised the zoom
   // doesn't get re-set to the value it just reported.
@@ -942,14 +947,14 @@ const SignalChart = ({
           xValue: best.x,
           yValue: best.y,
           radius: 4,
-          backgroundColor: cfg.color,
-          borderColor: CHROME.grid,
+          backgroundColor: readToken(cfg.token),
+          borderColor: chartChrome().grid,
           borderWidth: 1,
         };
       }
     }
     chart.update('none');
-  }, [cursor, points, cfg]);
+  }, [cursor, points, cfg, version]);
 
   return (
     <div className={`mtl-chart${showAxis ? ' tall' : ''}`}>

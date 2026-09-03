@@ -34,6 +34,8 @@ import annotationPlugin from 'chartjs-plugin-annotation';
 import zoomPlugin from 'chartjs-plugin-zoom';
 import config, { apiFetch } from '../../config';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
+import { useThemeTokens } from '../../hooks/useThemeTokens';
+import { readToken } from '../../utils/themeTokens';
 import { InfoIcon, ClockIcon } from '../../components/Icons';
 import {
   PLOT_GUTTER, PLOT_RPAD, niceScale, thresholdLine, stackedChartOptions,
@@ -48,24 +50,24 @@ Chart.register(annotationPlugin, zoomPlugin);
  * derived metric — a pressure delta is computed, not measured, and the line
  * style says so without a legend. */
 const METRICS = {
-  barometric_pressure: { label: 'Pressure', unit: 'hPa', color: '#7f9fd4', signed: false },
-  pressure_delta_6h: { label: 'Δ Pressure 6h', unit: 'hPa', color: '#9b8cf0', signed: true, dashed: true },
-  pressure_delta_24h: { label: 'Δ Pressure 24h', unit: 'hPa', color: '#d98cc4', signed: true, dashed: true },
-  relative_humidity: { label: 'Humidity', unit: '%', color: '#4dc3b3', signed: false },
-  temperature: { label: 'Temperature', unit: '°C', color: '#f0a52e', signed: false },
-  pm25: { label: 'PM2.5', unit: 'µg/m³', color: '#a8c94a', signed: false },
-  aqi: { label: 'AQI', unit: '', color: '#4da7bd', signed: false },
-  pollen: { label: 'Pollen', unit: 'grains/m³', color: '#3fbf6a', signed: false },
+  barometric_pressure: { label: 'Pressure', unit: 'hPa', color: 'var(--vc-series-5)', token: '--vc-series-5', signed: false },
+  pressure_delta_6h: { label: 'Δ Pressure 6h', unit: 'hPa', color: 'var(--vc-series-3)', token: '--vc-series-3', signed: true, dashed: true },
+  pressure_delta_24h: { label: 'Δ Pressure 24h', unit: 'hPa', color: 'var(--vc-series-6)', token: '--vc-series-6', signed: true, dashed: true },
+  relative_humidity: { label: 'Humidity', unit: '%', color: 'var(--vc-series-4)', token: '--vc-series-4', signed: false },
+  temperature: { label: 'Temperature', unit: '°C', color: 'var(--vc-state-due)', token: '--vc-state-due', signed: false },
+  pm25: { label: 'PM2.5', unit: 'µg/m³', color: 'var(--vc-series-7)', token: '--vc-series-7', signed: false },
+  aqi: { label: 'AQI', unit: '', color: 'var(--vc-data-live)', token: '--vc-data-live', signed: false },
+  pollen: { label: 'Pollen', unit: 'grains/m³', color: 'var(--vc-state-complete)', token: '--vc-state-complete', signed: false },
 };
 const METRIC_KEYS = Object.keys(METRICS);
 
 /* Clinical events drawn beneath the series. Alerts keep the alert red because
  * that is the role; the rest take the categorical ramp. */
 const STREAMS = {
-  spo2_alarms: { label: 'SpO2', color: '#f0563c' },
-  oxygen_use: { label: 'Oxygen', color: '#f0a52e' },
-  respiratory_care: { label: 'Care', color: '#4dc3b3' },
-  symptoms: { label: 'Symptoms', color: '#9b8cf0' },
+  spo2_alarms: { label: 'SpO2', color: 'var(--vc-state-alert)', token: '--vc-state-alert' },
+  oxygen_use: { label: 'Oxygen', color: 'var(--vc-state-due)', token: '--vc-state-due' },
+  respiratory_care: { label: 'Care', color: 'var(--vc-series-4)', token: '--vc-series-4' },
+  symptoms: { label: 'Symptoms', color: 'var(--vc-series-3)', token: '--vc-series-3' },
 };
 const STREAM_KEYS = Object.keys(STREAMS);
 
@@ -533,6 +535,8 @@ const MetricChart = ({
   metricKey, label, unit, derived, points, view, bounds, cursor, showAxis, onViewChange,
 }) => {
   const cfg = METRICS[metricKey];
+  // Canvas needs literal colours; `version` bumps when the palette changes.
+  const { version } = useThemeTokens();
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
   const onViewChangeRef = useRef(onViewChange);
@@ -562,7 +566,7 @@ const MetricChart = ({
           label,
           data: points,
           parsing: false,
-          borderColor: cfg.color,
+          borderColor: readToken(cfg.token),
           borderWidth: 1.4,
           borderDash: derived ? [5, 4] : [],
           pointRadius: 0,
@@ -586,7 +590,7 @@ const MetricChart = ({
     return () => { chart.destroy(); chartRef.current = null; };
     // View is applied imperatively below so a zoom does not rebuild the chart.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [points, bounds, showAxis, cfg, yRange, label, derived]);
+  }, [points, bounds, showAxis, cfg, yRange, label, derived, version]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -611,13 +615,13 @@ const MetricChart = ({
       if (best && best.y != null && gap <= 3600 * 1000) {
         anns.cursor = {
           type: 'point', xValue: best.x, yValue: best.y,
-          radius: 3.5, backgroundColor: cfg.color,
-          borderColor: 'rgba(255,255,255,0.15)', borderWidth: 1,
+          radius: 3.5, backgroundColor: readToken(cfg.token),
+          borderColor: readToken('--vc-line-strong'), borderWidth: 1,
         };
       }
     }
     chart.update('none');
-  }, [cursor, points, cfg]);
+  }, [cursor, points, cfg, version]);
 
   return (
     <div className={`env-chart${showAxis ? ' tall' : ''}`}>

@@ -22,9 +22,8 @@
 // exists — with `.light` set, every guarded rule silently dropped and the page
 // lost its skin. This test keeps that from coming back.
 //
-// `.force-dark` (the live board's self-pin) and `dash-scheme-*` (its portal
-// remap) are still in use until the board follows the theme; that PR adds
-// them to FORBIDDEN.
+// `.force-dark` (the live board's old self-pin) and `dash-scheme-*` (its
+// portal remap) are gone too: the board follows the palette on <html>.
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -34,7 +33,7 @@ const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TOKEN_SHEET = path.join(SRC, 'styles', 'vc-tokens.css');
 
 // Everywhere: the retired guard shapes.
-const FORBIDDEN = [':root:not(.light)', ':root:is(:not(.light)', ':root.dark'];
+const FORBIDDEN = [':root:not(.light)', ':root:is(:not(.light)', ':root.dark', '.force-dark', 'dash-scheme-'];
 // Everywhere except the token sheet: theme-class selectors.
 const TOKEN_SHEET_ONLY = [':root.light', ':root.hc', 'html.light', 'html.hc'];
 

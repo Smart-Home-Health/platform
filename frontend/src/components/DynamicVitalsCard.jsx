@@ -117,15 +117,16 @@ const formatDateTime = (dateTimeStr) => {
 
 // Get chart color based on vital type
 const getChartColor = (vitalType) => {
-  // vc-aligned accents (literals — recharts needs them)
+  // Token references — SVG presentation attributes resolve var(), so the
+  // trace follows the palette on <html>.
   const colors = {
-    'blood_pressure': '#f0563c',
-    'temperature': '#b48ce0',
-    'weight': '#3fbf6a',
-    'calories': '#f0a52e',
-    'water': '#4da7bd',
+    'blood_pressure': 'var(--vc-series-bp)',
+    'temperature': 'var(--vc-series-temp)',
+    'weight': 'var(--vc-series-weight)',
+    'calories': 'var(--vc-series-calories)',
+    'water': 'var(--vc-series-water)',
   };
-  return colors[vitalType] || '#6b7987';
+  return colors[vitalType] || 'var(--vc-state-idle)';
 };
 
 // ---- Chart data -----------------------------------------------------------
@@ -381,7 +382,7 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved, ch
               width: '100%',
               borderCollapse: 'collapse',
               fontSize: '12px',
-              color: '#fff'
+              color: chrome.text
             }}>
               <thead>
                 <tr>
@@ -421,7 +422,7 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved, ch
                         padding: '4px 8px',
                         borderBottom: `1px solid ${chrome.border}`,
                         fontSize: '11px',
-                        color: '#fff',
+                        color: chrome.text,
                         textAlign: 'right',
                         fontWeight: '500'
                       }}>
