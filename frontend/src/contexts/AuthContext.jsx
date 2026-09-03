@@ -398,7 +398,8 @@ export const AuthProvider = ({ children }) => {
         full_name: data.user.full_name,
         is_system_admin: data.user.is_system_admin || false,
         roles: data.user.roles || [],
-        permissions: data.user.permissions || []
+        permissions: data.user.permissions || [],
+        preferences: data.user.preferences || null
       });
       setAuthLevel('full');
       setReadRestricted(!!data.read_restricted);
@@ -444,7 +445,8 @@ export const AuthProvider = ({ children }) => {
         full_name: data.user.full_name,
         is_system_admin: data.user.is_system_admin || false,
         roles: data.user.roles || [],
-        permissions: data.user.permissions || []
+        permissions: data.user.permissions || [],
+        preferences: data.user.preferences || null
       });
       setAuthLevel('full');
       setReadRestricted(!!data.read_restricted);
@@ -484,7 +486,8 @@ export const AuthProvider = ({ children }) => {
         full_name: data.user.full_name,
         is_system_admin: data.user.is_system_admin || false,
         roles: data.user.roles || [],
-        permissions: data.user.permissions || []
+        permissions: data.user.permissions || [],
+        preferences: data.user.preferences || null
       });
       setAuthLevel('full');
       setShowAuthModal(false);
@@ -527,7 +530,8 @@ export const AuthProvider = ({ children }) => {
         full_name: data.user.full_name,
         is_system_admin: data.user.is_system_admin || false,
         roles: data.user.roles || [],
-        permissions: data.user.permissions || []
+        permissions: data.user.permissions || [],
+        preferences: data.user.preferences || null
       });
       setAuthLevel('full');
       setShowAuthModal(false);

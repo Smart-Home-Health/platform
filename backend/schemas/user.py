@@ -117,9 +117,29 @@ class AdminPasswordReset(BaseModel):
     require_change: bool = False
 
 
+# The UI preferences a user may store, with their allowed values. The column is
+# free-form JSON, so this is the only thing keeping it tidy: an unknown key or
+# value is a 422, not a silently stored typo the frontend then ignores.
+ALLOWED_PREFERENCES = {
+    "theme": {"light", "dark", "system"},
+    "contrast": {"normal", "high"},
+}
+
+
 class UserPreferencesUpdate(BaseModel):
     """Partial update of the current user's UI preferences (shallow-merged)."""
-    preferences: dict = Field(..., description='e.g. {"theme": "light|dark|system"}')
+    preferences: dict = Field(..., description='e.g. {"theme": "light|dark|system", "contrast": "normal|high"}')
+
+    @field_validator('preferences')
+    @classmethod
+    def validate_preferences(cls, v):
+        for key, value in v.items():
+            allowed = ALLOWED_PREFERENCES.get(key)
+            if allowed is None:
+                raise ValueError(f'unknown preference {key!r}; allowed: {sorted(ALLOWED_PREFERENCES)}')
+            if value not in allowed:
+                raise ValueError(f'{key} must be one of {sorted(allowed)}')
+        return v
 
 
 class UserPasswordUpdate(BaseModel):

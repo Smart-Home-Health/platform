@@ -76,7 +76,7 @@ class User(Base):
     last_full_password_login = Column(DateTime, nullable=True)  # Track daily password requirement
     failed_login_attempts = Column(Integer, default=0, nullable=False)
     locked_until = Column(DateTime, nullable=True)  # Account lockout
-    preferences = Column(JSON, nullable=True)  # Per-user UI preferences, e.g. {"theme": "light|dark|system"}
+    preferences = Column(JSON, nullable=True)  # Per-user UI preferences: {"theme": "light|dark|system", "contrast": "normal|high"} (see schemas.user.ALLOWED_PREFERENCES)
     # Home Assistant user id (uuid4().hex) this app user is linked to; a trusted
     # ingress request carrying this identity signs in as this user with no prompt.
     ha_user_id = Column(String(32), unique=True, nullable=True, index=True)
