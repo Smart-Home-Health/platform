@@ -5,7 +5,7 @@
 # Postgres data + uploaded artifacts live under the add-on's auto-persistent
 # /data, so they survive restarts and updates.
 name: Smart Home Health
-version: "0.2.0"
+version: "0.3.0"
 slug: smart_home_health
 description: Caregiving vitals monitor + medication / care-task scheduling hub
 url: https://github.com/Smart-Home-Health/platform
