@@ -17,6 +17,7 @@
  */
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import { API_BASE_URL } from '../../config';
 import AdminV2Layout from './AdminV2Layout';
 import { SettingsIcon, BuildingIcon, KeyIcon, InfoIcon } from '../../components/Icons';
@@ -28,6 +29,7 @@ import './settings/settings-page.css';
 
 export default function AdminV2AccountSettings() {
   const { user } = useAuth();
+  const { theme, contrast, setTheme, setContrast } = useTheme();
   const [accountData, setAccountData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -196,6 +198,31 @@ export default function AdminV2AccountSettings() {
     <AdminV2Layout>
       <div className="admin-v2-page">
         <div className="cfg cfg-cols">
+          <CfgSection icon={<SettingsIcon size={16} />} title="Appearance">
+            <CfgGroup>
+              <EmField
+                label="Theme"
+                htmlFor="theme"
+                hint="Applies to your profile and follows you across devices. “System” matches your device’s light/dark setting."
+              >
+                <EmSelect id="theme" value={theme} onChange={(e) => setTheme(e.target.value)}>
+                  <option value="light">Light</option>
+                  <option value="dark">Dark</option>
+                  <option value="system">System</option>
+                </EmSelect>
+              </EmField>
+              <EmField
+                label="Contrast"
+                htmlFor="contrast"
+                hint="High contrast uses solid lines and stronger colours (WCAG AAA). Combines with either theme."
+              >
+                <EmSelect id="contrast" value={contrast} onChange={(e) => setContrast(e.target.value)}>
+                  <option value="normal">Normal</option>
+                  <option value="high">High</option>
+                </EmSelect>
+              </EmField>
+            </CfgGroup>
+          </CfgSection>
 
           <CfgSection
             icon={<BuildingIcon size={16} />}

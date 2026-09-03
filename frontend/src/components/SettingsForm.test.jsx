@@ -23,10 +23,11 @@ import { ModalDockProvider } from '../contexts/ModalDockContext';
 
 vi.mock('./settings/DashboardSettings', () => ({ default: () => <div data-testid="dash-view" /> }));
 vi.mock('./settings/ThresholdSettings', () => ({ default: () => <div data-testid="thr-view" /> }));
+vi.mock('./settings/AppearanceSettings', () => ({ default: () => <div data-testid="app-view" /> }));
 
-const renderAt = (dock = {}) => render(
+const renderAt = (dock = {}, initialView) => render(
   <ModalDockProvider value={{ docked: true, expanded: false, toggleExpand: vi.fn(), setExpanded: vi.fn(), ...dock }}>
-    <SettingsForm onClose={vi.fn()} />
+    <SettingsForm onClose={vi.fn()} initialView={initialView} />
   </ModalDockProvider>
 );
 
@@ -38,6 +39,15 @@ describe('SettingsForm', () => {
     expect(screen.getByTestId('dash-view')).toBeInTheDocument();
     expect(screen.queryByTestId('thr-view')).toBeNull();
     expect(screen.getByRole('combobox')).toBeInTheDocument();
+  });
+
+  // The switcher is a Radix Select, which jsdom cannot drive; the view is
+  // opened directly and the mapping to its body asserted.
+  it('has an appearance view', () => {
+    renderAt({}, 'appearance');
+    expect(screen.getByText('Live board · Appearance')).toBeInTheDocument();
+    expect(screen.getByTestId('app-view')).toBeInTheDocument();
+    expect(screen.queryByTestId('dash-view')).toBeNull();
   });
 
   it('stacks field rows at the narrow stop and only widens when expanded', () => {
