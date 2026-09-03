@@ -50,19 +50,6 @@ export const AdminPatientProvider = ({ children }) => {
     }
   }, [authLevel, hasReadAccess]);
 
-  // Load saved patient from session storage after patients are fetched
-  useEffect(() => {
-    if (patients.length > 0) {
-      const savedPatientId = sessionStorage.getItem('adminSelectedPatientId');
-      if (savedPatientId) {
-        const patient = patients.find(p => p.id === parseInt(savedPatientId));
-        if (patient) {
-          setSelectedPatient(patient);
-        }
-      }
-    }
-  }, [patients]);
-
   const fetchPatients = async () => {
     try {
       setLoadingPatients(true);
@@ -71,7 +58,14 @@ export const AdminPatientProvider = ({ children }) => {
       });
       if (response.ok) {
         const data = await response.json();
+        // Restore the session's patient in the same render as the list. Pages
+        // that open their picker on "patients loaded, nothing selected" used
+        // to see exactly that state for one commit on every reload, and the
+        // picker flashed open over an already-selected patient.
+        const savedPatientId = parseInt(sessionStorage.getItem('adminSelectedPatientId'));
+        const saved = savedPatientId ? data.find(p => p.id === savedPatientId) : null;
         setPatients(data);
+        if (saved) setSelectedPatient(saved);
       }
     } catch (err) {
       console.error('Error fetching patients:', err);

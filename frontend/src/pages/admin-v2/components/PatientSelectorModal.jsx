@@ -65,7 +65,7 @@ const PatientSelectorModal = ({
                       {patient.first_name} {patient.last_name}
                     </span>
                     <span className="cfg-pick-id">
-                      {patient.room || 'No room assigned'}
+                      {patient.care_area || 'No room assigned'}
                     </span>
                   </span>
                 </span>

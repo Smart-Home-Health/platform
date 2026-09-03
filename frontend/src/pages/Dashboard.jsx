@@ -540,6 +540,7 @@ export default function Dashboard() {
   const fetchMedicationDueCount = (pid) => fetchDueCount('/api/medications/due/count', setMedicationDueCount, pid);
   const fetchCareTaskDueCount = (pid) => fetchDueCount('/api/schedule/care-tasks/due/count', setCareTaskDueCount, pid);
   const fetchNutritionDueCount = (pid) => fetchDueCount('/api/nutrition/due/count', setNutritionDueCount, pid);
+  const fetchAlertsCount = (pid) => fetchDueCount('/api/monitoring/alerts/count', setPulseOxAlerts, pid);
 
   // Refetch every badge for a patient (defaults to the current selection).
   const refreshDueCounts = (pid) => {
@@ -547,6 +548,7 @@ export default function Dashboard() {
     fetchMedicationDueCount(pid);
     fetchCareTaskDueCount(pid);
     fetchNutritionDueCount(pid);
+    fetchAlertsCount(pid);
   };
 
   useEffect(() => {
@@ -629,13 +631,11 @@ export default function Dashboard() {
           perfusion: offline ? null : msg.state.perfusion ?? null,
         });
 
-        if (msg.state.alerts_count !== undefined) {
-          setPulseOxAlerts(msg.state.alerts_count);
-        }
-        // NOTE: msg.state.dashboard_chart_1/2 are deliberately ignored — the
-        // server builds them without a patient filter, so consuming them here
-        // would leak other patients' vitals into the cards. The cards use the
-        // patient-scoped REST fetch instead (fetchChartData).
+        // NOTE: msg.state.alerts_count and dashboard_chart_1/2 are deliberately
+        // ignored — the server builds them without a patient filter, so
+        // consuming them here would show other patients' alerts and vitals.
+        // The badge and the cards use patient-scoped REST fetches instead
+        // (fetchAlertsCount, fetchChartData).
       }
 
       else if (msg.type === "alarm_update") {
@@ -644,9 +644,8 @@ export default function Dashboard() {
         prevAlarmActive.current = alarmActive;
       }
       else if (msg.type === "alert_acknowledged") {
-        if (msg.alerts_count !== undefined) {
-          setPulseOxAlerts(msg.alerts_count);
-        }
+        const pid = dueCountPatientRef.current;
+        if (pid) fetchAlertsCount(pid);
       }
       // A due item was marked done / logged / restocked anywhere. Refetch the
       // matching badge for the patient on screen. The badges are patient-scoped
@@ -895,17 +894,7 @@ export default function Dashboard() {
     setIsCaptureModalOpen(true);
   };
 
-  // Add this function to handle alert acknowledgment
-  const handleAlertAcknowledged = () => {
-    fetch(`${config.apiUrl}/api/monitoring/alerts/count`, { credentials: 'include' })
-      .then(response => response.json())
-      .then(data => {
-        if (data && data.count !== undefined) {
-          setPulseOxAlerts(data.count);
-        }
-      })
-      .catch(err => console.error('Error fetching updated alert count:', err));
-  };
+  const handleAlertAcknowledged = () => fetchAlertsCount();
 
   // Track if alerts viewed POST has been sent for this open
   const [alertsViewedSent, setAlertsViewedSent] = useState(false);
@@ -1058,7 +1047,7 @@ export default function Dashboard() {
                     {p.first_name} {p.last_name}
                   </strong>
                   <span style={{ color: '#8b949e', fontSize: '0.85rem' }}>
-                    {p.room || 'No room assigned'}
+                    {p.care_area || 'No room assigned'}
                   </span>
                 </div>
                 <span style={{ color: '#8b949e', whiteSpace: 'nowrap' }}>

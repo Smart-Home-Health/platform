@@ -60,9 +60,13 @@ async def get_monitoring_alerts_endpoint(
 
 
 @router.get("/alerts/count")
-async def get_unacknowledged_alerts_count_endpoint(db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
-    """Get count of unacknowledged alerts"""
-    return {"count": get_unacknowledged_alerts_count(db)}
+async def get_unacknowledged_alerts_count_endpoint(
+        patient_id: Optional[int] = None,
+        db: Session = Depends(get_db),
+        _: bool = Depends(require_read_access)
+):
+    """Get count of unacknowledged alerts (one patient's when patient_id is given)"""
+    return {"count": get_unacknowledged_alerts_count(db, patient_id=patient_id)}
 
 
 @router.post("/alerts/{alert_id}/acknowledge")

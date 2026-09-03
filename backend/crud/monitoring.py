@@ -18,6 +18,7 @@ Monitoring and alerts CRUD operations
 """
 import logging
 from datetime import datetime, timedelta
+from typing import Optional
 from utils.datetime_utils import utc_now
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, asc, and_, or_
@@ -110,16 +111,19 @@ def get_monitoring_alerts(db: Session, limit=50, include_acknowledged=False, det
         return []
 
 
-def get_unacknowledged_alerts_count(db: Session):
+def get_unacknowledged_alerts_count(db: Session, patient_id: Optional[int] = None):
     """
-    Get count of unacknowledged alerts
+    Get count of unacknowledged alerts, for one patient when ``patient_id`` is
+    given (the dashboard badge) or across all patients.
 
     Returns:
         int: Number of unacknowledged alerts
     """
     try:
-        count = db.query(MonitoringAlert).filter(MonitoringAlert.acknowledged == False).count()
-        return count
+        query = db.query(MonitoringAlert).filter(MonitoringAlert.acknowledged == False)
+        if patient_id is not None:
+            query = query.filter(MonitoringAlert.patient_id == patient_id)
+        return query.count()
     except Exception as e:
         logger.error(f"Error getting unacknowledged alert count: {e}")
         db.rollback()  # Rollback the transaction on error

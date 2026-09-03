@@ -50,6 +50,16 @@ def test_list_shipments(admin_client, patient):
     assert "shipments" in resp.json()
 
 
+def test_list_shipments_carries_item_count(admin_client, patient):
+    with_items = _make_shipment(admin_client, patient).json()["id"]
+    empty = _make_shipment(admin_client, patient, po_number="PO-1002").json()["id"]
+    _add_item(admin_client, with_items)
+    _add_item(admin_client, with_items, item_description="Gauze")
+    rows = {s["id"]: s for s in admin_client.get("/api/shipments").json()["shipments"]}
+    assert rows[with_items]["item_count"] == 2
+    assert rows[empty]["item_count"] == 0
+
+
 def test_get_shipment(admin_client, patient):
     sid = _make_shipment(admin_client, patient).json()["id"]
     assert admin_client.get(f"/api/shipments/{sid}").status_code == 200

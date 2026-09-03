@@ -20,7 +20,7 @@ import logging
 from datetime import datetime
 from typing import Optional, List
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, func
 from schemas.dme_shipment import DMEShipment, DMEShipmentItem, DMEReceiptItem, DMEShipmentAlert, DMEShipmentDocument
 from schemas.equipment import Equipment
 import document_store
@@ -172,8 +172,23 @@ def list_shipments(
         
         query = query.order_by(DMEShipment.created_at.desc())
         shipments = query.offset(skip).limit(limit).all()
-        
-        return [_shipment_to_dict(s, include_items=False, include_alerts=False) for s in shipments]
+
+        # The list skips the item rows but the cards still say how many there
+        # are, so count them in one query rather than loading every line.
+        counts = {}
+        if shipments:
+            counts = dict(
+                db.query(DMEShipmentItem.shipment_id, func.count(DMEShipmentItem.id))
+                .filter(DMEShipmentItem.shipment_id.in_([s.id for s in shipments]))
+                .group_by(DMEShipmentItem.shipment_id)
+                .all()
+            )
+        result = []
+        for s in shipments:
+            d = _shipment_to_dict(s, include_items=False, include_alerts=False)
+            d['item_count'] = counts.get(s.id, 0)
+            result.append(d)
+        return result
     except Exception as e:
         logger.error(f"Error listing shipments: {e}")
         return []

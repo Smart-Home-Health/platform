@@ -55,6 +55,15 @@ def test_alerts_count(admin_client, alert):
     assert resp.json()["count"] >= 1
 
 
+def test_alerts_count_scoped_to_patient(admin_client, alert):
+    """The dashboard badge asks for one patient; another patient's alerts
+    must not count toward it."""
+    resp = admin_client.get(f"/api/monitoring/alerts/count?patient_id={alert.patient_id}")
+    assert resp.json()["count"] == 1
+    resp = admin_client.get(f"/api/monitoring/alerts/count?patient_id={alert.patient_id + 1000}")
+    assert resp.json()["count"] == 0
+
+
 def test_acknowledge_alert(admin_client, db_session, alert):
     resp = admin_client.post(f"/api/monitoring/alerts/{alert.id}/acknowledge",
                              json={"oxygen_used": 2.0, "oxygen_unit": "L"})

@@ -279,7 +279,7 @@ const AdminV2Dashboard = () => {
                       <h3 className="admin-v2-patient-name">{patient.name}</h3>
                       <p className="admin-v2-patient-meta">
                         {patient.date_of_birth ? `Age ${calculateAge(patient.date_of_birth)}` : 'Age unknown'}
-                        {patient.room ? ` • ${patient.room}` : ''}
+                        {patient.care_area ? ` • ${patient.care_area}` : ''}
                       </p>
                     </div>
 
