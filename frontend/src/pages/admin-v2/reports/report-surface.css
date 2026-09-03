@@ -121,7 +121,6 @@
 .rpt-control select:focus-visible { outline: 2px solid var(--rpt-accent); outline-offset: 2px; }
 .rpt-chevron { color: var(--rpt-text-3); flex-shrink: 0; }
 .rpt select,
-.force-dark .rpt select { color-scheme: dark; }
 
 /* A dot rather than a count: what is behind it is a setting, not a tally. */
 .rpt-dot-flag {

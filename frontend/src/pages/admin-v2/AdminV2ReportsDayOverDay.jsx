@@ -38,6 +38,8 @@ import {
 } from '../../components/Icons';
 import BottomSheet from '../capture/components/BottomSheet';
 import { useChartColors } from '../../hooks/useChartColors';
+import { useThemeTokens } from '../../hooks/useThemeTokens';
+import { hexAlpha } from '../../utils/themeTokens';
 import {
   MAX_DAYS, VITAL_TYPES, AGGREGATIONS, SOURCE_LABELS, seriesColor,
   alarmsFor, formatDayLabel, formatHourLabel, hourWindowLabel,
@@ -121,7 +123,8 @@ const AdminV2ReportsDayOverDay = ({ patientId }) => {
     () => Object.fromEntries(selection.map(s => [s.date, s.color])),
     [selection],
   );
-  const colorFor = useCallback(ds => seriesColor(colorByDate[ds] ?? 0), [colorByDate]);
+  const { series } = useThemeTokens();
+  const colorFor = useCallback(ds => seriesColor(colorByDate[ds] ?? 0, series.ramp), [colorByDate, series]);
 
   const vital = VITAL_TYPES.find(v => v.value === vitalType) || VITAL_TYPES[0];
   const agg = AGGREGATIONS.find(a => a.value === aggregation) || AGGREGATIONS[0];
@@ -227,7 +230,7 @@ const AdminV2ReportsDayOverDay = ({ patientId }) => {
     const token = (name, fallback) => rootStyle?.getPropertyValue(name).trim() || fallback;
     const alarmColor = token('--rpt-alarm', '#f0a52e');
     const tooltipBg = token('--rpt-raised', chrome.cutout);
-    const gridSoft = `${chrome.grid}80`;
+    const gridSoft = hexAlpha(chrome.grid, 0.5);
 
     const isRaw = (reportData.aggregation || 'hour') === 'none';
     const datasets = rows.map(row => {

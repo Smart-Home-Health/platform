@@ -37,6 +37,7 @@ import {
 } from '../../components/Icons';
 import BottomSheet from '../capture/components/BottomSheet';
 import { useChartColors } from '../../hooks/useChartColors';
+import { hexAlpha } from '../../utils/themeTokens';
 import { alarmsFor } from './reports/dayOverDay';
 import {
   DEFAULT_START_HOUR, DEFAULT_END_HOUR, STATUS_TONE,
@@ -172,7 +173,7 @@ const AdminV2ReportsOvernight = () => {
     const spo2Color = token('--rpt-accent', '#4da7bd');
     const hrColor = token('--rpt-ok', '#3fbf6a');
     const tooltipBg = token('--rpt-raised', chrome.cutout);
-    const gridSoft = `${chrome.grid}80`;
+    const gridSoft = hexAlpha(chrome.grid, 0.5);
 
     const xMin = points[0].ts;
     const xMax = points[points.length - 1].ts;
@@ -187,8 +188,8 @@ const AdminV2ReportsOvernight = () => {
           type: 'box',
           xMin: e.startMs / 1000,
           xMax: (e.endMs ?? xMax * 1000) / 1000,
-          backgroundColor: `${breachColor}1f`,
-          borderColor: `${breachColor}4d`,
+          backgroundColor: hexAlpha(breachColor, 0.12),
+          borderColor: hexAlpha(breachColor, 0.3),
           borderWidth: 1,
         };
         if (e.nadir != null) {

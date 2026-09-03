@@ -98,7 +98,7 @@ export function alignSeries(period, daily, field = 'avg') {
 
 /* One row per vital that has readings. `worst` is the day the reader is
  * looking for: the lowest low for SpO2, the highest high for the rest. */
-export function vitalRows(data, alarms = {}) {
+export function vitalRows(data, alarms = {}, colors = VITAL_COLORS) {
   const period = data?.period;
   return VITALS.map(v => {
     const vd = data?.vitals?.[v.key];
@@ -114,7 +114,7 @@ export function vitalRows(data, alarms = {}) {
 
     return {
       ...v,
-      color: VITAL_COLORS[v.key],
+      color: colors[v.key],
       min: vd.min,
       avg: vd.avg,
       max: vd.max,

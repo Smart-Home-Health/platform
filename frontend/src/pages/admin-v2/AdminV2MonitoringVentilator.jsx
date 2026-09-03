@@ -31,6 +31,8 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import Chart from 'chart.js/auto';
 import 'chartjs-adapter-date-fns';
 import config, { apiFetch } from '../../config';
+import { useThemeTokens } from '../../hooks/useThemeTokens';
+import { hexAlpha } from '../../utils/themeTokens';
 import EntityModal from '../../components/vc/EntityModal';
 import {
   CalendarIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, StarIcon,
@@ -41,25 +43,24 @@ import './monitoring-ventilator.css';
 /* Group accents from the vc ramp, so a group reads as a category rather than
  * a state. Unlisted groups fall back to the neutral dot. */
 const GROUP_ACCENT = {
-  Ventilation: '#4da7bd',
-  Oxygen: '#3fbf6a',
-  Cough: '#9b8cf0',
-  Suction: '#4dc3b3',
-  Nebulizer: '#d98cc4',
-  System: '#7f9fd4',
-  Config: '#a8c94a',
-  Other: '#6b7987',
+  Ventilation: 'var(--vc-data-live)',
+  Oxygen: 'var(--vc-state-complete)',
+  Cough: 'var(--vc-series-3)',
+  Suction: 'var(--vc-series-4)',
+  Nebulizer: 'var(--vc-series-6)',
+  System: 'var(--vc-series-5)',
+  Config: 'var(--vc-series-7)',
+  Other: 'var(--vc-state-idle)',
 };
 
-/* Series colours for the pinned trend — the vc-derived ramp the reports use. */
-const SERIES_RAMP = ['#4da7bd', '#3fbf6a', '#9b8cf0', '#4dc3b3', '#7f9fd4', '#d98cc4', '#a8c94a'];
-
-const CHROME = {
-  grid: 'rgba(255, 255, 255, 0.06)',
-  axis: '#6b7987',
-  band: 'rgba(77, 167, 189, 0.16)',
-  line: '#4da7bd',
-};
+/* Canvas chrome from the resolved tokens (chart.js needs literals); the
+ * pinned trend's series take the same categorical ramp the reports use. */
+const ventChrome = ({ chrome, series }) => ({
+  grid: hexAlpha(chrome.grid, 0.06),
+  axis: chrome.axis,
+  band: hexAlpha(series.live, 0.16),
+  line: series.live,
+});
 
 const VENDOR = 'vocsn';
 
@@ -547,6 +548,8 @@ const ParameterRow = ({ row, pinned, onPin, onOpen }) => {
 const PinnedTrend = ({ rows, series }) => {
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
+  const tokens = useThemeTokens();
+  const vc = useMemo(() => ventChrome(tokens), [tokens]);
 
   const datasets = useMemo(() => rows.map((row, i) => {
     const key = row.param.parameter_key;
@@ -564,9 +567,9 @@ const PinnedTrend = ({ rows, series }) => {
     const scales = { x: {
       type: 'time',
       time: { displayFormats: { minute: 'h:mm', hour: 'ha' } },
-      grid: { color: CHROME.grid, drawTicks: false },
+      grid: { color: vc.grid, drawTicks: false },
       border: { display: false },
-      ticks: { color: CHROME.axis, maxRotation: 0, autoSkip: true, maxTicksLimit: 6,
+      ticks: { color: vc.axis, maxRotation: 0, autoSkip: true, maxTicksLimit: 6,
         font: { size: 10, family: "'IBM Plex Mono', monospace" } },
     } };
     datasets.forEach((d) => {
@@ -581,7 +584,7 @@ const PinnedTrend = ({ rows, series }) => {
           data: d.points,
           parsing: false,
           yAxisID: d.axis,
-          borderColor: SERIES_RAMP[i % SERIES_RAMP.length],
+          borderColor: tokens.series.ramp[i % tokens.series.ramp.length],
           borderWidth: 1.4,
           pointRadius: 0,
           tension: 0.15,
@@ -597,7 +600,7 @@ const PinnedTrend = ({ rows, series }) => {
         plugins: {
           legend: {
             display: true, position: 'bottom',
-            labels: { usePointStyle: true, boxWidth: 6, color: CHROME.axis,
+            labels: { usePointStyle: true, boxWidth: 6, color: vc.axis,
               font: { size: 10, family: "'IBM Plex Mono', monospace" } },
           },
           tooltip: { enabled: true },
@@ -606,7 +609,7 @@ const PinnedTrend = ({ rows, series }) => {
     });
     chartRef.current = chart;
     return () => { chart.destroy(); chartRef.current = null; };
-  }, [datasets]);
+  }, [datasets, vc, tokens]);
 
   if (datasets.length === 0) return null;
   return (
@@ -646,6 +649,8 @@ const ParameterDetail = ({ row, patientId, date, onClose }) => {
     return () => { cancelled = true; };
   }, [patientId, date, param.parameter_key]);
 
+  const tokens = useThemeTokens();
+  const vc = useMemo(() => ventChrome(tokens), [tokens]);
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !points?.length) return undefined;
@@ -662,9 +667,9 @@ const ParameterDetail = ({ row, patientId, date, onClose }) => {
             borderColor: 'transparent', pointRadius: 0 },
           { label: '95th percentile', data: at('p95'), parsing: false,
             borderColor: 'transparent', pointRadius: 0,
-            backgroundColor: CHROME.band, fill: '-1' },
+            backgroundColor: vc.band, fill: '-1' },
           { label: 'Median', data: at('p50'), parsing: false,
-            borderColor: CHROME.line, borderWidth: 1.6, pointRadius: 0, tension: 0.15 },
+            borderColor: vc.line, borderWidth: 1.6, pointRadius: 0, tension: 0.15 },
         ],
       },
       options: {
@@ -676,15 +681,15 @@ const ParameterDetail = ({ row, patientId, date, onClose }) => {
           x: {
             type: 'time',
             time: { displayFormats: { minute: 'h:mm', hour: 'ha' } },
-            grid: { color: CHROME.grid, drawTicks: false },
+            grid: { color: vc.grid, drawTicks: false },
             border: { display: false },
-            ticks: { color: CHROME.axis, maxRotation: 0, autoSkip: true, maxTicksLimit: 6,
+            ticks: { color: vc.axis, maxRotation: 0, autoSkip: true, maxTicksLimit: 6,
               font: { size: 10, family: "'IBM Plex Mono', monospace" } },
           },
           y: {
-            grid: { color: CHROME.grid, drawTicks: false },
+            grid: { color: vc.grid, drawTicks: false },
             border: { display: false },
-            ticks: { color: CHROME.axis, maxTicksLimit: 6,
+            ticks: { color: vc.axis, maxTicksLimit: 6,
               font: { size: 10, family: "'IBM Plex Mono', monospace" } },
           },
         },
@@ -695,7 +700,7 @@ const ParameterDetail = ({ row, patientId, date, onClose }) => {
       },
     });
     return () => chart.destroy();
-  }, [points]);
+  }, [points, vc]);
 
   return (
     <EntityModal open onOpenChange={(v) => { if (!v) onClose(); }} wide

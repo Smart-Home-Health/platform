@@ -37,8 +37,8 @@ import {
 } from './pulseOxDay';
 import './alerts-history.css';
 
-const SPO2_COLOR = '#4da7bd';
-const BPM_COLOR = '#3fbf6a';
+const SPO2_COLOR = 'var(--vc-series-spo2)';
+const BPM_COLOR = 'var(--vc-series-hr)';
 
 // The analyzer's full bucket set, in clinical order, for the wide view. Tone
 // follows the project rule: red is reserved for the sub-90 buckets.

@@ -20,11 +20,12 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "rec
 import { CHART_CHROME } from "../contexts/DashboardThemeContext";
 import { pickTimeStep, buildTimeTicks, niceYDomain } from "../utils/chartAxis";
 
-// Series colors follow the vc state tokens (literals — recharts needs them)
+// Series colours are token references: SVG takes var() in a presentation
+// attribute, so the trace follows the palette on <html> by itself.
 const SERIES_COLORS = {
-  blue: '#4da7bd',
-  green: '#3fbf6a',
-  orange: '#f0a52e',
+  blue: 'var(--vc-data-live)',
+  green: 'var(--vc-state-complete)',
+  orange: 'var(--vc-state-due)',
 };
 const getColor = (colorName) => SERIES_COLORS[String(colorName).toLowerCase()] || colorName;
 

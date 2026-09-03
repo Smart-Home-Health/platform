@@ -50,11 +50,12 @@ const Glyph = ({ name, size = 18 }) => {
   return <C size={size} />;
 };
 
+// Token references: recharts renders SVG, which resolves var() itself.
 const TONE_COLOR = {
-  live: '#4da7bd',
-  complete: '#3fbf6a',
-  idle: '#9aa8b8',
-  due: '#f0a52e',
+  live: 'var(--vc-data-live)',
+  complete: 'var(--vc-state-complete)',
+  idle: 'var(--vc-text-secondary)',
+  due: 'var(--vc-state-due)',
 };
 
 const stampOf = (r) => new Date(r.timestamp || r.datetime).getTime();

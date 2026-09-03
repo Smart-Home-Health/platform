@@ -42,9 +42,9 @@ const SOURCE_LABELS = {
 };
 
 const SOURCE_COLORS = {
-  pulse_ox: '#3b82f6',
-  vitals: '#3fb950',
-  vent: '#f0883e',
+  pulse_ox: 'var(--vc-data-live)',
+  vitals: 'var(--vc-state-complete)',
+  vent: 'var(--vc-state-due)',
 };
 
 function formatWindow(min) {
@@ -245,7 +245,7 @@ function MetricCard({ metric, sourceColor }) {
   const isUp = m.delta > 0;
   const arrow = isUp ? '↑' : m.delta < 0 ? '↓' : '→';
   const deltaColor = m.significant
-    ? (isUp ? '#f0883e' : '#3fb950')
+    ? (isUp ? 'var(--vc-state-due)' : 'var(--vc-state-complete)')
     : 'var(--vc-text-secondary)';
 
   return (

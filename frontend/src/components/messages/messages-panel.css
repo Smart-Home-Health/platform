@@ -152,7 +152,6 @@
 }
 /* The OS draws the option list, so tell it which scheme to paint. */
 .mx-board .mx-source select,
-.force-dark .mx-board .mx-source select { color-scheme: dark; }
 
 /* ---- groups ---- */
 

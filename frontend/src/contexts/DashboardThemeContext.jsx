@@ -15,31 +15,29 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { createContext, useContext, useEffect } from 'react';
+import { createContext, useContext } from 'react';
 
 /**
  * Live-dashboard chart chrome.
  *
- * The live board is dark-only by design (bedside-monitor aesthetic, aligned
- * with the vc tokens in styles/vc-tokens.css). Recharts needs literal colors,
- * so the chrome (bg/axis/grid/tooltip/text) is supplied here; the CSS side
- * resolves through the `--dash-*` variables in App.css, which are defined
- * from the same vc token values. Vital *series* colors stay at call sites.
+ * The board's charts are recharts (SVG), and SVG presentation attributes take
+ * a CSS custom-property reference, so every colour here is a `var(--vc-*)`
+ * string: the palette on <html> (dark / light / high-contrast, see
+ * contexts/ThemeContext) reaches the plot, axes and tooltips with no
+ * JavaScript in the loop and no re-render on a switch. Canvas charts cannot
+ * do this — they use utils/themeTokens + hooks/useThemeTokens instead.
  */
-
-// Mirrors vc-tokens.css: bg-base #0a0e14, surface #131a24, sheet #161e29,
-// text-primary #e8edf3, secondary #9aa8b8, tertiary #6b7987.
 export const CHART_CHROME = {
-  bg: '#0f1620',
-  axis: '#6b7987',
-  grid: 'rgba(255, 255, 255, 0.08)',
-  tooltipBg: '#161e29',
-  tooltipBorder: 'rgba(255, 255, 255, 0.2)',
-  tooltipText: '#e8edf3',
-  text: '#e8edf3',
-  textMuted: '#9aa8b8',
-  textDim: '#6b7987',
-  border: 'rgba(255, 255, 255, 0.1)',
+  bg: 'var(--vc-plot-bg)',
+  axis: 'var(--vc-text-tertiary)',
+  grid: 'var(--vc-line-hairline)',
+  tooltipBg: 'var(--vc-bg-sheet)',
+  tooltipBorder: 'var(--vc-line-strong)',
+  tooltipText: 'var(--vc-text-primary)',
+  text: 'var(--vc-text-primary)',
+  textMuted: 'var(--vc-text-secondary)',
+  textDim: 'var(--vc-text-tertiary)',
+  border: 'var(--vc-line-hairline)',
 };
 
 // Hoisted (not an inline literal in the Provider) so consumers see a stable
@@ -49,23 +47,10 @@ const CONTEXT_VALUE = { chartChrome: CHART_CHROME };
 
 const DashboardThemeContext = createContext(CONTEXT_VALUE);
 
+// Radix overlays portal into <body>; they used to be pinned dark from here
+// with a `dash-scheme-dark` class on <html>. The palette now lives on <html>
+// for the whole app, so portals and the board read the same tokens.
 export function DashboardThemeProvider({ children }) {
-  // Radix overlays (Dialog/Select/Popover) portal into <body>, outside the
-  // dashboard wrapper, so they can't inherit the board's dark tokens. Pin
-  // them dark on <html> while the live dashboard is mounted (see the
-  // `:root.dash-scheme-dark` block in App.css).
-  //
-  // The `vc-form-skin` body class that used to go on here as well is gone with
-  // vc-forms.css — that sheet only ever restyled the shadcn `ui/` primitives
-  // through their `data-slot` hooks, and those were deleted 2026-08-31.
-  useEffect(() => {
-    const el = document.documentElement;
-    el.classList.add('dash-scheme-dark');
-    return () => {
-      el.classList.remove('dash-scheme-dark');
-    };
-  }, []);
-
   return (
     <DashboardThemeContext.Provider value={CONTEXT_VALUE}>
       {children}

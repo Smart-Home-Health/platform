@@ -994,7 +994,7 @@ export default function Dashboard() {
 
   return (
     <ModalDockProvider value={modalDock}>
-    <div className="dashboard-wrapper force-dark live-dash" ref={boardRef}>
+    <div className="dashboard-wrapper live-dash" ref={boardRef}>
       {/* Auth gates take the whole board rather than docking beside it — an
           unlock prompt is not something to work alongside. */}
       <ModalBase
@@ -1165,7 +1165,7 @@ export default function Dashboard() {
             source="Pulse ox · live"
             value={sensorValues.spo2}
             unit="%"
-            accent="#4da7bd"
+            accent="var(--vc-series-spo2)"
             stats={tileStats(buffer.series.spo2, v => `${v.toFixed(1)}%`, v => `${v.toFixed(0)}%`)}
             chart={isMobile && !needsUnlock ? tileChart(buffer.series.spo2, 'blue') : null}
             flipped={!!flippedTiles.spo2}
@@ -1176,7 +1176,7 @@ export default function Dashboard() {
             source="Pulse ox · live"
             value={sensorValues.bpm}
             unit="bpm"
-            accent="#3fbf6a"
+            accent="var(--vc-series-hr)"
             stats={tileStats(buffer.series.bpm, v => v.toFixed(0))}
             chart={isMobile && !needsUnlock ? tileChart(buffer.series.bpm, 'green') : null}
             flipped={!!flippedTiles.bpm}
@@ -1187,7 +1187,7 @@ export default function Dashboard() {
             source="PI · live"
             value={sensorValues.perfusion}
             unit={perfusionAsPercent ? '%' : 'PI'}
-            accent="#f0a52e"
+            accent="var(--vc-series-pi)"
             stats={tileStats(buffer.series.perfusion, v => v.toFixed(1))}
             chart={isMobile && !needsUnlock ? tileChart(buffer.series.perfusion, 'orange') : null}
             flipped={!!flippedTiles.perfusion}

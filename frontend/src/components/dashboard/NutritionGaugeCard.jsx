@@ -60,7 +60,7 @@ const NutritionGaugeCard = () => {
         alignItems: 'center',
         justifyContent: 'center'
       }}>
-        <div style={{ color: '#ffffff', fontSize: '14px' }}>Loading...</div>
+        <div style={{ color: 'var(--vc-text-primary)', fontSize: '14px' }}>Loading...</div>
       </div>
     );
   }
@@ -68,7 +68,7 @@ const NutritionGaugeCard = () => {
   if (error) {
     return (
       <div style={{ height: '100%' }}>
-        <div style={{ color: '#fc8181', fontSize: '14px' }}>Error: {error}</div>
+        <div style={{ color: 'var(--vc-state-alert)', fontSize: '14px' }}>Error: {error}</div>
       </div>
     );
   }
@@ -116,7 +116,7 @@ const NutritionGaugeCard = () => {
       <text
         x={x + width / 2}
         y={y + height / 2}
-        fill="#ffffff"
+        fill="var(--vc-text-primary)"
         textAnchor="middle"
         dominantBaseline="middle"
         fontSize="14"
@@ -138,7 +138,7 @@ const NutritionGaugeCard = () => {
       {/* Calories Bar Chart */}
       <div style={{ flex: 1, minHeight: 0 }}>
         <div style={{
-          color: '#e2e8f0',
+          color: 'var(--vc-text-primary)',
           fontSize: '0.875rem',
           fontWeight: '500',
           marginBottom: '8px',
@@ -152,14 +152,14 @@ const NutritionGaugeCard = () => {
             <YAxis type="category" dataKey="name" hide />
             
             {/* Target bar (daily target - shown for reference) */}
-            <Bar dataKey="target" fill="#4a5568" radius={[4, 4, 4, 4]} isAnimationActive={false}>
+            <Bar dataKey="target" fill="var(--vc-text-tertiary)" radius={[4, 4, 4, 4]} isAnimationActive={false}>
               <LabelList 
                 dataKey="target" 
                 position="right" 
                 content={(props) => {
                   const { x, y, width, value } = props;
                   return (
-                    <text x={x + width + 5} y={y + 10} fill="#4a5568" fontSize="11" fontWeight="500">
+                    <text x={x + width + 5} y={y + 10} fill="var(--vc-text-tertiary)" fontSize="11" fontWeight="500">
                       Target: {Math.round(value)} cal
                     </text>
                   );
@@ -168,14 +168,14 @@ const NutritionGaugeCard = () => {
             </Bar>
             
             {/* Expected bar (sum of scheduled feedings that have passed) */}
-            <Bar dataKey="expected" fill="#f6ad55" radius={[4, 4, 4, 4]} isAnimationActive={false}>
+            <Bar dataKey="expected" fill="var(--vc-state-due)" radius={[4, 4, 4, 4]} isAnimationActive={false}>
               <LabelList 
                 dataKey="expected" 
                 position="right" 
                 content={(props) => {
                   const { x, y, width, value } = props;
                   return (
-                    <text x={x + width + 5} y={y + 10} fill="#f6ad55" fontSize="11" fontWeight="500">
+                    <text x={x + width + 5} y={y + 10} fill="var(--vc-state-due)" fontSize="11" fontWeight="500">
                       Expected: {Math.round(value)} cal
                     </text>
                   );
@@ -192,7 +192,7 @@ const NutritionGaugeCard = () => {
                 content={(props) => {
                   const { x, y, width, value } = props;
                   const data = caloriesData[0];
-                  const color = data.actual >= data.target ? '#48bb78' : data.actual >= data.expected ? '#4299e1' : '#ecc94b';
+                  const color = data.actual >= data.target ? 'var(--vc-state-complete)' : data.actual >= data.expected ? 'var(--vc-data-live)' : 'var(--vc-state-due)';
                   return (
                     <text x={x + width + 5} y={y + 10} fill={color} fontSize="11" fontWeight="500">
                       Actual: {Math.round(value)} cal
@@ -203,7 +203,7 @@ const NutritionGaugeCard = () => {
               {caloriesData.map((entry, index) => (
                 <Cell 
                   key={`cell-${index}`} 
-                  fill={entry.actual >= entry.target ? '#48bb78' : entry.actual >= entry.expected ? '#4299e1' : '#ecc94b'} 
+                  fill={entry.actual >= entry.target ? 'var(--vc-state-complete)' : entry.actual >= entry.expected ? 'var(--vc-data-live)' : 'var(--vc-state-due)'} 
                 />
               ))}
             </Bar>
@@ -214,7 +214,7 @@ const NutritionGaugeCard = () => {
       {/* Water Bar Chart */}
       <div style={{ flex: 1, minHeight: 0 }}>
         <div style={{
-          color: '#e2e8f0',
+          color: 'var(--vc-text-primary)',
           fontSize: '0.875rem',
           fontWeight: '500',
           marginBottom: '8px',
@@ -228,14 +228,14 @@ const NutritionGaugeCard = () => {
             <YAxis type="category" dataKey="name" hide />
             
             {/* Target bar (daily target - shown for reference) */}
-            <Bar dataKey="target" fill="#4a5568" radius={[4, 4, 4, 4]} isAnimationActive={false}>
+            <Bar dataKey="target" fill="var(--vc-text-tertiary)" radius={[4, 4, 4, 4]} isAnimationActive={false}>
               <LabelList 
                 dataKey="target" 
                 position="right" 
                 content={(props) => {
                   const { x, y, width, value } = props;
                   return (
-                    <text x={x + width + 5} y={y + 10} fill="#4a5568" fontSize="11" fontWeight="500">
+                    <text x={x + width + 5} y={y + 10} fill="var(--vc-text-tertiary)" fontSize="11" fontWeight="500">
                       Target: {Math.round(value)} ml
                     </text>
                   );
@@ -244,14 +244,14 @@ const NutritionGaugeCard = () => {
             </Bar>
             
             {/* Expected bar (sum of scheduled feedings that have passed) */}
-            <Bar dataKey="expected" fill="#f6ad55" radius={[4, 4, 4, 4]} isAnimationActive={false}>
+            <Bar dataKey="expected" fill="var(--vc-state-due)" radius={[4, 4, 4, 4]} isAnimationActive={false}>
               <LabelList 
                 dataKey="expected" 
                 position="right" 
                 content={(props) => {
                   const { x, y, width, value } = props;
                   return (
-                    <text x={x + width + 5} y={y + 10} fill="#f6ad55" fontSize="11" fontWeight="500">
+                    <text x={x + width + 5} y={y + 10} fill="var(--vc-state-due)" fontSize="11" fontWeight="500">
                       Expected: {Math.round(value)} ml
                     </text>
                   );
@@ -268,7 +268,7 @@ const NutritionGaugeCard = () => {
                 content={(props) => {
                   const { x, y, width, value } = props;
                   const data = waterData[0];
-                  const color = data.actual >= data.target ? '#48bb78' : data.actual >= data.expected ? '#4299e1' : '#ecc94b';
+                  const color = data.actual >= data.target ? 'var(--vc-state-complete)' : data.actual >= data.expected ? 'var(--vc-data-live)' : 'var(--vc-state-due)';
                   return (
                     <text x={x + width + 5} y={y + 10} fill={color} fontSize="11" fontWeight="500">
                       Actual: {Math.round(value)} ml
@@ -279,7 +279,7 @@ const NutritionGaugeCard = () => {
               {waterData.map((entry, index) => (
                 <Cell 
                   key={`cell-${index}`} 
-                  fill={entry.actual >= entry.target ? '#48bb78' : entry.actual >= entry.expected ? '#4299e1' : '#ecc94b'} 
+                  fill={entry.actual >= entry.target ? 'var(--vc-state-complete)' : entry.actual >= entry.expected ? 'var(--vc-data-live)' : 'var(--vc-state-due)'} 
                 />
               ))}
             </Bar>

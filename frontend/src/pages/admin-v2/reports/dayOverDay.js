@@ -60,7 +60,7 @@ export const SERIES_COLORS = [
   '#a8c94a', // lime
 ];
 
-export const seriesColor = (slot) => SERIES_COLORS[(slot ?? 0) % SERIES_COLORS.length];
+export const seriesColor = (slot, ramp = SERIES_COLORS) => ramp[(slot ?? 0) % ramp.length];
 
 /* Which configured alarm thresholds are worth drawing for a vital. These come
  * from account settings — the same numbers the live monitor alarms on — rather

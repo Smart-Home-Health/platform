@@ -15,6 +15,8 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+import { hexAlpha, readChartChrome, readSeries } from '../../utils/themeTokens';
+
 // The shape every stacked monitoring chart shares.
 //
 // The timeline and the environment view both draw several signals above a row
@@ -30,13 +32,20 @@
 export const PLOT_GUTTER = 52;
 export const PLOT_RPAD = 12;
 
-export const CHROME = {
-  grid: 'rgba(255, 255, 255, 0.06)',
-  axis: '#6b7987',
-  band: 'rgba(240, 86, 60, 0.14)',
-  bandEdge: 'rgba(240, 86, 60, 0.35)',
-  threshold: 'rgba(154, 168, 184, 0.5)',
-};
+/** Chart chrome resolved from the palette at call time. Canvas needs literal
+ * colours, so this is read when the options are built; the page re-builds
+ * its charts on the useThemeTokens() version. */
+export function chartChrome() {
+  const c = readChartChrome();
+  const s = readSeries();
+  return {
+    grid: hexAlpha(c.grid, 0.06),
+    axis: c.axis,
+    band: hexAlpha(s.alert, 0.14),
+    bandEdge: hexAlpha(s.alert, 0.35),
+    threshold: hexAlpha(c.textMuted, 0.5),
+  };
+}
 
 const MONO = "'IBM Plex Mono', monospace";
 
@@ -66,11 +75,12 @@ export function niceScale(lo, hi, minSpan, clampMax, { clampMin = true } = {}) {
 
 /** A horizontal reference line — an alarm limit, or a configured bound. */
 export function thresholdLine(value, text) {
+  const c = chartChrome();
   return {
     type: 'line',
     yMin: value,
     yMax: value,
-    borderColor: CHROME.threshold,
+    borderColor: c.threshold,
     borderWidth: 1,
     borderDash: [5, 4],
     label: {
@@ -78,7 +88,7 @@ export function thresholdLine(value, text) {
       content: text,
       position: 'start',
       backgroundColor: 'transparent',
-      color: CHROME.axis,
+      color: c.axis,
       font: { size: 10, family: MONO },
       padding: 0,
       yAdjust: -8,
@@ -104,6 +114,7 @@ export function stackedChartOptions({
   minRangeMs = 60_000,
   maxTicks = 6,
 }) {
+  const c = chartChrome();
   return {
     responsive: true,
     maintainAspectRatio: false,
@@ -118,11 +129,11 @@ export function stackedChartOptions({
         min: view?.min ?? bounds.start,
         max: view?.max ?? bounds.end,
         time: { displayFormats: timeFormats },
-        grid: { color: CHROME.grid, drawTicks: false },
+        grid: { color: c.grid, drawTicks: false },
         border: { display: false },
         ticks: {
           display: showAxis,
-          color: CHROME.axis,
+          color: c.axis,
           maxRotation: 0,
           autoSkip: true,
           autoSkipPadding: 16,
@@ -133,10 +144,10 @@ export function stackedChartOptions({
       y: {
         min: yRange.min,
         max: yRange.max,
-        grid: { color: CHROME.grid, drawTicks: false },
+        grid: { color: c.grid, drawTicks: false },
         border: { display: false },
         ticks: {
-          color: CHROME.axis,
+          color: c.axis,
           stepSize: yRange.step,
           maxTicksLimit: 6,
           font: { size: 10, family: MONO },

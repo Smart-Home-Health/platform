@@ -18,6 +18,7 @@
 import { useEffect, useRef, useState, memo } from 'react';
 import Chart from 'chart.js/auto';
 import 'chartjs-adapter-date-fns';
+import { hexAlpha, resolveColor } from '../utils/themeTokens';
 
 // Resolve a theme token (e.g. "--muted-foreground") to its computed color,
 // falling back to a sensible default so the chart still renders if unset.
@@ -83,9 +84,11 @@ const SimpleEventChart = memo(({ title, color, data, unit, xType = 'category' })
       const ctx = chartRef.current.getContext('2d');
 
       // Theme-aware axis/grid colors resolved from the active palette.
-      const tickColor = themeColor('--muted-foreground', '#a0aec0');
-      const titleColor = themeColor('--foreground', '#e6edf3');
-      const gridColor = themeColor('--border', 'rgba(160, 174, 192, 0.2)');
+      const tickColor = themeColor('--vc-text-tertiary', '#6b7987');
+      const titleColor = themeColor('--vc-text-primary', '#e8edf3');
+      const gridColor = themeColor('--vc-line-hairline', 'rgba(255, 255, 255, 0.1)');
+      // `color` may be a var(--vc-*) reference; canvas needs the literal.
+      const lineColor = resolveColor(color);
 
       chartInstance.current = new Chart(ctx, {
         type: 'line',
@@ -93,8 +96,8 @@ const SimpleEventChart = memo(({ title, color, data, unit, xType = 'category' })
           datasets: [{
             label: title,
             data: data,
-            borderColor: color,
-            backgroundColor: `${color}20`,
+            borderColor: lineColor,
+            backgroundColor: hexAlpha(lineColor, 0.125),
             fill: true,
             tension: 0.2,
             pointRadius: 3
