@@ -72,27 +72,62 @@ async function shot(page, name, opts = {}) {
   await page.screenshot({ path: path.join(OUT, `${name}.png`), fullPage: false, animations: 'disabled' });
 }
 
+// The schedule scrolls itself to the current hour on load, which late in the
+// day is an empty stretch of timeline. The morning block is the busy one.
+async function scrollScheduleToMorning(page) {
+  await settle(page, 2000);
+  await page.evaluate(() => {
+    const row = document.querySelector('[data-hour="8"]');
+    if (!row) return;
+    row.scrollIntoView({ block: 'start' });
+    // Back off from under the sticky date bar.
+    let box = row.parentElement;
+    while (box && box.scrollHeight <= box.clientHeight) box = box.parentElement;
+    (box || window).scrollBy(0, -160);
+  });
+}
+
+// Unread messages open the board over /live on arrival — that is a shot of
+// its own. Desktop closes it with Close; the phone layout says Back.
+async function liveWithMessages(page, name) {
+  await settle(page, 3000);
+  const close = page.getByRole('button', { name: /^(Close|Back)$/ }).first();
+  if (await close.isVisible().catch(() => false)) {
+    await shot(page, name);
+    await close.click();
+  }
+}
+
+// The backend throttles /api/auth/* to 40 hits a minute per IP, and every
+// page load spends four of them (first-run + session, doubled by StrictMode
+// in dev). The desktop set alone uses the whole window, so a context that
+// starts right after it is met with 429s, which the app reads as "signed
+// out". Each set therefore starts a full minute after the previous one ended.
+const AUTH_WINDOW_MS = 61_000;
+let lastSetEndedAt = 0;
+
 async function newPage(browser, viewport, scale) {
   const context = await browser.newContext({
     viewport, deviceScaleFactor: scale, colorScheme: 'dark',
     isMobile: viewport === PHONE, hasTouch: viewport === PHONE,
   });
   const page = await context.newPage();
+  const wait = lastSetEndedAt + AUTH_WINDOW_MS - Date.now();
+  if (wait > 0) await page.waitForTimeout(wait);
   await login(context, page);
   return { context, page };
+}
+
+async function endSet(context) {
+  await context.close();
+  lastSetEndedAt = Date.now();
 }
 
 test('desktop set', async ({ browser }) => {
   const { context, page } = await newPage(browser, DESKTOP, 2);
 
   await page.goto(`/live?patient=${PATIENT}`);
-  await settle(page, 3000);
-  // Unread messages open the board on arrival — that is a shot of its own.
-  const close = page.getByRole('button', { name: 'Close', exact: true });
-  if (await close.isVisible().catch(() => false)) {
-    await shot(page, 'hub-messages');
-    await close.click();
-  }
+  await liveWithMessages(page, 'hub-messages');
   await shot(page, 'hub-live', { wait: 3000 });
 
   for (const [name, route] of [
@@ -110,22 +145,25 @@ test('desktop set', async ({ browser }) => {
       // Tonight is still in progress; the last full night is the useful one.
       await page.getByRole('button', { name: 'Previous night' }).click();
     }
+    if (name === 'hub-schedule') await scrollScheduleToMorning(page);
     await shot(page, name, { wait: 2500 });
   }
-  await context.close();
+  await endSet(context);
 });
 
 test('phone set', async ({ browser }) => {
   const { context, page } = await newPage(browser, PHONE, 3);
 
   await page.goto(`/live?patient=${PATIENT}&vkb=0`);
+  await liveWithMessages(page, 'hub-messages-phone');
   await shot(page, 'hub-live-phone', { wait: 4000 });
 
   await page.goto('/capture');
   await shot(page, 'hub-capture-phone', { wait: 2000 });
 
   await page.goto('/care/schedule');
-  await shot(page, 'hub-schedule-phone', { wait: 2500 });
+  await scrollScheduleToMorning(page);
+  await shot(page, 'hub-schedule-phone', { wait: 1500 });
 
-  await context.close();
+  await endSet(context);
 });
