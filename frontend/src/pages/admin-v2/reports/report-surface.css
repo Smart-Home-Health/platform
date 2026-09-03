@@ -39,7 +39,7 @@
   --rpt-alarm: var(--vc-state-due);
   --rpt-breach: var(--vc-state-alert);
   --rpt-ok: var(--vc-state-complete);
-  --rpt-plot: #0f1620;
+  --rpt-plot: var(--vc-plot-bg);
 }
 
 .rpt, .rpt * { box-sizing: border-box; }

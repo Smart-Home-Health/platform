@@ -1057,9 +1057,9 @@ export default function Dashboard() {
                   gap: '0.75rem',
                   padding: '0.75rem',
                   borderRadius: '10px',
-                  border: '1px solid #30363d',
-                  background: selectedPatient?.id === p.id ? 'rgba(88, 166, 255, 0.12)' : '#161b22',
-                  color: '#f0f6fc',
+                  border: '1px solid var(--vc-line-hairline)',
+                  background: selectedPatient?.id === p.id ? 'color-mix(in srgb, var(--vc-data-live) 12%, transparent)' : 'var(--vc-bg-surface)',
+                  color: 'var(--vc-text-primary)',
                   cursor: 'pointer',
                   textAlign: 'left'
                 }}
@@ -1068,11 +1068,11 @@ export default function Dashboard() {
                   <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {p.first_name} {p.last_name}
                   </strong>
-                  <span style={{ color: '#8b949e', fontSize: '0.85rem' }}>
+                  <span style={{ color: 'var(--vc-text-secondary)', fontSize: '0.85rem' }}>
                     {p.care_area || 'No room assigned'}
                   </span>
                 </div>
-                <span style={{ color: '#8b949e', whiteSpace: 'nowrap' }}>
+                <span style={{ color: 'var(--vc-text-secondary)', whiteSpace: 'nowrap' }}>
                   #{p.id}
                 </span>
               </button>

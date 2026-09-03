@@ -197,7 +197,7 @@
   justify-content: center;
   font-size: 0.8rem;
   font-weight: 600;
-  color: #fff;
+  color: var(--vc-text-on-accent);
 }
 
 .admin-v2-patient-selector-details {
@@ -463,7 +463,7 @@
 .admin-v2-btn-primary {
   padding: 0.5rem 1rem;
   background: var(--vc-state-complete);
-  color: #fff;
+  color: var(--vc-text-on-accent);
   border: none;
   border-radius: 6px;
   font-weight: 500;
@@ -910,7 +910,7 @@
 
 .admin-v2-stat-icon.medications {
   background: color-mix(in srgb, var(--vc-state-due) 20%, transparent);
-  color: #f78166;
+  color: var(--vc-state-alert);
 }
 
 .admin-v2-stat-icon.tasks {
@@ -1310,7 +1310,7 @@
 .admin-v2-permission-pill.selected {
   background: var(--vc-state-complete);
   border-color: var(--vc-state-complete);
-  color: #ffffff;
+  color: var(--vc-text-on-accent);
 }
 
 .admin-v2-permission-pill.selected:hover {
@@ -1413,13 +1413,13 @@
 .admin-v2-toggle-btn.active {
   background: var(--vc-state-complete);
   border-color: var(--vc-state-complete);
-  color: #fff;
+  color: var(--vc-text-on-accent);
 }
 
 .admin-v2-day-btn.selected {
   background: var(--vc-data-live);
   border-color: var(--vc-data-live);
-  color: #fff;
+  color: var(--vc-text-on-accent);
 }
 
 .admin-v2-empty-state {
@@ -1997,7 +1997,7 @@
 .admin-v2-day-btn.selected {
   background: var(--vc-data-live);
   border-color: var(--vc-data-live);
-  color: #fff;
+  color: var(--vc-text-on-accent);
 }
 
 /* Equipment-specific styles */
@@ -2159,7 +2159,7 @@
 }
 
 .admin-v2-schedule-header .admin-v2-schedule-col.medications {
-  color: #f78166;
+  color: var(--vc-state-alert);
 }
 
 .admin-v2-schedule-header .admin-v2-schedule-col.nutrition {
@@ -2245,7 +2245,7 @@
 }
 
 .admin-v2-schedule-row:hover {
-  background: #404754;
+  background: var(--vc-bg-raised);
 }
 
 .admin-v2-schedule-row.current-hour {
@@ -2324,7 +2324,7 @@ body.printing-schedule .admin-v2-schedule-col-clickable {
 }
 
 .admin-v2-schedule-group.medication {
-  border-left-color: #f78166;
+  border-left-color: var(--vc-state-alert);
 }
 
 .admin-v2-schedule-group.nutrition {
@@ -2514,8 +2514,8 @@ body.printing-schedule .admin-v2-schedule-prn-add {
 }
 
 .admin-v2-schedule-item-undo:hover {
-  border-color: #f0883e;
-  color: #f0883e;
+  border-color: var(--vc-state-due);
+  color: var(--vc-state-due);
   background: color-mix(in srgb, var(--vc-state-due) 12%, transparent);
 }
 
@@ -3468,9 +3468,9 @@ body.printing-schedule .admin-v2-schedule-prn-add {
 
 /* Macros Grid */
 
-.macro-item.protein .macro-value { color: #f472b6; }
+.macro-item.protein .macro-value { color: var(--vc-series-6); }
 .macro-item.carbs .macro-value { color: var(--vc-state-due); }
-.macro-item.fat .macro-value { color: #fb923c; }
+.macro-item.fat .macro-value { color: var(--vc-series-3); }
 .macro-item.fiber .macro-value { color: var(--vc-state-complete); }
 
 /* Goals Footer */
@@ -3510,7 +3510,7 @@ body.printing-schedule .admin-v2-schedule-prn-add {
 
 .admin-v2-schedule-type.meal {
   background: color-mix(in srgb, var(--vc-state-due) 20%, transparent);
-  color: #ffa657;
+  color: var(--vc-state-due);
 }
 
 .admin-v2-schedule-type.hydration {
@@ -3537,7 +3537,7 @@ body.printing-schedule .admin-v2-schedule-prn-add {
 
 .admin-v2-intake-type.food {
   background: color-mix(in srgb, var(--vc-state-due) 20%, transparent);
-  color: #ffa657;
+  color: var(--vc-state-due);
 }
 
 .admin-v2-intake-type.liquid {

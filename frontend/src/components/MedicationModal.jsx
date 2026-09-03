@@ -270,7 +270,7 @@ const MedicationModal = ({ onClose }) => {
     return (
       <div key={med.id} className="medication-card" style={{
         backgroundColor: 'var(--dash-surface)', borderRadius: '6px', padding: '12px', marginBottom: '8px',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.08)', border: '1px solid #28a745', borderLeft: '4px solid #28a745'
+        boxShadow: '0 1px 3px rgba(0,0,0,0.08)', border: '1px solid var(--vc-state-complete)', borderLeft: '4px solid var(--vc-state-complete)'
       }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
@@ -279,7 +279,7 @@ const MedicationModal = ({ onClose }) => {
               <span style={{ fontSize: 12, color: 'var(--dash-text-muted)', fontWeight: 500 }}>{med.concentration}</span>
             )}
             {med.as_needed && (
-              <span style={{ background: '#ede1ff', color: '#6f42c1', padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600 }}>PRN</span>
+              <span style={{ background: 'color-mix(in srgb, var(--vc-series-3) 20%, transparent)', color: 'var(--vc-series-3)', padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600 }}>PRN</span>
             )}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '6px 16px', fontSize: 13, color: 'var(--dash-text-muted)' }}>
