@@ -259,7 +259,7 @@
   padding: 0.15rem 0.45rem;
   border-radius: 5px;
   background: var(--vc-data-live);
-  color: var(--vc-bg-base);
+  color: var(--vc-text-on-accent);
   font-family: var(--vc-font-mono);
   font-size: 0.66rem;
   font-weight: 600;

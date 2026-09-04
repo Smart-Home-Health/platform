@@ -123,7 +123,7 @@
 .vhist-chip.on {
   background: var(--vc-data-live);
   border-color: var(--vc-data-live);
-  color: var(--vc-bg-base);
+  color: var(--vc-text-on-accent);
 }
 
 /* ---------- cards ---------- */

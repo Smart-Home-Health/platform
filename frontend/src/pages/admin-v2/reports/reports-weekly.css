@@ -168,7 +168,7 @@
   font-family: var(--vc-font-mono);
   font-size: 10px;
   font-weight: 700;
-  color: var(--vc-bg-base);
+  color: var(--vc-text-on-accent);
   overflow: hidden;
 }
 .wk-seg.ok { background: var(--rpt-ok); }
