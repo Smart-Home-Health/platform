@@ -47,6 +47,19 @@ import './AdminV2.css';
 import { overdueLabel, graceTitle } from '../../components/schedule/scheduleStatus';
 import './vc-schedule.css'; // bedside-monitor skin (dark theme only)
 
+// "Yesterday" or the short weekday for a prior-day due time; the Overdue
+// band's rows are the only ones not on the day being viewed.
+const dueDayLabel = (iso) => {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const day = new Date(d); day.setHours(0, 0, 0, 0);
+  const daysAgo = Math.round((today - day) / 86400000);
+  if (daysAgo === 1) return 'Yesterday';
+  if (daysAgo < 7) return d.toLocaleDateString(undefined, { weekday: 'short' });
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
+
 const AdminV2Schedule = () => {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -729,16 +742,20 @@ const AdminV2Schedule = () => {
     Object.values(byHour).forEach(group => {
       group.sort((a, b) => {
         if (!!a.completed !== !!b.completed) return a.completed ? 1 : -1;
-        // A grace-period dose from a prior day is the most urgent thing in
-        // its hour: it sits at the top so it cannot hide under today's rows.
-        if (!!a.in_grace !== !!b.in_grace) return a.in_grace ? -1 : 1;
         return (a.minute ?? 0) - (b.minute ?? 0);
       });
     });
     return byHour;
   };
 
-  const medicationsByHour = getItemsByHour(scheduleData.medications);
+  // Grace-period doses (in_grace) were due on a prior day. They get their
+  // own band above the hours rather than a slot in today's grid: yesterday's
+  // 4 PM dose next to today's 4 PM dose reads as a duplicate that is wrongly
+  // overdue. Oldest first.
+  const graceMeds = scheduleData.medications
+    .filter(m => m.in_grace)
+    .sort((a, b) => new Date(a.scheduled_time) - new Date(b.scheduled_time));
+  const medicationsByHour = getItemsByHour(scheduleData.medications.filter(m => !m.in_grace));
   const nutritionByHour = getItemsByHour(scheduleData.nutrition);
   const careTasksByHour = getItemsByHour(scheduleData.care_tasks);
 
@@ -766,6 +783,11 @@ const AdminV2Schedule = () => {
   // drives getItemsByHour above).
   const itemDisplayTime = (item) => {
     const scheduledText = `${String(item.hour).padStart(2, '0')}:${String(item.minute).padStart(2, '0')}`;
+    if (item.in_grace) {
+      // "Yesterday 16:00" / "Tue 16:00": the row lives in the Overdue band,
+      // so the chip has to say which day it belongs to.
+      return { text: `${dueDayLabel(item.scheduled_time)} ${scheduledText}`, title: graceTitle(item) };
+    }
     if (!item.completed || !item.completed_at) {
       return { text: scheduledText, title: undefined };
     }
@@ -785,12 +807,75 @@ const AdminV2Schedule = () => {
   // Count totals for summary. These are scheduled-adherence ratios, so PRN /
   // ad-hoc entries (is_prn) are excluded — they still render on the timeline,
   // but they're extra care, not part of "X of Y scheduled items done".
-  const totalMeds = scheduleData.medications.filter(m => !m.is_prn).length;
-  const completedMeds = scheduleData.medications.filter(m => !m.is_prn && m.completed).length;
+  const totalMeds = scheduleData.medications.filter(m => !m.is_prn && !m.in_grace).length;
+  const completedMeds = scheduleData.medications.filter(m => !m.is_prn && !m.in_grace && m.completed).length;
   const totalNutrition = scheduleData.nutrition.filter(n => !n.is_prn).length;
   const completedNutrition = scheduleData.nutrition.filter(n => !n.is_prn && n.completed).length;
   const totalTasks = scheduleData.care_tasks.filter(t => !t.is_prn).length;
   const completedTasks = scheduleData.care_tasks.filter(t => !t.is_prn && t.completed).length;
+
+  // One medication row. Shared by the Overdue band and the hour rows.
+  const renderMedRow = (med, idx) => {
+    // PRN doses have no schedule_id; key off log_id instead.
+    const rowId = med.schedule_id ?? `prn-${med.log_id}`;
+    const itemKey = `medication-${rowId}-${med.scheduled_time}`;
+    const isPrn = !!med.is_prn;
+    return (
+      <React.Fragment key={`med-${rowId}-${idx}`}>
+        {idx > 0 && <div className="admin-v2-schedule-divider" />}
+        <div
+          className={`admin-v2-schedule-item ${med.completed ? 'completed' : 'clickable'} ${completing[itemKey] ? 'completing' : ''}`}
+          onClick={(e) => { e.stopPropagation(); if (!med.completed) handleCompleteItem('medication', med); }}
+          role="button"
+          tabIndex={med.completed || isPrn ? -1 : 0}
+          title={isPrn ? 'PRN dose — administered ad-hoc' : undefined}
+        >
+          <div className="admin-v2-schedule-item-header">
+            {(() => {
+              const t = itemDisplayTime(med);
+              return (
+                <span className="admin-v2-schedule-item-time" title={t.title}>
+                  <ClockIcon size={12} />
+                  {t.text}
+                </span>
+              );
+            })()}
+            <span className="admin-v2-schedule-item-name">{med.name}</span>
+            {med.in_grace && (
+              <span className="admin-v2-badge admin-v2-badge-overdue" title={graceTitle(med)}>
+                {overdueLabel(med)}
+              </span>
+            )}
+            {isPrn && (
+              <span className="admin-v2-badge admin-v2-badge-prn" title="As-needed dose">
+                PRN
+              </span>
+            )}
+            {med.dose_amount && (
+              <span className="admin-v2-schedule-item-dose">
+                {med.dose_amount} {med.dose_unit}
+              </span>
+            )}
+            {med.completed && med.log_id ? (
+              <button
+                type="button"
+                className="admin-v2-schedule-item-undo"
+                onClick={(e) => { e.stopPropagation(); handleUndoItem('medication', med); }}
+                title="Undo — mark as not done"
+                aria-label="Undo"
+              >
+                <UndoIcon size={14} />
+              </button>
+            ) : (
+              <span className={`admin-v2-schedule-item-check ${med.completed ? 'checked' : ''}`}>
+                {completing[itemKey] ? '...' : <CheckIcon size={14} />}
+              </span>
+            )}
+          </div>
+        </div>
+      </React.Fragment>
+    );
+  };
 
   return (
     <AdminV2Layout>
@@ -930,6 +1015,20 @@ const AdminV2Schedule = () => {
 
                   {/* Scrollable Hour Rows */}
                   <div className="admin-v2-schedule-body" ref={scrollContainerRef}>
+                    {graceMeds.length > 0 && (
+                      <div className="admin-v2-schedule-row has-items overdue-band" data-band="overdue">
+                        <div className="admin-v2-schedule-time-col">
+                          <span className="admin-v2-hour-label">Overdue</span>
+                        </div>
+                        <div className="admin-v2-schedule-col medications">
+                          <div className="admin-v2-schedule-group medication">
+                            {graceMeds.map(renderMedRow)}
+                          </div>
+                        </div>
+                        <div className="admin-v2-schedule-col nutrition" />
+                        <div className="admin-v2-schedule-col tasks" />
+                      </div>
+                    )}
                     {[...Array(24)].map((_, hour) => (
                       <div 
                         key={hour} 
@@ -961,67 +1060,7 @@ const AdminV2Schedule = () => {
                                   {completing[`hour-${hour}-medication`] ? '...' : <CheckIcon size={12} />}
                                 </button>
                               )}
-                              {medicationsByHour[hour].map((med, idx) => {
-                                // PRN doses have no schedule_id; key off log_id instead.
-                                const rowId = med.schedule_id ?? `prn-${med.log_id}`;
-                                const itemKey = `medication-${rowId}-${med.scheduled_time}`;
-                                const isPrn = !!med.is_prn;
-                                return (
-                                  <React.Fragment key={`med-${rowId}-${idx}`}>
-                                    {idx > 0 && <div className="admin-v2-schedule-divider" />}
-                                    <div
-                                      className={`admin-v2-schedule-item ${med.completed ? 'completed' : 'clickable'} ${completing[itemKey] ? 'completing' : ''}`}
-                                      onClick={(e) => { e.stopPropagation(); if (!med.completed) handleCompleteItem('medication', med); }}
-                                      role="button"
-                                      tabIndex={med.completed || isPrn ? -1 : 0}
-                                      title={isPrn ? 'PRN dose — administered ad-hoc' : undefined}
-                                    >
-                                      <div className="admin-v2-schedule-item-header">
-                                        {(() => {
-                                          const t = itemDisplayTime(med);
-                                          return (
-                                            <span className="admin-v2-schedule-item-time" title={t.title}>
-                                              <ClockIcon size={12} />
-                                              {t.text}
-                                            </span>
-                                          );
-                                        })()}
-                                        <span className="admin-v2-schedule-item-name">{med.name}</span>
-                                        {med.in_grace && (
-                                          <span className="admin-v2-badge admin-v2-badge-overdue" title={graceTitle(med)}>
-                                            {overdueLabel(med)}
-                                          </span>
-                                        )}
-                                        {isPrn && (
-                                          <span className="admin-v2-badge admin-v2-badge-prn" title="As-needed dose">
-                                            PRN
-                                          </span>
-                                        )}
-                                        {med.dose_amount && (
-                                          <span className="admin-v2-schedule-item-dose">
-                                            {med.dose_amount} {med.dose_unit}
-                                          </span>
-                                        )}
-                                        {med.completed && med.log_id ? (
-                                          <button
-                                            type="button"
-                                            className="admin-v2-schedule-item-undo"
-                                            onClick={(e) => { e.stopPropagation(); handleUndoItem('medication', med); }}
-                                            title="Undo — mark as not done"
-                                            aria-label="Undo"
-                                          >
-                                            <UndoIcon size={14} />
-                                          </button>
-                                        ) : (
-                                          <span className={`admin-v2-schedule-item-check ${med.completed ? 'checked' : ''}`}>
-                                            {completing[itemKey] ? '...' : <CheckIcon size={14} />}
-                                          </span>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </React.Fragment>
-                                );
-                              })}
+                              {medicationsByHour[hour].map(renderMedRow)}
                               {/* Explicit PRN tap target — the column itself is clickable,
                                   but when items fill the cell there's no white space to hit
                                   on touch devices. */}

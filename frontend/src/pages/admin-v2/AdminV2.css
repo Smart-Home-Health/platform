@@ -1913,8 +1913,16 @@
   font-size: 0.65rem;
 }
 
-/* Grace-period dose: a prior day's unfilled dose still actionable. The
-   colour rides on the badge only (no row stripe). */
+/* Grace-period doses: a prior day's unfilled doses still actionable. They
+   sit in their own band above the hours so they never read as today's
+   rows; the colour rides on the label and badge. */
+.admin-v2-schedule-row.overdue-band .admin-v2-hour-label {
+  color: var(--vc-state-alert);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .admin-v2-badge-overdue {
   background: color-mix(in srgb, var(--vc-state-alert) 18%, transparent);
   color: var(--vc-state-alert);
