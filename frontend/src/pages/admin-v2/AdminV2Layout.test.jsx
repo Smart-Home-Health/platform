@@ -21,7 +21,7 @@
 // across the same route spread, which is the coverage that actually mattered —
 // an un-imported component or a bad hook order shows up here first.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, cleanup } from '@testing-library/react';
+import { render, cleanup, fireEvent, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 let mockUser = { is_system_admin: true, permissions: [] };
@@ -33,6 +33,11 @@ vi.mock('../../contexts/AdminPatientContext', () => ({
     selectPatient: vi.fn(), loadingPatients: false,
   }),
 }));
+
+const themeCtx = vi.hoisted(() => ({
+  theme: 'dark', contrast: 'normal', setTheme: vi.fn(), setContrast: vi.fn(), savesToProfile: true,
+}));
+vi.mock('../../contexts/ThemeContext', () => ({ useTheme: () => themeCtx }));
 
 vi.mock('../../hooks/useConnectionStatus', () => ({ default: () => ({ status: 'connected' }) }));
 vi.mock('../../components/ConnectionChip', () => ({ default: () => null }));
@@ -88,5 +93,15 @@ describe('AdminV2Layout', () => {
     cleanup();
     const { getByText } = renderAt('/care/monitoring/ventilator');
     expect(getByText('page body')).toBeInTheDocument();
+  });
+
+  it('opens the Appearance sheet from the sidebar footer and routes a pick', () => {
+    renderAt('/care');
+    fireEvent.click(screen.getByRole('button', { name: /appearance/i }));
+    const dialog = screen.getByRole('dialog', { name: 'Appearance' });
+    expect(within(dialog).getAllByRole('radiogroup')).toHaveLength(2);
+    fireEvent.click(within(dialog).getByRole('radio', { name: 'Light' }));
+    expect(themeCtx.setTheme).toHaveBeenCalledWith('light');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
   });
 });

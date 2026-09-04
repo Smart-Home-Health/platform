@@ -19,9 +19,11 @@ import { useState, useEffect } from 'react';
 
 /**
  * Recharts (and other SVG/canvas charts) need literal color strings, so they
- * can't use CSS classes/vars directly. This hook resolves the theme tokens to
- * concrete colors and forces a re-render on light/dark switches (via a
- * MutationObserver on the <html> class) so charts recolor live.
+ * can't use CSS classes/vars directly. This hook resolves the vc tokens to
+ * concrete colors and forces a re-render on palette switches (via a
+ * MutationObserver on the <html> class) so charts recolor live. The grid is
+ * an rgba() value — build a softer variant with hexAlpha(), never by
+ * appending hex digits.
  *
  * Series colors should stay vivid and are kept inline at call sites; this only
  * provides the theme-following chrome: grid, axis text, tooltip, and the
@@ -39,9 +41,9 @@ export function useChartColors() {
     return getComputedStyle(document.documentElement).getPropertyValue(token).trim() || fallback;
   };
   return {
-    grid: read('--border', '#374151'),
-    axis: read('--muted-foreground', '#9ca3af'),
-    cutout: read('--card', '#1f2937'),
-    foreground: read('--foreground', '#e6edf3'),
+    grid: read('--vc-line-hairline', 'rgba(255, 255, 255, 0.1)'),
+    axis: read('--vc-text-tertiary', '#7c8c9d'),
+    cutout: read('--vc-plot-bg', '#0f1620'),
+    foreground: read('--vc-text-primary', '#e8edf3'),
   };
 }

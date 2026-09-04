@@ -53,7 +53,6 @@
   color: var(--vc-text-primary);
   font-family: var(--vc-font-mono);
   font-size: 13px;
-  color-scheme: dark;
 }
 .vc-vitals-form .vitals-datetime-field input:focus {
   outline: none;

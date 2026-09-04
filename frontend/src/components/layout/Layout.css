@@ -28,69 +28,69 @@
 }
 
 .btn-primary {
-  background: #007acc;
-  color: white;
+  background: var(--vc-data-live);
+  color: var(--vc-text-on-accent);
 }
 
 .btn-primary:hover {
-  background: #005a9e;
+  background: color-mix(in srgb, var(--vc-data-live) 85%, var(--vc-bg-base));
 }
 
 .btn-secondary {
-  background: #6c757d;
-  color: white;
+  background: var(--vc-bg-raised);
+  color: var(--vc-text-primary);
 }
 
 .btn-secondary:hover {
-  background: #545b62;
+  background: color-mix(in srgb, var(--vc-bg-raised) 85%, var(--vc-text-primary));
 }
 
 .btn-success {
-  background: #28a745;
-  color: white;
+  background: var(--vc-state-complete);
+  color: var(--vc-text-on-accent);
 }
 
 .btn-success:hover {
-  background: #1e7e34;
+  background: color-mix(in srgb, var(--vc-state-complete) 85%, var(--vc-bg-base));
 }
 
 .btn-warning {
-  background: #ffc107;
-  color: #212529;
+  background: var(--vc-state-due);
+  color: var(--vc-text-on-accent);
 }
 
 .btn-warning:hover {
-  background: #e0a800;
+  background: color-mix(in srgb, var(--vc-state-due) 85%, var(--vc-bg-base));
 }
 
 .btn-danger {
-  background: #dc3545;
-  color: white;
+  background: var(--vc-state-alert);
+  color: var(--vc-text-on-accent);
 }
 
 .btn-danger:hover {
-  background: #c82333;
+  background: color-mix(in srgb, var(--vc-state-alert) 85%, var(--vc-bg-base));
 }
 
 .btn-info {
-  background: #17a2b8;
-  color: white;
+  background: var(--vc-data-live);
+  color: var(--vc-text-on-accent);
 }
 
 .btn-info:hover {
-  background: #138496;
+  background: color-mix(in srgb, var(--vc-data-live) 85%, var(--vc-bg-base));
 }
 
 /* Loading States */
 .loading {
   text-align: center;
   padding: 2rem;
-  color: #666;
+  color: var(--vc-text-tertiary);
 }
 
 .error {
-  background: #f8d7da;
-  color: #721c24;
+  background: color-mix(in srgb, var(--vc-state-alert) 15%, transparent);
+  color: var(--vc-state-alert);
   padding: 1rem;
   border-radius: 4px;
   margin: 1rem 0;

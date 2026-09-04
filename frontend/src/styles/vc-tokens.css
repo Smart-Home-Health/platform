@@ -16,18 +16,44 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-/* Bedside-monitor design tokens (the "vc" aesthetic), shared by the vitals
- * capture surface and the admin shell skin — the app-wide look pages migrate
- * toward. Dark-only by design; consumers scope themselves to the dark theme.
- * The one exception is the avatar palette at the bottom, which also carries
- * light-theme values because generated avatars render inside the admin's
- * light/dark cards. No raw hex outside token files. */
-:root {
+/* Bedside-monitor design tokens (the "vc" aesthetic), shared by every
+ * surface: the admin shell, the live board, vitals capture and the auth
+ * screens. No raw hex outside this file.
+ *
+ * FOUR PALETTES, ONE CONTRACT. The class on <html> picks the palette:
+ *   (none)      dark            — the default; nothing is written to <html>
+ *                                 until a user has saved a choice
+ *   .light      light (paper)
+ *   .hc         dark, high contrast
+ *   .light.hc   light, high contrast
+ * Theme and contrast are independent choices (see contexts/ThemeContext).
+ * Every block below declares the SAME set of tokens — a partial block would
+ * fall through to whichever sibling comes later in source. Values stay
+ * literal (hex / rgba), never color-mix(): JS reads them with
+ * getComputedStyle and hands them to canvas, which cannot parse color-mix.
+ * styles/vc-tokens.test.js checks the key sets match and the contrast ratios
+ * hold (7:1 body text, 3:1 non-text, higher under .hc).
+ *
+ * The auth shell (.vc-auth) and the PIN challenge (.pc-body) stay on the
+ * dark palettes whatever the theme — full-page dark by design.
+ *
+ * Roles, not colours: --vc-data-live is live data / focus / the primary
+ * action; complete is green, due is amber (schedule adherence is never red),
+ * alert is clinical concern only. --vc-text-tertiary is decorative — never
+ * the sole carrier of meaning. */
+
+/* ---------- dark (default) ---------- */
+:root,
+:root.light .vc-auth,
+:root.light .pc-body {
+  color-scheme: dark;
+
   /* Surfaces */
   --vc-bg-base: #0a0e14;
   --vc-bg-surface: #131a24;
   --vc-bg-raised: #1b242f;
   --vc-bg-sheet: #161e29;
+  --vc-plot-bg: #0f1620;       /* chart plot area (recharts / chart.js) */
 
   /* Lines */
   --vc-line-hairline: rgba(255, 255, 255, 0.1);
@@ -36,17 +62,179 @@
   /* Text */
   --vc-text-primary: #e8edf3;
   --vc-text-secondary: #9aa8b8;
-  --vc-text-tertiary: #6b7987; /* decorative only — never sole carrier of meaning */
+  --vc-text-tertiary: #7c8c9d;
+  --vc-text-on-accent: #0a0e14; /* text on a --vc-data-live / state fill */
 
   /* Semantic state — roles, not colors */
-  --vc-data-live: #4da7bd;   /* live data, active focus, primary action (deliberately muted) */
+  --vc-data-live: #4da7bd;
   --vc-state-complete: #3fbf6a;
-  --vc-state-due: #f0a52e;   /* needs confirmation / attention */
-  --vc-state-alert: #f0563c; /* clinical concern only */
-  --vc-state-idle: #6b7987;
+  --vc-state-due: #f0a52e;
+  --vc-state-alert: #f0563c;
+  --vc-state-idle: #7c8c9d;
 
+  /* Alarm banner (the board header while an alarm is active / blinking) */
+  --vc-alarm: #ff3b30;
+  --vc-alarm-deep: #b71c1c;
+
+  /* Chrome */
+  --vc-focus-ring: #4da7bd;
+  --vc-scrim: rgba(0, 0, 0, 0.6);
+  --vc-shadow-sheet: 0 8px 24px rgba(0, 0, 0, 0.45);
+
+  /* Chart series ramp — distinct hues, all ≥3:1 on every surface */
+  --vc-series-1: #4da7bd;
+  --vc-series-2: #3fbf6a;
+  --vc-series-3: #9b8cf0;
+  --vc-series-4: #4dc3b3;
+  --vc-series-5: #7f9fd4;
+  --vc-series-6: #d98cc4;
+  --vc-series-7: #a8c94a;
+}
+
+/* ---------- light (paper) ---------- */
+/* Warm paper base with lighter cards stacked on top — the inverse of dark,
+ * matching the avatar paper tile. Hairlines are ink-alpha, not white-alpha,
+ * so every color-mix() over them at call sites still reads on paper. */
+:root.light {
+  color-scheme: light;
+
+  --vc-bg-base: #e6e1d8;
+  --vc-bg-surface: #f3f0ea;
+  --vc-bg-raised: #faf8f4;
+  --vc-bg-sheet: #efece6;
+  --vc-plot-bg: #faf8f4;
+
+  --vc-line-hairline: rgba(28, 36, 48, 0.14);
+  --vc-line-strong: rgba(28, 36, 48, 0.28);
+
+  --vc-text-primary: #1c2430;
+  --vc-text-secondary: #4a5568;
+  --vc-text-tertiary: #596674;
+  --vc-text-on-accent: #ffffff;
+
+  --vc-data-live: #176d82;
+  --vc-state-complete: #1a7340;
+  --vc-state-due: #7f5000;
+  --vc-state-alert: #ad2d16;
+  --vc-state-idle: #596674;
+
+  --vc-alarm: #c62828;
+  --vc-alarm-deep: #8e0000;
+
+  --vc-focus-ring: #176d82;
+  --vc-scrim: rgba(28, 36, 48, 0.45);
+  --vc-shadow-sheet: 0 8px 24px rgba(28, 36, 48, 0.18);
+
+  --vc-series-1: #176f85;
+  --vc-series-2: #1a7340;
+  --vc-series-3: #5b4bb5;
+  --vc-series-4: #1f7a6e;
+  --vc-series-5: #3d5f9a;
+  --vc-series-6: #a0468a;
+  --vc-series-7: #5d7318;
+}
+
+/* ---------- dark, high contrast ---------- */
+/* Pure black bases, opaque lines, no shadows; everything text-capable
+ * clears 7:1 on every surface, state and series colours clear 4.5:1. */
+:root.hc,
+:root.light.hc .vc-auth,
+:root.light.hc .pc-body {
+  color-scheme: dark;
+
+  --vc-bg-base: #000000;
+  --vc-bg-surface: #050505;
+  --vc-bg-raised: #141414;
+  --vc-bg-sheet: #0a0a0a;
+  --vc-plot-bg: #000000;
+
+  --vc-line-hairline: #8a95a3;
+  --vc-line-strong: #ffffff;
+
+  --vc-text-primary: #ffffff;
+  --vc-text-secondary: #d9e0e8;
+  --vc-text-tertiary: #aab5c1;
+  --vc-text-on-accent: #000000;
+
+  --vc-data-live: #62d6f2;
+  --vc-state-complete: #52e88a;
+  --vc-state-due: #ffc04d;
+  --vc-state-alert: #ff8068;
+  --vc-state-idle: #aab5c1;
+
+  --vc-alarm: #ff5a4f;
+  --vc-alarm-deep: #d32f2f;
+
+  --vc-focus-ring: #ffffff;
+  --vc-scrim: rgba(0, 0, 0, 0.85);
+  --vc-shadow-sheet: none;
+
+  --vc-series-1: #62d6f2;
+  --vc-series-2: #52e88a;
+  --vc-series-3: #b9adff;
+  --vc-series-4: #63e0cf;
+  --vc-series-5: #9dbbf0;
+  --vc-series-6: #f0a6dc;
+  --vc-series-7: #c4e460;
+}
+
+/* ---------- light, high contrast ---------- */
+:root.light.hc {
+  color-scheme: light;
+
+  --vc-bg-base: #ffffff;
+  --vc-bg-surface: #ffffff;
+  --vc-bg-raised: #f0f0f0;
+  --vc-bg-sheet: #f7f7f7;
+  --vc-plot-bg: #ffffff;
+
+  --vc-line-hairline: #5c6672;
+  --vc-line-strong: #000000;
+
+  --vc-text-primary: #000000;
+  --vc-text-secondary: #1a232e;
+  --vc-text-tertiary: #3a4550;
+  --vc-text-on-accent: #ffffff;
+
+  --vc-data-live: #075a70;
+  --vc-state-complete: #0a5f2b;
+  --vc-state-due: #6d4200;
+  --vc-state-alert: #9c1f0b;
+  --vc-state-idle: #3a4550;
+
+  --vc-alarm: #b71c1c;
+  --vc-alarm-deep: #7f0000;
+
+  --vc-focus-ring: #000000;
+  --vc-scrim: rgba(0, 0, 0, 0.7);
+  --vc-shadow-sheet: none;
+
+  --vc-series-1: #075a70;
+  --vc-series-2: #0a5f2b;
+  --vc-series-3: #4a3aa0;
+  --vc-series-4: #0f5f55;
+  --vc-series-5: #2c4a80;
+  --vc-series-6: #8a2f76;
+  --vc-series-7: #4a5c10;
+}
+
+/* ---------- palette-independent ---------- */
+:root {
   --vc-font-mono: 'IBM Plex Mono', ui-monospace, monospace;
   --vc-font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+
+  /* Vital / metric series, named once from the ramp so a chart and its CSS
+   * agree. PI rides the amber "attention" role, as the live board always
+   * drew it. */
+  --vc-series-spo2: var(--vc-series-1);
+  --vc-series-hr: var(--vc-series-2);
+  --vc-series-pi: var(--vc-state-due);
+  --vc-series-bp: var(--vc-series-3);
+  --vc-series-temp: var(--vc-series-7);
+  --vc-series-weight: var(--vc-series-5);
+  --vc-series-calories: var(--vc-series-7);
+  --vc-series-water: var(--vc-series-4);
+  --vc-series-bathroom: var(--vc-series-6);
 }
 
 /* Generated-avatar palette (utils/identicon.js, components/vc/PersonAvatar).
@@ -57,8 +245,9 @@
  *
  * Two fixed sets (dark tile / warm paper tile, slightly deeper hues so every
  * mark clears 3:1 on paper) and three mappings: dark by default, paper under
- * the admin light theme (html.light), and dark again on surfaces that are dark
- * whatever the theme (auth screens, the PIN challenge). */
+ * the light theme (html.light, with or without .hc), and dark again on the
+ * surfaces that are dark whatever the theme (auth screens, the PIN
+ * challenge). */
 :root {
   --vc-avatar-dark-tile: #1b242f;        /* = --vc-bg-raised */
   --vc-avatar-dark-ink: #9aa8b8;         /* initials fallback text */

@@ -50,7 +50,7 @@
   font-family: inherit;
   padding: 0;
 }
-.ld-brand-mark { display: grid; place-content: center; color: #4da7bd; }
+.ld-brand-mark { display: grid; place-content: center; color: var(--vc-data-live); }
 .ld-brand-name {
   font-size: 14px;
   font-weight: 700;
@@ -88,7 +88,7 @@
   text-overflow: ellipsis;
   max-width: 200px;
 }
-.ld-patient:hover .ld-patient-name { color: #4da7bd; }
+.ld-patient:hover .ld-patient-name { color: var(--vc-data-live); }
 .ld-page-label {
   border-left: 1px solid var(--dash-border);
   padding: 0.2rem 0 0.2rem 1.1rem;
@@ -296,7 +296,7 @@
   cursor: pointer;
 }
 .ld-range-tab:hover { color: var(--dash-text); }
-.ld-range-tab.active { color: #4da7bd; border-bottom-color: #4da7bd; }
+.ld-range-tab.active { color: var(--vc-data-live); border-bottom-color: var(--vc-data-live); }
 .ld-stream {
   display: flex;
   align-items: center;
@@ -307,9 +307,9 @@
   text-transform: uppercase;
 }
 .ld-stream-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
-.ld-stream-streaming { color: #3fbf6a; }
-.ld-stream-stalled { color: #f0a52e; }
-.ld-stream-offline { color: #6b7987; }
+.ld-stream-streaming { color: var(--vc-state-complete); }
+.ld-stream-stalled { color: var(--vc-state-due); }
+.ld-stream-offline { color: var(--vc-state-idle); }
 
 .ld-chart-stack { display: contents; }
 .ld-chart {
@@ -379,9 +379,9 @@
   text-transform: uppercase;
 }
 .ld-strip-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
-.ld-tone-ok { color: #3fbf6a; }
-.ld-tone-due { color: #f0a52e; }
-.ld-tone-alert { color: #f0563c; }
+.ld-tone-ok { color: var(--vc-state-complete); }
+.ld-tone-due { color: var(--vc-state-due); }
+.ld-tone-alert { color: var(--vc-state-alert); }
 
 /* ---- Docked modal panels (desktop) ----
  * A menu doesn't cover the board, it takes a seat in it. Two stops:

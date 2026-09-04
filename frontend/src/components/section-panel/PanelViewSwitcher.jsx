@@ -26,7 +26,7 @@
 import * as SelectPrimitive from '@radix-ui/react-select';
 import {
   ChevronDownIcon, CheckIcon, CalendarIcon, ClipboardListIcon,
-  PackageIcon, HistoryIcon, DashboardIcon, BellAlertIcon,
+  PackageIcon, HistoryIcon, DashboardIcon, BellAlertIcon, AppearanceIcon,
 } from '../Icons';
 import './section-panel.css';
 
@@ -38,6 +38,7 @@ const VIEW_ICON = {
   history: HistoryIcon,
   dashboard: DashboardIcon,
   thresholds: BellAlertIcon,
+  appearance: AppearanceIcon,
 };
 
 /**

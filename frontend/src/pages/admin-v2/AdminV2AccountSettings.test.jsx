@@ -21,10 +21,12 @@ import { render, screen, act, fireEvent } from '@testing-library/react';
 
 vi.mock('./AdminV2Layout', () => ({ default: ({ children }) => <div>{children}</div> }));
 
-const { authCtx } = vi.hoisted(() => ({
+const { authCtx, themeCtx } = vi.hoisted(() => ({
   authCtx: { user: { is_system_admin: true } },
+  themeCtx: { theme: 'dark', contrast: 'normal', setTheme: vi.fn(), setContrast: vi.fn() },
 }));
 vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => authCtx }));
+vi.mock('../../contexts/ThemeContext', () => ({ useTheme: () => themeCtx }));
 vi.mock('../../config', () => ({ API_BASE_URL: '' }));
 
 import AdminV2AccountSettings from './AdminV2AccountSettings';
@@ -51,14 +53,21 @@ const callTo = (path, method) =>
   fetchMock.mock.calls.find(([u, o]) => u.endsWith(path) && o?.method === method);
 
 describe('AdminV2AccountSettings', () => {
-  // The Appearance/theme picker went with the light palette — the admin is
-  // dark-only now, so a Light/System choice had nothing left to switch.
-  it('renders three vc sections rather than shadcn cards', async () => {
+  it('renders four vc sections, Appearance first', async () => {
     await renderPage();
     expect([...document.querySelectorAll('.cfg-title')].map(t => t.textContent))
-      .toEqual(['Account Details', 'Account Password', 'Account Information']);
-    expect(document.querySelector('#theme')).not.toBeInTheDocument();
+      .toEqual(['Appearance', 'Account Details', 'Account Password', 'Account Information']);
     expect(document.querySelector('.tw')).not.toBeInTheDocument();
+  });
+
+  it('shows the current theme and contrast and routes a change to the context', async () => {
+    await renderPage();
+    expect(document.querySelector('#theme').value).toBe('dark');
+    expect(document.querySelector('#contrast').value).toBe('normal');
+    fireEvent.change(document.querySelector('#theme'), { target: { value: 'system' } });
+    expect(themeCtx.setTheme).toHaveBeenCalledWith('system');
+    fireEvent.change(document.querySelector('#contrast'), { target: { value: 'high' } });
+    expect(themeCtx.setContrast).toHaveBeenCalledWith('high');
   });
 
   it('loads the account into the detail fields', async () => {

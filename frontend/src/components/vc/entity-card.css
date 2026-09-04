@@ -556,8 +556,6 @@ textarea.em-input { min-height: 0; resize: vertical; padding: 0.6rem 0.75rem; }
   align-self: flex-start;
   -webkit-appearance: none;
   appearance: none;
-  /* Dark native picker chrome, everywhere rather than per page. */
-  color-scheme: dark;
 }
 .em-input::-webkit-date-and-time-value { min-height: 1lh; text-align: left; }
 .em-input::-webkit-datetime-edit { display: inline-flex; padding: 0; }
@@ -755,7 +753,9 @@ a.em-submit {
 }
 .em-cancel:hover { border-color: var(--vc-line-strong); color: var(--vc-text-primary); }
 .em-submit {
-  background: color-mix(in srgb, var(--vc-data-live) 45%, var(--vc-bg-surface));
+  /* 40% (not 45%): primary text has to clear 7:1 on this fill in the
+     high-contrast palettes, whose accents are brighter. */
+  background: color-mix(in srgb, var(--vc-data-live) 40%, var(--vc-bg-surface));
   border: 1px solid color-mix(in srgb, var(--vc-data-live) 45%, transparent);
   border-radius: 8px;
   color: var(--vc-text-primary);

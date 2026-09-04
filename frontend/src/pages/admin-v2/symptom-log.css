@@ -277,7 +277,7 @@
 .sl-severity-cell.band-severe { color: var(--vc-state-alert); }
 .sl-severity-cell.selected {
   background: var(--sl-band);
-  color: var(--vc-bg-base);
+  color: var(--vc-text-on-accent);
   font-weight: 600;
 }
 .sl-severity-legend {

@@ -16,8 +16,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-/* Bedside-monitor ("vc") skin for the Schedule page. DARK THEME ONLY —
- * scoped :root:not(.light), same convention as vc-shell/vc-dashboard.
+/* Bedside-monitor ("vc") skin for the Schedule page. Theme-agnostic —
+ * tokens only, never scoped to a theme class (same convention as
+ * vc-shell / vc-dashboard).
  *
  * Semantics: state colour is reserved for state — complete green, NOW marker
  * cyan, idle grays. Green stays the "done" signal only.
@@ -32,11 +33,11 @@
 @import '../../styles/vc-tokens.css';
 
 /* ---------- Date nav ---------- */
-:root:not(.light) .admin-v2-schedule-nav {
+.admin-v2-schedule-nav {
   background: var(--vc-bg-surface);
   border-bottom: 1px solid var(--vc-line-hairline);
 }
-:root:not(.light) .admin-v2-schedule-date {
+.admin-v2-schedule-date {
   font-family: var(--vc-font-mono);
   font-variant-numeric: tabular-nums;
   font-weight: 600;
@@ -44,7 +45,7 @@
   text-transform: uppercase;
   color: var(--vc-text-primary);
 }
-:root:not(.light) .admin-v2-today-badge {
+.admin-v2-today-badge {
   background: transparent;
   border: 1px solid color-mix(in srgb, var(--vc-data-live) 45%, transparent);
   border-radius: 999px;
@@ -55,7 +56,7 @@
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
-:root:not(.light) .admin-v2-date-picker {
+.admin-v2-date-picker {
   font-variant-numeric: tabular-nums;
   background: var(--vc-bg-raised);
   border: 1px solid var(--vc-line-hairline);
@@ -65,73 +66,73 @@
 }
 
 /* ---------- Stats row / mobile tabs ---------- */
-:root:not(.light) .admin-v2-schedule-stat-card {
+.admin-v2-schedule-stat-card {
   background: var(--vc-bg-surface);
   border: 1px solid var(--vc-line-hairline);
   border-radius: 10px;
   box-shadow: none;
 }
-:root:not(.light) .admin-v2-schedule-stat-card.active {
+.admin-v2-schedule-stat-card.active {
   border-color: color-mix(in srgb, var(--vc-data-live) 55%, transparent);
   box-shadow: inset 0 -2px 0 var(--vc-data-live);
 }
-:root:not(.light) .admin-v2-schedule-stat-card.active .admin-v2-stat-info h4 {
+.admin-v2-schedule-stat-card.active .admin-v2-stat-info h4 {
   color: var(--vc-data-live);
 }
 
 /* ---------- Grid header ---------- */
-:root:not(.light) .admin-v2-schedule-header {
+.admin-v2-schedule-header {
   background: var(--vc-bg-surface);
   border-bottom: 1px solid var(--vc-line-hairline);
 }
-:root:not(.light) .admin-v2-schedule-header .admin-v2-schedule-col,
-:root:not(.light) .admin-v2-schedule-header .admin-v2-schedule-col.medications,
-:root:not(.light) .admin-v2-schedule-header .admin-v2-schedule-col.nutrition,
-:root:not(.light) .admin-v2-schedule-header .admin-v2-schedule-col.tasks {
+.admin-v2-schedule-header .admin-v2-schedule-col,
+.admin-v2-schedule-header .admin-v2-schedule-col.medications,
+.admin-v2-schedule-header .admin-v2-schedule-col.nutrition,
+.admin-v2-schedule-header .admin-v2-schedule-col.tasks {
   color: var(--vc-text-secondary);
   font-family: var(--vc-font-mono);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.1em;
 }
-:root:not(.light) .admin-v2-schedule-header .admin-v2-schedule-col-clickable:hover {
+.admin-v2-schedule-header .admin-v2-schedule-col-clickable:hover {
   color: var(--vc-text-primary);
 }
 
 /* ---------- Hour rows ---------- */
-:root:not(.light) .admin-v2-schedule-row:hover {
+.admin-v2-schedule-row:hover {
   background: var(--vc-bg-surface);
 }
-:root:not(.light) .admin-v2-schedule-time-col {
+.admin-v2-schedule-time-col {
   background: var(--vc-bg-surface);
   border: 1px solid var(--vc-line-hairline);
   border-left: 3px solid var(--vc-line-hairline);
 }
-:root:not(.light) .admin-v2-hour-label {
+.admin-v2-hour-label {
   font-family: var(--vc-font-mono);
   font-variant-numeric: tabular-nums;
   font-size: 11px;
   letter-spacing: 0.06em;
   color: var(--vc-text-tertiary);
 }
-:root:not(.light) .admin-v2-schedule-divider {
+.admin-v2-schedule-divider {
   background: var(--vc-line-hairline);
 }
 
 /* NOW marker: live-cyan accent bar + tinted hour cell */
-:root:not(.light) .admin-v2-schedule-row.current-hour::before {
+.admin-v2-schedule-row.current-hour::before {
   background: var(--vc-data-live);
 }
-:root:not(.light) .admin-v2-schedule-row.current-hour .admin-v2-schedule-time-col {
+.admin-v2-schedule-row.current-hour .admin-v2-schedule-time-col {
   background: color-mix(in srgb, var(--vc-data-live) 10%, transparent);
   border-left-color: var(--vc-data-live);
 }
-:root:not(.light) .admin-v2-schedule-row.current-hour .admin-v2-hour-label {
+.admin-v2-schedule-row.current-hour .admin-v2-hour-label {
   color: var(--vc-data-live);
 }
 
 /* ---------- Item groups ---------- */
-:root:not(.light) .admin-v2-schedule-group {
+.admin-v2-schedule-group {
   background: var(--vc-bg-raised);
   border: 1px solid var(--vc-line-hairline);
   border-left: 3px solid var(--vc-line-strong);
@@ -139,35 +140,35 @@
 }
 /* Category identity on the stripe. Terracotta and sage are identity hues, far
    enough from --vc-state-complete that a nutrition group never reads as done. */
-:root:not(.light) .admin-v2-schedule-group.medication {
+.admin-v2-schedule-group.medication {
   border-left-color: var(--vc-avatar-terracotta);
 }
-:root:not(.light) .admin-v2-schedule-group.nutrition {
+.admin-v2-schedule-group.nutrition {
   border-left-color: var(--vc-avatar-sage);
 }
 /* Care tasks keep the neutral stripe here; each task overrides it inline with
    its own category colour. */
-:root:not(.light) .admin-v2-schedule-group.care-task {
+.admin-v2-schedule-group.care-task {
   border-left-color: var(--vc-line-strong);
 }
 
 /* ---------- Items ---------- */
-:root:not(.light) .admin-v2-schedule-item.clickable:hover {
+.admin-v2-schedule-item.clickable:hover {
   background: var(--vc-bg-surface);
 }
-:root:not(.light) .admin-v2-schedule-item-name {
+.admin-v2-schedule-item-name {
   font-family: var(--vc-font-sans);
   color: var(--vc-text-primary);
 }
-:root:not(.light) .admin-v2-schedule-item-time {
+.admin-v2-schedule-item-time {
   font-family: var(--vc-font-mono);
   font-variant-numeric: tabular-nums;
   color: var(--vc-text-secondary);
 }
-:root:not(.light) .admin-v2-schedule-item-dose {
+.admin-v2-schedule-item-dose {
   color: var(--vc-text-secondary);
 }
-:root:not(.light) .admin-v2-schedule-item-category {
+.admin-v2-schedule-item-category {
   background: var(--vc-bg-surface);
   border: 1px solid var(--vc-line-hairline);
   color: var(--vc-text-secondary);
@@ -178,45 +179,45 @@
 }
 
 /* Completed: green is the done-signal (tint + check), name dims */
-:root:not(.light) .admin-v2-schedule-item.completed {
+.admin-v2-schedule-item.completed {
   background: color-mix(in srgb, var(--vc-state-complete) 10%, transparent);
 }
-:root:not(.light) .admin-v2-schedule-item.completed .admin-v2-schedule-item-name {
+.admin-v2-schedule-item.completed .admin-v2-schedule-item-name {
   color: var(--vc-text-secondary);
 }
 
 /* Check control: dotted ring (not done) -> solid green (done) — the same
  * shape+color signal as the capture tiles */
-:root:not(.light) .admin-v2-schedule-item-check {
+.admin-v2-schedule-item-check {
   border-radius: 50%;
   border: 1.5px dotted var(--vc-state-idle);
   background: transparent;
 }
-:root:not(.light) .admin-v2-schedule-item.clickable:hover .admin-v2-schedule-item-check {
+.admin-v2-schedule-item.clickable:hover .admin-v2-schedule-item-check {
   border-style: solid;
   border-color: var(--vc-state-complete);
   color: color-mix(in srgb, var(--vc-state-complete) 55%, transparent);
 }
-:root:not(.light) .admin-v2-schedule-item-check.checked {
+.admin-v2-schedule-item-check.checked {
   border-style: solid;
   background: var(--vc-state-complete);
   border-color: var(--vc-state-complete);
-  color: var(--vc-bg-base);
+  color: var(--vc-text-on-accent);
 }
 
-:root:not(.light) .admin-v2-schedule-item-undo {
+.admin-v2-schedule-item-undo {
   background: transparent;
   border: 1px solid var(--vc-line-hairline);
   border-radius: 6px;
   color: var(--vc-text-secondary);
 }
-:root:not(.light) .admin-v2-schedule-item-undo:hover {
+.admin-v2-schedule-item-undo:hover {
   border-color: var(--vc-line-strong);
   color: var(--vc-text-primary);
 }
 
 /* ---------- PRN badge + buttons ---------- */
-:root:not(.light) .admin-v2-badge-prn {
+.admin-v2-badge-prn {
   background: transparent;
   border: 1px solid var(--vc-line-strong);
   border-radius: 999px;
@@ -226,47 +227,47 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
-:root:not(.light) .admin-v2-schedule-prn-add {
+.admin-v2-schedule-prn-add {
   background: transparent;
   border: 1px dashed var(--vc-line-strong);
   border-radius: 8px;
   color: var(--vc-text-secondary);
 }
-:root:not(.light) .admin-v2-schedule-prn-add:hover {
+.admin-v2-schedule-prn-add:hover {
   border-color: var(--vc-data-live);
   color: var(--vc-data-live);
 }
 /* Floating "complete all in this hour" badge: neutral until hovered — a
  * solid green circle on a pending group would read as already-done. */
-:root:not(.light) .admin-v2-schedule-complete-all {
+.admin-v2-schedule-complete-all {
   background: var(--vc-bg-raised);
   border: 1px solid var(--vc-line-strong);
   color: var(--vc-text-secondary);
 }
-:root:not(.light) .admin-v2-schedule-complete-all:hover {
+.admin-v2-schedule-complete-all:hover {
   background: var(--vc-state-complete);
   border-color: var(--vc-state-complete);
-  color: var(--vc-bg-base);
+  color: var(--vc-text-on-accent);
 }
 
-:root:not(.light) .admin-v2-schedule-complete-all .admin-v2-btn-primary,
-:root:not(.light) .admin-v2-schedule-nav .admin-v2-btn-primary {
+.admin-v2-schedule-complete-all .admin-v2-btn-primary,
+.admin-v2-schedule-nav .admin-v2-btn-primary {
   background: var(--vc-data-live);
   border-color: transparent;
-  color: var(--vc-bg-base);
+  color: var(--vc-text-on-accent);
   font-family: var(--vc-font-mono);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   border-radius: 8px;
 }
-:root:not(.light) .admin-v2-schedule-nav .admin-v2-btn:not(.admin-v2-btn-primary) {
+.admin-v2-schedule-nav .admin-v2-btn:not(.admin-v2-btn-primary) {
   background: transparent;
   border: 1px solid var(--vc-line-hairline);
   border-radius: 8px;
   color: var(--vc-text-primary);
 }
-:root:not(.light) .admin-v2-schedule-nav .admin-v2-btn:not(.admin-v2-btn-primary):hover {
+.admin-v2-schedule-nav .admin-v2-btn:not(.admin-v2-btn-primary):hover {
   border-color: var(--vc-line-strong);
   background: var(--vc-bg-raised);
 }

@@ -37,8 +37,8 @@ export default function ProtectedRoute({ children, requireFullAuth = true }) {
         justifyContent: 'center',
         height: '100vh',
         fontSize: '18px',
-        color: '#718096',
-        background: '#1a1f2e'
+        color: 'var(--vc-text-secondary)',
+        background: 'var(--vc-bg-base)'
       }}>
         Loading...
       </div>

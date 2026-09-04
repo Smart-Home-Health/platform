@@ -36,6 +36,8 @@ import {
   BarChartIcon, EquipmentIcon,
 } from '../../components/Icons';
 import { useChartColors } from '../../hooks/useChartColors';
+import { useThemeTokens } from '../../hooks/useThemeTokens';
+import { hexAlpha } from '../../utils/themeTokens';
 import { alarmsFor } from './reports/dayOverDay';
 import {
   VITALS, weekLabel, shiftWeek, toDateStr, weekDays, dayLabel, weekdayLabel,
@@ -103,7 +105,16 @@ const AdminV2ReportsWeekly = () => {
     return () => { live = false; };
   }, [selectedPatient, endDate]);
 
-  const rows = useMemo(() => vitalRows(data, alarms), [data, alarms]);
+  const { series } = useThemeTokens();
+  // Identity colours from the categorical ramp, resolved for canvas.
+  const vitalColors = useMemo(() => ({
+    spo2: series.spo2,
+    heart_rate: series.hr,
+    respiratory_rate: series.ramp[2],
+    temperature: series.ramp[3],
+    weight: series.ramp[4],
+  }), [series]);
+  const rows = useMemo(() => vitalRows(data, alarms, vitalColors), [data, alarms, vitalColors]);
   const tiles = useMemo(() => headlineTiles(data), [data]);
   const groups = useMemo(() => careGroups(data?.compliance), [data]);
   const totals = useMemo(() => careTotals(data?.compliance), [data]);
@@ -130,7 +141,7 @@ const AdminV2ReportsWeekly = () => {
     const alarmColor = token('--rpt-alarm', '#f0a52e');
     const breachColor = token('--rpt-breach', '#f0563c');
     const tooltipBg = token('--rpt-raised', chrome.cutout);
-    const gridSoft = `${chrome.grid}80`;
+    const gridSoft = hexAlpha(chrome.grid, 0.5);
     const labels = days.map(dayLabel);
 
     const base = (extraPlugins = {}) => ({
@@ -210,7 +221,7 @@ const AdminV2ReportsWeekly = () => {
             label: 'High',
             data: v.series.map(p => p.high),
             borderColor: 'transparent',
-            backgroundColor: `${v.color}24`,
+            backgroundColor: hexAlpha(v.color, 0.14),
             pointRadius: 0,
             fill: '+1',
             spanGaps: true,

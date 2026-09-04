@@ -541,6 +541,7 @@ export default function Dashboard() {
   const fetchMedicationDueCount = (pid) => fetchDueCount('/api/medications/due/count', setMedicationDueCount, pid);
   const fetchCareTaskDueCount = (pid) => fetchDueCount('/api/schedule/care-tasks/due/count', setCareTaskDueCount, pid);
   const fetchNutritionDueCount = (pid) => fetchDueCount('/api/nutrition/due/count', setNutritionDueCount, pid);
+  const fetchAlertsCount = (pid) => fetchDueCount('/api/monitoring/alerts/count', setPulseOxAlerts, pid);
 
   // Refetch every badge for a patient (defaults to the current selection).
   const refreshDueCounts = (pid) => {
@@ -548,6 +549,7 @@ export default function Dashboard() {
     fetchMedicationDueCount(pid);
     fetchCareTaskDueCount(pid);
     fetchNutritionDueCount(pid);
+    fetchAlertsCount(pid);
   };
 
   useEffect(() => {
@@ -650,15 +652,12 @@ export default function Dashboard() {
           perfusion: offline ? null : reading?.perfusion ?? null,
         });
 
-        if (msg.state.alerts_count !== undefined) {
-          setPulseOxAlerts(msg.state.alerts_count);
-        }
-        // NOTE: msg.state.dashboard_chart_1/2 are deliberately ignored — the
-        // server builds them without a patient filter, so consuming them here
-        // would leak other patients' vitals into the cards. The cards use the
-        // patient-scoped REST fetch instead (fetchChartData). The same is true
-        // of the top-level spo2/bpm/perfusion — see the patient_readings lookup
-        // above.
+        // NOTE: msg.state.alerts_count and dashboard_chart_1/2 are deliberately
+        // ignored — the server builds them without a patient filter, so
+        // consuming them here would show other patients' alerts and vitals.
+        // The badge and the cards use patient-scoped REST fetches instead
+        // (fetchAlertsCount, fetchChartData). The same is true of the top-level
+        // spo2/bpm/perfusion — see the patient_readings lookup above.
       }
 
       else if (msg.type === "alarm_update") {
@@ -667,9 +666,8 @@ export default function Dashboard() {
         prevAlarmActive.current = alarmActive;
       }
       else if (msg.type === "alert_acknowledged") {
-        if (msg.alerts_count !== undefined) {
-          setPulseOxAlerts(msg.alerts_count);
-        }
+        const pid = dueCountPatientRef.current;
+        if (pid) fetchAlertsCount(pid);
       }
       // A due item was marked done / logged / restocked anywhere. Refetch the
       // matching badge for the patient on screen. The badges are patient-scoped
@@ -918,17 +916,7 @@ export default function Dashboard() {
     setIsCaptureModalOpen(true);
   };
 
-  // Add this function to handle alert acknowledgment
-  const handleAlertAcknowledged = () => {
-    fetch(`${config.apiUrl}/api/monitoring/alerts/count`, { credentials: 'include' })
-      .then(response => response.json())
-      .then(data => {
-        if (data && data.count !== undefined) {
-          setPulseOxAlerts(data.count);
-        }
-      })
-      .catch(err => console.error('Error fetching updated alert count:', err));
-  };
+  const handleAlertAcknowledged = () => fetchAlertsCount();
 
   // Track if alerts viewed POST has been sent for this open
   const [alertsViewedSent, setAlertsViewedSent] = useState(false);
@@ -1006,7 +994,7 @@ export default function Dashboard() {
 
   return (
     <ModalDockProvider value={modalDock}>
-    <div className="dashboard-wrapper force-dark live-dash" ref={boardRef}>
+    <div className="dashboard-wrapper live-dash" ref={boardRef}>
       {/* Auth gates take the whole board rather than docking beside it — an
           unlock prompt is not something to work alongside. */}
       <ModalBase
@@ -1069,9 +1057,9 @@ export default function Dashboard() {
                   gap: '0.75rem',
                   padding: '0.75rem',
                   borderRadius: '10px',
-                  border: '1px solid #30363d',
-                  background: selectedPatient?.id === p.id ? 'rgba(88, 166, 255, 0.12)' : '#161b22',
-                  color: '#f0f6fc',
+                  border: '1px solid var(--vc-line-hairline)',
+                  background: selectedPatient?.id === p.id ? 'color-mix(in srgb, var(--vc-data-live) 12%, transparent)' : 'var(--vc-bg-surface)',
+                  color: 'var(--vc-text-primary)',
                   cursor: 'pointer',
                   textAlign: 'left'
                 }}
@@ -1080,11 +1068,11 @@ export default function Dashboard() {
                   <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {p.first_name} {p.last_name}
                   </strong>
-                  <span style={{ color: '#8b949e', fontSize: '0.85rem' }}>
-                    {p.room || 'No room assigned'}
+                  <span style={{ color: 'var(--vc-text-secondary)', fontSize: '0.85rem' }}>
+                    {p.care_area || 'No room assigned'}
                   </span>
                 </div>
-                <span style={{ color: '#8b949e', whiteSpace: 'nowrap' }}>
+                <span style={{ color: 'var(--vc-text-secondary)', whiteSpace: 'nowrap' }}>
                   #{p.id}
                 </span>
               </button>
@@ -1177,7 +1165,7 @@ export default function Dashboard() {
             source="Pulse ox · live"
             value={sensorValues.spo2}
             unit="%"
-            accent="#4da7bd"
+            accent="var(--vc-series-spo2)"
             stats={tileStats(buffer.series.spo2, v => `${v.toFixed(1)}%`, v => `${v.toFixed(0)}%`)}
             chart={isMobile && !needsUnlock ? tileChart(buffer.series.spo2, 'blue') : null}
             flipped={!!flippedTiles.spo2}
@@ -1188,7 +1176,7 @@ export default function Dashboard() {
             source="Pulse ox · live"
             value={sensorValues.bpm}
             unit="bpm"
-            accent="#3fbf6a"
+            accent="var(--vc-series-hr)"
             stats={tileStats(buffer.series.bpm, v => v.toFixed(0))}
             chart={isMobile && !needsUnlock ? tileChart(buffer.series.bpm, 'green') : null}
             flipped={!!flippedTiles.bpm}
@@ -1199,7 +1187,7 @@ export default function Dashboard() {
             source="PI · live"
             value={sensorValues.perfusion}
             unit={perfusionAsPercent ? '%' : 'PI'}
-            accent="#f0a52e"
+            accent="var(--vc-series-pi)"
             stats={tileStats(buffer.series.perfusion, v => v.toFixed(1))}
             chart={isMobile && !needsUnlock ? tileChart(buffer.series.perfusion, 'orange') : null}
             flipped={!!flippedTiles.perfusion}

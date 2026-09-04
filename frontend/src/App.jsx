@@ -82,6 +82,7 @@ import AdminV2Mqtt from './pages/admin-v2/AdminV2Mqtt';
 import { AdminV2SettingsGeneral } from './pages/admin-v2/settings';
 import FirstRunSetup from './components/FirstRunSetup';
 import { ActiveInputProvider } from './contexts/ActiveInputContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 import { PinChallengeProvider } from './contexts/PinChallengeContext';
 import { IdleLockProvider } from './contexts/IdleLockContext';
 import { DashboardThemeProvider } from './contexts/DashboardThemeContext';
@@ -115,6 +116,7 @@ function AppContent() {
   }
 
   return (
+    <ThemeProvider>
     <ActiveInputProvider>
       <PinChallengeProvider>
       <Router basename={(typeof window !== 'undefined' && window.__BASE_PATH__) || undefined}>
@@ -253,6 +255,7 @@ function AppContent() {
       <VirtualKeyboard show={showVKB} />
       </PinChallengeProvider>
     </ActiveInputProvider>
+    </ThemeProvider>
   );
 }
 

@@ -231,7 +231,7 @@ export default function ZoomableVideo({
           }}>
             <div style={{
               position: 'absolute', left: 0, top: 0, bottom: 0,
-              width: `${progress}%`, background: '#58a6ff', borderRadius: 2,
+              width: `${progress}%`, background: 'var(--vc-data-live)', borderRadius: 2,
             }} />
             <div style={{
               position: 'absolute', top: '50%', left: `${progress}%`,

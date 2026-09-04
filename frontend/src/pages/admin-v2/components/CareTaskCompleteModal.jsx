@@ -86,7 +86,7 @@ const CareTaskCompleteModal = ({ open, onClose, onSaved, patient, task, defaultD
     }
   };
 
-  const categoryColor = task.category_color || '#a371f7';
+  const categoryColor = task.category_color || 'var(--vc-series-3)';
 
   return (
     <EntityModal

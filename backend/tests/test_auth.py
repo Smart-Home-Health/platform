@@ -145,3 +145,34 @@ def test_no_xff_falls_back_to_peer(monkeypatch):
     from utils.client_ip import get_client_ip
     monkeypatch.setenv("SHH_BEHIND_PROXY", "1")
     assert get_client_ip(_FakeRequest()) == "10.0.0.9"
+
+
+# --- Per-user UI preferences ---------------------------------------------------
+def test_preferences_patch_theme(admin_client):
+    resp = admin_client.patch("/api/auth/preferences", json={"preferences": {"theme": "light"}})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["preferences"]["theme"] == "light"
+
+
+def test_preferences_shallow_merge_keeps_other_keys(admin_client):
+    admin_client.patch("/api/auth/preferences", json={"preferences": {"theme": "system"}})
+    resp = admin_client.patch("/api/auth/preferences", json={"preferences": {"contrast": "high"}})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["preferences"] == {"theme": "system", "contrast": "high"}
+
+
+def test_preferences_rejects_unknown_value(admin_client):
+    resp = admin_client.patch("/api/auth/preferences", json={"preferences": {"theme": "neon"}})
+    assert resp.status_code == 422
+
+
+def test_preferences_rejects_unknown_key(admin_client):
+    resp = admin_client.patch("/api/auth/preferences", json={"preferences": {"font": "huge"}})
+    assert resp.status_code == 422
+
+
+def test_session_echoes_preferences(admin_client):
+    admin_client.patch("/api/auth/preferences", json={"preferences": {"contrast": "high"}})
+    resp = admin_client.get("/api/auth/session")
+    assert resp.status_code == 200
+    assert resp.json()["preferences"]["contrast"] == "high"

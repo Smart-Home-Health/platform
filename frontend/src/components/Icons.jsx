@@ -24,33 +24,6 @@ export const SettingsIcon = () => (
   </svg>
 );
 
-export const VentIcon = () => (
-  <svg width="30" height="30" viewBox="0 0 150 150" xmlns="http://www.w3.org/2000/svg">
-    {/* Device Body */}
-    <rect x="10" y="20" width="100" height="110" rx="8" ry="8" fill="#444" stroke="#222" strokeWidth="2"/>
-
-    {/* Screen */}
-    <rect x="20" y="30" width="80" height="40" rx="2" ry="2" fill="#ccc" stroke="#888" strokeWidth="1"/>
-    <text x="25" y="55" fontSize="8" fill="#000">Ventilator</text>
-
-    {/* Knob on Side */}
-    <circle cx="115" cy="75" r="10" fill="#337ab7" stroke="#222" strokeWidth="1"/>
-    <circle cx="115" cy="75" r="4" fill="#fff"/>
-
-    {/* Speaker Grill */}
-    <circle cx="30" cy="100" r="6" fill="#222"/>
-    <circle cx="30" cy="100" r="2" fill="#555"/>
-
-    {/* Power Button */}
-    <circle cx="90" cy="110" r="6" fill="#0a0" stroke="#222" strokeWidth="1"/>
-    <text x="87" y="113" fontSize="5" fill="#fff">⏻</text>
-
-    {/* Ports at Bottom */}
-    <rect x="50" y="120" width="10" height="5" fill="#888"/>
-    <rect x="65" y="120" width="10" height="5" fill="#888"/>
-  </svg>
-);
-
 export const PulseOxIcon = () => (
   <svg width="30" height="30" viewBox="0 0 150 100" xmlns="http://www.w3.org/2000/svg">
     {/* Device Body */}
@@ -1167,5 +1140,15 @@ export const TabletPillIcon = ({ size = 20 }) => (
        strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="8" />
     <line x1="6" y1="12" x2="18" y2="12" />
+  </svg>
+);
+
+// Appearance (theme / contrast picker): a half-filled circle — the
+// light-against-dark idea without a sun or moon glyph.
+export const AppearanceIcon = ({ size = 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none" />
   </svg>
 );

@@ -105,7 +105,6 @@
   border: 0;
   cursor: pointer;
   font: inherit;
-  color-scheme: dark;
 }
 .vnt-datepill svg { color: var(--vc-text-secondary); flex-shrink: 0; }
 .vnt-count {

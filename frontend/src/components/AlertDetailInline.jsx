@@ -254,10 +254,10 @@ const AlertDetailInline = ({ alert, onClose, onAcknowledge, initiateAcknowledge 
       ) : (
         <div className="al-charts">
           <div className="al-chart">
-            <SimpleEventChart title="Blood Oxygen" color="#4da7bd" unit="SpO₂ (%)" data={spo2ChartData} />
+            <SimpleEventChart title="Blood Oxygen" color="var(--vc-series-spo2)" unit="SpO₂ (%)" data={spo2ChartData} />
           </div>
           <div className="al-chart">
-            <SimpleEventChart title="Pulse Rate" color="#3fbf6a" unit="BPM" data={bpmChartData} />
+            <SimpleEventChart title="Pulse Rate" color="var(--vc-series-hr)" unit="BPM" data={bpmChartData} />
           </div>
         </div>
       )}
