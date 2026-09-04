@@ -30,6 +30,7 @@ import ConfirmSheet from '../../components/vc/ConfirmSheet';
 import '../../components/vc/entity-card.css';
 import './AdminV2.css';
 import './settings/settings-page.css';
+import { overdueLabel } from '../../components/schedule/scheduleStatus';
 
 const AdminV2MedicationsSchedule = () => {
   const { user } = useAuth();
@@ -199,7 +200,7 @@ const AdminV2MedicationsSchedule = () => {
       scheduleLine: item.actual_time
         ? `Taken at ${new Date(item.actual_time).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true })}`
         : recurrenceLabel(item.description),
-      statusLabel: getStatusText(item),
+      statusLabel: overdueLabel(item) || getStatusText(item),
       statusTone: getStatusTone(item),
       completed: item.is_completed,
       actions,

@@ -91,6 +91,27 @@ describe('DoseScheduleView — narrow stop', () => {
     expect(container.querySelectorAll('.ld-dose-slot-time')).toHaveLength(2);
   });
 
+  it('says how far past a grace-period dose is instead of a bare "Missed"', () => {
+    const inGrace = [{
+      ...ITEMS[0], id: 'g-briviact', in_grace: true, overdue_minutes: 3 * 1440 + 60,
+      scheduled_time: new Date(2026, 7, 14, 8).toISOString(),
+      grace_expires_at: new Date(2026, 7, 18, 12, 48).toISOString(),
+    }, ITEMS[2]];
+    const { container } = render(
+      <ModalDockProvider value={{ docked: true, expanded: false, setExpanded: vi.fn() }}>
+        <DoseScheduleView items={inGrace} onRecord={vi.fn()} />
+      </ModalDockProvider>
+    );
+    const badge = screen.getByText('Overdue · 3d');
+    expect(badge).toHaveClass('ld-dose-badge', 'missed');
+    expect(badge.title).toMatch(/^Originally due .*; grace expires /);
+    expect(screen.queryByText('Missed')).toBeNull();
+    // Still actionable, and announced with the same cue.
+    expect(screen.getByRole('button', { name: /Briviact, Overdue · 3d\. Open details\./i })).toBeInTheDocument();
+    const card = container.querySelector('.ld-dose-card');
+    expect(within(card).getByRole('button', { name: /record dose/i })).toBeInTheDocument();
+  });
+
   it('renders cards, not the table, however wide the window claims to be', () => {
     const { container } = renderAt({ expanded: false });
     expect(container.querySelector('.ld-dose-panel.narrow')).toBeInTheDocument();

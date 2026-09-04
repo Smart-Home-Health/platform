@@ -111,6 +111,8 @@ class MedicationScheduleCreate(BaseModel):
     active: bool = True
     notes: Optional[str] = None
     patient_id: Optional[int] = None
+    # Hours a missed dose stays actionable; None = 60% of the schedule's interval.
+    grace_period_hours: Optional[float] = Field(None, gt=0)
     type: str = Field(default="med", pattern="^med$")
 
 
@@ -121,6 +123,8 @@ class MedicationScheduleUpdate(BaseModel):
     active: Optional[bool] = None
     notes: Optional[str] = None
     patient_id: Optional[int] = None
+    # Send null explicitly to drop an override back to the 60% default.
+    grace_period_hours: Optional[float] = Field(None, gt=0)
 
 
 class MedicationScheduleResponse(BaseModel):
@@ -132,6 +136,7 @@ class MedicationScheduleResponse(BaseModel):
     dose_amount: float
     active: bool
     notes: Optional[str]
+    grace_period_hours: Optional[float] = None
     created_at: datetime
     updated_at: datetime
     

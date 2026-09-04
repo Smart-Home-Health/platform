@@ -44,6 +44,7 @@ import EntityModal, { EmField } from '../../components/vc/EntityModal';
 import '../../components/vc/entity-card.css';
 import './settings/settings-page.css';
 import './AdminV2.css';
+import { overdueLabel, graceTitle } from '../../components/schedule/scheduleStatus';
 import './vc-schedule.css'; // bedside-monitor skin (dark theme only)
 
 const AdminV2Schedule = () => {
@@ -728,6 +729,9 @@ const AdminV2Schedule = () => {
     Object.values(byHour).forEach(group => {
       group.sort((a, b) => {
         if (!!a.completed !== !!b.completed) return a.completed ? 1 : -1;
+        // A grace-period dose from a prior day is the most urgent thing in
+        // its hour: it sits at the top so it cannot hide under today's rows.
+        if (!!a.in_grace !== !!b.in_grace) return a.in_grace ? -1 : 1;
         return (a.minute ?? 0) - (b.minute ?? 0);
       });
     });
@@ -983,6 +987,11 @@ const AdminV2Schedule = () => {
                                           );
                                         })()}
                                         <span className="admin-v2-schedule-item-name">{med.name}</span>
+                                        {med.in_grace && (
+                                          <span className="admin-v2-badge admin-v2-badge-overdue" title={graceTitle(med)}>
+                                            {overdueLabel(med)}
+                                          </span>
+                                        )}
                                         {isPrn && (
                                           <span className="admin-v2-badge admin-v2-badge-prn" title="As-needed dose">
                                             PRN

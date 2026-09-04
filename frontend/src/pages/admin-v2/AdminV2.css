@@ -1913,6 +1913,16 @@
   font-size: 0.65rem;
 }
 
+/* Grace-period dose: a prior day's unfilled dose still actionable. The
+   colour rides on the badge only (no row stripe). */
+.admin-v2-badge-overdue {
+  background: color-mix(in srgb, var(--vc-state-alert) 18%, transparent);
+  color: var(--vc-state-alert);
+  padding: 0.1rem 0.45rem;
+  font-size: 0.65rem;
+  white-space: nowrap;
+}
+
 /* Nutrition PRN variants: green for intake (matches nutrition column accent),
    amber for output so caregivers can tell them apart at a glance. */
 .admin-v2-badge-prn-in {

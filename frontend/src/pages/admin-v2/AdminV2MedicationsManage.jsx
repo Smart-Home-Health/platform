@@ -84,6 +84,9 @@ const AdminV2MedicationsManage = () => {
   const [selectedDayOfMonth, setSelectedDayOfMonth] = useState(1);
   const [scheduleTime, setScheduleTime] = useState('08:00');
   const [doseAmount, setDoseAmount] = useState('1.000');
+  // Hours a missed dose stays actionable. Blank = the backend default, 60% of
+  // the interval (backend/crud/dose_grace.py).
+  const [graceHours, setGraceHours] = useState('');
   const [schedulePatientId, setSchedulePatientId] = useState('');
   const [scheduleSaving, setScheduleSaving] = useState(false);
 
@@ -367,6 +370,7 @@ const AdminV2MedicationsManage = () => {
         cron_expression: cron,
         description: description,
         dose_amount: parseFloat(doseAmount) || 1.0,
+        grace_period_hours: graceHours === '' ? null : parseFloat(graceHours),
         active: true,
         notes: ''
       };
@@ -393,6 +397,7 @@ const AdminV2MedicationsManage = () => {
       setSelectedDayOfMonth(1);
       setScheduleTime('08:00');
       setDoseAmount('1.000');
+      setGraceHours('');
       setScheduleMode('weekly');
 
       // Update the selected medication with refreshed data
@@ -815,6 +820,23 @@ const AdminV2MedicationsManage = () => {
                     />
                   </EmField>
                 </EmRow>
+                <EmField
+                  label="Grace period (hours)"
+                  optional
+                  htmlFor="med-sched-grace"
+                  hint="How long a missed dose stays on the schedule before it counts as missed. Blank uses 60% of the interval: about 4 days for a weekly dose, 14 hours for a daily one."
+                >
+                  <input
+                    id="med-sched-grace"
+                    className="em-input"
+                    type="number"
+                    step="1"
+                    min="1"
+                    value={graceHours}
+                    onChange={e => setGraceHours(e.target.value)}
+                    placeholder="Default"
+                  />
+                </EmField>
                 <div className="cfg-actions">
                   <button
                     type="button"
@@ -840,6 +862,7 @@ const AdminV2MedicationsManage = () => {
                           <th>Time</th>
                           <th>Schedule</th>
                           {selectedMedication.is_global && <th>Patient</th>}
+                          <th>Grace</th>
                           <th>Status</th>
                           <th>Actions</th>
                         </tr>
@@ -862,6 +885,9 @@ const AdminV2MedicationsManage = () => {
                               {selectedMedication.is_global && (
                                 <td data-label="Patient">{patientName ? `${patientName.first_name} ${patientName.last_name}` : '-'}</td>
                               )}
+                              <td data-label="Grace">
+                                {schedule.grace_period_hours != null ? `${schedule.grace_period_hours} h` : 'Default'}
+                              </td>
                               <td data-label="Status">
                                 <CfgBadge tone={schedule.active ? 'ok' : undefined}>
                                   {schedule.active ? 'Active' : 'Paused'}

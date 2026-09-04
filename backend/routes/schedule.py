@@ -27,10 +27,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
 from db import get_db
-from utils.datetime_utils import utc_now, resolve_tz_for_patient, local_day_bounds
+from utils.datetime_utils import utc_now, resolve_tz_for_patient, local_day_bounds, local_day_range_utc
 from models.schedule import CompleteItemRequest, BulkCompleteRequest
 from crud.scheduling import get_scheduled_medications, get_scheduled_care_tasks, get_scheduled_nutrition, get_due_and_upcoming_care_tasks_count
 from crud.scheduling import canonical_care_task_item
+from crud.dose_grace import find_grace_period_doses, merge_grace_rows
 from crud.nutrition import (
     create_nutrition_intake_event,
     maybe_spawn_flush_followup,
@@ -188,6 +189,18 @@ async def get_daily_schedule(
             for item in prior_tasks:
                 item["is_yesterday"] = True
             care_tasks = prior_tasks + care_tasks
+
+        # Grace-period doses: unfilled firings from before the day shown that
+        # are still actionable (crud/dose_grace.py). Only on the live day; a
+        # past or future day is history or a plan, and "overdue" is relative
+        # to now. Prior-day rows already present just get annotated.
+        bounds = local_day_bounds(tz)
+        if schedule_date == bounds['local_today']:
+            day_start_utc, _ = local_day_range_utc(schedule_date, tz_offset_minutes, tz)
+            grace_rows = find_grace_period_doses(db, patient_id, before_utc=day_start_utc, now_utc=bounds['now_utc'])
+            for item in grace_rows:
+                item["is_yesterday"] = False
+            merge_grace_rows(medications, grace_rows)
         
         # Build response - completion status already included from get_scheduled_* functions
         result = {
@@ -216,6 +229,10 @@ async def get_daily_schedule(
                 "is_prn": med.get("is_prn", False),
                 "log_id": med.get("log_id"),
                 "is_yesterday": med.get("is_yesterday", False),
+                # Grace period: an unfilled past dose that is still actionable.
+                "in_grace": med.get("in_grace", False),
+                "grace_expires_at": med["grace_expires_at"].isoformat() if med.get("grace_expires_at") else None,
+                "overdue_minutes": med.get("overdue_minutes"),
                 "type": "medication",
             })
         
