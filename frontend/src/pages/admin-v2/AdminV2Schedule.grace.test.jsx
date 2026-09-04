@@ -16,8 +16,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 // The /care/schedule grid with a grace-period dose: a prior day's unfilled
-// dose the backend still returns as actionable. It carries an "Overdue" badge
-// and sits above today's rows in its hour.
+// dose the backend still returns as actionable. It sits in its own Overdue
+// band above the hours (never in today's hour rows, where it would read as
+// a duplicate), labelled with the day it was due, and stays actionable.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act, within } from '@testing-library/react';
 
@@ -79,17 +80,43 @@ describe('AdminV2Schedule grace-period doses', () => {
     expect(badge).toHaveClass('admin-v2-badge-overdue');
     expect(badge.title).toMatch(/^Originally due .*; grace expires /);
     // Only the grace row is badged.
-    expect(screen.getAllByText(/^Overdue/)).toHaveLength(1);
+    expect(screen.getAllByText(/^Overdue ·/)).toHaveLength(1);
   });
 
-  it('pins the overdue dose above today\'s rows in its hour and keeps it actionable', async () => {
+  it('keeps the overdue dose out of today\'s hour rows, in an Overdue band that names the day', async () => {
     await act(async () => { render(<AdminV2Schedule />); });
     await screen.findByText('Overdue · 3d');
+
+    const band = document.querySelector('[data-band="overdue"]');
+    expect(band).toBeInTheDocument();
+    expect(within(band).getByText('Overdue')).toHaveClass('admin-v2-hour-label');
+    expect(within(band).getByText('Ojemda')).toBeInTheDocument();
+    // The chip says which day it was due, three days back is a weekday name.
+    const weekday = graceDue.toLocaleDateString(undefined, { weekday: 'short' });
+    expect(within(band).getByText(`${weekday} ${String(NOW_HOUR).padStart(2, '0')}:30`)).toBeInTheDocument();
+
+    // Today's 10 AM row holds only today's dose.
     const hourRow = document.querySelector(`[data-hour="${NOW_HOUR}"]`);
-    const names = within(hourRow).getAllByText(/^(Ojemda|Baclofen)$/).map(n => n.textContent);
-    expect(names).toEqual(['Ojemda', 'Baclofen']);
-    const row = screen.getByText('Ojemda').closest('.admin-v2-schedule-item');
+    expect(within(hourRow).getByText('Baclofen')).toBeInTheDocument();
+    expect(within(hourRow).queryByText('Ojemda')).toBeNull();
+
+    // Still actionable.
+    const row = within(band).getByText('Ojemda').closest('.admin-v2-schedule-item');
     expect(row).toHaveClass('clickable');
     expect(row).not.toHaveClass('completed');
+  });
+
+  it('does not count the carried-over dose in today\'s totals', async () => {
+    await act(async () => { render(<AdminV2Schedule />); });
+    await screen.findByText('Overdue · 3d');
+    // One medication scheduled today (Baclofen), none done.
+    expect(screen.getByText('0/1')).toBeInTheDocument();
+  });
+
+  it('renders no band when nothing is in grace', async () => {
+    DAILY.medications = DAILY.medications.filter(m => !m.in_grace);
+    await act(async () => { render(<AdminV2Schedule />); });
+    await screen.findByText('Baclofen');
+    expect(document.querySelector('[data-band="overdue"]')).toBeNull();
   });
 });
