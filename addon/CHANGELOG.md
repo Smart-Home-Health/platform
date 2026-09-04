@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.4.0
+
+Appearance. The light theme is back, now in the same bedside-monitor
+language as dark, and there is a separate high-contrast switch (WCAG AAA
+text, solid lines, stronger state colours). The live dashboard follows your
+choice too — it is no longer pinned dark. No database migrations.
+
+**Upgrade notes**
+
+- **Nothing changes until you pick.** With no saved choice the app stays
+  dark. A theme saved before 0.3.0 (Light or System) is honoured again on
+  sign-in, so those users will see the new light theme; the sidebar's
+  Appearance control or Account Settings → Appearance switches back.
+- Contrast is its own setting (Normal / High) and combines with either
+  theme. Saved to your profile when signed in, and on the device for the
+  wall unit's quick-entry board.
+
+**Appearance**
+
+- Four palettes — dark, light, and a high-contrast version of each — defined
+  once as design tokens; every screen, chart, dropdown and sheet reads them.
+- Theme: Light / Dark / System. System follows the OS setting live.
+- Pickers: an Appearance button in the sidebar footer, an Appearance card in
+  Account Settings, and an Appearance view in the live dashboard's Settings
+  panel.
+- The browser/PWA chrome colour follows the palette.
+
+**Fixed**
+
+- Dropdowns and sheets opened from the live dashboard no longer disagree
+  with the board's colours.
+- Report charts were drawing their axes and grid in off-palette fallback
+  colours; they read the design tokens now.
+- Small text (captions, hints, stat labels, nav group labels) sat just under
+  the WCAG AA contrast floor in dark and light; the tertiary text colour is
+  lifted so every palette passes an automated axe contrast pass across the
+  app (AAA in the high-contrast palettes).
+- Button text on accent fills used the page colour, which was nearly
+  invisible in light.
+
 ## 0.3.0
 
 The interface release. Every screen — the live dashboard, the admin, the
