@@ -38,3 +38,44 @@ export function computeScheduleStatus(item) {
   if (diffMin > -60) return 'due_warning';
   return 'missed';
 }
+
+/**
+ * Grace-period doses. The backend flags an unfilled past dose that is still
+ * actionable with `in_grace`, `overdue_minutes` and `grace_expires_at`
+ * (see backend/crud/dose_grace.py). Its status stays 'missed' — the item is
+ * missed, it just has not lapsed yet — and these helpers give the cue.
+ */
+
+/** "45m" / "14h" / "3d" from minutes overdue. Days once past 48h, hours past 90m. */
+export function formatOverdue(minutes) {
+  const m = Math.max(0, Math.round(Number(minutes) || 0));
+  if (m >= 48 * 60) return `${Math.floor(m / (24 * 60))}d`;
+  if (m >= 90) return `${Math.floor(m / 60)}h`;
+  return `${m}m`;
+}
+
+/** Badge text for an in-grace item: "Overdue · 3d". Null for anything else. */
+export function overdueLabel(item) {
+  if (!item?.in_grace) return null;
+  return `Overdue · ${formatOverdue(item.overdue_minutes)}`;
+}
+
+const fmtWhen = (iso) => {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  return d.toLocaleString(undefined, {
+    weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  });
+};
+
+/** Hover text: when it was due and how long it stays actionable. */
+export function graceTitle(item) {
+  if (!item?.in_grace) return undefined;
+  const due = fmtWhen(item.scheduled_time);
+  const until = fmtWhen(item.grace_expires_at);
+  const parts = [];
+  if (due) parts.push(`Originally due ${due}`);
+  if (until) parts.push(`grace expires ${until}`);
+  return parts.length ? parts.join('; ') : undefined;
+}

@@ -38,6 +38,12 @@ class MedicationSchedule(Base):
     
     # Optional notes for this specific schedule
     notes = Column(Text, nullable=True)
+
+    # How long a missed dose stays actionable on the schedule before it is
+    # recorded as missed. NULL = 60% of the gap to this schedule's next firing
+    # (see crud/dose_grace.py). Per schedule, not per medication: a weekly
+    # maintenance dose and a daily titration of the same drug differ here.
+    grace_period_hours = Column(Float, nullable=True)
     
     # Timestamps
     created_at = Column(TIMESTAMP(timezone=True), nullable=False)

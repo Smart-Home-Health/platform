@@ -33,6 +33,7 @@ import {
   BUCKETS, BUCKET_LABELS, bucketFor, groupByDaySlot, recurrenceLabel, rollupSchedule, slotLabel,
 } from './scheduleRollup';
 import { DOSE_LABELS } from './scheduleLabels';
+import { overdueLabel, graceTitle } from './scheduleStatus';
 import './schedule-panel.css';
 
 const STATUS_TEXT = {
@@ -46,12 +47,18 @@ const STATUS_TEXT = {
   due_late: 'Due',
 };
 
-function StatusBadge({ status }) {
-  const bucket = bucketFor(status);
+/* Badge text: the status word, except a grace-period dose says how far past
+   it is ("Overdue · 3d") since "Missed" alone would read as lapsed. */
+function statusText(item) {
+  return overdueLabel(item) || STATUS_TEXT[item.status] || item.status;
+}
+
+function StatusBadge({ item }) {
+  const bucket = bucketFor(item.status);
   return (
-    <span className={`ld-dose-badge ${bucket}`}>
+    <span className={`ld-dose-badge ${bucket}`} title={graceTitle(item)}>
       {bucket !== 'given' && bucket !== 'skipped' && <span className="ld-dose-dot" aria-hidden="true" />}
-      {STATUS_TEXT[status] || status}
+      {statusText(item)}
     </span>
   );
 }
@@ -190,11 +197,11 @@ export default function DoseScheduleView({
                           type="button"
                           className="ld-dose-card-body"
                           onClick={() => openDetail(item)}
-                          aria-label={`${item.name}, ${STATUS_TEXT[item.status] || item.status}. Open details.`}
+                          aria-label={`${item.name}, ${statusText(item)}. Open details.`}
                         >
                           <span className="ld-dose-card-head">
                             <span className="ld-dose-name">{item.name}</span>
-                            <StatusBadge status={item.status} />
+                            <StatusBadge item={item} />
                           </span>
                           <ItemMeta item={item} />
                           <span className="ld-dose-schedule">{recurrenceLabel(item.description)}</span>
@@ -307,7 +314,7 @@ export default function DoseScheduleView({
                           </th>
                           <td><ItemMeta item={item} /></td>
                           <td>{scheduleLine(item)}</td>
-                          <td><StatusBadge status={item.status} /></td>
+                          <td><StatusBadge item={item} /></td>
                           <td className="ld-dose-actions-col">
                             {!item.is_completed && onRecord && (
                               <button
