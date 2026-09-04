@@ -156,11 +156,18 @@ describe('AdminV2ReportsWeekly', () => {
   it('marks the configured alarm and the day that went under it', async () => {
     setup();
     await screen.findByText('Care completion');
-    const ann = chartInstances[0].config.options.plugins.annotation.annotations;
-    expect(ann.alarm).toMatchObject({ yMin: 90 });
-    expect(ann.worst).toMatchObject({ yValue: 55 });
+    // The alarm thresholds come from a second fetch (/api/settings) and the
+    // charts rebuild when they land, so the first instance built may predate
+    // them. Read the latest chart per vital and wait for the annotations.
+    const latest = (label) => chartInstances.slice().reverse()
+      .find(c => c.config.data.datasets.some(d => d.label === `${label} avg`));
+    await waitFor(() => {
+      const ann = latest('SpO2').config.options.plugins.annotation.annotations;
+      expect(ann.alarm).toMatchObject({ yMin: 90 });
+      expect(ann.worst).toMatchObject({ yValue: 55 });
+    });
     // Heart rate has no configured alarm on this page, so no line.
-    expect(chartInstances[1].config.options.plugins.annotation.annotations.alarm).toBeUndefined();
+    expect(latest('Heart rate').config.options.plugins.annotation.annotations.alarm).toBeUndefined();
   });
 
   it('splits care into medications and care tasks, and keeps adherence amber', async () => {
