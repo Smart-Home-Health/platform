@@ -38,7 +38,7 @@ from datetime import datetime, date
 from decimal import Decimal
 from typing import Any, Dict, Optional, Tuple
 
-from sqlalchemy import select
+from sqlalchemy import null, select
 from sqlalchemy.orm import Session
 
 from schemas.patient import Patient
@@ -381,6 +381,25 @@ def restore_patient_from_targz(db: Session, archive_bytes: bytes, account_id: in
         raise
 
 
+def _restored_orm_row(model, values):
+    """Keep archived SQL NULLs from being replaced by ORM insert defaults.
+
+    Missing legacy fields still use their normal defaults. Types which evaluate
+    None themselves (notably JSON) retain their existing serialization behavior.
+    """
+    from crud.backup_records import fields
+
+    columns = fields(model)
+    return model(**{
+        field: null() if (
+            value is None and columns[field].nullable
+            and not columns[field].type.should_evaluate_none
+            and (columns[field].default is not None or columns[field].server_default is not None)
+        ) else value
+        for field, value in values.items()
+    })
+
+
 def _restore_records(db, archive_bytes, account_id, manifest, rows, contents, members, attachments):
     from crud.backup_records import (MODELS, STREAMED, TABLE_NAMES, CLEARED_REFERENCES,
                                     EXCLUSIONS, fields, user_fields)
@@ -415,7 +434,7 @@ def _restore_records(db, archive_bytes, account_id, manifest, rows, contents, me
     if p.get('medical_record_number') and db.query(Patient).filter(Patient.medical_record_number == p['medical_record_number']).first():
         p['medical_record_number'] += '-restored-' + uuid.uuid4().hex[:12]
         warnings.append('The medical record number already existed and received a restored suffix.')
-    patient = Patient(**p)
+    patient = _restored_orm_row(Patient, p)
     db.add(patient)
     db.flush()
     new_patient_id = patient.id
@@ -558,7 +577,7 @@ def _restore_records(db, archive_bytes, account_id, manifest, rows, contents, me
                 if batch:
                     db.bulk_insert_mappings(model, batch)
                     batch.clear()
-                obj = model(**row)
+                obj = _restored_orm_row(model, row)
                 db.add(obj)
                 db.flush()
                 maps[name][old_id] = obj.id
