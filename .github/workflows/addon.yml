@@ -1,35 +1,151 @@
-name: Add-on image
+name: Promote accepted add-on images
 
-# Builds and pushes the Home Assistant add-on image (bundled Postgres/TimescaleDB
-# + the unified app) to GHCR on a version tag. Per HA add-on convention each arch
-# gets its own image tag (amd64-addon / aarch64-addon) that addon/config.yaml
-# references. Built from the repo root so the Dockerfile can reach backend/ +
-# frontend/. Uses the built-in GITHUB_TOKEN (no extra secrets).
+# Manual only: load the accepted archives, preserve their image IDs and labels,
+# and publish only the immutable version. No build, latest, source tag or release.
+# Complete both architecture acceptance reviews before running this workflow.
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      aarch64_run:
+        description: Successful native aarch64 artifact-only workflow run ID
+        required: true
+        type: string
+      aarch64_archive_sha256:
+        description: Independently accepted aarch64 archive SHA256 (64 hex digits)
+        required: true
+        type: string
+      aarch64_image_id:
+        description: Independently accepted aarch64 Docker image ID (sha256:...)
+        required: true
+        type: string
+      confirmation:
+        description: Type publish-0.5.0 after reviewing both image candidates
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: addon-promotion-0.5.0
+  cancel-in-progress: false
+
+env:
+  RELEASE_VERSION: 0.5.0
+  ACCEPTED_SOURCE: 7efc6392f460e03547a825815a02d8822863547f
+  AMD64_RUN: '38250274364'
+  AMD64_ARCHIVE_SHA256: fb3240be7775c6e9122d13d8cdef62b182312b1e8bf5f64c22dac8e56c563cee
+  AMD64_IMAGE_ID: sha256:3fc6d9b2bd6f56c1fb35a2fa4c8277ab9a263ce6ffef9ee13c57f6f7cf32f4bc
 
 jobs:
-  publish:
-    runs-on: ubuntu-latest
+  promote:
+    if: inputs.confirmation == 'publish-0.5.0'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
     permissions:
       contents: read
+      actions: read
       packages: write
-    strategy:
-      matrix:
-        include:
-          - arch: amd64
-            platform: linux/amd64
-            base: ghcr.io/home-assistant/amd64-base-debian:bookworm
-          - arch: aarch64
-            platform: linux/arm64
-            base: ghcr.io/home-assistant/aarch64-base-debian:bookworm
+    outputs:
+      amd64_digest: ${{ steps.push.outputs.amd64_digest }}
+      aarch64_digest: ${{ steps.push.outputs.aarch64_digest }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      AARCH64_RUN: ${{ inputs.aarch64_run }}
+      AARCH64_ARCHIVE_SHA256: ${{ inputs.aarch64_archive_sha256 }}
+      AARCH64_IMAGE_ID: ${{ inputs.aarch64_image_id }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
-      - uses: docker/setup-qemu-action@v3        # arm64 emulation
-      - uses: docker/setup-buildx-action@v3
+      - name: Verify accepted runs and exact source scope
+        id: runs
+        shell: python
+        run: |
+          import json, os, pathlib, re, subprocess
+          def need(ok, message):
+              if not ok: raise RuntimeError(message)
+          def git(*args):
+              return subprocess.check_output(['git', *args], text=True).strip()
+          def api(path):
+              return json.loads(subprocess.check_output(['gh', 'api', path], text=True))
+          allowed = {'.github/workflows/addon.yml', '.github/workflows/release.yml',
+                     '.github/workflows/rehearsal-addon.yml', 'addon/config.yaml', 'addon/CHANGELOG.md'}
+          source = os.environ['ACCEPTED_SOURCE']
+          need(re.search(r'^version: "0\.5\.0"$', pathlib.Path('addon/config.yaml').read_text(), re.M), 'Wrong release manifest')
+          need(set(git('diff', '--name-only', source, 'HEAD').splitlines()) <= allowed, 'Unreviewed runtime-source delta')
+          tag_status = subprocess.run(['git', 'show-ref', '--verify', '--quiet', 'refs/tags/v0.5.0']).returncode
+          need(tag_status == 1, 'Release source tag already exists or could not be checked')
+          plan = []
+          repo = os.environ['GITHUB_REPOSITORY']
+          for arch, platform in [('amd64', 'linux/amd64'), ('aarch64', 'linux/arm64')]:
+              prefix = arch.upper()
+              run_id = os.environ[prefix + '_RUN']
+              archive_sha = os.environ[prefix + '_ARCHIVE_SHA256']
+              image_id = os.environ[prefix + '_IMAGE_ID']
+              need(re.fullmatch(r'[0-9]+', run_id), 'Invalid run ID')
+              need(re.fullmatch(r'[0-9a-f]{64}', archive_sha), 'Invalid archive checksum')
+              need(re.fullmatch(r'sha256:[0-9a-f]{64}', image_id), 'Invalid image ID')
+              run = api(f'repos/{repo}/actions/runs/{run_id}')
+              need(run['conclusion'] == 'success' and run['status'] == 'completed', 'Candidate run did not pass')
+              need(run['repository']['full_name'] == repo and run['path'] == '.github/workflows/rehearsal-addon.yml', 'Wrong candidate workflow')
+              commit = run['head_sha']
+              need(re.fullmatch(r'[0-9a-f]{40}', commit), 'Invalid candidate source')
+              need(set(git('diff', '--name-only', source, commit).splitlines()) <= allowed, 'Candidate runtime differs from accepted source')
+              if arch == 'amd64': need(commit == source, 'amd64 must be the preserved accepted build')
+              jobs = api(f'repos/{repo}/actions/runs/{run_id}/jobs?per_page=100')['jobs']
+              job_names = {f'Build {arch} add-on'} | ({'build'} if arch == 'amd64' else set())
+              need(any(j['name'] in job_names and j['conclusion'] == 'success' and
+                       any(s['name'] == 'Smoke test fresh data and restart with no network' and s['conclusion'] == 'success'
+                           for s in j['steps']) for j in jobs), 'Native smoke gate missing')
+              name = f'shh-addon-{arch}-{commit}'
+              artifacts = api(f'repos/{repo}/actions/runs/{run_id}/artifacts?per_page=100')['artifacts']
+              matches = [a for a in artifacts if a['name'] == name and not a['expired']]
+              need(len(matches) == 1, 'Accepted artifact missing or expired; use retained bytes through a separately reviewed route')
+              plan.append(dict(arch=arch, platform=platform, commit=commit, run=run_id,
+                               archive_sha256=archive_sha, image_id=image_id, artifact=name))
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+                  output.write(f'{arch}_artifact={name}\n')
+          pathlib.Path('promotion-plan.json').write_text(json.dumps(plan))
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.runs.outputs.amd64_artifact }}
+          run-id: ${{ env.AMD64_RUN }}
+          github-token: ${{ github.token }}
+          path: accepted/amd64
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.runs.outputs.aarch64_artifact }}
+          run-id: ${{ inputs.aarch64_run }}
+          github-token: ${{ github.token }}
+          path: accepted/aarch64
+
+      - name: Verify both archives and loaded image identities before publication
+        shell: python
+        run: |
+          import hashlib, json, os, pathlib, subprocess
+          def need(ok, message):
+              if not ok: raise RuntimeError(message)
+          for item in json.loads(pathlib.Path('promotion-plan.json').read_text()):
+              root = pathlib.Path('accepted') / item['arch']
+              archive = root / f"smart-home-health-{item['arch']}.tar.gz"
+              need(set(p.name for p in root.iterdir()) == {archive.name, 'provenance.json', 'SHA256SUMS'}, 'Unexpected artifact files')
+              with archive.open('rb') as stream:
+                  need(hashlib.file_digest(stream, 'sha256').hexdigest() == item['archive_sha256'], 'Archive differs from accepted bytes')
+              subprocess.run(['sha256sum', '--check', 'SHA256SUMS'], cwd=root, check=True)
+              provenance = json.loads((root / 'provenance.json').read_text())
+              need(all(provenance[key] == item[key] for key in ['commit', 'platform', 'image_id']), 'Provenance mismatch')
+              need(provenance['repository'] == os.environ['GITHUB_SERVER_URL'] + '/' + os.environ['GITHUB_REPOSITORY'], 'Wrong source repository')
+              need(provenance['workflow_run'].endswith('/actions/runs/' + item['run']), 'Wrong artifact run')
+              subprocess.run(['docker', 'load', '--input', str(archive)], check=True)
+              image = json.loads(subprocess.check_output(['docker', 'image', 'inspect', item['image_id']], text=True))[0]
+              need(image['Id'] == item['image_id'], 'Loaded image ID mismatch')
+              need(image['Os'] + '/' + image['Architecture'] == item['platform'], 'Wrong image architecture')
+              need(image['Config']['Labels']['org.opencontainers.image.revision'] == item['commit'], 'Image revision mismatch')
 
       - uses: docker/login-action@v3
         with:
@@ -37,22 +153,115 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.arch }}-addon
-          tags: |
-            type=semver,pattern={{version}}
-            type=raw,value=latest
+      - name: Refuse existing versions, push exact images and retain registry receipts
+        id: push
+        shell: python
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          import base64, json, os, pathlib, re, subprocess, urllib.error, urllib.parse, urllib.request
+          def need(ok, message):
+              if not ok: raise RuntimeError(message)
+          version = os.environ['RELEASE_VERSION']
+          receipt_dir = pathlib.Path('promotion-receipts')
+          receipt_dir.mkdir()
+          plans = json.loads(pathlib.Path('promotion-plan.json').read_text())
+          tokens = {}
+          def manifest(arch):
+              name = f'smart-home-health/{arch}-addon'
+              if arch not in tokens:
+                  query = urllib.parse.urlencode({'service':'ghcr.io', 'scope':f'repository:{name}:pull'})
+                  basic = base64.b64encode((os.environ['GITHUB_ACTOR'] + ':' + os.environ['REGISTRY_TOKEN']).encode()).decode()
+                  request = urllib.request.Request('https://ghcr.io/token?' + query, headers={'Authorization':'Basic ' + basic})
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      tokens[arch] = json.load(response)['token']
+              request = urllib.request.Request(f'https://ghcr.io/v2/{name}/manifests/{version}',
+                  headers={'Authorization':'Bearer ' + tokens[arch], 'Accept':'application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json'})
+              try:
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      return response.headers['Docker-Content-Digest'], json.load(response)
+              except urllib.error.HTTPError as error:
+                  if error.code != 404: raise RuntimeError('Registry lookup failed; do not treat as absent') from None
+                  body = json.load(error)
+                  need(any(e.get('code') == 'MANIFEST_UNKNOWN' for e in body.get('errors', [])), 'Registry absence not proven')
+                  return None
+          # Both versions must be absent before either is pushed. A partial push is
+          # retained for reconciliation; this workflow never overwrites or retries it.
+          for item in plans:
+              need(manifest(item['arch']) is None, 'Immutable release version already exists')
+          for item in plans:
+              arch = item['arch']
+              target = f'ghcr.io/smart-home-health/{arch}-addon:{version}'
+              need(manifest(arch) is None, 'Release version appeared during validation')
+              subprocess.run(['docker', 'tag', item['image_id'], target], check=True)
+              receipt = {**item, 'tag':target, 'registry_digest':None, 'published':None,
+                         'state':'push_started', 'fresh_pull_verified':False, 'do_not_retry_without_reconciliation':True}
+              receipt_path = receipt_dir / (arch + '.json')
+              receipt_path.write_text(json.dumps(receipt, indent=2) + '\n')
+              with (receipt_dir / (arch + '-push.log')).open('w') as log:
+                  pushed = subprocess.run(['docker', 'push', target], stdout=log, stderr=subprocess.STDOUT)
+              receipt.update(push_exit_code=pushed.returncode, state='push_returned',
+                             published=True if pushed.returncode == 0 else None)
+              receipt_path.write_text(json.dumps(receipt, indent=2) + '\n')
+              need(pushed.returncode == 0, 'Push failed or outcome unknown; inspect preserved receipts, do not replay')
+              result = manifest(arch)
+              need(result is not None, 'Published manifest unavailable')
+              digest, body = result
+              need(re.fullmatch(r'sha256:[0-9a-f]{64}', digest), 'Invalid registry digest')
+              need(body['config']['digest'] == item['image_id'], 'Registry image config differs from accepted image')
+              receipt.update(registry_digest=digest, state='registry_config_verified')
+              receipt_path.write_text(json.dumps(receipt, indent=2) + '\n')
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+                  output.write(f'{arch}_digest={digest}\n')
 
-      - uses: docker/build-push-action@v6
+      - name: Preserve publication receipts even after a partial failure
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          context: .
-          file: addon/Dockerfile
-          platforms: ${{ matrix.platform }}
-          build-args: BUILD_FROM=${{ matrix.base }}
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          name: addon-publication-${{ github.run_id }}
+          path: promotion-receipts/
+          if-no-files-found: warn
+          retention-days: 90
+
+  verify-published:
+    needs: promote
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Independently pull the immutable registry digest on a fresh native runner
+        env:
+          ARCH: ${{ matrix.arch }}
+          REGISTRY_DIGEST: ${{ matrix.arch == 'amd64' && needs.promote.outputs.amd64_digest || needs.promote.outputs.aarch64_digest }}
+          EXPECTED_IMAGE_ID: ${{ matrix.arch == 'amd64' && env.AMD64_IMAGE_ID || inputs.aarch64_image_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="ghcr.io/smart-home-health/${ARCH}-addon@${REGISTRY_DIGEST}"
+          docker pull "$image"
+          test "$(docker image inspect --format '{{.Id}}' "$image")" = "$EXPECTED_IMAGE_ID"
+          mkdir verified
+          jq -n --arg arch "$ARCH" --arg digest "$REGISTRY_DIGEST" --arg image_id "$EXPECTED_IMAGE_ID" \
+            '{arch:$arch, registry_digest:$digest, image_id:$image_id, fresh_pull_verified:true}' > "verified/${ARCH}.json"
+          echo "Verified fresh pull: $image ($EXPECTED_IMAGE_ID)" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: addon-fresh-pull-${{ matrix.arch }}-${{ github.run_id }}
+          path: verified/
+          if-no-files-found: error
+          retention-days: 90

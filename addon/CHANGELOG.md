@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.5.0
+
+Patient backup migration and overdue medication scheduling. Migration 054 applies
+automatically on first start.
+
+- Patient exports and restores preserve care records, attachments, relationships,
+  legacy document paths and explicit empty values. Restore validates referenced
+  files and avoids leaking records across accounts.
+- A missed scheduled dose remains actionable during its grace period, with an
+  optional per-schedule override. Overdue doses appear in their own band, separate
+  from today's scheduled doses, and show when they were originally due.
+- Native amd64 and aarch64 appliance candidates are smoke-tested with fresh data
+  and a restart. Releases promote the accepted image archives without rebuilding
+  them or moving latest.
+
+**Upgrade notes**
+
+- Take a complete Home Assistant backup of the add-on and retain its matching
+  image before updating. Patient exports do not replace an appliance backup.
+- Home Assistant backups now stop the add-on while copying its bundled database,
+  then restart it if it was running. Ingress and reader ingestion pause during
+  that backup interval.
+- The existing add-on identity, ingress URL and persistent /data are unchanged.
+- Rollback requires the matching old data backup and old image; an image-only
+  downgrade does not undo database migrations.
+
 ## 0.4.0
 
 Appearance. The light theme is back, now in the same bedside-monitor
