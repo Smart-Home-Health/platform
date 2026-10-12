@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session
 from db import get_db
 from dependencies import get_current_user, get_current_account_id
 from models.users import User
+from schemas.patient import Patient
 from crud.backup import export_patient_to_targz, restore_patient_from_targz
 
 router = APIRouter(prefix="/api/backup", tags=["backup"])
@@ -47,10 +48,12 @@ def export_patient(
     account_id: int = Depends(get_current_account_id),
     _: User = Depends(_require_system_admin),
 ):
+    if db.query(Patient.id).filter(Patient.id == patient_id, Patient.account_id == account_id).first() is None:
+        raise HTTPException(status_code=404, detail="Patient not found")
     try:
         archive_bytes, filename = export_patient_to_targz(db, patient_id, account_id)
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e))
     return Response(
         content=archive_bytes,
         media_type="application/gzip",
@@ -59,13 +62,15 @@ def export_patient(
 
 
 @router.post("/import")
-async def import_patient(
+def import_patient(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     account_id: int = Depends(get_current_account_id),
     _: User = Depends(_require_system_admin),
 ):
-    archive_bytes = await file.read()
+    # FastAPI runs sync endpoints in its worker pool. Database and attachment
+    # restore can take minutes; keep the event loop available for live readers.
+    archive_bytes = file.file.read()
     if not archive_bytes:
         raise HTTPException(status_code=400, detail="Empty upload")
     try:

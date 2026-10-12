@@ -80,11 +80,16 @@ def get_monitoring_alerts(db: Session, limit=50, include_acknowledged=False, det
             }
 
             if detailed and row.start_data_id:
-                # Get all pulse ox data between start and end
+                # Other patients' live samples can be interleaved with a
+                # restored alert's remapped IDs. The ID interval alone does
+                # not establish patient ownership.
                 data_query = db.query(PulseOxData).filter(
+                    PulseOxData.patient_id == row.patient_id,
                     PulseOxData.id >= row.start_data_id,
-                    (row.end_data_id is None) | (PulseOxData.id <= row.end_data_id)
-                ).order_by(PulseOxData.timestamp.asc())
+                )
+                if row.end_data_id is not None:
+                    data_query = data_query.filter(PulseOxData.id <= row.end_data_id)
+                data_query = data_query.order_by(PulseOxData.timestamp.asc())
 
                 data_results = data_query.all()
                 alert['data_points'] = [

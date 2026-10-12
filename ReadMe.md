@@ -40,7 +40,9 @@ browser over WebSockets and bridges to MQTT / home‑automation systems.
 **Platform**
 - **Multi‑patient and multi‑business** support
 - **Role‑based access control** — users, roles, and fine‑grained permissions
-- **Backup & restore** of application data
+- **Patient backup & restore** of care records and stored attachments, with
+  relationship remapping and attachment integrity checks. See the
+  [backup guide](backend/BACKUP.md) for scope and migration requirements.
 - **Modern responsive web UI**, accessible from a phone or other LAN device
 - **Home Assistant friendly** — runs behind HA ingress, works embedded in an iframe,
   and publishes state to MQTT. **Accessing the app through HA ingress is the

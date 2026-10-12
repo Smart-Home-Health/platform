@@ -24,6 +24,7 @@ vi.mock('./AdminV2Layout', () => ({ default: ({ children }) => <div>{children}</
 const { authCtx } = vi.hoisted(() => ({ authCtx: { user: { is_system_admin: true } } }));
 vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => authCtx }));
 
+const { refreshPatients } = vi.hoisted(() => ({ refreshPatients: vi.fn() }));
 vi.mock('../../contexts/AdminPatientContext', () => ({
   useAdminPatient: () => ({
     patients: [
@@ -31,6 +32,7 @@ vi.mock('../../contexts/AdminPatientContext', () => ({
       { id: 9, first_name: 'Old', last_name: 'Record', is_active: false },
     ],
     loadingPatients: false,
+    refreshPatients,
   }),
 }));
 
@@ -42,6 +44,7 @@ import AdminV2Backup from './AdminV2Backup';
 beforeEach(() => {
   authCtx.user = { is_system_admin: true };
   apiFetch.mockReset();
+  refreshPatients.mockReset();
 });
 
 const renderPage = async () => { await act(async () => { render(<AdminV2Backup />); }); };
@@ -115,7 +118,45 @@ describe('AdminV2Backup', () => {
     expect(box).toHaveTextContent('Inserted 8455 rows across 2 tables');
     expect([...box.querySelectorAll('.cfg-kv li')].map(li => li.textContent))
       .toEqual(['vitals8421', 'medications34']);
+    expect(refreshPatients).toHaveBeenCalledOnce();
   });
+
+  it('shows restore warnings and keeps a successful import if refreshing the list fails', async () => {
+    await renderPage();
+    refreshPatients.mockRejectedValue(new Error('network interrupted'));
+    apiFetch.mockResolvedValue({
+      ok: true, status: 200,
+      json: async () => ({ new_patient_id: 12, inserted: { patient: 1 }, warnings: ['Reconnect readers before use.'] }),
+    });
+    await act(async () => {
+      fireEvent.change(document.querySelector('#restore-file-input'), {
+        target: { files: [new File(['x'], 'backup.tar.gz')] },
+      });
+    });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Restore From Backup/i })); });
+    expect(screen.getByRole('note')).toHaveTextContent('Reconnect readers before use.');
+    expect(screen.getByRole('status')).toHaveTextContent('Restored patient as new id 12');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Restore From Backup/i })).toBeDisabled();
+  });
+
+  it.each(['network interruption', 'incomplete success response'])(
+    'does not claim a successful restore after %s', async (failure) => {
+      await renderPage();
+      if (failure === 'network interruption') apiFetch.mockRejectedValue(new TypeError('Failed to fetch'));
+      else apiFetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+      await act(async () => {
+        fireEvent.change(document.querySelector('#restore-file-input'), {
+          target: { files: [new File(['x'], 'backup.tar.gz')] },
+        });
+      });
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Restore From Backup/i })); });
+      expect(screen.getByRole('alert')).toHaveTextContent('Check the patient list before retrying');
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+      expect(refreshPatients).not.toHaveBeenCalled();
+      expect(apiFetch).toHaveBeenCalledOnce();
+    },
+  );
 
   it('shows the access-denied section to a non-admin', async () => {
     authCtx.user = { is_system_admin: false };
