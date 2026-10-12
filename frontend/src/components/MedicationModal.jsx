@@ -113,6 +113,11 @@ const MedicationModal = ({ onClose }) => {
         status,
         is_completed: status === 'completed' || status === 'skipped',
         is_yesterday: !!item.is_yesterday,
+        // Grace period: a prior day's dose still actionable (status stays
+        // 'missed'; the view shows how far past it is and when it lapses).
+        in_grace: !!item.in_grace,
+        overdue_minutes: item.overdue_minutes,
+        grace_expires_at: item.grace_expires_at,
         completeLabel: status === 'missed' ? 'Take Now' : 'Mark Taken',
         skipLabel: 'Skip',
         showSkip: true,

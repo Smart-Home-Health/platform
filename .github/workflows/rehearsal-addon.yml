@@ -1,0 +1,110 @@
+name: Native add-on candidates (artifact only)
+
+# A PR trigger makes this usable before the workflow reaches default main.
+# Build the PR head itself, never a mutable ref or an implicit merge commit.
+on:
+  pull_request:
+    paths:
+      - .github/workflows/rehearsal-addon.yml
+      - scripts/smoke-addon.sh
+  workflow_dispatch:
+    inputs:
+      architecture:
+        description: Native architecture to build; each run creates a NEW candidate
+        type: choice
+        options: [aarch64, amd64, both]
+        default: aarch64
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rehearsal-addon-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build ${{ matrix.arch }} add-on
+    strategy:
+      fail-fast: false
+      # PRs build the missing aarch64 candidate. The previously accepted amd64
+      # artifact is preserved separately; a rebuild is never called the same bytes.
+      matrix:
+        include: ${{ fromJSON(inputs.architecture == 'both' && '[{"arch":"amd64","platform":"linux/amd64","machine":"x86_64","runner":"ubuntu-24.04"},{"arch":"aarch64","platform":"linux/arm64","machine":"aarch64","runner":"ubuntu-24.04-arm"}]' || inputs.architecture == 'amd64' && '[{"arch":"amd64","platform":"linux/amd64","machine":"x86_64","runner":"ubuntu-24.04"}]' || '[{"arch":"aarch64","platform":"linux/arm64","machine":"aarch64","runner":"ubuntu-24.04-arm"}]') }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Identify the exact source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = "${{ matrix.machine }}"
+          source_sha=$(git rev-parse HEAD)
+          echo "sha=${source_sha}" >> "$GITHUB_OUTPUT"
+          echo "image=shh-addon-rehearsal:${{ matrix.arch }}-${source_sha}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the native ${{ matrix.arch }} appliance
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: addon/Dockerfile
+          platforms: ${{ matrix.platform }}
+          build-args: BUILD_FROM=ghcr.io/home-assistant/${{ matrix.arch }}-base-debian:bookworm
+          push: false
+          load: true
+          tags: ${{ steps.source.outputs.image }}
+          labels: |
+            org.opencontainers.image.revision=${{ steps.source.outputs.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+      - name: Smoke test fresh data and restart with no network
+        env:
+          IMAGE: ${{ steps.source.outputs.image }}
+        run: bash scripts/smoke-addon.sh "$IMAGE"
+
+      - name: Export image and provenance
+        env:
+          IMAGE: ${{ steps.source.outputs.image }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          ARCH: ${{ matrix.arch }}
+          PLATFORM: ${{ matrix.platform }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact_dir="$RUNNER_TEMP/addon-rehearsal"
+          mkdir -p "$artifact_dir"
+          image_id=$(docker image inspect --format '{{.Id}}' "$IMAGE")
+          docker save "$IMAGE" | gzip -1 > "$artifact_dir/smart-home-health-${ARCH}.tar.gz"
+          jq -n --arg commit "$SOURCE_SHA" --arg image "$IMAGE" --arg image_id "$image_id" --arg platform "$PLATFORM" \
+            --arg repository "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --arg run "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            '{commit: $commit, image: $image, image_id: $image_id, platform: $platform,
+              repository: $repository, workflow_run: $run,
+              smoke: "fresh /data and restart, network none, health, first-run, SPA, ingress base, database head, stable signing secret"}' \
+            > "$artifact_dir/provenance.json"
+          cd "$artifact_dir"
+          sha256sum smart-home-health-${ARCH}.tar.gz provenance.json > SHA256SUMS
+          {
+            echo '### Rehearsal image'
+            echo "Source: $SOURCE_SHA"
+            echo "Image: $IMAGE ($image_id)"
+            echo 'The artifact is a Docker image archive, with provenance and checksums.'
+            echo 'Fresh-data and restart smoke passed with no network; signing secret persisted.'
+            echo 'No registry image, release or production installation was changed.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shh-addon-${{ matrix.arch }}-${{ steps.source.outputs.sha }}
+          path: ${{ runner.temp }}/addon-rehearsal/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0

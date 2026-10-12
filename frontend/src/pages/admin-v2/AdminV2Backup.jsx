@@ -34,7 +34,7 @@ const NONE = '__none__';
 
 const AdminV2Backup = () => {
   const { user } = useAuth();
-  const { patients, loadingPatients } = useAdminPatient();
+  const { patients, loadingPatients, refreshPatients } = useAdminPatient();
 
   const [exportPatientId, setExportPatientId] = useState('');
   const [exporting, setExporting] = useState(false);
@@ -112,6 +112,7 @@ const AdminV2Backup = () => {
       return;
     }
     setRestoring(true);
+    let rejected = false;
     try {
       const formData = new FormData();
       formData.append('file', restoreFile);
@@ -121,14 +122,22 @@ const AdminV2Backup = () => {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        rejected = res.status >= 400 && res.status < 500 && res.status !== 408;
         throw new Error(data.detail || `Restore failed (HTTP ${res.status})`);
+      }
+      if (!Number.isInteger(data.new_patient_id) || data.new_patient_id <= 0) {
+        throw new Error('The server returned an incomplete restore result.');
       }
       setRestoreResult(data);
       setRestoreFile(null);
       const fileInput = document.getElementById('restore-file-input');
       if (fileInput) fileInput.value = '';
+      // A refresh failure must not turn a committed restore into a retry prompt.
+      try { await refreshPatients?.(); } catch { /* The patient list can be reloaded. */ }
     } catch (err) {
-      setRestoreError(err.message || 'Restore failed');
+      setRestoreError(rejected
+        ? (err.message || 'Restore rejected')
+        : `Restore completion could not be confirmed. Check the patient list before retrying to avoid creating a duplicate. ${err.message || ''}`);
     } finally {
       setRestoring(false);
     }
@@ -159,7 +168,7 @@ const AdminV2Backup = () => {
               <EmField
                 label="Patient"
                 htmlFor="export-patient"
-                hint="All rows tied to this patient will be included. The download is a gzipped tar archive containing one JSON file per entity."
+                hint="Includes the patient's care records and stored attachments. Accounts, sign-in credentials, device pairing, and integration settings are configured separately."
               >
                 <EmSelect
                   id="export-patient"
@@ -204,11 +213,19 @@ const AdminV2Backup = () => {
                   </details>
                 </div>
               )}
+              {restoreResult?.warnings?.length > 0 && (
+                <div role="note">
+                  <p>Review before using the restored profile:</p>
+                  <ul>
+                    {restoreResult.warnings.map((warning, index) => <li key={index}>{warning}</li>)}
+                  </ul>
+                </div>
+              )}
 
               <EmField
                 label="Backup file (.tar.gz)"
                 htmlFor="restore-file-input"
-                hint="A new patient record will be created in this account. Original ids are not preserved — every foreign key is remapped. Any user references that no longer exist in this account will be attributed to the hidden “Imported (legacy attribution)” user, which is created automatically on first restore."
+                hint="Each restore creates a new patient in this account; it does not replace an existing patient. Historical caregivers are matched by username, and unmatched entries are marked as imported. Grant caregiver access and reconnect devices after restoring."
               >
                 <input
                   id="restore-file-input"

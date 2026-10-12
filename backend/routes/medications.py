@@ -417,7 +417,8 @@ async def api_add_medication_schedule(
             dose_amount=data.dose_amount,
             active=data.active,
             notes=data.notes or '',
-            patient_id=patient_id
+            patient_id=patient_id,
+            grace_period_hours=data.grace_period_hours,
         )
         
         if schedule_id:
@@ -455,8 +456,11 @@ async def update_medication_schedule_endpoint(
     db: Session = Depends(get_db)
 ):
     """Update an existing medication schedule."""
-    # Filter out None values
+    # Filter out None values. grace_period_hours is the exception: an explicit
+    # null clears the override back to the interval-derived default.
     update_data = {k: v for k, v in data.model_dump().items() if v is not None}
+    if 'grace_period_hours' in data.model_fields_set:
+        update_data['grace_period_hours'] = data.grace_period_hours
     
     success = update_medication_schedule(db, schedule_id, **update_data)
     if not success:

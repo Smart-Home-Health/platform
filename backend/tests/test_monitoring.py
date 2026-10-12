@@ -49,6 +49,47 @@ def test_list_alerts(admin_client):
     assert isinstance(resp.json(), list)
 
 
+@pytest.mark.parametrize("open_ended", [False, True])
+def test_detailed_alert_samples_exclude_interleaved_other_patient(
+        admin_client, db_session, account, patient, open_ended):
+    """Live input during restore must not enter another patient's alert detail."""
+    from datetime import timedelta
+    from schemas.monitoring_alert import MonitoringAlert
+    from schemas.patient import Patient
+    from schemas.pulse_ox_data import PulseOxData
+
+    now = datetime(2026, 7, 4, 12, 0, tzinfo=timezone.utc)
+    other = Patient(account_id=account.id, first_name="Other", last_name="Resident",
+                    created_at=now, updated_at=now)
+    db_session.add(other)
+    db_session.flush()
+    samples = []
+    for offset, patient_id, spo2 in ((0, patient.id, 97), (1, other.id, 80),
+                                   (2, patient.id, 98), (3, patient.id, 99)):
+        sample = PulseOxData(patient_id=patient_id, timestamp=now + timedelta(seconds=offset),
+                             spo2=spo2, bpm=75, created_at=now)
+        db_session.add(sample)
+        db_session.flush()  # Ensure the other patient's ID lies inside the interval.
+        samples.append(sample)
+    db_session.add(MonitoringAlert(
+        account_id=account.id, patient_id=patient.id, start_time=now, created_at=now,
+        start_data_id=samples[0].id,
+        end_data_id=None if open_ended else samples[2].id,
+        end_time=None if open_ended else samples[2].timestamp,
+        acknowledged=False,
+    ))
+    db_session.commit()
+
+    response = admin_client.get(
+        f"/api/monitoring/alerts?patient_id={patient.id}&detailed=true")
+    assert response.status_code == 200
+    alert, = response.json()
+    expected = [samples[0].id, samples[2].id]
+    if open_ended:
+        expected.append(samples[3].id)
+    assert [point["id"] for point in alert["data_points"]] == expected
+
+
 def test_alerts_count(admin_client, alert):
     resp = admin_client.get("/api/monitoring/alerts/count")
     assert resp.status_code == 200

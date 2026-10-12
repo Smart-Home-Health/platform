@@ -421,7 +421,7 @@ def get_medication_names_for_dropdown(db: Session):
 
 
 # --- MedicationSchedule CRUD ---
-def add_medication_schedule(db: Session, medication_id, cron_expression, description=None, dose_amount=None, active=True, notes=None, patient_id=None):
+def add_medication_schedule(db: Session, medication_id, cron_expression, description=None, dose_amount=None, active=True, notes=None, patient_id=None, grace_period_hours=None):
     """
     Add a new medication schedule
     """
@@ -444,6 +444,7 @@ def add_medication_schedule(db: Session, medication_id, cron_expression, descrip
             dose_amount=dose_amount,
             active=active,
             notes=notes,
+            grace_period_hours=grace_period_hours,
             created_at=now,
             updated_at=now
         )
@@ -476,6 +477,7 @@ def get_medication_schedules(db: Session, medication_id):
                 'dose_amount': s.dose_amount,
                 'active': s.active,
                 'notes': s.notes,
+                'grace_period_hours': s.grace_period_hours,
                 'created_at': s.created_at,
                 'updated_at': s.updated_at
             }
@@ -506,6 +508,7 @@ def get_all_medication_schedules(db: Session, active_only=True):
                 'dose_amount': s.dose_amount,
                 'active': s.active,
                 'notes': s.notes,
+                'grace_period_hours': s.grace_period_hours,
                 'created_at': s.created_at,
                 'updated_at': s.updated_at
             }
@@ -906,6 +909,27 @@ def get_daily_medication_schedule(db: Session, patient_id=None, tz=None):
                     'is_completed': False
                 })
         
+        # Grace-period doses (crud/dose_grace.py): unfilled firings older than
+        # the window that are still actionable. They ride along as 'missed'
+        # with in_grace set, so the badges count them as overdue and the
+        # schedule page offers Take Now. Yesterday's missed rows above get
+        # annotated when their grace is still running.
+        from crud.dose_grace import find_grace_period_doses, merge_grace_rows
+        grace_patient_id = patient_id
+        if grace_patient_id is None:
+            raw = get_setting(db, 'current_patient_id')
+            try:
+                grace_patient_id = int(raw) if raw else None
+            except (ValueError, TypeError):
+                grace_patient_id = None
+        grace_rows = find_grace_period_doses(
+            db, grace_patient_id, before_utc=local_today_start_utc, now_utc=current_time,
+        )
+        for row in grace_rows:
+            row['status'] = 'missed'
+            row['is_completed'] = False
+        merge_grace_rows(all_scheduled, grace_rows)
+
         # Sort by scheduled time chronologically
         all_scheduled.sort(key=lambda x: x['scheduled_time'])
         

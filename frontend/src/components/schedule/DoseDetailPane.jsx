@@ -28,6 +28,7 @@ import config, { apiFetch } from '../../config';
 import { bucketFor, recurrenceLabel } from './scheduleRollup';
 import { DOSE_LABELS } from './scheduleLabels';
 import { ChevronRightIcon } from '../Icons';
+import { formatOverdue, overdueLabel } from './scheduleStatus';
 
 const STATUS_TEXT = {
   completed: 'Given',
@@ -163,13 +164,20 @@ export default function DoseDetailPane({
             {fmtTime(item.scheduled_time)}
             {recurrenceLabel(item.description) ? ` · ${recurrenceLabel(item.description)}` : ''}
             {item.is_yesterday ? ' · yesterday' : ''}
+            {item.in_grace ? ` · ${formatOverdue(item.overdue_minutes)} ago` : ''}
           </dd>
         </div>
+        {item.in_grace && item.grace_expires_at && (
+          <div>
+            <dt>Grace until</dt>
+            <dd>{fmtDateTime(item.grace_expires_at)}</dd>
+          </div>
+        )}
         <div>
           <dt>Status</dt>
           <dd className={`ld-dose-detail-status ${bucket}`}>
             {bucket !== 'given' && bucket !== 'skipped' && <span className="ld-dose-dot" aria-hidden="true" />}
-            {STATUS_TEXT[item.status] || item.status}
+            {overdueLabel(item) || STATUS_TEXT[item.status] || item.status}
           </dd>
         </div>
         {item._raw?.completed_at && (

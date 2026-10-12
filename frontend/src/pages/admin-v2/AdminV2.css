@@ -1913,6 +1913,24 @@
   font-size: 0.65rem;
 }
 
+/* Grace-period doses: a prior day's unfilled doses still actionable. They
+   sit in their own band above the hours so they never read as today's
+   rows; the colour rides on the label and badge. */
+.admin-v2-schedule-row.overdue-band .admin-v2-hour-label {
+  color: var(--vc-state-alert);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.admin-v2-badge-overdue {
+  background: color-mix(in srgb, var(--vc-state-alert) 18%, transparent);
+  color: var(--vc-state-alert);
+  padding: 0.1rem 0.45rem;
+  font-size: 0.65rem;
+  white-space: nowrap;
+}
+
 /* Nutrition PRN variants: green for intake (matches nutrition column accent),
    amber for output so caregivers can tell them apart at a glance. */
 .admin-v2-badge-prn-in {
