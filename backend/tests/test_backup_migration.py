@@ -28,16 +28,18 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, select, text
 from sqlalchemy.exc import ProgrammingError
 
 from crud.backup import export_patient_to_targz, restore_patient_from_targz
+from models.custom_vital_definition import CustomVitalDefinition
 from models.patient_env_range import PatientEnvRange
 from models.patient_vent_pin import PatientVentPin, PatientVentPinState
 from models.patient_vital_range import PatientVitalRange
 from models.users import Account, User
 from schemas.care_task import CareTask
 from schemas.care_task_log import CareTaskLog
+from schemas.clinical_results import LabResult
 from schemas.dme_shipment import DMEShipment, DMEShipmentItem, DMEReceiptItem
 from schemas.equipment import Equipment
 from schemas.equipment_count_log import EquipmentCountLog
@@ -253,6 +255,64 @@ def _prepare_matching_caregiver(db, graph):
 def _patient_rows(db, model, patient_id):
     return (db.query(model).execution_options(include_voided=True)
             .filter_by(patient_id=patient_id).all())
+
+
+@pytest.mark.parametrize("explicit_nulls", [True, False], ids=["nulls", "values"])
+def test_roundtrip_preserves_explicit_values_in_columns_with_defaults(
+    db_session, migration_graph, explicit_nulls,
+):
+    """Historical SQL NULLs must survive string, boolean, integer and date defaults."""
+    db, g = db_session, migration_graph
+    lab = _add(db, LabResult, account_id=g.source_account.id, patient_id=g.source.id,
+               created_at=WHEN)
+    alert = _add(db, MonitoringAlert, account_id=g.source_account.id,
+                 patient_id=g.source.id, start_time=WHEN, created_at=WHEN)
+    custom = _add(db, CustomVitalDefinition, patient_id=g.source.id,
+                  name="synthetic_custom_vital", created_at=WHEN.replace(tzinfo=None))
+    cases = [
+        ("vitals", g.vital, {"code_system": "", "source": "device-import"}),
+        ("lab_results", lab, {"code_system": "urn:synthetic-lab", "source": "lab-import"}),
+        ("monitoring_alerts", alert, {"acknowledged": True, "oxygen_used": False}),
+        ("nutrition_schedules", g.schedule, {"reminder_minutes_before": 0}),
+        ("custom_vital_definitions", custom, {"created_at": WHEN.replace(tzinfo=None)}),
+    ]
+    expected = []
+    for name, row, non_null_values in cases:
+        values = {field: None if explicit_nulls else value
+                  for field, value in non_null_values.items()}
+        model = type(row)
+        # UPDATE stores actual SQL NULLs. Seeding model(field=None) would itself
+        # apply the insert default and fail to reproduce historical records.
+        db.execute(model.__table__.update().where(model.id == row.id).values(**values))
+        expected.append((name, model, row.id, values))
+    # JSON None means JSON null, not SQL NULL; keep that existing distinction.
+    json_value = None if explicit_nulls else {"synthetic": [0, False, None]}
+    db.execute(Vital.__table__.update().where(Vital.id == g.vital.id).values(raw_data=json_value))
+    db.commit()
+    db.expire_all()
+    assert db.scalar(select(Vital.raw_data.is_(None)).where(Vital.id == g.vital.id)) is False
+
+    archive = _export(db, g)
+    members = _members(archive)
+    for name, model, source_id, values in expected:
+        exported = next(row for row in json.loads(members[name + ".json"])
+                        if row["id"] == source_id)
+        for field, value in values.items():
+            assert exported[field] == (value.isoformat() if isinstance(value, datetime) else value)
+
+    result = restore_patient_from_targz(db, archive, g.target.id)
+    db.expire_all()
+    restored_id = result["new_patient_id"]
+    for name, model, source_id, values in expected:
+        restored, = _patient_rows(db, model, restored_id)
+        source, = (db.query(model).execution_options(include_voided=True)
+                   .filter(model.id == source_id).all())
+        for field, value in values.items():
+            assert getattr(restored, field) == value, (name, field)
+            assert getattr(source, field) == value, (name, field, "source changed")
+    restored_vital, = _patient_rows(db, Vital, restored_id)
+    assert restored_vital.raw_data == json_value
+    assert db.scalar(select(Vital.raw_data.is_(None)).where(Vital.id == restored_vital.id)) is False
 
 
 def test_cross_account_roundtrip_remaps_care_graph_and_preserves_target(db_session, migration_graph):
@@ -525,6 +585,14 @@ def test_legacy_archive_restores_with_explicit_incompleteness_warnings(
         "id": 702, "patient_id": source_id, "timestamp": stamp,
         "spo2": 97, "bpm": 75, "created_at": stamp,
     }]
+    vital_base = {
+        "patient_id": source_id, "timestamp": stamp, "vital_type": "spo2",
+        "value": 97, "created_at": stamp,
+    }
+    vital_rows = [
+        dict(vital_base, id=703),  # Omitted legacy fields should still default.
+        dict(vital_base, id=704, code_system=None, source=None),
+    ]
     manifest = {
         "format_version": version, "source_account_id": source_account,
         "exported_at": stamp, "patient": {"id": source_id, "first_name": "Legacy"},
@@ -532,6 +600,7 @@ def test_legacy_archive_restores_with_explicit_incompleteness_warnings(
     json_members = {
         "manifest.json": manifest, "patient.json": [patient_row],
         "providers.json": [provider_row], "nutrition_intakes.json": [intake_row],
+        "vitals.json": vital_rows,
         "users_referenced.json": {
             str(admin_user.id): {"username": "unavailable-external-caregiver", "full_name": "Old caregiver"}},
     }
@@ -560,6 +629,10 @@ def test_legacy_archive_restores_with_explicit_incompleteness_warnings(
     assert author.username.startswith("__import_account_")
     sample, = _patient_rows(db, PulseOxData, restored_id)
     assert (sample.timestamp, sample.spo2, sample.bpm) == (WHEN, 97, 75)
+    legacy_vitals = sorted(_patient_rows(db, Vital, restored_id), key=lambda row: row.id)
+    assert [(row.code_system, row.source) for row in legacy_vitals] == [
+        ("http://loinc.org", "manual"), (None, None),
+    ]
     warnings = " ".join(result["warnings"]).lower()
     assert "legacy" in warnings and "omitted" in warnings
     assert "attachment" in warnings
