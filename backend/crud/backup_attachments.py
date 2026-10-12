@@ -134,12 +134,19 @@ export must never silently omit a missing file.
             elif storage == "file":
                 if not row.get("file_path"):
                     raise ValueError("Referenced document has no stored file")
-                # Some older clinical rows have no account_id, and their store
-                # namespace is consequently 0. Never accept another patient's.
-                root = doc_root / str(row.get("account_id") or "0") / str(patient_id)
                 if row.get("account_id") not in (None, account_id):
                     raise ValueError("Attachment belongs to another account")
-                with _source(Path(row["file_path"]), root) as stream:
+                if row.get("patient_id") != patient_id:
+                    raise ValueError("Attachment belongs to another patient")
+                source = Path(row["file_path"])
+                root = doc_root / str(row.get("account_id") or "0") / str(patient_id)
+                # Assigning an account to a legacy document does not move its
+                # blob out of namespace 0. Accept only its recorded path under
+                # this same patient's legacy root; never search for a fallback.
+                legacy_root = doc_root / "0" / str(patient_id)
+                if source.absolute().is_relative_to(legacy_root.absolute()):
+                    root = legacy_root
+                with _source(source, root) as stream:
                     add(stream, kind, row["id"])
             else:
                 raise ValueError("Unsupported document storage type")

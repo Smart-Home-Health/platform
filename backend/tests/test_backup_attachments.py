@@ -158,6 +158,85 @@ class BackupAttachmentsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "outside"):
             self.export(rows)
 
+    def test_legacy_document_namespace_round_trip_preserves_source(self):
+        for member in ("clinical_documents.json", "dme_shipment_documents.json"):
+            for account_id in (3, None):
+                with self.subTest(member=member, account_id=account_id):
+                    contents = copy.deepcopy(self.contents)
+                    row = contents[member][0]
+                    legacy = self.put(self.docs / "0/7" / Path(row["file_path"]).name,
+                                      b"legacy document bytes")
+                    row.update(account_id=account_id, file_path=str(legacy))
+                    before_rows = copy.deepcopy(contents)
+                    before_files = {p: p.read_bytes() for p in self.root.rglob("*") if p.is_file()}
+                    archive, manifest, rows = self.export(contents)
+                    self.assertEqual(rows[member][0]["file_path"], str(legacy))
+                    self.assertEqual(rows[member][0]["account_id"], account_id)
+                    with attachments.AttachmentRestore(archive, manifest) as restored:
+                        restored.restore(rows, 91, 42, {self.old_vent: self.new_vent})
+                        target = Path(rows[member][0]["file_path"])
+                        self.assertEqual(target.parent, self.docs / "42/91")
+                        self.assertNotEqual(target.name, legacy.name)
+                        self.assertEqual(target.read_bytes(), b"legacy document bytes")
+                    self.assertEqual(contents, before_rows)
+                    self.assertEqual({p: p.read_bytes() for p in self.root.rglob("*") if p.is_file()},
+                                     before_files)
+
+    def test_legacy_document_namespace_rejects_other_account_or_patient_row(self):
+        legacy = self.put(self.docs / "0/7/report.pdf", b"legacy document")
+        for member in ("clinical_documents.json", "dme_shipment_documents.json"):
+            for field, value, error in (("account_id", 4, "another account"),
+                                        ("patient_id", 8, "another patient"),
+                                        ("patient_id", None, "another patient")):
+                with self.subTest(member=member, field=field, value=value):
+                    rows = copy.deepcopy(self.contents)
+                    rows[member][0].update(file_path=str(legacy), **{field: value})
+                    with self.assertRaisesRegex(ValueError, error):
+                        self.export(rows)
+
+    def test_document_namespace_rejects_other_account_or_patient_path(self):
+        for member in ("clinical_documents.json", "dme_shipment_documents.json"):
+            for namespace in ("4/7", "3/8", "0/8", "0/70"):
+                with self.subTest(member=member, namespace=namespace):
+                    rows = copy.deepcopy(self.contents)
+                    other = self.put(self.docs / namespace / "report.pdf", b"other owner")
+                    rows[member][0]["file_path"] = str(other)
+                    with self.assertRaisesRegex(ValueError, "outside"):
+                        self.export(rows)
+
+    def test_legacy_document_namespace_rejects_file_and_directory_symlinks(self):
+        for member in ("clinical_documents.json", "dme_shipment_documents.json"):
+            for directory in (False, True):
+                with self.subTest(member=member, directory=directory):
+                    rows = copy.deepcopy(self.contents)
+                    link = self.docs / "0/7" / (member + str(directory))
+                    link.parent.mkdir(parents=True, exist_ok=True)
+                    link.symlink_to(self.clinical.parent if directory else self.clinical,
+                                    target_is_directory=directory)
+                    rows[member][0]["file_path"] = str(link / "report.pdf" if directory else link)
+                    with self.assertRaisesRegex(ValueError, "symbolic"):
+                        self.export(rows)
+
+    def test_legacy_document_namespace_rejects_traversal(self):
+        self.put(self.docs / "0/8/report.pdf", b"other patient")
+        (self.docs / "0/7").mkdir()
+        for member in ("clinical_documents.json", "dme_shipment_documents.json"):
+            with self.subTest(member=member):
+                rows = copy.deepcopy(self.contents)
+                rows[member][0]["file_path"] = str(self.docs / "0/7/../8/report.pdf")
+                with self.assertRaisesRegex(ValueError, "Unsafe"):
+                    self.export(rows)
+
+    def test_missing_legacy_document_does_not_fall_back_to_current_namespace(self):
+        for member in ("clinical_documents.json", "dme_shipment_documents.json"):
+            with self.subTest(member=member):
+                rows = copy.deepcopy(self.contents)
+                current = Path(rows[member][0]["file_path"])
+                self.assertTrue(current.is_file())
+                rows[member][0]["file_path"] = str(self.docs / "0/7" / current.name)
+                with self.assertRaisesRegex(ValueError, "missing or unreadable"):
+                    self.export(rows)
+
     def test_source_symlink_is_rejected(self):
         self.shipment.unlink()
         self.shipment.symlink_to(self.clinical)
