@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.5.1
+
+Home Assistant account authentication and on-screen keyboard fixes. No database
+migrations beyond 0.5.0.
+
+- HA ingress now keeps account access when a caregiver locks, signs out,
+  switches users, or their session expires. Only the selected app user is
+  cleared, including when cookies are unavailable or the page is reloaded.
+- An extra account password is optional through ingress and defaults off with
+  `account_password_enabled: false`. Set it to `true` to require the extra
+  password. Direct LAN access retains its existing authentication flow.
+- Disabling `ha_identity_login` now reliably opens the user picker while HA
+  continues to authenticate the account. First-run setup honors the separate
+  account and user password settings.
+- Editable fields offer **Show keyboard** and **Hide keyboard** buttons, with
+  a remembered browser preference. No `vkb` URL parameter is needed through
+  ingress. Phones and tablets keep their native keyboard by default.
+- Autofocused sign-in fields show the keyboard control immediately. PIN and
+  password fields remain visible above the keyboard, and typing in dialogs
+  preserves focus without closing them.
+
+**Upgrade notes**
+
+- Existing HA installs default the new account-password option off. To opt in,
+  set an app account password before enabling `account_password_enabled`.
+- The add-on identity, data storage, ingress configuration, and cold-backup
+  behavior are unchanged. This update does not require a reinstall.
+
 ## 0.5.0
 
 Patient backup migration and overdue medication scheduling. Migration 054 applies
