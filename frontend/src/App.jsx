@@ -92,7 +92,7 @@ import "./App.css";
 
 function AppContent() {
   const { isFirstRun, loading } = useAuth();
-  const { showVKB } = useVirtualKeyboard();
+  const { showVKB, setShowVKB } = useVirtualKeyboard();
   // Dev-only preview of the first-run screens (`/?firstRun=1`) — the real
   // gate is the backend's "no admin user yet"; this is stripped from prod.
   const devFirstRun = import.meta.env.DEV
@@ -252,7 +252,7 @@ function AppContent() {
         </Routes>}
         </IdleLockProvider>
       </Router>
-      <VirtualKeyboard show={showVKB} />
+      <VirtualKeyboard show={showVKB} onShowChange={setShowVKB} />
       </PinChallengeProvider>
     </ActiveInputProvider>
     </ThemeProvider>

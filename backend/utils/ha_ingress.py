@@ -25,9 +25,9 @@ through ingress. The add-on also publishes a plain LAN port for shared-device
 iframes, where a direct client could type the headers itself — so identity is
 released only when the TCP peer is the Supervisor's ingress proxy.
 
-These headers are read nowhere else in the app: the auth middleware never
-looks at them, and only the ``/api/auth/ha/*`` routes call into this module,
-so a forged header on any other route is inert.
+The auth middleware never trusts these headers. Authentication and first-run
+routes use this module's socket-peer check before accepting HA identity or
+account authentication; forged headers on a direct LAN request are inert.
 """
 import logging
 import os
@@ -70,8 +70,9 @@ def ha_identity_login_enabled() -> bool:
 
 def trusted_ingress_peer(request) -> bool:
     """True only when this request can be trusted to carry Supervisor-injected
-    ingress headers: we are running as the HA add-on (SHH_INGRESS), identity
-    login isn't disabled, and the TCP peer is the ingress proxy.
+    ingress headers: we are running as the HA add-on (SHH_INGRESS) and the TCP
+    peer is the ingress proxy. Account authentication and identity auto-login
+    have separate options; neither changes whether the transport is trusted.
 
     ``request.client.host`` is the real socket peer: uvicorn runs without
     --proxy-headers here, and X-Forwarded-For is only ever honored under
@@ -79,22 +80,28 @@ def trusted_ingress_peer(request) -> bool:
     """
     if not _env_truthy("SHH_INGRESS"):
         return False
-    if not ha_identity_login_enabled():
-        return False
     peers = os.getenv("SHH_INGRESS_TRUSTED_PEERS", DEFAULT_TRUSTED_PEERS)
     allowed = {p.strip() for p in peers.split(",") if p.strip()}
     client = request.client
     return bool(client and client.host in allowed)
 
 
+def ha_account_auth_enabled(request) -> bool:
+    """HA authenticates the account by default, but only on trusted ingress.
+
+    The optional extra app account password never affects direct LAN access.
+    """
+    return trusted_ingress_peer(request) and not _env_truthy("SHH_HA_ACCOUNT_PASSWORD_ENABLED")
+
+
 def ingress_identity(request) -> Optional[HAIdentity]:
     """The HA identity on a trusted ingress request, or None.
 
-    None when the peer isn't trusted, the id header is missing (Core < 2023.9),
-    or the id is malformed (defense in depth — a trusted peer should never send
-    a malformed id).
+    None when identity login is disabled, the peer isn't trusted, the id header
+    is missing (Core < 2023.9), or the id is malformed (defense in depth — a
+    trusted peer should never send a malformed id).
     """
-    if not trusted_ingress_peer(request):
+    if not trusted_ingress_peer(request) or not ha_identity_login_enabled():
         return None
     ha_user_id = (request.headers.get("X-Remote-User-Id") or "").strip()
     if not _HA_USER_ID_RE.match(ha_user_id):

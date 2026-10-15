@@ -67,12 +67,19 @@ const storeToken = (data) => {
   if (data?.access_token) {
     sessionStorage.setItem('auth_token', data.access_token);
   }
+  if (data?.user) rememberHaUser();
 };
 
 // Per-tab suppression of HA auto-login. Set on lock / logout / switch-user so
 // the user picker sticks in this tab instead of the HA identity instantly
 // signing back in; a fresh tab opened from the HA sidebar auto-logs-in again.
 export const HA_NO_AUTO_KEY = 'shh_ha_no_auto';
+const HA_HAD_USER_KEY = 'shh_ha_had_user';
+const rememberHaUser = () => {
+  if (isIngress()) {
+    try { sessionStorage.setItem(HA_HAD_USER_KEY, '1'); } catch { /* private mode */ }
+  }
+};
 export const suppressHaAutoLogin = () => {
   try { sessionStorage.setItem(HA_NO_AUTO_KEY, '1'); } catch { /* private mode */ }
 };
@@ -93,6 +100,7 @@ export const AuthProvider = ({ children }) => {
   // The HA user this ingress session arrived as: {ha_user_id, username,
   // display_name, mapped}. Null outside ingress / before the first HA login.
   const [haIdentity, setHaIdentity] = useState(null);
+  const [haAccountAuth, setHaAccountAuth] = useState(false);
 
   // Keep a ref in sync with authLevel so the fetch interceptor (installed once)
   // always reads the current value rather than a stale closure.
@@ -111,23 +119,34 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     installAuthInterceptor({
       getAuthLevel: () => authLevelRef.current,
-      onStale: () => checkFirstRunAndSession(),
+      onStale: () => {
+        // Expiry clears the caregiver, while HA can renew account access.
+        if (isIngress()) suppressHaAutoLogin();
+        return checkFirstRunAndSession();
+      },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- auth-critical: interceptor is intentionally installed once on mount; checkFirstRunAndSession is recreated each render, so listing it would re-install per render
   }, []);
 
   // Sign in from the Home Assistant identity riding the ingress connection.
-  // Only attempted when the page came through ingress and this tab hasn't
-  // locked/switched away; the backend independently verifies the request
+  // Only attempted when the page came through ingress. Locking suppresses
+  // user selection, not HA account access; the backend verifies the request
   // really came from the ingress peer (403 otherwise). Returns true when a
   // session (full for a mapped HA user, account-level otherwise) was minted.
-  const tryHaLogin = async () => {
+  const tryHaLogin = async ({ selectUser = true } = {}) => {
     if (!isIngress()) return false;
     try {
-      if (sessionStorage.getItem(HA_NO_AUTO_KEY)) return false;
+      // A tab that previously held a user has expired or been locked. A fresh
+      // sidebar tab can still use identity sign-in, but expiry must clear only
+      // the user even when recovery happens during a page reload.
+      if (sessionStorage.getItem(HA_NO_AUTO_KEY) || sessionStorage.getItem(HA_HAD_USER_KEY)) selectUser = false;
     } catch { /* private mode: treat as not suppressed */ }
     try {
-      const res = await authFetch(`${API_BASE_URL}/api/auth/ha/login`, { method: 'POST' });
+      const res = await authFetch(`${API_BASE_URL}/api/auth/ha/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ select_user: selectUser }),
+      });
       if (!res.ok) return false; // 403 = not really ingress; use the normal flow
       const data = await res.json();
       storeToken(data);
@@ -165,6 +184,7 @@ export const AuthProvider = ({ children }) => {
 
       const firstRunData = await firstRunRes.json();
       setSkipAccountPassword(!!firstRunData.skip_account_password);
+      setHaAccountAuth(!!firstRunData.ha_account_auth);
 
       if (firstRunData.is_first_run) {
         setIsFirstRun(true);
@@ -180,8 +200,11 @@ export const AuthProvider = ({ children }) => {
         setReadRestricted(!!sessionData.read_restricted);
 
         // Determine auth level from session
-        if (sessionData.user_id) {
+        if (sessionData.read_restricted && firstRunData.ha_account_auth && await tryHaLogin({ selectUser: false })) {
+          // Replace an old quick-entry session with HA account access.
+        } else if (sessionData.user_id) {
           // Full auth - both account and user
+          rememberHaUser();
           setUser({
             id: sessionData.user_id,
             username: sessionData.username,
@@ -207,6 +230,7 @@ export const AuthProvider = ({ children }) => {
             setAccount({ id: sessionData.account_id });
             setAuthLevel('account');
             setUser(null);
+            setShowAuthModal(false);
             // Don't show auth modal - user needs to select a profile
           }
         } else if (await tryHaLogin()) {
@@ -306,6 +330,10 @@ export const AuthProvider = ({ children }) => {
       const data = await res.json();
       storeToken(data);
       await new Promise(resolve => setTimeout(resolve, 100));
+
+      // After the optional extra account password, a fresh HA tab can still
+      // sign in as its linked user (who may have no separate app password).
+      if (!data.read_restricted && await tryHaLogin()) return { success: true, data };
 
       setAccount(data.account);
       setAuthLevel('account');
@@ -541,30 +569,58 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const clearUserSession = () => {
+    sessionStorage.removeItem('auth_token');
+    clearMessagesPopThrottle();
+    setUser(null);
+    setAccount(null);
+    setAuthLevel(null);
+    setReadRestricted(false);
+    setShowAuthModal(true);
+  };
+
+  const adoptAccountSession = (data) => {
+    if (data?.auth_level !== 'account' || !data.account || !data.access_token) return false;
+    storeToken(data);
+    setAccount(data.account);
+    setUser(null);
+    setAuthLevel('account');
+    setReadRestricted(!!data.read_restricted);
+    setShowAuthModal(false);
+    return true;
+  };
+
   const logout = async () => {
+    suppressHaAutoLogin();
+    let data;
     try {
-      await authFetch(`${API_BASE_URL}/api/auth/logout`, { method: 'POST' });
+      const res = await authFetch(`${API_BASE_URL}/api/auth/logout`, { method: 'POST' });
+      if (res.ok) data = await res.json();
     } catch (error) {
       console.error('Logout error:', error);
-    } finally {
-      sessionStorage.removeItem('auth_token');
-      suppressHaAutoLogin(); // don't let the HA identity instantly sign back in (this tab)
-      clearMessagesPopThrottle();
-      setAccount(null);
-      setUser(null);
-      setAuthLevel(null);
-      setReadRestricted(false);
-      setShowAuthModal(true);
+    }
+    clearUserSession();
+    // Keep HA's new account-only token even when iframe cookies are blocked.
+    if (!adoptAccountSession(data) && haAccountAuth) {
+      await tryHaLogin({ selectUser: false });
     }
   };
 
-  // Switch user within same account (keeps account logged in)
+  // Lock on the server too, so reloads and iframe bearer tokens cannot restore
+  // the previous caregiver after switching users.
   const switchUser = async () => {
-    suppressHaAutoLogin(); // the picker must stick in this tab under ingress
-    clearMessagesPopThrottle();
-    setUser(null);
-    setAuthLevel('account');
-    // Account stays logged in, just need to select user again
+    suppressHaAutoLogin();
+    let data;
+    try {
+      const res = await authFetch(`${API_BASE_URL}/api/auth/lock`, { method: 'POST' });
+      if (!res.ok) throw new Error('Could not lock the session');
+      data = await res.json();
+    } catch (error) {
+      clearUserSession();
+      throw error;
+    }
+    clearUserSession();
+    if (!adoptAccountSession(data)) await checkFirstRunAndSession();
   };
 
   const completeFirstRunSetup = async (setupData) => {
@@ -582,6 +638,8 @@ export const AuthProvider = ({ children }) => {
 
       const data = await res.json();
       // Set user from response
+      storeToken(data);
+      setAccount({ id: data.user.account_id });
       setUser(data.user);
       setAuthLevel('full');
       setIsFirstRun(false);
@@ -611,6 +669,8 @@ export const AuthProvider = ({ children }) => {
     setShowAuthModal,
     skipAccountPassword,
     haIdentity,
+    haAccountAuth,
+    restoreHaAccount: () => tryHaLogin({ selectUser: false }),
 
     // Two-layer auth methods
     accountLogin,

@@ -5,7 +5,7 @@
 # Postgres data + uploaded artifacts live under the add-on's auto-persistent
 # /data, so they survive restarts and updates.
 name: Smart Home Health
-version: "0.5.0"
+version: "0.5.1"
 slug: smart_home_health
 description: Caregiving vitals monitor + medication / care-task scheduling hub
 url: https://github.com/Smart-Home-Health/platform
@@ -60,6 +60,7 @@ services:
 options:
   jwt_secret: ""
   skip_account_password: false
+  account_password_enabled: false
   ha_identity_login: true
   min_spo2: 90
   max_spo2: 100
@@ -69,6 +70,7 @@ options:
 schema:
   jwt_secret: "password?"
   skip_account_password: bool
+  account_password_enabled: bool
   ha_identity_login: bool
   min_spo2: int(50,100)
   max_spo2: int(50,110)

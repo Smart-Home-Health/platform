@@ -92,10 +92,9 @@ function isNumericTarget(el) {
   return false;
 }
 
-export default function VirtualKeyboard({ show }) {
-  const { activeInput } = useActiveInput();
+export default function VirtualKeyboard({ show, onShowChange }) {
+  const { activeInput, setActiveInput, clearActiveInput } = useActiveInput();
   const [layoutName, setLayoutName] = useState('default');
-  const [collapsed, setCollapsed] = useState(false);
   const lastInputRef = useRef(activeInput);
   if (activeInput) lastInputRef.current = activeInput;
   const rootRef = useRef(null);
@@ -109,7 +108,7 @@ export default function VirtualKeyboard({ show }) {
   }, [numericMode]);
 
   // The keyboard only renders while an input is focused, so the height
-  // publisher must key on that too — with [show, collapsed] alone the root
+  // publisher must key on that too — with [show] alone the root
   // did not exist yet on the first run and --vkb-height stayed 0, leaving
   // the docked panels (and dialogs) underneath the keyboard.
   const visible = show && !!activeInput;
@@ -123,6 +122,14 @@ export default function VirtualKeyboard({ show }) {
     if (!el) return undefined;
     const update = () => {
       root.style.setProperty('--vkb-height', `${el.offsetHeight}px`);
+      // The auth shell's bottom clearance lets an
+      // obscured PIN/password move above the keyboard; docked app panels
+      // already manage their own keyboard space and scrolling.
+      const authShell = activeInput?.closest('.vc-auth');
+      if (authShell) {
+        const overlap = activeInput.getBoundingClientRect().bottom - el.getBoundingClientRect().top + 16;
+        if (overlap > 0) authShell.scrollBy(0, overlap);
+      }
     };
     update();
     const ro = new ResizeObserver(update);
@@ -131,7 +138,7 @@ export default function VirtualKeyboard({ show }) {
       ro.disconnect();
       root.style.setProperty('--vkb-height', '0px');
     };
-  }, [visible, collapsed]);
+  }, [visible, activeInput]);
 
   const onKeyPress = useCallback((button) => {
     const target = activeInput || lastInputRef.current;
@@ -194,37 +201,48 @@ export default function VirtualKeyboard({ show }) {
     '{tab}': '⇥',
   }), []);
 
-  // Globally disabled, or no input is focused → render nothing. This makes
-  // the keyboard auto-show on focus and disappear on blur.
-  if (!show || !activeInput) return null;
+  // Offer the control wherever text can be entered, including login and
+  // dialogs, without changing the URL (which HA ingress does not expose).
+  if (!activeInput) return null;
 
   return (
     <div
       ref={rootRef}
-      className={`vkb-root${collapsed ? ' vkb-collapsed' : ''}${numericMode ? ' vkb-numpad' : ''}`}
+      className={`vkb-root${show ? (numericMode ? ' vkb-numpad' : '') : ' vkb-launcher'}`}
+      onPointerDown={(e) => e.preventDefault()}
       onMouseDown={(e) => e.preventDefault()}
+      // Tab navigation into the control should retain the input it edits.
+      // Pointer presses retain input focus; keyboard focus cancels its blur.
+      onFocus={() => setActiveInput(activeInput)}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget) && e.relatedTarget !== activeInput) clearActiveInput();
+      }}
     >
       <div className="vkb-toolbar">
         <button
           type="button"
           className="vkb-toolbar-button"
-          onClick={() => setCollapsed((c) => !c)}
+          onClick={() => onShowChange(!show)}
+          aria-expanded={show}
+          aria-controls={show ? 'vkb-keys' : undefined}
           data-vkb-ignore="true"
         >
-          {collapsed ? 'Show keyboard' : 'Hide'}
+          {show ? 'Hide keyboard' : 'Show keyboard'}
         </button>
       </div>
-      {!collapsed && (
-        <Keyboard
-          layoutName={layoutName}
-          layout={layout}
-          display={display}
-          onKeyPress={onKeyPress}
-          preventMouseDownDefault
-          stopMouseDownPropagation
-          physicalKeyboardHighlight={false}
-          useButtonTag
-        />
+      {show && (
+        <div id="vkb-keys">
+          <Keyboard
+            layoutName={layoutName}
+            layout={layout}
+            display={display}
+            onKeyPress={onKeyPress}
+            preventMouseDownDefault
+            stopMouseDownPropagation
+            physicalKeyboardHighlight={false}
+            useButtonTag
+          />
+        </div>
       )}
     </div>
   );

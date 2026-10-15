@@ -15,8 +15,26 @@
   user-select: none;
 }
 
-.vkb-root.vkb-collapsed {
-  padding: 4px 8px;
+.vkb-root.vkb-launcher {
+  position: fixed;
+  left: auto;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 9999;
+  pointer-events: auto;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+}
+
+.vkb-launcher .vkb-toolbar {
+  margin-bottom: 0;
+}
+
+.vkb-launcher .vkb-toolbar-button {
+  border: 1px solid var(--vc-line-hairline);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
 .vkb-toolbar {
@@ -33,12 +51,18 @@
   border: none;
   border-radius: 6px;
   padding: 8px 14px;
+  min-height: 44px;
   font-size: 14px;
   cursor: pointer;
 }
 
 .vkb-toolbar-button:hover {
   background: var(--vc-bg-raised);
+}
+
+.vkb-toolbar-button:focus-visible {
+  outline: 2px solid var(--vc-text-primary);
+  outline-offset: 3px;
 }
 
 /* Style the react-simple-keyboard for a dark touch UI */

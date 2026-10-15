@@ -33,7 +33,8 @@ Open it from the sidebar once started (the "Health Hub" panel).
 | Option | Default | Notes |
 | --- | --- | --- |
 | `jwt_secret` | _(blank)_ | Token signing secret. Leave blank to auto-generate one (persisted to `/data/jwt_secret`). |
-| `skip_account_password` | `false` | Skip the account-password login and drop straight into user selection (monitoring mode). See below. |
+| `account_password_enabled` | `false` | Require an extra app account password through HA ingress. By default HA authenticates the account. Direct LAN access keeps its account-password flow. |
+| `skip_account_password` | `false` | Skip the account-password screen and start in restricted quick-entry mode when HA is not authenticating the account. See below. |
 | `ha_identity_login` | `true` | Sign users in from their Home Assistant login when the app is opened through ingress. See below. |
 | `min_spo2` / `max_spo2` | `90` / `100` | SpO₂ alarm thresholds. |
 | `min_bpm` / `max_bpm` | `55` / `155` | Heart-rate alarm thresholds. |
@@ -42,7 +43,7 @@ Open it from the sidebar once started (the "Health Hub" panel).
 ### Sign in with Home Assistant (`ha_identity_login`)
 
 When the app is opened from the HA sidebar (ingress), Home Assistant forwards
-who is logged in. The app uses that two ways:
+who is logged in. With the default options, the app uses that two ways:
 
 - **Linked HA user** → signed in as their app profile immediately: no account
   password, no user picker, and no daily password re-prompt (the HA login
@@ -51,9 +52,24 @@ who is logged in. The app uses that two ways:
 - **Unlinked HA user** → the account password is skipped (HA already
   authenticated them) and the normal user picker is shown.
 
-Locking the app or choosing **Switch user** brings the picker back and it stays
-until a profile is chosen — reopening from the sidebar in a *new* tab signs the
-linked user in again.
+With `account_password_enabled: false`, locking, signing out, or choosing
+**Switch user** clears only the selected app user. HA keeps the account
+authenticated even when app session cookies expire. The picker stays until a
+profile is chosen — reopening from the sidebar in a *new* tab signs the linked
+user in again.
+
+Set `ha_identity_login: false` to always choose an app user on ingress. HA still
+authenticates the account. Set `account_password_enabled: true` to require an
+additional account password before HA identity sign-in; make sure an app
+account password has been set first. Neither option allows direct LAN clients
+to use HA authentication.
+
+### On-screen keyboard
+
+Focus a text field and tap **Show keyboard** to open the in-app keyboard.
+**Hide keyboard** turns it off, and the browser remembers the choice. These
+buttons work through ingress without a `vkb` URL parameter. Phones and tablets
+continue to use their native keyboard by default.
 
 **Reader devices (shh-reader pulse-ox bridges):** these also use the LAN port —
 pair them from the app and they connect back to `ws://<ha-host>:8000/api/readers/ws/…`
@@ -92,9 +108,10 @@ full uninstall + reinstall (back up `/data` first).
 ### `skip_account_password`
 
 When enabled, the app skips the account-password screen and goes straight to user
-selection in **monitoring mode** (the live dashboard is glanceable without a login;
-authenticating as a user unlocks full read access). Leave it off to require the
-account password as usual.
+selection in **restricted quick-entry mode**. This permits recording care without
+viewing protected history; choosing a user does not remove the account's read
+restriction. The account password unlocks full read access. This option is
+separate from trusted HA ingress, which provides normal account access by default.
 
 ### MQTT
 

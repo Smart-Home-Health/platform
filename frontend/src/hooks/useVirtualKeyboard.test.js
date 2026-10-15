@@ -18,7 +18,7 @@
 // The in-app keyboard defaults ON for the live dashboard (wall units have no
 // physical keyboard and kiosk Chrome no OS one), while an explicit ?vkb=0
 // wins and persists.
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useVirtualKeyboard } from './useVirtualKeyboard';
 
@@ -64,6 +64,31 @@ describe('useVirtualKeyboard', () => {
     const { result } = renderHook(() => useVirtualKeyboard());
     expect(result.current.showVKB).toBe(true);
     expect(window.localStorage.getItem('vkb')).toBe('1');
+  });
+
+  it('can enable and disable persistently without a URL parameter', () => {
+    setPath('/api/hassio_ingress/session/select-user');
+    const { result, unmount } = renderHook(() => useVirtualKeyboard());
+    act(() => result.current.setShowVKB(true));
+    expect(result.current.showVKB).toBe(true);
+    expect(window.localStorage.getItem('vkb')).toBe('1');
+    expect(window.location.search).toBe('');
+
+    unmount();
+    const nextMount = renderHook(() => useVirtualKeyboard());
+    expect(nextMount.result.current.showVKB).toBe(true);
+    act(() => nextMount.result.current.setShowVKB(false));
+    expect(nextMount.result.current.showVKB).toBe(false);
+    expect(window.localStorage.getItem('vkb')).toBe('0');
+  });
+
+  it('still toggles when embedded browser storage is unavailable', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked'); });
+    const { result } = renderHook(() => useVirtualKeyboard());
+    expect(result.current.showVKB).toBe(false);
+    act(() => result.current.setShowVKB(true));
+    expect(result.current.showVKB).toBe(true);
   });
 
   it('suppresses the live default on a phone with its own keyboard', () => {

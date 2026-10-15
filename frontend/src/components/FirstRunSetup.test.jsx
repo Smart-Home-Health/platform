@@ -107,3 +107,38 @@ describe('FirstRunSetup secure-install step', () => {
     expect(navigate).toHaveBeenCalledWith('/care', { replace: true });
   });
 });
+
+describe('FirstRunSetup HA account password option', () => {
+  const stubHa = (accountPasswordRequired, identity = { username: 'ha_admin', display_name: 'HA Admin' }) => {
+    vi.stubGlobal('fetch', vi.fn(async (url) => ({
+      ok: true,
+      json: async () => String(url).includes('/api/auth/first-run')
+        ? { ha_identity: identity, account_password_required: accountPasswordRequired }
+        : { ...baseStatus, ingress: true },
+    })));
+  };
+
+  it('makes only the account password optional when HA identity login is disabled', async () => {
+    stubHa(false, null);
+    renderPage();
+    const accountPassword = await screen.findByLabelText('Account password (optional)');
+    expect(accountPassword).not.toBeRequired();
+    expect(document.querySelector('[name="password"]')).toBeRequired();
+    setField('full_name', 'Care Admin');
+    setField('username', 'care_admin');
+    setField('password', 'longpassword');
+    setField('confirmPassword', 'longpassword');
+    await act(async () => fireEvent.submit(document.querySelector('form')));
+    expect(await screen.findByText('Setup Complete!')).toBeInTheDocument();
+  });
+
+  it('requires the extra account password when enabled even with a linked HA identity', async () => {
+    stubHa(true);
+    renderPage();
+    await waitFor(() => expect(document.querySelector('[name="username"]')).toHaveValue('ha_admin'));
+    expect(document.querySelector('[name="account_password"]')).toBeRequired();
+    expect(document.querySelector('[name="password"]')).not.toBeRequired();
+    await act(async () => fireEvent.submit(document.querySelector('form')));
+    expect(screen.queryByText('Setup Complete!')).not.toBeInTheDocument();
+  });
+});

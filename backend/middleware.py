@@ -56,6 +56,8 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             "/api/auth/account/login",  # Account login (Layer 1)
             "/api/auth/account/access",  # Account access (password optional, single account)
             "/api/auth/ha/login",  # HA ingress identity login (gated by trusted-peer check, not a token)
+            "/api/auth/lock",  # Clear expired user credentials; HA recovery checks the ingress peer
+            "/api/auth/logout",  # Logout must also clear already-expired sessions
             "/api/auth/session",  # Session check (can return 401)
             "/api/status/health",  # Liveness probe (container/LB healthcheck)
             "/api/core/first-run",  # First run check (legacy)

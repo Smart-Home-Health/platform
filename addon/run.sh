@@ -32,13 +32,21 @@ if opt_true skip_account_password; then
     export SHH_SKIP_ACCOUNT_PASSWORD=1
 fi
 
+# HA already authenticates ingress users. An additional account password is
+# optional and defaults off, including installs whose saved options predate it.
+if opt_true account_password_enabled; then
+    export SHH_HA_ACCOUNT_PASSWORD_ENABLED=1
+else
+    export SHH_HA_ACCOUNT_PASSWORD_ENABLED=0
+fi
+
 # HA identity auto-login (ingress only). Defaults on; the option is a kill
 # switch. The app trusts the X-Remote-User-* headers only when the TCP peer is
 # the Supervisor's ingress proxy — SHH_BEHIND_PROXY must NEVER be set here, or
 # uvicorn would rewrite the peer from X-Forwarded-For and LAN clients could
 # forge it (it would also poison rate-limit identity).
 # Default ON when the key is absent (options.json predating this option).
-if [ "$(jq -r '.ha_identity_login // true' "${OPTIONS}" 2>/dev/null)" = "false" ]; then
+if [ "$(jq -r 'if has("ha_identity_login") then .ha_identity_login else true end' "${OPTIONS}" 2>/dev/null)" = "false" ]; then
     export SHH_HA_IDENTITY_LOGIN=0
 else
     export SHH_HA_IDENTITY_LOGIN=1

@@ -17,16 +17,15 @@
  */
 import { useCallback, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useAuth, suppressHaAutoLogin } from './AuthContext';
+import { useAuth } from './AuthContext';
 import { getSetting } from '../services/settings';
-import { apiFetch, API_BASE_URL } from '../config';
 
 /**
  * Idle auto-lock for the admin UI.
  *
  * After 5 minutes of inactivity while fully authenticated, drop server-side
- * full auth (clear session_token, keep the 24h account_token) and send the
- * user to the configured lock target — user-select by default, or the live
+ * full auth through the shared switch-user flow and send the user to the
+ * configured lock target — user-select by default, or the live
  * dashboard when `idle_lock_target` is set to 'live'.
  *
  * Re-uses the activity pattern from PinChallengeContext (ref-based deadline,
@@ -42,7 +41,7 @@ const TICK_MS = 30_000;
 const EXEMPT_PREFIXES = ['/live', '/login', '/select-user', '/first-login'];
 
 export function IdleLockProvider({ children }) {
-  const { authLevel, checkSession } = useAuth();
+  const { authLevel, switchUser } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -69,18 +68,14 @@ export function IdleLockProvider({ children }) {
     if (lockingRef.current) return;
     lockingRef.current = true;
     try {
-      // Under HA ingress the checkSession below would otherwise auto-login the
-      // mapped HA user right back in — a lock must stick for this tab.
-      suppressHaAutoLogin();
-      await apiFetch(`${API_BASE_URL}/api/auth/lock`, { method: 'POST' });
-      await checkSession();
+      await switchUser();
       navigate(lockTargetRef.current === 'live' ? '/live' : '/select-user', { replace: true });
     } catch (err) {
       console.error('Idle lock failed:', err);
     } finally {
       lockingRef.current = false;
     }
-  }, [checkSession, navigate]);
+  }, [switchUser, navigate]);
 
   // Reset the idle deadline whenever we (re)arm — e.g. fresh login or moving
   // back into an admin route — so we never lock immediately on entry.

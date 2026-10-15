@@ -38,6 +38,8 @@ def ingress_env(monkeypatch):
     """Model running as the HA add-on with the TestClient as the ingress peer."""
     monkeypatch.setenv("SHH_INGRESS", "1")
     monkeypatch.setenv("SHH_INGRESS_TRUSTED_PEERS", "testclient")
+    monkeypatch.delenv("SHH_HA_ACCOUNT_PASSWORD_ENABLED", raising=False)
+    monkeypatch.delenv("SHH_HA_IDENTITY_LOGIN", raising=False)
 
 
 # ---------------------------------------------------------------- trust gating
@@ -58,10 +60,16 @@ def test_login_403_from_untrusted_peer(client, account, monkeypatch):
     assert r.status_code == 403
 
 
-def test_login_403_when_option_disabled(client, account, ingress_env, monkeypatch):
+def test_identity_option_disabled_keeps_ha_account_auth(client, account, admin_user, ingress_env, monkeypatch, db_session):
+    admin_user.ha_user_id = HA_ID
+    db_session.commit()
     monkeypatch.setenv("SHH_HA_IDENTITY_LOGIN", "0")
     r = client.post("/api/auth/ha/login", headers=HEADERS)
-    assert r.status_code == 403
+    assert r.status_code == 200
+    assert r.json()["auth_level"] == "account"
+    assert r.json()["read_restricted"] is False
+    assert r.json()["user"] is None
+    assert r.json()["identity"] is None
 
 
 def test_spoofed_forwarded_for_does_not_trust(client, account, monkeypatch):
@@ -157,6 +165,89 @@ def test_mapped_user_gets_full_session(client, account, admin_user, ingress_env,
     from models.users import AuditLog
     log = db_session.query(AuditLog).filter_by(action="ha.auto_login.success").first()
     assert log is not None and log.user_id == admin_user.id
+
+
+def test_suppressed_identity_renews_only_account(client, account, admin_user, ingress_env, db_session):
+    """A locked tab can renew account auth without reselecting its linked user."""
+    admin_user.ha_user_id = HA_ID
+    db_session.commit()
+    r = client.post("/api/auth/ha/login", headers=HEADERS, json={"select_user": False})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["mapped"] is True
+    assert body["auth_level"] == "account"
+    assert body["user"] is None
+    assert body["read_restricted"] is False
+    assert client.get("/api/auth/session").json()["user_id"] is None
+    assert client.get("/api/auth/ha/identities").status_code == 401
+    db_session.refresh(admin_user)
+    assert admin_user.last_full_password_login is None
+
+
+def test_account_password_opt_in_gates_mapped_and_unmapped_users(client, account, admin_user, ingress_env, monkeypatch, db_session):
+    monkeypatch.setenv("SHH_HA_ACCOUNT_PASSWORD_ENABLED", "1")
+    assert client.post("/api/auth/ha/login", headers=HEADERS).status_code == 403
+    admin_user.ha_user_id = HA_ID
+    db_session.commit()
+    assert client.post("/api/auth/ha/login", headers=HEADERS).status_code == 403
+    # Quick entry cannot be upgraded into normal read access by HA identity.
+    assert client.post("/api/auth/account/access", json={}).status_code == 200
+    assert client.post("/api/auth/ha/login", headers=HEADERS).status_code == 403
+    assert client.post("/api/auth/account/access", json={"password": "accountpass"}).status_code == 200
+    r = client.post("/api/auth/ha/login", headers=HEADERS)
+    assert r.status_code == 200
+    assert r.json()["user"]["id"] == admin_user.id
+
+
+@pytest.mark.parametrize("endpoint", ["lock", "logout"])
+def test_ha_clears_only_user_and_returns_cookie_free_account_token(client, account, admin_user, ingress_env, db_session, endpoint):
+    admin_user.ha_user_id = HA_ID
+    db_session.commit()
+    assert client.post("/api/auth/ha/login", headers=HEADERS).json()["user"]
+    r = client.post(f"/api/auth/{endpoint}", headers=HEADERS)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["auth_level"] == "account"
+    assert body["account"]["id"] == account.id
+    assert body["read_restricted"] is False
+    assert client.get("/api/auth/session").json()["user_id"] is None
+    # The returned bearer works when the embedded browser rejects cookies.
+    client.cookies.clear()
+    auth = {"Authorization": f"Bearer {body['access_token']}"}
+    session = client.get("/api/auth/session", headers=auth).json()
+    assert session["account_id"] == account.id
+    assert session["user_id"] is None
+    assert client.get("/api/auth/ha/identities", headers=auth).status_code == 401
+
+
+@pytest.mark.parametrize("endpoint", ["lock", "logout"])
+def test_ha_clear_user_works_after_all_tokens_expire(client, account, ingress_env, endpoint):
+    # Recovery cannot depend on either app token remaining valid.
+    client.cookies.set("session_token", "expired-session")
+    client.cookies.set("account_token", "expired-account")
+    r = client.post(f"/api/auth/{endpoint}")
+    assert r.status_code == 200
+    assert r.json()["auth_level"] == "account"
+    assert r.json()["read_restricted"] is False
+
+
+@pytest.mark.parametrize("endpoint", ["lock", "logout"])
+def test_clear_user_cannot_bootstrap_account_from_lan(client, account, monkeypatch, endpoint):
+    monkeypatch.setenv("SHH_INGRESS", "1")
+    monkeypatch.setenv("SHH_INGRESS_TRUSTED_PEERS", "172.30.32.2")
+    r = client.post(f"/api/auth/{endpoint}", headers={**HEADERS, "X-Forwarded-For": "172.30.32.2"})
+    assert r.status_code == 200
+    assert "access_token" not in r.json()
+    assert client.get("/api/auth/session").json()["account_id"] is None
+
+
+@pytest.mark.parametrize("endpoint", ["lock", "logout"])
+def test_clear_user_does_not_bypass_optional_account_password(client, account, ingress_env, monkeypatch, endpoint):
+    monkeypatch.setenv("SHH_HA_ACCOUNT_PASSWORD_ENABLED", "1")
+    r = client.post(f"/api/auth/{endpoint}", headers=HEADERS)
+    assert r.status_code == 200
+    assert "access_token" not in r.json()
+    assert client.get("/api/auth/session").json()["account_id"] is None
 
 
 def test_inactive_mapped_user_falls_back_to_picker(client, account, admin_user, ingress_env, db_session):
@@ -290,12 +381,36 @@ def test_first_run_reports_ha_identity(client, ingress_env):
     assert r.json()["ha_identity"] == {
         "ha_user_id": HA_ID, "username": "eli_dad", "display_name": "Eli's Dad",
     }
+    assert r.json()["ha_account_auth"] is True
+    assert r.json()["account_password_required"] is False
 
 
 def test_first_run_hides_identity_outside_ingress(client, monkeypatch):
     monkeypatch.delenv("SHH_INGRESS", raising=False)
     r = client.get("/api/auth/first-run", headers=HEADERS)
     assert r.json()["ha_identity"] is None
+    assert r.json()["ha_account_auth"] is False
+    assert r.json()["account_password_required"] is True
+
+
+def test_first_run_reports_optional_password_requirement(client, ingress_env, monkeypatch):
+    monkeypatch.setenv("SHH_HA_ACCOUNT_PASSWORD_ENABLED", "1")
+    r = client.get("/api/auth/first-run", headers=HEADERS)
+    assert r.json()["ha_account_auth"] is False
+    assert r.json()["account_password_required"] is True
+    setup = client.post("/api/auth/first-run/setup", headers=HEADERS, json={
+        "username": "eli_dad", "full_name": "Eli's Dad",
+    })
+    assert setup.status_code == 400
+    assert "Account password is required" in setup.json()["detail"]
+
+
+def test_first_run_without_identity_requires_only_user_password(client, ingress_env, monkeypatch):
+    monkeypatch.setenv("SHH_HA_IDENTITY_LOGIN", "0")
+    setup = client.post("/api/auth/first-run/setup", headers=HEADERS, json={
+        "username": "eli_dad", "full_name": "Eli's Dad", "password": "userpassword",
+    })
+    assert setup.status_code == 200
 
 
 def test_first_run_passwordless_under_ingress_links_founder(client, ingress_env, db_session):

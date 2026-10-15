@@ -137,6 +137,53 @@ def _set_account_cookie(request: Request, response: Response, account: Account, 
     )
 
 
+def _request_auth_payload(request: Request):
+    """Read auth on public recovery routes using the middleware's validation."""
+    from middleware import AuthenticationMiddleware
+
+    token = request.cookies.get("session_token")
+    if not token:
+        header = request.headers.get("Authorization", "")
+        if header.startswith("Bearer "):
+            token = header[7:]
+    payload = AuthenticationMiddleware._decode_token(token) if token else None
+    if payload is None:
+        token = request.cookies.get("account_token")
+        payload = AuthenticationMiddleware._decode_token(token) if token else None
+    return payload
+
+
+def _ha_account_session(request: Request, response: Response, db: Session):
+    """Clear the selected user while retaining account auth provided by HA.
+
+    Return the replacement bearer token as well as setting cookies, since
+    embedded browsers may block cookies. No direct LAN request can use this.
+    """
+    from utils.ha_ingress import ha_account_auth_enabled
+    if not ha_account_auth_enabled(request):
+        return None
+
+    account = db.query(Account).filter(Account.is_default == True, Account.is_active == True).first()
+    if not account:
+        account = db.query(Account).filter(Account.is_active == True).first()
+    if not account:
+        return None
+
+    token = create_access_token(account=account, auth_level="account", read_restricted=False)
+    response.set_cookie(
+        key="session_token", value=token, httponly=True,
+        max_age=SESSION_TIMEOUT_MINUTES * 60, samesite="lax", secure=_cookie_secure(request),
+    )
+    _set_account_cookie(request, response, account, read_restricted=False)
+    return {
+        "message": "User cleared; account authenticated by Home Assistant",
+        "access_token": token,
+        "auth_level": "account",
+        "account": {"id": account.id, "name": account.name, "slug": account.slug},
+        "read_restricted": False,
+    }
+
+
 from utils.client_ip import get_client_ip  # shared with rate-limit middleware
 
 
@@ -148,14 +195,17 @@ def check_first_run(request: Request, db: Session = Depends(get_db)):
     """
     has_admin = has_any_admin_user(db)
 
-    from utils.ha_ingress import ingress_identity
+    from utils.ha_ingress import ha_account_auth_enabled, ingress_identity
     identity = ingress_identity(request)
+    ha_account_auth = ha_account_auth_enabled(request)
 
     return FirstRunStatus(
         is_first_run=not has_admin,
         has_admin=has_admin,
         message="Admin user exists" if has_admin else "First run - admin setup required",
         skip_account_password=skip_account_password_enabled(),
+        ha_account_auth=ha_account_auth,
+        account_password_required=not ha_account_auth,
         ha_identity=(
             {
                 "ha_user_id": identity.ha_user_id,
@@ -197,16 +247,21 @@ def first_run_setup(
             detail="Username already taken"
         )
 
-    # HA-ingress founders don't have to invent app passwords: their HA login is
-    # auto-linked below and IS their sign-in. Random fallbacks are generated so
-    # the NOT NULL hashes hold; real ones can be set later (needed only for
-    # non-HA access, e.g. the LAN shared-device path).
-    from utils.ha_ingress import ingress_identity
+    # HA can authenticate the account independently of identity-to-user login.
+    # Linked founders need no user password; trusted ingress needs no account
+    # password unless the optional extra account auth is enabled. Random
+    # fallbacks satisfy NOT NULL hashes and can be replaced later for LAN use.
+    from utils.ha_ingress import ha_account_auth_enabled, ingress_identity
     ha_identity = ingress_identity(request)
-    if not ha_identity and not (setup.password and setup.account_password):
+    if not ha_identity and not setup.password:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password and account password are required outside Home Assistant"
+            detail="User password is required without Home Assistant identity login"
+        )
+    if not ha_account_auth_enabled(request) and not setup.account_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Account password is required when Home Assistant does not authenticate the account",
         )
     import secrets as _secrets
     user_password = setup.password or _secrets.token_urlsafe(24)
@@ -1173,35 +1228,43 @@ def verify_user_pin(
 
 
 @router.post("/logout")
-def logout(request: Request, response: Response, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Logout current user by clearing session cookie"""
-    
-    # Create audit log
-    create_audit_log(
-        db,
-        user_id=current_user.id,
-        action="logout",
-        details=json.dumps({"username": current_user.username})
-    )
+def logout(request: Request, response: Response, db: Session = Depends(get_db)):
+    """Clear the user; HA retains account auth unless extra auth is enabled.
+
+    Public so expired sessions can also log out. A valid user is still audited.
+    """
+    payload = _request_auth_payload(request)
+    current_user = get_user_by_id(db, payload["user_id"]) if payload and payload.get("user_id") else None
+    if current_user:
+        create_audit_log(
+            db, user_id=current_user.id, action="logout",
+            details=json.dumps({"username": current_user.username}),
+        )
+
+    ha_session = _ha_account_session(request, response, db)
+    if ha_session:
+        return ha_session
     
     # Clear both session and account cookies (attributes mirror set_cookie)
     response.delete_cookie(key="session_token", httponly=True, samesite="lax", secure=_cookie_secure(request))
     response.delete_cookie(key="account_token", httponly=True, samesite="lax", secure=_cookie_secure(request))
     
-    logger.info(f"User logged out: {current_user.username}")
+    if current_user:
+        logger.info(f"User logged out: {current_user.username}")
     
     return {"message": "Logged out successfully"}
 
 
 @router.post("/lock")
-def lock(request: Request, response: Response):
+def lock(request: Request, response: Response, db: Session = Depends(get_db)):
     """
-    Idle lock: drop full auth to account level by clearing ONLY the
-    session_token cookie. The 24h account_token is preserved so the user
-    lands on user-select (not the account-password page) and no account
-    password re-prompt is needed. Has no auth dependency so it still works
-    if the session_token is already gone.
+    Drop the selected user. Trusted ingress renews the HA account session;
+    other deployments clear only session_token and preserve account_token.
+    Has no auth dependency so expired sessions can also lock.
     """
+    ha_session = _ha_account_session(request, response, db)
+    if ha_session:
+        return ha_session
     response.delete_cookie(key="session_token", httponly=True, samesite="lax", secure=_cookie_secure(request))
     return {"message": "Locked to account level"}
 
@@ -1222,21 +1285,7 @@ def get_session(
     """
     # Since /session is a public route, middleware doesn't run.
     # Check session_token first, fall back to long-lived account_token.
-    from middleware import AuthenticationMiddleware as _mw
-
-    token = request.cookies.get("session_token")
-    if not token:
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            token = auth_header[7:]
-
-    payload = _mw._decode_token(token) if token else None
-
-    # Fall back to the 24h account cookie
-    if payload is None:
-        account_token = request.cookies.get("account_token")
-        if account_token:
-            payload = _mw._decode_token(account_token)
+    payload = _request_auth_payload(request)
 
     if payload is None:
         return SessionInfo(is_authenticated=False)

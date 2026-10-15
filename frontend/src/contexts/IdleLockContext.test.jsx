@@ -21,10 +21,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render } from '@testing-library/react';
 
 const navigate = vi.fn();
-const checkSession = vi.fn();
-const apiFetch = vi.fn();
+const switchUser = vi.fn();
 const getSetting = vi.fn();
-const suppressHaAutoLogin = vi.fn();
 let mockAuth;
 let mockLocation;
 
@@ -34,10 +32,8 @@ vi.mock('react-router-dom', () => ({
 }));
 vi.mock('./AuthContext', () => ({
   useAuth: () => mockAuth,
-  suppressHaAutoLogin: (...a) => suppressHaAutoLogin(...a),
 }));
 vi.mock('../services/settings', () => ({ getSetting: (...a) => getSetting(...a) }));
-vi.mock('../config', () => ({ apiFetch: (...a) => apiFetch(...a), API_BASE_URL: 'http://api' }));
 
 import { IdleLockProvider } from './IdleLockContext';
 
@@ -49,11 +45,9 @@ const renderProvider = () => render(<IdleLockProvider><div /></IdleLockProvider>
 beforeEach(() => {
   vi.useFakeTimers();
   navigate.mockReset();
-  checkSession.mockReset().mockResolvedValue();
-  apiFetch.mockReset().mockResolvedValue({ ok: true });
-  suppressHaAutoLogin.mockReset();
+  switchUser.mockReset().mockResolvedValue();
   getSetting.mockReset().mockResolvedValue('select-user');
-  mockAuth = { authLevel: 'full', checkSession };
+  mockAuth = { authLevel: 'full', switchUser };
   mockLocation = { pathname: '/care' };
 });
 
@@ -67,23 +61,22 @@ describe('IdleLockProvider', () => {
     await vi.advanceTimersByTimeAsync(0); // flush the lock-target getSetting
     await vi.advanceTimersByTimeAsync(IDLE_MS + TICK_MS);
 
-    expect(apiFetch).toHaveBeenCalledWith(
-      expect.stringContaining('/api/auth/lock'),
-      expect.objectContaining({ method: 'POST' }),
-    );
-    expect(checkSession).toHaveBeenCalled();
+    expect(switchUser).toHaveBeenCalled();
     expect(navigate).toHaveBeenCalledWith('/select-user', { replace: true });
   });
 
-  it('suppresses HA auto-login before locking, so the picker sticks under ingress', async () => {
+  it('waits for the shared user-lock flow before navigating', async () => {
+    let finishLock;
+    switchUser.mockImplementation(() => new Promise(resolve => { finishLock = resolve; }));
     renderProvider();
     await vi.advanceTimersByTimeAsync(0);
     await vi.advanceTimersByTimeAsync(IDLE_MS + TICK_MS);
 
-    expect(suppressHaAutoLogin).toHaveBeenCalled();
-    // Ordering: the flag must be set before checkSession re-evaluates auth.
-    expect(suppressHaAutoLogin.mock.invocationCallOrder[0])
-      .toBeLessThan(checkSession.mock.invocationCallOrder[0]);
+    expect(switchUser).toHaveBeenCalledOnce();
+    expect(navigate).not.toHaveBeenCalled();
+    finishLock();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(navigate).toHaveBeenCalledWith('/select-user', { replace: true });
   });
 
   it('activity rolls the deadline forward and defers the lock', async () => {
@@ -100,11 +93,11 @@ describe('IdleLockProvider', () => {
   });
 
   it('does not arm at account level', async () => {
-    mockAuth = { authLevel: 'account', checkSession };
+    mockAuth = { authLevel: 'account', switchUser };
     renderProvider();
     await vi.advanceTimersByTimeAsync(IDLE_MS + TICK_MS);
     expect(navigate).not.toHaveBeenCalled();
-    expect(apiFetch).not.toHaveBeenCalled();
+    expect(switchUser).not.toHaveBeenCalled();
   });
 
   it('does not arm on an exempt route (/live)', async () => {
