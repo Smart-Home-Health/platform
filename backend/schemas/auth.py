@@ -140,9 +140,10 @@ class SessionInfo(BaseModel):
 class FirstRunSetup(BaseModel):
     """First run admin user and account setup.
 
-    Passwords are optional ONLY for trusted HA-ingress requests (the route
-    enforces this): the founder's HA identity is auto-linked, so an app
-    password is just a fallback for non-HA access and can be set later.
+    User passwords are optional when a trusted HA identity is auto-linked.
+    Account passwords are optional when HA authenticates the account (extra
+    account auth disabled). The route enforces both independently; passwords
+    can be set later for non-HA access.
     """
     username: str = Field(..., min_length=3, max_length=50)
     password: Optional[str] = Field(None, min_length=8, description="Password for the user profile (required outside HA ingress)")
@@ -150,7 +151,7 @@ class FirstRunSetup(BaseModel):
     email: Optional[str] = None
     pin: Optional[str] = Field(None, min_length=4, max_length=8)
     account_name: Optional[str] = Field(None, max_length=100, description="Name for the account (defaults to full_name)")
-    account_password: Optional[str] = Field(None, min_length=8, description="Password for account-level login (required outside HA ingress)")
+    account_password: Optional[str] = Field(None, min_length=8, description="Account password (required outside HA ingress or when extra account authentication is enabled)")
 
 
 class FirstRunStatus(BaseModel):
@@ -161,6 +162,11 @@ class FirstRunStatus(BaseModel):
     # When true, the UI skips the account-password screen and goes straight to
     # user selection in monitoring mode (deployment-wide opt-in via env).
     skip_account_password: bool = False
+    # True only when this request arrived over trusted HA ingress and the
+    # optional extra account password is disabled. Unlike quick entry above,
+    # HA account authentication grants normal read access.
+    ha_account_auth: bool = False
+    account_password_required: bool = True
     # The HA user on a trusted ingress request ({ha_user_id, username,
     # display_name}); lets first-run prefill the founder's profile and offer
     # password-less setup. None outside ingress.

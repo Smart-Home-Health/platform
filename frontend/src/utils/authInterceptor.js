@@ -23,7 +23,9 @@
  * fetch in services/pages) is covered. When a request comes back with a status
  * that means "your session is no longer good enough", it fires onStale() which
  * re-checks the session and lets ProtectedRoute re-route to the correct flow:
- *   - 401: both session_token and account_token expired -> back to /login.
+ *   - 401: both session_token and account_token expired -> recheck auth;
+ *     trusted HA ingress renews account access and clears the selected user,
+ *     while standalone deployments use their normal account login flow.
  *   - 403 while authLevel === 'full': the 30-min session_token expired but the
  *     24h account_token is still valid, so the request was silently downgraded
  *     to account level and full-auth endpoints now 403. Recovery drops the

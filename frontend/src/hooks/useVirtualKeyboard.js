@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 const STORAGE_KEY = 'vkb';
 
@@ -44,35 +44,41 @@ const hasNativeOnScreenKeyboard = () => {
 
 function readFlag() {
   if (typeof window === 'undefined') return false;
-  const stored = window.localStorage.getItem(STORAGE_KEY);
+  let stored;
+  try { stored = window.localStorage.getItem(STORAGE_KEY); } catch { /* storage may be unavailable in an embedded browser */ }
   if (stored === '1') return true;
   if (stored === '0') return false;
   return onLiveDashboard() && !hasNativeOnScreenKeyboard();
 }
 
 export function useVirtualKeyboard() {
-  const [showVKB, setShowVKB] = useState(readFlag);
+  const [showVKB, setShowVKBState] = useState(readFlag);
+
+  const setShowVKB = useCallback((enabled) => {
+    // Persist the preference without needing access to the ingress URL. The
+    // control still works for this session if browser storage is unavailable.
+    try { window.localStorage.setItem(STORAGE_KEY, enabled ? '1' : '0'); } catch { /* retain the in-memory preference */ }
+    setShowVKBState(enabled);
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const vkbParam = params.get('vkb');
 
     if (vkbParam === '1') {
-      window.localStorage.setItem(STORAGE_KEY, '1');
       setShowVKB(true);
     } else if (vkbParam === '0') {
       // Store the refusal rather than clearing: clearing would re-enable the
       // /live route default on the next load.
-      window.localStorage.setItem(STORAGE_KEY, '0');
       setShowVKB(false);
     }
 
     const onStorage = (e) => {
-      if (e.key === STORAGE_KEY) setShowVKB(readFlag());
+      if (e.key === STORAGE_KEY || e.key === null) setShowVKBState(readFlag());
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
-  }, []);
+  }, [setShowVKB]);
 
-  return { showVKB };
+  return { showVKB, setShowVKB };
 }

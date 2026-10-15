@@ -27,11 +27,17 @@ class HAIdentityInfo(BaseModel):
     display_name: Optional[str] = None
 
 
+class HALoginRequest(BaseModel):
+    # Locking/switching clears the selected user without discarding HA's
+    # account authentication. Suppress only the identity-to-user promotion.
+    select_user: bool = True
+
+
 class HALoginResponse(BaseModel):
     """Response for POST /api/auth/ha/login.
 
-    mapped=True  → full session as the linked app user (mirrors UserSelectResponse).
-    mapped=False → account-level session; the client proceeds to the user picker.
+    mapped describes whether the HA identity has an active linked app user.
+    select_user=False still returns an account-level session for linked users.
     """
     access_token: str
     token_type: str = "bearer"

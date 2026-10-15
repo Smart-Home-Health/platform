@@ -21,7 +21,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 
-vi.mock('../utils/authInterceptor', () => ({ installAuthInterceptor: () => {} }));
+const interceptor = vi.hoisted(() => ({ current: null }));
+vi.mock('../utils/authInterceptor', () => ({ installAuthInterceptor: (options) => { interceptor.current = options; } }));
 vi.mock('../utils/messagesPopThrottle', () => ({ clearMessagesPopThrottle: () => {} }));
 
 import { AuthProvider, useAuth, errorMessage } from './AuthContext';
@@ -72,10 +73,15 @@ function Probe() {
       <span data-testid="isAcct">{String(a.isAccountAuthenticated)}</span>
       <span data-testid="firstrun">{String(a.isFirstRun)}</span>
       <span data-testid="user">{a.user?.username || ''}</span>
+      <span data-testid="read">{String(a.hasReadAccess)}</span>
       <span data-testid="haid">{a.haIdentity ? `${a.haIdentity.display_name || ''}:${String(a.haIdentity.mapped)}` : ''}</span>
       <button onClick={() => a.accountLogin('fam', 'pw')}>login</button>
       <button onClick={() => a.selectUser(1, '1234')}>select</button>
       <button onClick={() => a.logout()}>logout</button>
+      <button onClick={() => a.switchUser()}>switch</button>
+      <button onClick={() => a.checkSession()}>check</button>
+      <button onClick={() => a.accountAccess('account-password')}>unlock account</button>
+      <button onClick={() => a.completeFirstRunSetup({})}>setup</button>
     </div>
   );
 }
@@ -169,6 +175,18 @@ describe('AuthProvider state machine', () => {
     await waitFor(() => expect(screen.getByTestId('level').textContent).toBe('null'));
     expect(screen.getByTestId('isAuth').textContent).toBe('false');
   });
+
+  it('stores the first-run token and account for cookie-blocked browsers', async () => {
+    setFetch([
+      { path: '/api/auth/first-run', res: ok({ is_first_run: true }) },
+      { path: '/api/auth/first-run/setup', method: 'POST', res: ok({ access_token: 'setup-token', user: { id: 1, account_id: 1, username: 'founder' } }) },
+    ]);
+    await renderAuth();
+    await click('setup');
+    expect(sessionStorage.getItem('auth_token')).toBe('setup-token');
+    expect(screen.getByTestId('level').textContent).toBe('full');
+    expect(screen.getByTestId('user').textContent).toBe('founder');
+  });
 });
 
 // ---- HA ingress auto-login --------------------------------------------------
@@ -219,14 +237,41 @@ describe('HA ingress auto-login', () => {
     expect(screen.getByTestId('level').textContent).toBe('full');
   });
 
-  it('does not auto-login when the tab is suppressed (lock/switch/logout)', async () => {
-    sessionStorage.setItem('shh_ha_no_auto', '1');
-    const fetchMock = router(NO_SESSION);
+  it('does not reselect a previously signed-in user when an expired tab reloads', async () => {
+    sessionStorage.setItem('shh_ha_had_user', '1');
+    const fetchMock = router([...NO_SESSION, { path: '/api/auth/ha/login', method: 'POST', res: HA_UNMAPPED }]);
     vi.stubGlobal('fetch', fetchMock);
     await renderAuth();
+    expect(screen.getByTestId('level').textContent).toBe('account');
+    const call = fetchMock.mock.calls.find(([url]) => String(url).includes('/api/auth/ha/login'));
+    expect(JSON.parse(call[1].body)).toEqual({ select_user: false });
+  });
+
+  it('signs in a linked HA user after the optional extra account password', async () => {
+    const haRoute = { path: '/api/auth/ha/login', method: 'POST', res: fail(403) };
+    setFetch([
+      ...NO_SESSION,
+      haRoute,
+      { path: '/api/auth/account/access', method: 'POST', res: ok({ access_token: 'account-token', account: { id: 1 }, read_restricted: false }) },
+    ]);
+    await renderAuth();
     expect(screen.getByTestId('level').textContent).toBe('null');
-    const urls = fetchMock.mock.calls.map((c) => String(c[0]));
-    expect(urls.some((u) => u.includes('/api/auth/ha/login'))).toBe(false);
+    haRoute.res = HA_MAPPED;
+    await click('unlock account');
+    await waitFor(() => expect(screen.getByTestId('level').textContent).toBe('full'));
+    expect(screen.getByTestId('user').textContent).toBe('eli_dad_app');
+  });
+
+  it('renews HA account access without selecting a user when the tab is suppressed', async () => {
+    sessionStorage.setItem('shh_ha_no_auto', '1');
+    const fetchMock = router([...NO_SESSION, { path: '/api/auth/ha/login', method: 'POST', res: HA_UNMAPPED }]);
+    vi.stubGlobal('fetch', fetchMock);
+    await renderAuth();
+    expect(screen.getByTestId('level').textContent).toBe('account');
+    expect(screen.getByTestId('user').textContent).toBe('');
+    expect(screen.getByTestId('read').textContent).toBe('true');
+    const call = fetchMock.mock.calls.find(([url]) => String(url).includes('/api/auth/ha/login'));
+    expect(JSON.parse(call[1].body)).toEqual({ select_user: false });
   });
 
   it('does not attempt HA login without an ingress base path', async () => {
@@ -248,15 +293,69 @@ describe('HA ingress auto-login', () => {
     expect(screen.getByTestId('level').textContent).toBe('null');
   });
 
-  it('logout suppresses HA auto-login for this tab', async () => {
+  it('logout clears only the user and replaces the full bearer with an account token', async () => {
+    sessionStorage.setItem('auth_token', 'old-full-token');
     setFetch([
-      { path: '/api/auth/first-run', res: ok({ is_first_run: false }) },
+      { path: '/api/auth/first-run', res: ok({ is_first_run: false, ha_account_auth: true }) },
       { path: '/api/auth/session', res: ok({ user_id: 2, username: 'eli_dad_app', account_id: 1 }) },
-      { path: '/api/auth/logout', method: 'POST', res: ok({}) },
+      { path: '/api/auth/logout', method: 'POST', res: HA_UNMAPPED },
     ]);
     await renderAuth();
     await click('logout');
-    await waitFor(() => expect(screen.getByTestId('level').textContent).toBe('null'));
+    await waitFor(() => expect(screen.getByTestId('level').textContent).toBe('account'));
+    expect(screen.getByTestId('user').textContent).toBe('');
+    expect(sessionStorage.getItem('auth_token')).toBe('ha-token');
     expect(sessionStorage.getItem('shh_ha_no_auto')).toBe('1');
+  });
+
+  it('switch user downgrades on the server and stays at the picker after a session check', async () => {
+    const routes = [
+      { path: '/api/auth/first-run', res: ok({ is_first_run: false, ha_account_auth: true }) },
+      { path: '/api/auth/session', res: ok({ user_id: 2, username: 'eli_dad_app', account_id: 1 }) },
+      { path: '/api/auth/lock', method: 'POST', res: HA_UNMAPPED },
+      { path: '/api/auth/ha/login', method: 'POST', res: HA_UNMAPPED },
+    ];
+    const fetchMock = router(routes);
+    vi.stubGlobal('fetch', fetchMock);
+    await renderAuth();
+    await click('switch');
+    expect(screen.getByTestId('level').textContent).toBe('account');
+    expect(screen.getByTestId('user').textContent).toBe('');
+    expect(sessionStorage.getItem('auth_token')).toBe('ha-token');
+    expect(fetchMock.mock.calls.some(([url, opts]) => String(url).endsWith('/api/auth/lock') && opts.method === 'POST')).toBe(true);
+    routes[1].res = ok({ account_id: 1, auth_level: 'account' });
+    await click('check');
+    expect(screen.getByTestId('level').textContent).toBe('account');
+    const call = fetchMock.mock.calls.find(([url]) => String(url).includes('/api/auth/ha/login'));
+    expect(JSON.parse(call[1].body)).toEqual({ select_user: false });
+  });
+
+  it('expired credentials clear the caregiver while HA restores account access', async () => {
+    const routes = [
+      { path: '/api/auth/first-run', res: ok({ is_first_run: false, ha_account_auth: true }) },
+      { path: '/api/auth/session', res: ok({ user_id: 2, username: 'eli_dad_app', account_id: 1 }) },
+      { path: '/api/auth/ha/login', method: 'POST', res: HA_UNMAPPED },
+    ];
+    const fetchMock = router(routes);
+    vi.stubGlobal('fetch', fetchMock);
+    await renderAuth();
+    routes[1].res = ok({ is_authenticated: false });
+    await act(async () => { await interceptor.current.onStale(); });
+    expect(screen.getByTestId('level').textContent).toBe('account');
+    expect(screen.getByTestId('user').textContent).toBe('');
+    const call = fetchMock.mock.calls.find(([url]) => String(url).includes('/api/auth/ha/login'));
+    expect(JSON.parse(call[1].body)).toEqual({ select_user: false });
+  });
+
+  it('replaces a migrated quick-entry session with unrestricted HA account access', async () => {
+    setFetch([
+      { path: '/api/auth/first-run', res: ok({ is_first_run: false, ha_account_auth: true }) },
+      { path: '/api/auth/session', res: ok({ user_id: 2, username: 'eli_dad_app', account_id: 1, read_restricted: true }) },
+      { path: '/api/auth/ha/login', method: 'POST', res: HA_UNMAPPED },
+    ]);
+    await renderAuth();
+    expect(screen.getByTestId('level').textContent).toBe('account');
+    expect(screen.getByTestId('read').textContent).toBe('true');
+    expect(screen.getByTestId('user').textContent).toBe('');
   });
 });

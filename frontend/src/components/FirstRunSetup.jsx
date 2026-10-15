@@ -54,11 +54,13 @@ export default function FirstRunSetup() {
   // Their identity is auto-linked by the setup endpoint, so passwords become
   // optional fallbacks and we can prefill the profile.
   const [haIdentity, setHaIdentity] = useState(null);
+  const [accountPasswordRequired, setAccountPasswordRequired] = useState(true);
 
   useEffect(() => {
     apiFetch(`${config.apiUrl}/api/auth/first-run`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
+        setAccountPasswordRequired(data?.account_password_required !== false);
         if (!data?.ha_identity) return;
         setHaIdentity(data.ha_identity);
         setFormData((prev) => ({
@@ -95,7 +97,7 @@ export default function FirstRunSetup() {
 
     // Under HA ingress passwords are optional (the HA login is auto-linked
     // and becomes the sign-in); when a field IS filled it still has to be valid.
-    const accountPwSkipped = haIdentity && !formData.account_password && !formData.confirmAccountPassword;
+    const accountPwSkipped = !accountPasswordRequired && !formData.account_password && !formData.confirmAccountPassword;
     const userPwSkipped = haIdentity && !formData.password && !formData.confirmPassword;
 
     if (!accountPwSkipped) {
@@ -235,7 +237,7 @@ export default function FirstRunSetup() {
             })}
             <div className="au-field">
               <div className="au-label au-label-row">
-                <label htmlFor="account_password">{req('Account password')}</label>
+                <label htmlFor="account_password">{accountPasswordRequired ? 'Account password' : 'Account password (optional)'}</label>
                 <span className="au-tip-wrap">
                   <button
                     type="button"
@@ -266,13 +268,13 @@ export default function FirstRunSetup() {
                   name="account_password"
                   value={formData.account_password}
                   onChange={handleChange}
-                  required={!haIdentity}
+                  required={accountPasswordRequired}
                   minLength={formData.account_password ? 8 : undefined}
-                  placeholder={haIdentity ? 'Optional — for access outside Home Assistant' : 'Minimum 8 characters'}
+                  placeholder={!accountPasswordRequired ? 'Optional — for access outside Home Assistant' : 'Minimum 8 characters'}
                 />
               </div>
               <span className="au-hint">
-                {haIdentity
+                {!accountPasswordRequired
                   ? 'Unlocks full viewing on shared/LAN devices — skip it and set it later under Configuration → Account'
                   : 'Encryption key for your account data — store this securely'}
               </span>
@@ -280,7 +282,7 @@ export default function FirstRunSetup() {
             {field({
               id: 'confirmAccountPassword', label: haIdentity ? 'Confirm account password' : 'Confirm account password',
               type: 'password', placeholder: 'Re-enter account password',
-              required: !haIdentity || !!formData.account_password,
+              required: accountPasswordRequired || !!formData.account_password,
               minLength: formData.account_password ? 8 : undefined,
             })}
           </div>

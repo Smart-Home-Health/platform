@@ -46,6 +46,7 @@ export default function UserSelectionPage() {
     selectUser,
     logout,
     haIdentity,
+    haAccountAuth,
     readRestricted
   } = useAuth();
 
@@ -183,7 +184,7 @@ export default function UserSelectionPage() {
         <span className="au-access-label">Access · {readRestricted ? 'Quick entry' : 'Full'}</span>
         <span className="au-access-sep" aria-hidden="true" />
         <span className="au-access-state">{readRestricted ? 'Record only' : 'Unlocked'}</span>
-        <button type="button" className="au-access-change" onClick={handleLogout}>Change</button>
+        {!haAccountAuth && <button type="button" className="au-access-change" onClick={handleLogout}>Change</button>}
       </div>
 
       {!selectedUser ? (
@@ -302,9 +303,9 @@ export default function UserSelectionPage() {
       )}
 
       <div className="au-footer">
-        <button type="button" className="au-account-btn" onClick={handleLogout}>
+        {!haAccountAuth && <button type="button" className="au-account-btn" onClick={handleLogout}>
           <BackArrowIcon size={16} /> Change account
-        </button>
+        </button>}
         <div className="au-footnote">Session locks after inactivity</div>
       </div>
     </AuthShell>

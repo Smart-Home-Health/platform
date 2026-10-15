@@ -43,6 +43,7 @@ from routes.auth import (
     SESSION_TIMEOUT_MINUTES,
     _cookie_secure,
     _set_account_cookie,
+    _request_auth_payload,
     create_access_token,
 )
 from schemas.ha_auth import (
@@ -52,12 +53,13 @@ from schemas.ha_auth import (
     HAIdentityItem,
     HAImportRequest,
     HALinkRequest,
+    HALoginRequest,
     HALoginResponse,
     HAStatusResponse,
 )
 from utils import ha_core
 from utils.client_ip import get_client_ip
-from utils.ha_ingress import HAIdentity, ingress_identity, is_valid_ha_user_id, trusted_ingress_peer
+from utils.ha_ingress import HAIdentity, ha_account_auth_enabled, ingress_identity, is_valid_ha_user_id, trusted_ingress_peer
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +109,7 @@ def _upsert_seen_identity(db: Session, identity) -> None:
 def ha_login(
     request: Request,
     response: Response,
+    body: HALoginRequest | None = None,
     db: Session = Depends(get_db),
 ):
     """Sign in from the HA identity on a trusted ingress request (public route;
@@ -119,16 +122,30 @@ def ha_login(
         )
 
     account = _default_account(db)
+    if not ha_account_auth_enabled(request):
+        # Opting into the extra app password must also gate mapped identities.
+        # A quick-entry (read-restricted) token does not prove account access.
+        payload = _request_auth_payload(request)
+        if not payload or payload.get("account_id") != account.id or payload.get("read_restricted", False):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account password required",
+            )
+
     identity = ingress_identity(request)
     identity_info = HAIdentityInfo(**identity.__dict__) if identity else None
 
     user = None
+    mapped_user = None
     if identity:
         _upsert_seen_identity(db, identity)
-        user = db.query(User).filter(
+        mapped_user = db.query(User).filter(
             User.ha_user_id == identity.ha_user_id,
+            User.account_id == account.id,
             User.is_active == True,  # noqa: E712
         ).first()
+        if body is None or body.select_user:
+            user = mapped_user
 
     if user:
         # HA authenticated the human with their HA credentials; treat it as a
@@ -170,10 +187,8 @@ def ha_login(
             read_restricted=False,
         )
 
-    # Unmapped identity (or Core too old to send headers, or the linked user is
-    # inactive): the HA login replaces the account password, so grant an
-    # unrestricted account-level session and let the user picker take it from
-    # there.
+    # Unmapped/disabled identity, or a caller deliberately clearing the user:
+    # retain HA's account auth and let the user picker take it from here.
     token = create_access_token(account=account, auth_level="account", read_restricted=False)
     _set_session_cookie(request, response, token)
     _set_account_cookie(request, response, account, read_restricted=False)
@@ -188,7 +203,7 @@ def ha_login(
     return HALoginResponse(
         access_token=token,
         auth_level="account",
-        mapped=False,
+        mapped=bool(mapped_user),
         identity=identity_info,
         account={"id": account.id, "name": account.name, "slug": account.slug},
         user=None,

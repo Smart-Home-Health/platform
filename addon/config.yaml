@@ -58,6 +58,7 @@ services:
 options:
   jwt_secret: ""
   skip_account_password: false
+  account_password_enabled: false
   ha_identity_login: true
   min_spo2: 90
   max_spo2: 100
@@ -67,6 +68,7 @@ options:
 schema:
   jwt_secret: "password?"
   skip_account_password: bool
+  account_password_enabled: bool
   ha_identity_login: bool
   min_spo2: int(50,100)
   max_spo2: int(50,110)

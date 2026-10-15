@@ -68,6 +68,9 @@ export function ActiveInputProvider({ children }) {
     };
     document.addEventListener('focusin', onFocusIn);
     document.addEventListener('focusout', onFocusOut);
+    // React autoFocus runs before this effect subscribes. Login and setup
+    // forms must offer the keyboard for that already-focused input too.
+    if (isTypeableElement(document.activeElement)) setActiveInput(document.activeElement);
     return () => {
       document.removeEventListener('focusin', onFocusIn);
       document.removeEventListener('focusout', onFocusOut);

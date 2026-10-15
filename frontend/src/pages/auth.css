@@ -21,7 +21,8 @@
 @import '../styles/vc-tokens.css';
 
 .vc-auth {
-  min-height: 100dvh;
+  height: calc(100dvh - var(--vkb-height, 0px));
+  overflow-y: auto;
   background: var(--vc-bg-base);
   color: var(--vc-text-primary);
   font-family: var(--vc-font-mono);

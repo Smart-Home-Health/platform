@@ -33,7 +33,7 @@ import './auth.css';
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated, isAccountAuthenticated, accountAccess, skipAccountPassword } = useAuth();
+  const { isAuthenticated, isAccountAuthenticated, accountAccess, skipAccountPassword, haAccountAuth, restoreHaAccount } = useAuth();
 
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -56,18 +56,18 @@ export default function LoginPage() {
   // landing here after a logout (the on-mount check in AuthContext covers the
   // initial load).
   useEffect(() => {
-    if (skipAccountPassword && !isAccountAuthenticated && !autoSkipTried) {
+    if ((haAccountAuth || skipAccountPassword) && !isAccountAuthenticated && !autoSkipTried) {
       setAutoSkipTried(true);
-      accountAccess(null).then((result) => {
+      (haAccountAuth ? restoreHaAccount() : accountAccess(null)).then((result) => {
         // On failure (backend starting up, network error, ...) surface an error
         // so the guarded "Continuing…" screen falls through to the normal login
         // form instead of hanging forever.
-        if (!result?.success) {
+        if (!(haAccountAuth ? result : result?.success)) {
           setError(result?.error || 'Could not continue automatically. Please try again.');
         }
       });
     }
-  }, [skipAccountPassword, isAccountAuthenticated, autoSkipTried, accountAccess]);
+  }, [haAccountAuth, restoreHaAccount, skipAccountPassword, isAccountAuthenticated, autoSkipTried, accountAccess]);
 
   const handleUnlockAndContinue = async (e) => {
     e.preventDefault();
@@ -101,6 +101,18 @@ export default function LoginPage() {
   };
 
   // While the account-password skip is resolving, don't flash the password form.
+  if (haAccountAuth) {
+    return (
+      <AuthShell>
+        <h2 className="au-title">Home Assistant access</h2>
+        {error ? <>
+          <p className="au-error" role="alert">Could not restore Home Assistant access. Please try again.</p>
+          <button type="button" className="au-primary" onClick={() => { setError(''); setAutoSkipTried(false); }}>Try again</button>
+        </> : <p className="au-continuing">Continuing…</p>}
+      </AuthShell>
+    );
+  }
+
   if (skipAccountPassword && !error) {
     return (
       <AuthShell>
