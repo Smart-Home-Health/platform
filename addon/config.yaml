@@ -5,7 +5,7 @@
 # Postgres data + uploaded artifacts live under the add-on's auto-persistent
 # /data, so they survive restarts and updates.
 name: Smart Home Health
-version: "0.4.0"
+version: "0.5.0"
 slug: smart_home_health
 description: Caregiving vitals monitor + medication / care-task scheduling hub
 url: https://github.com/Smart-Home-Health/platform
@@ -19,6 +19,8 @@ arch:
 init: false
 startup: application
 boot: auto
+# /data includes live PostgreSQL files: stop the appliance before copying them.
+backup: cold
 
 # Ingress: served same-origin through HA's proxy under a per-token path prefix.
 # The app is base-path aware (backend injects the X-Ingress-Path into the SPA).

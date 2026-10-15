@@ -1,21 +1,15 @@
 name: Publish image
 
-# Builds the unified app image (backend API + built SPA, one container) and
-# pushes it to GHCR on every version tag, so users can pull
-# ghcr.io/smart-home-health/platform instead of building from source.
-#
-# Multi-arch via NATIVE runners: amd64 on ubuntu-latest, arm64 on GitHub's
-# free arm64 runners (public repos). The previous single-job QEMU build hit
-# the 6-hour job timeout emulating arm64 — the v0.2.0 publish died that way.
-# Each arch pushes by digest; a merge job stitches them into one manifest
-# with the metadata-action tags. Uses the built-in GITHUB_TOKEN.
-#
-# workflow_dispatch publishes :latest from whatever ref it runs on (semver
-# tags only appear on v* tag pushes).
+# This generic platform rebuild is separate from accepted HA add-on promotion.
+# Version tags must not trigger a rebuild or move latest during an add-on release.
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type publish-platform-latest to deliberately rebuild and publish
+        required: true
+        type: string
+
 
 env:
   # Must be lowercase for docker; matches what metadata-action derives.
@@ -23,6 +17,7 @@ env:
 
 jobs:
   build:
+    if: inputs.confirmation == 'publish-platform-latest'
     strategy:
       fail-fast: false
       matrix:
