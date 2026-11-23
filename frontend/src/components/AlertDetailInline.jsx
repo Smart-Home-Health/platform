@@ -157,11 +157,6 @@ const AlertDetailInline = ({ alert, onClose, onAcknowledge, initiateAcknowledge 
     });
   };
 
-  const adjustedEnd = (end) => {
-    if (!end) return null;
-    return new Date(new Date(end).getTime() - 30000);
-  };
-
   const spo2ChartData = useMemo(() => {
     if (!eventData || eventData.length === 0) return [];
     return eventData.map(p => ({ x: new Date(p.timestamp).toLocaleTimeString(), y: p.spo2 }));
@@ -214,20 +209,18 @@ const AlertDetailInline = ({ alert, onClose, onAcknowledge, initiateAcknowledge 
       {/* Info grid */}
       <div className="al-grid">
         {infoItem('Start Time', formatDateTime(alert.start_time))}
-        {infoItem('End Time', alert.end_time ? formatDateTime(adjustedEnd(alert.end_time)) : 'Ongoing')}
+        {infoItem('End Time', alert.end_time ? formatDateTime(alert.event_end_time ?? alert.end_time) : 'Ongoing')}
       </div>
 
       {/* Metric cards — the two numbers the episode is about. */}
       <div className="al-grid">
         <div className="al-metric spo2">
           <div className="al-metric-head">
-            <span className="al-metric-label">SpO₂ range</span>
+            <span className="al-metric-label">Lowest SpO₂</span>
             {alert.spo2_alarm_triggered && <span className="al-alarm">Alarm</span>}
           </div>
           <div className="al-metric-value">
-            {alert.spo2_min !== null && alert.spo2_max !== null
-              ? (alert.spo2_min === alert.spo2_max ? `${alert.spo2_min}%` : `${alert.spo2_min}–${alert.spo2_max}%`)
-              : 'N/A'}
+            {alert.spo2_min != null ? `${alert.spo2_min}%` : 'N/A'}
           </div>
         </div>
 
@@ -237,7 +230,7 @@ const AlertDetailInline = ({ alert, onClose, onAcknowledge, initiateAcknowledge 
             {alert.hr_alarm_triggered && <span className="al-alarm">Alarm</span>}
           </div>
           <div className="al-metric-value">
-            {alert.bpm_min !== null && alert.bpm_max !== null
+            {alert.bpm_min != null && alert.bpm_max != null
               ? (alert.bpm_min === alert.bpm_max ? `${alert.bpm_min} BPM` : `${alert.bpm_min}–${alert.bpm_max} BPM`)
               : 'N/A'}
           </div>

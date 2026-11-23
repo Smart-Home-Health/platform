@@ -22,6 +22,18 @@ import { CheckIcon, ChevronLeftIcon, SearchIcon } from '../Icons';
 import { useModalDock } from '../../contexts/ModalDockContext';
 import './alerts-panel.css';
 
+function EventVitals({ alert }) {
+  const { spo2_min, bpm_min, bpm_max } = alert;
+  const heartRate = bpm_min === bpm_max ? bpm_min : `${bpm_min}–${bpm_max}`;
+  return (
+    <>
+      Lowest SpO₂ <b className={alert.spo2_alarm_triggered ? 'breach' : ''}>{spo2_min != null ? `${spo2_min}%` : '—'}</b>
+      <span className="sep">·</span>
+      HR <b className={alert.hr_alarm_triggered ? 'breach' : ''}>{bpm_min != null && bpm_max != null ? `${heartRate} bpm` : '—'}</b>
+    </>
+  );
+}
+
 const AlertsList = ({ onAlertAcknowledge, patientId }) => {
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -121,14 +133,9 @@ const AlertsList = ({ onAlertAcknowledge, patientId }) => {
     });
   };
 
-  const adjustedEnd = (end) => {
-    if (!end) return null;
-    return new Date(new Date(end).getTime() - 30000);
-  };
-
   const formatDuration = (start, end) => {
     if (!start) return '—';
-    const endTime = end ? adjustedEnd(end) : new Date();
+    const endTime = end ? new Date(end) : new Date();
     const durationMs = endTime - new Date(start);
     if (durationMs < 0) return 'Ongoing';
     const totalSec = Math.floor(durationMs / 1000);
@@ -163,11 +170,6 @@ const AlertsList = ({ onAlertAcknowledge, patientId }) => {
     if (alert.hr_alarm_triggered) parts.push('High heart rate');
     if (!parts.length) return 'Pulse ox alert';
     return parts.join(' + ');
-  };
-
-  const range = (min, max, suffix = '') => {
-    if (min === null || min === undefined || max === null || max === undefined) return null;
-    return min === max ? `${min}${suffix}` : `${min}–${max}${suffix}`;
   };
 
   const selectedAlert = alerts.find(a => a.id === selectedId) || null;
@@ -249,8 +251,6 @@ const AlertsList = ({ onAlertAcknowledge, patientId }) => {
           <tbody>
             {alerts.map((alert) => {
               const severity = getAlertSeverity(alert);
-              const spo2 = range(alert.spo2_min, alert.spo2_max, '%');
-              const bpm = range(alert.bpm_min, alert.bpm_max);
               return (
                 <tr
                   key={alert.id}
@@ -262,11 +262,9 @@ const AlertsList = ({ onAlertAcknowledge, patientId }) => {
                     <button type="button" className="al-rowbtn">{eventTitle(alert)}</button>
                   </th>
                   <td className="al-vitals">
-                    {spo2 && <>SpO₂ <b className={alert.spo2_alarm_triggered ? 'breach' : ''}>{spo2}</b></>}
-                    {spo2 && bpm && <span className="sep">·</span>}
-                    {bpm && <>HR <b className={alert.hr_alarm_triggered ? 'breach' : ''}>{bpm}</b></>}
+                    <EventVitals alert={alert} />
                   </td>
-                  <td>{formatDuration(alert.start_time, alert.end_time)}</td>
+                  <td>{formatDuration(alert.start_time, alert.event_end_time ?? alert.end_time)}</td>
                   <td><span className={`al-badge ${severity}`}>{SEVERITY[severity]}</span></td>
                   <td className="al-actions-col">
                     {!alert.acknowledged && (
@@ -288,8 +286,6 @@ const AlertsList = ({ onAlertAcknowledge, patientId }) => {
         <div className="al-list">
           {alerts.map((alert, i) => {
             const severity = getAlertSeverity(alert);
-            const spo2 = range(alert.spo2_min, alert.spo2_max, '%');
-            const bpm = range(alert.bpm_min, alert.bpm_max);
             return (
               <div
                 key={alert.id}
@@ -308,11 +304,9 @@ const AlertsList = ({ onAlertAcknowledge, patientId }) => {
                   </span>
                   <span className={`al-badge ${severity}`}>{SEVERITY[severity]}</span>
                   <span className="al-vitals">
-                    {spo2 && <>SpO₂ <b className={alert.spo2_alarm_triggered ? 'breach' : ''}>{spo2}</b></>}
-                    {spo2 && bpm && <span className="sep">·</span>}
-                    {bpm && <>HR <b className={alert.hr_alarm_triggered ? 'breach' : ''}>{bpm}</b></>}
+                    <EventVitals alert={alert} />
                     <span className="sep">·</span>
-                    <span className="ok">{formatDuration(alert.start_time, alert.end_time)}</span>
+                    <span className="ok">{formatDuration(alert.start_time, alert.event_end_time ?? alert.end_time)}</span>
                   </span>
                 </button>
                 <div className="al-card-actions">

@@ -126,6 +126,26 @@ def test_daily_intake_uses_account_timezone(admin_client, patient):
     assert intake_id in [r["id"] for r in prior_day]
 
 
+def test_overview_buckets_late_intake_on_consumed_day(admin_client, patient):
+    response = admin_client.post(f"/api/nutrition-intake?patient_id={patient.id}", json={
+        **_intake(), "scheduled_time": "2026-11-22T21:00:00-05:00",
+        "consumed_at": "2026-11-23T00:30:00-05:00",
+    })
+    assert response.status_code == 200
+    intake_id = response.json()["id"]
+    route = f"/api/patients/{patient.id}/nutrition-intake/daily"
+
+    def ids(day, bucket):
+        response = admin_client.get(route, params={"target_date": day, "bucket_by": bucket})
+        assert response.status_code == 200
+        return [r["id"] for r in response.json()["intake_records"]]
+
+    assert ids("2026-11-22", "consumed") == []
+    assert ids("2026-11-23", "consumed") == [intake_id]
+    assert ids("2026-11-22", "scheduled") == [intake_id]
+    assert ids("2026-11-23", "scheduled") == []
+
+
 def test_daily_outputs_uses_account_timezone(admin_client, patient):
     target = date.today()
     resp = admin_client.post("/api/nutrition/outputs", json={

@@ -116,6 +116,30 @@ def _samples(db, patient_id, runs):
 
 # --- Two concurrent streams --------------------------------------------------
 
+def test_monitoring_summary_follows_live_samples(state_module, db_session, two_patients, monkeypatch):
+    from crud.monitoring import get_monitoring_alerts
+
+    patient, _ = two_patients
+    # The HR peak follows the oxygen low. A later, higher HR in the normal
+    # confirmation period is outside the displayed event.
+    samples = [(0, 88, 95), (2, 79, 86), (4, 84, 123), (6, NORMAL_SPO2, 98)]
+    samples.extend((s, NORMAL_SPO2, 141) for s in (8, 16, 24, 32, 40))
+    for offset, spo2, bpm in samples:
+        timestamp = START + timedelta(seconds=offset)
+        monkeypatch.setattr("modules.state_module.utc_now", lambda: timestamp)
+        asyncio.run(state_module._handle_pulse_ox_update(
+            {"spo2": spo2, "bpm": bpm, "perfusion": 2}, None, patient_id=patient.id))
+
+    summary, = get_monitoring_alerts(db_session, patient_id=patient.id)
+    saved, = _alerts(db_session, patient.id)
+    assert saved.end_time == START + timedelta(seconds=40)
+    assert saved.recovery_start_time == START + timedelta(seconds=6)
+    assert (saved.spo2_min, saved.bpm_min, saved.bpm_max) == (79, 86, 123)
+    assert summary["start_time"] == START
+    assert summary["event_end_time"] == START + timedelta(seconds=6)
+    assert (summary["spo2_min"], summary["bpm_min"], summary["bpm_max"]) == (79, 86, 123)
+
+
 def test_single_stream_opens_and_recovery_closes(state_module, db_session, two_patients):
     """Harness validity: one stream drives open → 30s recovery → close."""
     a, _ = two_patients

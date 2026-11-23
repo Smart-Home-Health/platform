@@ -17,17 +17,111 @@
 Monitoring and alerts CRUD operations
 """
 import logging
+from itertools import groupby
 from datetime import datetime, timedelta
 from typing import Optional
 from utils.datetime_utils import utc_now
-from sqlalchemy.orm import Session
-from sqlalchemy import desc, asc, and_, or_
+from sqlalchemy.orm import Session, aliased
+from sqlalchemy import case, desc, asc, and_, or_, func, select, true
+from crud.alert_closure import (
+    CONTINUITY_SECONDS, INFERRED_RECOVERY, LIVE_GAP, LIVE_RECOVERY, RECOVERY_SECONDS,
+    SCAN_EPSILON_SECONDS, classify_sample, load_thresholds,
+)
 from schemas.vital import Vital
 from schemas.pulse_ox_data import PulseOxData
 from schemas.setting import Setting
 from schemas.monitoring_alert import MonitoringAlert
 
 logger = logging.getLogger('crud')
+
+
+def _is_recovery(page):
+    return or_(page.end_source.is_(None), page.end_source.in_([LIVE_RECOVERY, INFERRED_RECOVERY]))
+
+
+def _historical_recovery_starts(db, page):
+    """Replay the short confirmation window for historical rows on this page."""
+    epsilon = timedelta(seconds=SCAN_EPSILON_SECONDS)
+    continuity = timedelta(seconds=CONTINUITY_SECONDS)
+    hold = timedelta(seconds=RECOVERY_SECONDS)
+    # Include the sample before the run, and tolerate the old difference
+    # between a live sample's storage timestamp and the engine clock.
+    scan_from = page.end_time - hold - 2 * continuity - epsilon
+    rows = db.query(
+        page.id, page.end_time, page.end_source, PulseOxData.timestamp, PulseOxData.spo2, PulseOxData.bpm
+    ).select_from(page).join(
+        PulseOxData, and_(
+            PulseOxData.patient_id == page.patient_id,
+            PulseOxData.timestamp >= func.greatest(page.start_time, scan_from),
+            PulseOxData.timestamp <= page.end_time + epsilon,
+        )
+    ).filter(
+        page.recovery_start_time.is_(None), page.end_time.isnot(None), _is_recovery(page)
+    ).order_by(page.id, PulseOxData.timestamp, PulseOxData.id).all()
+    if not rows:
+        return {}
+    thresholds = load_thresholds(db)
+    starts = {}
+    for alert_id, samples in groupby(rows, key=lambda row: row.id):
+        start = previous = None
+        for row in samples:
+            kind = classify_sample(row.spo2, row.bpm, thresholds)
+            if kind == 'disconnected' and row.end_source == INFERRED_RECOVERY:
+                continue  # The inference engine considers only valid samples.
+            if kind != 'normal':
+                start = None
+            elif start is None or row.timestamp - previous > continuity:
+                start = row.timestamp
+            elif (abs(row.timestamp - row.end_time) <= epsilon
+                  and hold - epsilon <= row.timestamp - start <= hold + continuity + epsilon):
+                starts[alert_id] = start
+                break
+            previous = row.timestamp
+    return starts
+
+
+def _alerts_with_event_vitals(db, page, historical_starts=None):
+    # Historical alerts with insufficient raw data retain the estimated end.
+    approximate_end = page.end_time - timedelta(seconds=RECOVERY_SECONDS)
+    if historical_starts:
+        approximate_end = case(historical_starts, value=page.id, else_=approximate_end)
+    event_end = case(
+        (and_(page.end_time.isnot(None), _is_recovery(page)),
+         func.greatest(page.start_time, func.coalesce(page.recovery_start_time, approximate_end))),
+        else_=page.end_time,
+    ).label('event_end_time')
+    # The last valid sample used to be written fractionally after the live
+    # engine clock. A gap has no following valid reading within this tolerance.
+    sample_end = case(
+        (page.end_source == LIVE_GAP, page.end_time + timedelta(seconds=SCAN_EPSILON_SECONDS)),
+        else_=func.coalesce(event_end, func.now()),
+    )
+    samples = select(
+        func.min(PulseOxData.spo2).label('spo2_min'),
+        func.max(PulseOxData.spo2).label('spo2_max'),
+        func.min(PulseOxData.bpm).label('bpm_min'),
+        func.max(PulseOxData.bpm).label('bpm_max'),
+    ).where(
+        PulseOxData.patient_id == page.patient_id,
+        PulseOxData.timestamp.between(page.start_time, sample_end),
+        PulseOxData.spo2 > 0, PulseOxData.bpm > 0,
+        # An indeterminate end is historical and unknown. Later readings
+        # cannot safely be attributed to that episode.
+        page.end_source.is_distinct_from('indeterminate'),
+    ).correlate(page).lateral()
+
+    # The opening sample can predate start_time slightly. A stored summary
+    # also survives pruning of the underlying pulse-ox history.
+    def with_stored(combine, stored, sampled):
+        return combine(case((stored > 0, stored)), sampled).label(stored.key)
+
+    return db.query(
+        page, event_end,
+        with_stored(func.least, page.spo2_min, samples.c.spo2_min),
+        with_stored(func.greatest, page.spo2_max, samples.c.spo2_max),
+        with_stored(func.least, page.bpm_min, samples.c.bpm_min),
+        with_stored(func.greatest, page.bpm_max, samples.c.bpm_max),
+    ).select_from(page).join(samples, true())
 
 
 def get_monitoring_alerts(db: Session, limit=50, include_acknowledged=False, detailed=False, patient_id=None):
@@ -52,23 +146,29 @@ def get_monitoring_alerts(db: Session, limit=50, include_acknowledged=False, det
         if patient_id is not None:
             query = query.filter(MonitoringAlert.patient_id == patient_id)
 
-        query = query.order_by(MonitoringAlert.start_time.desc()).limit(limit)
-
-        results = query.all()
+        # Limit the alerts before scanning the (patient_id, timestamp) index.
+        # Older alert rows often contain only the reading that opened them.
+        page = aliased(MonitoringAlert, query.order_by(
+            MonitoringAlert.start_time.desc(), MonitoringAlert.id.desc()
+        ).limit(limit).subquery())
+        historical_starts = _historical_recovery_starts(db, page)
+        results = _alerts_with_event_vitals(db, page, historical_starts).order_by(
+            page.start_time.desc(), page.id.desc()).all()
         alerts = []
 
-        for row in results:
+        for row, event_end_time, spo2_min, spo2_max, bpm_min, bpm_max in results:
             alert = {
                 'id': row.id,
                 'patient_id': row.patient_id,
                 'start_time': row.start_time,
                 'end_time': row.end_time,
+                'event_end_time': event_end_time,
                 'start_data_id': row.start_data_id,
                 'end_data_id': row.end_data_id,
-                'spo2_min': row.spo2_min,
-                'spo2_max': row.spo2_max,
-                'bpm_min': row.bpm_min,
-                'bpm_max': row.bpm_max,
+                'spo2_min': spo2_min,
+                'spo2_max': spo2_max,
+                'bpm_min': bpm_min,
+                'bpm_max': bpm_max,
                 'spo2_alarm_triggered': row.spo2_alarm_triggered,
                 'hr_alarm_triggered': row.hr_alarm_triggered,
                 'external_alarm_triggered': row.external_alarm_triggered,
@@ -189,7 +289,7 @@ def update_monitoring_alert(db: Session, alert_id, end_time=None, end_data_id=No
                            spo2_alarm_triggered=None, hr_alarm_triggered=None,
                            external_alarm_triggered=None, oxygen_used=None,
                            oxygen_highest=None, oxygen_unit=None,
-                           end_source=None, end_time_superseded=None):
+                           end_source=None, end_time_superseded=None, recovery_start_time=None):
     """
     Update an existing monitoring alert
 
@@ -242,6 +342,7 @@ def update_monitoring_alert(db: Session, alert_id, end_time=None, end_data_id=No
 
         if end_time:
             update_fields[MonitoringAlert.end_time] = end_time
+            update_fields[MonitoringAlert.recovery_start_time] = recovery_start_time
 
         if end_data_id:
             update_fields[MonitoringAlert.end_data_id] = end_data_id
@@ -283,6 +384,14 @@ def update_monitoring_alert(db: Session, alert_id, end_time=None, end_data_id=No
             return True
 
         db.query(MonitoringAlert).filter(MonitoringAlert.id == alert_id).update(update_fields)
+        if end_time:
+            # Save the same summary the list shows while the raw data exists.
+            summary = _alerts_with_event_vitals(db, MonitoringAlert).filter(
+                MonitoringAlert.id == alert_id).one()
+            alert.spo2_min = summary.spo2_min
+            alert.spo2_max = summary.spo2_max
+            alert.bpm_min = summary.bpm_min
+            alert.bpm_max = summary.bpm_max
         db.commit()
 
         logger.info(f"Updated monitoring alert #{alert_id}")
@@ -345,6 +454,7 @@ def get_pulse_ox_data_for_alert(db: Session, alert_id):
 
         # Get pulse ox data between the start and end times of the alert
         data = db.query(PulseOxData).filter(
+            PulseOxData.patient_id == alert.patient_id,
             PulseOxData.timestamp >= start_time,
             PulseOxData.timestamp <= end_time
         ).order_by(PulseOxData.timestamp.asc()).all()
@@ -526,7 +636,7 @@ def get_available_pulse_ox_dates(db: Session, limit=30, patient_id=None):
         return {'dates': []}
 
 
-def start_monitoring_alert(db: Session, spo2=None, bpm=None, data_id=None, spo2_alarm_triggered=None, hr_alarm_triggered=None, external_alarm_triggered=None, patient_id=None):
+def start_monitoring_alert(db: Session, spo2=None, bpm=None, data_id=None, spo2_alarm_triggered=None, hr_alarm_triggered=None, external_alarm_triggered=None, patient_id=None, start_time=None):
     """
     Start a new monitoring alert event
 
@@ -538,6 +648,7 @@ def start_monitoring_alert(db: Session, spo2=None, bpm=None, data_id=None, spo2_
         hr_alarm_triggered (int): Whether heart rate alarm was triggered
         external_alarm_triggered (int): Whether external alarm was triggered
         patient_id (int): Patient ID, creates default if not provided
+        start_time (datetime): Timestamp of the sample that opened the alert
 
     Returns:
         int: ID of the inserted alert or None on error
@@ -557,7 +668,7 @@ def start_monitoring_alert(db: Session, spo2=None, bpm=None, data_id=None, spo2_
 
         alert = MonitoringAlert(
             patient_id=patient_id,
-            start_time=now,
+            start_time=start_time or now,
             start_data_id=data_id,
             spo2_min=spo2,
             spo2_max=spo2,

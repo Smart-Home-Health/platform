@@ -222,7 +222,7 @@ const AdminV2Nutrition = () => {
         const tzOffsetMinutes = -new Date().getTimezoneOffset();
         const [intakeRes, outputRes] = await Promise.all([
           fetch(
-            `${config.apiUrl}/api/patients/${selectedPatient.id}/nutrition-intake/daily?target_date=${dateParam}&tz_offset_minutes=${tzOffsetMinutes}`,
+            `${config.apiUrl}/api/patients/${selectedPatient.id}/nutrition-intake/daily?target_date=${dateParam}&tz_offset_minutes=${tzOffsetMinutes}&bucket_by=consumed`,
             { credentials: 'include' }
           ),
           fetch(

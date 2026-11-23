@@ -193,6 +193,35 @@ describe('NutritionOverview', () => {
     expect(screen.queryByText('Item 1')).not.toBeInTheDocument();
   });
 
+  it('shows and orders scheduled intakes by the actual intake time', () => {
+    setup({
+      currentGoal: { total_fluid_ml_target: 2000 },
+      intakes: [
+        intake({
+          id: 1, item_name: 'Late lunch feed',
+          scheduled_time: '2026-08-18T10:30:00-04:00',
+          consumed_at: '2026-08-18T13:24:00-04:00',
+        }),
+        intake({
+          id: 2, item_name: 'Early afternoon water',
+          scheduled_time: '2026-08-18T14:00:00-04:00',
+          consumed_at: '2026-08-18T12:30:00-04:00',
+        }),
+      ],
+      outputs: [output({ occurred_at: '2026-08-18T13:00:00-04:00' })],
+    });
+
+    const rows = screen.getAllByRole('listitem');
+    expect(within(rows[0]).getByText('Late lunch feed')).toBeInTheDocument();
+    expect(within(rows[0]).getByText('1:24 PM')).toBeInTheDocument();
+    expect(within(rows[1]).getByText('1:00 PM')).toBeInTheDocument();
+    expect(within(rows[2]).getByText('Early afternoon water')).toBeInTheDocument();
+    expect(within(rows[2]).getByText('12:30 PM')).toBeInTheDocument();
+    expect(screen.getByText('Last intake · 1:24 PM')).toBeInTheDocument();
+    expect(screen.queryByText('10:30 AM')).not.toBeInTheDocument();
+    expect(screen.queryByText('2:00 PM')).not.toBeInTheDocument();
+  });
+
   it('opens a timeline entry for editing', () => {
     const onEditIntake = vi.fn();
     setup({ intakes: [intake()], onEditIntake });

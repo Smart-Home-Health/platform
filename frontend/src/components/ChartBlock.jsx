@@ -29,8 +29,6 @@ const SERIES_COLORS = {
 };
 const getColor = (colorName) => SERIES_COLORS[String(colorName).toLowerCase()] || colorName;
 
-const pad2 = (n) => String(n).padStart(2, '0');
-
 /* Streaming line chart for the live dashboard.
  *
  * The x domain is the wall-clock window [now - windowMs, now] with ticks on
@@ -55,6 +53,7 @@ function ChartBlock({
   chrome = CHART_CHROME,
   windowMs = 5 * 60 * 1000,
   now,
+  formatTime,
 }) {
   const chartColor = getColor(color);
   const domainEnd = now ?? Date.now();
@@ -68,11 +67,7 @@ function ChartBlock({
   // Seconds only carry information when the ticks are closer together than a
   // minute; above that they're noise that changes on every render.
   const showSeconds = step < 60 * 1000;
-  const formatTick = (unixTime) => {
-    const d = new Date(unixTime);
-    const hm = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-    return showSeconds ? `${hm}:${pad2(d.getSeconds())}` : hm;
-  };
+  const formatTick = (unixTime) => formatTime(unixTime, showSeconds);
 
   const yDomain = useMemo(() => niceYDomain(dataset.map(d => d.y)), [dataset]);
 
@@ -141,7 +136,10 @@ function ChartBlock({
             )}
             {showTooltip && (
               <Tooltip
-                labelFormatter={(unixTime) => new Date(unixTime).toLocaleTimeString()}
+                labelFormatter={(_label, entries) => {
+                  const timestamp = entries[0]?.payload?.x;
+                  return timestamp == null ? '' : formatTime(timestamp, true);
+                }}
                 contentStyle={axisStyles.tooltipContent}
                 itemStyle={seriesStyle}
                 labelStyle={axisStyles.tooltipLabel}

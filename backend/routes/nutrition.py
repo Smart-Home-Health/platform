@@ -16,7 +16,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from datetime import datetime, date
-from typing import List, Optional
+from typing import List, Literal, Optional
 import logging
 from db import get_db
 from dependencies import require_read_access, require_permission
@@ -333,6 +333,7 @@ async def get_daily_nutrition_intake_endpoint(
     patient_id: int,
     target_date: Optional[date] = None,
     tz_offset_minutes: Optional[int] = None,
+    bucket_by: Literal["scheduled", "consumed"] = "scheduled",
     db: Session = Depends(get_db),
     _: bool = Depends(require_read_access)
 ):
@@ -342,7 +343,8 @@ async def get_daily_nutrition_intake_endpoint(
     (Account.timezone). `tz_offset_minutes` is a deprecated legacy fallback.
     """
     tz = resolve_tz_for_patient(db, patient_id)
-    intake_records = get_daily_nutrition_intake(db, patient_id, target_date, tz_offset_minutes=tz_offset_minutes, tz=tz)
+    intake_records = get_daily_nutrition_intake(
+        db, patient_id, target_date, tz_offset_minutes=tz_offset_minutes, tz=tz, bucket_by=bucket_by)
     return {
         "date": target_date or date.today(),
         "intake_records": intake_records

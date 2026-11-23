@@ -111,22 +111,42 @@
 .ld-clock {
   flex-shrink: 0;
   text-align: right;
+  color: var(--dash-text);
+  font: inherit;
+  background: none;
+  border: none;
   border-left: 1px solid var(--dash-border);
-  padding-left: 1.1rem;
+  padding: 0.25rem 0 0.25rem 1rem;
+  min-height: 44px;
+  cursor: pointer;
   white-space: nowrap;
 }
 .ld-clock-time {
+  display: block;
   font-size: 22px;
   font-weight: 700;
   letter-spacing: 0.06em;
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
 }
+.ld-clock-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
 .ld-clock-date {
   font-size: 11px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--dash-text-muted);
+}
+.ld-clock-format {
+  font-size: 10px;
+  color: var(--vc-data-live);
+}
+.ld-clock:hover .ld-clock-format, .ld-clock:focus-visible .ld-clock-format {
+  text-decoration: underline;
 }
 
 /* ---- Main grid ---- */
@@ -570,7 +590,12 @@
   .ld-strip-label { font-size: 9px; }
   .ld-strip-value { font-size: 10.5px; gap: 0.3rem; }
 
-  .ld-clock, .ld-page-label { display: none; }
+  .ld-topbar { gap: 0.5rem; }
+  .ld-topbar .ld-brand { min-width: 0; }
+  .ld-brand-name { white-space: normal; text-align: left; }
+  .ld-clock { margin-left: auto; padding: 0.25rem; border: 0; }
+  .ld-clock-time { font-size: 15px; }
+  .ld-clock-date, .ld-page-label { display: none; }
 }
 
 /* Mid-width: the page label yields before anything clips */
@@ -581,6 +606,11 @@
   .ld-patient-name { max-width: 130px; }
   .ld-topbar { gap: 0.7rem; }
   .ld-action svg { width: 22px; height: 22px; }
+}
+@media (min-width: 769px) and (max-width: 1000px) {
+  .ld-brand-name, .ld-clock-date { display: none; }
+  .ld-clock-time { font-size: 18px; }
+  .ld-topbar .ld-action { width: 44px; }
 }
 
 /* ---- Mobile modal header ----

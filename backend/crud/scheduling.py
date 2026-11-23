@@ -29,6 +29,7 @@ from crud.patients import get_active_patient
 from utils.datetime_utils import (
     utc_now,
     utc_today,
+    make_utc,
     resolve_tz_for_patient,
     local_day_bounds,
     local_day_range_utc as _local_day_range_utc,
@@ -769,11 +770,6 @@ def get_scheduled_medications(db: Session, target_date, patient_id: int, tz_offs
         # Compute the UTC range that corresponds to the caller's local day.
         local_start_utc, local_end_utc = _local_day_range_utc(target_date, tz_offset_minutes, tz)
 
-        # MedicationLog.scheduled_time is stored as naive UTC (cron firings'
-        # wall-clock values). Compare against the same UTC range stripped of tzinfo.
-        local_start_naive = local_start_utc.replace(tzinfo=None)
-        local_end_naive = local_end_utc.replace(tzinfo=None)
-
         # Get all active medication schedules for this patient
         schedules = db.query(MedicationSchedule).filter(
             MedicationSchedule.active == True,
@@ -787,20 +783,23 @@ def get_scheduled_medications(db: Session, target_date, patient_id: int, tz_offs
             (Medication.end_date == None) | (Medication.end_date >= datetime.combine(target_date, datetime.min.time()))
         ).all()
 
-        # Completion logs whose stored scheduled_time falls inside the caller's
-        # local day (in UTC range, since the stored value is the firing's UTC).
+        # Migration 001 stores medication scheduled_time as timestamp without
+        # time zone, holding UTC wall-clock values. Compare naive UTC bounds
+        # so PostgreSQL does not apply its session timezone to those values.
         med_logs = db.query(MedicationLog).filter(
             MedicationLog.patient_id == patient_id,
             MedicationLog.schedule_id.isnot(None),
-            MedicationLog.scheduled_time >= local_start_naive,
-            MedicationLog.scheduled_time < local_end_naive,
+            MedicationLog.scheduled_time >= local_start_utc.replace(tzinfo=None),
+            MedicationLog.scheduled_time < local_end_utc.replace(tzinfo=None),
         ).all()
 
-        # Build a lookup keyed by (schedule_id, UTC HH:MM of firing).
+        # Match full UTC minutes regardless of the database session timezone.
+        # Retain the date because a 25-hour local day can span two occurrences
+        # of the same UTC HH:MM on different dates.
         log_lookup = {}
         for log in med_logs:
             if log.scheduled_time:
-                key = (log.schedule_id, log.scheduled_time.strftime('%H:%M'))
+                key = (log.schedule_id, make_utc(log.scheduled_time).replace(second=0, microsecond=0))
                 log_lookup[key] = log
 
         scheduled_meds = []
@@ -818,9 +817,7 @@ def get_scheduled_medications(db: Session, target_date, patient_id: int, tz_offs
                     if next_time_utc < local_start_utc:
                         continue
 
-                    # Key by the firing's UTC HH:MM (matches how scheduled_time
-                    # is stored on logs — naive but holding the UTC wall-clock).
-                    key = (schedule.id, next_time_utc.strftime('%H:%M'))
+                    key = (schedule.id, next_time_utc.replace(second=0, microsecond=0))
                     log = log_lookup.get(key)
 
                     scheduled_meds.append({
@@ -917,24 +914,20 @@ def get_scheduled_care_tasks(db: Session, target_date, patient_id: int, tz_offse
             (CareTask.patient_id == patient_id) | (CareTask.patient_id == None)
         ).all()
 
-        # CareTaskLog.scheduled_time is TIMESTAMP (naive UTC wall-clock); strip
-        # the tz off the bounds so the comparison succeeds.
-        local_start_naive = local_start_utc.replace(tzinfo=None)
-        local_end_naive = local_end_utc.replace(tzinfo=None)
-
+        # Migration 001 stores care-task scheduled_time as naive UTC. Match
+        # that representation without involving the database session timezone.
         task_logs = db.query(CareTaskLog).filter(
             CareTaskLog.patient_id == patient_id,
             CareTaskLog.schedule_id.isnot(None),
-            CareTaskLog.scheduled_time >= local_start_naive,
-            CareTaskLog.scheduled_time < local_end_naive,
+            CareTaskLog.scheduled_time >= local_start_utc.replace(tzinfo=None),
+            CareTaskLog.scheduled_time < local_end_utc.replace(tzinfo=None),
         ).all()
 
-        # Build a lookup dict: {(schedule_id, HH:MM): log}. Key on the UTC
-        # wall-clock the firing was emitted at.
+        # Normalize returned timestamps before matching the full UTC minute.
         log_lookup = {}
         for log in task_logs:
             if log.scheduled_time:
-                key = (log.schedule_id, log.scheduled_time.strftime('%H:%M'))
+                key = (log.schedule_id, make_utc(log.scheduled_time).replace(second=0, microsecond=0))
                 log_lookup[key] = log
 
         scheduled_tasks = []
@@ -955,7 +948,7 @@ def get_scheduled_care_tasks(db: Session, target_date, patient_id: int, tz_offse
                     if next_time_utc < local_start_utc:
                         continue
 
-                    key = (schedule.id, next_time_utc.strftime('%H:%M'))
+                    key = (schedule.id, next_time_utc.replace(second=0, microsecond=0))
                     log = log_lookup.get(key)
 
                     scheduled_tasks.append({
@@ -1066,12 +1059,14 @@ def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset
             NutritionIntake.scheduled_time < local_end_utc,
         ).all()
 
-        # Build a lookup dict: {(schedule_id, HH:MM): log}. Key on the UTC
-        # wall-clock so it matches the next_time_utc we emit below.
+        # TIMESTAMPTZ comes back in the database session's timezone, which
+        # need not be UTC (including in the HA add-on). Match the UTC instant,
+        # not its displayed wall-clock time. Keep the date too: a 25-hour
+        # local day can contain the same UTC HH:MM on two different dates.
         log_lookup = {}
         for log in nutrition_logs:
             if log.scheduled_time:
-                key = (log.schedule_id, log.scheduled_time.strftime('%H:%M'))
+                key = (log.schedule_id, make_utc(log.scheduled_time).replace(second=0, microsecond=0))
                 log_lookup[key] = log
 
         scheduled_nutrition = []
@@ -1107,8 +1102,7 @@ def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset
                     if next_time_utc < local_start_utc:
                         continue
 
-                    # Key by the firing's UTC HH:MM (matches stored scheduled_time).
-                    key = (schedule.id, next_time_utc.strftime('%H:%M'))
+                    key = (schedule.id, next_time_utc.replace(second=0, microsecond=0))
                     log = log_lookup.get(key)
 
                     scheduled_nutrition.append({

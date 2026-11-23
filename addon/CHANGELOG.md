@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.3
+
+Migration 055 records when confirmed alert recovery began. It runs automatically on upgrade.
+
+- Tap a patient's SpO₂ reading on the dashboard to open that patient's Live View. The live dashboard also has a 12/24-hour clock switch.
+- Monitoring alert cards and Inspect show the lowest SpO₂ and the heart-rate range during each event. Older alerts use the patient's recorded samples where available.
+- The Undo log is under **Vitals → Undo**. Schedule now opens directly to the date controls.
+- Schedule matches completions to the intended item and refreshes completion status, recorded time, and Undo after saving. The nutrition timeline and Last intake use the actual recorded intake time.
+
 ## 0.5.1
 
 Home Assistant account authentication and on-screen keyboard fixes. No database
