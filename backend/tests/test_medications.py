@@ -121,3 +121,29 @@ def test_active_medications_listing(admin_client, patient):
     resp = admin_client.get("/api/medications/active")
     assert resp.status_code == 200
     assert isinstance(resp.json(), list)
+
+
+def test_edit_shared_medication_schedule_in_place(admin_client, patient):
+    med_id = _make_med(admin_client, patient, is_patient_specific=False,
+                       admin_patient_id=None).json()["id"]
+    response = admin_client.post(f"/api/add/schedule/{med_id}", json={
+        "patient_id": patient.id, "cron_expression": "0 3 * * 2",
+        "description": "Weekly dose", "dose_amount": 1, "grace_period_hours": 12,
+        "active": False, "notes": "Keep this note",
+    })
+    assert response.status_code == 200, response.text
+    schedule_id = response.json()["id"]
+    response = admin_client.put(f"/api/schedules/{schedule_id}", json={
+        "dose_amount": 0.5, "grace_period_hours": None,
+    })
+    assert response.status_code == 200, response.text
+
+    meds = admin_client.get(f"/api/admin/medications/active?patient_id={patient.id}").json()
+    [schedule] = next(m for m in meds if m["id"] == med_id)["schedules"]
+    assert schedule["id"] == schedule_id
+    assert schedule["patient_id"] == patient.id
+    assert schedule["dose_amount"] == 0.5
+    assert schedule["grace_period_hours"] is None
+    assert schedule["active"] is False
+    assert schedule["notes"] == "Keep this note"
+    assert schedule["cron_expression"] == "0 3 * * 2"
