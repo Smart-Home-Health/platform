@@ -15,32 +15,32 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useState, useEffect } from 'react';
 import { SettingsIcon, BrandMarkIcon } from '../Icons';
 
-function Clock() {
-  const [now, setNow] = useState(new Date());
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
-  }, []);
-  const pad = (n) => String(n).padStart(2, '0');
-  const time = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-  const date = now.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+const dateFormat = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+
+function Clock({ clock, now }) {
+  const action = `Switch to ${clock.hour12 ? '24' : '12'}-hour time`;
   return (
-    <div className="ld-clock">
-      <div className="ld-clock-time">{time}</div>
-      <div className="ld-clock-date">{date}</div>
-    </div>
+    <button type="button" className="ld-clock" onClick={clock.toggle} title={action}
+            aria-label={action} aria-describedby="ld-current-time">
+      <span id="ld-current-time" className="ld-clock-time">{clock.formatTime(now, true)}</span>
+      <span className="ld-clock-meta">
+        <span className="ld-clock-date">{dateFormat.format(now)}</span>
+        <span className="ld-clock-format">12h ⇄ 24h</span>
+      </span>
+    </button>
   );
 }
 
 /* Live dashboard top bar. Desktop: brand · patient chip · page label · icon
- * actions · clock. Mobile: brand + hamburger (the overlay menu itself stays
+ * actions · clock. Mobile: brand + clock + hamburger (the overlay menu itself stays
  * in Dashboard.jsx-provided `actions` and renders below).
  *
  * `actions` comes from buildTopBarActions (topBarActions.jsx). */
 export default function TopBar({
+  clock,
+  now,
   isMobile,
   isAlarmBlinking,
   isAlarmActive,
@@ -62,6 +62,7 @@ export default function TopBar({
           <span className="ld-brand-mark" aria-hidden="true"><BrandMarkIcon size={28} /></span>
           <span className="ld-brand-name">Smart Home Health</span>
         </button>
+        <Clock clock={clock} now={now} />
         <button
           className="mobile-menu-button"
           onClick={onToggleMobileMenu}
@@ -79,7 +80,7 @@ export default function TopBar({
 
   return (
     <div className={cls}>
-      <button type="button" className="ld-brand" onClick={onBrandClick}>
+      <button type="button" className="ld-brand" onClick={onBrandClick} aria-label="Smart Home Health">
         <span className="ld-brand-mark" aria-hidden="true"><BrandMarkIcon size={30} /></span>
         <span className="ld-brand-name">Smart Home Health</span>
       </button>
@@ -122,7 +123,7 @@ export default function TopBar({
         </button>
       </div>
 
-      <Clock />
+      <Clock clock={clock} now={now} />
     </div>
   );
 }

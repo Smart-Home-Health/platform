@@ -29,6 +29,7 @@ import LiveCharts from "../components/dashboard/LiveCharts";
 import StatusStrip from "../components/dashboard/StatusStrip";
 import ChartBlock from "../components/ChartBlock";
 import useLiveVitalsBuffer, { CHART_RANGES } from "../hooks/useLiveVitalsBuffer";
+import useLiveClockFormat from "../hooks/useLiveClockFormat";
 import config from '../config';
 import "../components/dashboard/live-dashboard.css";
 import "../components/dashboard/dock-panel.css";
@@ -53,9 +54,14 @@ export default function Dashboard() {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { isAuthenticated, readRestricted, unlockWithAccountPassword } = useAuth();
-  const { patients, selectedPatient, selectPatient, loadingPatients } = useAdminPatient();
+  const { patients, selectedPatient: sessionPatient, selectPatient, loadingPatients } = useAdminPatient();
+  const patientParam = searchParams.get('patient');
+  // Resolve the link before starting patient-scoped reads, even if the session
+  // remembers a different patient.
+  const selectedPatient = patientParam ? patients.find(p => p.id === Number(patientParam)) : sessionPatient;
   const { requirePinAuth, pinChallengeOpen } = usePinChallenge();
   const { chartChrome } = useDashboardTheme();
+  const clock = useLiveClockFormat();
 
   // Add mobile detection state
   const [isMobile, setIsMobile] = useState(false);
@@ -94,6 +100,7 @@ export default function Dashboard() {
       showXaxis={false}
       showYaxis={false}
       showTooltip={false}
+      formatTime={clock.formatTime}
       transparent
       chrome={chartChrome}
       windowMs={buffer.rangeDef.minutes * 60 * 1000}
@@ -282,29 +289,11 @@ export default function Dashboard() {
 
   // URL -> patient selection sync
   useEffect(() => {
-    const patientParam = searchParams.get('patient');
-    if (!patientParam) return;
-    if (loadingPatients || patients.length === 0) return;
-
-    const desiredId = Number(patientParam);
-    if (!Number.isFinite(desiredId)) return;
-    if (selectedPatient?.id === desiredId) return;
-
-    const found = patients.find(p => p.id === desiredId);
-    if (found) {
-      selectPatient(found);
+    if (!loadingPatients && patientParam && selectedPatient && sessionPatient?.id !== selectedPatient.id) {
+      selectPatient(selectedPatient);
       setShowPatientModal(false);
     }
-  }, [searchParams, loadingPatients, patients, selectedPatient, selectPatient]);
-
-  // If no patient selected, force patient picker (like Admin V2)
-  useEffect(() => {
-    if (loadingPatients) return;
-    const patientParam = searchParams.get('patient');
-    if (!patientParam && !selectedPatient) {
-      setShowPatientModal(true);
-    }
-  }, [loadingPatients, selectedPatient, searchParams]);
+  }, [patientParam, loadingPatients, selectedPatient, sessionPatient?.id, selectPatient]);
 
   const handleSelectPatient = (patient) => {
     selectPatient(patient);
@@ -1037,7 +1026,7 @@ export default function Dashboard() {
       </ModalBase>
 
       <ModalBase
-        isOpen={!unlockModalOpen && showPatientModal}
+        isOpen={!unlockModalOpen && (showPatientModal || (!loadingPatients && !selectedPatient))}
         onClose={() => { if (selectedPatient) setShowPatientModal(false); }}
         title="Select Patient"
         dock={false}
@@ -1085,6 +1074,8 @@ export default function Dashboard() {
       </ModalBase>
 
       <TopBar
+        clock={clock}
+        now={buffer.now}
         isMobile={isMobile}
         isAlarmBlinking={isAlarmBlinking}
         isAlarmActive={isAlarmActive}
@@ -1201,6 +1192,7 @@ export default function Dashboard() {
             recharts trees it will not show. */}
         {!needsUnlock && !isMobile && (
           <LiveCharts
+            formatTime={clock.formatTime}
             range={buffer.range}
             setRange={buffer.setRange}
             rangeDef={buffer.rangeDef}
@@ -1215,6 +1207,7 @@ export default function Dashboard() {
         {!needsUnlock && !isMobile && (
           <div className="ld-cards">
             <DynamicVitalsCard
+              formatTime={clock.formatTime}
               vitalType={dashboardChart1.vital_type}
               data={dashboardChart1.data}
               title={formatVitalDisplayName(dashboardChart1.vital_type)}
@@ -1223,6 +1216,7 @@ export default function Dashboard() {
               onSaved={reloadChart1}
             />
             <DynamicVitalsCard
+              formatTime={clock.formatTime}
               vitalType={dashboardChart2.vital_type}
               data={dashboardChart2.data}
               title={formatVitalDisplayName(dashboardChart2.vital_type)}

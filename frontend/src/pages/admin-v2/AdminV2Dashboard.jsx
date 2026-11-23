@@ -303,7 +303,7 @@ const AdminV2Dashboard = () => {
 
                   {showVitals && (
                     <div className="admin-v2-vitals-row">
-                      <Link to="/live" className="admin-v2-vitals" title="Touch Dashboard">
+                      <Link to={`/live?patient=${patient.id}`} className="admin-v2-vitals" title={`Open Live View for ${patient.name}`}>
                         {showSpo2 && (
                           <span className="admin-v2-vital spo2">
                             <VitalsIcon size={15} />

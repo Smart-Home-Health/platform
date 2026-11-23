@@ -215,7 +215,7 @@ const VitalsTooltip = ({ active, payload, vitalType, chrome }) => {
 
 // ---- Component ------------------------------------------------------------
 
-const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved, chrome = CHART_CHROME }) => {
+const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved, chrome = CHART_CHROME, formatTime }) => {
   const [isFlipped, setIsFlipped] = useState(false);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
 
@@ -294,7 +294,7 @@ const DynamicVitalsCard = ({ vitalType, data = [], title, patientId, onSaved, ch
                       if (!point?.datetime) return '';
                       const d = new Date(point.datetime);
                       if (isNaN(d.getTime())) return '';
-                      return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+                      return formatTime(d);
                     }}
                   />
                   <YAxis
