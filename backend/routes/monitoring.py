@@ -24,8 +24,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, text
 from typing import Optional, List
-from datetime import datetime, date, time, timedelta, timezone
-from utils.datetime_utils import resolve_tz_for_patient
+from datetime import datetime, timedelta, timezone
+from utils.datetime_utils import local_day_range_utc, resolve_tz_for_patient, utc_now
 from db import get_db
 from dependencies import require_read_access
 from models.monitoring import (
@@ -297,29 +297,25 @@ async def get_timeline_data(
     nutrition intake/output, manual vitals, and alerts.
     """
     try:
-        # Parse date
+        tz = resolve_tz_for_patient(db, patient_id)
+        today = utc_now().astimezone(tz).date()
         if target_date:
             try:
                 date_obj = datetime.strptime(target_date, '%Y-%m-%d').date()
             except ValueError:
                 raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
         else:
-            date_obj = date.today()
+            date_obj = today
 
-        date_str = date_obj.strftime('%Y-%m-%d')
-
-        # Compute the patient's account-local day boundaries in UTC
-        tz = resolve_tz_for_patient(db, patient_id)
-        local_start = datetime.combine(date_obj, time.min, tzinfo=tz)
-        local_end = datetime.combine(date_obj, time.max, tzinfo=tz)
-        start_dt = local_start.astimezone(timezone.utc).replace(tzinfo=None)
-        end_dt = local_end.astimezone(timezone.utc).replace(tzinfo=None)
+        # Keep these instants timezone-aware through the SQL comparison.
+        # PostgreSQL interprets naive bounds in the database session's timezone.
+        start_dt, end_dt = local_day_range_utc(date_obj, tz=tz)
 
         # 1. Pulse ox - get raw data and downsample to 1-minute averages
         from schemas.pulse_ox_data import PulseOxData as PulseOxModel
         pulse_query = db.query(PulseOxModel).filter(
             PulseOxModel.timestamp >= start_dt,
-            PulseOxModel.timestamp <= end_dt
+            PulseOxModel.timestamp < end_dt
         )
         if patient_id is not None:
             pulse_query = pulse_query.filter(PulseOxModel.patient_id == patient_id)
@@ -328,7 +324,7 @@ async def get_timeline_data(
         # Group by minute and average (exclude -1 invalid/disconnected reads)
         minute_buckets = defaultdict(lambda: {'spo2': [], 'bpm': [], 'perfusion': []})
         for reading in raw_pulse_ox:
-            minute_key = reading.timestamp.replace(second=0, microsecond=0)
+            minute_key = reading.timestamp.astimezone(timezone.utc).replace(second=0, microsecond=0)
             if reading.spo2 is not None and reading.spo2 != -1:
                 minute_buckets[minute_key]['spo2'].append(reading.spo2)
             if reading.bpm is not None and reading.bpm != -1:
@@ -356,7 +352,7 @@ async def get_timeline_data(
         med_logs = db.query(MedicationLog).join(Medication).filter(
             MedicationLog.patient_id == patient_id,
             MedicationLog.administered_at >= start_dt,
-            MedicationLog.administered_at <= end_dt
+            MedicationLog.administered_at < end_dt
         ).order_by(MedicationLog.administered_at.asc()).all()
         medications = [{
             'ts': m.administered_at.isoformat() if m.administered_at else None,
@@ -372,7 +368,7 @@ async def get_timeline_data(
         task_log_query = db.query(CareTaskLog).join(CareTask).filter(
             CareTaskLog.patient_id == patient_id,
             CareTaskLog.completed_at >= start_dt,
-            CareTaskLog.completed_at <= end_dt
+            CareTaskLog.completed_at < end_dt
         ).order_by(CareTaskLog.completed_at.asc()).all()
         care_tasks = [{
             'ts': t.completed_at.isoformat() if t.completed_at else None,
@@ -387,7 +383,7 @@ async def get_timeline_data(
         intake_records = db.query(NutritionIntake).filter(
             NutritionIntake.patient_id == patient_id,
             NutritionIntake.consumed_at >= start_dt,
-            NutritionIntake.consumed_at <= end_dt
+            NutritionIntake.consumed_at < end_dt
         ).order_by(NutritionIntake.consumed_at.asc()).all()
         nutrition_intake = [{
             'ts': r.consumed_at.isoformat() if r.consumed_at else None,
@@ -403,7 +399,7 @@ async def get_timeline_data(
         output_records = db.query(NutritionOutput).filter(
             NutritionOutput.patient_id == patient_id,
             NutritionOutput.occurred_at >= start_dt,
-            NutritionOutput.occurred_at <= end_dt
+            NutritionOutput.occurred_at < end_dt
         ).order_by(NutritionOutput.occurred_at.asc()).all()
         nutrition_output = [{
             'ts': r.occurred_at.isoformat() if r.occurred_at else None,
@@ -421,7 +417,7 @@ async def get_timeline_data(
         vitals_query = db.query(Vital).filter(
             Vital.patient_id == patient_id,
             Vital.timestamp >= start_dt,
-            Vital.timestamp <= end_dt
+            Vital.timestamp < end_dt
         ).order_by(Vital.timestamp.asc()).all()
 
         vitals = [{
@@ -444,7 +440,7 @@ async def get_timeline_data(
         alert_rows = db.query(MonitoringAlert).filter(
             MonitoringAlert.patient_id == patient_id,
             MonitoringAlert.start_time >= start_dt,
-            MonitoringAlert.start_time <= end_dt
+            MonitoringAlert.start_time < end_dt
         ).order_by(MonitoringAlert.start_time.asc()).all()
         alerts = [{
             'id': a.id,
@@ -461,7 +457,11 @@ async def get_timeline_data(
         } for a in alert_rows]
 
         return {
-            'date': date_str,
+            'date': date_obj.isoformat(),
+            'today': today.isoformat(),
+            'timezone': str(tz),
+            'day_start': start_dt.isoformat(),
+            'day_end': end_dt.isoformat(),
             'pulse_ox': pulse_ox_data,
             'medications': medications,
             'care_tasks': care_tasks,

@@ -333,3 +333,42 @@ def test_timeline_alerts_are_patient_scoped(admin_client, db_session, account, p
         f"/api/monitoring/timeline?patient_id={patient.id}&target_date=2026-03-06")
     assert resp.status_code == 200
     assert resp.json()["alerts"] == []
+
+
+@pytest.mark.parametrize("day,start_hour,day_hours", [
+    ("2026-11-19", 5, 24),
+    ("2026-03-08", 5, 23),
+    ("2026-11-01", 4, 25),
+])
+def test_timeline_covers_exact_local_day(admin_client, db_session, account, patient, day, start_hour, day_hours):
+    from sqlalchemy import text
+    from schemas.pulse_ox_data import PulseOxData
+
+    # Midnight in the patient's timezone expressed as an absolute instant.
+    start = datetime.fromisoformat(day).replace(hour=start_hour, tzinfo=timezone.utc)
+    end = start + timedelta(hours=day_hours)
+    expected = [start, start + timedelta(minutes=90), start + timedelta(minutes=150),
+                start + timedelta(hours=4, minutes=59), start + timedelta(hours=5), end - timedelta(minutes=1)]
+    for ts in [start - timedelta(minutes=1), *expected, end]:
+        db_session.add(PulseOxData(patient_id=patient.id, timestamp=ts, spo2=97, bpm=75, created_at=ts))
+        _alert(db_session, account, patient, ts, None)
+    db_session.flush()
+    # Reproduce add-on installations whose PostgreSQL session uses local time.
+    db_session.execute(text("SET LOCAL TIME ZONE 'America/New_York'"))
+    result = admin_client.get(f"/api/monitoring/timeline?patient_id={patient.id}&target_date={day}")
+    assert result.status_code == 200
+    data = result.json()
+    assert [datetime.fromisoformat(r['ts']) for r in data['pulse_ox']] == expected
+    assert [datetime.fromisoformat(a['start']) for a in data['alerts']] == expected
+    assert datetime.fromisoformat(data['day_start']) == start
+    assert datetime.fromisoformat(data['day_end']) == end
+    assert data['timezone'] == 'America/New_York'
+
+
+def test_timeline_today_uses_patient_timezone(admin_client, patient, monkeypatch):
+    from routes import monitoring
+    monkeypatch.setattr(monitoring, "utc_now", lambda: datetime(2026, 11, 20, 3, tzinfo=timezone.utc))
+    result = admin_client.get(f"/api/monitoring/timeline?patient_id={patient.id}")
+    assert result.status_code == 200
+    data = result.json()
+    assert data["today"] == data["date"] == "2026-11-19"
