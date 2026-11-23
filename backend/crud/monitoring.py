@@ -17,12 +17,16 @@
 Monitoring and alerts CRUD operations
 """
 import logging
+from itertools import groupby
 from datetime import datetime, timedelta
 from typing import Optional
 from utils.datetime_utils import utc_now
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy import case, desc, asc, and_, or_, func, select, true
-from crud.alert_closure import INFERRED_RECOVERY, LIVE_RECOVERY, RECOVERY_SECONDS
+from crud.alert_closure import (
+    CONTINUITY_SECONDS, INFERRED_RECOVERY, LIVE_GAP, LIVE_RECOVERY, RECOVERY_SECONDS,
+    SCAN_EPSILON_SECONDS, classify_sample, load_thresholds,
+)
 from schemas.vital import Vital
 from schemas.pulse_ox_data import PulseOxData
 from schemas.setting import Setting
@@ -31,15 +35,67 @@ from schemas.monitoring_alert import MonitoringAlert
 logger = logging.getLogger('crud')
 
 
-def _alerts_with_event_vitals(db, page):
-    # Older closed rows predate end_source. The Monitoring screen already
-    # excludes the final recovery hold from the duration of these alerts.
-    recovery = or_(page.end_source.is_(None), page.end_source.in_([LIVE_RECOVERY, INFERRED_RECOVERY]))
+def _is_recovery(page):
+    return or_(page.end_source.is_(None), page.end_source.in_([LIVE_RECOVERY, INFERRED_RECOVERY]))
+
+
+def _historical_recovery_starts(db, page):
+    """Replay the short confirmation window for historical rows on this page."""
+    epsilon = timedelta(seconds=SCAN_EPSILON_SECONDS)
+    continuity = timedelta(seconds=CONTINUITY_SECONDS)
+    hold = timedelta(seconds=RECOVERY_SECONDS)
+    # Include the sample before the run, and tolerate the old difference
+    # between a live sample's storage timestamp and the engine clock.
+    scan_from = page.end_time - hold - 2 * continuity - epsilon
+    rows = db.query(
+        page.id, page.end_time, page.end_source, PulseOxData.timestamp, PulseOxData.spo2, PulseOxData.bpm
+    ).select_from(page).join(
+        PulseOxData, and_(
+            PulseOxData.patient_id == page.patient_id,
+            PulseOxData.timestamp >= func.greatest(page.start_time, scan_from),
+            PulseOxData.timestamp <= page.end_time + epsilon,
+        )
+    ).filter(
+        page.recovery_start_time.is_(None), page.end_time.isnot(None), _is_recovery(page)
+    ).order_by(page.id, PulseOxData.timestamp, PulseOxData.id).all()
+    if not rows:
+        return {}
+    thresholds = load_thresholds(db)
+    starts = {}
+    for alert_id, samples in groupby(rows, key=lambda row: row.id):
+        start = previous = None
+        for row in samples:
+            kind = classify_sample(row.spo2, row.bpm, thresholds)
+            if kind == 'disconnected' and row.end_source == INFERRED_RECOVERY:
+                continue  # The inference engine considers only valid samples.
+            if kind != 'normal':
+                start = None
+            elif start is None or row.timestamp - previous > continuity:
+                start = row.timestamp
+            elif (abs(row.timestamp - row.end_time) <= epsilon
+                  and hold - epsilon <= row.timestamp - start <= hold + continuity + epsilon):
+                starts[alert_id] = start
+                break
+            previous = row.timestamp
+    return starts
+
+
+def _alerts_with_event_vitals(db, page, historical_starts=None):
+    # Historical alerts with insufficient raw data retain the estimated end.
+    approximate_end = page.end_time - timedelta(seconds=RECOVERY_SECONDS)
+    if historical_starts:
+        approximate_end = case(historical_starts, value=page.id, else_=approximate_end)
     event_end = case(
-        (and_(page.end_time.isnot(None), recovery),
-         func.greatest(page.start_time, page.end_time - timedelta(seconds=RECOVERY_SECONDS))),
+        (and_(page.end_time.isnot(None), _is_recovery(page)),
+         func.greatest(page.start_time, func.coalesce(page.recovery_start_time, approximate_end))),
         else_=page.end_time,
     ).label('event_end_time')
+    # The last valid sample used to be written fractionally after the live
+    # engine clock. A gap has no following valid reading within this tolerance.
+    sample_end = case(
+        (page.end_source == LIVE_GAP, page.end_time + timedelta(seconds=SCAN_EPSILON_SECONDS)),
+        else_=func.coalesce(event_end, func.now()),
+    )
     samples = select(
         func.min(PulseOxData.spo2).label('spo2_min'),
         func.max(PulseOxData.spo2).label('spo2_max'),
@@ -47,7 +103,7 @@ def _alerts_with_event_vitals(db, page):
         func.max(PulseOxData.bpm).label('bpm_max'),
     ).where(
         PulseOxData.patient_id == page.patient_id,
-        PulseOxData.timestamp.between(page.start_time, func.coalesce(event_end, func.now())),
+        PulseOxData.timestamp.between(page.start_time, sample_end),
         PulseOxData.spo2 > 0, PulseOxData.bpm > 0,
         # An indeterminate end is historical and unknown. Later readings
         # cannot safely be attributed to that episode.
@@ -95,7 +151,8 @@ def get_monitoring_alerts(db: Session, limit=50, include_acknowledged=False, det
         page = aliased(MonitoringAlert, query.order_by(
             MonitoringAlert.start_time.desc(), MonitoringAlert.id.desc()
         ).limit(limit).subquery())
-        results = _alerts_with_event_vitals(db, page).order_by(
+        historical_starts = _historical_recovery_starts(db, page)
+        results = _alerts_with_event_vitals(db, page, historical_starts).order_by(
             page.start_time.desc(), page.id.desc()).all()
         alerts = []
 
@@ -232,7 +289,7 @@ def update_monitoring_alert(db: Session, alert_id, end_time=None, end_data_id=No
                            spo2_alarm_triggered=None, hr_alarm_triggered=None,
                            external_alarm_triggered=None, oxygen_used=None,
                            oxygen_highest=None, oxygen_unit=None,
-                           end_source=None, end_time_superseded=None):
+                           end_source=None, end_time_superseded=None, recovery_start_time=None):
     """
     Update an existing monitoring alert
 
@@ -285,6 +342,7 @@ def update_monitoring_alert(db: Session, alert_id, end_time=None, end_data_id=No
 
         if end_time:
             update_fields[MonitoringAlert.end_time] = end_time
+            update_fields[MonitoringAlert.recovery_start_time] = recovery_start_time
 
         if end_data_id:
             update_fields[MonitoringAlert.end_data_id] = end_data_id

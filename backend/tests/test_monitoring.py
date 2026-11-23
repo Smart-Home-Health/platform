@@ -50,10 +50,10 @@ def test_list_alerts(admin_client):
 
 
 @pytest.mark.parametrize("source,closed,expected_end,hr_max", [
-    ("live_recovery", True, 10, 114),
-    ("inferred_recovery", True, 10, 114),
-    ("live_gap", True, 40, 137),
-    (None, True, 10, 114),  # Legacy alerts used the same 30s recovery hold.
+    ("live_recovery", True, 7, 114),
+    ("inferred_recovery", True, 7, 114),
+    ("live_gap", True, 40, 139),
+    (None, True, 7, 114),  # Legacy alerts used the same 30s recovery hold.
     (None, False, None, 143),
 ])
 def test_alert_extrema_use_only_the_patients_event(
@@ -75,8 +75,10 @@ def test_alert_extrema_use_only_the_patients_event(
         (-1, patient.id, 61, 30), (0, patient.id, 89, 95),
         (2, patient.id, 84, 79), (3, other.id, 65, 180),
         (4, patient.id, -1, -1), (5, patient.id, 0, 0),
-        (6, patient.id, 82, 100), (10, patient.id, 96, 114),
-        (40, patient.id, 98, 137), (42, patient.id, 97, 143),
+        (6, patient.id, 82, 100), (7, patient.id, 96, 114),
+        (9, patient.id, 97, 138), (16, patient.id, 97, 101),
+        (24, patient.id, 97, 101), (32, patient.id, 97, 101),
+        (40.001, patient.id, 98, 139), (43, patient.id, 97, 143),
     ]:
         db_session.add(PulseOxData(patient_id=pid, timestamp=start + timedelta(seconds=second),
                                    spo2=spo2, bpm=bpm, created_at=start))

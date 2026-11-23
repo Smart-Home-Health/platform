@@ -471,6 +471,7 @@ class StateModule:
                             alert_id=alert_id,
                             end_time=end_time,
                             end_source=end_source,
+                            recovery_start_time=st.recovery_start_time if end_source == LIVE_RECOVERY else None,
                         )
                         return True
 

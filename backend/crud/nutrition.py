@@ -671,6 +671,7 @@ def get_daily_nutrition_intake(
     target_date: date = None,
     tz_offset_minutes: int = None,
     tz=None,
+    bucket_by="scheduled",
 ) -> List[NutritionIntake]:
     """Get nutrition intake records for a specific day.
 
@@ -682,7 +683,8 @@ def get_daily_nutrition_intake(
     Bucketing prefers `scheduled_time` over `consumed_at`: a 9pm feed logged
     half an hour late at 12:30am still belongs to the day it was *meant* for,
     not the day it was actually given. Falls back to consumed_at for PRN /
-    ad-hoc entries where scheduled_time is NULL.
+    ad-hoc entries where scheduled_time is NULL. The nutrition overview uses
+    the consumed bucket to show intakes on the day they were given.
     """
     if not target_date:
         # Default to the account-local today when a tz is known, not the
@@ -691,7 +693,9 @@ def get_daily_nutrition_intake(
 
     start_utc, end_utc = local_day_range_utc(target_date, tz_offset_minutes, tz)
 
-    bucket_time = func.coalesce(NutritionIntake.scheduled_time, NutritionIntake.consumed_at)
+    bucket_time = NutritionIntake.consumed_at
+    if bucket_by == "scheduled":
+        bucket_time = func.coalesce(NutritionIntake.scheduled_time, bucket_time)
 
     return db.query(NutritionIntake)\
         .filter(

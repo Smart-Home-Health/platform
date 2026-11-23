@@ -121,6 +121,7 @@ class AlertEndInference(NamedTuple):
     outcome: str                # recovery | monitoring_ended | no_data | indeterminate
     detail: str
     samples_scanned: int
+    recovery_start_time: Optional[object] = None
 
 
 def load_thresholds(db: Session) -> Thresholds:
@@ -189,14 +190,14 @@ def infer_alert_end(
     start = make_utc(start_time)
     epsilon = timedelta(seconds=SCAN_EPSILON_SECONDS)
 
-    def result(end, outcome, detail, scanned):
+    def result(end, outcome, detail, scanned, recovery_start_time=None):
         # The scan deliberately reaches back before start_time to catch the
         # sample that opened the alert, so an end drawn from "the last sample
         # we saw" can land a hair earlier than the start. An episode cannot end
         # before it began; the shortest honest answer is zero.
         if end is not None and end < start:
             end = start
-        return AlertEndInference(end, outcome, detail, scanned)
+        return AlertEndInference(end, outcome, detail, scanned, recovery_start_time)
 
     rows = db.execute(_SCAN_SQL, {
         "pid": patient_id,
@@ -251,7 +252,7 @@ def infer_alert_end(
             if recovery_start is None or since_prev > continuity_seconds:
                 recovery_start = ts
             elif (ts - recovery_start).total_seconds() >= recovery_seconds:
-                return result(ts, "recovery", "sustained recovery", len(rows))
+                return result(ts, "recovery", "sustained recovery", len(rows), recovery_start)
 
         prev_valid = ts
 
@@ -310,6 +311,7 @@ def close_alert_with_inference(db: Session, alert, *, thresholds=None) -> dict:
     update_monitoring_alert(
         db, alert.id,
         end_time=inference.end_time,
+        recovery_start_time=inference.recovery_start_time,
         end_source=OUTCOME_TO_SOURCE[inference.outcome],
     )
     result["closed"] = True
@@ -499,6 +501,7 @@ def resweep_implausible_closures(
                     end_time=inference.end_time,
                     end_source=OUTCOME_TO_SOURCE[inference.outcome],
                     end_time_superseded=old_end,
+                    recovery_start_time=inference.recovery_start_time,
                 )
                 logger.warning(
                     "[alert_closure] alert %s end %s -> %s (%.1f min -> %.1f min, %s)",

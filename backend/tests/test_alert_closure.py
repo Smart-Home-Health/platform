@@ -118,6 +118,19 @@ def test_recovery_ends_once_the_values_have_held_for_thirty_seconds(db_session, 
         30 + RECOVERY_SECONDS, abs=2)
 
 
+def test_inference_persists_first_recovered_sample_with_irregular_cadence(db_session, patient):
+    from crud.alert_closure import close_alert_with_inference
+
+    alert = _alert(db_session, patient.id)
+    _samples(db_session, patient.id, [(0, 1, 88, 92), (2, 1, 81, 110), (6, 1, 97, 90)] +
+             [(s, 1, 97, 140) for s in (8, 16, 24, 32, 40)])
+    assert close_alert_with_inference(db_session, alert, thresholds=THRESHOLDS)["closed"]
+    db_session.refresh(alert)
+    assert alert.end_time == START + timedelta(seconds=40)
+    assert alert.recovery_start_time == START + timedelta(seconds=6)
+    assert (alert.spo2_min, alert.bpm_min, alert.bpm_max) == (81, 90, 110)
+
+
 def test_a_brief_normal_blip_does_not_end_the_alert(db_session, patient):
     """Values touching normal for a moment is not the episode resolving."""
     _samples(db_session, patient.id, [
