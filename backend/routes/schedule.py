@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
 from db import get_db
-from utils.datetime_utils import utc_now, resolve_tz_for_patient, local_day_bounds, local_day_range_utc
+from utils.datetime_utils import utc_now, make_utc, resolve_tz_for_patient, local_day_bounds, local_day_range_utc
 from models.schedule import CompleteItemRequest, BulkCompleteRequest
 from crud.scheduling import get_scheduled_medications, get_scheduled_care_tasks, get_scheduled_nutrition, get_due_and_upcoming_care_tasks_count
 from crud.scheduling import canonical_care_task_item
@@ -90,33 +90,8 @@ def _compute_timing_flags(scheduled_dt: Optional[datetime], administered_at: Opt
 
 
 def parse_scheduled_time(scheduled_time_str: str) -> datetime:
-    """
-    Parse scheduled time string and return as UTC-aware datetime.
-    This ensures PostgreSQL stores the exact time without any timezone conversion.
-    """
-    from datetime import timezone as tz
-    
-    # Remove Z or timezone offset to get the raw time
-    s = scheduled_time_str
-    if s.endswith('Z'):
-        s = s[:-1]
-    # Handle +00:00 or similar timezone offsets
-    if '+' in s and 'T' in s:
-        s = s.rsplit('+', 1)[0]
-    elif s.count('-') > 2:  # Has negative timezone offset like -05:00
-        # Split on T, then handle the time part
-        parts = s.split('T')
-        if len(parts) == 2:
-            time_part = parts[1]
-            # Find the last dash that's part of timezone (after HH:MM:SS)
-            if '-' in time_part and len(time_part) > 8:
-                time_part = time_part.rsplit('-', 1)[0]
-                s = f"{parts[0]}T{time_part}"
-    
-    # Parse as naive datetime then mark as UTC
-    # This tells PostgreSQL "this IS UTC" so it won't convert it
-    naive_dt = datetime.fromisoformat(s)
-    return naive_dt.replace(tzinfo=tz.utc)
+    """Preserve the supplied instant, treating legacy naive values as UTC."""
+    return make_utc(datetime.fromisoformat(scheduled_time_str.replace('Z', '+00:00')))
 
 
 @router.get("/care-tasks/due/count")
@@ -365,7 +340,9 @@ async def complete_medication(
             administered_at=completed_at,
             dose_amount=dose_amount,
             is_scheduled=True,
-            scheduled_time=scheduled_dt,
+            # Legacy medication/care-task columns hold naive UTC. Passing an
+            # aware value lets PostgreSQL cast it through its session timezone.
+            scheduled_time=scheduled_dt.replace(tzinfo=None),
             administered_early=early_flag,
             administered_late=late_flag,
             # Care tasks have always recorded who performed them; medications
@@ -596,7 +573,7 @@ async def complete_care_task(
             care_task_id=schedule.care_task_id,
             patient_id=data.patient_id,
             schedule_id=data.schedule_id,
-            scheduled_time=scheduled_dt,
+            scheduled_time=scheduled_dt.replace(tzinfo=None),  # Legacy naive UTC column.
             completed_at=completed_at,
             is_scheduled=True,
             status="skipped" if data.skipped else "completed",
@@ -764,7 +741,7 @@ async def complete_bulk(
                             administered_at=completed_at,
                             dose_amount=dose_amount,
                             is_scheduled=True,
-                            scheduled_time=scheduled_dt,
+                            scheduled_time=scheduled_dt.replace(tzinfo=None),
                             administered_early=early_flag,
                             administered_late=late_flag,
                             administered_by=getattr(current_user, 'id', None),
@@ -851,7 +828,7 @@ async def complete_bulk(
                         care_task_id=schedule.care_task_id,
                         patient_id=item.patient_id,
                         schedule_id=item.schedule_id,
-                        scheduled_time=scheduled_dt,
+                        scheduled_time=scheduled_dt.replace(tzinfo=None),
                         completed_at=completed_at,
                         is_scheduled=True,
                         status="completed",

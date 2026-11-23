@@ -197,6 +197,81 @@ def test_completion_without_components_keeps_the_legacy_single_row(admin_client,
     assert rows[0]["item_name"] == "Water" and rows[0]["item_type"] == "liquid"
 
 
+@pytest.mark.parametrize("database_tz,request_tz,cron_seconds", [
+    ("UTC", "UTC", 0),
+    ("America/New_York", "UTC", 0),
+    ("Asia/Kolkata", "UTC", 0),
+    ("UTC", "America/New_York", 0),
+    ("UTC", "Asia/Kolkata", 0),
+    ("UTC", "UTC", 15),
+])
+def test_nutrition_completion_matches_across_timezones(
+    admin_client, patient, mix_items, db_session, database_tz, request_tz, cron_seconds,
+):
+    """A feed remains completed on refetch regardless of PostgreSQL's session
+    timezone or the offset sent by the client. Actual intake time stays separate
+    from the scheduled occurrence, including across the UTC date boundary."""
+    from sqlalchemy import text
+
+    scheduled = datetime(2020, 1, 15, 1, 30, cron_seconds, tzinfo=timezone.utc)
+    consumed = datetime(2020, 1, 15, 3, 24, tzinfo=timezone.utc)
+    body, _ = _mix_schedule(admin_client, patient, mix_items, when=scheduled)
+    if cron_seconds:
+        # The API also accepts croniter's sixth (seconds) field. Lookup and
+        # occurrence keys must use the same precision for those schedules.
+        updated = admin_client.put(f"/api/nutrition/schedules/{body['id']}", json={
+            "cron_expression": f"{scheduled.minute} {scheduled.hour} * * * {cron_seconds}",
+        })
+        assert updated.status_code == 200, updated.text
+    db_session.execute(text("SELECT set_config('TimeZone', :tz, true)"), {"tz": database_tz})
+
+    response = admin_client.post("/api/schedule/complete/nutrition", json={
+        "schedule_id": body["id"],
+        "scheduled_time": scheduled.astimezone(ZoneInfo(request_tz)).isoformat(),
+        "completed_at": consumed.astimezone(ZoneInfo(request_tz)).isoformat(),
+        "patient_id": patient.id,
+        "early_override": True,
+    })
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["success"] is True, result
+
+    day_url = f"/api/schedule/daily?patient_id={patient.id}&target_date=2020-01-14"
+    day = admin_client.get(day_url).json()
+    feed_rows = [n for n in day["nutrition"] if n["schedule_id"] == body["id"]]
+    assert len(feed_rows) == 1
+    assert feed_rows[0]["completed"] is True
+    assert datetime.fromisoformat(feed_rows[0]["scheduled_time"]) == scheduled
+    assert datetime.fromisoformat(feed_rows[0]["completed_at"]) == consumed
+    assert feed_rows[0]["log_id"] in result["intake_ids"]
+    assert not any(n["is_prn"] for n in day["nutrition"])
+
+    undo = admin_client.delete(f"/api/schedule/log/nutrition_intake/{feed_rows[0]['log_id']}")
+    assert undo.status_code == 200, undo.text
+    after_undo = admin_client.get(day_url).json()
+    assert [n["completed"] for n in after_undo["nutrition"] if n["schedule_id"] == body["id"]] == [False]
+
+
+def test_nutrition_completion_matches_the_date_on_a_25_hour_day(
+    admin_client, patient, mix_items,
+):
+    """A fallback day contains two 04:30 UTC firings of a daily schedule.
+    Completing the first must not mark the next UTC day's firing complete."""
+    scheduled = datetime(2025, 11, 2, 4, 30, tzinfo=timezone.utc)
+    body, _ = _mix_schedule(admin_client, patient, mix_items, when=scheduled)
+    result = admin_client.post("/api/schedule/complete/nutrition", json={
+        "schedule_id": body["id"], "scheduled_time": scheduled.isoformat(),
+        "completed_at": scheduled.isoformat(), "patient_id": patient.id,
+    }).json()
+    assert result["success"] is True, result
+
+    day = admin_client.get(
+        f"/api/schedule/daily?patient_id={patient.id}&target_date=2025-11-02"
+    ).json()
+    feed_rows = [n for n in day["nutrition"] if n["schedule_id"] == body["id"]]
+    assert [n["completed"] for n in feed_rows] == [True, False]
+
+
 def test_bulk_completion_expands_the_mix_too(admin_client, patient, mix_items):
     body, when = _mix_schedule(admin_client, patient, mix_items)
 
