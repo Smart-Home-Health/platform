@@ -17,7 +17,7 @@
  */
 import { useState } from 'react';
 import EntityModal, { EmField } from '../../../components/vc/EntityModal';
-import { getLocalDateTimeString, localDateTimeToUTC } from '../../../utils/timezone';
+import { getLocalDateTimeString } from '../../../utils/timezone';
 
 const recorder = 'Did you press the recorder button?';
 const eegButtons = [
@@ -32,14 +32,25 @@ function localInput(instant) {
 }
 
 function fromInput(value, original) {
-  return value === localInput(original) ? original : localDateTimeToUTC(value);
+  const parsed = new Date(value);
+  if (original) {
+    const wallTime = localInput(parsed);
+    if (wallTime === localInput(original)) return original;
+    // datetime-local omits the offset. Keep the original occurrence of a
+    // repeated hour only if that offset still gives the requested wall time.
+    const offsetChange = new Date(original).getTimezoneOffset() - parsed.getTimezoneOffset();
+    const withOriginalOffset = new Date(parsed.getTime() + offsetChange * 60000);
+    if (localInput(withOriginalOffset) === wallTime) return withOriginalOffset.toISOString();
+  }
+  return parsed.toISOString();
 }
 
 const deviceZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 export function DiarySettings({ initial, reusable, onSave, onClose, busy, error }) {
   const [name, setName] = useState(initial?.name || '');
-  const [start, setStart] = useState(localInput(initial?.starts_at || new Date()));
+  const [originalStart] = useState(() => initial?.starts_at || new Date().toISOString());
+  const [start, setStart] = useState(() => localInput(originalStart));
   const [end, setEnd] = useState(localInput(initial?.ends_at));
   const [buttons, setButtons] = useState(initial?.buttons || [{ label: 'Observation' }]);
   const [meds, setMeds] = useState(initial?.include_medications ?? false);
@@ -53,7 +64,7 @@ export function DiarySettings({ initial, reusable, onSave, onClose, busy, error 
   };
   const submit = e => {
     e.preventDefault();
-    onSave({ name: name.trim(), starts_at: fromInput(start, initial?.starts_at),
+    onSave({ name: name.trim(), starts_at: fromInput(start, originalStart),
       ends_at: end ? fromInput(end, initial?.ends_at) : null, buttons: buttons.map(b => ({
         label: b.label.trim(), question: b.question?.trim() || null,
       })), include_medications: meds, include_nutrition: nutrition });
@@ -73,7 +84,7 @@ export function DiarySettings({ initial, reusable, onSave, onClose, busy, error 
         <EmField label="Starts" htmlFor="diary-start"><input id="diary-start" className="em-input" type="datetime-local"
           required step="1" value={start} onChange={e => setStart(e.target.value)} /></EmField>
         <EmField label="Ends" optional htmlFor="diary-end"><input id="diary-end" className="em-input" type="datetime-local"
-          step="1" min={start} value={end} onChange={e => setEnd(e.target.value)} /></EmField>
+          step="1" value={end} onChange={e => setEnd(e.target.value)} /></EmField>
       </div>
       <span className="em-hint">Enter times in {deviceZone}.</span>
       <fieldset className="diary-fieldset"><legend>Quick buttons</legend>
@@ -102,7 +113,7 @@ export function DiarySettings({ initial, reusable, onSave, onClose, busy, error 
   </EntityModal>;
 }
 
-export function ObservationForm({ event, diary, onSave, onClose, onRemove, error, busy }) {
+export function ObservationForm({ event, onSave, onClose, onRemove, error, busy }) {
   const [time, setTime] = useState(localInput(event.at));
   const [note, setNote] = useState(event.note || '');
   const [answer, setAnswer] = useState(event.answer || '');
@@ -115,7 +126,6 @@ export function ObservationForm({ event, diary, onSave, onClose, onRemove, error
     <form className="em-form diary-form" onSubmit={submit}>
       <EmField label="Observed at" htmlFor="diary-time" hint={deviceZone}>
         <input id="diary-time" type="datetime-local" className="em-input" required step="1"
-          min={localInput(diary.starts_at)} max={localInput(diary.ends_at) || undefined}
           value={time} onChange={e => setTime(e.target.value)} />
       </EmField>
       {event.question && <fieldset className="diary-fieldset"><legend>{event.question}</legend>

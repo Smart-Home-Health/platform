@@ -120,7 +120,7 @@ function DiaryDetail({ diary, patient, base, canWrite, zone, onUpdated }) {
     {settings && <DiarySettings initial={diary} error={error} busy={busy} onClose={close} onSave={data => mutate(async () => {
       onUpdated(await request(path, 'PUT', data)); close();
     })} />}
-    {event && <ObservationForm event={event} diary={diary} error={error} busy={busy} onClose={close}
+    {event && <ObservationForm event={event} error={error} busy={busy} onClose={close}
       onSave={data => mutate(async () => {
         if (event.id) await request(path + '/events/' + event.id, 'PUT', data);
         else await request(path + '/events', 'POST', { ...data, request_id: event.request_id, label: event.label });

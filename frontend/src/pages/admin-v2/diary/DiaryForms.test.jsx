@@ -43,9 +43,33 @@ describe('reusable diary settings', () => {
     const save = vi.fn();
     const at = '2026-11-01T06:30:00.493Z'; // Second occurrence of 1:30 AM in New York.
     render(<ObservationForm event={{ id: 9, at, label: 'Awoke' }}
-      diary={{ starts_at: '2026-10-31T04:00:00Z' }} onSave={save} />);
+      onSave={save} />);
     fireEvent.change(screen.getByLabelText(/Description/), { target: { value: 'Lights on' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(save).toHaveBeenCalledWith({ observed_at: at, note: 'Lights on', answer: null });
+  });
+
+  it.each([
+    ['2026-11-01T05:30:00Z', '2026-11-01T01:31', '2026-11-01T05:31:00.000Z'],
+    ['2026-11-01T06:30:00Z', '2026-11-01T01:31', '2026-11-01T06:31:00.000Z'],
+    ['2026-11-01T06:30:00Z', '2026-07-01T01:31', '2026-07-01T05:31:00.000Z'],
+  ])('saves an edit from %s to %s with the applicable offset', (at, wallTime, expected) => {
+    const save = vi.fn();
+    render(<ObservationForm event={{ id: 1, label: 'Awoke', at }} onSave={save} />);
+    fireEvent.change(screen.getByLabelText(/Observed at/), { target: { value: wallTime } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ observed_at: expected }));
+  });
+
+  it('allows a diary to end in the repeated hour before its displayed start time', () => {
+    const save = vi.fn();
+    const initial = { name: 'Overnight', buttons: [{ label: 'Awoke' }],
+      starts_at: '2026-11-01T05:45:00Z', ends_at: '2026-11-01T06:15:00Z' };
+    render(<DiarySettings initial={initial} onSave={save} />);
+    fireEvent.change(screen.getByLabelText('Diary name'), { target: { value: 'Study' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Study', starts_at: initial.starts_at, ends_at: initial.ends_at,
+    }));
   });
 });
