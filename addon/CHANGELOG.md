@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.1
+
+- Open a diary to see its observations alongside SpO₂, heart rate, alerts, care events, and room conditions. Choose a day, zoom in, or tap an observation to inspect and edit it. **All entries** and **Print diary** cover the full study.
+- Monitoring and Diary now break each signal’s graph when more than 60 seconds pass between valid readings. Isolated readings stay visible, and inspecting a gap shows that the signal has no reading there.
+
 ## 0.6.0
 
 - Edit an existing medication schedule to change its dose, time, recurrence, or grace period.
