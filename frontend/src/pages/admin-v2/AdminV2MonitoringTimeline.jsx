@@ -32,6 +32,7 @@ import config, { apiFetch } from '../../config';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import { useThemeTokens } from '../../hooks/useThemeTokens';
 import { readToken } from '../../utils/themeTokens';
+import { signalMinutes, tracePoints, sampleAt } from './timelineSignals';
 import { alarmsFor } from './reports/dayOverDay';
 import {
   PLOT_GUTTER, PLOT_RPAD, chartChrome, niceScale, thresholdLine, stackedChartOptions,
@@ -41,6 +42,7 @@ import {
   severityOf, directionOf,
 } from './timelineEnv';
 import {
+  NotesIcon,
   CalendarIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -87,6 +89,9 @@ const LANES = {
   vitals: { label: 'Vitals', color: 'var(--vc-series-3)', Icon: VitalsIcon },
 };
 const LANE_KEYS = Object.keys(LANES);
+const DIARY_LANE = { label: 'Diary', color: 'var(--vc-data-live)', Icon: NotesIcon };
+const DIARY_LANE_KEYS = ['diary', ...LANE_KEYS];
+const ENTRY_LANES = { observation: 'diary', medication: 'medications', nutrition: 'nutrition_intake' };
 const COLLAPSED_LANES = 4;
 
 /* 1M is the floor because the timeline endpoint averages pulse-ox into
@@ -129,6 +134,7 @@ const formatDuration = (ms) => {
 };
 
 const eventLabel = (type, item) => {
+  if (item.entry) return item.entry.source === 'observation' ? item.entry.label : item.entry.note || item.entry.label;
   switch (type) {
     case 'medications': return `${item.name} ${item.dose}`.trim();
     case 'care_tasks': return item.name;
@@ -155,11 +161,11 @@ const alertLabel = (a) => {
   return 'Monitoring alert';
 };
 
-const AdminV2MonitoringTimeline = () => {
-  const { selectedPatient } = useAdminPatient();
+export function PatientDayTimeline({ patient: selectedPatient, diaryPath, diaryEntries, onEditObservation, refresh = 0 }) {
+  const laneKeys = diaryPath ? DIARY_LANE_KEYS : LANE_KEYS;
   // An empty target asks the server for today in the patient's account timezone.
   const [selection, setSelection] = useState({ date: null });
-  const [data, setData] = useState(null);
+  const [loaded, setLoaded] = useState(null);
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -167,7 +173,7 @@ const AdminV2MonitoringTimeline = () => {
   const [activeSignals, setActiveSignals] = useState(SIGNAL_KEYS);
   const [lanesExpanded, setLanesExpanded] = useState(false);
   const [rangeLabel, setRangeLabel] = useState('24H');
-  const [view, setView] = useState(null);       // { min, max } epoch ms
+  const [selectedView, setView] = useState(null); // { min, max } epoch ms
   const [cursor, setCursor] = useState(null);   // scrubbed instant, epoch ms
 
   const stackRef = useRef(null);
@@ -175,29 +181,56 @@ const AdminV2MonitoringTimeline = () => {
 
   /* ---------------- data ---------------- */
 
+  const params = new URLSearchParams();
+  if (!diaryPath && selectedPatient) params.set('patient_id', selectedPatient.id);
+  if (selection.date) params.set('target_date', selection.date);
+  const endpoint = diaryPath ? diaryPath + '/day' : '/api/monitoring/timeline';
+  const url = config.apiUrl + endpoint + (params.size ? '?' + params : '');
+  const patientId = selectedPatient?.id;
   useEffect(() => {
-    if (!selectedPatient) return undefined;
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    (async () => {
+    if (!patientId) return undefined;
+    const controller = new AbortController();
+    let pending = false;
+    let live = true;
+    async function load() {
+      if (pending) return;
+      pending = true;
+      setLoading(true);
       try {
-        const res = await apiFetch(
-          `${config.apiUrl}/api/monitoring/timeline`
-          + `?patient_id=${selectedPatient.id}`
-          + (selection.date ? `&target_date=${selection.date}` : ''),
-        );
+        const res = await apiFetch(url, { signal: controller.signal });
         if (!res.ok) throw new Error('Could not load the timeline for this day.');
         const body = await res.json();
-        if (!cancelled) setData(body);
+        live = body.date === body.today && (!body.window_end || Date.parse(body.window_end) > Date.now())
+          || body.first_day > body.today;
+        if (!controller.signal.aborted) { setLoaded({ url, body }); setError(null); }
       } catch (err) {
-        if (!cancelled) setError(err.message);
+        if (!controller.signal.aborted) setError(err.message);
       } finally {
-        if (!cancelled) setLoading(false);
+        pending = false;
+        if (!controller.signal.aborted) setLoading(false);
       }
-    })();
-    return () => { cancelled = true; };
-  }, [selectedPatient, selection]);
+    }
+    setError(null);
+    load();
+    const timer = diaryPath ? setInterval(() => {
+      if (live && !document.hidden) load();
+    }, 60_000) : null;
+    return () => { controller.abort(); clearInterval(timer); };
+  }, [url, patientId, diaryPath, selection, refresh]);
+
+  const day = loaded?.url === url ? loaded.body : null;
+  const data = useMemo(() => {
+    if (!diaryPath || !day) return day;
+    const combined = { ...day, diary: [], medications: [], nutrition_intake: [] };
+    const start = Date.parse(day.day_start);
+    const end = Date.parse(day.day_end);
+    for (const entry of diaryEntries || []) {
+      const ts = Date.parse(entry.at);
+      const lane = ENTRY_LANES[entry.source];
+      if (lane && ts >= start && ts < end) combined[lane].push({ ts: entry.at, entry });
+    }
+    return combined;
+  }, [day, diaryPath, diaryEntries]);
 
   // Alarm limits for the threshold lines — the same account settings the live
   // monitor alarms on. A failure just means no threshold line.
@@ -218,8 +251,10 @@ const AdminV2MonitoringTimeline = () => {
 
   /* ---------------- derived ---------------- */
 
-  const today = data?.today ?? toApiDate(new Date());
-  const selectedDay = selection.date ?? data?.date ?? today;
+  const today = loaded?.body.today ?? toApiDate(new Date());
+  const selectedDay = data?.date ?? selection.date ?? today;
+  const firstDay = loaded?.body.first_day;
+  const lastDay = loaded?.body.last_day ?? today;
   const zone = data?.timezone;
   const clocks = useMemo(() => {
     const options = { timeZone: zone, hour: 'numeric', minute: '2-digit' };
@@ -237,12 +272,7 @@ const AdminV2MonitoringTimeline = () => {
     }
     return { start: Date.parse(`${selectedDay}T00:00:00`), end: Date.parse(`${selectedDay}T23:59:59.999`) };
   }, [data?.day_start, data?.day_end, selectedDay]);
-
-  const lastSample = useMemo(() => {
-    const rows = data?.pulse_ox;
-    if (!rows?.length) return null;
-    return new Date(rows[rows.length - 1].ts).getTime();
-  }, [data]);
+  const view = selectedView && selectedView.min >= bounds.start && selectedView.max <= bounds.end ? selectedView : null;
 
   // Reset the window whenever the day changes.
   useEffect(() => {
@@ -308,8 +338,8 @@ const AdminV2MonitoringTimeline = () => {
   useEffect(() => {
     if (roomLocation === null || !data?.date) { setEnvSeries({}); return undefined; }
     let cancelled = false;
-    const dayStart = new Date(bounds.start).toISOString();
-    const dayEnd = new Date(bounds.end).toISOString();
+    const dayStart = data.window_start ?? new Date(bounds.start).toISOString();
+    const dayEnd = data.window_end ?? new Date(bounds.end).toISOString();
     (async () => {
       const next = {};
       await Promise.all(ENV_METRIC_KEYS.map(async (metric) => {
@@ -332,7 +362,7 @@ const AdminV2MonitoringTimeline = () => {
       if (!cancelled) setEnvSeries(next);
     })();
     return () => { cancelled = true; };
-  }, [roomLocation, bounds.start, bounds.end, data?.date]);
+  }, [roomLocation, bounds.start, bounds.end, data?.date, data?.window_start, data?.window_end]);
 
   const envLanes = useMemo(() => ENV_LANES.map((lane) => {
     const spans = buildEnvSpans(
@@ -346,21 +376,21 @@ const AdminV2MonitoringTimeline = () => {
   const hasEnvData = ENV_METRIC_KEYS.some((k) => (envSeries[k] || []).length > 0);
 
   const series = useMemo(() => {
-    const out = {};
-    SIGNAL_KEYS.forEach((key) => {
-      out[key] = (data?.pulse_ox || [])
-        .filter((p) => p[key] != null && p[key] !== -1)
-        .map((p) => ({ x: new Date(p.ts).getTime(), y: p[key] }));
-    });
-    return out;
-  }, [data]);
+    const rows = day?.pulse_ox || [];
+    return Object.fromEntries([...SIGNAL_KEYS, 'perfusion'].map(key => [key, signalMinutes(rows, key)]));
+  }, [day]);
+  const lastReadingTimes = Object.values(series).filter(points => points.length).map(points => points.at(-1).end);
+  const lastSample = lastReadingTimes.length ? Math.max(...lastReadingTimes) : null;
+  const alarmLimits = useMemo(() => Object.fromEntries(
+    SIGNAL_KEYS.map(key => [key, alarmsFor(SIGNALS[key].alarmKey, settings)]),
+  ), [settings]);
 
   const stats = useMemo(() => {
     const val = (key) => series[key]?.map((p) => p.y) ?? [];
     const spo2 = val('spo2');
     const bpm = val('bpm');
     const avg = (a) => (a.length ? a.reduce((s, n) => s + n, 0) / a.length : null);
-    const eventTotal = LANE_KEYS
+    const eventTotal = laneKeys
       .filter((k) => k !== 'alerts')
       .reduce((n, k) => n + (data?.[k]?.length || 0), 0);
     return {
@@ -369,12 +399,12 @@ const AdminV2MonitoringTimeline = () => {
       alerts: data?.alerts?.length || 0,
       events: eventTotal,
     };
-  }, [series, data]);
+  }, [series, data, laneKeys]);
 
   // Every marker on every lane, normalised to one shape.
   const laneItems = useMemo(() => {
     const out = {};
-    LANE_KEYS.forEach((key) => {
+    laneKeys.forEach((key) => {
       if (key === 'alerts') {
         out.alerts = (data?.alerts || [])
           .filter((a) => a.start)
@@ -396,16 +426,16 @@ const AdminV2MonitoringTimeline = () => {
       }
     });
     return out;
-  }, [data]);
+  }, [data, laneKeys]);
 
-  const lanesWithData = LANE_KEYS.filter((k) => (laneItems[k]?.length || 0) > 0);
-  const visibleLanes = lanesExpanded ? LANE_KEYS : LANE_KEYS.slice(0, COLLAPSED_LANES);
+  const lanesWithData = laneKeys.filter((k) => (laneItems[k]?.length || 0) > 0);
+  const visibleLanes = lanesExpanded ? laneKeys : laneKeys.slice(0, COLLAPSED_LANES);
   const hiddenWithData = lanesWithData.filter((k) => !visibleLanes.includes(k)).length;
 
   // Everything on one ordered list, for the activity panel.
   const allEvents = useMemo(
-    () => LANE_KEYS.flatMap((k) => laneItems[k] || []).sort((a, b) => b.ts - a.ts),
-    [laneItems],
+    () => laneKeys.flatMap((k) => laneItems[k] || []).sort((a, b) => b.ts - a.ts),
+    [laneItems, laneKeys],
   );
 
   // The alert covering the scrubbed instant, if any.
@@ -417,18 +447,11 @@ const AdminV2MonitoringTimeline = () => {
     }) || null;
   }, [cursor, laneItems]);
 
-  // Nearest pulse-ox minute to the cursor, for the readout.
-  const cursorSample = useMemo(() => {
-    if (cursor == null || !data?.pulse_ox?.length) return null;
-    let best = null;
-    let bestGap = Infinity;
-    data.pulse_ox.forEach((p) => {
-      const gap = Math.abs(new Date(p.ts).getTime() - cursor);
-      if (gap < bestGap) { bestGap = gap; best = p; }
-    });
-    // A minute either side; beyond that the readout would be inventing data.
-    return bestGap <= 90_000 ? best : null;
-  }, [cursor, data]);
+  const cursorSamples = useMemo(() => Object.fromEntries(
+    Object.entries(series).map(([key, minutes]) => [key, sampleAt(minutes, cursor)]),
+  ), [series, cursor]);
+  const hasCursorSample = Object.values(cursorSamples).some(Boolean);
+  const selectedObservations = laneItems.diary?.filter(item => item.ts === cursor) ?? [];
 
   const nearbyEvents = useMemo(() => {
     if (cursor == null) return [];
@@ -468,6 +491,7 @@ const AdminV2MonitoringTimeline = () => {
   }, [view]);
 
   const onPointerDown = (e) => {
+    if (e.target.closest('button, select')) return;
     pointers.current.add(e.pointerId);
     if (pointers.current.size > 1) return;
     const ts = tsFromClientX(e.clientX);
@@ -480,6 +504,14 @@ const AdminV2MonitoringTimeline = () => {
     if (ts != null) setCursor(ts);
   };
   const endPointer = (e) => { pointers.current.delete(e.pointerId); };
+
+  function inspectEvent(ts) {
+    setCursor(ts);
+    if (!view || (ts >= view.min && ts <= view.max)) return;
+    const span = view.max - view.min;
+    const min = Math.max(bounds.start, Math.min(ts - span / 2, bounds.end - span));
+    setView({ min, max: min + span });
+  }
 
   const toggleSignal = (key) => {
     setActiveSignals((prev) => {
@@ -503,31 +535,35 @@ const AdminV2MonitoringTimeline = () => {
   }
 
   const onToday = selectedDay === today;
+  const periodStart = data?.window_start ? clockTime(Date.parse(data.window_start)) : '12:00 AM';
+  const windowEnd = Date.parse(data?.window_end);
+  const periodEnd = windowEnd <= bounds.end && (!onToday || windowEnd <= Date.now())
+    ? clockTime(windowEnd) : (onToday ? 'now' : '11:59 PM');
   const shiftDay = (days) => {
     const next = new Date(selectedDay + 'T00:00:00Z');
     next.setUTCDate(next.getUTCDate() + days);
     const date = next.toISOString().slice(0, 10);
-    if (date <= today) setSelection({ date });
+    if ((!firstDay || date >= firstDay) && date <= lastDay) setSelection({ date });
   };
 
   return (
     <div className="mtl">
       <div className="mtl-datenav">
-        <button type="button" className="mtl-navbtn" onClick={() => shiftDay(-1)} aria-label="Previous day">
+        <button type="button" className="mtl-navbtn" onClick={() => shiftDay(-1)} disabled={selectedDay === firstDay} aria-label="Previous day">
           <ChevronLeftIcon size={18} />
         </button>
         <button
           type="button"
-          className={`mtl-navbtn${onToday ? ' on' : ''}`}
+          className={`mtl-navbtn${selectedDay === lastDay ? ' on' : ''}`}
           onClick={() => setSelection({ date: null })}
         >
-          Today
+          {diaryPath && lastDay !== today ? 'Latest day' : 'Today'}
         </button>
         <button
           type="button"
           className="mtl-navbtn"
           onClick={() => shiftDay(1)}
-          disabled={onToday}
+          disabled={selectedDay >= lastDay}
           aria-label="Next day"
         >
           <ChevronRightIcon size={18} />
@@ -538,10 +574,11 @@ const AdminV2MonitoringTimeline = () => {
           <input
             type="date"
             aria-label="Pick a date"
-            max={today}
+            min={firstDay}
+            max={lastDay}
             value={selectedDay}
             onChange={(e) => {
-              if (!e.target.value) return;
+              if (!e.target.validity.valid || !e.target.value) return;
               setSelection({ date: e.target.value });
             }}
           />
@@ -551,10 +588,10 @@ const AdminV2MonitoringTimeline = () => {
       <div className="mtl-head">
         <h2>Day timeline</h2>
         <p>
-          12:00 AM &mdash; {onToday ? 'now' : '11:59 PM'}
+          {periodStart} &mdash; {periodEnd}
           {zone && ` (${zone})`}
           {lastSample != null && ` · Live data through ${clockTime(new Date(lastSample))}`}
-          {lastSample == null && !loading && ' · No pulse-ox data this day'}
+          {data && lastSample == null && !loading && ' · No pulse-ox data this day'}
         </p>
       </div>
 
@@ -645,7 +682,7 @@ const AdminV2MonitoringTimeline = () => {
         ))}
       </div>
 
-      {error && <p className="mtl-error">{error}</p>}
+      {error && <p role="alert" className="mtl-error">{error}</p>}
 
       {loading && !data && <p className="mtl-empty">Loading the day…</p>}
 
@@ -671,8 +708,9 @@ const AdminV2MonitoringTimeline = () => {
                   view={view}
                   bounds={bounds}
                   alerts={laneItems.alerts}
-                  alarms={alarmsFor(SIGNALS[key].alarmKey, settings)}
+                  alarms={alarmLimits[key]}
                   cursor={cursor}
+                  sample={cursorSamples[key]}
                   showAxis={i === shownSignals.length - 1}
                   onViewChange={(next) => { setView(next); setRangeLabel(null); }}
                 />
@@ -688,7 +726,7 @@ const AdminV2MonitoringTimeline = () => {
                     items={laneItems[key] || []}
                     view={view}
                     cursor={cursor}
-                    onPick={setCursor}
+                    onPick={inspectEvent}
                   />
                 ))}
                 {(hiddenWithData > 0 || lanesExpanded) && (
@@ -697,7 +735,7 @@ const AdminV2MonitoringTimeline = () => {
                       size={14}
                       style={{ transform: lanesExpanded ? 'rotate(180deg)' : 'none' }}
                     />
-                    {lanesExpanded ? 'Fewer lanes' : `+${LANE_KEYS.length - COLLAPSED_LANES} more`}
+                    {lanesExpanded ? 'Fewer lanes' : `+${laneKeys.length - COLLAPSED_LANES} more`}
                   </button>
                 )}
               </div>
@@ -771,23 +809,32 @@ const AdminV2MonitoringTimeline = () => {
                   <dl className="mtl-readout">
                     <div>
                       <dt style={{ color: SIGNALS.spo2.color }}>SpO2</dt>
-                      <dd>{cursorSample?.spo2 != null
-                        ? <>{cursorSample.spo2}<small>%</small></>
+                      <dd>{cursorSamples.spo2
+                        ? <>{cursorSamples.spo2.y}<small>%</small></>
                         : <span className="mtl-stat-empty">—</span>}</dd>
                     </div>
                     <div>
                       <dt style={{ color: SIGNALS.bpm.color }}>Heart rate</dt>
-                      <dd>{cursorSample?.bpm != null
-                        ? <>{Math.round(cursorSample.bpm)}<small>bpm</small></>
+                      <dd>{cursorSamples.bpm
+                        ? <>{Math.round(cursorSamples.bpm.y)}<small>bpm</small></>
                         : <span className="mtl-stat-empty">—</span>}</dd>
                     </div>
                     <div>
                       <dt style={{ color: 'var(--vc-text-secondary)' }}>Perfusion</dt>
-                      <dd>{cursorSample?.perfusion != null
-                        ? cursorSample.perfusion
+                      <dd>{cursorSamples.perfusion
+                        ? cursorSamples.perfusion.y
                         : <span className="mtl-stat-empty">—</span>}</dd>
                     </div>
                   </dl>
+                  {selectedObservations.map(({ item: { entry } }) => (
+                    <div key={entry.id} className="mtl-diary-observation">
+                      <strong>{entry.label}</strong>
+                      {entry.note && <p>{entry.note}</p>}
+                      {entry.question && <p>{entry.question} {entry.answer || 'Not recorded'}</p>}
+                      {onEditObservation && <button type="button" className="cfg-ghost"
+                        onClick={() => onEditObservation(entry)} aria-label={`Edit ${entry.label}`}>Edit</button>}
+                    </div>
+                  ))}
                   {cursorAlert && (
                     <p className="mtl-detail-foot">
                       {cursorAlert.end
@@ -797,8 +844,8 @@ const AdminV2MonitoringTimeline = () => {
                       {cursorAlert.alert.oxygen_used && <> · oxygen used</>}
                     </p>
                   )}
-                  {!cursorSample && (
-                    <p className="mtl-detail-foot">No pulse-ox reading within a minute of this time.</p>
+                  {!hasCursorSample && (
+                    <p className="mtl-detail-foot">No pulse-ox reading at this time.</p>
                   )}
                 </>
               )}
@@ -831,7 +878,7 @@ const AdminV2MonitoringTimeline = () => {
               <p className="mtl-empty">Nothing was logged on this day.</p>
             ) : (
               (cursor == null ? allEvents.slice(0, 8) : nearbyEvents).map((ev) => {
-                const lane = LANES[ev.type];
+                const lane = ev.type === 'diary' ? DIARY_LANE : LANES[ev.type];
                 const Icon = lane.Icon;
                 const on = cursor != null && Math.abs(ev.ts - cursor) < 60_000;
                 return (
@@ -840,7 +887,7 @@ const AdminV2MonitoringTimeline = () => {
                     type="button"
                     className={`mtl-row${on ? ' on' : ''}`}
                     style={{ '--lane': lane.color }}
-                    onClick={() => setCursor(ev.ts)}
+                    onClick={() => inspectEvent(ev.ts)}
                   >
                     <span className="mtl-row-icon"><Icon size={16} /></span>
                     <span className="mtl-row-time">{clockTime(new Date(ev.ts))}</span>
@@ -854,12 +901,12 @@ const AdminV2MonitoringTimeline = () => {
       )}
     </div>
   );
-};
+}
 
 /* One signal, one scale. Every chart on the page is this component, so the
  * two can never drift apart in axis geometry or option shape. */
 const SignalChart = ({
-  signalKey, points, view, bounds, alerts, alarms, cursor, showAxis, onViewChange, clocks,
+  signalKey, points, view, bounds, alerts, alarms, cursor, sample, showAxis, onViewChange, clocks,
 }) => {
   const cfg = SIGNALS[signalKey];
   // Canvas needs literal colours; `version` bumps when the palette changes.
@@ -906,11 +953,12 @@ const SignalChart = ({
       data: {
         datasets: [{
           label: cfg.axisLabel,
-          data: points,
+          data: tracePoints(points),
           parsing: false,
           borderColor: readToken(cfg.token),
+          pointBackgroundColor: readToken(cfg.token),
           borderWidth: 1.4,
-          pointRadius: 0,
+          pointRadius: ({ raw }) => raw?.isolated ? 2 : 0,
           pointHitRadius: 0,
           tension: 0.15,
           spanGaps: false,
@@ -946,27 +994,19 @@ const SignalChart = ({
     if (!chart) return;
     const anns = chart.options.plugins.annotation.annotations;
     delete anns.cursor;
-    if (cursor != null && points.length) {
-      let best = null;
-      let gap = Infinity;
-      points.forEach((p) => {
-        const d = Math.abs(p.x - cursor);
-        if (d < gap) { gap = d; best = p; }
-      });
-      if (best && gap <= 90_000) {
-        anns.cursor = {
-          type: 'point',
-          xValue: best.x,
-          yValue: best.y,
-          radius: 4,
-          backgroundColor: readToken(cfg.token),
-          borderColor: chartChrome().grid,
-          borderWidth: 1,
-        };
-      }
+    if (sample) {
+      anns.cursor = {
+        type: 'point',
+        xValue: Math.min(sample.end, Math.max(sample.x, cursor)),
+        yValue: sample.y,
+        radius: 4,
+        backgroundColor: readToken(cfg.token),
+        borderColor: chartChrome().grid,
+        borderWidth: 1,
+      };
     }
     chart.update('none');
-  }, [cursor, points, cfg, version]);
+  }, [cursor, sample, cfg, version, alerts, alarms, bounds, showAxis, yRange, clocks]);
 
   return (
     <div className={`mtl-chart${showAxis ? ' tall' : ''}`}>
@@ -978,7 +1018,7 @@ const SignalChart = ({
 
 /* One row of markers, sharing the charts' time window and plot box. */
 const EventLane = ({ laneKey, items, view, cursor, onPick, clockTime }) => {
-  const lane = LANES[laneKey];
+  const lane = laneKey === 'diary' ? DIARY_LANE : LANES[laneKey];
   const span = view ? view.max - view.min : 0;
   const inWindow = span > 0
     ? items.filter((it) => it.ts >= view.min && it.ts <= view.max)
@@ -1049,4 +1089,7 @@ const EnvLane = ({ lane, view, clockTime }) => {
   );
 };
 
-export default AdminV2MonitoringTimeline;
+export default function AdminV2MonitoringTimeline() {
+  const { selectedPatient } = useAdminPatient();
+  return <PatientDayTimeline key={selectedPatient?.id} patient={selectedPatient} />;
+}

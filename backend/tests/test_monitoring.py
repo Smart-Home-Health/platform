@@ -372,3 +372,19 @@ def test_timeline_today_uses_patient_timezone(admin_client, patient, monkeypatch
     assert result.status_code == 200
     data = result.json()
     assert data["today"] == data["date"] == "2026-11-19"
+
+
+def test_timeline_preserves_valid_reading_bounds_per_signal(admin_client, db_session, patient):
+    from schemas.pulse_ox_data import PulseOxData
+
+    start = datetime(2026, 11, 19, 12, tzinfo=timezone.utc)
+    for seconds, spo2, bpm in [(0, 96, 70), (10, 98, -1), (70, 99, 75), (130.001, 97, None)]:
+        ts = start + timedelta(seconds=seconds)
+        db_session.add(PulseOxData(patient_id=patient.id, timestamp=ts, spo2=spo2, bpm=bpm, created_at=ts))
+    db_session.flush()
+    response = admin_client.get(f'/api/monitoring/timeline?patient_id={patient.id}&target_date=2026-11-19')
+    assert response.status_code == 200
+    a, b, c = response.json()['pulse_ox']
+    assert a['spo2'] == 97 and a['sample_offsets_ms'] == {'spo2': [0, 10000], 'bpm': [0, 0]}
+    assert b['sample_offsets_ms'] == {'spo2': [10000, 10000], 'bpm': [10000, 10000]}
+    assert c['sample_offsets_ms'] == {'spo2': [10001, 10001]} and c['bpm'] is None

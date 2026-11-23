@@ -20,7 +20,7 @@ import { stamp } from './diaryTime';
 
 const sources = { medication: 'Medication log', nutrition: 'Nutrition log', observation: 'Observation' };
 
-export default function DiaryTimeline({ patient, diary, entries, zone, onEdit }) {
+export default function DiaryTimeline({ patient, diary, entries, zone, showEntries, onEdit }) {
   function table(print) {
     return <table className="diary-table"><thead><tr><th scope="col">Local date and time</th><th scope="col">Description of event</th></tr></thead>
       <tbody>{entries.map(e => <tr key={e.source + e.id}>
@@ -34,7 +34,7 @@ export default function DiaryTimeline({ patient, diary, entries, zone, onEdit })
       </tr>)}</tbody></table>;
   }
   return <>
-    {entries.length ? table(false) : <p>No events in this diary yet.</p>}
+    {showEntries && (entries.length ? table(false) : <p>No events in this diary yet.</p>)}
     {createPortal(<article className="diary-print">
       <h1>{diary.name}</h1><p>{patient.first_name} {patient.last_name}</p>
       <p>{stamp(diary.starts_at, zone)} – {diary.ends_at ? stamp(diary.ends_at, zone) : 'Ongoing'} · {zone}</p>

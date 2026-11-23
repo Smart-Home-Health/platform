@@ -93,6 +93,7 @@ def test_routes_scope_diaries_and_events_to_patient(admin_client, patient, db_se
     _, other_path = start(admin_client, other)
     event = observe(admin_client, path)
     assert admin_client.get(path.replace(f'/patients/{patient.id}/', f'/patients/{other.id}/') + '/timeline').status_code == 404
+    assert admin_client.get(path.replace(f'/patients/{patient.id}/', f'/patients/{other.id}/') + '/day').status_code == 404
     assert admin_client.delete(other_path + '/events/' + str(event['id'])).status_code == 404
     invalid = {'request_id': str(uuid4()), 'label': 'Questionable event', 'observed_at': '2020-01-01T00:00:00Z'}
     assert admin_client.post(path + '/events', json=invalid).status_code == 422
@@ -126,3 +127,44 @@ def test_patient_grant_controls_recording_and_requires_unlocked_session(
     token = create_access_token(user=limited_user, account=account, auth_level='full', read_restricted=True)
     limited_client.headers.update({'Authorization': f'Bearer {token}'})
     assert limited_client.get(path + '/timeline').status_code == 403
+    assert limited_client.get(path + '/day').status_code == 403
+
+
+def test_diary_day_uses_study_bounds_on_the_repeated_hour(admin_client, db_session, patient):
+    from schemas.pulse_ox_data import PulseOxData
+
+    start_at = datetime(2026, 11, 1, 5, 45, tzinfo=timezone.utc)
+    end_at = start_at + timedelta(minutes=30)
+    base = f'/api/patients/{patient.id}/diaries'
+    response = admin_client.post(base, json={**FORM, 'starts_at': start_at.isoformat(), 'ends_at': end_at.isoformat()})
+    diary_id = response.json()['id']
+    for ts in [start_at - timedelta(seconds=1), start_at, end_at, end_at + timedelta(seconds=1)]:
+        db_session.add(PulseOxData(patient_id=patient.id, timestamp=ts, spo2=98, created_at=ts))
+    db_session.flush()
+    day = admin_client.get(f'{base}/{diary_id}/day?target_date=2026-11-23').json()
+    assert day['first_day'] == day['last_day'] == day['date'] == '2026-11-01'
+    assert datetime.fromisoformat(day['day_end']) - datetime.fromisoformat(day['day_start']) == timedelta(hours=25)
+    assert [datetime.fromisoformat(p['ts']) for p in day['pulse_ox']] == [start_at, end_at]
+    assert all(p['sample_offsets_ms']['spo2'] == [0, 0] for p in day['pulse_ox'])
+
+
+def test_diary_day_honors_clinical_permissions(admin_client, limited_user, account, db_session, patient):
+    from crud.users import get_role_by_name
+    from routes.auth import create_access_token
+    from schemas.nutrition_output import NutritionOutput
+    from schemas.patient import AccessLevel, PatientAccess
+    from schemas.pulse_ox_data import PulseOxData
+
+    _, path = start(admin_client, patient)
+    limited_user.roles.append(get_role_by_name(db_session, 'monitor'))
+    db_session.add(PatientAccess(patient_id=patient.id, user_id=limited_user.id,
+                                 granted_at=datetime.utcnow(), access_level=AccessLevel.VIEWER))
+    db_session.add(NutritionOutput(patient_id=patient.id, output_type='urine', occurred_at=AT))
+    db_session.add(PulseOxData(patient_id=patient.id, timestamp=AT, spo2=97, created_at=AT))
+    db_session.commit()
+    url = path + '/day?target_date=2026-01-16'  # AT is 11:10 PM in New York.
+    assert len(admin_client.get(url).json()['nutrition_output']) == 1
+    token = create_access_token(user=limited_user, account=account, auth_level='full')
+    day = admin_client.get(url, headers={'Authorization': f'Bearer {token}'}).json()
+    assert len(day['pulse_ox']) == 1
+    assert day['nutrition_output'] == []

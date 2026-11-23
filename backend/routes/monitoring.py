@@ -18,7 +18,6 @@ Monitoring and alerts routes
 """
 import logging
 import math
-from collections import defaultdict
 from fastapi import APIRouter, Depends, Body, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -39,7 +38,7 @@ from crud.monitoring import (get_monitoring_alerts, get_unacknowledged_alerts_co
                              acknowledge_alert, get_pulse_ox_data_for_alert, get_available_pulse_ox_dates,
                              get_pulse_ox_data_by_date)
 from crud.vitals import analyze_pulse_ox_day
-from schemas.vital import Vital
+from crud.monitoring_timeline import day_streams
 
 logger = logging.getLogger("app")
 
@@ -311,164 +310,10 @@ async def get_timeline_data(
         # PostgreSQL interprets naive bounds in the database session's timezone.
         start_dt, end_dt = local_day_range_utc(date_obj, tz=tz)
 
-        # 1. Pulse ox - get raw data and downsample to 1-minute averages
-        from schemas.pulse_ox_data import PulseOxData as PulseOxModel
-        pulse_query = db.query(PulseOxModel).filter(
-            PulseOxModel.timestamp >= start_dt,
-            PulseOxModel.timestamp < end_dt
-        )
-        if patient_id is not None:
-            pulse_query = pulse_query.filter(PulseOxModel.patient_id == patient_id)
-        raw_pulse_ox = pulse_query.order_by(PulseOxModel.timestamp.asc()).all()
-
-        # Group by minute and average (exclude -1 invalid/disconnected reads)
-        minute_buckets = defaultdict(lambda: {'spo2': [], 'bpm': [], 'perfusion': []})
-        for reading in raw_pulse_ox:
-            minute_key = reading.timestamp.astimezone(timezone.utc).replace(second=0, microsecond=0)
-            if reading.spo2 is not None and reading.spo2 != -1:
-                minute_buckets[minute_key]['spo2'].append(reading.spo2)
-            if reading.bpm is not None and reading.bpm != -1:
-                minute_buckets[minute_key]['bpm'].append(reading.bpm)
-            if reading.pa is not None and reading.pa != -1:
-                minute_buckets[minute_key]['perfusion'].append(reading.pa)
-
-        pulse_ox_data = []
-        for ts in sorted(minute_buckets.keys()):
-            bucket = minute_buckets[ts]
-            # Skip minutes with no valid readings
-            if not bucket['spo2'] and not bucket['bpm'] and not bucket['perfusion']:
-                continue
-            pulse_ox_data.append({
-                'ts': ts.isoformat(),
-                'spo2': round(sum(bucket['spo2']) / len(bucket['spo2']), 1) if bucket['spo2'] else None,
-                'bpm': round(sum(bucket['bpm']) / len(bucket['bpm']), 1) if bucket['bpm'] else None,
-                'perfusion': round(sum(bucket['perfusion']) / len(bucket['perfusion']), 2) if bucket['perfusion'] else None
-            })
-
-        # 2. Medications administered that day
-        # Query directly with UTC boundaries instead of date strings
-        from schemas.medication_log import MedicationLog
-        from schemas.medication import Medication
-        med_logs = db.query(MedicationLog).join(Medication).filter(
-            MedicationLog.patient_id == patient_id,
-            MedicationLog.administered_at >= start_dt,
-            MedicationLog.administered_at < end_dt
-        ).order_by(MedicationLog.administered_at.asc()).all()
-        medications = [{
-            'ts': m.administered_at.isoformat() if m.administered_at else None,
-            'name': m.medication.name if m.medication else 'Unknown',
-            'dose': f"{m.dose_amount} {m.medication.quantity_unit}" if m.medication else str(m.dose_amount or ''),
-            'status': 'skipped' if m.dose_amount == 0 else ('late' if m.administered_late else 'on-time'),
-            'notes': m.notes or ''
-        } for m in med_logs]
-
-        # 3. Care tasks completed that day
-        from schemas.care_task_log import CareTaskLog
-        from schemas.care_task import CareTask
-        task_log_query = db.query(CareTaskLog).join(CareTask).filter(
-            CareTaskLog.patient_id == patient_id,
-            CareTaskLog.completed_at >= start_dt,
-            CareTaskLog.completed_at < end_dt
-        ).order_by(CareTaskLog.completed_at.asc()).all()
-        care_tasks = [{
-            'ts': t.completed_at.isoformat() if t.completed_at else None,
-            'name': t.care_task.name if t.care_task else 'Unknown',
-            'category': t.care_task.category.name if t.care_task and t.care_task.category else '',
-            'status': 'completed',
-            'notes': t.notes or ''
-        } for t in task_log_query]
-
-        # 4. Nutrition intake
-        from schemas.nutrition_intake import NutritionIntake
-        intake_records = db.query(NutritionIntake).filter(
-            NutritionIntake.patient_id == patient_id,
-            NutritionIntake.consumed_at >= start_dt,
-            NutritionIntake.consumed_at < end_dt
-        ).order_by(NutritionIntake.consumed_at.asc()).all()
-        nutrition_intake = [{
-            'ts': r.consumed_at.isoformat() if r.consumed_at else None,
-            'item_name': r.item_name,
-            'item_type': r.item_type,
-            'amount': r.amount,
-            'amount_unit': r.amount_unit,
-            'calories': r.calories
-        } for r in intake_records if r.consumed_at]
-
-        # 5. Nutrition output
-        from schemas.nutrition_output import NutritionOutput
-        output_records = db.query(NutritionOutput).filter(
-            NutritionOutput.patient_id == patient_id,
-            NutritionOutput.occurred_at >= start_dt,
-            NutritionOutput.occurred_at < end_dt
-        ).order_by(NutritionOutput.occurred_at.asc()).all()
-        nutrition_output = [{
-            'ts': r.occurred_at.isoformat() if r.occurred_at else None,
-            'output_type': r.output_type,
-            'is_diaper': r.is_diaper,
-            'diaper_wetness': r.diaper_wetness,
-            'diaper_soiled': r.diaper_soiled,
-            'consistency': r.consistency,
-            'color': r.color,
-            'amount': r.amount,
-            'notes': r.notes
-        } for r in output_records if r.occurred_at]
-
-        # 6. Vitals recorded that day
-        vitals_query = db.query(Vital).filter(
-            Vital.patient_id == patient_id,
-            Vital.timestamp >= start_dt,
-            Vital.timestamp < end_dt
-        ).order_by(Vital.timestamp.asc()).all()
-
-        vitals = [{
-            'ts': v.timestamp.isoformat(),
-            'vital_type': v.vital_type,
-            'vital_group': v.vital_group,
-            'value': v.value,
-            'unit': v.unit,
-            'notes': v.notes
-        } for v in vitals_query]
-
-        # 7. Monitoring alerts for that day.
-        #
-        # Queried against the day bounds like every other stream above. This
-        # used to pull the 200 most recent alerts for the patient and filter
-        # them down afterwards, which quietly returned nothing for any day
-        # sitting further than 200 alerts back — the timeline then showed a
-        # busy day as having none.
-        from schemas.monitoring_alert import MonitoringAlert
-        alert_rows = db.query(MonitoringAlert).filter(
-            MonitoringAlert.patient_id == patient_id,
-            MonitoringAlert.start_time >= start_dt,
-            MonitoringAlert.start_time < end_dt
-        ).order_by(MonitoringAlert.start_time.asc()).all()
-        alerts = [{
-            'id': a.id,
-            'start': a.start_time.isoformat() if a.start_time else None,
-            # Null end means still open. Never synthesise one — a fabricated
-            # end becomes a fabricated duration downstream.
-            'end': a.end_time.isoformat() if a.end_time else None,
-            'spo2_alarm': bool(a.spo2_alarm_triggered),
-            'hr_alarm': bool(a.hr_alarm_triggered),
-            'spo2_min': a.spo2_min,
-            'bpm_min': a.bpm_min,
-            'oxygen_used': bool(a.oxygen_used),
-            'acknowledged': bool(a.acknowledged),
-        } for a in alert_rows]
-
         return {
-            'date': date_obj.isoformat(),
-            'today': today.isoformat(),
-            'timezone': str(tz),
-            'day_start': start_dt.isoformat(),
-            'day_end': end_dt.isoformat(),
-            'pulse_ox': pulse_ox_data,
-            'medications': medications,
-            'care_tasks': care_tasks,
-            'nutrition_intake': nutrition_intake,
-            'nutrition_output': nutrition_output,
-            'vitals': vitals,
-            'alerts': alerts
+            'date': date_obj.isoformat(), 'today': today.isoformat(), 'timezone': str(tz),
+            'day_start': start_dt.isoformat(), 'day_end': end_dt.isoformat(),
+            **day_streams(db, patient_id, start_dt, end_dt),
         }
 
     except HTTPException:

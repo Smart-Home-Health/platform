@@ -21,6 +21,13 @@
 .diary-patient, .diary-header p, .diary-table small { color: var(--vc-text-secondary); }
 .diary-patient { margin: .25rem 0 1rem; }
 .diary-detail { display: grid; gap: 1rem; margin-block: 1rem; overflow-wrap: anywhere; }
+.diary-detail > .mtl { min-width: 0; }
+.diary-views { display: inline-flex; border: 1px solid var(--vc-line-strong); border-radius: 8px; overflow: hidden; }
+.diary-views button { padding: .65rem .85rem; background: var(--vc-bg-raised); color: var(--vc-text-secondary); border: 0; font: inherit; cursor: pointer; }
+.diary-views button[aria-pressed="true"] { background: var(--vc-data-live); color: var(--vc-text-on-accent); }
+.diary-views button:focus-visible { outline-offset: -3px; }
+.mtl-diary-observation { margin-top: .8rem; }
+.mtl-diary-observation p { margin: .25rem 0; white-space: pre-wrap; }
 .diary-detail [role="status"]:empty { display: none; }
 .diary-section { border: 1px solid var(--vc-line-strong); border-radius: 10px; padding: 1rem; background: var(--vc-bg-raised); }
 .diary-buttons { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); gap: .6rem; margin-block: .8rem; }
