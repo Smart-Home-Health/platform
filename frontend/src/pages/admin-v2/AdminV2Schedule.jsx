@@ -273,8 +273,9 @@ const AdminV2Schedule = () => {
         // Backend returns times in UTC, we need to compute local hour/minute
         const convertToLocalTime = (item) => {
           if (!item.scheduled_time) return item;
-          // Ensure the time is parsed as UTC (add Z if missing)
-          const utcTime = item.scheduled_time.endsWith('Z') || item.scheduled_time.includes('+') 
+          // Legacy naive timestamps are UTC; preserve either signed offset
+          // when the database serializes an explicitly zoned timestamp.
+          const utcTime = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(item.scheduled_time)
             ? item.scheduled_time 
             : item.scheduled_time + 'Z';
           const localDate = new Date(utcTime);
@@ -444,19 +445,14 @@ const AdminV2Schedule = () => {
         if (await maybeGateOnQuantity(response)) return;
 
         if (response.ok) {
-          setScheduleData(prev => ({
-            ...prev,
-            [key]: prev[key].map(i => {
-              const wasCompleted = items.some(
-                inc => inc.schedule_id === i.schedule_id && inc.scheduled_time === i.scheduled_time
-              );
-              return wasCompleted ? { ...i, completed: true } : i;
-            })
-          }));
+          const result = await response.json();
           setShowCompleteModal(false);
-          // Any flush-flagged feed in the batch queued a follow-up row.
-          if (type === 'nutrition' && items.some(i => i.flush_components?.length)) {
-            fetchSchedule();
+          // Reload the persisted rows: bulk requests can partially fail, and
+          // completed rows need their actual time and log id for Undo.
+          await fetchSchedule();
+          const completedCount = (result[key] || []).filter(i => i.success).length;
+          if (!result.success || completedCount < items.length) {
+            alert(result.error || 'Some items could not be recorded. Review the schedule for items still incomplete.');
           }
         } else {
           const data = await response.json().catch(() => ({}));
@@ -495,22 +491,10 @@ const AdminV2Schedule = () => {
         if (response.ok) {
           const result = await response.json();
           if (result.success) {
-            const key = type === 'medication' ? 'medications' :
-                       type === 'nutrition' ? 'nutrition' : 'care_tasks';
-            setScheduleData(prev => ({
-              ...prev,
-              [key]: prev[key].map(i =>
-                i.schedule_id === item.schedule_id && i.scheduled_time === item.scheduled_time
-                  ? { ...i, completed: true }
-                  : i
-              )
-            }));
             setShowCompleteModal(false);
-            // A flush-flagged feed queued a follow-up row server-side;
-            // refetch so it appears at its computed time.
-            if (type === 'nutrition' && (result.flush_followup || item.flush_components?.length)) {
-              fetchSchedule();
-            }
+            // Include the actual completion time, Undo log id, and any
+            // post-feed flush queued by the server in the refreshed schedule.
+            await fetchSchedule();
           } else {
             alert(result.error || 'Failed to record completion.');
           }
@@ -792,7 +776,7 @@ const AdminV2Schedule = () => {
       return { text: scheduledText, title: undefined };
     }
     const raw = item.completed_at;
-    const utc = raw.endsWith('Z') || raw.includes('+') ? raw : raw + 'Z';
+    const utc = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw) ? raw : raw + 'Z';
     const d = new Date(utc);
     if (isNaN(d.getTime())) {
       return { text: scheduledText, title: undefined };

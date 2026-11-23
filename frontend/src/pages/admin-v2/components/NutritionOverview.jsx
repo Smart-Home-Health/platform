@@ -137,14 +137,14 @@ const NutritionOverview = ({
   const fluidPct = pct(totals.totalFluidMl, fluidGoal);
   const caloriePct = pct(totals.totalCalories, calorieGoal);
 
-  // Intakes bucket by scheduled_time when there is one, so a late-logged 9pm
-  // feed sorts into its 9pm slot rather than the small hours it was entered.
+  // The daily timeline and Last intake describe when intake actually happened.
+  // Scheduled slots belong to the schedule view, even when a feed runs late.
   const timeline = useMemo(() => {
     const rows = [
       ...intakes.map((i) => ({
         kind: 'intake',
         key: `i-${i.id}`,
-        time: i.scheduled_time || i.consumed_at,
+        time: i.consumed_at,
         icon: intakeIcon(i),
         title: i.item_name,
         detail: [
