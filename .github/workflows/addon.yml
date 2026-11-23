@@ -19,7 +19,7 @@ on:
         required: true
         type: string
       confirmation:
-        description: Type publish-0.5.1 after reviewing both image candidates
+        description: Type publish-0.5.3 after reviewing both image candidates
         required: true
         type: string
 
@@ -28,19 +28,19 @@ permissions:
   actions: read
 
 concurrency:
-  group: addon-promotion-0.5.1
+  group: addon-promotion-0.5.3
   cancel-in-progress: false
 
 env:
-  RELEASE_VERSION: 0.5.1
-  ACCEPTED_SOURCE: d4f2357ad9fb50fc69c1aea484c5664e05c781ea
-  AMD64_RUN: '38728410944'
-  AMD64_ARCHIVE_SHA256: 47c7a9d4a2581f8771d016c47364d5fbba4a1bab9cb688c1d80c43f0e8e2ea63
-  AMD64_IMAGE_ID: sha256:fcd4512d5f853185d9c447eec8dcace3959cda792b0dfd1a43fa5a4ca5db0c19
+  RELEASE_VERSION: 0.5.3
+  ACCEPTED_SOURCE: 5c9ab23c28c2ababd0fb9ad3db960b5b2f50b76f
+  AMD64_RUN: '45257291784'
+  AMD64_ARCHIVE_SHA256: bcba4fc0215241fae6e0b0edb4a7e249790fed926dc887e78c237e66efbb7468
+  AMD64_IMAGE_ID: sha256:a06186c225853471df12297512545164e5e474494e3372427daca5fb10b4e8cb
 
 jobs:
   promote:
-    if: inputs.confirmation == 'publish-0.5.1'
+    if: inputs.confirmation == 'publish-0.5.3'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
@@ -75,9 +75,9 @@ jobs:
           allowed = {'.github/workflows/addon.yml', '.github/workflows/release.yml',
                      '.github/workflows/rehearsal-addon.yml', 'addon/config.yaml', 'addon/CHANGELOG.md'}
           source = os.environ['ACCEPTED_SOURCE']
-          need(re.search(r'^version: "0\.5\.1"$', pathlib.Path('addon/config.yaml').read_text(), re.M), 'Wrong release manifest')
+          need(re.search(r'^version: "0\.5\.3"$', pathlib.Path('addon/config.yaml').read_text(), re.M), 'Wrong release manifest')
           need(set(git('diff', '--name-only', source, 'HEAD').splitlines()) <= allowed, 'Unreviewed runtime-source delta')
-          tag_status = subprocess.run(['git', 'show-ref', '--verify', '--quiet', 'refs/tags/v0.5.1']).returncode
+          tag_status = subprocess.run(['git', 'show-ref', '--verify', '--quiet', 'refs/tags/v0.5.3']).returncode
           need(tag_status == 1, 'Release source tag already exists or could not be checked')
           plan = []
           repo = os.environ['GITHUB_REPOSITORY']
@@ -127,7 +127,7 @@ jobs:
       - name: Verify both archives and loaded image identities before publication
         shell: python
         run: |
-          import hashlib, json, os, pathlib, subprocess
+          import hashlib, json, os, pathlib, subprocess, tarfile
           def need(ok, message):
               if not ok: raise RuntimeError(message)
           for item in json.loads(pathlib.Path('promotion-plan.json').read_text()):
@@ -141,6 +141,16 @@ jobs:
               need(all(provenance[key] == item[key] for key in ['commit', 'platform', 'image_id']), 'Provenance mismatch')
               need(provenance['repository'] == os.environ['GITHUB_SERVER_URL'] + '/' + os.environ['GITHUB_REPOSITORY'], 'Wrong source repository')
               need(provenance['workflow_run'].endswith('/actions/runs/' + item['run']), 'Wrong artifact run')
+              # Verify the OCI blob bytes before handing the archive to Docker.
+              verified = set()
+              with tarfile.open(archive, mode='r|gz') as contents:
+                  for member in contents:
+                      path = pathlib.PurePosixPath(member.name)
+                      if member.isfile() and path.parent == pathlib.PurePosixPath('blobs/sha256'):
+                          with contents.extractfile(member) as blob:
+                              need(hashlib.file_digest(blob, 'sha256').hexdigest() == path.name, 'OCI blob checksum mismatch')
+                          verified.add('sha256:' + path.name)
+              need(item['image_id'] in verified, 'Image config missing from verified blobs')
               subprocess.run(['docker', 'load', '--input', str(archive)], check=True)
               image = json.loads(subprocess.check_output(['docker', 'image', 'inspect', item['image_id']], text=True))[0]
               need(image['Id'] == item['image_id'], 'Loaded image ID mismatch')
