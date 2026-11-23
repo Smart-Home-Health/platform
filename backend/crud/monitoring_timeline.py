@@ -26,12 +26,16 @@ from schemas.nutrition_intake import NutritionIntake
 from schemas.nutrition_output import NutritionOutput
 from schemas.monitoring_alert import MonitoringAlert
 
+
 def pulse_minutes(db, patient_id, start_dt, end_dt):
     readings = db.query(PulseOxData.timestamp, PulseOxData.spo2, PulseOxData.bpm, PulseOxData.pa).filter(
         PulseOxData.patient_id == patient_id, PulseOxData.timestamp >= start_dt, PulseOxData.timestamp < end_dt
     ).order_by(PulseOxData.timestamp)
     minutes = {}
     for timestamp, spo2, bpm, perfusion in readings.yield_per(2048):
+        # The probe emits this tuple while disconnected, including the zero PA.
+        if (spo2, bpm, perfusion) == (-1, -1, 0):
+            continue
         stamp = timestamp.astimezone(timezone.utc)
         minute = stamp.replace(second=0, microsecond=0)
         offset = stamp.second * 1000 + stamp.microsecond / 1000

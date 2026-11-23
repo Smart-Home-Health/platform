@@ -364,13 +364,15 @@ export function PatientDayTimeline({ patient: selectedPatient, diaryPath, diaryE
     return () => { cancelled = true; };
   }, [roomLocation, bounds.start, bounds.end, data?.date, data?.window_start, data?.window_end]);
 
+  const roomStart = data?.window_start ? Date.parse(data.window_start) : bounds.start;
+  const roomEnd = data?.window_end ? Date.parse(data.window_end) : bounds.end;
   const envLanes = useMemo(() => ENV_LANES.map((lane) => {
     const spans = buildEnvSpans(
       envSeries[lane.metric] || [], envRanges?.[lane.metric], ENV_BUCKET_MS,
-      { keepOk: lane.banded },
+      { keepOk: lane.banded, start: roomStart, end: roomEnd },
     );
     return { ...lane, spans, worst: worstStatus(spans) };
-  }), [envSeries, envRanges]);
+  }), [envSeries, envRanges, roomStart, roomEnd]);
 
   const envFlagged = envLanes.filter((l) => l.worst !== 'ok').length;
   const hasEnvData = ENV_METRIC_KEYS.some((k) => (envSeries[k] || []).length > 0);

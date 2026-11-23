@@ -77,7 +77,7 @@ export const directionOf = (status) => {
  * @param bucketMs  nominal spacing between readings
  * @param keepOk    include in-bounds spans (banded lanes) or drop them
  */
-export function buildEnvSpans(rows, range, bucketMs, { keepOk = false } = {}) {
+export function buildEnvSpans(rows, range, bucketMs, { keepOk = false, start = -Infinity, end = Infinity } = {}) {
   const spans = [];
   let current = null;
 
@@ -88,6 +88,7 @@ export function buildEnvSpans(rows, range, bucketMs, { keepOk = false } = {}) {
   };
 
   rows.forEach((row) => {
+    if (row.ts >= end || row.ts + bucketMs <= start || start >= end) return;
     const status = classifyEnv(row.value, range);
     const brokeByGap = current && row.ts - current.to > bucketMs * 1.5;
     if (current && (current.status !== status || brokeByGap)) close();
@@ -107,7 +108,7 @@ export function buildEnvSpans(rows, range, bucketMs, { keepOk = false } = {}) {
   close();
 
   // A span covers the bucket it ends in, not just the instant it started.
-  return spans.map((s) => ({ ...s, to: s.to + bucketMs }));
+  return spans.map((s) => ({ ...s, from: Math.max(start, s.from), to: Math.min(end, s.to + bucketMs) }));
 }
 
 /** Worst status seen across a day's spans, for the lane's summary chip. */

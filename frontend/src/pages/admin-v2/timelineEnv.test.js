@@ -94,6 +94,14 @@ describe('buildEnvSpans', () => {
     expect(spans[0].to).toBe(30 * MIN);
   });
 
+  it('clips partial buckets to a short study and excludes readings outside it', () => {
+    const spans = buildEnvSpans(rows(40, 25, 9), BOTH, 15 * MIN, { start: 22 * MIN, end: 27 * MIN });
+    expect(spans).toEqual([{ status: 'caution-high', from: 22 * MIN, to: 27 * MIN, peak: 25, samples: 1 }]);
+    expect(worstStatus(spans)).toBe('caution');
+    expect(buildEnvSpans(rows(40), BOTH, 15 * MIN, { start: 15 * MIN, end: 20 * MIN })).toEqual([]);
+    expect(buildEnvSpans(rows(40), BOTH, 15 * MIN, { start: MIN, end: MIN })).toEqual([]);
+  });
+
   it('keeps the reading that justifies the span', () => {
     const hot = buildEnvSpans(rows(29, 33, 30), BOTH, 15 * MIN);
     expect(hot[0].peak).toBe(33);
