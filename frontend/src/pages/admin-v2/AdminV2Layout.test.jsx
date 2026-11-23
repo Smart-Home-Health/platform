@@ -24,8 +24,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, cleanup, fireEvent, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
-let mockUser = { is_system_admin: true, permissions: [] };
-vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ user: mockUser }) }));
+let mockUser;
+let mockReadAccess;
+vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ user: mockUser, hasReadAccess: mockReadAccess }) }));
 
 vi.mock('../../contexts/AdminPatientContext', () => ({
   useAdminPatient: () => ({
@@ -63,6 +64,8 @@ const renderAt = (path) => render(
 describe('AdminV2Layout', () => {
   beforeEach(() => {
     document.body.className = '';
+    mockUser = { is_system_admin: true, permissions: [] };
+    mockReadAccess = true;
   });
 
   it.each([
@@ -78,6 +81,30 @@ describe('AdminV2Layout', () => {
   ])('renders the shell and its page body at %s', (path) => {
     const { getByText } = renderAt(path);
     expect(getByText('page body')).toBeInTheDocument();
+  });
+
+  it('keeps Schedule in the main navigation and removes its tab row', () => {
+    const { container } = renderAt('/care/schedule');
+    expect(screen.getByRole('link', { name: 'Schedule' })).toHaveAttribute('href', '/care/schedule');
+    expect(container.querySelector('.admin-v2-topnav')).not.toBeInTheDocument();
+  });
+
+  it('marks Undo as the active Vitals tab for a user with audit access', () => {
+    mockUser = { permissions: ['vitals.read', 'audit.read'] };
+    renderAt('/care/vitals/undo-log');
+    const undo = screen.getByRole('link', { name: 'Undo' });
+    expect(undo).toHaveAttribute('href', '/care/vitals/undo-log');
+    expect(undo).toHaveClass('active');
+  });
+
+  it.each([
+    [true, ['vitals.read']],
+    [false, ['vitals.create', 'audit.read']],
+  ])('hides the Vitals Undo tab when read access is %s and permissions are %j', (readAccess, permissions) => {
+    mockReadAccess = readAccess;
+    mockUser = { permissions };
+    renderAt('/care/vitals');
+    expect(screen.queryByRole('link', { name: 'Undo' })).not.toBeInTheDocument();
   });
 
   it('unmounts cleanly and leaves no classes on <body>', () => {

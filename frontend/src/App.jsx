@@ -167,7 +167,7 @@ function AppContent() {
           <Route path="/care/providers" element={<ProtectedRoute><Layout><AdminV2Providers /></Layout></ProtectedRoute>} />
           <Route path="/care/businesses" element={<ProtectedRoute><Layout><AdminV2Businesses /></Layout></ProtectedRoute>} />
           <Route path="/care/schedule" element={<ProtectedRoute><Layout><AdminV2Schedule /></Layout></ProtectedRoute>} />
-          <Route path="/care/schedule/undo-log" element={<ProtectedRoute><Layout><AdminV2ScheduleUndoLog /></Layout></ProtectedRoute>} />
+          <Route path="/care/schedule/undo-log" element={<Navigate to="/care/vitals/undo-log" replace />} />
             
           {/* Care Vitals Routes */}
           <Route path="/capture" element={<ProtectedRoute><Layout><VitalsCapturePage /></Layout></ProtectedRoute>} />
@@ -175,6 +175,7 @@ function AppContent() {
               shell here; AdminV2Vitals keeps history only. */}
           <Route path="/care/vitals" element={<ProtectedRoute><Layout><AdminV2VitalsCapture /></Layout></ProtectedRoute>} />
           <Route path="/care/vitals/history" element={<ProtectedRoute><Layout><AdminV2Vitals /></Layout></ProtectedRoute>} />
+          <Route path="/care/vitals/undo-log" element={<ProtectedRoute><Layout><AdminV2ScheduleUndoLog /></Layout></ProtectedRoute>} />
             
           {/* Care Symptoms Routes */}
           <Route path="/care/symptoms" element={<ProtectedRoute><Layout><AdminV2Symptoms /></Layout></ProtectedRoute>} />

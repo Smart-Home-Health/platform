@@ -103,17 +103,15 @@ const sideNavItems = sideNavGroups.flatMap((g) => g.items);
 
 // Get top nav items based on current section, permissions, and read access (restricted mode hides History/Active)
 const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin) => {
+  const undoTab = hasAnyPermission(['audit.read'])
+    ? [{ path: '/care/vitals/undo-log', label: 'Undo' }]
+    : [];
   const navItems = {
-    schedule: [
-      { path: '/care/schedule', label: 'Schedule' },
-      // Undo Log is an audit view — only surface it to users with audit access.
-      ...(hasAnyPermission(['audit.read'])
-        ? [{ path: '/care/schedule/undo-log', label: 'Undo' }] : []),
-    ],
     vitals: hasReadAccess
       ? [
           { path: '/care/vitals', label: 'Record' },
           { path: '/care/vitals/history', label: 'History' },
+          ...undoTab,
         ]
       : [{ path: '/care/vitals', label: 'Record' }],
     symptoms: hasReadAccess
@@ -127,15 +125,13 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
       { path: '/care/medications', label: 'Overview' },
       { path: '/care/medications/schedule', label: 'Schedule' },
       { path: '/care/medications/manage', label: 'Manage' },
-      ...(hasAnyPermission(['audit.read'])
-        ? [{ path: '/care/schedule/undo-log', label: 'Undo' }] : []),
+      ...undoTab,
     ],
     'care-tasks': [
       { path: '/care/care-tasks', label: 'Overview' },
       { path: '/care/care-tasks/manage', label: 'Tasks' },
       { path: '/care/care-tasks/schedule', label: 'Schedule' },
-      ...(hasAnyPermission(['audit.read'])
-        ? [{ path: '/care/schedule/undo-log', label: 'Undo' }] : []),
+      ...undoTab,
     ],
     equipment: [
       { path: '/care/equipment', label: 'Overview' },
@@ -149,8 +145,7 @@ const getTopNavItems = (section, hasAnyPermission, hasReadAccess, isSystemAdmin)
       { path: '/care/nutrition/schedule', label: 'Schedule' },
       { path: '/care/nutrition/plan', label: 'Plan' },
       { path: '/care/nutrition/items', label: 'Items' },
-      ...(hasAnyPermission(['audit.read'])
-        ? [{ path: '/care/schedule/undo-log', label: 'Undo' }] : []),
+      ...undoTab,
     ],
     monitoring: [
       { path: '/care/monitoring', label: 'Alerts' },
