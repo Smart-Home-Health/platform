@@ -132,6 +132,7 @@ describe('AdminV2ReportsWeekly', () => {
   it('draws the day range behind the average, not just a line of means', async () => {
     setup();
     await screen.findByText('Care completion');
+    await waitFor(() => expect(chartInstances[0]).toBeDefined());
     const spo2Chart = chartInstances[0];
     const labels = spo2Chart.config.data.datasets.map(d => d.label);
     expect(labels).toEqual(['High', 'Low', 'SpO2 avg']);

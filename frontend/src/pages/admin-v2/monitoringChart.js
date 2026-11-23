@@ -113,6 +113,7 @@ export function stackedChartOptions({
   onViewChange,
   minRangeMs = 60_000,
   maxTicks = 6,
+  formatTimeTick,
 }) {
   const c = chartChrome();
   return {
@@ -133,6 +134,7 @@ export function stackedChartOptions({
         border: { display: false },
         ticks: {
           display: showAxis,
+          ...(formatTimeTick && { callback: formatTimeTick }),
           color: c.axis,
           maxRotation: 0,
           autoSkip: true,

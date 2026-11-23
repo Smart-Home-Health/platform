@@ -190,10 +190,9 @@
 }
 
 /* ---------- Card actions ---------- */
-/* The two links are shadcn Buttons (asChild) inside a .tw island; until the
- * island tokens are remapped to vc (epic #100), restyle them here. Green
- * belongs to the "complete" role — the primary action is live-cyan. */
 .admin-v2-patient-actions a {
+  flex: 1 1 0;
+  text-align: center;
   font-family: var(--vc-font-mono);
   font-size: 12px;
   font-weight: 600;
@@ -202,12 +201,12 @@
   text-decoration: none;
   border-radius: 8px;
 }
-.admin-v2-patient-actions a:first-child {
+.admin-v2-patient-actions a.em-cancel {
   background: transparent;
   border: 1px solid var(--vc-line-strong);
   color: var(--vc-text-primary);
 }
-.admin-v2-patient-actions a:first-child:hover {
+.admin-v2-patient-actions a.em-cancel:hover {
   background: var(--vc-bg-raised);
 }
 .admin-v2-patient-actions a:last-child {
@@ -220,6 +219,11 @@
 }
 .admin-v2-patient-actions a svg {
   color: currentColor;
+}
+
+@media (max-width: 420px) {
+  .admin-v2-patient-actions a { letter-spacing: .02em; }
+  .admin-v2-patient-actions a svg { display: none; }
 }
 
 /* ---------- Loading / empty states ---------- */

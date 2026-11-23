@@ -1,0 +1,52 @@
+/*
+ * Smart Home Health
+ * Copyright (C) 2026 John Carty
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+.diary-page { width: 100%; max-width: 58rem; margin-inline: auto; }
+.diary-header, .diary-tools, .diary-answers { display: flex; align-items: center; justify-content: space-between; gap: .65rem; flex-wrap: wrap; }
+.diary-header h1, .diary-header h2, .diary-header h3, .diary-section h3 { margin: 0; }
+.diary-patient, .diary-header p, .diary-table small { color: var(--vc-text-secondary); }
+.diary-patient { margin: .25rem 0 1rem; }
+.diary-detail { display: grid; gap: 1rem; margin-block: 1rem; overflow-wrap: anywhere; }
+.diary-detail [role="status"]:empty { display: none; }
+.diary-section { border: 1px solid var(--vc-line-strong); border-radius: 10px; padding: 1rem; background: var(--vc-bg-raised); }
+.diary-buttons { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); gap: .6rem; margin-block: .8rem; }
+.diary-buttons button { min-height: 48px; white-space: normal; overflow-wrap: anywhere; }
+.diary-table { width: 100%; border-collapse: collapse; table-layout: fixed; text-align: left; }
+.diary-table th, .diary-table td { padding: .7rem .25rem; vertical-align: top; border-bottom: 1px solid var(--vc-line-strong); }
+.diary-table th:first-child { width: 35%; }
+.diary-table p { margin: .2rem 0; white-space: pre-wrap; }
+.diary-table small { display: block; margin-block: .3rem; }
+.diary-fieldset { min-width: 0; padding: .6rem; border: 1px solid var(--vc-line-strong); border-radius: 8px; }
+.diary-fieldset label { display: block; margin: .4rem; }
+.diary-answers { justify-content: flex-start; }
+.diary-button-fields { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .35rem; margin-bottom: .75rem; }
+.diary-question { grid-column: 1 / -1; }
+.diary-templates { display: flex; flex-wrap: wrap; gap: .5rem; }
+.diary-dates { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: .75rem; }
+/* The collapsed on-screen keyboard launcher floats over the bottom right. */
+body:has(.vkb-launcher) .em-panel:has(.diary-form) {
+  max-height: calc(100dvh - 1.5rem - max(16px, env(safe-area-inset-bottom)) - 52px);
+}
+.diary-print { display: none; }
+@media print {
+  body:has(> .diary-print) > :not(.diary-print) { display: none !important; }
+  html:has(.diary-print), body:has(> .diary-print) { height: auto !important; overflow: visible !important; background: white !important; }
+  .diary-print { display: block; color: black; background: white; font: 11pt/1.4 sans-serif; overflow-wrap: anywhere; }
+  .diary-print .diary-table tr { break-inside: avoid; }
+  .diary-print .diary-table th, .diary-print .diary-table td { border-color: #999; }
+  .diary-print .diary-table small { color: #333; }
+}

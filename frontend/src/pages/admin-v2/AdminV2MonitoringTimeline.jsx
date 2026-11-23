@@ -118,10 +118,6 @@ const toApiDate = (d) => {
   const p = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 };
-const isSameDay = (a, b) => a.toDateString() === b.toDateString();
-const clockTime = (d) =>
-  d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-
 const formatDuration = (ms) => {
   const total = Math.max(0, Math.round(ms / 1000));
   const h = Math.floor(total / 3600);
@@ -161,7 +157,8 @@ const alertLabel = (a) => {
 
 const AdminV2MonitoringTimeline = () => {
   const { selectedPatient } = useAdminPatient();
-  const [selectedDate, setSelectedDate] = useState(() => new Date());
+  // An empty target asks the server for today in the patient's account timezone.
+  const [selection, setSelection] = useState({ date: null });
   const [data, setData] = useState(null);
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -187,7 +184,8 @@ const AdminV2MonitoringTimeline = () => {
       try {
         const res = await apiFetch(
           `${config.apiUrl}/api/monitoring/timeline`
-          + `?patient_id=${selectedPatient.id}&target_date=${toApiDate(selectedDate)}`,
+          + `?patient_id=${selectedPatient.id}`
+          + (selection.date ? `&target_date=${selection.date}` : ''),
         );
         if (!res.ok) throw new Error('Could not load the timeline for this day.');
         const body = await res.json();
@@ -199,7 +197,7 @@ const AdminV2MonitoringTimeline = () => {
       }
     })();
     return () => { cancelled = true; };
-  }, [selectedPatient, selectedDate]);
+  }, [selectedPatient, selection]);
 
   // Alarm limits for the threshold lines — the same account settings the live
   // monitor alarms on. A failure just means no threshold line.
@@ -220,15 +218,25 @@ const AdminV2MonitoringTimeline = () => {
 
   /* ---------------- derived ---------------- */
 
-  // The day's bounds, and the instant the data actually runs out.
+  const today = data?.today ?? toApiDate(new Date());
+  const selectedDay = selection.date ?? data?.date ?? today;
+  const zone = data?.timezone;
+  const clocks = useMemo(() => {
+    const options = { timeZone: zone, hour: 'numeric', minute: '2-digit' };
+    return {
+      minute: new Intl.DateTimeFormat('en-US', options).format,
+      second: new Intl.DateTimeFormat('en-US', { ...options, second: '2-digit' }).format,
+    };
+  }, [zone]);
+  const clockTime = clocks.minute;
+
+  // The API uses [midnight, next midnight). The chart's max is inclusive.
   const bounds = useMemo(() => {
-    const base = data?.date ? new Date(`${data.date}T00:00:00`) : selectedDate;
-    const start = new Date(base);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(start);
-    end.setHours(23, 59, 59, 999);
-    return { start: start.getTime(), end: end.getTime() };
-  }, [data?.date, selectedDate]);
+    if (data?.day_start && data?.day_end) {
+      return { start: Date.parse(data.day_start), end: Date.parse(data.day_end) - 1 };
+    }
+    return { start: Date.parse(`${selectedDay}T00:00:00`), end: Date.parse(`${selectedDay}T23:59:59.999`) };
+  }, [data?.day_start, data?.day_end, selectedDay]);
 
   const lastSample = useMemo(() => {
     const rows = data?.pulse_ox;
@@ -298,7 +306,7 @@ const AdminV2MonitoringTimeline = () => {
   }, [selectedPatient?.id, selectedPatient?.care_area]);
 
   useEffect(() => {
-    if (roomLocation === null) { setEnvSeries({}); return undefined; }
+    if (roomLocation === null || !data?.date) { setEnvSeries({}); return undefined; }
     let cancelled = false;
     const dayStart = new Date(bounds.start).toISOString();
     const dayEnd = new Date(bounds.end).toISOString();
@@ -324,7 +332,7 @@ const AdminV2MonitoringTimeline = () => {
       if (!cancelled) setEnvSeries(next);
     })();
     return () => { cancelled = true; };
-  }, [roomLocation, bounds.start, bounds.end]);
+  }, [roomLocation, bounds.start, bounds.end, data?.date]);
 
   const envLanes = useMemo(() => ENV_LANES.map((lane) => {
     const spans = buildEnvSpans(
@@ -494,13 +502,12 @@ const AdminV2MonitoringTimeline = () => {
     return <div className="mtl"><p className="mtl-empty">Select a patient to see their day.</p></div>;
   }
 
-  const today = new Date();
-  const onToday = isSameDay(selectedDate, today);
+  const onToday = selectedDay === today;
   const shiftDay = (days) => {
-    const d = new Date(selectedDate);
-    d.setDate(d.getDate() + days);
-    if (d > today && !isSameDay(d, today)) return;
-    setSelectedDate(d);
+    const next = new Date(selectedDay + 'T00:00:00Z');
+    next.setUTCDate(next.getUTCDate() + days);
+    const date = next.toISOString().slice(0, 10);
+    if (date <= today) setSelection({ date });
   };
 
   return (
@@ -512,7 +519,7 @@ const AdminV2MonitoringTimeline = () => {
         <button
           type="button"
           className={`mtl-navbtn${onToday ? ' on' : ''}`}
-          onClick={() => setSelectedDate(new Date())}
+          onClick={() => setSelection({ date: null })}
         >
           Today
         </button>
@@ -526,17 +533,16 @@ const AdminV2MonitoringTimeline = () => {
           <ChevronRightIcon size={18} />
         </button>
         <span className="mtl-datepill">
-          {selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+          {new Date(selectedDay + 'T00:00:00Z').toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric' })}
           <CalendarIcon size={16} />
           <input
             type="date"
             aria-label="Pick a date"
-            max={toApiDate(today)}
-            value={toApiDate(selectedDate)}
+            max={today}
+            value={selectedDay}
             onChange={(e) => {
               if (!e.target.value) return;
-              const [y, m, d] = e.target.value.split('-').map(Number);
-              setSelectedDate(new Date(y, m - 1, d));
+              setSelection({ date: e.target.value });
             }}
           />
         </span>
@@ -546,6 +552,7 @@ const AdminV2MonitoringTimeline = () => {
         <h2>Day timeline</h2>
         <p>
           12:00 AM &mdash; {onToday ? 'now' : '11:59 PM'}
+          {zone && ` (${zone})`}
           {lastSample != null && ` · Live data through ${clockTime(new Date(lastSample))}`}
           {lastSample == null && !loading && ' · No pulse-ox data this day'}
         </p>
@@ -659,6 +666,7 @@ const AdminV2MonitoringTimeline = () => {
                 <SignalChart
                   key={key}
                   signalKey={key}
+                  clocks={clocks}
                   points={series[key]}
                   view={view}
                   bounds={bounds}
@@ -676,6 +684,7 @@ const AdminV2MonitoringTimeline = () => {
                   <EventLane
                     key={key}
                     laneKey={key}
+                    clockTime={clockTime}
                     items={laneItems[key] || []}
                     view={view}
                     cursor={cursor}
@@ -716,7 +725,7 @@ const AdminV2MonitoringTimeline = () => {
                 ) : (
                   <>
                     {envLanes.map((lane) => (
-                      <EnvLane key={lane.metric} lane={lane} view={view} />
+                      <EnvLane key={lane.metric} lane={lane} view={view} clockTime={clockTime} />
                     ))}
                     <p className="mtl-lane-note">
                       {envFlagged === 0
@@ -850,7 +859,7 @@ const AdminV2MonitoringTimeline = () => {
 /* One signal, one scale. Every chart on the page is this component, so the
  * two can never drift apart in axis geometry or option shape. */
 const SignalChart = ({
-  signalKey, points, view, bounds, alerts, alarms, cursor, showAxis, onViewChange,
+  signalKey, points, view, bounds, alerts, alarms, cursor, showAxis, onViewChange, clocks,
 }) => {
   const cfg = SIGNALS[signalKey];
   // Canvas needs literal colours; `version` bumps when the palette changes.
@@ -910,6 +919,9 @@ const SignalChart = ({
       options: stackedChartOptions({
         view, bounds, yRange, showAxis, annotations,
         minRangeMs: MIN_RANGE_MS,
+        formatTimeTick(value) {
+          return this.max - this.min <= 5 * 60_000 ? clocks.second(value) : clocks.minute(value);
+        },
         onViewChange: (next) => onViewChangeRef.current(next),
       }),
     });
@@ -917,7 +929,7 @@ const SignalChart = ({
     return () => { chart.destroy(); chartRef.current = null; };
     // View is applied imperatively below so a pan doesn't rebuild the chart.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [points, alerts, alarms, bounds, showAxis, cfg, yRange, version]);
+  }, [points, alerts, alarms, bounds, showAxis, cfg, yRange, version, clocks]);
 
   // Both charts follow one window. Guarded so the chart that raised the zoom
   // doesn't get re-set to the value it just reported.
@@ -965,7 +977,7 @@ const SignalChart = ({
 };
 
 /* One row of markers, sharing the charts' time window and plot box. */
-const EventLane = ({ laneKey, items, view, cursor, onPick }) => {
+const EventLane = ({ laneKey, items, view, cursor, onPick, clockTime }) => {
   const lane = LANES[laneKey];
   const span = view ? view.max - view.min : 0;
   const inWindow = span > 0
@@ -1001,7 +1013,7 @@ const EventLane = ({ laneKey, items, view, cursor, onPick }) => {
  * "too cold" are distinguishable without reading a glyph or relying on the
  * colour alone. Banded lanes (PM2.5) fill the whole height because every band
  * including the good one is worth seeing. */
-const EnvLane = ({ lane, view }) => {
+const EnvLane = ({ lane, view, clockTime }) => {
   const span = view ? view.max - view.min : 0;
   const unit = ENV_UNITS[lane.metric] || '';
   const visible = span > 0

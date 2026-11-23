@@ -472,6 +472,7 @@ def get_medication_schedules(db: Session, medication_id):
             {
                 'id': s.id,
                 'medication_id': s.medication_id,
+                'patient_id': s.patient_id,
                 'cron_expression': s.cron_expression,
                 'description': s.description,
                 'dose_amount': s.dose_amount,

@@ -134,10 +134,17 @@ export const utcCronToLocalDaysAndTime = (utcHour, utcMinute, utcDays) => {
 export const parseCronExpression = (cronExpression) => {
   if (!cronExpression) return null;
   
-  const parts = cronExpression.split(' ');
+  const parts = cronExpression.trim().split(/\s+/);
   if (parts.length !== 5) return null;
   
-  const [minute, hour, dayOfMonth, , dayOfWeek] = parts;
+  const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
+  // Only decode fields the schedule form can round-trip. Imported cron
+  // expressions may use ranges, intervals or a particular calendar month.
+  const inRange = (value, min, max) =>
+    /^\d+$/.test(value) && Number(value) >= min && Number(value) <= max;
+  if (!inRange(minute, 0, 59) || !inRange(hour, 0, 23) || month !== '*') return null;
+  if (dayOfMonth !== '*' && (!inRange(dayOfMonth, 1, 31) || dayOfWeek !== '*')) return null;
+  if (dayOfWeek !== '*' && !dayOfWeek.split(',').every(d => inRange(d, 0, 7))) return null;
 
   // Check if it's weekly (dayOfWeek is not *)
   if (dayOfWeek !== '*') {

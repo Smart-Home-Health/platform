@@ -15,10 +15,11 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
 import MedicationSheet from '../../components/medication/MedicationSheet';
+import MedicationScheduleForm from '../../components/medication/MedicationScheduleForm';
 import { PatientSelectorModal, MedStockBar } from './components';
 import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
@@ -31,10 +32,10 @@ import {
 } from '../../components/Icons';
 import EntityCard from '../../components/vc/EntityCard';
 import EntityToolbar from '../../components/vc/EntityToolbar';
-import EntityModal, { EmField, EmRow, EmSelect } from '../../components/vc/EntityModal';
+import EntityModal, { EmField } from '../../components/vc/EntityModal';
 import ConfirmSheet from '../../components/vc/ConfirmSheet';
 import { CfgStat, CfgBadge } from './settings/CfgSection';
-import { localTimeToUTC, localTimeAndDaysToUTC, parseCronExpression } from '../../utils/timezone';
+import { parseCronExpression } from '../../utils/timezone';
 import './AdminV2.css';
 
 
@@ -78,19 +79,13 @@ const AdminV2MedicationsManage = () => {
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [selectedMedication, setSelectedMedication] = useState(null);
 
-  // Schedule form state
-  const [scheduleMode, setScheduleMode] = useState('weekly');
-  const [selectedDays, setSelectedDays] = useState([]);
-  const [selectedDayOfMonth, setSelectedDayOfMonth] = useState(1);
-  const [scheduleTime, setScheduleTime] = useState('08:00');
-  const [doseAmount, setDoseAmount] = useState('1.000');
-  // Hours a missed dose stays actionable. Blank = the backend default, 60% of
-  // the interval (backend/crud/dose_grace.py).
-  const [graceHours, setGraceHours] = useState('');
-  const [schedulePatientId, setSchedulePatientId] = useState('');
+  const [editingSchedule, setEditingSchedule] = useState(null);
   const [scheduleSaving, setScheduleSaving] = useState(false);
+  const editButton = useRef(null);
 
-  const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  useEffect(() => {
+    if (!editingSchedule && showScheduleModal) editButton.current?.focus();
+  }, [editingSchedule, showScheduleModal]);
 
   // Form state
   const [formError, setFormError] = useState(null);
@@ -319,94 +314,49 @@ const AdminV2MedicationsManage = () => {
 
   const openScheduleModal = (medication) => {
     setSelectedMedication(medication);
-    setScheduleMode('weekly');
-    setSelectedDays([]);
-    setSelectedDayOfMonth(1);
-    setScheduleTime('08:00');
-    setDoseAmount('1.000');
-    // For global meds, default to current patient if available
-    setSchedulePatientId(medication.is_global && selectedPatient ? String(selectedPatient.id) : '');
+    setEditingSchedule(null);
+    editButton.current = null;
     setFormError(null);
     setShowScheduleModal(true);
   };
 
-  const handleAddSchedule = async () => {
-    if (scheduleMode === 'weekly' && selectedDays.length === 0) {
-      setFormError('Please select at least one day');
-      return;
-    }
-
-    if (selectedMedication?.is_global && !schedulePatientId) {
-      setFormError('Please select a patient for this global medication');
-      return;
-    }
-
+  const handleSaveSchedule = async (scheduleData) => {
     setScheduleSaving(true);
     setFormError(null);
-
     try {
-      let cron = '';
-      let description = '';
-
-      if (scheduleMode === 'weekly') {
-        // Convert local time AND local days-of-week to UTC together — the cron's
-        // day list must shift when the time conversion crosses midnight.
-        const utc = localTimeAndDaysToUTC(scheduleTime, selectedDays);
-        cron = `${utc.minute} ${utc.hour} * * ${utc.days.join(',')}`;
-        const dayNames = selectedDays
-          .slice()
-          .sort((a, b) => parseInt(a) - parseInt(b))
-          .map(d => daysOfWeek[parseInt(d)])
-          .join(', ');
-        description = `${dayNames} at ${scheduleTime}`;
-      } else {
-        const utc = localTimeToUTC(scheduleTime);
-        cron = `${utc.minute} ${utc.hour} ${selectedDayOfMonth} * *`;
-        description = `Day ${selectedDayOfMonth} of each month at ${scheduleTime}`;
-      }
-
-      const scheduleData = {
-        type: 'med',
-        cron_expression: cron,
-        description: description,
-        dose_amount: parseFloat(doseAmount) || 1.0,
-        grace_period_hours: graceHours === '' ? null : parseFloat(graceHours),
-        active: true,
-        notes: ''
-      };
-
-      if (selectedMedication?.is_global && schedulePatientId) {
-        scheduleData.patient_id = parseInt(schedulePatientId);
-      }
-
-      const response = await fetch(`${config.apiUrl}/api/add/schedule/${selectedMedication.id}`, {
-        method: 'POST',
+      const path = editingSchedule
+        ? `/api/schedules/${editingSchedule.id}`
+        : `/api/add/schedule/${selectedMedication.id}`;
+      const response = await fetch(`${config.apiUrl}${path}`, {
+        method: editingSchedule ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(scheduleData)
+        body: JSON.stringify(scheduleData),
       });
-
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || 'Failed to add schedule');
+        const data = await response.json().catch(() => null);
+        throw new Error(readError(data, 'Failed to save schedule'));
       }
 
-      // Refresh medications and reset form
+      // Keep the confirmed write visible even if the subsequent refresh fails.
+      const result = await response.json();
+      const schedules = selectedMedication.schedules || [];
+      const updatedMedication = {
+        ...selectedMedication,
+        schedules: editingSchedule
+          ? schedules.map(s => s.id === editingSchedule.id ? { ...s, ...scheduleData } : s)
+          : [{ ...scheduleData, id: result.id, active: true }, ...schedules],
+      };
+      setSelectedMedication(updatedMedication);
+      setMedications(meds => meds.map(m => m.id === updatedMedication.id ? updatedMedication : m));
       const updatedMeds = await fetchMedications();
-      setSelectedDays([]);
-      setSelectedDayOfMonth(1);
-      setScheduleTime('08:00');
-      setDoseAmount('1.000');
-      setGraceHours('');
-      setScheduleMode('weekly');
-
-      // Update the selected medication with refreshed data
-      const refreshedMed = updatedMeds.find(m => m.id === selectedMedication.id);
-      if (refreshedMed) {
-        setSelectedMedication(refreshedMed);
-      }
+      const refreshed = updatedMeds?.find(m => m.id === updatedMedication.id);
+      if (refreshed) setSelectedMedication(refreshed);
+      setEditingSchedule(null);
+      return true;
     } catch (err) {
-      setFormError(err.message || 'Error adding schedule');
+      setFormError(err.message || 'Failed to save schedule');
+      return false;
     } finally {
       setScheduleSaving(false);
     }
@@ -713,7 +663,7 @@ const AdminV2MedicationsManage = () => {
         {/* Schedule Modal */}
         <EntityModal
           open={showScheduleModal && !!selectedMedication}
-          onOpenChange={(o) => { if (!o) setShowScheduleModal(false); }}
+          onOpenChange={(o) => { if (!o && !scheduleSaving) setShowScheduleModal(false); }}
           title={`Manage Schedules${selectedMedication ? `: ${selectedMedication.name}` : ''}`}
           wide
         >
@@ -722,139 +672,24 @@ const AdminV2MedicationsManage = () => {
               <>
                 {formError && <div className="em-error" role="alert">{formError}</div>}
 
-                {/* Add New Schedule */}
-                <h4 className="cfg-group-title">Add New Schedule</h4>
-
-                <div className="cfg-tabs" role="group" aria-label="Schedule cadence">
-                  <button
-                    type="button"
-                    className="cfg-tab"
-                    aria-selected={scheduleMode === 'weekly'}
-                    onClick={() => setScheduleMode('weekly')}
-                  >
-                    Weekly
-                  </button>
-                  <button
-                    type="button"
-                    className="cfg-tab"
-                    aria-selected={scheduleMode === 'monthly'}
-                    onClick={() => setScheduleMode('monthly')}
-                  >
-                    Monthly
-                  </button>
-                </div>
-
-                {scheduleMode === 'weekly' ? (
-                  <EmField label="Select Days">
-                    <div className="cfg-daypick">
-                      {daysOfWeek.map((day, i) => (
-                        <button
-                          key={day}
-                          type="button"
-                          aria-pressed={selectedDays.includes(i.toString())}
-                          onClick={() => {
-                            setSelectedDays(prev =>
-                              prev.includes(i.toString())
-                                ? prev.filter(x => x !== i.toString())
-                                : [...prev, i.toString()]
-                            );
-                          }}
-                        >
-                          {day}
-                        </button>
-                      ))}
-                    </div>
-                  </EmField>
-                ) : (
-                  <EmField label="Day of Month" htmlFor="med-sched-dom">
-                    <EmSelect
-                      id="med-sched-dom"
-                      value={String(selectedDayOfMonth)}
-                      onChange={(e) => setSelectedDayOfMonth(Number(e.target.value))}
-                    >
-                      {[...Array(28)].map((_, i) => (
-                        <option key={i + 1} value={String(i + 1)}>{i + 1}</option>
-                      ))}
-                    </EmSelect>
-                  </EmField>
-                )}
-
-                {/* Patient Selection for Global Meds */}
-                {selectedMedication.is_global && (
-                  <EmField label="Patient" required htmlFor="med-sched-patient">
-                    <EmSelect
-                      id="med-sched-patient"
-                      value={schedulePatientId || '__none__'}
-                      onChange={(e) => setSchedulePatientId(e.target.value === '__none__' ? '' : e.target.value)}
-                    >
-                      <option value="__none__">Select a patient...</option>
-                      {patients.map(patient => (
-                        <option key={patient.id} value={String(patient.id)}>
-                          {patient.first_name} {patient.last_name}
-                        </option>
-                      ))}
-                    </EmSelect>
-                  </EmField>
-                )}
-
-                <EmRow>
-                  <EmField label="Time" htmlFor="med-sched-time">
-                    <input
-                      id="med-sched-time"
-                      className="em-input"
-                      type="time"
-                      value={scheduleTime}
-                      onChange={e => setScheduleTime(e.target.value)}
-                    />
-                  </EmField>
-                  <EmField label={`Dose Amount (${selectedMedication.quantity_unit || 'units'})`} htmlFor="med-sched-dose">
-                    <input
-                      id="med-sched-dose"
-                      className="em-input"
-                      type="number"
-                      step="0.001"
-                      min="0"
-                      value={doseAmount}
-                      onChange={e => setDoseAmount(e.target.value)}
-                      placeholder="1.000"
-                    />
-                  </EmField>
-                </EmRow>
-                <EmField
-                  label="Grace period (hours)"
-                  optional
-                  htmlFor="med-sched-grace"
-                  hint="How long a missed dose stays on the schedule before it counts as missed. Blank uses 60% of the interval: about 4 days for a weekly dose, 14 hours for a daily one."
-                >
-                  <input
-                    id="med-sched-grace"
-                    className="em-input"
-                    type="number"
-                    step="1"
-                    min="1"
-                    value={graceHours}
-                    onChange={e => setGraceHours(e.target.value)}
-                    placeholder="Default"
-                  />
-                </EmField>
-                <div className="cfg-actions">
-                  <button
-                    type="button"
-                    className="em-submit"
-                    onClick={handleAddSchedule}
-                    disabled={scheduleSaving || (scheduleMode === 'weekly' && selectedDays.length === 0)}
-                  >
-                    {scheduleSaving ? 'Adding...' : 'Add Schedule'}
-                  </button>
-                </div>
+                <MedicationScheduleForm
+                  key={editingSchedule?.id ?? 'new'}
+                  schedule={editingSchedule}
+                  medication={selectedMedication}
+                  patients={patients}
+                  currentPatientId={selectedPatient?.id}
+                  saving={scheduleSaving}
+                  onSave={handleSaveSchedule}
+                  onCancel={() => { setEditingSchedule(null); setFormError(null); }}
+                />
 
                 {/* Current Schedules */}
-                <h4 className="cfg-group-title">Current Schedules</h4>
+                <h4 className="cfg-group-title" hidden={!!editingSchedule}>Current Schedules</h4>
 
                 {/* Row-as-card table: stacks into cards below 768px instead of
                     forcing the dialog wider than the phone viewport. */}
                 {selectedMedication.schedules && selectedMedication.schedules.length > 0 ? (
-                  <div className="admin-v2-table-container admin-v2-table-cards-wrap">
+                  <div className="admin-v2-table-container admin-v2-table-cards-wrap" hidden={!!editingSchedule}>
                     <table className="admin-v2-table admin-v2-table-cards">
                       <thead>
                         <tr>
@@ -880,7 +715,9 @@ const AdminV2MedicationsManage = () => {
                               <td data-label="Time">{parsed?.time || '-'}</td>
                               <td data-label="Schedule" className="admin-v2-cell-stack">
                                 {parsed?.type === 'weekly' && parsed.days}
-                                {parsed?.type === 'monthly' && `Day ${parsed.dayOfMonth} monthly`}
+                                {parsed?.type === 'daily' && 'Daily'}
+                                {!parsed && schedule.cron_expression}
+                                {parsed?.type === 'monthly' && `Day ${parsed.dayOfMonth} monthly (UTC)`}
                               </td>
                               {selectedMedication.is_global && (
                                 <td data-label="Patient">{patientName ? `${patientName.first_name} ${patientName.last_name}` : '-'}</td>
@@ -895,6 +732,18 @@ const AdminV2MedicationsManage = () => {
                               </td>
                               <td className="admin-v2-cell-actions">
                                 <div className="cfg-rowactions">
+                                  <button
+                                    type="button"
+                                    className="cfg-ghost"
+                                    onClick={(e) => {
+                                      editButton.current = e.currentTarget;
+                                      setFormError(null);
+                                      setEditingSchedule(schedule);
+                                    }}
+                                    disabled={scheduleSaving}
+                                  >
+                                    Edit
+                                  </button>
                                   <button
                                     type="button"
                                     className="cfg-ghost"
@@ -930,11 +779,13 @@ const AdminV2MedicationsManage = () => {
               </>
             )}
 
-            <div className="em-footer">
-              <button type="button" className="em-cancel" onClick={() => setShowScheduleModal(false)}>
-                Close
-              </button>
-            </div>
+            {!editingSchedule && (
+              <div className="em-footer">
+                <button type="button" className="em-cancel" disabled={scheduleSaving} onClick={() => setShowScheduleModal(false)}>
+                  Close
+                </button>
+              </div>
+            )}
           </div>
         </EntityModal>
       </div>

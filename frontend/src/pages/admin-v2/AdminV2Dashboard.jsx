@@ -51,7 +51,7 @@ const calculateAge = (dob) => {
 };
 
 const AdminV2Dashboard = () => {
-  const { hasReadAccess } = useAuth();
+  const { hasReadAccess, user } = useAuth();
   const [patients, setPatients] = useState([]);
   const [summary, setSummary] = useState({
     total_patients: 0,
@@ -364,8 +364,11 @@ const AdminV2Dashboard = () => {
                 {/* Actions */}
                 <div className="admin-v2-patient-actions">
                   <Link to={`/care/profile?patient=${patient.id}`} className="em-cancel">
-                    View Details
+                    Details
                   </Link>
+                  {hasReadAccess && (user?.is_system_admin || user?.permissions?.includes('vitals.read')) && (
+                    <Link to={`/care/diary?patient=${patient.id}`} className="em-cancel">Diary</Link>
+                  )}
                   <Link to={`/care/schedule?patient=${patient.id}`} className="em-submit">
                     <CalendarIcon size={16} /> Schedule
                   </Link>

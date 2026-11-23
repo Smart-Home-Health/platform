@@ -56,7 +56,7 @@ from modules.mqtt_module import MQTTModule
 from modules.state_module import StateModule
 
 # Import route modules
-from routes import core, settings, vitals, medications, care_tasks, equipment, monitoring, mqtt, status, patients, nutrition, businesses, providers, auth, users, schedule, dashboard, symptoms, diagnoses, implants, dme_shipments, account, integrations, integration_imports, frigate as frigate_routes, readers, backup, analysis, reports, messages, system, security, environment, ha_auth, home_assistant as home_assistant_routes
+from routes import event_diaries, core, settings, vitals, medications, care_tasks, equipment, monitoring, mqtt, status, patients, nutrition, businesses, providers, auth, users, schedule, dashboard, symptoms, diagnoses, implants, dme_shipments, account, integrations, integration_imports, frigate as frigate_routes, readers, backup, analysis, reports, messages, system, security, environment, ha_auth, home_assistant as home_assistant_routes
 
 # Import legacy components
 from mqtt import initialize_mqtt_service, shutdown_mqtt_service
@@ -124,6 +124,7 @@ app.include_router(users.router)
 app.include_router(schedule.router)
 app.include_router(dashboard.router)
 app.include_router(symptoms.router)
+app.include_router(event_diaries.router)
 app.include_router(diagnoses.router)
 app.include_router(implants.router)
 app.include_router(dme_shipments.router)

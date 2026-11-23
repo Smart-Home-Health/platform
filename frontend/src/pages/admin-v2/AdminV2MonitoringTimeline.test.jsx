@@ -348,18 +348,46 @@ describe('event lanes', () => {
 });
 
 describe('the day it asks for', () => {
-  it('uses the local calendar date, not the UTC one', async () => {
-    // 11pm on the 19th in a zone behind UTC is already the 20th in UTC; the
-    // request must still be for the 19th.
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date(2026, 7, 19, 23, 30));
-    try {
-      await renderPage();
-      expect(calls.find((c) => c.includes('/api/monitoring/timeline')))
-        .toContain('target_date=2026-08-19');
-    } finally {
-      vi.useRealTimers();
+  it('lets the API resolve Today and navigates by patient calendar date', async () => {
+    timelineBody = { ...payload, date: DAY, today: DAY };
+    await renderPage();
+    const timelineCalls = () => calls.filter(url => url.includes('/api/monitoring/timeline'));
+    expect(timelineCalls()[0]).toBe('/api/monitoring/timeline?patient_id=5');
+    expect(screen.getByLabelText('Pick a date')).toHaveValue(DAY);
+    expect(screen.getByLabelText('Next day')).toBeDisabled();
+    await act(async () => { fireEvent.click(screen.getByLabelText('Previous day')); });
+    expect(timelineCalls().at(-1)).toContain('target_date=2026-08-18');
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Today' })); });
+    expect(timelineCalls().at(-1)).not.toContain('target_date=');
+  });
+
+  it('plots and labels the patient’s full day even in another browser timezone', async () => {
+    // The browser test suite runs in New York. These are Los Angeles midnights.
+    const start = '2026-11-19T08:00:00Z';
+    const last = '2026-11-20T07:59:00Z';
+    const end = '2026-11-20T08:00:00Z';
+    timelineBody = {
+      date: '2026-11-19', today: '2026-11-20', timezone: 'America/Los_Angeles',
+      day_start: start, day_end: end,
+      pulse_ox: [start, '2026-11-19T12:59:00Z', last].map(ts => ({ ts, spo2: 98, bpm: 75 })),
+      alerts: [{ start, end: null, spo2_alarm: true }],
+    };
+    await renderPage();
+    const liveCharts = charts.filter(c => !c.destroyed);
+    expect(liveCharts).toHaveLength(2);
+    for (const chart of liveCharts) {
+      const axis = chart.options.scales.x;
+      expect(axis.min).toBe(Date.parse(start));
+      expect(axis.max).toBe(Date.parse(end) - 1);
+      expect(axis.ticks.callback.call(axis, Date.parse(start))).toBe('12:00 AM');
+      expect(chart.data.datasets[0].data[0].x).toBe(axis.min);
     }
+    expect(screen.getByText(/Live data through 11:59 PM/)).toBeInTheDocument();
+    const marker = document.querySelector('.mtl-lane-mark.alert');
+    expect(marker).toHaveAccessibleName('12:00 AM Low SpO2 alert');
+    expect(marker.style.left).toBe('0%');
+    const env = new URL(calls.find(url => url.includes('/api/environment/observations')), 'http://test');
+    expect(Date.parse(env.searchParams.get('from'))).toBe(Date.parse(start));
   });
 });
 

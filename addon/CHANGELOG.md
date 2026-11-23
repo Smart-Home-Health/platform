@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.0
+
+- Edit an existing medication schedule to change its dose, time, recurrence, or grace period.
+- Open **Diary** on a patient’s dashboard card to record timestamped events. Start with the Home EEG preset or choose your own event types. The printable diary can also include recorded medications and nutrition.
+- The monitoring timeline now covers the full patient-local day, including midnight through 5 AM. Readings and events use the same time axis on daylight saving transition days.
+
+Migration 056 creates the diary tables automatically on upgrade. Backups include diaries and their entries, and older backups can still be restored.
+
 ## 0.5.3
 
 Migration 055 records when confirmed alert recovery began. It runs automatically on upgrade.
