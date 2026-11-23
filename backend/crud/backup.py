@@ -313,7 +313,12 @@ def _validate_archive(archive_bytes, contents):
         raise ValueError('Invalid caregiver reference metadata')
     with tarfile.open(fileobj=io.BytesIO(archive_bytes), mode='r:gz') as tar:
         members = set(tar.getnames())
-    expected = {name + '.json' for name in MODELS if name not in STREAMED}
+    archive_tables = set(MODELS)
+    # Strict archives created before patient diaries have the same contract
+    # for all their original tables.
+    if strict and manifest.get('schema_version') == 1:
+        archive_tables -= {'event_diaries', 'diary_events'}
+    expected = {name + '.json' for name in archive_tables - STREAMED}
     expected.update(name + '.ndjson' for name in STREAMED)
     expected.update(('manifest.json', 'users_referenced.json'))
     attachments = manifest.get('attachments')
@@ -325,15 +330,15 @@ def _validate_archive(archive_bytes, contents):
                 raise ValueError('Invalid attachment member')
             expected.add(item['member'])
     if strict:
-        schema = {name: sorted(fields(model)) for name, model in MODELS.items()}
-        if manifest.get('schema_version') != SCHEMA_VERSION or manifest.get('tables') != schema:
+        schema = {name: sorted(fields(MODELS[name])) for name in archive_tables}
+        if manifest.get('schema_version') not in (1, SCHEMA_VERSION) or manifest.get('tables') != schema:
             raise ValueError('Unsupported backup schema; export and restore using a matching application version')
         if attachments is None:
             raise ValueError('Archive is missing attachment manifest')
         if members != expected:
             raise ValueError('Archive has missing or unsupported members: ' + ', '.join(sorted(members ^ expected)))
         counts = manifest.get('counts')
-        if not isinstance(counts, dict) or set(counts) != set(MODELS) | {'users_referenced'}:
+        if not isinstance(counts, dict) or set(counts) != archive_tables | {'users_referenced'}:
             raise ValueError('Manifest is missing required table counts')
         if any(type(value) is not int or value < 0 for value in counts.values()):
             raise ValueError('Invalid manifest row count')
@@ -347,7 +352,7 @@ def _validate_archive(archive_bytes, contents):
     validate_rows(rows, strict=strict, patient_id=source_patient, account_id=source_account)
     if strict:
         for name, values in rows.items():
-            if len(values) != manifest['counts'][name]:
+            if len(values) != manifest['counts'].get(name, 0):
                 raise ValueError(f'Row count mismatch for {name}')
         if len(users) != manifest['counts']['users_referenced']:
             raise ValueError('Row count mismatch for users_referenced')
@@ -584,7 +589,7 @@ def _restore_records(db, archive_bytes, account_id, manifest, rows, contents, me
             count += 1
         if batch:
             db.bulk_insert_mappings(model, batch)
-        if strict and count != manifest['counts'][name]:
+        if strict and count != manifest['counts'].get(name, 0):
             raise ValueError(f'Row count mismatch for {name}')
         inserted[name] = count
     for old_id, field, old_parent in self_links:

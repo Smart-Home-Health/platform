@@ -88,6 +88,7 @@ const sideNavGroups = [
     label: 'Records',
     items: [
       { path: '/care/messages', label: 'Messages', Icon: MessagesIcon },
+      { path: '/care/diary', label: 'Diary', Icon: ClipboardListIcon, requiredPermissions: ['vitals.read'] },
       { path: '/care/reports', label: 'Reports', Icon: BarChartIcon, requiredPermissions: ['vitals.read'] },
     ],
   },
@@ -307,7 +308,7 @@ const AdminV2Layout = ({ children }) => {
     closeMobileMenu();
     
     // Update URL param if we're on a page that uses patient param
-    const patientPages = ['/care/medications', '/care/care-tasks', '/care/equipment', '/care/nutrition', '/care/schedule', '/care/providers'];
+    const patientPages = ['/care/diary', '/care/medications', '/care/care-tasks', '/care/equipment', '/care/nutrition', '/care/schedule', '/care/providers'];
     const isPatientPage = patientPages.some(p => location.pathname.startsWith(p));
     if (isPatientPage && patient) {
       navigate(`${location.pathname}?patient=${patient.id}`);

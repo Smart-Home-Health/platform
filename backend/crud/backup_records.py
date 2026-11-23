@@ -41,6 +41,7 @@ from schemas.monitoring_alert import MonitoringAlert
 from schemas.ventilator_alert import VentilatorAlert
 from schemas.external_alarm import ExternalAlarm
 from schemas.symptom import Symptom
+from schemas.event_diary import EventDiary, DiaryEvent
 from schemas.diagnosis import Diagnosis, DiagnosisNote
 from schemas.implant import Implant, ImplantNote
 from schemas.nutrition_item import NutritionItem
@@ -81,6 +82,7 @@ MODELS = dict([
     ('vent_samples', VentSample), ('vitals', Vital), ('pulse_ox_data', PulseOxData),
     ('monitoring_alerts', MonitoringAlert), ('external_alarms', ExternalAlarm),
     ('ventilator_alerts', VentilatorAlert), ('symptoms', Symptom),
+    ('event_diaries', EventDiary), ('diary_events', DiaryEvent),
     ('nutrition_items', NutritionItem), ('nutrition_presets', NutritionPreset),
     ('nutrition_preset_components', NutritionPresetComponent),
     ('nutrition_schedules', NutritionSchedule), ('nutrition_schedule_components', NutritionScheduleComponent),
@@ -92,7 +94,7 @@ MODELS = dict([
 ])
 STREAMED = {'pulse_ox_data', 'vent_samples'}
 TABLE_NAMES = {model.__tablename__: name for name, model in MODELS.items()}
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # This obsolete GPIO alarm model was never created by the migration chain.
 # A pre-migration installation may still contain the table and history. Only
@@ -169,6 +171,7 @@ def gather_rows(db, patient_id, account_id):
         rows[name] = query(model).filter(getattr(model, field).in_(ids)).all() if ids else []
 
     for name, field, parent in (
+        ('diary_events', 'diary_id', 'event_diaries'),
         ('diagnosis_notes', 'diagnosis_id', 'diagnoses'),
         ('implant_notes', 'implant_id', 'implants'),
         ('vent_device_info', 'import_id', 'vent_imports'),

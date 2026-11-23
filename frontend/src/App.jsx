@@ -60,6 +60,7 @@ import AdminV2ScheduleUndoLog from './pages/admin-v2/AdminV2ScheduleUndoLog';
 import AdminV2Vitals from './pages/admin-v2/AdminV2Vitals';
 import VitalsCapturePage from './pages/capture/VitalsCapturePage';
 import AdminV2VitalsCapture from './pages/admin-v2/AdminV2VitalsCapture';
+import PatientDiary from './pages/admin-v2/diary/PatientDiary';
 import AdminV2Symptoms from './pages/admin-v2/AdminV2Symptoms';
 import AdminV2Diagnoses from './pages/admin-v2/AdminV2Diagnoses';
 import AdminV2Implants from './pages/admin-v2/AdminV2Implants';
@@ -177,6 +178,8 @@ function AppContent() {
           <Route path="/care/vitals/history" element={<ProtectedRoute><Layout><AdminV2Vitals /></Layout></ProtectedRoute>} />
           <Route path="/care/vitals/undo-log" element={<ProtectedRoute><Layout><AdminV2ScheduleUndoLog /></Layout></ProtectedRoute>} />
             
+          <Route path="/care/diary" element={<ProtectedRoute><Layout><PatientDiary /></Layout></ProtectedRoute>} />
+
           {/* Care Symptoms Routes */}
           <Route path="/care/symptoms" element={<ProtectedRoute><Layout><AdminV2Symptoms /></Layout></ProtectedRoute>} />
           <Route path="/care/symptoms/active" element={<ProtectedRoute><Layout><AdminV2Symptoms /></Layout></ProtectedRoute>} />
