@@ -256,7 +256,7 @@ class StateModule:
                 self.pulse_ox_cache.pop(0)
 
             # Save to database
-            await self._save_pulse_ox_data(spo2, bpm, perfusion, raw_data, patient_id=patient_id)
+            await self._save_pulse_ox_data(spo2, bpm, perfusion, raw_data, patient_id=patient_id, timestamp=timestamp)
 
             # Check thresholds for alerts
             await self._check_pulse_ox_thresholds(spo2, bpm, timestamp, data_point, patient_id=patient_id)
@@ -264,7 +264,7 @@ class StateModule:
         except Exception as e:
             logger.error(f"Error handling pulse ox update: {e}")
 
-    async def _save_pulse_ox_data(self, spo2, bpm, perfusion, raw_data, patient_id=None):
+    async def _save_pulse_ox_data(self, spo2, bpm, perfusion, raw_data, patient_id=None, timestamp=None):
         """Save pulse oximeter data to database (runs in thread to avoid blocking event loop)."""
         def _sync_save():
             from state_manager import get_db_session
@@ -276,6 +276,7 @@ class StateModule:
                     bpm=bpm,
                     pa=perfusion,
                     raw_data=raw_data,
+                    timestamp=timestamp,
                     patient_id=patient_id
                 )
         try:
@@ -403,6 +404,7 @@ class StateModule:
                         spo2_alarm_triggered=1 if spo2_alarm else 0,
                         hr_alarm_triggered=1 if hr_alarm else 0,
                         external_alarm_triggered=external_alarm_triggered,
+                        start_time=timestamp,
                         patient_id=patient_id
                     )
 

@@ -16,7 +16,7 @@
 """Wave 4 — monitoring alerts: list/count, acknowledge (happy path + 404),
 and the require_read_access gate."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -47,6 +47,58 @@ def test_list_alerts(admin_client):
     resp = admin_client.get("/api/monitoring/alerts")
     assert resp.status_code == 200
     assert isinstance(resp.json(), list)
+
+
+@pytest.mark.parametrize("source,closed,expected_end,hr_max", [
+    ("live_recovery", True, 10, 114),
+    ("inferred_recovery", True, 10, 114),
+    ("live_gap", True, 40, 137),
+    (None, True, 10, 114),  # Legacy alerts used the same 30s recovery hold.
+    (None, False, None, 143),
+])
+def test_alert_extrema_use_only_the_patients_event(
+        admin_client, db_session, account, patient, source, closed, expected_end, hr_max):
+    from schemas.monitoring_alert import MonitoringAlert
+    from schemas.patient import Patient
+    from schemas.pulse_ox_data import PulseOxData
+
+    start = datetime.now(timezone.utc) - timedelta(minutes=3)
+    other = Patient(account_id=account.id, first_name="Other", last_name="Patient",
+                    created_at=start, updated_at=start)
+    db_session.add(other)
+    db_session.flush()
+    event = MonitoringAlert(patient_id=patient.id, start_time=start, created_at=start,
+                            end_time=start + timedelta(seconds=40) if closed else None,
+                            end_source=source, spo2_min=89, spo2_max=89, bpm_min=95, bpm_max=95)
+    db_session.add(event)
+    for second, pid, spo2, bpm in [
+        (-1, patient.id, 61, 30), (0, patient.id, 89, 95),
+        (2, patient.id, 84, 79), (3, other.id, 65, 180),
+        (4, patient.id, -1, -1), (5, patient.id, 0, 0),
+        (6, patient.id, 82, 100), (10, patient.id, 96, 114),
+        (40, patient.id, 98, 137), (42, patient.id, 97, 143),
+    ]:
+        db_session.add(PulseOxData(patient_id=pid, timestamp=start + timedelta(seconds=second),
+                                   spo2=spo2, bpm=bpm, created_at=start))
+    db_session.commit()
+    response = admin_client.get(f"/api/monitoring/alerts?patient_id={patient.id}")
+    assert response.status_code == 200
+    summary, = response.json()
+    assert (summary["spo2_min"], summary["bpm_min"], summary["bpm_max"]) == (82, 79, hr_max)
+    end = summary["event_end_time"]
+    if closed:
+        assert datetime.fromisoformat(end) == start + timedelta(seconds=expected_end)
+    else:
+        assert end is None
+    detail = admin_client.get(f"/api/monitoring/alerts/{event.id}/data")
+    assert detail.status_code == 200
+    assert {p["patient_id"] for p in detail.json()} == {patient.id}
+
+
+def test_alert_retains_opening_reading_when_raw_history_is_missing(admin_client, alert):
+    summary, = admin_client.get(f"/api/monitoring/alerts?patient_id={alert.patient_id}").json()
+    assert summary["spo2_min"] == 82
+    assert summary["bpm_min"] is None and summary["bpm_max"] is None
 
 
 @pytest.mark.parametrize("open_ended", [False, True])
