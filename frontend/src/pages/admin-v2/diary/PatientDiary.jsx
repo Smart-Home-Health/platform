@@ -23,6 +23,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { newEncounterUid } from '../../capture/useCaptureDraft';
 import AdminV2Layout from '../AdminV2Layout';
 import PatientGate from '../components/PatientGate';
+import { PatientDayTimeline } from '../AdminV2MonitoringTimeline';
 import { DiarySettings, ObservationForm } from './DiaryForms';
 import DiaryTimeline from './DiaryTimeline';
 import { stamp } from './diaryTime';
@@ -43,6 +44,7 @@ async function request(path, method = 'GET', payload, signal) {
 function DiaryDetail({ diary, patient, base, canWrite, zone, onUpdated }) {
   const path = base + '/' + diary.id;
   const [entries, setEntries] = useState(null);
+  const [view, setView] = useState('day');
   const [loadError, setLoadError] = useState('');
   const [refresh, setRefresh] = useState(0);
   const [event, setEvent] = useState(null);
@@ -92,6 +94,7 @@ function DiaryDetail({ diary, patient, base, canWrite, zone, onUpdated }) {
     capture({ label: button.label, observed_at: at.toISOString(), request_id });
   }
   const cannotPrint = !entries || !!loadError || busy;
+  const editObservation = canWrite && !pending && !busy ? entry => { setError(''); setEvent(entry); } : null;
   return <section className="diary-detail">
     <header className="diary-header"><div><h2>{diary.name}</h2>
       <p>{stamp(diary.starts_at, zone)} – {diary.ends_at ? stamp(diary.ends_at, zone) : 'Ongoing'}</p></div>
@@ -110,13 +113,18 @@ function DiaryDetail({ diary, patient, base, canWrite, zone, onUpdated }) {
       {pending && <><button className="cfg-ghost" onClick={() => capture(pending)} disabled={busy}>Retry capture</button>
         <button className="cfg-ghost" onClick={() => { setPending(null); setError(''); }}>Dismiss</button></>}
     </div>}
-    <div className="diary-header"><h3>Timeline</h3><div className="diary-tools">
+    <div className="diary-header"><div className="diary-views" role="group" aria-label="Diary view">
+      <button type="button" aria-pressed={view === 'day'} onClick={() => setView('day')}>Day timeline</button>
+      <button type="button" aria-pressed={view === 'entries'} onClick={() => setView('entries')}>All entries</button>
+    </div><div className="diary-tools">
       <button className="cfg-ghost" disabled={busy} onClick={() => setRefresh(n => n + 1)}>Refresh</button>
       <button className="cfg-ghost" disabled={cannotPrint} onClick={() => window.print()}>Print diary</button>
     </div></div>
     {loadError && <p role="alert" className="em-error">{loadError}</p>}
+    {view === 'day' && <PatientDayTimeline patient={patient} diaryPath={path} diaryEntries={entries}
+      refresh={refresh} onEditObservation={editObservation} />}
     {entries ? <DiaryTimeline patient={patient} diary={diary} entries={entries} zone={zone}
-      onEdit={canWrite && !pending && !busy ? e => { setError(''); setEvent(e); } : null} /> : !loadError && <p>Loading events…</p>}
+      showEntries={view === 'entries'} onEdit={editObservation} /> : !loadError && <p>Loading events…</p>}
     {settings && <DiarySettings initial={diary} error={error} busy={busy} onClose={close} onSave={data => mutate(async () => {
       onUpdated(await request(path, 'PUT', data)); close();
     })} />}

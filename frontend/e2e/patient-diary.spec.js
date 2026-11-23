@@ -52,7 +52,20 @@ test('patient card opens the correct diary and captures, corrects and prints an 
       event = { ...event, ...body, at: body.observed_at };
       json = event;
     }
-    if (pathname.endsWith('/9/timeline')) json = event ? [event] : [];
+    if (pathname.endsWith('/9/timeline')) json = [
+      { source: 'medication', id: 4, at: '2026-11-24T02:30:00Z', label: 'Took medicine', note: 'Recorded dose' },
+      ...(event ? [event] : []),
+    ];
+    if (pathname.endsWith('/9/day')) {
+      const date = new URL(req.url()).searchParams.get('target_date') || '2026-11-23';
+      const start = Date.parse(date + 'T05:00:00Z');
+      json = { date, today: '2026-11-23', first_day: '2026-11-22', last_day: '2026-11-23',
+        timezone: 'America/New_York', day_start: new Date(start).toISOString(), day_end: new Date(start + 86400000).toISOString(),
+        pulse_ox: [29, 30, 32].map(minute => ({
+          ts: new Date(start + (21 * 60 + minute) * 60000).toISOString(), spo2: 99, bpm: 72,
+        })),
+        alerts: [], care_tasks: [], vitals: [], nutrition_output: [] };
+    }
     await route.fulfill({ json });
   });
 
@@ -70,7 +83,7 @@ test('patient card opens the correct diary and captures, corrects and prints an 
   await page.getByRole('button', { name: 'New diary' }).tap();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: 'Use Home EEG template' }).tap();
-  await dialog.getByLabel('Starts', { exact: true }).fill('2026-11-23T10:00');
+  await dialog.getByLabel('Starts', { exact: true }).fill('2026-11-22T10:00');
   await dialog.getByRole('button', { name: 'Create diary' }).tap();
   await page.getByRole('button', { name: 'Questionable event', exact: true }).tap();
   await expect(dialog.getByRole('radio', { name: 'Yes', exact: true })).toBeVisible();
@@ -79,10 +92,28 @@ test('patient card opens the correct diary and captures, corrects and prints an 
   await dialog.getByLabel('Observed at').fill('2026-11-23T21:31:08');
   await dialog.getByLabel('Description').fill('Brief pause during reading.');
   await dialog.getByRole('button', { name: 'Save changes' }).tap();
-  await expect(page.getByRole('table')).toContainText('Brief pause during reading.');
+  await expect(page.getByLabel('SpO2 over time')).toBeVisible();
+  await expect(page.getByLabel('Heart Rate over time')).toBeVisible();
+  await expect(page.getByRole('button', { name: '1M', exact: true })).toBeVisible();
+  const activity = page.locator('.mtl-activity');
+  await expect(activity.getByRole('button', { name: /Recorded dose/ })).toHaveCount(1);
+  await page.locator('.mtl-lanes').getByRole('button', { name: /Questionable event/ }).tap();
+  await expect(page.locator('.mtl-detail')).toContainText('Brief pause during reading.');
+  await expect(page.locator('.mtl-detail')).toContainText('No pulse-ox reading at this time.');
+  await page.getByRole('button', { name: 'Edit Questionable event' }).tap();
+  await expect(dialog.getByLabel('Description')).toHaveValue('Brief pause during reading.');
+  await dialog.getByRole('button', { name: 'Close', exact: true }).last().tap();
+  await page.getByLabel('Previous day').tap();
+  await expect(page.getByLabel('Pick a date')).toHaveValue('2026-11-22');
+  await expect(activity).toContainText('Nothing was logged');
+  await page.getByLabel('Next day').tap();
+  await expect(activity.getByRole('button', { name: /Questionable event/ })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect(event.at).toBe('2026-11-24T02:31:08.000Z');
   await page.reload();
+  await page.getByRole('button', { name: 'All entries', exact: true }).tap();
   await expect(page.getByRole('table')).toContainText('Did you press the recorder button? Yes');
+  await page.getByRole('button', { name: 'Day timeline', exact: true }).tap();
   await page.emulateMedia({ media: 'print' });
   await expect(page.getByRole('heading', { name: 'Home EEG' })).toBeVisible();
   await expect(page.getByRole('table')).toHaveCount(1);
@@ -90,4 +121,5 @@ test('patient card opens the correct diary and captures, corrects and prints an 
   await expect(page.locator('.diary-print').getByText('Avery Green', { exact: true })).toBeVisible();
   await expect(page.getByRole('button')).toHaveCount(0);
   expect(paths).not.toContain('/api/patients/1/diaries');
+  expect(paths).not.toContain('/api/monitoring/timeline');
 });

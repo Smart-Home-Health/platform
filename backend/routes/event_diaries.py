@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Patient event diaries with read-through medication and nutrition history."""
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -23,6 +23,7 @@ from pydantic import AwareDatetime, BaseModel, Field, StringConstraints, model_v
 from sqlalchemy.orm import Session
 
 from crud.patients import get_visible_patient_ids
+from crud.monitoring_timeline import day_streams
 from db import get_db
 from dependencies import get_current_user, require_permission, require_read_access
 from schemas.event_diary import DiaryEvent, EventDiary
@@ -30,7 +31,7 @@ from schemas.medication import Medication
 from schemas.medication_log import MedicationLog
 from schemas.nutrition_intake import NutritionIntake
 from schemas.patient import AccessLevel, Patient, PatientAccess
-from utils.datetime_utils import resolve_tz_for_patient, utc_now
+from utils.datetime_utils import local_day_range_utc, resolve_tz_for_patient, utc_now
 
 router = APIRouter(prefix='/api/patients/{patient_id}/diaries', tags=['diaries'],
                    dependencies=[Depends(require_read_access), Depends(require_permission('vitals.read'))])
@@ -184,6 +185,36 @@ def remove_event(patient_id: int, diary_id: int, event_id: int, db: Session = De
     if not db.query(DiaryEvent).filter_by(diary_id=diary_id, id=event_id).delete():
         raise HTTPException(404, 'Observation not found')
     db.commit()
+
+
+@router.get('/{diary_id}/day', dependencies=[Depends(patient_access)])
+def diary_day(patient_id: int, diary_id: int, target_date: date | None = None,
+              db: Session = Depends(get_db), user=Depends(get_current_user)):
+    diary = lookup(db, patient_id, diary_id)
+    tz = resolve_tz_for_patient(db, patient_id)
+    today = utc_now().astimezone(tz).date()
+    first = diary.starts_at.astimezone(tz).date()
+    last = min(today, diary.ends_at.astimezone(tz).date()) if diary.ends_at else today
+    last = max(first, last)  # A diary can be scheduled to start in the future.
+    day = max(first, min(target_date or today, last))
+    start, end = local_day_range_utc(day, tz=tz)
+    window_start = max(diary.starts_at, start)
+    # Diary bounds include an event at its exact end. Calendar days exclude next midnight.
+    window_end = diary.ends_at + timedelta(microseconds=1) if diary.ends_at and diary.ends_at < end else end
+    # Doses and feeds come from the diary's own permission-filtered log, including
+    # its grouped intakes. Fetch only the additional clinical context here.
+    sources = {'vitals'}
+    if user.has_permission('monitoring.read'):
+        sources.update(('pulse_ox', 'alerts'))
+    if user.has_permission('care_tasks.read'):
+        sources.add('care_tasks')
+    if user.has_permission('nutrition.read'):
+        sources.add('nutrition_output')
+    return {
+        'date': day, 'today': today, 'first_day': first, 'last_day': last, 'timezone': str(tz),
+        'day_start': start, 'day_end': end, 'window_start': window_start, 'window_end': window_end,
+        **day_streams(db, patient_id, window_start, window_end, sources),
+    }
 
 
 @router.get('/{diary_id}/timeline', dependencies=[Depends(patient_access)])

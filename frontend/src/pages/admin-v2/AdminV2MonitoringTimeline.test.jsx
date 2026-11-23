@@ -299,6 +299,25 @@ describe('alert bands', () => {
 });
 
 describe('the scrubbed moment', () => {
+  it('breaks each trace only after more than 60 seconds without that signal', async () => {
+    timelineBody = { ...payload, alerts: [],
+      pulse_ox: [
+        { ts: at('08:00'), spo2: 97, bpm: 70, sample_offsets_ms: { spo2: [0, 10000], bpm: [0, 0] } },
+        { ts: at('08:01'), spo2: 99, bpm: 75, sample_offsets_ms: { spo2: [10000, 10000], bpm: [10000, 10000] } },
+        { ts: at('08:02'), spo2: 98, bpm: null, sample_offsets_ms: { spo2: [10001, 10001] } },
+      ], care_tasks: [{ts: at('08:01', 40), name: 'Observe'}] };
+    await renderPage();
+    const [spo2, hr] = charts.filter(c => !c.destroyed).map(c => c.data.datasets[0]);
+    expect(spo2.data.map(p => p.y)).toEqual([97, 99, null, 98]);
+    expect(hr.data.map(p => p.y)).toEqual([70, null, 75]);
+    expect(hr.pointRadius({ raw: hr.data[0] })).toBeGreaterThan(0);
+    await clickActivity(/Observe/);
+    expect(within(document.querySelector('.mtl-readout')).queryByText('99')).not.toBeInTheDocument();
+    expect(spo2.spanGaps).toBe(false);
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '1M' })); });
+    expect(spo2.data.filter(p => p.y === null)).toHaveLength(1);
+  });
+
   it('reads the sample at the selected time, perfusion included', async () => {
     await renderPage();
     await clickActivity(/12:57 PM Low SpO2 alert/);
@@ -325,7 +344,7 @@ describe('the scrubbed moment', () => {
   it('will not read a value for a time with no nearby sample', async () => {
     await renderPage();
     await clickActivity(/7:30 AM Trach care/);
-    expect(screen.getByText(/No pulse-ox reading within a minute/)).toBeInTheDocument();
+    expect(screen.getByText('No pulse-ox reading at this time.')).toBeInTheDocument();
   });
 });
 
