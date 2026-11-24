@@ -38,8 +38,38 @@ const AlertDetailInline = ({ alert, onClose, onAcknowledge, initiateAcknowledge 
   const [clipError, setClipError] = useState(null);
   const [savingClip, setSavingClip] = useState(false);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchEventData is recreated each render; effect is intentionally keyed on the alert id only
-  useEffect(() => { fetchEventData(); }, [alert.id]);
+  const chartStart = alert.chart_start_time ? Date.parse(alert.chart_start_time) : undefined;
+  const chartEnd = alert.chart_end_time ? Date.parse(alert.chart_end_time) : undefined;
+  useEffect(() => {
+    const controller = new AbortController();
+    async function load() {
+      try {
+        const response = await fetch(`${config.apiUrl}/api/monitoring/alerts/${alert.id}/data`,
+          { credentials: 'include', signal: controller.signal });
+        if (!response.ok) throw new Error('Failed to load event data.');
+        const samples = await response.json();
+        if (!controller.signal.aborted) {
+          setEventData(samples);
+          setError(null);
+        }
+      } catch {
+        if (!controller.signal.aborted) setError('Failed to load event data.');
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    }
+    setLoading(true);
+    setError(null);
+    // A recently closed episode may still be collecting its final context readings.
+    let timer;
+    const needsFinalRead = chartEnd > Date.now();
+    load().then(() => {
+      if (!controller.signal.aborted && needsFinalRead) {
+        timer = setTimeout(load, Math.max(0, chartEnd - Date.now()) + 1000);
+      }
+    });
+    return () => { controller.abort(); clearTimeout(timer); };
+  }, [alert.id, chartEnd]);
 
   const clipWindow = useMemo(() => {
     if (!alert.patient_id || !alert.start_time) return null;
@@ -110,20 +140,6 @@ const AlertDetailInline = ({ alert, onClose, onAcknowledge, initiateAcknowledge 
     if (initiateAcknowledge) setShowOxygenForm(true);
   }, [initiateAcknowledge]);
 
-  const fetchEventData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const response = await fetch(`${config.apiUrl}/api/monitoring/alerts/${alert.id}/data`, { credentials: 'include' });
-      if (!response.ok) throw new Error(`Error fetching alert data: ${response.statusText}`);
-      setEventData(await response.json());
-    } catch {
-      setError('Failed to load event data.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleSubmitAcknowledge = async () => {
     try {
       setAcknowledgingAlert(true);
@@ -159,12 +175,12 @@ const AlertDetailInline = ({ alert, onClose, onAcknowledge, initiateAcknowledge 
 
   const spo2ChartData = useMemo(() => {
     if (!eventData || eventData.length === 0) return [];
-    return eventData.map(p => ({ x: new Date(p.timestamp).toLocaleTimeString(), y: p.spo2 }));
+    return eventData.map(p => ({ x: Date.parse(p.timestamp), y: p.spo2 > 0 ? p.spo2 : null }));
   }, [eventData]);
 
   const bpmChartData = useMemo(() => {
     if (!eventData || eventData.length === 0) return [];
-    return eventData.map(p => ({ x: new Date(p.timestamp).toLocaleTimeString(), y: p.bpm }));
+    return eventData.map(p => ({ x: Date.parse(p.timestamp), y: p.bpm > 0 ? p.bpm : null }));
   }, [eventData]);
 
   const severity = !alert.end_time ? 'active' : alert.acknowledged ? 'acknowledged' : 'unacknowledged';
@@ -247,10 +263,12 @@ const AlertDetailInline = ({ alert, onClose, onAcknowledge, initiateAcknowledge 
       ) : (
         <div className="al-charts">
           <div className="al-chart">
-            <SimpleEventChart title="Blood Oxygen" color="var(--vc-series-spo2)" unit="SpO₂ (%)" data={spo2ChartData} />
+            <SimpleEventChart title="Blood Oxygen" color="var(--vc-series-spo2)" unit="SpO₂ (%)" data={spo2ChartData}
+              xType="time" xMin={chartStart} xMax={chartEnd} />
           </div>
           <div className="al-chart">
-            <SimpleEventChart title="Pulse Rate" color="var(--vc-series-hr)" unit="BPM" data={bpmChartData} />
+            <SimpleEventChart title="Pulse Rate" color="var(--vc-series-hr)" unit="BPM" data={bpmChartData}
+              xType="time" xMin={chartStart} xMax={chartEnd} />
           </div>
         </div>
       )}

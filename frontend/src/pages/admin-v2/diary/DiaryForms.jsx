@@ -102,7 +102,7 @@ export function DiarySettings({ initial, reusable, onSave, onClose, busy, error 
       </fieldset>
       <fieldset className="diary-fieldset"><legend>Include existing records</legend>
         <label><input type="checkbox" checked={meds} onChange={e => setMeds(e.target.checked)} /> Medication doses</label>
-        <label><input type="checkbox" checked={nutrition} onChange={e => setNutrition(e.target.checked)} /> Nutrition intake</label>
+        <label><input type="checkbox" checked={nutrition} onChange={e => setNutrition(e.target.checked)} /> Nutrition intake and output</label>
       </fieldset>
       {error && <p className="em-error" role="alert">{error}</p>}
       <div className="em-footer">
@@ -127,7 +127,7 @@ export function ObservationForm({ event, onSave, onClose, onRemove, error, busy 
   const description = <EmField label="Description" optional={!custom} required={custom} htmlFor="diary-note">
     <textarea id="diary-note" className="em-input" rows={3} maxLength={8000}
       required={custom} autoFocus={custom} value={note} onChange={e => setNote(e.target.value)} /></EmField>;
-  return <EntityModal open title={event.label || 'Custom observation'} onOpenChange={o => { if (!o && !busy) onClose(); }}>
+  return <EntityModal open title={event.formTitle || event.label || 'Custom observation'} onOpenChange={o => { if (!o && !busy) onClose(); }}>
     <form className="em-form diary-form" onSubmit={submit}>
       {custom && description}
       <EmField label="Observed at" htmlFor="diary-time" hint={deviceZone}>

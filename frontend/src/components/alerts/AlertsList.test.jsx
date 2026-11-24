@@ -15,12 +15,33 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { ModalDockProvider } from '../../contexts/ModalDockContext';
 import AlertsList from './AlertsList';
+import AlertDetailInline from '../AlertDetailInline';
 
 afterEach(() => vi.unstubAllGlobals());
+
+it('reads the completed chart window again if Inspect opened before its final readings arrived', async () => {
+  vi.useFakeTimers();
+  try {
+    vi.setSystemTime(new Date('2026-11-24T17:46:08Z'));
+    const request = vi.fn(async () => ({ ok: true, json: async () => [] }));
+    vi.stubGlobal('fetch', request);
+    await act(async () => {
+      render(<AlertDetailInline alert={{ id: 5, start_time: '2026-11-24T17:45:13Z',
+        end_time: '2026-11-24T17:46:07Z', chart_end_time: '2026-11-24T17:46:37Z' }} />);
+    });
+    expect(request).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(request).toHaveBeenCalledTimes(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(request).toHaveBeenCalledTimes(2);
+  } finally {
+    vi.useRealTimers();
+  }
+});
 
 it.each([false, true])('shows the event low and HR range in the list and Inspect (expanded=%s)', async expanded => {
   const alert = {

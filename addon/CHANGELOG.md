@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.1
+
+- Open **Suggested events** on the diary day timeline to review paired oxygen dips and heart-rate rises, including those below alarm thresholds. Each suggestion shows the time span, lowest SpO₂, heart-rate range, and any movement flagged by the monitor. Save it to include it in the diary and printout.
+- Custom observations show the entered text, and diary rows and printouts omit source labels. Diaries with nutrition enabled include recorded outputs, with mixed diaper changes grouped into one entry.
+- Completed schedule items appear under the hour they were performed.
+- Alert detail charts show available readings from 30 seconds before the event through 30 seconds after it ends. Event statistics use the event interval.
+
 ## 0.7.0
 
 - Connect Keywright to one patient’s medication plan through the optional MCP endpoint. Agents can read the plan, add or retire medications, and edit schedules. Caregivers continue to record doses, care tasks, and food in Health Hub.

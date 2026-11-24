@@ -14,6 +14,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Patient event diaries with linked medication, nutrition, and care history."""
+from dataclasses import asdict
 from datetime import date, datetime, timedelta
 from typing import Annotated, Literal
 from uuid import UUID
@@ -22,15 +23,18 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import AwareDatetime, BaseModel, Field, StringConstraints, model_validator
 from sqlalchemy.orm import Session
 
+from crud.monitoring import patient_pulse_ox_patterns
 from crud.patients import get_visible_patient_ids
 from crud.monitoring_timeline import care_task_logs, day_streams
 from db import get_db
 from dependencies import get_current_user, require_permission, require_read_access
+from nutrition_vocab import LOCATION_DIAPER, LOCATION_LABELS, QUALITATIVE_AMOUNT_UNITS, location_from_flags
 from schemas.care_task_log import CareTaskLog
 from schemas.event_diary import DiaryEvent, EventDiary
 from schemas.medication import Medication
 from schemas.medication_log import MedicationLog
 from schemas.nutrition_intake import NutritionIntake
+from schemas.nutrition_output import NutritionOutput
 from schemas.patient import AccessLevel, Patient, PatientAccess
 from utils.datetime_utils import local_day_range_utc, resolve_tz_for_patient, utc_now
 
@@ -104,6 +108,35 @@ def manual_record(event):
     return dict(source='observation', id=event.id, at=event.observed_at,
                 label=event.label or 'Custom observation', is_custom=not event.label,
                 note=event.note, question=event.question, answer=event.answer)
+
+
+def diary_output_entries(db, patient_id, start, end):
+    outputs = db.query(NutritionOutput).filter(
+        NutritionOutput.patient_id == patient_id, NutritionOutput.voided_at.is_(None),
+        NutritionOutput.occurred_at.between(start, end),
+    ).order_by(NutritionOutput.occurred_at, NutritionOutput.id)
+    groups = {}
+    for output in outputs:
+        # Mixed diapers have one row per output type. Ungrouped legacy rows stand alone.
+        groups.setdefault(output.event_group_id or output.id, []).append(output)
+
+    for members in groups.values():
+        first = members[0]
+        location = first.location or location_from_flags(first.is_diaper, first.is_catheter, first.is_accident)
+        label = 'Diaper change' if location == LOCATION_DIAPER else 'Nutrition output'
+        details = []
+        if location != LOCATION_DIAPER and (first.location or first.is_catheter or first.is_accident):
+            details.append(LOCATION_LABELS.get(location, location))
+        for output in members:
+            kind = 'Stool' if output.output_type == 'bowel' else output.output_type.capitalize()
+            parts = [kind, output.diaper_wetness, 'soiled' if output.diaper_soiled else None, output.consistency]
+            if output.amount is not None:
+                parts.append(f'{output.amount:g} {output.amount_unit or ""}'.strip())
+            elif output.amount_unit in QUALITATIVE_AMOUNT_UNITS:
+                parts.append(output.amount_unit)
+            details.append(' · '.join(filter(None, parts)))
+        details.extend(dict.fromkeys(output.notes for output in members if output.notes))
+        yield dict(source='nutrition_output', id=first.id, at=first.occurred_at, label=label, note=' · '.join(details))
 
 
 def lookup(db, patient_id, diary_id, *, lock=False):
@@ -201,7 +234,8 @@ def diary_day(patient_id: int, diary_id: int, target_date: date | None = None,
               db: Session = Depends(get_db), user=Depends(get_current_user)):
     diary = lookup(db, patient_id, diary_id)
     tz = resolve_tz_for_patient(db, patient_id)
-    today = utc_now().astimezone(tz).date()
+    now = utc_now()
+    today = now.astimezone(tz).date()
     first = diary.starts_at.astimezone(tz).date()
     last = min(today, diary.ends_at.astimezone(tz).date()) if diary.ends_at else today
     last = max(first, last)  # A diary can be scheduled to start in the future.
@@ -217,10 +251,19 @@ def diary_day(patient_id: int, diary_id: int, target_date: date | None = None,
         sources.update(('pulse_ox', 'alerts'))
     if user.has_permission('care_tasks.read'):
         sources.add('care_tasks')
-    if user.has_permission('nutrition.read'):
+    if diary.include_nutrition and user.has_permission('nutrition.read'):
         sources.add('nutrition_output')
     streams = day_streams(db, patient_id, window_start, window_end, sources)
     streams['care_tasks'] = [task for task in streams['care_tasks'] if task['status'] in PERFORMED_CARE_STATUSES]
+    if 'pulse_ox' in sources:
+        patterns = patient_pulse_ox_patterns(db, patient_id, window_start, window_end, now)
+        suggestions = {p.id: asdict(p) for p in patterns}
+        if suggestions:
+            saved = db.query(DiaryEvent.request_id).filter(
+                DiaryEvent.diary_id == diary_id, DiaryEvent.request_id.in_(suggestions.keys()))
+            for (request_id,) in saved:
+                suggestions.pop(request_id)
+        streams['suggested_events'] = [dict(id=key, **values) for key, values in suggestions.items()]
     return {
         'date': day, 'today': today, 'first_day': first, 'last_day': last, 'timezone': str(tz),
         'day_start': start, 'day_end': end, 'window_start': window_start, 'window_end': window_end,
@@ -250,6 +293,7 @@ def timeline(patient_id: int, diary_id: int, db: Session = Depends(get_db), user
                                 note=f'{med.name} · {dose.dose_amount:g} {med.quantity_unit}' +
                                      (f' · {dose.notes}' if dose.notes else '')))
     if diary.include_nutrition and user.has_permission('nutrition.read'):
+        entries.extend(diary_output_entries(db, patient_id, diary.starts_at, end))
         intakes = db.query(NutritionIntake).filter(NutritionIntake.patient_id == patient_id,
             NutritionIntake.consumed_at.between(diary.starts_at, end), NutritionIntake.voided_at.is_(None)
         ).order_by(NutritionIntake.consumed_at, NutritionIntake.id)

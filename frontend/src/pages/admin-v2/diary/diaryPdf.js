@@ -22,14 +22,13 @@ pdfMake.addVirtualFileSystem(fonts);
 
 export function diaryPdf(report) {
   const body = [[{ text: 'Local date and time', bold: true }, { text: 'Description of event', bold: true }]];
-  for (const { items, time, source } of report.rows) {
+  for (const { items, time } of report.rows) {
     const stack = [];
     for (const { entry, showLabel, followUp } of items) {
       if (showLabel) stack.push({ text: entry.label, bold: true });
       if (entry.note) stack.push({ text: entry.note });
       if (followUp) stack.push({ text: followUp });
     }
-    stack.push({ text: source, fontSize: 9, color: '#525252' });
     body.push([time, { stack }]);
   }
   return pdfMake.createPdf({

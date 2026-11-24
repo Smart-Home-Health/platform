@@ -17,8 +17,6 @@
  */
 import { stamp } from './diaryTime';
 
-const sources = { medication: 'Medication log', nutrition: 'Nutrition log', care_task: 'Care task log', observation: 'Observation' };
-
 export function diaryReport(patient, diary, entries, zone) {
   const end = diary.ends_at ? stamp(diary.ends_at, zone) : 'Ongoing';
   const rows = new Map();
@@ -27,11 +25,11 @@ export function diaryReport(patient, diary, entries, zone) {
     const second = Math.floor(Date.parse(entry.at) / 1000);
     const key = `${second}-${entry.source}`;
     if (!rows.has(key)) {
-      rows.set(key, { key, at: entry.at, time: stamp(entry.at, zone), source: sources[entry.source], items: [] });
+      rows.set(key, { key, at: entry.at, time: stamp(entry.at, zone), items: [] });
     }
-    const { items } = rows.get(key);
-    const showLabel = entry.source === 'observation' || entry.label !== items.at(-1)?.entry.label;
-    items.push({ entry, showLabel, followUp: entry.question && `${entry.question} ${entry.answer || 'Not recorded'}` });
+    const row = rows.get(key);
+    const showLabel = !entry.is_custom && (entry.source === 'observation' || entry.label !== row.items.at(-1)?.entry.label);
+    row.items.push({ entry, showLabel, followUp: entry.question && `${entry.question} ${entry.answer || 'Not recorded'}` });
   }
   return {
     title: diary.name,
