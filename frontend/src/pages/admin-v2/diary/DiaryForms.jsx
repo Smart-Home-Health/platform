@@ -114,16 +114,22 @@ export function DiarySettings({ initial, reusable, onSave, onClose, busy, error 
 }
 
 export function ObservationForm({ event, onSave, onClose, onRemove, error, busy }) {
+  const custom = event.is_custom;
   const [time, setTime] = useState(localInput(event.at));
   const [note, setNote] = useState(event.note || '');
   const [answer, setAnswer] = useState(event.answer || '');
   const [removing, setRemoving] = useState(false);
   function submit(e) {
     e.preventDefault();
+    if (custom && !note.trim()) return;
     onSave({ observed_at: fromInput(time, event.at), note, answer: answer || null });
   }
-  return <EntityModal open title={event.label} onOpenChange={o => { if (!o && !busy) onClose(); }}>
+  const description = <EmField label="Description" optional={!custom} required={custom} htmlFor="diary-note">
+    <textarea id="diary-note" className="em-input" rows={3} maxLength={8000}
+      required={custom} autoFocus={custom} value={note} onChange={e => setNote(e.target.value)} /></EmField>;
+  return <EntityModal open title={event.label || 'Custom observation'} onOpenChange={o => { if (!o && !busy) onClose(); }}>
     <form className="em-form diary-form" onSubmit={submit}>
+      {custom && description}
       <EmField label="Observed at" htmlFor="diary-time" hint={deviceZone}>
         <input id="diary-time" type="datetime-local" className="em-input" required step="1"
           value={time} onChange={e => setTime(e.target.value)} />
@@ -133,8 +139,7 @@ export function ObservationForm({ event, onSave, onClose, onRemove, error, busy 
           <label key={option}><input type="radio" name="answer" checked={answer === option}
             onChange={() => setAnswer(option)} /> {option}</label>)}</div>
       </fieldset>}
-      <EmField label="Description" optional htmlFor="diary-note"><textarea id="diary-note" className="em-input"
-        rows={3} maxLength={8000} value={note} onChange={e => setNote(e.target.value)} /></EmField>
+      {!custom && description}
       {event.id && (removing
         ? <div role="group" aria-label="Confirm removal">Remove this observation?
             <button type="button" className="cfg-ghost" disabled={busy} onClick={onRemove}>Yes, remove</button>
@@ -144,7 +149,7 @@ export function ObservationForm({ event, onSave, onClose, onRemove, error, busy 
       {error && <p className="em-error" role="alert">{error}</p>}
       <div className="em-footer">
         <button type="button" className="em-cancel" disabled={busy} onClick={onClose}>{event.id ? 'Close' : 'Cancel'}</button>
-        <button className="em-submit" disabled={busy}>{event.id ? 'Save changes' : 'Record event'}</button>
+        <button className="em-submit" disabled={busy || (custom && !note.trim())}>{event.id ? 'Save changes' : 'Record event'}</button>
       </div>
     </form>
   </EntityModal>;

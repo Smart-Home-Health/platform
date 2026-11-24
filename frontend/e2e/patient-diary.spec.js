@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 import { expect, test } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 
 test.use({ viewport: { width: 320, height: 740 }, hasTouch: true, timezoneId: 'America/New_York' });
 
@@ -27,7 +28,9 @@ test('patient card opens the correct diary and captures, corrects and prints an 
     { id: 1, first_name: 'Robin', last_name: 'Gray' },
     { id: 2, first_name: 'Avery', last_name: 'Green' },
   ];
-  let diary, event;
+  let diary, event, canWrite = true;
+  const observations = new Map();
+  let interruptedCapture;
   const paths = [];
   await page.route('**/api/**', async route => {
     const req = route.request();
@@ -41,20 +44,32 @@ test('patient card opens the correct diary and captures, corrects and prints an 
     if (pathname === '/api/dashboard/summary') json = { patients: patients.map(p => ({ ...p, name: p.first_name + ' ' + p.last_name, status: 'active' })) };
     if (pathname === '/api/patients/2/diaries') {
       if (req.method() === 'POST') { diary = { ...body, id: 9 }; json = diary; }
-      else json = { can_write: true, timezone: 'America/New_York', diaries: diary ? [diary] : [] };
+      else json = { can_write: canWrite, timezone: 'America/New_York', diaries: diary ? [diary] : [] };
     }
     if (pathname.endsWith('/9/events')) {
-      event = { source: 'observation', id: 17, label: body.label, at: body.observed_at,
-        question: diary.buttons.find(b => b.label === body.label).question };
+      if (body.label === 'Questionable event' && interruptedCapture) {
+        expect(body).toEqual(interruptedCapture);
+      } else {
+        event = { source: 'observation', id: 17 + observations.size, label: body.label || 'Custom observation',
+          at: body.observed_at, note: body.note, is_custom: !body.label,
+          question: diary.buttons.find(b => b.label === body.label)?.question };
+        observations.set(event.id, event);
+        if (body.label === 'Questionable event') {
+          interruptedCapture = body;
+          return route.fulfill({ status: 503, json: { detail: 'Connection interrupted' } });
+        }
+      }
       json = event;
     }
-    if (pathname.endsWith('/9/events/17')) {
-      event = { ...event, ...body, at: body.observed_at };
+    if (/\/9\/events\/\d+$/.test(pathname)) {
+      const id = Number(pathname.split('/').pop());
+      event = { ...observations.get(id), ...body, at: body.observed_at };
+      observations.set(id, event);
       json = event;
     }
     if (pathname.endsWith('/9/timeline')) json = [
       { source: 'medication', id: 4, at: '2026-11-24T02:30:00Z', label: 'Took medicine', note: 'Recorded dose' },
-      ...(event ? [event] : []),
+      ...observations.values(),
     ];
     if (pathname.endsWith('/9/day')) {
       const date = new URL(req.url()).searchParams.get('target_date') || '2026-11-23';
@@ -85,7 +100,20 @@ test('patient card opens the correct diary and captures, corrects and prints an 
   await dialog.getByRole('button', { name: 'Use Home EEG template' }).tap();
   await dialog.getByLabel('Starts', { exact: true }).fill('2026-11-22T10:00');
   await dialog.getByRole('button', { name: 'Create diary' }).tap();
-  await page.getByRole('button', { name: 'Questionable event', exact: true }).tap();
+  const add = page.getByRole('button', { name: 'Record an event', exact: true });
+  await expect(page.getByRole('heading', { name: 'Event diary' })).toHaveCount(0);
+  await expect(page.locator('.diary-page').getByText('Avery Green', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Questionable event', exact: true })).toHaveCount(0);
+  await expect(page.locator('.mtl-stats')).toBeInViewport();
+  await expect(add).toBeInViewport();
+  await add.tap();
+  await dialog.getByRole('button', { name: 'Close' }).tap();
+  expect(observations.size).toBe(0);
+  await add.tap();
+  await dialog.getByRole('button', { name: 'Questionable event', exact: true }).tap();
+  await expect(dialog.getByRole('alert')).toContainText('Connection interrupted');
+  await dialog.getByRole('button', { name: 'Retry capture' }).tap();
+  expect(observations.size).toBe(1);
   await expect(dialog.getByRole('radio', { name: 'Yes', exact: true })).toBeVisible();
   expect(event.at).toBe('2026-11-24T02:32:14.000Z');
   await dialog.getByRole('radio', { name: 'Yes', exact: true }).check();
@@ -110,7 +138,27 @@ test('patient card opens the correct diary and captures, corrects and prints an 
   await expect(activity.getByRole('button', { name: /Questionable event/ })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect(event.at).toBe('2026-11-24T02:31:08.000Z');
+  await expect(add).toBeInViewport();
+  await add.tap();
+  await dialog.getByRole('button', { name: 'Custom', exact: true }).tap();
+  const saveCustom = dialog.getByRole('button', { name: 'Record event', exact: true });
+  await expect(dialog.getByLabel('Description')).toBeFocused();
+  await expect(saveCustom).toBeDisabled();
+  await dialog.getByLabel('Description').fill('Turned toward the window.');
+  await dialog.getByRole('button', { name: 'Cancel' }).tap();
+  expect(observations.size).toBe(1);
+  await add.tap();
+  await dialog.getByRole('button', { name: 'Custom', exact: true }).tap();
+  await dialog.getByLabel('Description').fill('Turned toward the window.');
+  await saveCustom.tap();
+  await expect(activity.getByRole('button', { name: /Turned toward the window/ })).toBeVisible();
+  expect(observations.size).toBe(2);
+  expect(event.at).toBe('2026-11-24T02:32:14.000Z');
   await page.reload();
+  await page.getByRole('button', { name: 'Diary actions' }).tap();
+  await expect(dialog.getByRole('button', { name: 'Settings' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'New diary' })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Close' }).tap();
   await page.getByRole('button', { name: 'All entries', exact: true }).tap();
   await expect(page.getByRole('table')).toContainText('Did you press the recorder button? Yes');
   await page.getByRole('button', { name: 'Day timeline', exact: true }).tap();
@@ -118,8 +166,70 @@ test('patient card opens the correct diary and captures, corrects and prints an 
   await expect(page.getByRole('heading', { name: 'Home EEG' })).toBeVisible();
   await expect(page.getByRole('table')).toHaveCount(1);
   await expect(page.getByRole('table')).toContainText('9:31:08 PM');
+  await expect(page.getByRole('table')).toContainText('Turned toward the window.');
   await expect(page.locator('.diary-print').getByText('Avery Green', { exact: true })).toBeVisible();
   await expect(page.getByRole('button')).toHaveCount(0);
+  await page.emulateMedia({ media: 'screen' });
+  canWrite = false;
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Home EEG' })).toBeVisible();
+  await expect(add).toHaveCount(0);
+  await page.getByRole('button', { name: 'Diary actions' }).tap();
+  await expect(dialog.getByRole('button', { name: 'Print diary' })).toBeEnabled();
+  await expect(dialog.getByRole('button', { name: 'New diary' })).toHaveCount(0);
   expect(paths).not.toContain('/api/patients/1/diaries');
   expect(paths).not.toContain('/api/monitoring/timeline');
+});
+
+test('read-only diary offers a full-study PDF when the host suppresses printing', async ({ page }, testInfo) => {
+  const base = '/api/patients/2/diaries';
+  const starts = '2026-11-22T15:00:00Z';
+  const patient = { id: 2, first_name: 'Avery', last_name: 'Green' };
+  const diary = { id: 9, name: 'Home EEG', starts_at: starts, ends_at: null, buttons: [] };
+  const entries = Array.from({ length: 61 }, (_, i) => ({
+    id: i + 1, source: 'observation', label: 'Observation',
+    at: new Date(Date.parse(starts) + i * 30 * 60000).toISOString(),
+    note: i === 0 ? 'Turned toward the window.' : i === 60 ? 'Last entry of the study.' : 'Resting.',
+  }));
+  await page.routeWebSocket('**/ws/sensors', () => {});
+  await page.route('**/api/**', route => {
+    const path = new URL(route.request().url()).pathname;
+    const responses = {
+      '/api/auth/session': { user_id: 1, account_id: 1, is_system_admin: true },
+      '/api/auth/first-run': { is_first_run: false },
+      '/api/patients': [patient],
+      [base]: { can_write: false, timezone: 'America/New_York', diaries: [diary] },
+      [base + '/9/timeline']: entries,
+      [base + '/9/day']: { date: '2026-11-23', today: '2026-11-23', first_day: '2026-11-22',
+        last_day: '2026-11-23', timezone: 'America/New_York', day_start: '2026-11-23T05:00:00Z',
+        day_end: '2026-11-24T05:00:00Z' },
+    };
+    return route.fulfill({ json: responses[path] || [] });
+  });
+  // Downloads are allowed in this frame, but window.print() is suppressed.
+  await page.route('**/test-diary-host', route => route.fulfill({ contentType: 'text/html',
+    body: '<meta name="viewport" content="width=device-width,initial-scale=1"><iframe title="Health" style="position:fixed;inset:0;width:100%;height:100%;border:0" sandbox="allow-scripts allow-same-origin allow-downloads" src="/care/diary?patient=2"></iframe>' }));
+  await page.goto('/test-diary-host');
+  const embedded = page.frameLocator('iframe');
+  await expect(embedded.getByRole('heading', { name: 'Home EEG' })).toBeVisible();
+  await expect(embedded.getByRole('button', { name: 'Record an event' })).toHaveCount(0);
+  await embedded.getByRole('button', { name: 'Diary actions' }).tap();
+  await expect(embedded.getByRole('button', { name: 'New diary' })).toHaveCount(0);
+  await embedded.getByRole('button', { name: 'Print diary' }).tap();
+  const preview = embedded.getByRole('dialog', { name: 'Print preview' });
+  await expect(preview).toContainText('Avery Green');
+  await expect(preview).toContainText('Turned toward the window.');
+  await expect(preview).toContainText('Last entry of the study.');
+  await expect(preview.getByRole('row')).toHaveCount(62);
+  await preview.getByRole('button', { name: 'Print', exact: true }).tap();
+  await expect(preview).toContainText('save the PDF');
+  const downloaded = page.waitForEvent('download');
+  await preview.getByRole('link', { name: 'Save PDF' }).tap();
+  const file = await downloaded;
+  expect(file.suggestedFilename()).toBe('event-diary.pdf');
+  const output = testInfo.outputPath('event-diary.pdf');
+  await file.saveAs(output);
+  expect((await readFile(output)).subarray(0, 5).toString()).toBe('%PDF-');
+  await preview.getByRole('button', { name: 'Close' }).tap();
+  await expect(preview).toHaveCount(0);
 });

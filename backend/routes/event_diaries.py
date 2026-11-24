@@ -69,7 +69,8 @@ class Observation(BaseModel):
 
 class Capture(Observation):
     request_id: UUID
-    label: ButtonLabel
+    # A preset sends its label. A free-form observation sends its description alone.
+    label: ButtonLabel | None = None
 
 
 def patient_access(patient_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
@@ -98,7 +99,8 @@ def diary_record(diary):
 
 
 def manual_record(event):
-    return dict(source='observation', id=event.id, at=event.observed_at, label=event.label,
+    return dict(source='observation', id=event.id, at=event.observed_at,
+                label=event.label or 'Custom observation', is_custom=not event.label,
                 note=event.note, question=event.question, answer=event.answer)
 
 
@@ -139,7 +141,9 @@ def change_diary(patient_id: int, diary_id: int, data: DiaryForm, db: Session = 
     return diary_record(diary)
 
 
-def check_observation(diary, data, question):
+def check_observation(diary, data, question, *, is_custom):
+    if is_custom and not data.note.strip():
+        raise HTTPException(422, 'Enter a description for the custom observation.')
     if data.observed_at < diary.starts_at or (diary.ends_at and data.observed_at > diary.ends_at):
         raise HTTPException(422, 'The observation time must fall within the diary dates.')
     if data.answer and not question:
@@ -155,13 +159,16 @@ def capture_event(patient_id: int, diary_id: int, data: Capture, db: Session = D
     existing = db.query(DiaryEvent).filter_by(diary_id=diary_id, request_id=str(data.request_id)).first()
     if existing:
         return manual_record(existing)
-    button = next((b for b in diary.buttons if b['label'] == data.label), None)
-    if not button:
-        raise HTTPException(422, 'This button has changed. Reopen the diary to see current buttons.')
-    question = button.get('question') or None
-    check_observation(diary, data, question)
-    event = DiaryEvent(diary_id=diary_id, recorded_by=user.id, question=question,
-                       **data.model_dump(exclude={'request_id'}), request_id=str(data.request_id))
+    question = None
+    if data.label is not None:
+        button = next((b for b in diary.buttons if b['label'] == data.label), None)
+        if not button:
+            raise HTTPException(422, 'This button has changed. Reopen the diary to see current buttons.')
+        question = button.get('question') or None
+    check_observation(diary, data, question, is_custom=data.label is None)
+    # Preset labels are nonempty. An empty stored label means no preset was used.
+    event = DiaryEvent(diary_id=diary_id, recorded_by=user.id, question=question, label=data.label or '',
+                       **data.model_dump(exclude={'request_id', 'label'}), request_id=str(data.request_id))
     db.add(event)
     db.commit()
     return manual_record(event)
@@ -173,7 +180,7 @@ def correct_event(patient_id: int, diary_id: int, event_id: int, data: Observati
     event = db.query(DiaryEvent).filter_by(diary_id=diary_id, id=event_id).first()
     if not event:
         raise HTTPException(404, 'Observation not found')
-    check_observation(diary, data, event.question)
+    check_observation(diary, data, event.question, is_custom=not event.label)
     event.observed_at, event.note, event.answer = data.observed_at, data.note, data.answer
     db.commit()
     return manual_record(event)

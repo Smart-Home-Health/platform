@@ -15,18 +15,21 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import config, { apiFetch } from '../../../config';
 import { useAdminPatient } from '../../../contexts/AdminPatientContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import { newEncounterUid } from '../../capture/useCaptureDraft';
+import { MoreHorizontalIcon, PlusIcon } from '../../../components/Icons';
+import EntityModal from '../../../components/vc/EntityModal';
 import AdminV2Layout from '../AdminV2Layout';
 import PatientGate from '../components/PatientGate';
 import { PatientDayTimeline } from '../AdminV2MonitoringTimeline';
 import { DiarySettings, ObservationForm } from './DiaryForms';
 import DiaryTimeline from './DiaryTimeline';
-import { stamp } from './diaryTime';
+import { diaryReport } from './diaryReport';
+import { stamp, studyRange } from './diaryTime';
 import './diary.css';
 
 async function request(path, method = 'GET', payload, signal) {
@@ -41,14 +44,17 @@ async function request(path, method = 'GET', payload, signal) {
   return res.status === 204 ? null : res.json();
 }
 
-function DiaryDetail({ diary, patient, base, canWrite, zone, onUpdated }) {
+function DiaryDetail({ diary, diaries, patient, base, canWrite, zone, onSelect, onCreate, onUpdated }) {
   const path = base + '/' + diary.id;
   const [entries, setEntries] = useState(null);
+  const report = useMemo(() => entries && diaryReport(patient, diary, entries, zone), [patient, diary, entries, zone]);
+  const [printReport, setPrintReport] = useState(null);
   const [view, setView] = useState('day');
   const [loadError, setLoadError] = useState('');
   const [refresh, setRefresh] = useState(0);
   const [event, setEvent] = useState(null);
-  const [settings, setSettings] = useState(false);
+  const [panel, setPanel] = useState(null);
+  const returnFocus = useRef(null);
   const [pending, setPending] = useState(null);
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
@@ -67,7 +73,14 @@ function DiaryDetail({ diary, patient, base, canWrite, zone, onUpdated }) {
     return () => { ac.abort(); clearInterval(timer); };
   }, [path, refresh]);
 
-  function close() { setEvent(null); setSettings(false); setError(''); }
+  function close() {
+    setEvent(null); setPanel(null); setPrintReport(null); setError('');
+    requestAnimationFrame(() => returnFocus.current?.focus({ preventScroll: true }));
+  }
+  function openPanel(name, trigger) {
+    returnFocus.current = trigger;
+    setPanel(name);
+  }
   async function mutate(action) {
     if (inFlight.current) return;
     inFlight.current = true; setBusy(true); setError(''); setNotice('');
@@ -82,50 +95,78 @@ function DiaryDetail({ diary, patient, base, canWrite, zone, onUpdated }) {
     setPending(payload);
     mutate(async () => {
       const saved = await request(path + '/events', 'POST', payload);
-      setPending(null); setEvent(saved); setNotice('Event recorded.');
+      setPending(null); setPanel(null); setEvent(saved); setNotice('Event recorded.');
     });
   }
   function tap(button) {
+    if (inFlight.current) return;
     const at = new Date();
     const request_id = newEncounterUid();
-    if (at < new Date(diary.starts_at) || (diary.ends_at && at > new Date(diary.ends_at))) {
-      setError(''); setEvent({ ...button, request_id }); return;
+    const inStudy = at >= new Date(diary.starts_at) && (!diary.ends_at || at <= new Date(diary.ends_at));
+    if (!button || !inStudy) {
+      setError(''); setPanel(null);
+      setEvent({ ...button, is_custom: !button, request_id, at: inStudy ? at.toISOString() : null });
+      return;
     }
     capture({ label: button.label, observed_at: at.toISOString(), request_id });
   }
   const cannotPrint = !entries || !!loadError || busy;
-  const editObservation = canWrite && !pending && !busy ? entry => { setError(''); setEvent(entry); } : null;
+  const editObservation = canWrite && !pending && !busy ? entry => {
+    returnFocus.current = document.activeElement;
+    setError(''); setEvent(entry);
+  } : null;
   return <section className="diary-detail">
-    <header className="diary-header"><div><h2>{diary.name}</h2>
-      <p>{stamp(diary.starts_at, zone)} – {diary.ends_at ? stamp(diary.ends_at, zone) : 'Ongoing'}</p></div>
-      {canWrite && <button className="cfg-ghost" onClick={() => { setSettings(true); setError(''); }}
-        disabled={busy || !!pending}>Settings</button>}
+    <header className="diary-header"><div className="diary-study">
+      {diaries.length > 1 ? <select className="em-input" aria-label="Select diary" value={diary.id}
+        onChange={e => onSelect(Number(e.target.value))}>
+        {diaries.map(d => <option key={d.id} value={d.id}>{d.name} · {stamp(d.starts_at, zone)}</option>)}
+      </select> : <h1>{diary.name}</h1>}
+      <p>{studyRange(diary.starts_at, diary.ends_at, zone)}</p></div>
+      <button type="button" className="diary-more" aria-label="Diary actions" title="Diary actions" aria-haspopup="dialog"
+        onClick={e => openPanel('actions', e.currentTarget)}><MoreHorizontalIcon size={22} /></button>
     </header>
-    {canWrite && <section className="diary-section"><h3>Record an event</h3>
-      <div className="diary-buttons">{diary.buttons.map(b => <button key={b.label} type="button" className="em-cancel"
-        disabled={busy || !!pending} onClick={() => tap(b)}>{b.label}</button>)}</div>
-      {(diary.include_medications || diary.include_nutrition) && <p className="em-hint">
-        Entries from enabled logs appear automatically. Use a button for an observation you’re recording separately.
-      </p>}
-    </section>}
     <span role="status">{busy ? 'Saving…' : notice}</span>
-    {error && !event && !settings && <div className="em-error" role="alert">{error}
-      {pending && <><button className="cfg-ghost" onClick={() => capture(pending)} disabled={busy}>Retry capture</button>
-        <button className="cfg-ghost" onClick={() => { setPending(null); setError(''); }}>Dismiss</button></>}
-    </div>}
-    <div className="diary-header"><div className="diary-views" role="group" aria-label="Diary view">
+    <div className="diary-views" role="group" aria-label="Diary view">
       <button type="button" aria-pressed={view === 'day'} onClick={() => setView('day')}>Day timeline</button>
       <button type="button" aria-pressed={view === 'entries'} onClick={() => setView('entries')}>All entries</button>
-    </div><div className="diary-tools">
-      <button className="cfg-ghost" disabled={busy} onClick={() => setRefresh(n => n + 1)}>Refresh</button>
-      <button className="cfg-ghost" disabled={cannotPrint} onClick={() => window.print()}>Print diary</button>
-    </div></div>
+    </div>
     {loadError && <p role="alert" className="em-error">{loadError}</p>}
     {view === 'day' && <PatientDayTimeline patient={patient} diaryPath={path} diaryEntries={entries}
       refresh={refresh} onEditObservation={editObservation} />}
-    {entries ? <DiaryTimeline patient={patient} diary={diary} entries={entries} zone={zone}
+    {report ? <DiaryTimeline report={report} printReport={printReport} onClosePrint={close}
       showEntries={view === 'entries'} onEdit={editObservation} /> : !loadError && <p>Loading events…</p>}
-    {settings && <DiarySettings initial={diary} error={error} busy={busy} onClose={close} onSave={data => mutate(async () => {
+    {canWrite && <button type="button" className="diary-add" aria-label="Record an event" title="Record an event"
+      aria-haspopup="dialog" onClick={e => openPanel('record', e.currentTarget)}><PlusIcon size={26} /></button>}
+    {panel === 'actions' && <EntityModal open title="Diary actions" onOpenChange={open => { if (!open) close(); }}>
+      <p className="em-hint">{stamp(diary.starts_at, zone)} – {diary.ends_at ? stamp(diary.ends_at, zone) : 'Ongoing'}</p>
+      <div className="diary-buttons">
+        {canWrite && <button className="em-cancel" disabled={busy || !!pending}
+          onClick={() => { setError(''); setPanel('settings'); }}>Settings</button>}
+        {canWrite && <button className="em-cancel" disabled={busy || !!pending}
+          onClick={() => { setPanel(null); onCreate(); }}>New diary</button>}
+        <button className="em-cancel" disabled={busy} onClick={() => { close(); setRefresh(n => n + 1); }}>Refresh</button>
+        <button className="em-cancel" disabled={cannotPrint} onClick={() => { setPanel(null); setPrintReport(report); }}>Print diary</button>
+      </div>
+      {cannotPrint && <p className="em-hint" role="status">{loadError ? 'Refresh to load the entries for printing.'
+        : busy ? 'Saving changes before printing…' : 'Loading entries for printing…'}</p>}
+    </EntityModal>}
+    {canWrite && panel === 'record' && <EntityModal open title="Record an event"
+      onOpenChange={open => { if (!open && !busy && !pending) close(); }} hideClose={busy || !!pending}>
+      <div className="diary-buttons">
+        <button className="em-cancel diary-custom" disabled={busy || !!pending} onClick={() => tap(null)}>Custom</button>
+        {diary.buttons.map(b => <button key={b.label} className="em-cancel" disabled={busy || !!pending}
+          onClick={() => tap(b)}>{b.label.toLowerCase() === 'custom' ? b.label + ' (preset)' : b.label}</button>)}
+      </div>
+      {(diary.include_medications || diary.include_nutrition) && <p className="em-hint">
+        Entries from enabled logs appear automatically.
+      </p>}
+      {error && <div className="em-error" role="alert">{error}</div>}
+      {pending && !busy && <div className="em-footer">
+        <button className="em-cancel" onClick={() => { setPending(null); close(); }}>Dismiss</button>
+        <button className="em-submit" onClick={() => capture(pending)}>Retry capture</button>
+      </div>}
+    </EntityModal>}
+    {panel === 'settings' && <DiarySettings initial={diary} error={error} busy={busy} onClose={close} onSave={data => mutate(async () => {
       onUpdated(await request(path, 'PUT', data)); close();
     })} />}
     {event && <ObservationForm event={event} error={error} busy={busy} onClose={close}
@@ -167,18 +208,12 @@ function PatientDiaries({ patient }) {
     finally { setBusy(false); }
   }
   return <div className="admin-v2-page diary-page">
-    <div className="diary-header"><h1>Event diary</h1>
-      {data?.can_write && <button className="em-submit" onClick={() => setCreating(true)}>New diary</button>}</div>
-    <p className="diary-patient">{patient.first_name} {patient.last_name}</p>
     {error && !creating && <p className="em-error" role="alert">{error} <button className="cfg-ghost" onClick={() => setReload(n => n + 1)}>Retry</button></p>}
     {!data && !error && <p>Loading diaries…</p>}
-    {data?.diaries.length === 0 && <p>No diaries for this patient yet.</p>}
-    {data?.diaries.length > 1 && <label className="em-field">Select diary
-      <select className="em-input" value={activeDiary.id} onChange={e => setId(Number(e.target.value))}>
-        {data.diaries.map(d => <option key={d.id} value={d.id}>{d.name} · {stamp(d.starts_at, data.timezone)}</option>)}
-      </select></label>}
-    {activeDiary && <DiaryDetail key={activeDiary.id} diary={activeDiary} patient={patient} base={base}
-      canWrite={data.can_write} zone={data.timezone} onUpdated={selectSaved} />}
+    {data?.diaries.length === 0 && <><p>No diaries for this patient yet.</p>
+      {data.can_write && <button className="em-submit" onClick={() => setCreating(true)}>New diary</button>}</>}
+    {activeDiary && <DiaryDetail key={activeDiary.id} diary={activeDiary} diaries={data.diaries} patient={patient} base={base}
+      canWrite={data.can_write} zone={data.timezone} onSelect={setId} onCreate={() => setCreating(true)} onUpdated={selectSaved} />}
     {creating && <DiarySettings reusable={activeDiary} onSave={create} busy={busy} error={error} onClose={() => { setCreating(false); setError(''); }} />}
   </div>;
 }
