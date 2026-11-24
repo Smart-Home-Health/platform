@@ -22,13 +22,16 @@ import EntityModal from '../../../components/vc/EntityModal';
 function Entries({ rows, onEdit }) {
   if (!rows.length) return <p>No events in this diary yet.</p>;
   return <table className="diary-table"><thead><tr><th scope="col">Local date and time</th><th scope="col">Description of event</th></tr></thead>
-    <tbody>{rows.map(({ entry, time, followUp, source }) => <tr key={entry.source + entry.id}>
-      <td><time dateTime={entry.at}>{time}</time></td>
-      <td><strong>{entry.label}</strong>{entry.note && <p>{entry.note}</p>}
-        {followUp && <p>{followUp}</p>}
+    <tbody>{rows.map(({ key, at, time, items, source }) => <tr key={key}>
+      <td><time dateTime={at}>{time}</time></td>
+      <td>{items.map(({ entry, showLabel, followUp }) => <div key={entry.id}>
+          {showLabel && <strong>{entry.label}</strong>}
+          {entry.note && <p>{entry.note}</p>}
+          {followUp && <p>{followUp}</p>}
+          {entry.source === 'observation' && onEdit &&
+            <button type="button" className="cfg-ghost" aria-label={`Edit ${entry.label}`} onClick={() => onEdit(entry)}>Edit</button>}
+        </div>)}
         <small>{source}</small>
-        {entry.source === 'observation' && onEdit &&
-          <button type="button" className="cfg-ghost" aria-label={`Edit ${entry.label}`} onClick={() => onEdit(entry)}>Edit</button>}
       </td>
     </tr>)}</tbody></table>;
 }

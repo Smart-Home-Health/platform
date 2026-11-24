@@ -15,13 +15,13 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Read the clinical streams used by the monitoring and diary day views."""
 from datetime import timezone
+from sqlalchemy.orm import contains_eager
 
 from schemas.pulse_ox_data import PulseOxData
 from schemas.vital import Vital
 from schemas.medication_log import MedicationLog
 from schemas.medication import Medication
 from schemas.care_task_log import CareTaskLog
-from schemas.care_task import CareTask
 from schemas.nutrition_intake import NutritionIntake
 from schemas.nutrition_output import NutritionOutput
 from schemas.monitoring_alert import MonitoringAlert
@@ -78,19 +78,24 @@ def medications(db, patient_id, start_dt, end_dt):
     } for m in med_logs]
 
 
-def care_tasks(db, patient_id, start_dt, end_dt):
-    task_log_query = db.query(CareTaskLog).join(CareTask).filter(
+def care_task_logs(db, patient_id, start_dt, end_dt):
+    return db.query(CareTaskLog).join(CareTaskLog.care_task).options(contains_eager(CareTaskLog.care_task)).filter(
         CareTaskLog.patient_id == patient_id,
+        CareTaskLog.voided_at.is_(None),
         CareTaskLog.completed_at >= start_dt,
-        CareTaskLog.completed_at < end_dt
-    ).order_by(CareTaskLog.completed_at.asc()).all()
+        CareTaskLog.completed_at < end_dt,
+    )
+
+
+def care_tasks(db, patient_id, start_dt, end_dt):
+    logs = care_task_logs(db, patient_id, start_dt, end_dt).order_by(CareTaskLog.completed_at, CareTaskLog.id)
     return [{
         'ts': t.completed_at.isoformat() if t.completed_at else None,
         'name': t.care_task.name if t.care_task else 'Unknown',
         'category': t.care_task.category.name if t.care_task and t.care_task.category else '',
-        'status': 'completed',
+        'status': t.status,
         'notes': t.notes or ''
-    } for t in task_log_query]
+    } for t in logs]
 
 
 def nutrition_intake(db, patient_id, start_dt, end_dt):
