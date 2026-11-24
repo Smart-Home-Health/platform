@@ -59,6 +59,8 @@ services:
 
 options:
   jwt_secret: ""
+  mcp_token: ""
+  mcp_host: ""
   skip_account_password: false
   account_password_enabled: false
   ha_identity_login: true
@@ -69,6 +71,9 @@ options:
   log_level: info
 schema:
   jwt_secret: "password?"
+  mcp_token: "password?"
+  mcp_patient_id: "int(1,2147483647)?"
+  mcp_host: "str?"
   skip_account_password: bool
   account_password_enabled: bool
   ha_identity_login: bool

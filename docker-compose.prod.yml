@@ -44,6 +44,9 @@ services:
       # Required — main.py refuses to start on the insecure default secret.
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?set JWT_SECRET_KEY (e.g. openssl rand -hex 32)}
       # Optional integrations / tuning — forwarded only if set in your env/.env.
+      SHH_MCP_TOKEN: ${SHH_MCP_TOKEN:-}
+      SHH_MCP_PATIENT_ID: ${SHH_MCP_PATIENT_ID:-}
+      SHH_MCP_HOST: ${SHH_MCP_HOST:-}
       MIN_SPO2: ${MIN_SPO2:-}
       MAX_SPO2: ${MAX_SPO2:-}
       MIN_BPM: ${MIN_BPM:-}

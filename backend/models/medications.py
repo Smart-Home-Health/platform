@@ -37,7 +37,7 @@ class MedicationBase(BaseModel):
     pharmacy_id: Optional[int] = None
 
 
-class MedicationCreate(BaseModel):
+class MedicationDetails(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     concentration: str = Field(..., min_length=1, max_length=100)
     # ge=0: 0 on hand is legitimate (e.g. recording a finished/depleted med, or
@@ -53,6 +53,9 @@ class MedicationCreate(BaseModel):
     end_date: Optional[date] = None
     as_needed: bool = False
     notes: Optional[str] = None
+
+
+class MedicationCreate(MedicationDetails):
     is_patient_specific: bool = False
     admin_patient_id: Optional[int] = None
     prescriber_id: Optional[int] = None
@@ -104,27 +107,33 @@ class MedicationResponse(BaseModel):
         from_attributes = True
 
 
-class MedicationScheduleCreate(BaseModel):
+class MedicationScheduleDetails(BaseModel):
     cron_expression: str = Field(..., min_length=1)
     description: str = Field(..., min_length=1, max_length=255)
     dose_amount: float = Field(..., gt=0)
     active: bool = True
     notes: Optional[str] = None
-    patient_id: Optional[int] = None
     # Hours a missed dose stays actionable; None = 60% of the schedule's interval.
     grace_period_hours: Optional[float] = Field(None, gt=0)
+
+
+class MedicationScheduleCreate(MedicationScheduleDetails):
+    patient_id: Optional[int] = None
     type: str = Field(default="med", pattern="^med$")
 
 
-class MedicationScheduleUpdate(BaseModel):
+class MedicationScheduleChanges(BaseModel):
     cron_expression: Optional[str] = Field(None, min_length=1)
     description: Optional[str] = Field(None, min_length=1, max_length=255)
     dose_amount: Optional[float] = Field(None, gt=0)
     active: Optional[bool] = None
     notes: Optional[str] = None
-    patient_id: Optional[int] = None
     # Send null explicitly to drop an override back to the 60% default.
     grace_period_hours: Optional[float] = Field(None, gt=0)
+
+
+class MedicationScheduleUpdate(MedicationScheduleChanges):
+    patient_id: Optional[int] = None
 
 
 class MedicationScheduleResponse(BaseModel):
