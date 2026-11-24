@@ -39,6 +39,8 @@ browser over WebSockets and bridges to MQTT / home‑automation systems.
 
 **Platform**
 - **Multi‑patient and multi‑business** support
+- **Medication plan MCP server** for patient-scoped agent administration through Keywright.
+  [Setup and supplement swap workflow](addon/DOCS.md#medication-plan-tools-for-keywright)
 - **Role‑based access control** — users, roles, and fine‑grained permissions
 - **Patient backup & restore** of care records and stored attachments, with
   relationship remapping and attachment integrity checks. See the

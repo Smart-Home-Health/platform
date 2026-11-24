@@ -45,6 +45,15 @@ def _utc_iso(dt):
 
 
 # --- Medication CRUD ---
+def stage_medication(db: Session, **fields) -> Medication:
+    """Insert in the caller's transaction so medication plan edits can be atomic."""
+    now = utc_now()
+    medication = Medication(created_at=now, updated_at=now, **fields)
+    db.add(medication)
+    db.flush()
+    return medication
+
+
 def add_medication(db: Session, name, concentration=None, quantity=None, quantity_unit=None, instructions=None, start_date=None, end_date=None, as_needed=False, notes=None, active=True, patient_id=None, prescriber_id=None, pharmacy_id=None, low_stock_threshold=None, low_stock_threshold_type='quantity'):
     """
     Add a new medication to the database.
@@ -54,9 +63,8 @@ def add_medication(db: Session, name, concentration=None, quantity=None, quantit
         prescriber_id: Optional provider ID who prescribed this medication
         pharmacy_id: Optional business ID representing the pharmacy
     """
-    now = utc_now()
-    medication = Medication(
-        patient_id=patient_id,
+    medication = stage_medication(
+        db, patient_id=patient_id,
         name=name,
         concentration=concentration,
         quantity=quantity,
@@ -71,10 +79,7 @@ def add_medication(db: Session, name, concentration=None, quantity=None, quantit
         active=active,
         prescriber_id=prescriber_id,
         pharmacy_id=pharmacy_id,
-        created_at=now,
-        updated_at=now
     )
-    db.add(medication)
     db.commit()
     db.refresh(medication)
     logger.info(f"Medication added: {name}")
@@ -421,6 +426,14 @@ def get_medication_names_for_dropdown(db: Session):
 
 
 # --- MedicationSchedule CRUD ---
+def stage_medication_schedule(db: Session, **fields) -> MedicationSchedule:
+    now = utc_now()
+    schedule = MedicationSchedule(created_at=now, updated_at=now, **fields)
+    db.add(schedule)
+    db.flush()
+    return schedule
+
+
 def add_medication_schedule(db: Session, medication_id, cron_expression, description=None, dose_amount=None, active=True, notes=None, patient_id=None, grace_period_hours=None):
     """
     Add a new medication schedule
@@ -435,9 +448,8 @@ def add_medication_schedule(db: Session, medication_id, cron_expression, descrip
         # Use provided patient_id if given, otherwise inherit from medication
         schedule_patient_id = patient_id if patient_id is not None else medication.patient_id
         
-        now = utc_now()
-        schedule = MedicationSchedule(
-            medication_id=medication_id,
+        schedule = stage_medication_schedule(
+            db, medication_id=medication_id,
             patient_id=schedule_patient_id,
             cron_expression=cron_expression,
             description=description,
@@ -445,10 +457,7 @@ def add_medication_schedule(db: Session, medication_id, cron_expression, descrip
             active=active,
             notes=notes,
             grace_period_hours=grace_period_hours,
-            created_at=now,
-            updated_at=now
         )
-        db.add(schedule)
         db.commit()
         db.refresh(schedule)
         logger.info(f"Medication schedule added for medication {medication_id}: {cron_expression}")

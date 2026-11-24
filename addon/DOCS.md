@@ -40,6 +40,48 @@ Open it from the sidebar once started (the "Health Hub" panel).
 | `min_bpm` / `max_bpm` | `55` / `155` | Heart-rate alarm thresholds. |
 | `log_level` | `info` | Add-on log verbosity. |
 
+### Medication plan tools for Keywright
+
+The optional MCP endpoint gives a broker access to one patient's Medications
+records and their schedules. Its five tools are `get_medication_plan`,
+`add_medication`, `retire_medication`, `set_medication_schedule`, and
+`replace_medications`. Caregivers continue to record doses, care tasks and
+food in Health Hub.
+
+| Add-on option | Standalone environment variable | Value |
+| --- | --- | --- |
+| `mcp_patient_id` | `SHH_MCP_PATIENT_ID` | Select the patient in Medications and use the numeric `patient` parameter in the page URL. |
+| `mcp_host` | `SHH_MCP_HOST` | HTTP Host received by the backend, including any non-default port. For `https://health.example.net/mcp` behind a proxy that preserves Host, use `health.example.net`. |
+| `mcp_token` | `SHH_MCP_TOKEN` | A dedicated random bearer token. Generate one with `openssl rand -hex 32`. |
+
+1. Set the three options and restart the add-on. With standalone Compose,
+   set the three environment variables and recreate the app container.
+2. In Keywright, add a generic MCP server resource named `health-hub`.
+   Use the broker-reachable HTTPS URL ending in `/mcp`. For the add-on,
+   point your TLS reverse proxy at the direct port (8000) and preserve the Host
+   header. Store `Authorization: Bearer <mcp_token>` in the resource headers.
+3. Discover the tools, then identify the patient and the medication IDs.
+
+   ```sh
+   kw tool health-hub --list -r "Inspect medication plan tools"
+   kw tool health-hub get_medication_plan -r "Read the medication plan before editing"
+   ```
+
+For a supplement swap, identify both outgoing IDs and supply the new products'
+label details, on-hand quantities, start dates and schedules. Send the pairs in
+one `replace_medications` call with the returned `patient_id` and `revision`.
+Retirement takes effect immediately. Each new product gets a fresh medication
+ID and its own schedule rows. The old records keep their dose history. Supply
+an explicit schedule list for each new product, including `[]` for no schedule.
+The app stores five-field cron expressions in UTC and returns the household
+timezone for interpreting local times.
+
+Reread the plan after a change or a lost response. A stale revision rejects the
+whole edit. Shared household medications remain managed in the UI. Successful
+MCP writes appear in the app audit log under `mcp.<tool name>`. Clear
+`mcp_token` and restart to disable access. To rotate it, set a new token in
+the app and the Keywright resource.
+
 ### Sign in with Home Assistant (`ha_identity_login`)
 
 When the app is opened from the HA sidebar (ingress), Home Assistant forwards

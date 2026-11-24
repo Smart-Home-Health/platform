@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.0
+
+- Connect Keywright to one patient’s medication plan through the optional MCP endpoint. Agents can read the plan, add or retire medications, and edit schedules. Caregivers continue to record doses, care tasks, and food in Health Hub.
+- Replace multiple medications in one operation. If any replacement fails, the whole swap rolls back. Prior doses stay linked to their original medications.
+- MCP access defaults off. See **Medication plan tools for Keywright** in the add-on documentation for setup.
+
 ## 0.6.3
 
 - **All entries** includes care tasks already logged during the diary. Each task shows its actual completion time and notes. Partial completions are labeled, and undoing a task removes it from the diary.

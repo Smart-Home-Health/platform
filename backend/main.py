@@ -65,6 +65,7 @@ from crud.settings import get_setting, save_setting
 
 # Import auth components
 from middleware import AuthenticationMiddleware
+from admin_mcp import register_admin_mcp
 from rate_limit import RateLimitMiddleware
 from seed_auth import seed_default_data
 
@@ -104,6 +105,7 @@ app.add_middleware(
 )
 
 # Register route modules
+register_admin_mcp(app)
 app.include_router(auth.router)  # Auth routes first (public)
 app.include_router(ha_auth.router)  # HA ingress identity login + mapping
 app.include_router(account.router)  # Account management

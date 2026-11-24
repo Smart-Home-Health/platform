@@ -28,6 +28,11 @@ if [ -z "${JWT_SECRET}" ]; then
 fi
 export JWT_SECRET_KEY="${JWT_SECRET}"
 
+# Dedicated Keywright credentials for the opt-in, patient-scoped MCP endpoint.
+export SHH_MCP_TOKEN="$(opt mcp_token)"
+export SHH_MCP_PATIENT_ID="$(opt mcp_patient_id)"
+export SHH_MCP_HOST="$(opt mcp_host)"
+
 if opt_true skip_account_password; then
     export SHH_SKIP_ACCOUNT_PASSWORD=1
 fi

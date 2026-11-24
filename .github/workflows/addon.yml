@@ -19,7 +19,7 @@ on:
         required: true
         type: string
       confirmation:
-        description: Type publish-0.6.3 after reviewing both image candidates
+        description: Type publish-0.7.0 after reviewing both image candidates
         required: true
         type: string
 
@@ -28,19 +28,19 @@ permissions:
   actions: read
 
 concurrency:
-  group: addon-promotion-0.6.3
+  group: addon-promotion-0.7.0
   cancel-in-progress: false
 
 env:
-  RELEASE_VERSION: 0.6.3
-  ACCEPTED_SOURCE: ba69005637f10cf69fe14375617d4ffb90bfe07a
-  AMD64_RUN: '45311120370'
-  AMD64_ARCHIVE_SHA256: 80f1ec465cec8a8999691714c7db3f0791a02efcb7cfe35a5a5ab7d9184d5b76
-  AMD64_IMAGE_ID: sha256:be926d2e67fc9760d5ac21efb8df6996a8e9531df2077f3e97675e450d9cabd3
+  RELEASE_VERSION: 0.7.0
+  ACCEPTED_SOURCE: b640784a09994f8f97377849da2daff5fbf494ca
+  AMD64_RUN: '45320939103'
+  AMD64_ARCHIVE_SHA256: ded875a6a870c863522b6435bcab721307d81f2ba75a17a10ea3f007041a81d7
+  AMD64_IMAGE_ID: sha256:665d1df4d74eee7d3c9836a1a231c628ca903dc09005996a9a73cea07c4be744
 
 jobs:
   promote:
-    if: inputs.confirmation == 'publish-0.6.3'
+    if: inputs.confirmation == 'publish-0.7.0'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
@@ -75,9 +75,9 @@ jobs:
           allowed = {'.github/workflows/addon.yml', '.github/workflows/release.yml',
                      '.github/workflows/rehearsal-addon.yml', 'addon/config.yaml', 'addon/CHANGELOG.md'}
           source = os.environ['ACCEPTED_SOURCE']
-          need(re.search(r'^version: "0\.6\.3"$', pathlib.Path('addon/config.yaml').read_text(), re.M), 'Wrong release manifest')
+          need(re.search(r'^version: "0\.7\.0"$', pathlib.Path('addon/config.yaml').read_text(), re.M), 'Wrong release manifest')
           need(set(git('diff', '--name-only', source, 'HEAD').splitlines()) <= allowed, 'Unreviewed runtime-source delta')
-          tag_status = subprocess.run(['git', 'show-ref', '--verify', '--quiet', 'refs/tags/v0.6.3']).returncode
+          tag_status = subprocess.run(['git', 'show-ref', '--verify', '--quiet', 'refs/tags/v0.7.0']).returncode
           need(tag_status == 1, 'Release source tag already exists or could not be checked')
           plan = []
           repo = os.environ['GITHUB_REPOSITORY']
