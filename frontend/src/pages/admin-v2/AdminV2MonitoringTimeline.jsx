@@ -33,6 +33,7 @@ import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import { useThemeTokens } from '../../hooks/useThemeTokens';
 import { readToken } from '../../utils/themeTokens';
 import { signalMinutes, tracePoints, sampleAt } from './timelineSignals';
+import DiarySuggestions from './diary/DiarySuggestions';
 import { alarmsFor } from './reports/dayOverDay';
 import {
   PLOT_GUTTER, PLOT_RPAD, chartChrome, niceScale, thresholdLine, stackedChartOptions,
@@ -91,7 +92,9 @@ const LANES = {
 const LANE_KEYS = Object.keys(LANES);
 const DIARY_LANE = { label: 'Diary', color: 'var(--vc-data-live)', Icon: NotesIcon };
 const DIARY_LANE_KEYS = ['diary', ...LANE_KEYS];
-const ENTRY_LANES = { observation: 'diary', medication: 'medications', nutrition: 'nutrition_intake' };
+const ENTRY_LANES = {
+  observation: 'diary', medication: 'medications', nutrition: 'nutrition_intake', nutrition_output: 'nutrition_output',
+};
 const COLLAPSED_LANES = 4;
 
 /* 1M is the floor because the timeline endpoint averages pulse-ox into
@@ -135,8 +138,8 @@ const formatDuration = (ms) => {
 
 const eventLabel = (type, item) => {
   if (item.entry) {
-    const { label, note, source } = item.entry;
-    if (source === 'observation' && note) return `${label} · ${note}`;
+    const { label, note, source, is_custom } = item.entry;
+    if (note && !is_custom && (source === 'observation' || source === 'nutrition_output')) return `${label} · ${note}`;
     return note || label;
   }
   switch (type) {
@@ -226,6 +229,8 @@ export function PatientDayTimeline({ patient: selectedPatient, diaryPath, diaryE
   const data = useMemo(() => {
     if (!diaryPath || !day) return day;
     const combined = { ...day, diary: [], medications: [], nutrition_intake: [] };
+    // The diary log groups the two parts of a mixed diaper into one change.
+    if (diaryEntries) combined.nutrition_output = [];
     const start = Date.parse(day.day_start);
     const end = Date.parse(day.day_end);
     for (const entry of diaryEntries || []) {
@@ -793,6 +798,9 @@ export function PatientDayTimeline({ patient: selectedPatient, diaryPath, diaryE
 
           <p className="mtl-hint">Drag to inspect · pinch or scroll to zoom</p>
 
+          {diaryPath && data.suggested_events && <DiarySuggestions suggestions={data.suggested_events}
+            zone={zone} onReview={onEditObservation} />}
+
           <section className="mtl-detail">
             <div className="mtl-detail-main">
               <div className="mtl-detail-top">
@@ -834,11 +842,11 @@ export function PatientDayTimeline({ patient: selectedPatient, diaryPath, diaryE
                   </dl>
                   {selectedObservations.map(({ item: { entry } }) => (
                     <div key={entry.id} className="mtl-diary-observation">
-                      <strong>{entry.label}</strong>
+                      {!entry.is_custom && <strong>{entry.label}</strong>}
                       {entry.note && <p>{entry.note}</p>}
                       {entry.question && <p>{entry.question} {entry.answer || 'Not recorded'}</p>}
                       {onEditObservation && <button type="button" className="cfg-ghost"
-                        onClick={() => onEditObservation(entry)} aria-label={`Edit ${entry.label}`}>Edit</button>}
+                        onClick={() => onEditObservation(entry)} aria-label={`Edit ${entry.is_custom ? entry.note : entry.label}`}>Edit</button>}
                     </div>
                   ))}
                   {cursorAlert && (

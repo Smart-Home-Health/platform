@@ -44,14 +44,14 @@ import EntityModal, { EmField } from '../../components/vc/EntityModal';
 import '../../components/vc/entity-card.css';
 import './settings/settings-page.css';
 import './AdminV2.css';
+import { slotLabel } from '../../components/schedule/scheduleRollup';
 import { overdueLabel, graceTitle } from '../../components/schedule/scheduleStatus';
 import './vc-schedule.css'; // bedside-monitor skin (dark theme only)
 
 // "Yesterday" or the short weekday for a prior-day due time; the Overdue
 // band's rows are the only ones not on the day being viewed.
-const dueDayLabel = (iso) => {
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
+const dueDayLabel = (d) => {
+  if (!d) return '';
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const day = new Date(d); day.setHours(0, 0, 0, 0);
   const daysAgo = Math.round((today - day) / 86400000);
@@ -59,6 +59,42 @@ const dueDayLabel = (iso) => {
   if (daysAgo < 7) return d.toLocaleDateString(undefined, { weekday: 'short' });
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
+
+// Older API records store UTC without an offset.
+function parseScheduleTimestamp(value) {
+  if (!value) return null;
+  const zoned = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : value + 'Z';
+  const date = new Date(zoned);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function withLocalTimes(item) {
+  const scheduledAt = parseScheduleTimestamp(item.scheduled_time);
+  const completedAt = item.completed ? parseScheduleTimestamp(item.completed_at) : null;
+  const time = completedAt ?? scheduledAt;
+  return {
+    ...item, scheduledAt, completedAt,
+    hour: time?.getHours() ?? item.hour,
+    minute: time?.getMinutes() ?? item.minute,
+  };
+}
+
+function ScheduleItemTime({ item }) {
+  const { scheduledAt, completedAt } = item;
+  let text = `${String(item.hour).padStart(2, '0')}:${String(item.minute).padStart(2, '0')}`;
+  let title;
+  if (item.in_grace) {
+    text = `${dueDayLabel(scheduledAt)} ${text}`;
+    title = graceTitle(item);
+  } else if (completedAt) {
+    if (scheduledAt && scheduledAt.toDateString() !== completedAt.toDateString()) {
+      const day = completedAt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      text = `${day} ${text}`;
+    }
+    title = scheduledAt ? `Given at ${text} (scheduled ${slotLabel(scheduledAt)})` : `Given at ${text}`;
+  }
+  return <span className="admin-v2-schedule-item-time" title={title}><ClockIcon size={12} />{text}</span>;
+}
 
 const AdminV2Schedule = () => {
   const { user } = useAuth();
@@ -269,27 +305,10 @@ const AdminV2Schedule = () => {
       if (response.ok) {
         const data = await response.json();
         
-        // Convert UTC scheduled times to local timezone for display
-        // Backend returns times in UTC, we need to compute local hour/minute
-        const convertToLocalTime = (item) => {
-          if (!item.scheduled_time) return item;
-          // Legacy naive timestamps are UTC; preserve either signed offset
-          // when the database serializes an explicitly zoned timestamp.
-          const utcTime = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(item.scheduled_time)
-            ? item.scheduled_time 
-            : item.scheduled_time + 'Z';
-          const localDate = new Date(utcTime);
-          return {
-            ...item,
-            hour: localDate.getHours(),
-            minute: localDate.getMinutes()
-          };
-        };
-        
         setScheduleData({
-          medications: (data.medications || []).map(convertToLocalTime),
-          nutrition: (data.nutrition || []).map(convertToLocalTime),
-          care_tasks: (data.care_tasks || []).map(convertToLocalTime)
+          medications: (data.medications || []).map(withLocalTimes),
+          nutrition: (data.nutrition || []).map(withLocalTimes),
+          care_tasks: (data.care_tasks || []).map(withLocalTimes)
         });
       } else {
         setError('Failed to load schedule');
@@ -711,8 +730,7 @@ const AdminV2Schedule = () => {
   };
 
   // Group items by hour. Within each hour: incomplete items float to the top,
-  // completed items sink to the bottom. Inside each group, keep the scheduled
-  // minute order so timing within the hour stays readable.
+  // completed items follow in the order they were performed.
   const getItemsByHour = (items) => {
     const byHour = {};
     for (let h = 0; h < 24; h++) {
@@ -761,33 +779,6 @@ const AdminV2Schedule = () => {
   // Get current hour for highlighting
   const currentHour = isToday(selectedDate) ? new Date().getHours() : -1;
 
-  // For the time chip on each row: when an item has been completed, show the
-  // actual administered/completed time (local); otherwise show the scheduled
-  // time. Items still bucket into their scheduled hour either way (item.hour
-  // drives getItemsByHour above).
-  const itemDisplayTime = (item) => {
-    const scheduledText = `${String(item.hour).padStart(2, '0')}:${String(item.minute).padStart(2, '0')}`;
-    if (item.in_grace) {
-      // "Yesterday 16:00" / "Tue 16:00": the row lives in the Overdue band,
-      // so the chip has to say which day it belongs to.
-      return { text: `${dueDayLabel(item.scheduled_time)} ${scheduledText}`, title: graceTitle(item) };
-    }
-    if (!item.completed || !item.completed_at) {
-      return { text: scheduledText, title: undefined };
-    }
-    const raw = item.completed_at;
-    const utc = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw) ? raw : raw + 'Z';
-    const d = new Date(utc);
-    if (isNaN(d.getTime())) {
-      return { text: scheduledText, title: undefined };
-    }
-    const completedText = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-    return {
-      text: completedText,
-      title: `Given at ${completedText} (scheduled ${scheduledText})`,
-    };
-  };
-
   // Count totals for summary. These are scheduled-adherence ratios, so PRN /
   // ad-hoc entries (is_prn) are excluded — they still render on the timeline,
   // but they're extra care, not part of "X of Y scheduled items done".
@@ -815,15 +806,7 @@ const AdminV2Schedule = () => {
           title={isPrn ? 'PRN dose — administered ad-hoc' : undefined}
         >
           <div className="admin-v2-schedule-item-header">
-            {(() => {
-              const t = itemDisplayTime(med);
-              return (
-                <span className="admin-v2-schedule-item-time" title={t.title}>
-                  <ClockIcon size={12} />
-                  {t.text}
-                </span>
-              );
-            })()}
+            <ScheduleItemTime item={med} />
             <span className="admin-v2-schedule-item-name">{med.name}</span>
             {med.in_grace && (
               <span className="admin-v2-badge admin-v2-badge-overdue" title={graceTitle(med)}>
@@ -1111,15 +1094,7 @@ const AdminV2Schedule = () => {
                                           : undefined}
                                     >
                                       <div className="admin-v2-schedule-item-header">
-                                        {(() => {
-                                          const t = itemDisplayTime(item);
-                                          return (
-                                            <span className="admin-v2-schedule-item-time" title={t.title}>
-                                              <ClockIcon size={12} />
-                                              {t.text}
-                                            </span>
-                                          );
-                                        })()}
+                                        <ScheduleItemTime item={item} />
                                         <span className="admin-v2-schedule-item-name">{item.name}</span>
                                         {isPrn && (
                                           <span
@@ -1252,15 +1227,7 @@ const AdminV2Schedule = () => {
                                       style={task.category_color ? { borderLeft: `3px solid ${task.category_color}` } : {}}
                                     >
                                       <div className="admin-v2-schedule-item-header">
-                                        {(() => {
-                                          const t = itemDisplayTime(task);
-                                          return (
-                                            <span className="admin-v2-schedule-item-time" title={t.title}>
-                                              <ClockIcon size={12} />
-                                              {t.text}
-                                            </span>
-                                          );
-                                        })()}
+                                        <ScheduleItemTime item={task} />
                                         <span className="admin-v2-schedule-item-name">{task.name}</span>
                                         {isPrn && (
                                           <span className="admin-v2-badge admin-v2-badge-prn" title="As-needed care task">

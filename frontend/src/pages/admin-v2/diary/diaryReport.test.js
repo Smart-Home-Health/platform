@@ -36,3 +36,12 @@ it('groups by source and absolute second across the repeated local hour, preserv
   ]);
   expect(rows[1].items.map(item => item.followUp)).toEqual(['Awake? Yes', 'Awake? No']);
 });
+
+it('keeps a preset named Custom observation when it shares a row with a free-text entry', () => {
+  const at = '2026-11-23T15:00:00Z';
+  const preset = { id: 1, at, source: 'observation', label: 'Custom observation', is_custom: false };
+  const custom = { ...preset, id: 2, is_custom: true, note: 'Trach change' };
+  const { rows } = diaryReport({}, { starts_at: at }, [preset, custom], 'UTC');
+  expect(rows).toHaveLength(1);
+  expect(rows[0].items.map(item => item.showLabel)).toEqual([true, false]);
+});

@@ -22,6 +22,7 @@ from schemas.care_task_log import CareTaskLog
 from schemas.event_diary import DiaryEvent, EventDiary
 from schemas.medication_log import MedicationLog
 from schemas.nutrition_intake import NutritionIntake
+from schemas.nutrition_output import NutritionOutput
 from test_medications import _make_med
 
 AT = datetime(2026, 1, 17, 4, 10, tzinfo=timezone.utc)
@@ -133,6 +134,40 @@ def test_routes_scope_diaries_and_events_to_patient(admin_client, patient, db_se
     assert admin_client.post(path + '/events', json={**invalid, 'observed_at': '2026-01-17T04:10:00'}).status_code == 422
 
 
+def test_diary_records_output_at_occurrence_and_groups_mixed_changes(admin_client, db_session, patient, account):
+    from crud.patients import create_patient
+
+    _, path = start(admin_client, patient)
+    other = create_patient(db_session, {'first_name': 'Other', 'last_name': 'Patient', 'account_id': account.id})
+    start_at, end_at = AT - timedelta(days=1), AT + timedelta(days=1)
+    change = dict(patient_id=patient.id, occurred_at=start_at, location='diaper', event_group_id=str(uuid4()),
+                  notes='Repositioned during change')
+    db_session.add_all([
+        NutritionOutput(**change, output_type='urine', diaper_wetness='wet'),
+        NutritionOutput(**{**change, 'occurred_at': start_at + timedelta(seconds=1)},
+                        output_type='bowel', diaper_soiled=True, consistency='soft'),
+        NutritionOutput(patient_id=patient.id, occurred_at=end_at, output_type='urine', is_catheter=True,
+                        amount=120, amount_unit='ml'),
+        NutritionOutput(patient_id=patient.id, occurred_at=AT, output_type='bowel', is_diaper=True),
+        NutritionOutput(patient_id=patient.id, occurred_at=AT, output_type='vomit'),
+        NutritionOutput(patient_id=other.id, occurred_at=AT, output_type='urine'),
+        NutritionOutput(patient_id=patient.id, occurred_at=AT, output_type='urine', voided_at=AT),
+        NutritionOutput(patient_id=patient.id, occurred_at=end_at + timedelta(microseconds=1), output_type='other'),
+        NutritionOutput(patient_id=patient.id, occurred_at=start_at - timedelta(microseconds=1), output_type='urine'),
+    ])
+    db_session.commit()
+    rows = admin_client.get(path + '/timeline').json()
+    assert all(row['source'] == 'nutrition_output' for row in rows)
+    assert [(datetime.fromisoformat(row['at']), row['label'], row['note']) for row in rows] == [
+        (start_at, 'Diaper change', 'Urine · wet · Stool · soiled · soft · Repositioned during change'),
+        (AT, 'Diaper change', 'Stool'), (AT, 'Nutrition output', 'Vomit'),
+        (end_at, 'Nutrition output', 'Catheter · Urine · 120 ml'),
+    ]
+    assert admin_client.put(path, json={**FORM, 'include_nutrition': False}).status_code == 200
+    assert admin_client.get(path + '/timeline').json() == []
+    assert admin_client.get(path + '/day?target_date=2026-01-16').json()['nutrition_output'] == []
+
+
 def test_diary_includes_performed_care_at_actual_time(admin_client, patient, db_session, account):
     from crud.patients import create_patient
 
@@ -215,7 +250,6 @@ def test_diary_day_uses_study_bounds_on_the_repeated_hour(admin_client, db_sessi
 def test_diary_day_honors_clinical_permissions(admin_client, limited_user, account, db_session, patient):
     from crud.users import get_role_by_name
     from routes.auth import create_access_token
-    from schemas.nutrition_output import NutritionOutput
     from schemas.patient import AccessLevel, PatientAccess
     from schemas.pulse_ox_data import PulseOxData
 
@@ -230,10 +264,52 @@ def test_diary_day_honors_clinical_permissions(admin_client, limited_user, accou
     db_session.commit()
     url = path + '/day?target_date=2026-01-16'  # AT is 11:10 PM in New York.
     assert len(admin_client.get(url).json()['nutrition_output']) == 1
-    assert [e['source'] for e in admin_client.get(path + '/timeline').json()] == ['care_task']
+    assert [e['source'] for e in admin_client.get(path + '/timeline').json()] == ['care_task', 'nutrition_output']
     token = create_access_token(user=limited_user, account=account, auth_level='full')
     day = admin_client.get(url, headers={'Authorization': f'Bearer {token}'}).json()
     assert len(day['pulse_ox']) == 1
     assert day['nutrition_output'] == []
     assert day['care_tasks'] == []
     assert admin_client.get(path + '/timeline', headers={'Authorization': f'Bearer {token}'}).json() == []
+
+
+def test_suggested_event_requires_review_and_respects_the_diary_window(admin_client, limited_user, account,
+                                                                        db_session, patient):
+    from crud.users import get_permission_by_name
+    from models.users import Role
+    from routes.auth import create_access_token
+    from schemas.patient import AccessLevel, PatientAccess
+    from schemas.pulse_ox_data import PulseOxData
+
+    base = f'/api/patients/{patient.id}/diaries'
+    end = AT + timedelta(seconds=4)
+    diary = admin_client.post(base, json={**FORM, 'starts_at': AT.isoformat(), 'ends_at': end.isoformat()}).json()
+    path = base + '/' + str(diary['id'])
+    for offset in range(-60, 10, 2):
+        at = AT + timedelta(seconds=offset)
+        spo2, bpm = (98, 75) if offset < 0 else (96, 85 + offset)
+        db_session.add(PulseOxData(patient_id=patient.id, timestamp=at, created_at=at, spo2=spo2, bpm=bpm,
+                                   hr_alarm='OFF', spo2_alarm='OFF'))
+    db_session.flush()
+    url = path + '/day?target_date=2026-01-16'
+    day = admin_client.get(url).json()
+    assert day['alerts'] == []
+    [pattern] = day['suggested_events']
+    assert (datetime.fromisoformat(pattern['start_time']), datetime.fromisoformat(pattern['end_time'])) == (AT, end)
+    assert (pattern['min_spo2'], pattern['min_bpm'], pattern['max_bpm']) == (96, 85, 89)
+    limited_user.roles.append(Role(name='diary_reader', display_name='Diary reader',
+                                   permissions=[get_permission_by_name(db_session, 'vitals.read')]))
+    db_session.add(PatientAccess(patient_id=patient.id, user_id=limited_user.id,
+                                 granted_at=datetime.utcnow(), access_level=AccessLevel.VIEWER))
+    db_session.commit()
+    token = create_access_token(user=limited_user, account=account, auth_level='full')
+    restricted = admin_client.get(url, headers={'Authorization': f'Bearer {token}'})
+    assert restricted.status_code == 200 and 'suggested_events' not in restricted.json()
+    assert admin_client.get(path + '/timeline').json() == []
+    draft = dict(request_id=pattern['id'], observed_at=pattern['start_time'], note='Oxygen dip during repositioning.')
+    saved = admin_client.post(path + '/events', json=draft).json()
+    assert admin_client.post(path + '/events', json=draft).json() == saved
+    assert admin_client.get(url).json()['suggested_events'] == []
+    assert admin_client.get(path + '/timeline').json() == [saved]
+    assert admin_client.delete(path + '/events/' + str(saved['id'])).status_code == 204
+    assert admin_client.get(url).json()['suggested_events'] == [pattern]

@@ -32,7 +32,7 @@ const themeColor = (token, fallback) => {
 };
 
 // Use React.memo to prevent re-renders when props don't change
-const SimpleEventChart = memo(({ title, color, data, unit, xType = 'category' }) => {
+const SimpleEventChart = memo(({ title, color, data, unit, xType = 'category', xMin, xMax }) => {
   const chartRef = useRef(null);
   const chartInstance = useRef(null);
   const canvasId = useRef(`chart-${Math.random().toString(36).substr(2, 9)}`);
@@ -123,6 +123,8 @@ const SimpleEventChart = memo(({ title, color, data, unit, xType = 'category' })
               // which collapses Date instances to one bucket — keep that for
               // pre-stringified-time consumers like AlertDetailModal.
               type: xType,
+              min: xMin,
+              max: xMax,
               ...(xType === 'time' ? {
                 time: { tooltipFormat: 'PPpp' },
               } : {}),
@@ -171,7 +173,7 @@ const SimpleEventChart = memo(({ title, color, data, unit, xType = 'category' })
         chartInstance.current = null;
       }
     };
-  }, [title, color, data, unit, xType, themeVersion]);
+  }, [title, color, data, unit, xType, xMin, xMax, themeVersion]);
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>

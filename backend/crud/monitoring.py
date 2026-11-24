@@ -23,6 +23,7 @@ from typing import Optional
 from utils.datetime_utils import utc_now
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy import case, desc, asc, and_, or_, func, select, true
+from analysis.pulse_ox_patterns import BASELINE_WINDOW, detect_pulse_ox_patterns
 from crud.alert_closure import (
     CONTINUITY_SECONDS, INFERRED_RECOVERY, LIVE_GAP, LIVE_RECOVERY, RECOVERY_SECONDS,
     SCAN_EPSILON_SECONDS, classify_sample, load_thresholds,
@@ -33,6 +34,7 @@ from schemas.setting import Setting
 from schemas.monitoring_alert import MonitoringAlert
 
 logger = logging.getLogger('crud')
+ALERT_CHART_PADDING = timedelta(seconds=30)
 
 
 def _is_recovery(page):
@@ -80,16 +82,20 @@ def _historical_recovery_starts(db, page):
     return starts
 
 
-def _alerts_with_event_vitals(db, page, historical_starts=None):
+def _event_end_time(page, historical_starts):
     # Historical alerts with insufficient raw data retain the estimated end.
     approximate_end = page.end_time - timedelta(seconds=RECOVERY_SECONDS)
     if historical_starts:
         approximate_end = case(historical_starts, value=page.id, else_=approximate_end)
-    event_end = case(
+    return case(
         (and_(page.end_time.isnot(None), _is_recovery(page)),
          func.greatest(page.start_time, func.coalesce(page.recovery_start_time, approximate_end))),
         else_=page.end_time,
     ).label('event_end_time')
+
+
+def _alerts_with_event_vitals(db, page, historical_starts=None):
+    event_end = _event_end_time(page, historical_starts)
     # The last valid sample used to be written fractionally after the live
     # engine clock. A gap has no following valid reading within this tolerance.
     sample_end = case(
@@ -122,6 +128,30 @@ def _alerts_with_event_vitals(db, page, historical_starts=None):
         with_stored(func.least, page.bpm_min, samples.c.bpm_min),
         with_stored(func.greatest, page.bpm_max, samples.c.bpm_max),
     ).select_from(page).join(samples, true())
+
+
+def _alert_chart_window(alert, event_end):
+    end = event_end + ALERT_CHART_PADDING if event_end is not None else None
+    if end is None and alert.end_source == 'indeterminate':
+        # Only the start is known. Later history may belong to unrelated episodes.
+        end = alert.start_time
+    return alert.start_time - ALERT_CHART_PADDING, end
+
+
+def _alert_chart_readings(db, patient_id, start, end):
+    now = utc_now()
+    return db.query(PulseOxData).filter(
+        PulseOxData.patient_id == patient_id,
+        PulseOxData.timestamp.between(start, min(end, now) if end is not None else now),
+    ).order_by(PulseOxData.timestamp, PulseOxData.id).all()
+
+
+def _alert_chart_point(row):
+    return {
+        'id': row.id, 'timestamp': row.timestamp, 'spo2': row.spo2, 'bpm': row.bpm,
+        'pa': row.pa, 'perfusion': row.pa, 'status': row.status, 'motion': row.motion,
+        'spo2_alarm': row.spo2_alarm == 'ON', 'hr_alarm': row.hr_alarm == 'ON',
+    }
 
 
 def get_monitoring_alerts(db: Session, limit=50, include_acknowledged=False, detailed=False, patient_id=None):
@@ -157,12 +187,15 @@ def get_monitoring_alerts(db: Session, limit=50, include_acknowledged=False, det
         alerts = []
 
         for row, event_end_time, spo2_min, spo2_max, bpm_min, bpm_max in results:
+            chart_start, chart_end = _alert_chart_window(row, event_end_time)
             alert = {
                 'id': row.id,
                 'patient_id': row.patient_id,
                 'start_time': row.start_time,
                 'end_time': row.end_time,
                 'event_end_time': event_end_time,
+                'chart_start_time': chart_start,
+                'chart_end_time': chart_end,
                 'start_data_id': row.start_data_id,
                 'end_data_id': row.end_data_id,
                 'spo2_min': spo2_min,
@@ -179,34 +212,9 @@ def get_monitoring_alerts(db: Session, limit=50, include_acknowledged=False, det
                 'created_at': row.created_at
             }
 
-            if detailed and row.start_data_id:
-                # Other patients' live samples can be interleaved with a
-                # restored alert's remapped IDs. The ID interval alone does
-                # not establish patient ownership.
-                data_query = db.query(PulseOxData).filter(
-                    PulseOxData.patient_id == row.patient_id,
-                    PulseOxData.id >= row.start_data_id,
-                )
-                if row.end_data_id is not None:
-                    data_query = data_query.filter(PulseOxData.id <= row.end_data_id)
-                data_query = data_query.order_by(PulseOxData.timestamp.asc())
-
-                data_results = data_query.all()
-                alert['data_points'] = [
-                    {
-                        'id': data_row.id,
-                        'timestamp': data_row.timestamp,
-                        'spo2': data_row.spo2,
-                        'bpm': data_row.bpm,
-                        'pa': data_row.pa,
-                        'status': data_row.status,
-                        'motion': data_row.motion,
-                        'spo2_alarm': data_row.spo2_alarm == 'ON',
-                        'hr_alarm': data_row.hr_alarm == 'ON',
-                        'perfusion': data_row.pa  # Rename pa to perfusion
-                    }
-                    for data_row in data_results
-                ]
+            if detailed:
+                alert['data_points'] = [_alert_chart_point(sample)
+                                        for sample in _alert_chart_readings(db, row.patient_id, chart_start, chart_end)]
 
             alerts.append(alert)
 
@@ -433,40 +441,18 @@ def acknowledge_alert(db: Session, alert_id):
 
 
 def get_pulse_ox_data_for_alert(db: Session, alert_id):
-    """
-    Get all pulse ox readings associated with an alert event
-
-    Args:
-        alert_id: The ID of the alert
-
-    Returns:
-        List of pulse ox readings during the alert period
-    """
+    """Read the patient's recorded samples around the actual episode boundaries."""
     try:
-        # First get the alert to determine the time period
-        alert = db.query(MonitoringAlert).filter(MonitoringAlert.id == alert_id).first()
-
-        if not alert:
+        page = aliased(MonitoringAlert, db.query(MonitoringAlert).filter_by(id=alert_id).subquery())
+        historical_starts = _historical_recovery_starts(db, page)
+        result = db.query(page, _event_end_time(page, historical_starts)).one_or_none()
+        if result is None:
             return []
-
-        start_time = alert.start_time
-        end_time = alert.end_time or utc_now().isoformat()
-
-        # Get pulse ox data between the start and end times of the alert
-        data = db.query(PulseOxData).filter(
-            PulseOxData.patient_id == alert.patient_id,
-            PulseOxData.timestamp >= start_time,
-            PulseOxData.timestamp <= end_time
-        ).order_by(PulseOxData.timestamp.asc()).all()
-
-        for row in data:
-            # Convert spo2_alarm and hr_alarm to booleans
-            row.spo2_alarm = row.spo2_alarm == 'ON'
-            row.hr_alarm = row.hr_alarm == 'ON'
-            # Rename columns for frontend consistency
-            row.perfusion = row.pa  # Rename pa to perfusion
-
-        return data
+        alert, event_end = result
+        start, end = _alert_chart_window(alert, event_end)
+        return [dict(_alert_chart_point(row), patient_id=row.patient_id,
+                     created_at=row.created_at, raw_data=row.raw_data)
+                for row in _alert_chart_readings(db, alert.patient_id, start, end)]
     except Exception as e:
         logger.error(f"Error fetching pulse ox data for alert {alert_id}: {e}")
         return []
@@ -504,6 +490,16 @@ def get_pulse_ox_data_by_date(db: Session, date_str, patient_id=None):
     except Exception as e:
         logger.error(f"Error getting pulse ox data for date {date_str}: {e}")
         return []
+
+
+def patient_pulse_ox_patterns(db: Session, patient_id: int, start, end, as_of):
+    """Find completed patterns in a patient's [start, end) review window."""
+    pulse = PulseOxData
+    readings = db.query(pulse.timestamp, pulse.spo2, pulse.bpm, pulse.motion).filter(
+        pulse.patient_id == patient_id, pulse.timestamp >= start - BASELINE_WINDOW,
+        pulse.timestamp < end, pulse.timestamp <= as_of,
+    ).order_by(pulse.timestamp, pulse.id).yield_per(4096)
+    return detect_pulse_ox_patterns(readings, start, as_of)
 
 
 def analyze_pulse_ox_day(db: Session, date_str, patient_id=None):

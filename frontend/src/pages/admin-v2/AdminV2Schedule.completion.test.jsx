@@ -87,6 +87,7 @@ describe('AdminV2Schedule completion refresh', () => {
 
     const completedRow = rowFor('Lunch');
     expect(completedRow).toHaveClass('completed');
+    expect(document.querySelector('[data-hour="13"]')).toContainElement(completedRow);
     expect(within(completedRow).getByText('13:24')).toHaveAttribute('title', 'Given at 13:24 (scheduled 10:30)');
     expect(screen.getByText('1/1')).toBeInTheDocument();
     await act(async () => { fireEvent.click(within(completedRow).getByRole('button', { name: 'Undo' })); });
@@ -94,8 +95,41 @@ describe('AdminV2Schedule completion refresh', () => {
       method: 'DELETE', credentials: 'include',
     });
     expect(rowFor('Lunch')).not.toHaveClass('completed');
+    expect(document.querySelector('[data-hour="10"]')).toContainElement(rowFor('Lunch'));
     expect(within(rowFor('Lunch')).getByText('10:30')).toBeInTheDocument();
     expect(screen.getByText('0/1')).toBeInTheDocument();
+  });
+
+  it('places completed items in their actual hour and sorts them by the recorded minute', async () => {
+    const done = (name, id, due, actual) => feed({
+      name, schedule_id: id, scheduled_time: `2026-11-24T${due}:00-05:00`,
+      completed: true, completed_at: actual, log_id: id,
+    });
+    const breakfast = done('Breakfast', 1, '05:00', '2026-11-24T07:23:00-05:00');
+    const prn = { ...done('Mixed diaper', 2, '07:04', '2026-11-24T07:04:00-05:00'), is_prn: true, intake_type: 'output' };
+    const med = done('Morning dose', 3, '08:30', '2026-11-24T07:40:00-05:00');
+    const task = done('Reposition', 4, '06:00', '2026-11-24T07:15:00-05:00');
+    const fallback = done('Water', 5, '09:30', 'invalid');
+    const pending = feed({ name: 'Pending feed', scheduled_time: '2026-11-24T07:45:00-05:00' });
+    const result = { medications: [med], nutrition: [breakfast, prn, pending, fallback], care_tasks: [task] };
+    vi.stubGlobal('fetch', vi.fn(async () => response(result)));
+    await act(async () => { render(<AdminV2Schedule />); });
+    const hour = document.querySelector('[data-hour="7"]');
+    expect(Array.from(hour.querySelectorAll('.nutrition .admin-v2-schedule-item-name'), el => el.textContent))
+      .toEqual(['Pending feed', 'Mixed diaper', 'Breakfast']);
+    expect(hour).toContainElement(rowFor('Morning dose'));
+    expect(hour).toContainElement(rowFor('Reposition'));
+    expect(document.querySelector('[data-hour="9"]')).toContainElement(rowFor('Water'));
+    expect(within(rowFor('Water')).getByText('09:30')).toBeInTheDocument();
+  });
+
+  it('shows the completion date when an item on the selected schedule was completed after midnight', async () => {
+    const late = feed({ scheduled_time: '2026-11-23T23:00:00-05:00', completed: true,
+      completed_at: '2026-11-24T00:12:00-05:00' });
+    vi.stubGlobal('fetch', vi.fn(async () => response(daily([late]))));
+    await act(async () => { render(<AdminV2Schedule />); });
+    expect(document.querySelector('[data-hour="0"]')).toContainElement(rowFor('Lunch'));
+    expect(within(rowFor('Lunch')).getByText('Nov 24 00:12')).toBeInTheDocument();
   });
 
   it.each([false, true])('refreshes bulk results and preserves incomplete rows when partial failure is %s', async (partialFailure) => {

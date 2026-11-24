@@ -129,7 +129,7 @@ async def get_pulse_ox_data_endpoint(
 
 
 @router.get("/alerts/{alert_id}/data")
-async def get_alert_data(alert_id: int, db: Session = Depends(get_db)):
+async def get_alert_data(alert_id: int, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
     """Get detailed data for a specific alert event"""
     try:
         data = get_pulse_ox_data_for_alert(db, alert_id)

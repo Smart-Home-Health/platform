@@ -69,21 +69,26 @@ def test_alert_extrema_use_only_the_patients_event(
     db_session.flush()
     event = MonitoringAlert(patient_id=patient.id, start_time=start, created_at=start,
                             end_time=start + timedelta(seconds=40) if closed else None,
+                            recovery_start_time=start + timedelta(seconds=7) if source == 'live_recovery' else None,
                             end_source=source, spo2_min=89, spo2_max=89, bpm_min=95, bpm_max=95)
     db_session.add(event)
-    for second, pid, spo2, bpm in [
+    samples = [
+        (-30.001, patient.id, 96, 72), (-30, patient.id, 96, 72), (-15, other.id, 99, 71),
         (-1, patient.id, 61, 30), (0, patient.id, 89, 95),
         (2, patient.id, 84, 79), (3, other.id, 65, 180),
         (4, patient.id, -1, -1), (5, patient.id, 0, 0),
         (6, patient.id, 82, 100), (7, patient.id, 96, 114),
         (9, patient.id, 97, 138), (16, patient.id, 97, 101),
         (24, patient.id, 97, 101), (32, patient.id, 97, 101),
+        (37, patient.id, 97, 101), (37.001, patient.id, 97, 101),
         (40.001, patient.id, 98, 139), (43, patient.id, 97, 143),
-    ]:
+        (70, patient.id, 98, 95), (70.001, patient.id, 97, 95), (3600, patient.id, 97, 72),
+    ]
+    for second, pid, spo2, bpm in samples:
         db_session.add(PulseOxData(patient_id=pid, timestamp=start + timedelta(seconds=second),
                                    spo2=spo2, bpm=bpm, created_at=start))
     db_session.commit()
-    response = admin_client.get(f"/api/monitoring/alerts?patient_id={patient.id}")
+    response = admin_client.get(f"/api/monitoring/alerts?patient_id={patient.id}&detailed=true")
     assert response.status_code == 200
     summary, = response.json()
     assert (summary["spo2_min"], summary["bpm_min"], summary["bpm_max"]) == (82, 79, hr_max)
@@ -92,15 +97,25 @@ def test_alert_extrema_use_only_the_patients_event(
         assert datetime.fromisoformat(end) == start + timedelta(seconds=expected_end)
     else:
         assert end is None
+    assert datetime.fromisoformat(summary['chart_start_time']) == start - timedelta(seconds=30)
+    if closed:
+        assert datetime.fromisoformat(summary['chart_end_time']) == start + timedelta(seconds=expected_end + 30)
+    else:
+        assert summary['chart_end_time'] is None
     detail = admin_client.get(f"/api/monitoring/alerts/{event.id}/data")
     assert detail.status_code == 200
     assert {p["patient_id"] for p in detail.json()} == {patient.id}
+    expected_times = [start + timedelta(seconds=s) for s, pid, _, _ in samples
+                      if pid == patient.id and -30 <= s <= (expected_end + 30 if closed else 180)]
+    for points in (detail.json(), summary['data_points']):
+        assert [datetime.fromisoformat(p['timestamp']) for p in points] == expected_times
 
 
 def test_alert_retains_opening_reading_when_raw_history_is_missing(admin_client, alert):
     summary, = admin_client.get(f"/api/monitoring/alerts?patient_id={alert.patient_id}").json()
     assert summary["spo2_min"] == 82
     assert summary["bpm_min"] is None and summary["bpm_max"] is None
+    assert admin_client.get(f"/api/monitoring/alerts/{alert.id}/data").json() == []
 
 
 @pytest.mark.parametrize("open_ended", [False, True])
@@ -138,9 +153,8 @@ def test_detailed_alert_samples_exclude_interleaved_other_patient(
         f"/api/monitoring/alerts?patient_id={patient.id}&detailed=true")
     assert response.status_code == 200
     alert, = response.json()
-    expected = [samples[0].id, samples[2].id]
-    if open_ended:
-        expected.append(samples[3].id)
+    # The last reading is within the 30s chart context even for the closed alert.
+    expected = [samples[0].id, samples[2].id, samples[3].id]
     assert [point["id"] for point in alert["data_points"]] == expected
 
 
