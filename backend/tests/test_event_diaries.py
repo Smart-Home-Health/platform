@@ -17,6 +17,8 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from crud.backup import export_patient_to_targz, restore_patient_from_targz
+from schemas.care_task import CareTask
+from schemas.care_task_log import CareTaskLog
 from schemas.event_diary import DiaryEvent, EventDiary
 from schemas.medication_log import MedicationLog
 from schemas.nutrition_intake import NutritionIntake
@@ -131,6 +133,37 @@ def test_routes_scope_diaries_and_events_to_patient(admin_client, patient, db_se
     assert admin_client.post(path + '/events', json={**invalid, 'observed_at': '2026-01-17T04:10:00'}).status_code == 422
 
 
+def test_diary_includes_performed_care_at_actual_time(admin_client, patient, db_session, account):
+    from crud.patients import create_patient
+
+    _, path = start(admin_client, patient)
+    other = create_patient(db_session, {'first_name': 'Other', 'last_name': 'Patient', 'account_id': account.id})
+    task = CareTask(name='Reposition', account_id=account.id, created_at=AT, updated_at=AT)
+    db_session.add(task)
+    db_session.flush()
+    start_at, end_at = AT - timedelta(days=1), AT + timedelta(days=1)
+    for when, pid, status, voided in [
+        (start_at, patient.id, 'completed', None), (end_at, patient.id, 'partial', None),
+        (start_at - timedelta(microseconds=1), patient.id, 'completed', None),
+        (end_at + timedelta(microseconds=1), patient.id, 'completed', None),
+        (end_at, other.id, 'completed', None), (end_at, patient.id, 'skipped', None),
+        (end_at, patient.id, 'completed', end_at),
+    ]:
+        db_session.add(CareTaskLog(care_task_id=task.id, patient_id=pid, status=status, completed_at=when,
+            scheduled_time=AT, created_at=AT, voided_at=voided, notes='Left side'))
+    db_session.commit()
+    rows = admin_client.get(path + '/timeline').json()
+    assert [(datetime.fromisoformat(r['at']), r['label']) for r in rows] == [
+        (start_at, 'Care task completed'), (end_at, 'Care task partially completed')]
+    assert all(r['source'] == 'care_task' and r['note'] == 'Reposition · Left side' for r in rows)
+    day = admin_client.get(path + '/day?target_date=2026-01-17').json()
+    assert [(t['name'], t['status']) for t in day['care_tasks']] == [('Reposition', 'partial')]
+
+    db_session.get(CareTaskLog, rows[0]['id']).voided_at = AT
+    db_session.commit()
+    assert admin_client.get(path + '/timeline').json() == rows[1:]
+
+
 def test_diary_requires_clinical_read_access(limited_client, patient):
     assert limited_client.get(f'/api/patients/{patient.id}/diaries').status_code == 403
 
@@ -192,10 +225,15 @@ def test_diary_day_honors_clinical_permissions(admin_client, limited_user, accou
                                  granted_at=datetime.utcnow(), access_level=AccessLevel.VIEWER))
     db_session.add(NutritionOutput(patient_id=patient.id, output_type='urine', occurred_at=AT))
     db_session.add(PulseOxData(patient_id=patient.id, timestamp=AT, spo2=97, created_at=AT))
+    db_session.add(CareTaskLog(patient_id=patient.id, care_task=CareTask(name='Transfer', account_id=account.id,
+                               created_at=AT, updated_at=AT), completed_at=AT, created_at=AT))
     db_session.commit()
     url = path + '/day?target_date=2026-01-16'  # AT is 11:10 PM in New York.
     assert len(admin_client.get(url).json()['nutrition_output']) == 1
+    assert [e['source'] for e in admin_client.get(path + '/timeline').json()] == ['care_task']
     token = create_access_token(user=limited_user, account=account, auth_level='full')
     day = admin_client.get(url, headers={'Authorization': f'Bearer {token}'}).json()
     assert len(day['pulse_ox']) == 1
     assert day['nutrition_output'] == []
+    assert day['care_tasks'] == []
+    assert admin_client.get(path + '/timeline', headers={'Authorization': f'Bearer {token}'}).json() == []

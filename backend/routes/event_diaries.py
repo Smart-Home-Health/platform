@@ -13,7 +13,7 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-"""Patient event diaries with read-through medication and nutrition history."""
+"""Patient event diaries with linked medication, nutrition, and care history."""
 from datetime import date, datetime, timedelta
 from typing import Annotated, Literal
 from uuid import UUID
@@ -23,9 +23,10 @@ from pydantic import AwareDatetime, BaseModel, Field, StringConstraints, model_v
 from sqlalchemy.orm import Session
 
 from crud.patients import get_visible_patient_ids
-from crud.monitoring_timeline import day_streams
+from crud.monitoring_timeline import care_task_logs, day_streams
 from db import get_db
 from dependencies import get_current_user, require_permission, require_read_access
+from schemas.care_task_log import CareTaskLog
 from schemas.event_diary import DiaryEvent, EventDiary
 from schemas.medication import Medication
 from schemas.medication_log import MedicationLog
@@ -37,6 +38,7 @@ router = APIRouter(prefix='/api/patients/{patient_id}/diaries', tags=['diaries']
                    dependencies=[Depends(require_read_access), Depends(require_permission('vitals.read'))])
 
 ButtonLabel = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
+PERFORMED_CARE_STATUSES = ('completed', 'partial')
 
 
 class QuickButton(BaseModel):
@@ -217,10 +219,12 @@ def diary_day(patient_id: int, diary_id: int, target_date: date | None = None,
         sources.add('care_tasks')
     if user.has_permission('nutrition.read'):
         sources.add('nutrition_output')
+    streams = day_streams(db, patient_id, window_start, window_end, sources)
+    streams['care_tasks'] = [task for task in streams['care_tasks'] if task['status'] in PERFORMED_CARE_STATUSES]
     return {
         'date': day, 'today': today, 'first_day': first, 'last_day': last, 'timezone': str(tz),
         'day_start': start, 'day_end': end, 'window_start': window_start, 'window_end': window_end,
-        **day_streams(db, patient_id, window_start, window_end, sources),
+        **streams,
     }
 
 
@@ -229,6 +233,14 @@ def timeline(patient_id: int, diary_id: int, db: Session = Depends(get_db), user
     diary = lookup(db, patient_id, diary_id)
     end = min(diary.ends_at, utc_now()) if diary.ends_at else utc_now()
     entries = [manual_record(e) for e in db.query(DiaryEvent).filter_by(diary_id=diary_id)]
+    if user.has_permission('care_tasks.read'):
+        # The diary includes a completion at its exact end. The shared query takes an exclusive end.
+        logs = care_task_logs(db, patient_id, diary.starts_at, end + timedelta(microseconds=1)).filter(
+            CareTaskLog.status.in_(PERFORMED_CARE_STATUSES))
+        for log in logs:
+            label = 'Care task partially completed' if log.status == 'partial' else 'Care task completed'
+            entries.append(dict(source='care_task', id=log.id, at=log.completed_at, label=label,
+                                note=log.care_task.name + (f' · {log.notes}' if log.notes else '')))
     if diary.include_medications and user.has_permission('medications.read'):
         doses = db.query(MedicationLog, Medication).join(Medication, Medication.id == MedicationLog.medication_id).filter(
             MedicationLog.patient_id == patient_id, MedicationLog.dose_amount > 0,

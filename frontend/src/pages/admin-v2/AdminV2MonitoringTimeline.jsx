@@ -141,7 +141,7 @@ const eventLabel = (type, item) => {
   }
   switch (type) {
     case 'medications': return `${item.name} ${item.dose}`.trim();
-    case 'care_tasks': return item.name;
+    case 'care_tasks': return [item.name, item.status === 'completed' ? '' : item.status, item.notes].filter(Boolean).join(' · ');
     case 'nutrition_intake':
       return `${item.item_name}${item.amount ? ` ${item.amount}${item.amount_unit || ''}` : ''}`;
     case 'nutrition_output': {
