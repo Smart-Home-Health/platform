@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.3
+
+- **All entries** includes care tasks already logged during the diary. Each task shows its actual completion time and notes. Partial completions are labeled, and undoing a task removes it from the diary.
+- Entries of the same type recorded in the same second share one time row. Each medication, dose, or task stays visible in **All entries**, print preview, and the downloaded PDF.
+
 ## 0.6.2
 
 - The diary opens with the study and timeline in view. Tap the floating **+** to record a preset event or choose **Custom** to write an observation. The **•••** menu contains diary settings and print controls.
