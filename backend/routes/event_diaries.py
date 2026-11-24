@@ -69,7 +69,8 @@ class Observation(BaseModel):
 
 class Capture(Observation):
     request_id: UUID
-    label: ButtonLabel
+    # A preset sends its label. A free-form observation sends its description alone.
+    label: ButtonLabel | None = None
 
 
 def patient_access(patient_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
@@ -155,13 +156,19 @@ def capture_event(patient_id: int, diary_id: int, data: Capture, db: Session = D
     existing = db.query(DiaryEvent).filter_by(diary_id=diary_id, request_id=str(data.request_id)).first()
     if existing:
         return manual_record(existing)
-    button = next((b for b in diary.buttons if b['label'] == data.label), None)
-    if not button:
-        raise HTTPException(422, 'This button has changed. Reopen the diary to see current buttons.')
-    question = button.get('question') or None
+    label, question = data.label, None
+    if label is None:
+        if not data.note.strip():
+            raise HTTPException(422, 'Enter a description for the custom observation.')
+        label = 'Custom observation'
+    else:
+        button = next((b for b in diary.buttons if b['label'] == label), None)
+        if not button:
+            raise HTTPException(422, 'This button has changed. Reopen the diary to see current buttons.')
+        question = button.get('question') or None
     check_observation(diary, data, question)
-    event = DiaryEvent(diary_id=diary_id, recorded_by=user.id, question=question,
-                       **data.model_dump(exclude={'request_id'}), request_id=str(data.request_id))
+    event = DiaryEvent(diary_id=diary_id, recorded_by=user.id, question=question, label=label,
+                       **data.model_dump(exclude={'request_id', 'label'}), request_id=str(data.request_id))
     db.add(event)
     db.commit()
     return manual_record(event)

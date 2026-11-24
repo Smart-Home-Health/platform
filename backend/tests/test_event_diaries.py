@@ -44,6 +44,23 @@ def observe(client, path):
     return res.json()
 
 
+def test_freeform_observation_uses_existing_diary_and_retry_key(admin_client, patient):
+    _, path = start(admin_client, patient)
+    events = path + '/events'
+    draft = dict(observed_at=AT.isoformat(), request_id=str(uuid4()), note='Turned toward the window.\nResponded when called.')
+    for invalid in ({'note': '  '}, {'answer': 'Yes'}, {'label': 'Removed preset'},
+                    {'observed_at': (AT - timedelta(days=2)).isoformat()}):
+        assert admin_client.post(events, json={**draft, **invalid}).status_code == 422
+    assert admin_client.get(path + '/timeline').json() == []
+    saved = admin_client.post(events, json=draft)
+    assert saved.status_code == 200
+    row = saved.json()
+    assert row['label'] == 'Custom observation' and row['question'] is None and row['note'] == draft['note']
+    assert admin_client.post(events, json=draft).json() == row
+    assert admin_client.get(path + '/timeline').json() == [row]
+    assert admin_client.put(events + '/' + str(row['id']), json={**draft, 'note': 'Corrected.'}).json()['note'] == 'Corrected.'
+
+
 def test_capture_edit_window_and_archive(admin_client, db_session, patient, account):
     base, path = start(admin_client, patient)
     assert admin_client.get(base).json()['can_write']

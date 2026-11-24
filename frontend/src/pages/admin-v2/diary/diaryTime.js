@@ -21,3 +21,10 @@ export function stamp(instant, zone) {
     minute: '2-digit', second: '2-digit', timeZoneName: 'short',
   });
 }
+
+export function studyRange(start, end, zone) {
+  const format = new Intl.DateTimeFormat(undefined, {
+    timeZone: zone, month: 'short', day: 'numeric', year: 'numeric',
+  });
+  return end ? format.formatRange(new Date(start), new Date(end)) : format.format(new Date(start)) + ' – Ongoing';
+}

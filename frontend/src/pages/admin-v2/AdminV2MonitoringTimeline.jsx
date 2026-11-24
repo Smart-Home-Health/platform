@@ -134,7 +134,11 @@ const formatDuration = (ms) => {
 };
 
 const eventLabel = (type, item) => {
-  if (item.entry) return item.entry.source === 'observation' ? item.entry.label : item.entry.note || item.entry.label;
+  if (item.entry) {
+    const { label, note, source } = item.entry;
+    if (source === 'observation' && note) return `${label} · ${note}`;
+    return note || label;
+  }
   switch (type) {
     case 'medications': return `${item.name} ${item.dose}`.trim();
     case 'care_tasks': return item.name;
