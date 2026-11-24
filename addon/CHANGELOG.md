@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.2
+
+- The diary opens with the study and timeline in view. Tap the floating **+** to record a preset event or choose **Custom** to write an observation. The **•••** menu contains diary settings and print controls.
+- **Print diary** opens a preview of the full study. Use **Print** or **Save PDF**, including when the embedded browser suppresses the print dialog. **Share PDF** is available on supported devices.
+
 ## 0.6.1
 
 - Open a diary to see its observations alongside SpO₂, heart rate, alerts, care events, and room conditions. Choose a day, zoom in, or tap an observation to inspect and edit it. **All entries** and **Print diary** cover the full study.
