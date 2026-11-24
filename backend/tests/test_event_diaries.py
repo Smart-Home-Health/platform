@@ -44,7 +44,7 @@ def observe(client, path):
     return res.json()
 
 
-def test_freeform_observation_uses_existing_diary_and_retry_key(admin_client, patient):
+def test_freeform_observation_uses_existing_diary_and_retry_key(admin_client, patient, db_session, account):
     _, path = start(admin_client, patient)
     events = path + '/events'
     draft = dict(observed_at=AT.isoformat(), request_id=str(uuid4()), note='Turned toward the window.\nResponded when called.')
@@ -55,10 +55,24 @@ def test_freeform_observation_uses_existing_diary_and_retry_key(admin_client, pa
     saved = admin_client.post(events, json=draft)
     assert saved.status_code == 200
     row = saved.json()
+    assert row['is_custom'] is True
     assert row['label'] == 'Custom observation' and row['question'] is None and row['note'] == draft['note']
     assert admin_client.post(events, json=draft).json() == row
     assert admin_client.get(path + '/timeline').json() == [row]
-    assert admin_client.put(events + '/' + str(row['id']), json={**draft, 'note': 'Corrected.'}).json()['note'] == 'Corrected.'
+    url = events + '/' + str(row['id'])
+    assert admin_client.put(url, json={**draft, 'note': '  ', 'is_custom': False}).status_code == 422
+    assert admin_client.get(path + '/timeline').json() == [row]
+    assert admin_client.put(url, json={**draft, 'note': 'Corrected.'}).json()['note'] == 'Corrected.'
+    assert admin_client.put(path, json={**FORM, 'buttons': [{'label': 'Custom observation'}]}).status_code == 200
+    preset = admin_client.post(events, json={**draft, 'request_id': str(uuid4()), 'label': 'Custom observation'}).json()
+    assert preset['is_custom'] is False and preset['label'] == row['label']
+    assert admin_client.put(events + '/' + str(preset['id']), json={**draft, 'note': ''}).status_code == 200
+    archive, _ = export_patient_to_targz(db_session, patient.id, account.id)
+    restored = restore_patient_from_targz(db_session, archive, account.id)['new_patient_id']
+    diary = db_session.query(EventDiary).filter_by(patient_id=restored).one()
+    rows = admin_client.get(f'/api/patients/{restored}/diaries/{diary.id}/timeline').json()
+    assert sorted((r['is_custom'], r['label'], r['note']) for r in rows) == [
+        (False, 'Custom observation', ''), (True, 'Custom observation', 'Corrected.')]
 
 
 def test_capture_edit_window_and_archive(admin_client, db_session, patient, account):

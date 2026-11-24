@@ -49,6 +49,17 @@ describe('reusable diary settings', () => {
     expect(save).toHaveBeenCalledWith({ observed_at: at, note: 'Lights on', answer: null });
   });
 
+  it.each([true, false])('requires a description when editing a free-form observation: %s', (custom) => {
+    const save = vi.fn();
+    const event = { id: 7, at: '2026-11-23T15:00:00Z', label: 'Custom observation', note: 'Reading.', is_custom: custom };
+    render(<ObservationForm event={event} onSave={save} />);
+    const note = screen.getByLabelText(/Description/);
+    fireEvent.change(note, { target: { value: '  ' } });
+    expect(screen.getByRole('button', { name: 'Save changes' }).disabled).toBe(custom);
+    fireEvent.submit(note.closest('form'));
+    expect(save).toHaveBeenCalledTimes(custom ? 0 : 1);
+  });
+
   it.each([
     ['2026-11-01T05:30:00Z', '2026-11-01T01:31', '2026-11-01T05:31:00.000Z'],
     ['2026-11-01T06:30:00Z', '2026-11-01T01:31', '2026-11-01T06:31:00.000Z'],

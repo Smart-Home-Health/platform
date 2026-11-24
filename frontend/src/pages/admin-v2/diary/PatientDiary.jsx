@@ -105,7 +105,7 @@ function DiaryDetail({ diary, diaries, patient, base, canWrite, zone, onSelect, 
     const inStudy = at >= new Date(diary.starts_at) && (!diary.ends_at || at <= new Date(diary.ends_at));
     if (!button || !inStudy) {
       setError(''); setPanel(null);
-      setEvent({ ...button, request_id, at: inStudy ? at.toISOString() : null });
+      setEvent({ ...button, is_custom: !button, request_id, at: inStudy ? at.toISOString() : null });
       return;
     }
     capture({ label: button.label, observed_at: at.toISOString(), request_id });

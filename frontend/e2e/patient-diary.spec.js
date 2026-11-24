@@ -51,7 +51,8 @@ test('patient card opens the correct diary and captures, corrects and prints an 
         expect(body).toEqual(interruptedCapture);
       } else {
         event = { source: 'observation', id: 17 + observations.size, label: body.label || 'Custom observation',
-          at: body.observed_at, note: body.note, question: diary.buttons.find(b => b.label === body.label)?.question };
+          at: body.observed_at, note: body.note, is_custom: !body.label,
+          question: diary.buttons.find(b => b.label === body.label)?.question };
         observations.set(event.id, event);
         if (body.label === 'Questionable event') {
           interruptedCapture = body;

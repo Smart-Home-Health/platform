@@ -114,13 +114,14 @@ export function DiarySettings({ initial, reusable, onSave, onClose, busy, error 
 }
 
 export function ObservationForm({ event, onSave, onClose, onRemove, error, busy }) {
-  const custom = !event.label;
+  const custom = event.is_custom;
   const [time, setTime] = useState(localInput(event.at));
   const [note, setNote] = useState(event.note || '');
   const [answer, setAnswer] = useState(event.answer || '');
   const [removing, setRemoving] = useState(false);
   function submit(e) {
     e.preventDefault();
+    if (custom && !note.trim()) return;
     onSave({ observed_at: fromInput(time, event.at), note, answer: answer || null });
   }
   const description = <EmField label="Description" optional={!custom} required={custom} htmlFor="diary-note">
