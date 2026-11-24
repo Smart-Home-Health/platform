@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import config, { apiFetch } from '../../../config';
 import { useAdminPatient } from '../../../contexts/AdminPatientContext';
@@ -28,6 +28,7 @@ import PatientGate from '../components/PatientGate';
 import { PatientDayTimeline } from '../AdminV2MonitoringTimeline';
 import { DiarySettings, ObservationForm } from './DiaryForms';
 import DiaryTimeline from './DiaryTimeline';
+import { diaryReport } from './diaryReport';
 import { stamp, studyRange } from './diaryTime';
 import './diary.css';
 
@@ -46,6 +47,8 @@ async function request(path, method = 'GET', payload, signal) {
 function DiaryDetail({ diary, diaries, patient, base, canWrite, zone, onSelect, onCreate, onUpdated }) {
   const path = base + '/' + diary.id;
   const [entries, setEntries] = useState(null);
+  const report = useMemo(() => entries && diaryReport(patient, diary, entries, zone), [patient, diary, entries, zone]);
+  const [printReport, setPrintReport] = useState(null);
   const [view, setView] = useState('day');
   const [loadError, setLoadError] = useState('');
   const [refresh, setRefresh] = useState(0);
@@ -71,7 +74,7 @@ function DiaryDetail({ diary, diaries, patient, base, canWrite, zone, onSelect, 
   }, [path, refresh]);
 
   function close() {
-    setEvent(null); setPanel(null); setError('');
+    setEvent(null); setPanel(null); setPrintReport(null); setError('');
     requestAnimationFrame(() => returnFocus.current?.focus({ preventScroll: true }));
   }
   function openPanel(name, trigger) {
@@ -130,7 +133,7 @@ function DiaryDetail({ diary, diaries, patient, base, canWrite, zone, onSelect, 
     {loadError && <p role="alert" className="em-error">{loadError}</p>}
     {view === 'day' && <PatientDayTimeline patient={patient} diaryPath={path} diaryEntries={entries}
       refresh={refresh} onEditObservation={editObservation} />}
-    {entries ? <DiaryTimeline patient={patient} diary={diary} entries={entries} zone={zone}
+    {report ? <DiaryTimeline report={report} printReport={printReport} onClosePrint={close}
       showEntries={view === 'entries'} onEdit={editObservation} /> : !loadError && <p>Loading events…</p>}
     {canWrite && <button type="button" className="diary-add" aria-label="Record an event" title="Record an event"
       aria-haspopup="dialog" onClick={e => openPanel('record', e.currentTarget)}><PlusIcon size={26} /></button>}
@@ -142,8 +145,10 @@ function DiaryDetail({ diary, diaries, patient, base, canWrite, zone, onSelect, 
         {canWrite && <button className="em-cancel" disabled={busy || !!pending}
           onClick={() => { setPanel(null); onCreate(); }}>New diary</button>}
         <button className="em-cancel" disabled={busy} onClick={() => { close(); setRefresh(n => n + 1); }}>Refresh</button>
-        <button className="em-cancel" disabled={cannotPrint} onClick={() => { close(); window.print(); }}>Print diary</button>
+        <button className="em-cancel" disabled={cannotPrint} onClick={() => { setPanel(null); setPrintReport(report); }}>Print diary</button>
       </div>
+      {cannotPrint && <p className="em-hint" role="status">{loadError ? 'Refresh to load the entries for printing.'
+        : busy ? 'Saving changes before printing…' : 'Loading entries for printing…'}</p>}
     </EntityModal>}
     {canWrite && panel === 'record' && <EntityModal open title="Record an event"
       onOpenChange={open => { if (!open && !busy && !pending) close(); }} hideClose={busy || !!pending}>

@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 import { expect, test } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 
 test.use({ viewport: { width: 320, height: 740 }, hasTouch: true, timezoneId: 'America/New_York' });
 
@@ -177,4 +178,57 @@ test('patient card opens the correct diary and captures, corrects and prints an 
   await expect(dialog.getByRole('button', { name: 'New diary' })).toHaveCount(0);
   expect(paths).not.toContain('/api/patients/1/diaries');
   expect(paths).not.toContain('/api/monitoring/timeline');
+});
+
+test('read-only diary offers a full-study PDF when the host suppresses printing', async ({ page }, testInfo) => {
+  const base = '/api/patients/2/diaries';
+  const starts = '2026-11-22T15:00:00Z';
+  const patient = { id: 2, first_name: 'Avery', last_name: 'Green' };
+  const diary = { id: 9, name: 'Home EEG', starts_at: starts, ends_at: null, buttons: [] };
+  const entries = Array.from({ length: 61 }, (_, i) => ({
+    id: i + 1, source: 'observation', label: 'Observation',
+    at: new Date(Date.parse(starts) + i * 30 * 60000).toISOString(),
+    note: i === 0 ? 'Turned toward the window.' : i === 60 ? 'Last entry of the study.' : 'Resting.',
+  }));
+  await page.routeWebSocket('**/ws/sensors', () => {});
+  await page.route('**/api/**', route => {
+    const path = new URL(route.request().url()).pathname;
+    const responses = {
+      '/api/auth/session': { user_id: 1, account_id: 1, is_system_admin: true },
+      '/api/auth/first-run': { is_first_run: false },
+      '/api/patients': [patient],
+      [base]: { can_write: false, timezone: 'America/New_York', diaries: [diary] },
+      [base + '/9/timeline']: entries,
+      [base + '/9/day']: { date: '2026-11-23', today: '2026-11-23', first_day: '2026-11-22',
+        last_day: '2026-11-23', timezone: 'America/New_York', day_start: '2026-11-23T05:00:00Z',
+        day_end: '2026-11-24T05:00:00Z' },
+    };
+    return route.fulfill({ json: responses[path] || [] });
+  });
+  // Downloads are allowed in this frame, but window.print() is suppressed.
+  await page.route('**/test-diary-host', route => route.fulfill({ contentType: 'text/html',
+    body: '<meta name="viewport" content="width=device-width,initial-scale=1"><iframe title="Health" style="position:fixed;inset:0;width:100%;height:100%;border:0" sandbox="allow-scripts allow-same-origin allow-downloads" src="/care/diary?patient=2"></iframe>' }));
+  await page.goto('/test-diary-host');
+  const embedded = page.frameLocator('iframe');
+  await expect(embedded.getByRole('heading', { name: 'Home EEG' })).toBeVisible();
+  await expect(embedded.getByRole('button', { name: 'Record an event' })).toHaveCount(0);
+  await embedded.getByRole('button', { name: 'Diary actions' }).tap();
+  await expect(embedded.getByRole('button', { name: 'New diary' })).toHaveCount(0);
+  await embedded.getByRole('button', { name: 'Print diary' }).tap();
+  const preview = embedded.getByRole('dialog', { name: 'Print preview' });
+  await expect(preview).toContainText('Avery Green');
+  await expect(preview).toContainText('Turned toward the window.');
+  await expect(preview).toContainText('Last entry of the study.');
+  await expect(preview.getByRole('row')).toHaveCount(62);
+  await preview.getByRole('button', { name: 'Print', exact: true }).tap();
+  await expect(preview).toContainText('save the PDF');
+  const downloaded = page.waitForEvent('download');
+  await preview.getByRole('link', { name: 'Save PDF' }).tap();
+  const file = await downloaded;
+  expect(file.suggestedFilename()).toBe('event-diary.pdf');
+  const output = testInfo.outputPath('event-diary.pdf');
+  await file.saveAs(output);
+  expect((await readFile(output)).subarray(0, 5).toString()).toBe('%PDF-');
+  await preview.getByRole('button', { name: 'Close' }).tap();
+  await expect(preview).toHaveCount(0);
 });
