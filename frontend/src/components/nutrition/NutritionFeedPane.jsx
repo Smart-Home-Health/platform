@@ -24,7 +24,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import config, { apiFetch } from '../../config';
-import { bucketFor, recurrenceLabel } from '../schedule/scheduleRollup';
+import { itemBucket, recurrenceLabel } from '../schedule/scheduleRollup';
 import { ChevronRightIcon } from '../Icons';
 import IntakeItemsEditor from './IntakeItemsEditor';
 import { feedTarget, rowIsValid, rowsFromScheduleRow } from './intakeItemRows';
@@ -119,7 +119,7 @@ export default function NutritionFeedPane({
 
   if (!item) return null;
 
-  const bucket = bucketFor(item.status);
+  const bucket = itemBucket(item);
   const canRecord = isFlush
     ? Number(flushAmount) > 0
     : (rows.length > 0 && rows.every(rowIsValid));

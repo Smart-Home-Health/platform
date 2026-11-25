@@ -458,6 +458,17 @@ def get_patient_nutrition_mqtt_state(db: Session, patient_id: int) -> dict:
         out["water_last"] = round(_intake_amount_to_ml(last_liquid.amount, last_liquid.amount_unit))
     return out
 
+def _linked_intake_schedule(db, patient_id, schedule_id, scheduled_time):
+    if schedule_id is None:
+        return None
+    schedule = db.query(NutritionSchedule).filter_by(id=schedule_id, patient_id=patient_id).first()
+    if schedule is None:
+        raise ValueError('The linked schedule does not belong to this care profile.')
+    if scheduled_time is not None and schedule.schedule_type == 'diaper_check':
+        raise ValueError('Record a dry check or diaper change from the scheduled check.')
+    return schedule
+
+
 def create_nutrition_intake(db: Session, intake_data: dict, patient_id: int = None) -> NutritionIntake:
     """Create a new nutrition intake record"""
     try:
@@ -468,6 +479,7 @@ def create_nutrition_intake(db: Session, intake_data: dict, patient_id: int = No
                 raise ValueError("No active patient found")
             patient_id = active_patient.id
         
+        _linked_intake_schedule(db, patient_id, intake_data.get('schedule_id'), intake_data.get('scheduled_time'))
         # Create the nutrition intake record
         nutrition_intake = NutritionIntake(
             patient_id=patient_id,
@@ -549,6 +561,7 @@ def create_nutrition_intake_event(
     from crud.nutrition_library import _account_id_for_patient, _scaled
     from schemas.nutrition_item import NutritionItem
 
+    schedule = _linked_intake_schedule(db, patient_id, schedule_id, scheduled_time)
     when = consumed_at or utc_now()
     group_id = str(uuid.uuid4())
     account_id = _account_id_for_patient(db, patient_id)
@@ -602,19 +615,16 @@ def create_nutrition_intake_event(
         # follow-up in the same transaction. Gated on scheduled_time so the
         # flush's own completion (schedule_id set, scheduled_time None)
         # cannot recursively queue another one.
-        if schedule_id and scheduled_time:
-            schedule = db.query(NutritionSchedule).filter(
-                NutritionSchedule.id == schedule_id).first()
-            if schedule is not None:
-                maybe_spawn_flush_followup(
-                    db, schedule,
-                    patient_id=patient_id,
-                    group_id=group_id,
-                    rows=items,
-                    consumed_at=when,
-                    feed_scheduled_time=scheduled_time,
-                    recorded_by=recorded_by,
-                )
+        if schedule is not None and scheduled_time:
+            maybe_spawn_flush_followup(
+                db, schedule,
+                patient_id=patient_id,
+                group_id=group_id,
+                rows=items,
+                consumed_at=when,
+                feed_scheduled_time=scheduled_time,
+                recorded_by=recorded_by,
+            )
 
         db.commit()
         for intake in created:
@@ -780,6 +790,32 @@ def get_nutrition_summary(db: Session, patient_id: int, target_date: date = None
     
     return summary
 
+def _sync_managed_feed_edit(db, intake, changed):
+    fields = {'consumed_at', 'amount', 'amount_unit', 'duration_minutes', 'rate_ml_per_hr'}
+    if not (fields.intersection(changed) and intake.event_group_id and intake.scheduled_time and intake.schedule_id):
+        return
+    from crud.schedule_manager import read_settings
+    from schemas.nutrition_flush_followup import NutritionFlushFollowup
+
+    settings = read_settings(db, intake.patient_id)
+    if not settings.feeds_enabled or intake.schedule_id not in settings.feed_schedule_ids:
+        return
+    group = db.query(NutritionIntake).filter_by(patient_id=intake.patient_id,
+                                                schedule_id=intake.schedule_id,
+                                                event_group_id=intake.event_group_id).all()
+    if 'consumed_at' in changed:
+        for sibling in group:
+            sibling.consumed_at = intake.consumed_at
+            sibling.updated_at = intake.updated_at
+    flush = db.query(NutritionFlushFollowup).filter_by(patient_id=intake.patient_id, status='pending',
+                                                       source_event_group_id=intake.event_group_id).first()
+    if flush:
+        components = [dict(amount=r.amount, amount_unit=r.amount_unit,
+                           duration_minutes=r.duration_minutes, rate_ml_per_hr=r.rate_ml_per_hr) for r in group]
+        duration = _feed_duration_minutes(components, intake.schedule)
+        flush.due_at = intake.consumed_at + timedelta(minutes=duration)
+
+
 def update_nutrition_intake(db: Session, intake_id: int, update_data: dict) -> Optional[NutritionIntake]:
     """Update a nutrition intake record"""
     try:
@@ -793,6 +829,7 @@ def update_nutrition_intake(db: Session, intake_id: int, update_data: dict) -> O
                 setattr(intake, field, value)
         
         intake.updated_at = utc_now()
+        _sync_managed_feed_edit(db, intake, update_data)
         
         db.commit()
         db.refresh(intake)
@@ -1342,15 +1379,14 @@ def schedule_flush_components(schedule: NutritionSchedule) -> List[dict]:
 FLUSH_FALLBACK_DURATION_MINUTES = 60.0
 
 
-def _feed_duration_minutes(rows: List[dict], schedule: NutritionSchedule) -> float:
-    """How long the feed runs, for scheduling the flush after it.
+def known_feed_duration_minutes(rows: List[dict], schedule: NutritionSchedule) -> Optional[float]:
+    """Recorded or calculable feed run time, excluding the flush.
 
     Precedence: an explicit duration on a logged row wins; else the whole
     mix's fluid volume divided by the pump rate — for a tube-fed patient the
     formula AND the juices all run through the pump, and items are not
     always typed tube_feed, so neither sum nor rate is gated on the type.
-    Rate falls back from the logged rows to the schedule's components; with
-    no rate anywhere, a fixed fallback keeps the flush coming due.
+    Rate falls back from the logged rows to the schedule's components.
     """
     explicit = [r['duration_minutes'] for r in rows
                 if r.get('duration_minutes') not in (None, 0)]
@@ -1369,7 +1405,12 @@ def _feed_duration_minutes(rows: List[dict], schedule: NutritionSchedule) -> flo
     if total_ml and rate:
         return total_ml / float(rate) * 60.0
 
-    return FLUSH_FALLBACK_DURATION_MINUTES
+    return None
+
+
+def _feed_duration_minutes(rows: List[dict], schedule: NutritionSchedule) -> float:
+    """Keep a flush coming due even if the run time has not been specified."""
+    return known_feed_duration_minutes(rows, schedule) or FLUSH_FALLBACK_DURATION_MINUTES
 
 
 def maybe_spawn_flush_followup(

@@ -16,11 +16,15 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 import React, { useState, useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
 import { PatientSelectorModal, IntakeSheet, OutputSheet, MedicationDoseModal, UpdateQuantityModal, CareTaskCompleteModal } from './components';
 import IntakeItemsEditor from '../../components/nutrition/IntakeItemsEditor';
 import { nutritionService } from '../../services/nutrition';
+import FixedCheckDialog from '../../components/schedule/FixedCheckDialog';
+import MoveFeedDialog from '../../components/schedule/MoveFeedDialog';
+import { scheduleManagerService } from '../../services/scheduleManager';
+import { BathroomCheckCard } from './care-profile/BathroomCheckCard';
 import {
   feedTarget, rowIsValid, rowToItemPayload, rowsFromScheduleRow,
 } from '../../components/nutrition/intakeItemRows';
@@ -71,16 +75,17 @@ function parseScheduleTimestamp(value) {
 function withLocalTimes(item) {
   const scheduledAt = parseScheduleTimestamp(item.scheduled_time);
   const completedAt = item.completed ? parseScheduleTimestamp(item.completed_at) : null;
-  const time = completedAt ?? scheduledAt;
+  const effectiveAt = parseScheduleTimestamp(item.effective_time) ?? scheduledAt;
+  const time = completedAt ?? effectiveAt;
   return {
-    ...item, scheduledAt, completedAt,
+    ...item, scheduledAt, completedAt, effectiveAt,
     hour: time?.getHours() ?? item.hour,
     minute: time?.getMinutes() ?? item.minute,
   };
 }
 
 function ScheduleItemTime({ item }) {
-  const { scheduledAt, completedAt } = item;
+  const { scheduledAt, completedAt, effectiveAt } = item;
   let text = `${String(item.hour).padStart(2, '0')}:${String(item.minute).padStart(2, '0')}`;
   let title;
   if (item.in_grace) {
@@ -92,14 +97,78 @@ function ScheduleItemTime({ item }) {
       text = `${day} ${text}`;
     }
     title = scheduledAt ? `Given at ${text} (scheduled ${slotLabel(scheduledAt)})` : `Given at ${text}`;
+  } else if (item.managed_feed && effectiveAt && scheduledAt) {
+    if (effectiveAt.toDateString() !== scheduledAt.toDateString()) {
+      text = `${effectiveAt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${text}`;
+    }
+    title = item.timing_reason || undefined;
   }
   return <span className="admin-v2-schedule-item-time" title={title}><ClockIcon size={12} />{text}</span>;
 }
 
+function useDailyRoutines(patientId, rows, canRead) {
+  const [state, setState] = useState(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    if (!patientId || !canRead) return;
+    let current = true;
+    scheduleManagerService.get(patientId).then(result => {
+      if (current) {
+        setState({ ...result, patientId });
+        setError('');
+      }
+    }).catch(() => {
+      if (current) {
+        setState(null);
+        setError('Could not load check suggestions.');
+      }
+    });
+    return () => { current = false; };
+  }, [patientId, rows, canRead]);
+
+  return { state: state?.patientId === patientId ? state : null, update: (next) => setState({ ...next, patientId }), error };
+}
+
+function DailyRoutines({ patientId, today, rows, canRead, manager, onScheduledCheck }) {
+  const { state, update, error } = manager;
+  if (!canRead) return null;
+  const overnight = rows.find(row => row.managed_feed && !row.completed && !row.is_yesterday &&
+    (row.overnight_target_at || row.schedule_id === state?.settings?.overnight_schedule_id));
+  const linkedCheck = state?.suggestion && rows.find(row => row.row_kind === 'diaper_check' && !row.completed &&
+    row.schedule_id === state.suggestion.check_schedule_id &&
+    Date.parse(row.scheduled_time) === Date.parse(state.suggestion.check_scheduled_time));
+  return (
+    <section className="schedule-routines" aria-label="Schedule manager">
+      <div className="schedule-routines-summary">
+        {overnight && (
+          <span>
+            <strong>Overnight start {overnight.effectiveAt?.toDateString() !== overnight.scheduledAt?.toDateString()
+              ? overnight.effectiveAt?.toLocaleDateString(undefined, { weekday: 'short' }) + ' ' : ''}{slotLabel(overnight.effectiveAt)}</strong>
+            {overnight.overnight_target_at && <span className={overnight.overnight_delayed ? 'schedule-routines-late' : ''}>
+              {' · '}Target {slotLabel(overnight.overnight_target_at)}
+              {overnight.overnight_delayed ? ' · Later than planned' : ''}
+            </span>}
+          </span>
+        )}
+        <Link to={`/care/configuration/patients/${patientId}/schedule-manager`}>Manage routines</Link>
+      </div>
+      {today && error && <p className="em-error" role="status">{error}</p>}
+      {today && state?.suggestion && (linkedCheck
+        ? <p>Check suggested after {state.suggestion.feed_name}.{' '}
+          <button className="cfg-ghost" disabled={!state.can_record} onClick={() => onScheduledCheck(linkedCheck)}>
+            Open {linkedCheck.name}
+          </button></p>
+        : <BathroomCheckCard state={state} patientId={patientId} onUpdate={update} />)}
+    </section>
+  );
+}
+
 const AdminV2Schedule = () => {
-  const { user } = useAuth();
+  const { user, hasReadAccess } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const scrollContainerRef = useRef(null);
+  const requestNumber = useRef(0);
+  const scrolledDay = useRef(null);
   const { 
     patients, 
     selectedPatient: contextPatient, 
@@ -123,6 +192,10 @@ const AdminV2Schedule = () => {
     nutrition: [],
     care_tasks: []
   });
+  const canReadRoutines = hasReadAccess !== false && Boolean(user?.is_system_admin || user?.is_superuser || user?.permissions?.includes('nutrition.read'));
+  const manager = useDailyRoutines(selectedPatient?.id, scheduleData.nutrition, canReadRoutines);
+  const [moveFeed, setMoveFeed] = useState(null);
+  const [fixedCheck, setFixedCheck] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [completing, setCompleting] = useState({}); // Track items being completed
@@ -268,56 +341,73 @@ const AdminV2Schedule = () => {
 
   // Fetch schedule when patient or date changes
   useEffect(() => {
-    if (selectedPatient) {
-      fetchSchedule();
-    }
+    if (!selectedPatient) return;
+    setMoveFeed(null);
+    setFixedCheck(null);
+    setShowCompleteModal(false);
+    fetchSchedule();
+    const refresh = () => {
+      if (!document.hidden && isToday(selectedDate)) fetchSchedule(true);
+    };
+    const timer = window.setInterval(refresh, 60000);
+    window.addEventListener('focus', refresh);
+    return () => {
+      requestNumber.current += 1;
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on patient change only
   }, [selectedPatient, selectedDate]);
 
   // Scroll to current hour on load
   useEffect(() => {
-    if (scrollContainerRef.current && isToday(selectedDate)) {
+    const dayKey = `${selectedPatient?.id}-${selectedDate.toDateString()}`;
+    if (scrollContainerRef.current && isToday(selectedDate) && scrolledDay.current !== dayKey) {
       const currentHour = new Date().getHours();
       const hourRow = scrollContainerRef.current.querySelector(`[data-hour="${currentHour}"]`);
       if (hourRow) {
+        scrolledDay.current = dayKey;
         hourRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
     }
-  }, [scheduleData, selectedDate]);
+  }, [scheduleData, selectedDate, selectedPatient?.id]);
 
-  const fetchSchedule = async () => {
+  const fetchSchedule = async (background = false) => {
     if (!selectedPatient) return;
+    const request = ++requestNumber.current;
     
     try {
-      setLoading(true);
+      if (!background) setLoading(true);
       setError(null);
       
       const dateParam = formatDateForApi(selectedDate);
       // Pass user's TZ offset (minutes user-local is ahead of UTC). The backend
       // uses this to compute the user-local day's UTC range so cron firings,
       // completion logs, and PRN doses all bucket onto the right day.
-      const tzOffsetMinutes = -new Date().getTimezoneOffset();
+      const tzOffsetMinutes = -selectedDate.getTimezoneOffset();
       const response = await fetch(
-        `${config.apiUrl}/api/schedule/daily?patient_id=${selectedPatient.id}&target_date=${dateParam}&tz_offset_minutes=${tzOffsetMinutes}`,
+        `${config.apiUrl}/api/schedule/daily?patient_id=${selectedPatient.id}&target_date=${dateParam}&tz_offset_minutes=${tzOffsetMinutes}&include_prior_day=true`,
         { credentials: 'include' }
       );
 
       if (response.ok) {
         const data = await response.json();
-        
+        if (request !== requestNumber.current) return;
+        const nutrition = (data.nutrition || []).map(withLocalTimes).filter(row =>
+          !row.is_yesterday || (row.managed_feed && row.effectiveAt?.toDateString() === selectedDate.toDateString()));
         setScheduleData({
-          medications: (data.medications || []).map(withLocalTimes),
-          nutrition: (data.nutrition || []).map(withLocalTimes),
-          care_tasks: (data.care_tasks || []).map(withLocalTimes)
+          medications: (data.medications || []).filter(row => !row.is_yesterday || row.in_grace).map(withLocalTimes),
+          nutrition,
+          care_tasks: (data.care_tasks || []).filter(row => !row.is_yesterday).map(withLocalTimes),
         });
-      } else {
+      } else if (request === requestNumber.current) {
         setError('Failed to load schedule');
       }
     } catch (err) {
-      setError('Error connecting to server');
+      if (request === requestNumber.current) setError('Error connecting to server');
       console.error('Error fetching schedule:', err);
     } finally {
-      setLoading(false);
+      if (request === requestNumber.current) setLoading(false);
     }
   };
 
@@ -365,7 +455,7 @@ const AdminV2Schedule = () => {
                   type === 'nutrition' ? nutritionByHour[hour] :
                   careTasksByHour[hour];
     
-    const incompleteItems = items?.filter(i => !i.completed) || [];
+    const incompleteItems = items?.filter(i => !i.completed && !i.skipped && i.row_kind !== 'diaper_check' && i.row_kind !== 'flush') || [];
     if (incompleteItems.length === 0) return;
     
     setCompleteModalData({
@@ -421,7 +511,7 @@ const AdminV2Schedule = () => {
       ? localDateTimeToUTC(completeFormData.completed_at)
       : null;
     const itemIsOffWindow = (item) => {
-      const { status } = checkAdministrationWindow(item.scheduled_time, completedAtUtc);
+      const { status } = checkAdministrationWindow(item.effective_time ?? item.scheduled_time, completedAtUtc);
       return status === 'early' || status === 'late';
     };
 
@@ -737,9 +827,14 @@ const AdminV2Schedule = () => {
       byHour[h] = [];
     }
     items.forEach(item => {
-      if (byHour[item.hour] !== undefined) {
-        byHour[item.hour].push(item);
-      }
+      // A delayed overnight run stays at the end of its original care evening.
+      // It is also actionable on the following day's grid at its effective hour.
+      const dayDifference = item.managed_feed && item.effectiveAt
+        ? Math.max(0, Math.round((new Date(item.effectiveAt).setHours(0, 0, 0, 0) -
+          new Date(selectedDate).setHours(0, 0, 0, 0)) / 86400000))
+        : 0;
+      const key = item.hour + 24 * dayDifference;
+      (byHour[key] ??= []).push(item);
     });
     Object.values(byHour).forEach(group => {
       group.sort((a, b) => {
@@ -761,8 +856,15 @@ const AdminV2Schedule = () => {
   const nutritionByHour = getItemsByHour(scheduleData.nutrition);
   const careTasksByHour = getItemsByHour(scheduleData.care_tasks);
 
+  const displayedHours = Object.keys(nutritionByHour).map(Number).sort((a, b) => a - b);
+
   // Format hour for display
   const formatHour = (hour) => {
+    if (hour >= 24) {
+      const day = new Date(selectedDate);
+      day.setHours(hour, 0, 0, 0);
+      return `${day.toLocaleDateString(undefined, { weekday: 'short' })} ${formatHour(hour % 24)}`;
+    }
     if (hour === 0) return '12 AM';
     if (hour < 12) return `${hour} AM`;
     if (hour === 12) return '12 PM';
@@ -784,8 +886,8 @@ const AdminV2Schedule = () => {
   // but they're extra care, not part of "X of Y scheduled items done".
   const totalMeds = scheduleData.medications.filter(m => !m.is_prn && !m.in_grace).length;
   const completedMeds = scheduleData.medications.filter(m => !m.is_prn && !m.in_grace && m.completed).length;
-  const totalNutrition = scheduleData.nutrition.filter(n => !n.is_prn).length;
-  const completedNutrition = scheduleData.nutrition.filter(n => !n.is_prn && n.completed).length;
+  const totalNutrition = scheduleData.nutrition.filter(n => !n.is_prn && !n.is_yesterday).length;
+  const completedNutrition = scheduleData.nutrition.filter(n => !n.is_prn && !n.is_yesterday && n.completed).length;
   const totalTasks = scheduleData.care_tasks.filter(t => !t.is_prn).length;
   const completedTasks = scheduleData.care_tasks.filter(t => !t.is_prn && t.completed).length;
 
@@ -907,6 +1009,10 @@ const AdminV2Schedule = () => {
               </button>
             </div>
 
+            <DailyRoutines key={selectedPatient.id} patientId={selectedPatient.id}
+              today={isToday(selectedDate)} rows={scheduleData.nutrition}
+              canRead={canReadRoutines} manager={manager} onScheduledCheck={setFixedCheck} />
+
             {/* Summary Stats - on mobile: compact cards side-by-side, act as tab selector (no separate tab bar) */}
             <div className="admin-v2-summary-stats admin-v2-schedule-stats" style={{ marginBottom: '1.5rem' }}>
               <div className="admin-v2-schedule-stats-spacer" />
@@ -996,7 +1102,7 @@ const AdminV2Schedule = () => {
                         <div className="admin-v2-schedule-col tasks" />
                       </div>
                     )}
-                    {[...Array(24)].map((_, hour) => (
+                    {displayedHours.map(hour => (
                       <div 
                         key={hour} 
                         className={`admin-v2-schedule-row ${hour === currentHour ? 'current-hour' : ''} ${hasItemsInHour(hour) ? 'has-items' : ''}`}
@@ -1054,7 +1160,7 @@ const AdminV2Schedule = () => {
                         >
                           {nutritionByHour[hour]?.length > 0 && (
                             <div className="admin-v2-schedule-group nutrition">
-                              {nutritionByHour[hour].some(n => !n.completed) && (
+                              {nutritionByHour[hour].some(n => !n.completed && !n.skipped && n.row_kind !== 'diaper_check' && n.row_kind !== 'flush') && (
                                 <button
                                   className="admin-v2-schedule-complete-all"
                                   onClick={(e) => { e.stopPropagation(); handleCompleteHour(hour, 'nutrition'); }}
@@ -1075,7 +1181,8 @@ const AdminV2Schedule = () => {
                                 const isPrn = !!item.is_prn;
                                 const isOutput = item.intake_type === 'output';
                                 const isSkipped = !!item.skipped;
-                                const isActionable = !item.completed && !isPrn && !isSkipped;
+                                const isActionable = !item.completed && !isPrn && !isSkipped &&
+                                  (item.row_kind !== 'diaper_check' || manager.state?.can_record);
                                 return (
                                   <React.Fragment key={`nutr-${rowId}-${idx}`}>
                                     {idx > 0 && <div className="admin-v2-schedule-divider" />}
@@ -1085,6 +1192,7 @@ const AdminV2Schedule = () => {
                                         e.stopPropagation();
                                         if (!isActionable) return;
                                         if (isFlush) openFlushModal(item);
+                                        else if (item.row_kind === 'diaper_check') setFixedCheck(item);
                                         else handleCompleteItem('nutrition', item);
                                       }}
                                       role="button"
@@ -1096,6 +1204,9 @@ const AdminV2Schedule = () => {
                                       <div className="admin-v2-schedule-item-header">
                                         <ScheduleItemTime item={item} />
                                         <span className="admin-v2-schedule-item-name">{item.name}</span>
+                                        {item.managed_feed && !item.completed && item.effectiveAt?.getTime() !== item.scheduledAt?.getTime() && item.timing_reason && (
+                                          <span className="schedule-timing-reason">Usually {slotLabel(item.scheduledAt)} · {item.timing_reason}</span>
+                                        )}
                                         {isPrn && (
                                           <span
                                             className={`admin-v2-badge admin-v2-badge-prn admin-v2-badge-prn-${isOutput ? 'out' : 'in'}`}
@@ -1147,6 +1258,15 @@ const AdminV2Schedule = () => {
                                               <span> {item.default_amount} {item.default_amount_unit || ''}</span>
                                             )}
                                           </span>
+                                        )}
+                                        {item.check_outcome && <span className="admin-v2-schedule-item-dose">
+                                          {item.check_outcome === 'dry' ? 'Checked dry' : 'Diaper changed'}
+                                        </span>}
+                                        {item.managed_feed && !item.completed && manager.state?.can_manage && (
+                                          <button type="button" className="schedule-move-feed" onClick={(event) => {
+                                            event.stopPropagation();
+                                            setMoveFeed(item);
+                                          }}>Move this feed</button>
                                         )}
                                         {item.completed && item.log_id ? (
                                           <button
@@ -1303,6 +1423,11 @@ const AdminV2Schedule = () => {
           />
         )}
 
+        {moveFeed && <MoveFeedDialog item={moveFeed} patientId={selectedPatient.id}
+          onClose={() => setMoveFeed(null)} onSaved={() => { setMoveFeed(null); fetchSchedule(true); }} />}
+        {fixedCheck && <FixedCheckDialog item={fixedCheck} patientId={selectedPatient.id}
+          onClose={() => setFixedCheck(null)} onSaved={() => { setFixedCheck(null); fetchSchedule(true); }} />}
+
         {/* Completion Confirmation Dialog */}
         <EntityModal
           open={showCompleteModal}
@@ -1323,8 +1448,11 @@ const AdminV2Schedule = () => {
               ))}
             </div>
 
-            <EmField label="Completed At" required htmlFor="sch-completed-at"
-                     hint="Adjust if completed at a different time">
+            <EmField label={completeModalData.items.some(item => item.managed_feed) ? 'Started at' : 'Completed At'}
+                     required htmlFor="sch-completed-at"
+                     hint={completeModalData.items.some(item => item.managed_feed)
+                       ? 'Use the actual start time to update the remaining feeds.'
+                       : 'Adjust if completed at a different time'}>
               <input
                 id="sch-completed-at"
                 className="em-input"
@@ -1396,7 +1524,7 @@ const AdminV2Schedule = () => {
                 : null;
               const checks = completeModalData.items.map(item => ({
                 item,
-                check: checkAdministrationWindow(item.scheduled_time, completedAtUtc),
+                check: checkAdministrationWindow(item.effective_time ?? item.scheduled_time, completedAtUtc),
               }));
               const earlyItems = checks.filter(({ check }) => check.status === 'early');
               const lateItems = checks.filter(({ check }) => check.status === 'late');
@@ -1451,7 +1579,7 @@ const AdminV2Schedule = () => {
                   ? localDateTimeToUTC(completeFormData.completed_at)
                   : null;
                 const statuses = completeModalData.items.map(
-                  item => checkAdministrationWindow(item.scheduled_time, completedAtUtc).status
+                  item => checkAdministrationWindow(item.effective_time ?? item.scheduled_time, completedAtUtc).status
                 );
                 const hasEarly = statuses.some(s => s === 'early');
                 const hasLate = statuses.some(s => s === 'late');

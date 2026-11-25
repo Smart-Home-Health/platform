@@ -47,6 +47,7 @@ import {
   AdminV2CareProfileHub,
   AdminV2CareProfileEdit,
   AdminV2CareProfileFeatures,
+  AdminV2ScheduleManager,
   AdminV2CareProfileMeasurements,
   AdminV2CareProfileHardLimits,
   AdminV2CareProfileHomeAssistant,
@@ -232,6 +233,7 @@ function AppContent() {
           <Route path="/care/configuration/patients/:patientId" element={<ProtectedRoute><Layout><AdminV2CareProfileHub /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/patients/:patientId/edit" element={<ProtectedRoute><Layout><AdminV2CareProfileEdit /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/patients/:patientId/features" element={<ProtectedRoute><Layout><AdminV2CareProfileFeatures /></Layout></ProtectedRoute>} />
+          <Route path="/care/configuration/patients/:patientId/schedule-manager" element={<ProtectedRoute><Layout><AdminV2ScheduleManager /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/patients/:patientId/measurements" element={<ProtectedRoute><Layout><AdminV2CareProfileMeasurements /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/patients/:patientId/measurements/limits" element={<ProtectedRoute><Layout><AdminV2CareProfileHardLimits /></Layout></ProtectedRoute>} />
           <Route path="/care/configuration/patients/:patientId/home-assistant" element={<ProtectedRoute><Layout><AdminV2CareProfileHomeAssistant /></Layout></ProtectedRoute>} />

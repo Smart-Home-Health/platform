@@ -502,3 +502,35 @@
   line-height: 1.4;
   color: var(--vc-text-secondary);
 }
+
+.schedule-routines {
+  margin-block: .25rem .75rem;
+  color: var(--vc-text-secondary);
+}
+.schedule-routines-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .3rem .8rem;
+  font-size: .88rem;
+}
+.schedule-routines-summary strong { color: var(--vc-text-primary); }
+.schedule-routines-summary a { margin-left: auto; color: var(--vc-data-live); }
+.schedule-routines-late { color: var(--vc-state-due); }
+.schedule-timing-reason {
+  flex-basis: 100%;
+  font-size: .78rem;
+  color: var(--vc-text-secondary);
+}
+@media print { .schedule-routines { display: none; } }
+.schedule-move-feed {
+  background: transparent;
+  border: 1px solid var(--vc-line-hairline);
+  color: var(--vc-data-live);
+  border-radius: 5px;
+  padding: .3rem .55rem;
+  font: inherit;
+  font-size: .78rem;
+  cursor: pointer;
+}

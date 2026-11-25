@@ -26,6 +26,7 @@ import { NutritionIcon, LiquidIcon, ToiletIcon } from '../../components/Icons';
 import { computeScheduleStatus } from '../../components/schedule/scheduleStatus';
 import { nutritionService } from '../../services/nutrition';
 import ScheduleBoard from '../../components/schedule/ScheduleBoard';
+import FixedCheckDialog from '../../components/schedule/FixedCheckDialog';
 import { groupBySlot } from '../../components/schedule/scheduleRollup';
 import { getCurrentLocalDateTime } from '../../utils/timezone';
 import EntityModal from '../../components/vc/EntityModal';
@@ -67,6 +68,7 @@ const AdminV2NutritionSchedule = () => {
   // Completing an item opens the full intake form pre-linked to the row —
   // amounts adjustable, mix prefilled — never a bare submit.
   const [completeFeed, setCompleteFeed] = useState(null);
+  const [fixedCheck, setFixedCheck] = useState(null);
 
   // PRN flow: 'pick' opens the choice screen; 'intake'/'output' delegate to
   // the shared AdminV2 modal of the same name.
@@ -206,7 +208,13 @@ const AdminV2NutritionSchedule = () => {
   };
 
   const rowActions = (item) => {
-    if (item._bucket === 'completed' || item.is_prn || !hasPermission('nutrition.update')) return [];
+    if (item._bucket === 'completed' || item.is_prn) return [];
+    if (item.row_kind === 'diaper_check') {
+      return hasPermission('nutrition.create')
+        ? [{ key: 'check', label: 'Record check', tone: 'primary', onClick: () => setFixedCheck(item) }]
+        : [];
+    }
+    if (!hasPermission('nutrition.update')) return [];
     if (item.row_kind === 'flush') {
       return [
         { key: 'run', label: 'Run Flush', tone: 'primary', onClick: () => runFlush(item) },
@@ -227,11 +235,11 @@ const AdminV2NutritionSchedule = () => {
       ? `flush-${item.followup_id}`
       : `${item.schedule_id ?? 'prn'}-${item.scheduled_time}`,
     title: item.name,
-    meta: item._detail || undefined,
+    meta: item.check_outcome === 'dry' ? 'Checked dry' : item.check_outcome === 'changed' ? 'Diaper changed' : item._detail || undefined,
     prn: item.is_prn,
     scheduleLine: item.completed_at
       ? `Completed at ${new Date(item.completed_at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true })}`
-      : undefined,
+      : item.timing_reason || undefined,
     statusLabel: getStatusText(item),
     statusTone: item._status === 'skipped' ? 'skipped' : (BUCKET_TONE[item._bucket] || 'pending'),
     completed: item._bucket === 'completed',
@@ -243,10 +251,10 @@ const AdminV2NutritionSchedule = () => {
   const buildDayGroups = (list) => {
     const days = new Map();
     list.forEach((item) => {
-      const dayKey = new Date(item.scheduled_time).toLocaleDateString(undefined, {
+      const dayKey = new Date(item.effective_time ?? item.scheduled_time).toLocaleDateString(undefined, {
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
       });
-      if (!days.has(dayKey)) days.set(dayKey, { key: dayKey, date: new Date(item.scheduled_time), items: [] });
+      if (!days.has(dayKey)) days.set(dayKey, { key: dayKey, date: new Date(item.effective_time ?? item.scheduled_time), items: [] });
       days.get(dayKey).items.push(item);
     });
     return [...days.values()]
@@ -402,6 +410,8 @@ const AdminV2NutritionSchedule = () => {
           patient={selectedPatient}
           prefillFeed={completeFeed}
         />
+        {fixedCheck && <FixedCheckDialog item={fixedCheck} patientId={selectedPatient?.id}
+          onClose={() => setFixedCheck(null)} onSaved={() => { setFixedCheck(null); fetchSchedule(); }} />}
 
         {/* PRN pick: intake vs output */}
         <EntityModal

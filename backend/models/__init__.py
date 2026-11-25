@@ -59,6 +59,8 @@ from schemas.vent_device_info import VentDeviceInfo
 from schemas.dme_shipment import DMEShipment, DMEShipmentItem, DMEReceiptItem, DMEShipmentAlert, DMEShipmentDocument
 from schemas.environmental_observation import EnvironmentalObservation
 from schemas.event_diary import EventDiary, DiaryEvent
+from schemas.feed_start_override import FeedStartOverride
+from schemas.schedule_manager import ScheduleManagerProfile, ScheduleManagerFeed, ScheduleManagerAction, ScheduleManagerRecipient
 from schemas.ha_entity_mapping import HAEntityMapping
 from models.readers import Reader
 from models.ha_identity import HASeenIdentity
@@ -88,5 +90,6 @@ __all__ = [
     'PatientVentPin', 'PatientVentPinState',
     'UserMessage', 'UserMessageAcknowledgement', 'VentIngestedFile',
     'DMEShipment', 'DMEShipmentItem', 'DMEReceiptItem', 'DMEShipmentAlert', 'DMEShipmentDocument',
+    'FeedStartOverride', 'ScheduleManagerProfile', 'ScheduleManagerFeed', 'ScheduleManagerAction', 'ScheduleManagerRecipient',
     'EnvironmentalObservation', 'EventDiary', 'DiaryEvent', 'HASeenIdentity', 'HAEntityMapping'
 ]

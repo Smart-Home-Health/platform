@@ -40,7 +40,7 @@ def schedule_badge_counts(snapshot, sections):
         prefix, category = SCHEDULE_BADGES[section]
         due = snapshot['due_now']
         if category != 'Equipment':
-            due = due + snapshot['upcoming']
+            due = due + [item for item in snapshot['upcoming'] if not item.get('managed_feed')]
         counts[f'{prefix}_due_now'] = sum(i['category'] == category for i in due)
         counts[f'{prefix}_late'] = sum(i['category'] == category for i in snapshot['late'])
     return counts
@@ -72,15 +72,16 @@ def get_schedule_status(db, patient_id, now=None, *, sections=None):
         _, category = SCHEDULE_BADGES[section]
         rows = []
         for day in days:
-            rows.extend(load(db, day, patient_id, tz=tz, strict=True))
+            options = {'as_of': now} if section == 'nutrition_counts' else {}
+            rows.extend(load(db, day, patient_id, tz=tz, strict=True, **options))
         if category == 'Medication':
             rows.extend(find_grace_period_doses(
                 db, patient_id, before_utc=bounds['yesterday_start_utc'], now_utc=now, strict=True,
             ))
         for row in rows:
-            if row.get('completed') or row.get('skipped') or row.get('is_prn'):
+            if row.get('completed') or row.get('skipped') or row.get('is_prn') or row.get('reminder_superseded'):
                 continue
-            due = make_utc(row['scheduled_time'])
+            due = make_utc(row.get('effective_time', row['scheduled_time']))
             if due > horizon:
                 continue
             if due < now - hour:
@@ -89,7 +90,15 @@ def get_schedule_status(db, patient_id, now=None, *, sections=None):
                 group = 'due_now'
             else:
                 group = 'upcoming'
-            groups[group].append({'category': category, 'name': row[name_field], 'due_at': due.isoformat()})
+            item = {'category': category, 'name': row[name_field], 'due_at': due.isoformat()}
+            if row.get('managed_feed'):
+                item.update(managed_feed=True, effective_time=due.isoformat(),
+                            scheduled_time=row['scheduled_time'].isoformat(),
+                            timing_reason=row['timing_reason'])
+                if row.get('overnight_target_at'):
+                    item.update(overnight_target_at=row['overnight_target_at'].isoformat(),
+                                overnight_delayed=row['overnight_delayed'])
+            groups[group].append(item)
 
     if 'equipment_counts' in sections:
         # A date-only change becomes late at the care profile's next local midnight.

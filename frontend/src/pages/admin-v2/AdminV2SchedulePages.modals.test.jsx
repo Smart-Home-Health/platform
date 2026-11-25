@@ -56,6 +56,24 @@ const expectVcChrome = () => {
 };
 
 describe('schedule pages on the vc chassis', () => {
+  it('records a scheduled diaper check as a check outcome', async () => {
+    const time = new Date().toISOString();
+    const calls = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, options = {}) => {
+      calls.push([url, options]);
+      return { ok: true, status: 200, json: async () => url.includes('/api/schedule/daily')
+        ? { nutrition: [{ schedule_id: 23, scheduled_time: time, name: 'Afternoon check', row_kind: 'diaper_check' }] }
+        : {} };
+    }));
+    await act(async () => { render(<AdminV2NutritionSchedule />); });
+    fireEvent.click(screen.getByRole('button', { name: 'Record check' }));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Checked dry' })); });
+    const writes = calls.filter(([, options]) => options.method === 'POST');
+    expect(writes).toHaveLength(1);
+    expect(writes[0][0]).toContain('/api/schedule-manager/5/actions');
+    expect(JSON.parse(writes[0][1].body)).toMatchObject({ action: 'dry', check_schedule_id: 23, check_scheduled_time: time });
+  });
+
   it('medications: cfg-stat tiles toggle their filters, no shadcn left', async () => {
     await act(async () => { render(<AdminV2MedicationsSchedule />); });
     expectVcChrome();

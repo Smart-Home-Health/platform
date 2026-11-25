@@ -30,9 +30,10 @@ export function computeScheduleStatus(item) {
   // Terminal states recorded by the backend win over any time computation.
   if (item.skipped || item.status === 'skipped') return 'skipped';
   if (item.completed) return 'completed';
-  if (item.is_yesterday) return 'missed';
+  if (item.is_yesterday && !item.managed_feed) return 'missed';
 
-  const diffMin = (new Date(item.scheduled_time) - new Date()) / 60000; // +future
+  const diffMin = (new Date(item.effective_time ?? item.scheduled_time) - new Date()) / 60000; // +future
+  if (item.managed_feed && diffMin > 0) return 'upcoming';
   if (diffMin > 15) return 'pending';
   if (diffMin > -15) return 'due_on_time';
   if (diffMin > -60) return 'due_warning';

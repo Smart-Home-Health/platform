@@ -18,6 +18,7 @@
 export { default as AdminV2CareProfileHub } from './AdminV2CareProfileHub';
 export { default as AdminV2CareProfileEdit } from './AdminV2CareProfileEdit';
 export { default as AdminV2CareProfileFeatures } from './AdminV2CareProfileFeatures';
+export { default as AdminV2ScheduleManager } from './AdminV2ScheduleManager';
 export { default as AdminV2CareProfileMeasurements } from './measurements/AdminV2CareProfileMeasurements';
 export { default as AdminV2CareProfileHardLimits } from './measurements/AdminV2CareProfileHardLimits';
 export { default as AdminV2CareProfileHomeAssistant } from './home-assistant/AdminV2CareProfileHomeAssistant';

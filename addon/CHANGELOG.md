@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.0
+
+- Open **Schedule → Manage routines** to enable feed timing for a care profile. Choose which feeds and scheduled water share a minimum gap between starts. After a late feed, the schedule and Home Assistant reminders use the adjusted times and allow for the previous feed’s run time.
+- Preview the rest of the day, set a preferred start for an overnight feed, or choose **Move this feed** to change one occurrence. The schedule flags an overnight start that would miss its target.
+- Bathroom checks can be logged manually, scheduled at fixed times, or suggested after a selected feed when no recent change is recorded. Choose which caregivers see in-app suggestions and during which hours. Caregivers can record a dry check or diaper change, snooze a suggestion, or dismiss it.
+- To hear overdue care reminders through Home Assistant, re-import the **Late care reminder** blueprint and select **Voice satellites** in the automation. **Speak overdue item names** optionally includes up to three names in the announcement.
+
+Feed adjustments and bathroom suggestions start switched off for each profile. Migrations 058–061 add the scheduling rules, one-time feed changes, bathroom check history, and suggestion recipients. Health Hub backups include these records.
+
 ## 0.7.4
 
 - Completing or skipping a scheduled care task on the Live Board updates that occurrence on the patient's Schedule and in overdue reminders.

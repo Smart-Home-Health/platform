@@ -51,6 +51,8 @@ from schemas.nutrition_output import NutritionOutput
 from schemas.nutrition_schedule import NutritionSchedule, NutritionScheduleComponent
 from schemas.nutrition_flush_followup import NutritionFlushFollowup
 from schemas.nutrition_goal import NutritionGoal
+from schemas.feed_start_override import FeedStartOverride
+from schemas.schedule_manager import ScheduleManagerProfile, ScheduleManagerFeed, ScheduleManagerAction, ScheduleManagerRecipient
 from schemas.dme_shipment import (DMEShipment, DMEShipmentItem, DMEReceiptItem,
                                   DMEShipmentAlert, DMEShipmentDocument)
 from schemas.allergy import AllergyIntolerance
@@ -88,13 +90,15 @@ MODELS = dict([
     ('nutrition_schedules', NutritionSchedule), ('nutrition_schedule_components', NutritionScheduleComponent),
     ('nutrition_goals', NutritionGoal), ('nutrition_intakes', NutritionIntake),
     ('nutrition_outputs', NutritionOutput), ('nutrition_flush_followups', NutritionFlushFollowup),
+    ('schedule_manager_profiles', ScheduleManagerProfile), ('schedule_manager_feeds', ScheduleManagerFeed),
+    ('schedule_manager_actions', ScheduleManagerAction), ('schedule_manager_recipients', ScheduleManagerRecipient), ('feed_start_overrides', FeedStartOverride),
     ('dme_shipments', DMEShipment), ('dme_shipment_items', DMEShipmentItem),
     ('dme_receipt_items', DMEReceiptItem), ('dme_shipment_alerts', DMEShipmentAlert),
     ('dme_shipment_documents', DMEShipmentDocument),
 ])
 STREAMED = {'pulse_ox_data', 'vent_samples'}
 TABLE_NAMES = {model.__tablename__: name for name, model in MODELS.items()}
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # This obsolete GPIO alarm model was never created by the migration chain.
 # A pre-migration installation may still contain the table and history. Only

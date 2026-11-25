@@ -168,7 +168,7 @@ export default function IntakeForm({
             && row.intake_type !== 'output'
             // Flush follow-ups have their own Run flow; linking a hand-log
             // to one would double-complete it.
-            && row.row_kind !== 'flush',
+            && row.row_kind !== 'flush' && row.row_kind !== 'diaper_check',
         ));
       })
       .catch(() => { if (!cancelled) setFeeds([]); });
@@ -305,7 +305,7 @@ export default function IntakeForm({
             scroll
             options={feedOptions.map((f) => ({
               value: feedKey(f),
-              label: `${f.name} · ${feedTimeLabel(f.scheduled_time)}`,
+              label: `${f.name} · ${feedTimeLabel(f.effective_time ?? f.scheduled_time)}`,
               icon: <LinkIcon size={14} />,
             }))}
             value={linkedFeed ? feedKey(linkedFeed) : null}
@@ -314,7 +314,7 @@ export default function IntakeForm({
         )}
         {linkedFeed && (
           <p className="nsheet-note nsheet-linked">
-            Linked to {linkedFeed.name} · {feedTimeLabel(linkedFeed.scheduled_time)}.
+            Linked to {linkedFeed.name} · {feedTimeLabel(linkedFeed.effective_time ?? linkedFeed.scheduled_time)}.
             Logging will mark it complete. Tap the chip again to unlink.
           </p>
         )}

@@ -30,7 +30,7 @@ import { useMemo } from 'react';
 import { useModalDock } from '../../contexts/ModalDockContext';
 import { ChevronLeftIcon } from '../Icons';
 import {
-  BUCKETS, BUCKET_LABELS, bucketFor, groupByDaySlot, recurrenceLabel, rollupSchedule, slotLabel,
+  BUCKETS, BUCKET_LABELS, itemBucket, groupByDaySlot, recurrenceLabel, rollupSchedule, slotLabel,
 } from './scheduleRollup';
 import { DOSE_LABELS } from './scheduleLabels';
 import { overdueLabel, graceTitle } from './scheduleStatus';
@@ -54,7 +54,7 @@ function statusText(item) {
 }
 
 function StatusBadge({ item }) {
-  const bucket = bucketFor(item.status);
+  const bucket = itemBucket(item);
   return (
     <span className={`ld-dose-badge ${bucket}`} title={graceTitle(item)}>
       {bucket !== 'given' && bucket !== 'skipped' && <span className="ld-dose-dot" aria-hidden="true" />}
@@ -106,6 +106,7 @@ export default function DoseScheduleView({
   const stackedDetail = !docked && detail && selectedId;
 
   const { counts, needsAttention, lead } = useMemo(() => rollupSchedule(items), [items]);
+  const bulkAttention = needsAttention.filter(item => item.can_bulk_record !== false);
   const days = useMemo(() => groupByDaySlot(items), [items]);
 
   // Tapping a dose opens its details. In the dock that means widening first,
@@ -148,11 +149,11 @@ export default function DoseScheduleView({
               {' · '}
               {slotLabel(lead.item.scheduled_time)}
             </span>
-            {onRecordAll && needsAttention.length > 0 && (
+            {onRecordAll && bulkAttention.length > 0 && (
               <button
                 type="button"
                 className="ld-dose-linkbtn"
-                onClick={() => onRecordAll(needsAttention)}
+                onClick={() => onRecordAll(bulkAttention)}
               >
                 {labels.bulk}
               </button>
@@ -167,7 +168,7 @@ export default function DoseScheduleView({
           <div key={day.day} className="ld-dose-day">
             {days.length > 1 && <div className="ld-dose-day-head">{day.label}</div>}
             {day.slots.map((slot) => {
-              const open = slot.items.filter((i) => !i.is_completed);
+              const open = slot.items.filter((i) => !i.is_completed && i.can_bulk_record !== false);
               return (
                 <div key={slot.time || 'unscheduled'} className="ld-dose-slot">
                   {/* Time bands, not one long run of cards: the times are what a
@@ -191,7 +192,7 @@ export default function DoseScheduleView({
                     {slot.items.map((item) => (
                       <div
                         key={item.id}
-                        className={`ld-dose-card ${bucketFor(item.status)}${item.id === selectedId ? ' selected' : ''}`}
+                        className={`ld-dose-card ${itemBucket(item)}${item.id === selectedId ? ' selected' : ''}`}
                       >
                         <button
                           type="button"
@@ -208,13 +209,13 @@ export default function DoseScheduleView({
                         </button>
                         {!item.is_completed && (
                           <div className="ld-dose-card-actions">
-                            {onRecord && (
+                            {onRecord && item.can_record !== false && (
                               <button
                                 type="button"
                                 className="ld-dose-btn primary"
                                 onClick={(e) => { e.stopPropagation(); onRecord(item); }}
                               >
-                                {labels.primary}
+                                {item.record_label || labels.primary}
                               </button>
                             )}
                             {/* can_skip narrows the view-wide handler to rows
@@ -250,7 +251,7 @@ export default function DoseScheduleView({
     <div className={`ld-dose-panel wide${detailWide ? ' detail-wide' : ''}`}>
       <div className="ld-dose-main">
         <div className="ld-dose-tiles">
-          {BUCKETS.map((bucket) => (
+          {(counts.upcoming ? [...BUCKETS, 'upcoming'] : BUCKETS).map((bucket) => (
             <div
               key={bucket}
               className={`ld-dose-tile ${bucket}${bucket === 'missed' && counts.missed > 0 ? ' alert' : ''}`}
@@ -265,7 +266,7 @@ export default function DoseScheduleView({
           <div key={day.day} className="ld-dose-day">
             {days.length > 1 && <div className="ld-dose-day-head">{day.label}</div>}
             {day.slots.map((slot) => {
-              const open = slot.items.filter((i) => !i.is_completed);
+              const open = slot.items.filter((i) => !i.is_completed && i.can_bulk_record !== false);
               return (
                 <div key={slot.time || 'unscheduled'} className="ld-dose-slot">
                   <div className="ld-dose-slot-head">
@@ -316,13 +317,13 @@ export default function DoseScheduleView({
                           <td>{scheduleLine(item)}</td>
                           <td><StatusBadge item={item} /></td>
                           <td className="ld-dose-actions-col">
-                            {!item.is_completed && onRecord && (
+                            {!item.is_completed && onRecord && item.can_record !== false && (
                               <button
                                 type="button"
                                 className="ld-dose-btn primary sm"
                                 onClick={(e) => { e.stopPropagation(); onRecord(item); }}
                               >
-                                {labels.primary}
+                                {item.record_label || labels.primary}
                               </button>
                             )}
                           </td>

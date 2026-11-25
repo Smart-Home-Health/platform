@@ -27,8 +27,8 @@ const { patientCtx } = vi.hoisted(() => ({
 }));
 vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 1 } }) }));
 vi.mock('../../contexts/AdminPatientContext', () => ({ useAdminPatient: () => patientCtx }));
-vi.mock('react-router-dom', () => ({ useSearchParams: () => [new URLSearchParams(), () => {}] }));
-vi.mock('../../config', () => ({ default: { apiUrl: '' } }));
+vi.mock('react-router-dom', () => ({ Link: ({ to, children }) => <a href={to}>{children}</a>, useSearchParams: () => [new URLSearchParams(), () => {}] }));
+vi.mock('../../config', () => ({ default: { apiUrl: '' }, apiFetch: (...args) => fetch(...args) }));
 
 import AdminV2Schedule from './AdminV2Schedule';
 

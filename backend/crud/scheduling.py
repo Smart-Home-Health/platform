@@ -18,7 +18,7 @@ Scheduling CRUD operations for care tasks
 """
 import logging
 from datetime import datetime, timedelta, timezone
-from croniter import croniter
+from croniter import CroniterBadCronError, CroniterBadDateError, croniter
 from sqlalchemy.orm import Session
 from schemas.care_task import CareTask
 from schemas.care_task_schedule import CareTaskSchedule
@@ -797,17 +797,7 @@ def get_scheduled_medications(db: Session, target_date, patient_id: int, tz_offs
                     if firing is not None:
                         log_lookup.setdefault((schedule.id, firing), log)
 
-                # Walk croniter forward from just before the local-day window in UTC.
-                base_time = local_start_utc - timedelta(hours=1)
-                cron = croniter(schedule.cron_expression, base_time)
-
-                while True:
-                    next_time_utc = cron.get_next(datetime).replace(tzinfo=timezone.utc)
-                    if next_time_utc >= local_end_utc:
-                        break
-                    if next_time_utc < local_start_utc:
-                        continue
-
+                for next_time_utc in nutrition_occurrences(schedule, local_start_utc, local_end_utc):
                     key = (schedule.id, next_time_utc.replace(second=0, microsecond=0))
                     log = log_lookup.get(key)
 
@@ -1023,7 +1013,23 @@ def get_scheduled_care_tasks(db: Session, target_date, patient_id: int, tz_offse
         return []
 
 
-def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset_minutes=None, tz=None, *, strict=False):
+def nutrition_occurrences(schedule, start_utc, end_utc):
+    """Iterate this schedule in [start, end), isolating invalid legacy recurrences."""
+    try:
+        cron = croniter(schedule.cron_expression, start_utc - timedelta(microseconds=1))
+        for instant in cron.all_next(datetime):
+            if instant >= end_utc:
+                break
+            yield instant
+    except (CroniterBadCronError, CroniterBadDateError) as exc:
+        logger.warning("Skipping invalid nutrition recurrence for schedule %s: %s", schedule.id, exc)
+
+
+_SAVED_FEED_SETTINGS = object()
+
+
+def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset_minutes=None, tz=None,
+                            *, strict=False, feed_settings=_SAVED_FEED_SETTINGS, as_of=None):
     """
     Get all nutrition items scheduled for a specific date for a patient.
     Uses the nutrition_schedules table for meals, hydration, bathroom checks, etc.
@@ -1091,17 +1097,7 @@ def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset
                     else (to_ml(schedule.default_amount, schedule.default_amount_unit) or 0)
                 )
 
-                # Walk croniter forward from just before the local-day window in UTC.
-                base_time = local_start_utc - timedelta(hours=1)
-                cron = croniter(schedule.cron_expression, base_time)
-
-                while True:
-                    next_time_utc = cron.get_next(datetime).replace(tzinfo=timezone.utc)
-                    if next_time_utc >= local_end_utc:
-                        break
-                    if next_time_utc < local_start_utc:
-                        continue
-
+                for next_time_utc in nutrition_occurrences(schedule, local_start_utc, local_end_utc):
                     key = (schedule.id, next_time_utc.replace(second=0, microsecond=0))
                     log = log_lookup.get(key)
 
@@ -1371,10 +1367,21 @@ def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset
                 'skipped': False,
             })
 
+        from crud.schedule_manager import attach_check_outcomes
+        attach_check_outcomes(db, patient_id, scheduled_nutrition, local_start_utc, local_end_utc)
         _apply_water_budget(db, patient_id, scheduled_nutrition,
                             local_start_utc, local_end_utc)
+        if feed_settings is _SAVED_FEED_SETTINGS:
+            from crud.schedule_manager import read_settings
+            feed_settings = read_settings(db, patient_id)
+        if feed_settings:
+            from crud.feed_timing import apply_feed_timing
+            planning_tz = tz or timezone(timedelta(minutes=tz_offset_minutes or 0))
+            apply_feed_timing(db, scheduled_nutrition, patient_id, feed_settings, schedules,
+                              local_start_utc, planning_tz,
+                              as_of or utc_now())
 
-        return sorted(scheduled_nutrition, key=lambda x: x['scheduled_time'])
+        return sorted(scheduled_nutrition, key=lambda x: x.get('effective_time', x['scheduled_time']))
 
     except Exception as e:
         if strict:
@@ -1507,137 +1514,58 @@ def get_due_and_upcoming_nutrition_count(db: Session, patient_id=None, tz=None):
     return get_nutrition_schedule_counts(db, patient_id=patient_id, tz=tz)['due']
 
 
+def _nutrition_attention_times(db, patient_id, tz):
+    if patient_id is None:
+        patient = get_active_patient(db)
+        if not patient:
+            return
+        patient_id = patient.id
+    tz = tz or resolve_tz_for_patient(db, patient_id)
+    bounds = local_day_bounds(tz)
+    now = bounds['now_utc']
+    # Query each original care day exactly once, including a prior evening
+    # whose overnight feed may now fall on today's clock.
+    for day in (bounds['local_yesterday'], bounds['local_today']):
+        for row in get_scheduled_nutrition(db, day, patient_id, tz=tz, as_of=now, strict=True):
+            if row.get('is_prn') or row.get('completed') or row.get('skipped') or row.get('reminder_superseded'):
+                continue
+            due = row.get('effective_time', row['scheduled_time'])
+            due = make_utc(datetime.fromisoformat(due) if isinstance(due, str) else due)
+            if not (bounds['yesterday_start_utc'] <= due < bounds['today_end_utc']):
+                continue
+            if row.get('managed_feed') and due > now:
+                continue
+            yield due, now
+
+
 def get_nutrition_schedule_counts(db: Session, patient_id=None, tz=None):
-    """Return {'due', 'overdue'} nutrition counts from one schedule fetch.
-
-    'due' matches the missed/late/ready/upcoming window described on
-    ``get_due_and_upcoming_nutrition_count``. 'overdue' is the subset whose
-    scheduled hour has fully passed (still normal during its own hour).
-    """
+    """Dashboard counts. Managed feeds become due only when they may start."""
+    due = overdue = 0
     try:
-        if patient_id is None:
-            active_patient = get_active_patient(db)
-            if not active_patient:
-                return {'due': 0, 'overdue': 0}
-            patient_id = active_patient.id
-
-        if tz is None:
-            tz = resolve_tz_for_patient(db, patient_id)
-        bounds = local_day_bounds(tz)
-        now = bounds['now_utc']
-        hour_start = now.replace(minute=0, second=0, microsecond=0)
-
-        # Fetch the UTC calendar dates that span the local yesterday+today, then
-        # dedup and trim to the exact local-day window. A single UTC date no
-        # longer equals the local day, so this is what excludes items that fall
-        # in "UTC yesterday" but are really two local days ago.
-        raw = []
-        for utc_date in bounds['utc_dates']:
-            raw.extend(get_scheduled_nutrition(db, utc_date, patient_id))
-
-        seen = set()
-        due = 0
-        overdue = 0
-        for item in raw:
-            scheduled_time = item.get('scheduled_time')
-            if isinstance(scheduled_time, str):
-                scheduled_time = datetime.fromisoformat(scheduled_time)
-            if scheduled_time is None:
-                continue
-            if scheduled_time.tzinfo is None:
-                scheduled_time = scheduled_time.replace(tzinfo=timezone.utc)
-
-            # Trim to the local today+yesterday window and dedup across the
-            # overlapping per-UTC-date fetches.
-            if not (bounds['yesterday_start_utc'] <= scheduled_time < bounds['today_end_utc']):
-                continue
-            key = (item.get('schedule_id'), scheduled_time, item.get('followup_id'))
-            if key in seen:
-                continue
-            seen.add(key)
-
-            if item.get('is_prn'):
-                continue
-            if item.get('completed'):
-                continue
-            # An explicitly skipped flush is decided, not due.
-            if item.get('skipped'):
-                continue
-
-            diff_seconds = (scheduled_time - now).total_seconds()
-            # missed/late/ready, OR upcoming within the next hour
-            if diff_seconds < -900 or abs(diff_seconds) <= 900 or (0 < diff_seconds <= 3600):
+        for when, now in _nutrition_attention_times(db, patient_id, tz):
+            if when <= now + timedelta(hours=1):
                 due += 1
-            if scheduled_time < hour_start:
+            if when < now.replace(minute=0, second=0, microsecond=0):
                 overdue += 1
-
-        return {'due': due, 'overdue': overdue}
     except Exception as e:
         logger.error(f"Error getting nutrition schedule counts: {e}")
         return {'due': 0, 'overdue': 0}
+    return {'due': due, 'overdue': overdue}
 
 
 def get_nutrition_due_now_late_counts(db: Session, patient_id=None, tz=None):
-    """Return {'due_now', 'late'} nutrition badge counts.
-
-    Mirrors the medication/care-task badge counter for the per-patient MQTT
-    badge sensors: ``due_now`` = scheduled within ±1h of now, ``late`` = more
-    than 1h past. PRN intakes and completed items are excluded; the window is the
-    patient's account-local today+yesterday (same as the dashboard badge)."""
+    """Per-patient MQTT badge counts on the same adjusted care-day schedule."""
+    due_now = late = 0
     try:
-        if patient_id is None:
-            active_patient = get_active_patient(db)
-            if not active_patient:
-                return {'due_now': 0, 'late': 0}
-            patient_id = active_patient.id
-
-        if tz is None:
-            tz = resolve_tz_for_patient(db, patient_id)
-        bounds = local_day_bounds(tz)
-        now = bounds['now_utc']
-
-        raw = []
-        for utc_date in bounds['utc_dates']:
-            raw.extend(get_scheduled_nutrition(db, utc_date, patient_id))
-
-        seen = set()
-        due_now = 0
-        late = 0
-        for item in raw:
-            scheduled_time = item.get('scheduled_time')
-            if isinstance(scheduled_time, str):
-                scheduled_time = datetime.fromisoformat(scheduled_time)
-            if scheduled_time is None:
-                continue
-            if scheduled_time.tzinfo is None:
-                scheduled_time = scheduled_time.replace(tzinfo=timezone.utc)
-
-            if not (bounds['yesterday_start_utc'] <= scheduled_time < bounds['today_end_utc']):
-                continue
-            key = (item.get('schedule_id'), scheduled_time, item.get('followup_id'))
-            if key in seen:
-                continue
-            seen.add(key)
-
-            if item.get('is_prn'):
-                continue
-            if item.get('completed'):
-                continue
-            # An explicitly skipped flush is decided, not due.
-            if item.get('skipped'):
-                continue
-
-            diff_seconds = (scheduled_time - now).total_seconds()
-            if diff_seconds < -3600:
+        for when, now in _nutrition_attention_times(db, patient_id, tz):
+            if when < now - timedelta(hours=1):
                 late += 1
-            elif diff_seconds <= 3600:
+            elif when <= now + timedelta(hours=1):
                 due_now += 1
-
-        return {'due_now': due_now, 'late': late}
     except Exception as e:
         logger.error(f"Error getting due_now/late nutrition counts: {e}")
         return {'due_now': 0, 'late': 0}
-
+    return {'due_now': due_now, 'late': late}
 
 
 # =====================
