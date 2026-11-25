@@ -42,9 +42,10 @@ conditions:
       {% set previous = trigger.from_state %}
       {% set age = as_timestamp(now()) - as_timestamp(current.attributes.generated_at, 0) if current else -1 %}
       {% set late = current.attributes.get('late', []) if current else [] %}
-      {{ current is not none and 0 <= age < 180 and late | length > 0
-         and current.state | int(-1) == late | length
-         and (previous is none or previous.state | int(0) == 0
+      {{ current is not none and current.state not in ['unknown', 'unavailable']
+         and 0 <= age < 180 and late | length > 0
+         and current.attributes.get('late_count', -1) | int(-1) == late | length
+         and (previous is none or previous.state in ['unknown', 'unavailable']
               or previous.attributes.get('late', []) | length == 0
               or as_timestamp(now()) - as_timestamp(this.attributes.get('last_triggered'), 0)
                  >= repeat_minutes | int * 60) }}
@@ -58,6 +59,9 @@ actions:
       {{ item.category }} · {{ item.name }} — due {{ (as_timestamp(item.due_at) | timestamp_custom('%a %-I:%M %p', true)) if item.due_at is defined else item.due_date }}
       {%- endmacro -%}
       {%- set data = trigger.to_state.attributes -%}
+      {%- if data.details is defined -%}
+      {{ data.details }}
+      {%- else -%}
       {%- for item in data.late -%}
       {{ line(item) }}{{ '\n' if not loop.last else '' }}
       {%- endfor -%}
@@ -66,4 +70,5 @@ actions:
       {%- for item in data.upcoming -%}
       {{ line(item) }}{{ '\n' if not loop.last else '' }}
       {%- endfor -%}
+      {%- endif -%}
       {%- endif -%}

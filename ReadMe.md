@@ -190,7 +190,9 @@ The system integrates with **Home Assistant** and other MQTT‑enabled devices.
 
 #### Care schedule reminders
 
-In **Care profile → Home Assistant → Reminders**, set **Schedule details (names and due times)** to **Get only**. Home Assistant discovers a Schedule details sensor for that profile. Its state is the number of late items. Its `late`, `due_now`, and `upcoming` attributes carry the category, name, and either a timestamp (`due_at`) or an equipment replacement date (`due_date`).
+In **Care profile → Home Assistant → Reminders**, set **Schedule details (names and due times)** to **Get only**. The Schedule details sensor shows item names and due times, with late items first, followed by due-now and upcoming items. When the list exceeds Home Assistant’s state length limit, the sensor shows the first item and the number of additional items. The `details` attribute lists every item on a separate line using Home Assistant’s local time. Equipment replacements show their due date.
+
+For a notification message, use `{{ state_attr('sensor.your_schedule_details', 'details') }}` with your profile’s entity ID. For numeric triggers, select the sensor’s `late_count` attribute. The `late`, `due_now`, and `upcoming` lists also contain each item’s category, name, and `due_at` timestamp or `due_date`. If you imported the 0.7.2 reminder blueprint, re-import the updated version so it reads `late_count`.
 
 The hub publishes the snapshot on `<base>/patient/<id>/schedule` every minute and on care log changes. Timed items become late after one hour. Upcoming covers the next hour for timed care and the next seven days for equipment. Each snapshot includes `generated_at`. Home Assistant marks the sensor unavailable after three minutes without an update.
 

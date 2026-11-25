@@ -252,6 +252,9 @@ def test_schedule_details_discovery_and_publish_are_opt_in(fake_client, monkeypa
     disc.send_mqtt_discovery(fake_client)
     config = _configs(fake_client)[config_topic]
     assert config["stat_t"] == config["json_attr_t"] == "custom/patient/5/schedule"
+    assert config["val_tpl"] == disc.SCHEDULE_STATE_TEMPLATE
+    assert config["json_attr_tpl"] == disc.SCHEDULE_ATTRIBUTES_TEMPLATE
+    assert "stat_cla" not in config and "unit_of_meas" not in config
     assert config["exp_aft"] == 180
     assert config["avty_t"] == "shh/availability"
     assert _configs(fake_client)["homeassistant/sensor/shh_pat_ient_meds_late/config"]["json_attr_t"] != config["stat_t"]

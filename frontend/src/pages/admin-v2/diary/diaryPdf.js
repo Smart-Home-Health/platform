@@ -29,7 +29,7 @@ export function diaryPdf(report) {
       if (entry.note) stack.push({ text: entry.note });
       if (followUp) stack.push({ text: followUp });
     }
-    body.push([time, { stack }]);
+    body.push([{ text: time, alignment: 'right' }, { stack }]);
   }
   return pdfMake.createPdf({
     info: { title: report.title },

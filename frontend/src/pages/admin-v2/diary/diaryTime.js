@@ -15,11 +15,15 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-export function stamp(instant, zone) {
-  return new Date(instant).toLocaleString(undefined, {
-    timeZone: zone, year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric',
-    minute: '2-digit', second: '2-digit', timeZoneName: 'short',
+export function diaryTimeFormat(zone, includeDate = true) {
+  return new Intl.DateTimeFormat(undefined, {
+    ...(includeDate && { year: 'numeric', month: 'short', day: 'numeric' }),
+    timeZone: zone, hour: 'numeric', minute: '2-digit', second: '2-digit', timeZoneName: 'short',
   });
+}
+
+export function stamp(instant, zone) {
+  return diaryTimeFormat(zone).format(new Date(instant));
 }
 
 export function studyRange(start, end, zone) {

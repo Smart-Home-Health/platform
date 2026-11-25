@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.3
+
+- Diary medication entries show the concentration saved on the medication record alongside the administered dose, including in printouts and saved PDFs.
+- The diary dates the first entry of each local hour and shows just the time and timezone on later entries in that hour. All timestamps line up at the right edge of the column.
+- The Home Assistant **Schedule details** sensor displays care item names and due times. Long schedules show a preview. Use its `details` attribute for the full notification text and `late_count` for numeric triggers. If you imported the 0.7.2 **Late care reminder** blueprint, re-import it to use the updated trigger condition.
+
 ## 0.7.2
 
 - Diary printouts and PDFs open with a full-page overview of the study. SpO₂ and heart rate show the high, low and average for each 15-minute interval. The activity grid below marks which categories had entries in each interval.
