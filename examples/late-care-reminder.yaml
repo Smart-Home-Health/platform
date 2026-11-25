@@ -3,7 +3,7 @@ blueprint:
   domain: automation
   description: >
     Enable Schedule details under the care profile’s Home Assistant reminders.
-    Choose that sensor and the phone that should receive its item names and due times.
+    Choose that sensor and the caregiver phones that should receive its item names and due times.
   input:
     schedule:
       name: Schedule details sensor
@@ -18,6 +18,16 @@ blueprint:
         device:
           filter:
             - integration: mobile_app
+    additional_phones:
+      name: Additional caregiver phones
+      description: Select any other phones that should receive the same reminder. Requires Home Assistant 2026.5 or later.
+      default: []
+      selector:
+        device:
+          multiple: true
+          entity:
+            - domain: notify
+              integration: mobile_app
     repeat_minutes:
       name: Minutes between reminders
       default: 30
@@ -31,6 +41,8 @@ blueprint:
 mode: single
 variables:
   repeat_minutes: !input repeat_minutes
+  primary_phone: !input phone
+  additional_phones: !input additional_phones
 triggers:
   # The sensor publishes a dated snapshot every minute, even if the count is unchanged.
   - trigger: state
@@ -53,8 +65,9 @@ actions:
   - device_id: !input phone
     domain: mobile_app
     type: notify
-    title: "{{ trigger.to_state.attributes.late | length }} overdue · {{ trigger.to_state.name }}"
-    message: |-
+    continue_on_error: true
+    title: &reminder_title "{{ trigger.to_state.attributes.late | length }} overdue · {{ trigger.to_state.name }}"
+    message: &reminder_message |-
       {%- macro line(item) -%}
       {{ item.category }} · {{ item.name }} — due {{ (as_timestamp(item.due_at) | timestamp_custom('%a %-I:%M %p', true)) if item.due_at is defined else item.due_date }}
       {%- endmacro -%}
@@ -72,3 +85,13 @@ actions:
       {%- endfor -%}
       {%- endif -%}
       {%- endif -%}
+  - repeat:
+      for_each: "{{ additional_phones | reject('eq', primary_phone) | unique | list }}"
+      sequence:
+        - action: notify.send_message
+          continue_on_error: true
+          target:
+            device_id: "{{ repeat.item }}"
+          data:
+            title: *reminder_title
+            message: *reminder_message
