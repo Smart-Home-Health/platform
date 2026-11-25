@@ -31,15 +31,13 @@ blueprint:
               integration: mobile_app
     announcement_satellites:
       name: Voice satellites
-      description: Select the Assist satellites that should announce how many care items are overdue.
+      description: Select the Assist satellites that should speak reminders. Each satellite must support announcements.
       default: []
       selector:
         entity:
           multiple: true
           filter:
             - domain: assist_satellite
-              supported_features:
-                - assist_satellite.AssistSatelliteEntityFeature.ANNOUNCE
     speak_item_names:
       name: Speak overdue item names
       description: Include the names of up to three overdue items in each spoken reminder.
@@ -62,6 +60,16 @@ variables:
   primary_phone: !input phone
   additional_phones: !input additional_phones
   announcement_satellites: !input announcement_satellites
+  # Home Assistant rewrites feature filters when saving imported blueprints.
+  # Check the ANNOUNCE flag (1) when routing the reminder instead.
+  announcement_targets: >-
+    {% set targets = namespace(ids=[]) %}
+    {% for entity_id in announcement_satellites if has_value(entity_id) %}
+      {% if state_attr(entity_id, 'supported_features') | int(0) | bitwise_and(1) %}
+        {% set targets.ids = targets.ids + [entity_id] %}
+      {% endif %}
+    {% endfor %}
+    {{ targets.ids }}
   speak_item_names: !input speak_item_names
 triggers:
   # The sensor publishes a dated snapshot every minute, even if the count is unchanged.
@@ -117,12 +125,12 @@ actions:
             message: *reminder_message
   - if:
       - condition: template
-        value_template: "{{ announcement_satellites | length > 0 }}"
+        value_template: "{{ announcement_targets | length > 0 }}"
     then:
       - action: assist_satellite.announce
         continue_on_error: true
         target:
-          entity_id: !input announcement_satellites
+          entity_id: "{{ announcement_targets }}"
         data:
           message: >-
             {% set late = trigger.to_state.attributes.late -%}
