@@ -161,6 +161,14 @@ If you run the Mosquitto add-on, this add-on requests its connection info
 (`services: mqtt:want`) so the broker host can be seeded automatically. MQTT
 topics are still managed in the app's own settings.
 
+### Frigate cameras
+
+Open **Profile → Connections → Frigate NVR** and tap **+**. Health Hub detects
+Frigate recorder add-ons installed on the same Home Assistant system. Select a
+running recorder, then choose the patient's camera. The live preview is
+video-only. Snapshots and available recording clips use the same internal
+connection, so you can leave Frigate's web port unpublished.
+
 ## Building the image
 
 The image is **not** built by the add-on folder alone — it needs both `backend/`

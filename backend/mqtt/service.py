@@ -21,9 +21,7 @@ from typing import Optional, Tuple, Callable
 from .client import MQTTManager
 from .publisher import MQTTPublisher
 from .handlers import create_message_handlers
-from .discovery import send_mqtt_discovery
 from .settings import get_mqtt_settings
-from crud.settings import get_setting
 from db import get_db
 
 logger = logging.getLogger('mqtt.service')
@@ -70,9 +68,6 @@ class MQTTService:
                     # Set up the publisher with the client
                     self.mqtt_publisher.set_client(self.mqtt_client)
                     
-                    # Send MQTT discovery if enabled
-                    self._send_discovery_if_enabled()
-                    
                     # Set availability to online
                     self._publish_availability_status("online")
 
@@ -109,18 +104,6 @@ class MQTTService:
                 logger.error(f"[mqtt.service] Failed to shutdown MQTT service: {e}")
         else:
             logger.info("[mqtt.service] No MQTT client to disconnect")
-            
-    def _send_discovery_if_enabled(self):
-        """Send MQTT discovery messages if enabled in settings"""
-        db = next(get_db())
-        try:
-            discovery_enabled = get_setting(db, 'mqtt_discovery_enabled', True)
-
-            if discovery_enabled:
-                send_mqtt_discovery(self.mqtt_client)
-                logger.info("[mqtt.service] MQTT discovery messages sent")
-        finally:
-            db.close()
             
     def _publish_reader_availability_snapshot(self):
         """Publish each active reader's current connectivity, retained."""

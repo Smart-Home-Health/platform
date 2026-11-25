@@ -15,6 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Read the clinical streams used by the monitoring and diary day views."""
 from datetime import timezone
+from sqlalchemy import func, text
 from sqlalchemy.orm import contains_eager
 
 from schemas.pulse_ox_data import PulseOxData
@@ -61,6 +62,33 @@ def pulse_minutes(db, patient_id, start_dt, end_dt):
                 row['sample_offsets_ms'][signal] = [sample['first'], sample['last']]
         rows.append(row)
     return rows
+
+
+def _quarter(timestamp):
+    return func.time_bucket(text("INTERVAL '15 minutes'"), timestamp)
+
+
+def quarter_hour_signals(db, patient_id, start, end):
+    """Aggregate valid raw samples independently so each reading has equal weight."""
+    pulse = PulseOxData
+    bucket = _quarter(pulse.timestamp).label('bucket')
+    columns = [bucket]
+    for signal, valid in ((pulse.spo2, pulse.spo2.between(1, 100)), (pulse.bpm, pulse.bpm > 0)):
+        columns.extend(f(signal).filter(valid) for f in (func.min, func.avg, func.max))
+    rows = db.query(*columns).filter(pulse.patient_id == patient_id, pulse.timestamp.between(start, end)
+                                    ).group_by(bucket).order_by(bucket)
+    def stats(low, avg, high):
+        return None if low is None else dict(low=low, avg=round(float(avg), 2), high=high)
+    return [dict(at=ts, spo2=stats(lo, avg, hi), bpm=stats(blo, bavg, bhi))
+            for ts, lo, avg, hi, blo, bavg, bhi in rows if lo is not None or blo is not None]
+
+
+def event_quarters(db, patient_id, start, end, category):
+    # The diary timeline places each alert marker at its recorded start.
+    model, ts = (MonitoringAlert, MonitoringAlert.start_time) if category == 'alerts' else (Vital, Vital.timestamp)
+    bucket = _quarter(ts).label('bucket')
+    return [at for (at,) in db.query(bucket).filter(model.patient_id == patient_id, ts.between(start, end))
+            .distinct().order_by(bucket)]
 
 
 def medications(db, patient_id, start_dt, end_dt):

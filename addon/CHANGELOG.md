@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.2
+
+- Diary printouts and PDFs open with a full-page overview of the study. SpO₂ and heart rate show the high, low and average for each 15-minute interval. The activity grid below marks which categories had entries in each interval.
+- Enable **Schedule details (names and due times)** under **Care profile → Home Assistant → Reminders** to publish late, due-now and upcoming medications, nutrition, care tasks and equipment over MQTT. The included **Late care reminder** blueprint can send recurring phone notifications.
+- **Profile → Connections → Frigate NVR** detects a Frigate recorder installed on the same Home Assistant system. Choose the patient’s camera for a video-only live preview, snapshots and recorded clips through the internal connection.
+- On the Live Board, a shared Home Assistant device with the extra account password disabled prompts for the caregiver when verification is due. After verification, the requested panel opens.
+
 ## 0.7.1
 
 - Open **Suggested events** on the diary day timeline to review paired oxygen dips and heart-rate rises, including those below alarm thresholds. Each suggestion shows the time span, lowest SpO₂, heart-rate range, and any movement flagged by the monitor. Save it to include it in the diary and printout.

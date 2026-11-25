@@ -22,9 +22,7 @@ import { useAuth } from './AuthContext';
 /**
  * Idle-aware user-identity freshness for the live dashboard.
  *
- * The 24-hour account unlock is unchanged. On top of it, every time a
- * caregiver opens a modal on the live dashboard we need to confirm who is
- * actually at the device, so audit-logged actions get attributed correctly.
+ * Identify the caregiver at the device before opening a Live Board action.
  *
  * Behavior:
  *   - `markPinVerified()` opens (or extends) a 5-minute freshness window.
@@ -71,7 +69,8 @@ export function PinChallengeProvider({ children }) {
   // call markPinVerified() directly.
   useEffect(() => {
     if (user?.id) markPinVerified();
-  }, [user?.id, markPinVerified]);
+    else setFreshUntil(0);
+  }, [user?.id, markPinVerified, setFreshUntil]);
 
   // Bump the deadline on any user activity, but only while currently fresh
   // — we don't want background touches to silently re-arm after expiry.
@@ -103,12 +102,12 @@ export function PinChallengeProvider({ children }) {
   }, []);
 
   const requirePinAuth = useCallback(() => {
-    if (freshUntilRef.current > Date.now()) return Promise.resolve(true);
+    if (user?.id && freshUntilRef.current > Date.now()) return Promise.resolve(true);
     return new Promise((resolve) => {
       pendingResolverRef.current = resolve;
       setChallengeOpen(true);
     });
-  }, []);
+  }, [user?.id]);
 
   const handleChallengeSuccess = useCallback(() => {
     markPinVerified();

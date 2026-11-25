@@ -19,7 +19,7 @@
 // their head: four groups of related sections, and one sharing mode across
 // them all. The stored shape is unchanged — a map of section id to
 // 'off' | 'get' | 'set' | 'both'.
-import { BADGE_SECTION_IDS, MQTT_SECTIONS } from '../../mqttConstants';
+import { READ_ONLY_SECTION_IDS, MQTT_SECTIONS } from '../../mqttConstants';
 
 const labelOf = (id) => MQTT_SECTIONS.find((s) => s.id === id)?.label || id;
 
@@ -37,7 +37,7 @@ export const PERMISSION_GROUPS = [
   {
     id: 'reminders',
     label: 'Reminders',
-    sections: ['meds_counts', 'nutrition_counts', 'care_task_counts', 'equipment_counts'],
+    sections: ['meds_counts', 'nutrition_counts', 'care_task_counts', 'equipment_counts', 'schedule_details'],
   },
   {
     id: 'alarms',
@@ -78,7 +78,7 @@ export function groupRows(sections = {}) {
 
 // Home Assistant can only write back to sections that have a set handler; the
 // badge counts are read-only, so "control allowed" leaves them on get.
-const controlValueFor = (id) => (BADGE_SECTION_IDS.includes(id) ? 'get' : 'both');
+const controlValueFor = (id) => (READ_ONLY_SECTION_IDS.includes(id) ? 'get' : 'both');
 
 /**
  * Which of the three modes the current permissions add up to.
@@ -108,10 +108,9 @@ export function applyMode(sections = {}, mode) {
   return next;
 }
 
-// Turning sharing on for a profile that has never been configured: start from
-// read-only everything rather than an empty page with sixteen dropdowns.
+// New profiles share readings and counts. Sharing item names is a separate choice.
 export function monitorOnlyDefaults() {
-  return Object.fromEntries(MQTT_SECTIONS.map((s) => [s.id, 'get']));
+  return Object.fromEntries(MQTT_SECTIONS.map((s) => [s.id, s.id === 'schedule_details' ? 'off' : 'get']));
 }
 
 export const hasAnyShared = (sections = {}) =>

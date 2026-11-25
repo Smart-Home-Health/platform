@@ -24,6 +24,8 @@ from .settings import (
     get_mqtt_settings,
     get_vital_topic_config,
     get_patient_state_topic,
+    get_patient_mqtt_config,
+    schedule_details_topic,
     section_allows_get,
     state_key_to_section,
 )
@@ -151,6 +153,19 @@ class MQTTPublisher:
         except Exception as e:
             logger.error(f"Error publishing {vital_type} data to MQTT: {str(e)}")
             return False
+
+    def publish_schedule_details(self, patient_id, snapshot):
+        """Publish only while sharing is still enabled. The broker need not retain care names."""
+        if not self.is_available():
+            return False
+        config = get_patient_mqtt_config(patient_id) or {}
+        settings = get_mqtt_settings()
+        if not (settings.get('enabled') and config.get('enabled', True)
+                and (config.get('sections') or {}).get('schedule_details') in ('get', 'both')):
+            return False
+        topic = schedule_details_topic(settings.get('base_topic', 'shh'), patient_id, config)
+        result = self.mqtt_client.publish(topic, json.dumps(snapshot), qos=1, retain=False)
+        return result.rc == 0
 
     def publish_patient_combined_state(self, patient_id: int, state: Dict[str, Any]) -> bool:
         """

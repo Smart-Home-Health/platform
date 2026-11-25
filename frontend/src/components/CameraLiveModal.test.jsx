@@ -49,3 +49,15 @@ describe('CameraLiveModal', () => {
     expect(screen.getByRole('link', { name: 'Open snapshot' })).toHaveAttribute('href', '/snap.jpg');
   });
 });
+
+it('loads the detected recorder preview and still image through HA ingress', async () => {
+  vi.stubGlobal('__BASE_PATH__', '/api/hassio_ingress/test');
+  const path = '/api/integrations/frigate/patient/5';
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({
+    camera: 'room', live_mode: 'mjpeg', live_url: path + '/preview.mjpeg', snapshot_url: path + '/snapshot.jpg',
+  }) })));
+  renderModal();
+  const base = window.location.origin + window.__BASE_PATH__ + path;
+  expect(await screen.findByAltText('Live view of room')).toHaveAttribute('src', base + '/preview.mjpeg');
+  expect(screen.getByRole('link', { name: 'Open snapshot' })).toHaveAttribute('href', base + '/snapshot.jpg');
+});

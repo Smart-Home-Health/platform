@@ -95,9 +95,10 @@ describe('groupRows', () => {
 });
 
 describe('monitorOnlyDefaults', () => {
-  it('starts a fresh profile read-only across the board', () => {
+  it('keeps item names off when enabling a fresh profile', () => {
     const defaults = monitorOnlyDefaults();
-    expect(sharedCount(defaults)).toBe(MQTT_SECTIONS.length);
+    expect(defaults.schedule_details).toBe('off');
+    expect(sharedCount(defaults)).toBe(MQTT_SECTIONS.length - 1);
     expect(sharingMode(defaults)).toBe('monitor');
   });
 });

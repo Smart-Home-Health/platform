@@ -821,6 +821,19 @@ async def discover_devices(
                 db.add(device)
                 devices_added += 1
         
+        if slug == "frigate":
+            # A retried setup may point to a different recorder. Only offer cameras
+            # from the inventory that just succeeded.
+            current_ids = {device.device_id for device in devices}
+            db.query(IntegrationDevice).filter(
+                IntegrationDevice.patient_integration_id == integration_id,
+                IntegrationDevice.device_id.notin_(current_ids),
+            ).delete(synchronize_session=False)
+            settings = dict(patient_integration.settings or {})
+            if "camera" in settings and settings["camera"] not in current_ids:
+                settings.pop("camera")
+                patient_integration.settings = settings
+
         db.commit()
         
         return {

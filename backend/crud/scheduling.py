@@ -25,7 +25,7 @@ from schemas.care_task_schedule import CareTaskSchedule
 from schemas.care_task_log import CareTaskLog
 from nutrition_vocab import LOCATION_LABELS, to_ml
 from care_task_vocab import is_nutrition_category
-from crud.patients import get_active_patient
+from crud.patients import get_active_patient, patient_account_scope
 from utils.datetime_utils import (
     utc_now,
     utc_today,
@@ -756,7 +756,7 @@ from schemas.nutrition_intake import NutritionIntake
 from schemas.nutrition_output import NutritionOutput
 
 
-def get_scheduled_medications(db: Session, target_date, patient_id: int, tz_offset_minutes=None, tz=None):
+def get_scheduled_medications(db: Session, target_date, patient_id: int, tz_offset_minutes=None, tz=None, *, strict=False):
     """
     Get all medications scheduled for a specific date for a patient.
     Only includes medications where start_date <= target_date (or no start_date).
@@ -775,6 +775,7 @@ def get_scheduled_medications(db: Session, target_date, patient_id: int, tz_offs
             MedicationSchedule.active == True,
             (MedicationSchedule.patient_id == patient_id) | (MedicationSchedule.patient_id == None)
         ).join(Medication).filter(
+            patient_account_scope(db, Medication, patient_id),
             Medication.active == True,
             (Medication.patient_id == patient_id) | (Medication.patient_id == None),
             # Only include if start_date is null or <= target_date
@@ -802,10 +803,30 @@ def get_scheduled_medications(db: Session, target_date, patient_id: int, tz_offs
                 key = (log.schedule_id, make_utc(log.scheduled_time).replace(second=0, microsecond=0))
                 log_lookup[key] = log
 
+        # Older scheduled administrations sometimes have only the actual time.
+        # Assign each to one firing, including when it was given across midnight.
+        from crud.dose_grace import LOG_MATCH_WINDOW, nearest_logged_firing
+        legacy_by_schedule = {}
+        if schedules:
+            legacy_logs = db.query(MedicationLog).filter(
+                MedicationLog.patient_id == patient_id,
+                MedicationLog.schedule_id.in_([schedule.id for schedule in schedules]),
+                MedicationLog.scheduled_time.is_(None),
+                MedicationLog.administered_at >= local_start_utc - LOG_MATCH_WINDOW,
+                MedicationLog.administered_at < local_end_utc + LOG_MATCH_WINDOW,
+            )
+            for log in legacy_logs:
+                legacy_by_schedule.setdefault(log.schedule_id, []).append(log)
+
         scheduled_meds = []
 
         for schedule in schedules:
             try:
+                for log in legacy_by_schedule.get(schedule.id, []):
+                    firing = nearest_logged_firing(schedule.cron_expression, log.administered_at)
+                    if firing is not None:
+                        log_lookup.setdefault((schedule.id, firing), log)
+
                 # Walk croniter forward from just before the local-day window in UTC.
                 base_time = local_start_utc - timedelta(hours=1)
                 cron = croniter(schedule.cron_expression, base_time)
@@ -841,6 +862,8 @@ def get_scheduled_medications(db: Session, target_date, patient_id: int, tz_offs
                         'log_id': log.id if log else None,
                     })
             except Exception as cron_error:
+                if strict:
+                    raise
                 logger.error(f"Error processing cron expression {schedule.cron_expression}: {cron_error}")
                 continue
         
@@ -887,11 +910,13 @@ def get_scheduled_medications(db: Session, target_date, patient_id: int, tz_offs
         return sorted(scheduled_meds, key=lambda x: x['scheduled_time'])
 
     except Exception as e:
+        if strict:
+            raise
         logger.error(f"Error getting scheduled medications: {e}")
         return []
 
 
-def get_scheduled_care_tasks(db: Session, target_date, patient_id: int, tz_offset_minutes=None, tz=None):
+def get_scheduled_care_tasks(db: Session, target_date, patient_id: int, tz_offset_minutes=None, tz=None, *, strict=False):
     """
     Get all care tasks scheduled for a specific date for a patient.
     Includes category information for nutrition detection.
@@ -910,6 +935,7 @@ def get_scheduled_care_tasks(db: Session, target_date, patient_id: int, tz_offse
             CareTaskSchedule.active == True,
             (CareTaskSchedule.patient_id == patient_id) | (CareTaskSchedule.patient_id == None)
         ).join(CareTask).filter(
+            patient_account_scope(db, CareTask, patient_id),
             CareTask.active == True,
             (CareTask.patient_id == patient_id) | (CareTask.patient_id == None)
         ).all()
@@ -973,6 +999,8 @@ def get_scheduled_care_tasks(db: Session, target_date, patient_id: int, tz_offse
                         'log_id': log.id if log else None,
                     })
             except Exception as cron_error:
+                if strict:
+                    raise
                 logger.error(f"Error processing cron expression {schedule.cron_expression}: {cron_error}")
                 continue
 
@@ -1019,11 +1047,13 @@ def get_scheduled_care_tasks(db: Session, target_date, patient_id: int, tz_offse
         return sorted(scheduled_tasks, key=lambda x: x['scheduled_time'])
 
     except Exception as e:
+        if strict:
+            raise
         logger.error(f"Error getting scheduled care tasks: {e}")
         return []
 
 
-def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset_minutes=None, tz=None):
+def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset_minutes=None, tz=None, *, strict=False):
     """
     Get all nutrition items scheduled for a specific date for a patient.
     Uses the nutrition_schedules table for meals, hydration, bathroom checks, etc.
@@ -1144,6 +1174,8 @@ def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset
                            if (log is None and not schedule.fills_fluid_goal) else {}),
                     })
             except Exception as cron_error:
+                if strict:
+                    raise
                 logger.error(f"Error processing nutrition cron expression {schedule.cron_expression}: {cron_error}")
                 continue
 
@@ -1375,6 +1407,8 @@ def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset
         return sorted(scheduled_nutrition, key=lambda x: x['scheduled_time'])
 
     except Exception as e:
+        if strict:
+            raise
         logger.error(f"Error getting scheduled nutrition: {e}")
         return []
 

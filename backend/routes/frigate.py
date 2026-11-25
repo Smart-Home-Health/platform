@@ -29,15 +29,15 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List
-from urllib.parse import urljoin, urlencode
+from urllib.parse import quote, urljoin, urlencode
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse, FileResponse, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 
-from dependencies import get_db, require_read_access
+from dependencies import get_db, require_read_access, require_system_admin
 from routes.auth import require_full_auth, get_current_account_id
 from schemas.integration import (
     Integration as IntegrationModel,
@@ -45,7 +45,7 @@ from schemas.integration import (
     IntegrationDevice,
 )
 from integrations import get_integration
-from integrations.frigate import FrigateIntegration
+from integrations.frigate import FrigateIntegration, installed_frigate_addons
 
 
 router = APIRouter(prefix="/api/integrations/frigate", tags=["frigate"])
@@ -167,6 +167,17 @@ def _rewrite_hls_playlist(text: str, upstream_url: str, proxy_seg_base: str) -> 
 # ---------------------------------------------------------------------------
 
 
+@router.get("/home-assistant/addons")
+async def discover_home_assistant_frigate(
+    current_user=Depends(require_full_auth), _: bool = Depends(require_read_access),
+    admin=Depends(require_system_admin),
+):
+    try:
+        return await installed_frigate_addons()
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(503, "Could not check installed Home Assistant add-ons.") from exc
+
+
 @router.get("/patient/{patient_id}/cameras", response_model=List[FrigateCameraResponse])
 async def list_cameras(
     patient_id: int,
@@ -264,6 +275,11 @@ async def get_live(
     if not camera:
         raise HTTPException(status_code=400, detail="No camera selected for this patient")
 
+    if client.addon_slug:
+        path = f"/api/integrations/frigate/patient/{patient_id}"
+        return FrigateLiveResponse(camera=camera, live_url=f"{path}/preview.mjpeg",
+                                   snapshot_url=f"{path}/snapshot.jpg", live_mode="mjpeg")
+
     mode = (pi.settings or {}).get("live_mode", "hls")
     if mode == "hls":
         live_url = f"/api/integrations/frigate/patient/{patient_id}/live.m3u8"
@@ -276,6 +292,47 @@ async def get_live(
         snapshot_url=client.get_snapshot_url(camera),
         live_mode=mode,
     )
+
+
+@router.get("/patient/{patient_id}/snapshot.jpg")
+@router.get("/patient/{patient_id}/preview.mjpeg")
+async def camera_preview(
+    patient_id: int, request: Request, db: Session = Depends(get_db),
+    current_user=Depends(require_full_auth), account_id: int = Depends(get_current_account_id),
+    _: bool = Depends(require_read_access),
+):
+    """Serve the selected camera through the hub's authenticated origin, including ingress."""
+    client = _make_client(_get_active_frigate(db, patient_id, account_id))
+    camera = client.selected_camera()
+    if not camera:
+        raise HTTPException(400, "No camera selected for this patient")
+    snapshot = request.url.path.endswith("/snapshot.jpg")
+    url = (client.get_snapshot_url(camera) if snapshot else
+           f"{client.base_url_public()}/api/{quote(camera, safe='')}?fps=5&height=720")
+    http = client.http_client(httpx.Timeout(10, read=30))
+    try:
+        upstream = await http.send(http.build_request("GET", url, headers=client._headers()), stream=True)
+    except httpx.HTTPError as exc:
+        await http.aclose()
+        raise HTTPException(502, "Could not reach the Frigate camera.") from exc
+
+    content_type = upstream.headers.get("content-type", "")
+    expected_type = "image/jpeg" if snapshot else "multipart/x-mixed-replace"
+    if upstream.status_code != 200 or content_type.partition(";")[0].strip().lower() != expected_type:
+        await upstream.aclose()
+        await http.aclose()
+        raise HTTPException(502, "Frigate could not supply the requested camera image.")
+
+    async def stream():
+        try:
+            async for chunk in upstream.aiter_bytes():
+                yield chunk
+        finally:
+            await upstream.aclose()
+            await http.aclose()
+
+    return StreamingResponse(stream(), headers={"Content-Type": content_type, "Cache-Control": "no-store",
+                                               "X-Accel-Buffering": "no"})
 
 
 @router.get("/patient/{patient_id}/live.m3u8")
@@ -298,13 +355,12 @@ async def live_playlist(
     if not camera:
         raise HTTPException(status_code=400, detail="No camera selected for this patient")
 
+    if client.addon_slug:
+        raise HTTPException(404, "This connection uses the MJPEG preview.")
     upstream = client.get_live_upstream_m3u8(camera)
     headers = client._headers()
-    # Root-relative: the browser resolves it against the playlist's own
-    # same-origin URL. request.base_url must not be used here — behind the
-    # Vite proxy it is the Docker-internal backend:8000, and behind TLS it
-    # reports http://, so absolute URLs break segment fetches.
-    proxy_seg_base = f"/api/integrations/frigate/patient/{patient_id}/live-seg"
+    # A sibling URL preserves the browser-facing Home Assistant ingress prefix.
+    proxy_seg_base = "live-seg"
 
     last = None
     async with httpx.AsyncClient(timeout=10.0) as http:
@@ -352,6 +408,8 @@ async def live_segment(
     pi = _get_active_frigate(db, patient_id, account_id)
     client = _make_client(pi)
 
+    if client.addon_slug:
+        raise HTTPException(404, "This connection uses the MJPEG preview.")
     base_url = client.base_url_public()
     if u != base_url and not u.startswith(base_url + "/"):
         raise HTTPException(status_code=403, detail="Upstream URL not allowed")
@@ -368,7 +426,7 @@ async def live_segment(
 
     # A nested playlist needs its URIs rewritten too; a segment is passed through.
     if u.split("?", 1)[0].endswith(".m3u8"):
-        proxy_seg_base = f"/api/integrations/frigate/patient/{patient_id}/live-seg"
+        proxy_seg_base = "live-seg"
         rewritten = _rewrite_hls_playlist(resp.text, u, proxy_seg_base)
         return Response(
             content=rewritten,
@@ -406,7 +464,7 @@ async def live_probe(
     from urllib.parse import quote as _q
     url = f"{client.base_url_public()}/api/go2rtc/api/streams?src={_q(camera)}"
     try:
-        async with httpx.AsyncClient(timeout=10.0) as http:
+        async with client.http_client(10.0) as http:
             resp = await http.get(url, headers=client._headers())
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"Could not reach go2rtc: {e}")
@@ -460,7 +518,7 @@ async def download_clip(
 
     async def stream():
         # Long timeout to allow Frigate to assemble the clip on demand.
-        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, read=120.0)) as http:
+        async with client.http_client(httpx.Timeout(60.0, read=120.0)) as http:
             async with http.stream("GET", upstream, headers=client._headers()) as resp:
                 if resp.status_code != 200:
                     body = await resp.aread()
@@ -543,7 +601,7 @@ async def save_clip(
     tmp_fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".part")
     os.close(tmp_fd)
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, read=120.0)) as http:
+        async with client.http_client(httpx.Timeout(60.0, read=120.0)) as http:
             async with http.stream("GET", upstream, headers=client._headers()) as resp:
                 if resp.status_code != 200:
                     body = await resp.aread()

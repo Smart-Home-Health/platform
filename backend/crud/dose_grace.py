@@ -32,6 +32,7 @@ from datetime import datetime, timedelta, timezone
 from croniter import croniter
 from sqlalchemy.orm import Session
 
+from crud.patients import patient_account_scope
 from schemas.medication import Medication
 from schemas.medication_schedule import MedicationSchedule
 from schemas.medication_log import MedicationLog
@@ -76,6 +77,15 @@ def _next_firing(cron_expression, firing_utc):
     return make_utc(croniter(cron_expression, firing_utc).get_next(datetime))
 
 
+def nearest_logged_firing(cron_expression, administered_at):
+    """Resolve a legacy scheduled log with no due timestamp to at most one firing."""
+    at = make_utc(administered_at)
+    before = croniter(cron_expression, at + timedelta(seconds=1)).get_prev(datetime)
+    after = croniter(cron_expression, at).get_next(datetime)
+    nearest = min((before, after), key=lambda firing: abs(firing - at))
+    return nearest if abs(nearest - at) <= LOG_MATCH_WINDOW else None
+
+
 def _log_matches(logs_for_schedule, firing_utc):
     """True when one of the schedule's logs records this firing: an exact
     scheduled_time match (what the completion endpoints write), or an
@@ -90,7 +100,7 @@ def _log_matches(logs_for_schedule, firing_utc):
     return False
 
 
-def find_grace_period_doses(db: Session, patient_id: int, before_utc: datetime, now_utc: datetime = None):
+def find_grace_period_doses(db: Session, patient_id: int, before_utc: datetime, now_utc: datetime = None, *, strict=False):
     """Unfilled firings before ``before_utc`` that are still inside their grace.
 
     ``before_utc`` is the start of the earliest day the caller already shows,
@@ -121,6 +131,7 @@ def find_grace_period_doses(db: Session, patient_id: int, before_utc: datetime, 
             MedicationSchedule.active == True,  # noqa: E712
             (MedicationSchedule.patient_id == patient_id) | (MedicationSchedule.patient_id == None),  # noqa: E711
         ).join(Medication).filter(
+            patient_account_scope(db, Medication, patient_id),
             Medication.active == True,  # noqa: E712
             (Medication.patient_id == patient_id) | (Medication.patient_id == None),  # noqa: E711
         ).all()
@@ -129,6 +140,7 @@ def find_grace_period_doses(db: Session, patient_id: int, before_utc: datetime, 
 
         schedule_ids = [s.id for s in schedules]
         logs = db.query(MedicationLog).filter(
+            MedicationLog.patient_id == patient_id,
             MedicationLog.schedule_id.in_(schedule_ids),
             (MedicationLog.scheduled_time >= lookback_start)
             | (MedicationLog.administered_at >= lookback_start - LOG_MATCH_WINDOW),
@@ -182,12 +194,16 @@ def find_grace_period_doses(db: Session, patient_id: int, before_utc: datetime, 
                         'overdue_minutes': int((now_utc - firing).total_seconds() // 60),
                     })
             except Exception as cron_error:
+                if strict:
+                    raise
                 logger.error(f"Grace walk failed for schedule {schedule.id} ({schedule.cron_expression}): {cron_error}")
                 continue
 
         rows.sort(key=lambda r: r['scheduled_time'])
         return rows
     except Exception as e:
+        if strict:
+            raise
         logger.error(f"Error finding grace-period doses for patient {patient_id}: {e}")
         return []
 

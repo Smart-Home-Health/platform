@@ -36,6 +36,7 @@ export const MQTT_SECTIONS = [
   { id: 'nutrition_counts', label: 'Nutrition Due/Late' },
   { id: 'care_task_counts', label: 'Care Tasks Due/Late' },
   { id: 'equipment_counts', label: 'Equipment Due/Late' },
+  { id: 'schedule_details', label: 'Schedule details (names and due times)' },
 ];
 
 export const PERM_OPTIONS = [
@@ -47,11 +48,12 @@ export const PERM_OPTIONS = [
 
 // Badge-count sections are read-only (HA reads the count; there is no set
 // handler), so they expose only Off / Get — no `set`/`both`.
-export const BADGE_SECTION_IDS = [
+export const READ_ONLY_SECTION_IDS = [
   'meds_counts',
   'nutrition_counts',
   'care_task_counts',
   'equipment_counts',
+  'schedule_details',
 ];
 
 const READ_ONLY_PERM_OPTIONS = PERM_OPTIONS.filter(
@@ -60,7 +62,7 @@ const READ_ONLY_PERM_OPTIONS = PERM_OPTIONS.filter(
 
 // Permission options available for a given section id.
 export const permOptionsForSection = (sectionId) =>
-  BADGE_SECTION_IDS.includes(sectionId) ? READ_ONLY_PERM_OPTIONS : PERM_OPTIONS;
+  READ_ONLY_SECTION_IDS.includes(sectionId) ? READ_ONLY_PERM_OPTIONS : PERM_OPTIONS;
 
 // Styling for the compact native <select> used in permission dropdowns.
 // Native selects give the OS picker, which is the friendliest control on mobile.

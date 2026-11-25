@@ -28,10 +28,6 @@ from events import SensorUpdate, MQTTConnectionEvent, VitalSignRecorded, EventSo
 
 logger = logging.getLogger("mqtt_module")
 
-# Per-patient MQTT section ids whose combined-state values are due-now/late badge
-# counts. Each maps to two state keys (see crud helpers / mqtt.discovery).
-BADGE_SECTION_IDS = ("meds_counts", "nutrition_counts", "care_task_counts", "equipment_counts")
-
 class MQTTModule:
     """Manages MQTT message handling and publishes events from MQTT data."""
     
@@ -40,6 +36,8 @@ class MQTTModule:
         self.mqtt_manager = None
         self.mqtt_publisher = None
         self.is_connected = False
+        self._subscribers_started = False
+        self._schedule_locks: Dict[int, asyncio.Lock] = {}
         self._patient_state_cache: Dict[int, Dict[str, Any]] = {}
         # Cached alarm thresholds (min_spo2, max_spo2, min_bpm, max_bpm) + monotonic fetch time.
         self._alarm_thresholds: Optional[tuple] = None
@@ -54,6 +52,9 @@ class MQTTModule:
         
     async def start_event_subscribers(self):
         """Start subscribing to relevant events."""
+        if self._subscribers_started:
+            return
+        self._subscribers_started = True
         # Subscribe to vital_saved events to publish manually entered vitals to MQTT
         asyncio.create_task(self._subscribe_to_vital_saved())
         # Subscribe to SensorUpdate events for nutrition MQTT publishing
@@ -156,9 +157,14 @@ class MQTTModule:
         async for event in self.event_bus.subscribe_to_type(DueCountsChanged):
             try:
                 patient_id = getattr(event, "patient_id", None)
-                if patient_id is None:
-                    continue
-                await self._refresh_and_publish_badge_counts(patient_id)
+                if patient_id is not None:
+                    await self.refresh_patient_schedule(patient_id)
+                elif event.category == "equipment":
+                    # A replacement can be shared by multiple care profiles.
+                    from mqtt.settings import get_patients_with_mqtt_enabled
+                    patients = await asyncio.to_thread(get_patients_with_mqtt_enabled)
+                    for entry in patients:
+                        await self.refresh_patient_schedule(entry["patient_id"])
             except Exception as e:
                 logger.error(f"Error handling DueCountsChanged for MQTT badge counts: {e}")
 
@@ -167,7 +173,7 @@ class MQTTModule:
         due-now/late counts age in as scheduled times pass — there is no event when
         an occurrence simply crosses the ±1h / >1h thresholds. Mirrors the live
         dashboard's 60s badge poll. Patients without a badge section enabled are a
-        no-op (the counts are config-gated in _badge_counts)."""
+        no-op unless schedule details are shared."""
         from mqtt.settings import get_patients_with_mqtt_enabled
         logger.info("Started MQTT badge-counts updater (60s)")
         while True:
@@ -177,61 +183,44 @@ class MQTTModule:
                     continue
                 patients = await asyncio.to_thread(get_patients_with_mqtt_enabled)
                 for entry in patients:
-                    await self._refresh_and_publish_badge_counts(entry["patient_id"])
+                    await self.refresh_patient_schedule(entry["patient_id"])
             except Exception as e:
                 logger.error(f"Error in MQTT badge-counts updater: {e}")
 
-    async def _badge_counts(self, patient_id: int) -> Dict[str, Any]:
-        """Combined-state badge keys for a patient: due-now/late counts for meds,
-        nutrition, care tasks, and equipment. Only the categories whose MQTT
-        section is enabled (get/both) are computed — so a patient not using badge
-        counts pays for no schedule queries and triggers no extra publishing."""
+    async def _schedule_state(self, patient_id, *, include_details):
+        """Load the enabled badge counts and, on a schedule refresh, the opt-in snapshot."""
         def _load():
+            from crud.schedule_status import SCHEDULE_BADGES, get_schedule_status, schedule_badge_counts
             from mqtt.settings import get_patient_mqtt_config
             from state_manager import get_db_session
             cfg = get_patient_mqtt_config(patient_id) or {}
-            sections = cfg.get("sections") or {}
-            wanted = {s for s in BADGE_SECTION_IDS if sections.get(s) in ("get", "both")}
-            if not wanted:
-                return {}
-            out: Dict[str, Any] = {}
+            sharing = cfg.get("sections") or {}
+            badges = [s for s in SCHEDULE_BADGES if sharing.get(s) in ("get", "both")]
+            details = include_details and sharing.get("schedule_details") in ("get", "both")
+            if not cfg.get("enabled", True) or not (badges or details):
+                return {}, None
             with get_db_session() as db:
-                if "meds_counts" in wanted:
-                    from crud.medications import get_medication_due_now_late_counts
-                    c = get_medication_due_now_late_counts(db, patient_id=patient_id)
-                    out["meds_due_now"], out["meds_late"] = c["due_now"], c["late"]
-                if "nutrition_counts" in wanted:
-                    from crud.scheduling import get_nutrition_due_now_late_counts
-                    c = get_nutrition_due_now_late_counts(db, patient_id=patient_id)
-                    out["nutrition_due_now"], out["nutrition_late"] = c["due_now"], c["late"]
-                if "care_task_counts" in wanted:
-                    from crud.scheduling import get_care_task_due_now_late_counts
-                    c = get_care_task_due_now_late_counts(db, patient_id=patient_id)
-                    out["care_tasks_due_now"], out["care_tasks_late"] = c["due_now"], c["late"]
-                if "equipment_counts" in wanted:
-                    from crud.equipment import get_equipment_due_now_late_counts
-                    c = get_equipment_due_now_late_counts(db, patient_id=patient_id)
-                    out["equipment_due_now"], out["equipment_late"] = c["due_now"], c["late"]
-            return out
+                snapshot = get_schedule_status(db, patient_id, sections=None if details else badges)
+            return schedule_badge_counts(snapshot, badges), snapshot if details else None
         try:
             return await asyncio.to_thread(_load)
-        except Exception as e:
-            logger.error(f"Error computing badge counts for patient {patient_id}: {e}")
-            return {}
+        except Exception:
+            logger.exception("Could not read schedule for MQTT patient %s", patient_id)
+            return {}, None
 
-    async def _refresh_and_publish_badge_counts(self, patient_id: int) -> None:
-        """Recompute badge counts for a patient and republish the combined state.
-        No-op when no badge section is enabled (empty counts). Seeds a fresh cache
-        first so the republish doesn't blank out vitals/nutrition in HA."""
+    async def refresh_patient_schedule(self, patient_id: int) -> None:
         if not (self.mqtt_publisher and self.mqtt_publisher.is_available()):
             return
-        counts = await self._badge_counts(patient_id)
-        if not counts:
-            return
-        if patient_id not in self._patient_state_cache:
-            self._patient_state_cache[patient_id] = await self._seed_patient_state(patient_id)
-        self._patient_state_cache[patient_id].update(counts)
-        await self._publish_patient_state_with_alarms(patient_id)
+        # A tick and a completion may coincide. Finish publishing the older read first.
+        async with self._schedule_locks.setdefault(patient_id, asyncio.Lock()):
+            counts, snapshot = await self._schedule_state(patient_id, include_details=True)
+            if snapshot is not None:
+                await asyncio.to_thread(self.mqtt_publisher.publish_schedule_details, patient_id, snapshot)
+            if counts:
+                if patient_id not in self._patient_state_cache:
+                    self._patient_state_cache[patient_id] = await self._seed_patient_state(patient_id, counts)
+                self._patient_state_cache[patient_id].update(counts)
+                await self._publish_patient_state_with_alarms(patient_id)
 
     async def _get_alarm_thresholds(self) -> tuple:
         """Return (min_spo2, max_spo2, min_bpm, max_bpm) from settings, cached for 60s."""
@@ -337,7 +326,7 @@ class MQTTModule:
             logger.error(f"Error computing nutrition state for patient {patient_id}: {e}")
             return {}
 
-    async def _seed_patient_state(self, patient_id: int) -> Dict[str, Any]:
+    async def _seed_patient_state(self, patient_id: int, counts=None) -> Dict[str, Any]:
         """DB-derived combined-state keys used to seed a fresh cache so they
         survive a restart and aren't dropped from the retained state by the next
         live-reader publish. Covers manual vitals (weight, temperature, BP),
@@ -355,7 +344,9 @@ class MQTTModule:
             logger.error(f"Error seeding vitals for patient {patient_id}: {e}")
         seed.update(await self._bathroom_state(patient_id))
         seed.update(await self._nutrition_state(patient_id))
-        seed.update(await self._badge_counts(patient_id))
+        if counts is None:
+            counts, _ = await self._schedule_state(patient_id, include_details=False)
+        seed.update(counts)
         return seed
 
     async def _bathroom_state(self, patient_id: int) -> Dict[str, Any]:

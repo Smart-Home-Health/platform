@@ -71,13 +71,14 @@ test('patient card opens the correct diary and captures, corrects and prints an 
       observations.set(id, event);
       json = event;
     }
-    if (pathname.endsWith('/9/timeline')) json = [
+    if (pathname.endsWith('/9/report')) json = { start: diary.starts_at, through: new Date().toISOString(),
+      signals_from: diary.starts_at, signals: [], categories: { observation: [], alerts: [], vitals: [] }, entries: [
       { source: 'medication', id: 4, at: '2026-11-24T02:30:00Z', label: 'Took medicine', note: 'Recorded dose' },
       { source: 'care_task', id: 4, at: '2026-11-24T02:30:00Z', label: 'Care task completed', note: 'Reposition · Left side' },
       { source: 'medication', id: 5, at: '2026-11-24T02:30:00.785Z', label: 'Took medicine', note: 'Second dose' },
       { ...diaperChange, at: '2026-11-24T02:30:15Z' },
       ...observations.values(),
-    ];
+    ] };
     if (pathname.endsWith('/9/day')) {
       const date = new URL(req.url()).searchParams.get('target_date') || '2026-11-23';
       const start = Date.parse(date + 'T05:00:00Z');
@@ -251,6 +252,15 @@ test('read-only diary offers a full-study PDF when the host suppresses printing'
     { id: 2, source: 'care_task', label: 'Care task completed', at: starts, note: 'Changed bedding' },
     { ...diaperChange, at: starts },
   );
+  const instant = i => new Date(Date.parse(starts) + i * 900000).toISOString();
+  const signals = Array.from({ length: 121 }, (_, i) => {
+    const oxygen = 97 + Math.sin(i * .35), pulse = 82 + 8 * Math.sin(i * .27);
+    return { at: instant(i), spo2: { low: Math.floor(oxygen) - (i % 23 === 0 ? 7 : 1), avg: oxygen, high: 99 },
+      bpm: { low: Math.floor(pulse) - 5, avg: pulse, high: Math.ceil(pulse) + (i % 23 === 0 ? 21 : 6) } };
+  }).filter((_, i) => i < 40 || i > 45);
+  const categories = { observation: [instant(0), instant(52), instant(120)], alerts: [instant(23), instant(69)],
+    medication: [instant(10), instant(72)], care_task: [instant(0)], nutrition: [instant(14)],
+    nutrition_output: [instant(0)], vitals: [instant(89)] };
   await page.routeWebSocket('**/ws/sensors', () => {});
   await page.route('**/api/**', route => {
     const path = new URL(route.request().url()).pathname;
@@ -259,7 +269,7 @@ test('read-only diary offers a full-study PDF when the host suppresses printing'
       '/api/auth/first-run': { is_first_run: false },
       '/api/patients': [patient],
       [base]: { can_write: false, timezone: 'America/New_York', diaries: [diary] },
-      [base + '/9/timeline']: entries,
+      [base + '/9/report']: { start: starts, through: instant(120), signals_from: starts, entries, signals, categories },
       [base + '/9/day']: { date: '2026-11-23', today: '2026-11-23', first_day: '2026-11-22',
         last_day: '2026-11-23', timezone: 'America/New_York', day_start: '2026-11-23T05:00:00Z',
         day_end: '2026-11-24T05:00:00Z' },
@@ -278,6 +288,7 @@ test('read-only diary offers a full-study PDF when the host suppresses printing'
   await embedded.getByRole('button', { name: 'Print diary' }).tap();
   const preview = embedded.getByRole('dialog', { name: 'Print preview' });
   await expect(preview).toContainText('Avery Green');
+  await expect(preview.getByRole('img', { name: /15-minute SpO₂/ })).toBeVisible();
   await expect(preview.getByRole('cell', { name: 'Turned toward the window.', exact: true })).toBeVisible();
   await expect(preview).toContainText('Last entry of the study.');
   const careRow = preview.getByRole('row').filter({ hasText: 'Care task completed' });
@@ -296,4 +307,13 @@ test('read-only diary offers a full-study PDF when the host suppresses printing'
   expect((await readFile(output)).subarray(0, 5).toString()).toBe('%PDF-');
   await preview.getByRole('button', { name: 'Close' }).tap();
   await expect(preview).toHaveCount(0);
+
+  await page.goto('/care/diary?patient=2');
+  await page.emulateMedia({ media: 'print' });
+  const overview = page.locator('.diary-print .diary-overview');
+  await expect(overview.getByRole('img')).toBeVisible();
+  await expect(overview).toHaveCSS('break-after', 'page');
+  const printed = await page.pdf({ path: testInfo.outputPath('browser-print.pdf'), format: 'Letter',
+    margin: { top: '0.5in', right: '0.5in', bottom: '0.5in', left: '0.5in' } });
+  expect(printed.toString('latin1')).toMatch(/\/MediaBox\s*\[0 0 612 792\]/);
 });
