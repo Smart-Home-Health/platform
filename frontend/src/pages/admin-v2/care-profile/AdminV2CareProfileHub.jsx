@@ -21,7 +21,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
-  AlertIcon, CheckCircleIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon,
+  AlertIcon, CalendarIcon, CheckCircleIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon,
   DashboardIcon, FileTextIcon, HomeIcon, VitalsIcon, XIcon,
 } from '../../../components/Icons';
 import config, { apiFetch } from '../../../config';
@@ -114,6 +114,16 @@ export default function AdminV2CareProfileHub() {
   const age = ageFrom(patient?.date_of_birth);
 
   const sections = [
+    {
+      id: 'schedule-manager',
+      to: `${base}/schedule-manager`,
+      icon: <CalendarIcon size={18} />,
+      title: 'Schedule Manager',
+      blurb: 'Adjust feed timing and suggest bathroom checks for this person.',
+      action: 'Open manager',
+      status: 'optional',
+      facts: [],
+    },
     {
       id: 'features',
       to: `${base}/features`,

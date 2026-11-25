@@ -28,6 +28,7 @@ import {
 import IntakeSheet from './nutrition/IntakeSheet';
 import OutputSheet from './nutrition/OutputSheet';
 import DoseScheduleView from './schedule/DoseScheduleView';
+import FixedCheckDialog from './schedule/FixedCheckDialog';
 import DoseDetailPane from './schedule/DoseDetailPane';
 import { NUTRITION_LABELS } from './schedule/scheduleLabels';
 import { rollupSchedule } from './schedule/scheduleRollup';
@@ -54,6 +55,8 @@ const NutritionModal = ({ onClose }) => {
   // Keyed on the schedule slot, not the normalized id — see the medication
   // panel: the id embeds the log and changes the moment an item is recorded.
   const [selectedId, setSelectedId] = useState(null);
+  const [fixedCheck, setFixedCheck] = useState(null);
+  const canRecordCheck = Boolean(user?.is_system_admin || user?.permissions?.includes('nutrition.create'));
   const [bulkConfirm, setBulkConfirm] = useState({ open: false, items: [], count: 0 });
   const [scheduled, setScheduled] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -122,9 +125,11 @@ const NutritionModal = ({ onClose }) => {
       }
       if (item.default_calories != null) detail.push(`${item.default_calories} kcal`);
       const isFlush = item.row_kind === 'flush';
+      const isCheck = item.row_kind === 'diaper_check';
       return {
         id: isFlush ? `flush-${item.followup_id}` : `${item.schedule_id}-${item.scheduled_time}`,
-        scheduled_time: item.scheduled_time,
+        scheduled_time: item.effective_time ?? item.scheduled_time,
+        managed_feed: item.managed_feed,
         name: item.name,
         description: item.description,
         extra: detail.length ? detail.join(' · ') : null,
@@ -134,10 +139,13 @@ const NutritionModal = ({ onClose }) => {
         is_yesterday: !!item.is_yesterday,
         // Only the post-feed flush follow-up is skippable from here.
         can_skip: isFlush,
+        can_bulk_record: !isCheck,
+        can_record: !isCheck || canRecordCheck,
+        record_label: isCheck ? 'Record check' : undefined,
         _raw: item,
       };
     });
-  }, [scheduled]);
+  }, [scheduled, canRecordCheck]);
 
   const itemKey = (raw) => (raw?.row_kind === 'flush'
     ? `flush-${raw.followup_id}`
@@ -159,7 +167,7 @@ const NutritionModal = ({ onClose }) => {
       sublabel: "Today's nutrition",
       note: counts.missed > 0
         ? `${counts.missed} missed`
-        : (outstanding > 0 ? `${outstanding} due` : 'All done'),
+        : (outstanding > 0 ? `${outstanding} due` : (counts.upcoming ? `${counts.upcoming} upcoming` : 'All done')),
       tone: counts.missed > 0 || outstanding > 0 ? 'due' : 'given',
     }];
   }, [scheduledItems]);
@@ -193,6 +201,10 @@ const NutritionModal = ({ onClose }) => {
 
   // ===== Complete scheduled item =====
   const submitComplete = async (item, { earlyOverride = false, note, items, amount } = {}) => {
+    if (item.row_kind === 'diaper_check') {
+      if (canRecordCheck) setFixedCheck(item);
+      return;
+    }
     // Flush follow-ups have their own Run path (one-tap from the row,
     // amount-adjustable from the side pane).
     if (item.row_kind === 'flush') {
@@ -233,7 +245,7 @@ const NutritionModal = ({ onClose }) => {
           item,
           note,
           items,
-          check: checkAdministrationWindow(item.scheduled_time),
+          check: checkAdministrationWindow(item.effective_time ?? item.scheduled_time),
         });
         return;
       }
@@ -267,7 +279,7 @@ const NutritionModal = ({ onClose }) => {
     // Flush follow-ups do not go through the cron completion endpoint —
     // "record all" runs them via their own path.
     const flushRows = allItems.filter(i => i.row_kind === 'flush');
-    const items = allItems.filter(i => i.row_kind !== 'flush');
+    const items = allItems.filter(i => i.row_kind !== 'flush' && i.row_kind !== 'diaper_check');
     for (const flush of flushRows) {
       await runFlushRow(flush);
     }
@@ -356,6 +368,10 @@ const NutritionModal = ({ onClose }) => {
                 selectedId={selectedItem?.id || null}
                 onSelect={(item) => {
                   if (item && prnMode === 'intake') setPrnMode(null);
+                  if (item?._raw.row_kind === 'diaper_check' && !item.is_completed && canRecordCheck) {
+                    setFixedCheck(item._raw);
+                    return;
+                  }
                   setSelectedId(item ? itemKey(item._raw) : null);
                 }}
                 onRecord={(item, opts) => submitComplete(item._raw, opts)}
@@ -382,6 +398,13 @@ const NutritionModal = ({ onClose }) => {
                       onClose={closePrn}
                       onSaved={onPrnSaved}
                     />
+                  </div>
+                ) : selectedItem?._raw.row_kind === 'diaper_check' ? (
+                  <div className="ld-dose-detail">
+                    <h3 className="ld-dose-detail-name">{selectedItem.name}</h3>
+                    <p>{selectedItem._raw.check_outcome === 'dry' ? 'Checked dry'
+                      : selectedItem._raw.check_outcome === 'changed' ? 'Diaper changed'
+                        : selectedItem.is_completed ? 'Completed' : 'Scheduled diaper check'}</p>
                   </div>
                 ) : (selectedItem && !selectedItem.is_completed) ? (
                   <NutritionFeedPane
@@ -420,6 +443,8 @@ const NutritionModal = ({ onClose }) => {
           </div>
         </div>
       </ModalBase>
+      {fixedCheck && <FixedCheckDialog item={fixedCheck} patientId={selectedPatient?.id}
+        onClose={() => setFixedCheck(null)} onSaved={() => { setFixedCheck(null); fetchSchedule(); }} />}
 
       {/* Off-window confirm */}
       {windowConfirm.open && windowConfirm.item && windowConfirm.check && (() => {

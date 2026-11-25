@@ -318,6 +318,8 @@ def _validate_archive(archive_bytes, contents):
     # for all their original tables.
     if strict and manifest.get('schema_version') == 1:
         archive_tables -= {'event_diaries', 'diary_events'}
+    if strict and manifest.get('schema_version') in (1, 2):
+        archive_tables -= {'schedule_manager_profiles', 'schedule_manager_feeds', 'schedule_manager_actions', 'schedule_manager_recipients', 'feed_start_overrides'}
     expected = {name + '.json' for name in archive_tables - STREAMED}
     expected.update(name + '.ndjson' for name in STREAMED)
     expected.update(('manifest.json', 'users_referenced.json'))
@@ -331,7 +333,7 @@ def _validate_archive(archive_bytes, contents):
             expected.add(item['member'])
     if strict:
         schema = {name: sorted(fields(MODELS[name])) for name in archive_tables}
-        if manifest.get('schema_version') not in (1, SCHEMA_VERSION) or manifest.get('tables') != schema:
+        if manifest.get('schema_version') not in (1, 2, SCHEMA_VERSION) or manifest.get('tables') != schema:
             raise ValueError('Unsupported backup schema; export and restore using a matching application version')
         if attachments is None:
             raise ValueError('Archive is missing attachment manifest')

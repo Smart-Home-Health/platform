@@ -714,12 +714,16 @@ def test_missing_required_table_is_not_treated_as_empty_legacy_history(db_sessio
     assert inspect(db.connection()).has_table("nutrition_items")
 
 
-def test_strict_archive_from_before_diaries_restores(db_session, migration_graph):
+@pytest.mark.parametrize('schema_version', [1, 2])
+def test_strict_archives_from_before_manager_restore(db_session, migration_graph, schema_version):
     g = migration_graph
     members = _members(_export(db_session, g))
     manifest = json.loads(members['manifest.json'])
-    manifest['schema_version'] = 1
-    for name in ('event_diaries', 'diary_events'):
+    manifest['schema_version'] = schema_version
+    absent = ['schedule_manager_profiles', 'schedule_manager_feeds', 'schedule_manager_actions', 'schedule_manager_recipients', 'feed_start_overrides']
+    if schema_version == 1:
+        absent.extend(['event_diaries', 'diary_events'])
+    for name in absent:
         del manifest['tables'][name], manifest['counts'][name], members[name + '.json']
     members['manifest.json'] = json.dumps(manifest).encode()
     assert restore_patient_from_targz(db_session, _pack(members), g.target.id)['new_patient_id']

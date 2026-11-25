@@ -59,6 +59,20 @@ const renderAt = (dock, props = {}) => {
 };
 
 describe('DoseScheduleView — narrow stop', () => {
+  it.each([false, true])('keeps a fixed diaper check out of bulk nutrition recording (expanded %s)', (expanded) => {
+    const onRecordAll = vi.fn();
+    const onRecord = vi.fn();
+    const feed = { ...ITEMS[0], name: 'Lunch' };
+    const check = { ...ITEMS[1], name: 'Afternoon check', can_bulk_record: false, record_label: 'Record check' };
+    renderAt({ expanded }, { items: [feed, check], labels: NUTRITION_LABELS, onRecordAll, onRecord });
+    for (const button of screen.getAllByRole('button', { name: 'Mark all taken' })) {
+      fireEvent.click(button);
+      expect(onRecordAll).toHaveBeenLastCalledWith([feed]);
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Record check' }));
+    expect(onRecord).toHaveBeenCalledWith(check);
+  });
+
   it('leads with what is overdue and how many need attention', () => {
     renderAt({ expanded: false });
     expect(screen.getByText(/2 missed · 08:00/i)).toBeInTheDocument();

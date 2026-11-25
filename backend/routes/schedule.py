@@ -157,6 +157,8 @@ async def get_daily_schedule(
                 item["is_yesterday"] = True
             medications = prior_meds + medications
             prior_nutrition = get_scheduled_nutrition(db, prior_date, patient_id, tz_offset_minutes=tz_offset_minutes, tz=tz)
+            if schedule_date == local_day_bounds(tz)['local_today']:
+                prior_nutrition = [r for r in prior_nutrition if not r.get("reminder_superseded")]
             for item in prior_nutrition:
                 item["is_yesterday"] = True
             nutrition_items = prior_nutrition + nutrition_items
@@ -225,6 +227,7 @@ async def get_daily_schedule(
                 # 'schedule' | 'flush' | 'prn' | 'output' — flush rows are the
                 # one-off post-feed follow-ups with Run/Skip affordances.
                 "row_kind": nutr.get("row_kind", "schedule"),
+                "check_outcome": nutr.get("check_outcome"),
                 "followup_id": nutr.get("followup_id"),
                 "skipped": nutr.get("skipped", False),
                 "flush_components": nutr.get("flush_components") or [],
@@ -235,8 +238,15 @@ async def get_daily_schedule(
                 "suggested_amount": nutr.get("suggested_amount"),
                 "water_plan": nutr.get("water_plan"),
                 "scheduled_time": nutr["scheduled_time"].isoformat(),
-                "hour": nutr["scheduled_time"].hour,
-                "minute": nutr["scheduled_time"].minute,
+                "effective_time": nutr.get("effective_time", nutr["scheduled_time"]).isoformat(),
+                "managed_feed": nutr.get("managed_feed", False),
+                "reminder_superseded": nutr.get("reminder_superseded", False),
+                "timing_reason": nutr.get("timing_reason"),
+                "start_override_at": nutr["start_override_at"].isoformat() if nutr.get("start_override_at") else None,
+                "overnight_target_at": nutr["overnight_target_at"].isoformat() if nutr.get("overnight_target_at") else None,
+                "overnight_delayed": nutr.get("overnight_delayed", False),
+                "hour": nutr.get("effective_time", nutr["scheduled_time"]).hour,
+                "minute": nutr.get("effective_time", nutr["scheduled_time"]).minute,
                 "notes": nutr.get("notes"),
                 "completed": nutr["completed"],
                 "completed_at": nutr["completed_at"],
@@ -412,6 +422,30 @@ def _nutrition_completion_rows(schedule, data: CompleteItemRequest, db=None,
     }]
 
 
+def _nutrition_administration_time(db, item, original):
+    """Use the server's adjusted window while retaining original for the intake."""
+    from crud.schedule_manager import read_settings
+
+    settings = read_settings(db, item.patient_id)
+    if not settings.feeds_enabled or item.schedule_id not in settings.feed_schedule_ids:
+        return original
+    tz = resolve_tz_for_patient(db, item.patient_id)
+    day = original.astimezone(tz).date()
+    for row in get_scheduled_nutrition(db, day, item.patient_id, tz=tz, strict=True,
+                                       feed_settings=settings):
+        if (row.get("managed_feed") and row["schedule_id"] == item.schedule_id
+                and row["scheduled_time"] == original.replace(second=0, microsecond=0)):
+            return row["effective_time"]
+    return original
+
+
+def _diaper_check_outcome_required():
+    return JSONResponse(status_code=422, content={
+        "detail": "Choose Checked dry or Diaper changed on the scheduled bathroom check.",
+        "error": "check_outcome_required",
+    })
+
+
 @router.post("/complete/nutrition")
 async def complete_nutrition(
     data: CompleteItemRequest,
@@ -419,6 +453,12 @@ async def complete_nutrition(
 ):
     """Mark a scheduled nutrition item as completed"""
     try:
+        schedule = db.query(NutritionSchedule).filter_by(id=data.schedule_id, patient_id=data.patient_id).first()
+        if not schedule:
+            return {"success": False, "error": "Schedule not found"}
+        if schedule.schedule_type == 'diaper_check':
+            return _diaper_check_outcome_required()
+
         # Parse scheduled time
         scheduled_dt = parse_scheduled_time(data.scheduled_time)
 
@@ -427,7 +467,7 @@ async def complete_nutrition(
             return future
 
         early = guard_early_administration(
-            scheduled_dt,
+            _nutrition_administration_time(db, data, scheduled_dt),
             early_override=data.early_override,
             item_label="nutrition item",
             schedule_id=data.schedule_id,
@@ -442,10 +482,6 @@ async def complete_nutrition(
         else:
             completed_at = utc_now()
         
-        # Get the schedule for default values
-        schedule = db.query(NutritionSchedule).filter(NutritionSchedule.id == data.schedule_id).first()
-        if not schedule:
-            return {"success": False, "error": "Schedule not found"}
         
         # Resolve what this feed actually logs: explicit items from the
         # client, else the schedule's component mix, else the legacy single
@@ -632,6 +668,10 @@ async def complete_bulk(
         EARLY_ADMINISTRATION_THRESHOLD_MINUTES,
         LATE_ADMINISTRATION_THRESHOLD_MINUTES,
     )
+    if nutrition and db.query(NutritionSchedule.id).filter(
+            NutritionSchedule.id.in_([item.schedule_id for item in nutrition]),
+            NutritionSchedule.schedule_type == 'diaper_check').first():
+        return _diaper_check_outcome_required()
     off_window_items = []
     sections = [
         ("medication", medications),
@@ -651,8 +691,11 @@ async def complete_bulk(
                 continue
             if item.early_override:
                 continue
+            window_time = item.scheduled_time
+            if label == "nutrition item":
+                window_time = _nutrition_administration_time(db, item, parse_scheduled_time(item.scheduled_time))
             status, minutes_offset, parsed = check_administration_window(
-                item.scheduled_time,
+                window_time,
                 completed_at=item.completed_at,
             )
             if status in ("early", "late"):

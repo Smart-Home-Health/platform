@@ -45,6 +45,7 @@ export const BUCKETS = ['given', 'due', 'missed', 'skipped'];
 
 export const BUCKET_LABELS = {
   given: 'Given',
+  upcoming: 'Upcoming',
   due: 'Due',
   missed: 'Missed',
   skipped: 'Skipped',
@@ -54,6 +55,10 @@ export const BUCKET_LABELS = {
  *  rather than vanishing — an unrecognised state still needs a human to look. */
 export function bucketFor(status) {
   return STATUS_BUCKET[status] || 'due';
+}
+
+export function itemBucket(item) {
+  return item.managed_feed && item.status === 'upcoming' ? 'upcoming' : bucketFor(item.status);
 }
 
 /**
@@ -66,8 +71,8 @@ export function rollupSchedule(items = []) {
   const attention = [];
 
   for (const item of items) {
-    const bucket = bucketFor(item.status);
-    counts[bucket] += 1;
+    const bucket = itemBucket(item);
+    counts[bucket] = (counts[bucket] || 0) + 1;
     if (bucket === 'missed' || bucket === 'due') attention.push(item);
   }
 
@@ -113,7 +118,7 @@ export function slotLabel(scheduledTime) {
 export function groupBySlot(items = []) {
   const slots = new Map();
   for (const item of items) {
-    const key = slotLabel(item.scheduled_time);
+    const key = slotLabel(item.effective_time ?? item.scheduled_time);
     if (!slots.has(key)) slots.set(key, []);
     slots.get(key).push(item);
   }

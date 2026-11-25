@@ -51,6 +51,15 @@ describe('bucketFor', () => {
 });
 
 describe('rollupSchedule', () => {
+  it('keeps a managed feed upcoming until its adjusted start', () => {
+    const row = { ...dose('Water', 'upcoming', 16), managed_feed: true };
+    const { counts, needsAttention, lead } = rollupSchedule([row]);
+    expect(counts.upcoming).toBe(1);
+    expect(counts.due).toBe(0);
+    expect(needsAttention).toEqual([]);
+    expect(lead).toBeNull();
+  });
+
   it('counts each bucket and totals the day', () => {
     const { counts, total } = rollupSchedule([
       dose('a', 'completed', 8), dose('b', 'completed', 8),
