@@ -28,12 +28,49 @@ from .settings import get_mqtt_settings, get_patients_with_mqtt_enabled, schedul
 
 logger = logging.getLogger('mqtt.discovery')
 
+# HA renders these against the same opt-in snapshot for both new and existing hubs.
+_SCHEDULE_FORMAT = r"""
+{%- set groups = [('Late', value_json.late), ('Due now', value_json.due_now), ('Upcoming', value_json.upcoming)] -%}
+{%- macro line(label, item, suffix='', compact=false) -%}
+  {%- set due = (as_timestamp(item.due_at) | timestamp_custom('%b %-d, %Y %-I:%M %p %Z')) if item.due_at is defined else item.due_date -%}
+  {%- set start = label ~ ' · ' ~ item.category ~ ' · ' -%}
+  {%- set end = ' — due ' ~ due ~ suffix -%}
+  {%- set name = item.name | truncate(255 - start|length - end|length, true, '…', 0) if compact else item.name -%}
+  {{- start ~ name ~ end -}}
+{%- endmacro -%}
+{%- set details -%}
+  {%- for label, items in groups if items -%}
+    {%- for item in items -%}
+      {{- line(label, item) ~ '\n' -}}
+    {%- endfor -%}
+  {%- else -%}No outstanding care{%- endfor -%}
+{%- endset -%}
+"""
+
+SCHEDULE_STATE_TEMPLATE = _SCHEDULE_FORMAT + r"""
+{%- set summary = details|trim|replace('\n', ' | ') -%}
+{%- if summary|length <= 255 -%}
+  {{- summary -}}
+{%- else -%}
+  {%- set total = value_json.late|length + value_json.due_now|length + value_json.upcoming|length -%}
+  {%- for label, items in groups if items -%}
+    {%- if loop.first -%}
+      {{- line(label, items[0], ' (+' ~ (total - 1) ~ ' more)' if total > 1 else '', compact=true) -}}
+    {%- endif -%}
+  {%- endfor -%}
+{%- endif -%}
+"""
+
+SCHEDULE_ATTRIBUTES_TEMPLATE = _SCHEDULE_FORMAT + """
+{{- dict(value_json, details=details|trim) | to_json -}}
+"""
+
 # Section key -> (value_template, unit_of_measurement, display_name, sensor_type) for discovery.
 # sensor_type is "sensor" for measurements, "binary_sensor" for alarms.
 # Sections with get/both permission get one sensor each; state_topic is same for all (combined JSON).
 # blood_pressure and nutrition are special-cased in the loop.
 SECTION_DISCOVERY: Dict[str, Tuple[str, str, str, str]] = {
-    "schedule_details": ("{{ value_json.late_count }}", "", "Schedule details", "sensor"),
+    "schedule_details": (SCHEDULE_STATE_TEMPLATE, "", "Schedule details", "sensor"),
     "spo2": ("{{ value_json.spo2 }}", "%", "SpO₂", "sensor"),
     "bpm": ("{{ value_json.bpm }}", "BPM", "Heart Rate", "sensor"),
     "heart_rate": ("{{ value_json.bpm }}", "BPM", "Heart Rate", "sensor"),
@@ -367,7 +404,8 @@ def send_mqtt_discovery(mqtt_client, patient_id: Optional[int] = None) -> bool:
             extra = {}
             if section_key == "schedule_details":
                 section_topic = schedule_details_topic(base_topic, pid, entry.get("settings") or {})
-                extra.update(exp_aft=180, qos=1, avty_t=f"{base_topic}/availability")
+                extra.update(exp_aft=180, qos=1, avty_t=f"{base_topic}/availability",
+                             json_attr_tpl=SCHEDULE_ATTRIBUTES_TEMPLATE)
             elif sensor_type == "binary_sensor":
                 extra["pl_on"] = "ON"
                 extra["pl_off"] = "OFF"
