@@ -36,7 +36,7 @@ export function diaryReport(patient, diary, entries, zone) {
       const hour = localHour.format(instant);
       const showDate = hour !== previousHour;
       const time = (showDate ? dateTime : clock).format(instant);
-      rows.set(key, { key, at: entry.at, time, showDate, items: [] });
+      rows.set(key, { key, at: entry.at, time, items: [] });
       previousHour = hour;
     }
     const row = rows.get(key);

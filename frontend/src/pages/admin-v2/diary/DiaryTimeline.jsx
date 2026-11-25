@@ -22,8 +22,8 @@ import EntityModal from '../../../components/vc/EntityModal';
 function Entries({ rows, onEdit }) {
   if (!rows.length) return <p>No events in this diary yet.</p>;
   return <table className="diary-table"><thead><tr><th scope="col">Local date and time</th><th scope="col">Description of event</th></tr></thead>
-    <tbody>{rows.map(({ key, at, time, showDate, items }) => <tr key={key}>
-      <td className={showDate ? undefined : 'diary-time-only'}><time dateTime={at}>{time}</time></td>
+    <tbody>{rows.map(({ key, at, time, items }) => <tr key={key}>
+      <td><time dateTime={at}>{time}</time></td>
       <td>{items.map(({ entry, showLabel, followUp }) => <div key={entry.id}>
           {showLabel && <strong>{entry.label}</strong>}
           {entry.note && <p>{entry.note}</p>}

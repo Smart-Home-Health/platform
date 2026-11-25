@@ -293,6 +293,9 @@ test('read-only diary offers a full-study PDF when the host suppresses printing'
   await expect(preview).toContainText('Last entry of the study.');
   const careRow = preview.getByRole('row').filter({ hasText: 'Care task completed' });
   await expect(careRow.locator('p')).toHaveText(['Transferred to chair', 'Changed bedding']);
+  const firstRow = preview.getByRole('row').filter({ hasText: 'Turned toward the window.' });
+  await expect(firstRow.getByRole('cell').first()).toHaveCSS('text-align', 'right');
+  await expect(careRow.getByRole('cell').first()).toHaveCSS('text-align', 'right');
   await expect(preview.getByRole('row').filter({ hasText: 'Diaper change' })).toContainText(diaperChange.note);
   await expect(preview.getByRole('table').locator('small')).toHaveCount(0);
   await expect(preview.getByRole('row')).toHaveCount(64);

@@ -17,6 +17,7 @@
  */
 import { expect, it } from 'vitest';
 import { diaryReport } from './diaryReport';
+import { diaryTimeFormat } from './diaryTime';
 
 it('groups by source and absolute second across the repeated local hour, preserving each observation', () => {
   const at = '2026-11-01T01:30:00-04:00';
@@ -35,7 +36,10 @@ it('groups by source and absolute second across the repeated local hour, preserv
     [entries[0], entries[2]], [entries[1], entries[3]], [entries[4]], [entries[5]],
   ]);
   expect(rows[1].items.map(item => item.followUp)).toEqual(['Awake? Yes', 'Awake? No']);
-  expect(rows.map(row => row.showDate)).toEqual([true, false, false, true]);
+  const full = diaryTimeFormat('America/New_York');
+  const clock = diaryTimeFormat('America/New_York', false);
+  expect(rows.map(row => row.time)).toEqual([full, clock, clock, full].map((format, i) =>
+    format.format(new Date(rows[i].at))));
 });
 
 it('shows the date on the first row of each local hour, including after midnight and a day without entries', () => {
@@ -47,7 +51,6 @@ it('shows the date on the first row of each local hour, including after midnight
   ].map((at, id) => ({ at, id, source: 'observation', label: 'Movement' }));
   const zone = 'Asia/Kathmandu';
   const { rows } = diaryReport({}, { starts_at: entries[0].at }, entries, zone);
-  expect(rows.map(row => row.showDate)).toEqual([true, false, true, true]);
   const clock = { timeZone: zone, hour: 'numeric', minute: '2-digit', second: '2-digit', timeZoneName: 'short' };
   const full = { ...clock, year: 'numeric', month: 'short', day: 'numeric' };
   expect(rows.map(row => row.time)).toEqual(entries.map(({ at }, i) =>

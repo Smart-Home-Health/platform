@@ -52,7 +52,7 @@ body:has(.vkb-launcher) .diary-detail:has(.diary-add) { padding-bottom: calc(5re
 .diary-table { width: 100%; border-collapse: collapse; table-layout: fixed; text-align: left; }
 .diary-table th, .diary-table td { padding: .7rem .25rem; vertical-align: top; border-bottom: 1px solid var(--vc-line-strong); }
 .diary-table th:first-child { width: 35%; }
-.diary-time-only { text-align: end; }
+.diary-table td:first-child { text-align: right; }
 .diary-table p { margin: .2rem 0; white-space: pre-wrap; }
 .diary-fieldset { min-width: 0; padding: .6rem; border: 1px solid var(--vc-line-strong); border-radius: 8px; }
 .diary-fieldset label { display: block; margin: .4rem; }
