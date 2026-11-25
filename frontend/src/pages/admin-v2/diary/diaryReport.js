@@ -15,17 +15,29 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { stamp } from './diaryTime';
+import { diaryTimeFormat } from './diaryTime';
 
 export function diaryReport(patient, diary, entries, zone) {
-  const end = diary.ends_at ? stamp(diary.ends_at, zone) : 'Ongoing';
+  const dateTime = diaryTimeFormat(zone);
+  const clock = diaryTimeFormat(zone, false);
+  // The offset distinguishes the two occurrences of an hour when clocks fall back.
+  const localHour = new Intl.DateTimeFormat('en-US', {
+    timeZone: zone, year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', timeZoneName: 'shortOffset',
+  });
+  const end = diary.ends_at ? dateTime.format(new Date(diary.ends_at)) : 'Ongoing';
   const rows = new Map();
+  let previousHour;
   for (const entry of entries) {
     // Match the displayed precision, keeping the two occurrences of a repeated local hour distinct.
-    const second = Math.floor(Date.parse(entry.at) / 1000);
+    const instant = Date.parse(entry.at);
+    const second = Math.floor(instant / 1000);
     const key = `${second}-${entry.source}`;
     if (!rows.has(key)) {
-      rows.set(key, { key, at: entry.at, time: stamp(entry.at, zone), items: [] });
+      const hour = localHour.format(instant);
+      const showDate = hour !== previousHour;
+      const time = (showDate ? dateTime : clock).format(instant);
+      rows.set(key, { key, at: entry.at, time, showDate, items: [] });
+      previousHour = hour;
     }
     const row = rows.get(key);
     const showLabel = !entry.is_custom && (entry.source === 'observation' || entry.label !== row.items.at(-1)?.entry.label);
@@ -34,7 +46,7 @@ export function diaryReport(patient, diary, entries, zone) {
   return {
     title: diary.name,
     patient: [patient.first_name, patient.last_name].filter(Boolean).join(' '),
-    period: `${stamp(diary.starts_at, zone)} – ${end} · ${zone}`,
+    period: `${dateTime.format(new Date(diary.starts_at))} – ${end} · ${zone}`,
     rows: Array.from(rows.values()),
   };
 }
