@@ -188,6 +188,14 @@ The system integrates with **Home Assistant** and other MQTT‑enabled devices.
    states, and ingests incoming readings — with loop‑prevention so MQTT‑sourced
    updates are not re‑published.
 
+#### Care schedule reminders
+
+In **Care profile → Home Assistant → Reminders**, set **Schedule details (names and due times)** to **Get only**. Home Assistant discovers a Schedule details sensor for that profile. Its state is the number of late items. Its `late`, `due_now`, and `upcoming` attributes carry the category, name, and either a timestamp (`due_at`) or an equipment replacement date (`due_date`).
+
+The hub publishes the snapshot on `<base>/patient/<id>/schedule` every minute and on care log changes. Timed items become late after one hour. Upcoming covers the next hour for timed care and the next seven days for equipment. Each snapshot includes `generated_at`. Home Assistant marks the sensor unavailable after three minutes without an update.
+
+To get phone reminders, import the blueprint under **Settings → Automations & scenes → Blueprints**, create an automation from it, and select the sensor and caregiver phone. It sends the first reminder when an item becomes late and repeats every 30 minutes by default while items are still late. [Late care reminder blueprint](examples/late-care-reminder.yaml)
+
 ## License
 
 This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)** —

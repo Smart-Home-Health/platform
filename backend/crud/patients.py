@@ -21,6 +21,12 @@ from datetime import datetime
 from crud.settings import get_setting, save_setting
 
 
+def patient_account_scope(db, model, patient_id):
+    """Limit shared catalog rows to this patient's account and legacy global rows."""
+    account = db.query(Patient.account_id).filter(Patient.id == patient_id).scalar_subquery()
+    return (model.account_id == account) | model.account_id.is_(None)
+
+
 def get_patient(db: Session, patient_id: int) -> Optional[Patient]:
     """Get patient by ID"""
     return db.query(Patient).filter(Patient.id == patient_id).first()

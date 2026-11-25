@@ -128,6 +128,7 @@ def test_routes_scope_diaries_and_events_to_patient(admin_client, patient, db_se
     event = observe(admin_client, path)
     assert admin_client.get(path.replace(f'/patients/{patient.id}/', f'/patients/{other.id}/') + '/timeline').status_code == 404
     assert admin_client.get(path.replace(f'/patients/{patient.id}/', f'/patients/{other.id}/') + '/day').status_code == 404
+    assert admin_client.get(path.replace(f'/patients/{patient.id}/', f'/patients/{other.id}/') + '/report').status_code == 404
     assert admin_client.delete(other_path + '/events/' + str(event['id'])).status_code == 404
     invalid = {'request_id': str(uuid4()), 'label': 'Questionable event', 'observed_at': '2020-01-01T00:00:00Z'}
     assert admin_client.post(path + '/events', json=invalid).status_code == 422
@@ -305,6 +306,8 @@ def test_suggested_event_requires_review_and_respects_the_diary_window(admin_cli
     token = create_access_token(user=limited_user, account=account, auth_level='full')
     restricted = admin_client.get(url, headers={'Authorization': f'Bearer {token}'})
     assert restricted.status_code == 200 and 'suggested_events' not in restricted.json()
+    restricted_report = admin_client.get(path + '/report', headers={'Authorization': f'Bearer {token}'}).json()
+    assert restricted_report['signals'] == [] and set(restricted_report['categories']) == {'observation', 'vitals'}
     assert admin_client.get(path + '/timeline').json() == []
     draft = dict(request_id=pattern['id'], observed_at=pattern['start_time'], note='Oxygen dip during repositioning.')
     saved = admin_client.post(path + '/events', json=draft).json()
@@ -313,3 +316,57 @@ def test_suggested_event_requires_review_and_respects_the_diary_window(admin_cli
     assert admin_client.get(path + '/timeline').json() == [saved]
     assert admin_client.delete(path + '/events/' + str(saved['id'])).status_code == 204
     assert admin_client.get(url).json()['suggested_events'] == [pattern]
+
+
+def test_print_report_rolls_up_raw_samples_and_all_event_categories(admin_client, patient, db_session, account):
+    from schemas.monitoring_alert import MonitoringAlert
+    from schemas.pulse_ox_data import PulseOxData
+    from schemas.vital import Vital
+
+    begin = AT
+    last = AT + timedelta(days=1, minutes=5)
+    base = f'/api/patients/{patient.id}/diaries'
+    diary = admin_client.post(base, json={**FORM, 'starts_at': begin.isoformat(), 'ends_at': last.isoformat()}).json()
+    path = base + '/' + str(diary['id'])
+    observe(admin_client, path)
+    med = _make_med(admin_client, patient).json()['id']
+    # The first and last raw samples lie outside the study but inside its first/last quarters.
+    for ts, spo2, bpm in [(begin - timedelta(seconds=1), 70, 180), (begin, 99, 75),
+                          (begin + timedelta(seconds=2), 99, 80), (begin + timedelta(minutes=1), 90, -1),
+                          (begin + timedelta(minutes=2), -1, 100), (last, 95, None),
+                          (last + timedelta(seconds=1), 75, 140)]:
+        db_session.add(PulseOxData(patient_id=patient.id, timestamp=ts, created_at=ts, spo2=spo2, bpm=bpm))
+    db_session.add_all([
+        MonitoringAlert(patient_id=patient.id, start_time=begin, created_at=begin),
+        Vital(patient_id=patient.id, timestamp=last, created_at=last, vital_type='heart_rate', value=80),
+        MedicationLog(patient_id=patient.id, medication_id=med, administered_at=last, dose_amount=1, created_at=last),
+        NutritionOutput(patient_id=patient.id, output_type='urine', occurred_at=last),
+        NutritionIntake(patient_id=patient.id, item_name='Water', item_type='liquid', amount=20, amount_unit='ml',
+                        consumed_at=last, created_at=last, updated_at=last),
+        CareTaskLog(patient_id=patient.id, care_task=CareTask(name='Transfer', account_id=account.id,
+                    created_at=last, updated_at=last), completed_at=last, status='completed', created_at=last),
+    ])
+    db_session.flush()
+    report = admin_client.get(path + '/report').json()
+    assert [datetime.fromisoformat(report[k]) for k in ['start', 'through']] == [begin, last]
+    first_at = begin.replace(minute=0)
+    first, final = report['signals']
+    assert datetime.fromisoformat(first['at']) == first_at
+    assert first['spo2'] == {'low': 90, 'avg': 96, 'high': 99}
+    assert first['bpm'] == {'low': 75, 'avg': 85, 'high': 100}
+    assert datetime.fromisoformat(final['at']) == last
+    assert final['spo2'] == {'low': 95, 'avg': 95, 'high': 95} and final['bpm'] is None
+    assert {k: list(map(datetime.fromisoformat, bins)) for k, bins in report['categories'].items()} == {
+        'observation': [first_at], 'alerts': [first_at], 'vitals': [last], 'care_task': [last],
+        'nutrition': [last], 'nutrition_output': [last], 'medication': [last],
+    }
+    tail = admin_client.get(path + '/report', params={'signals_since': last.isoformat()}).json()
+    assert len(tail['signals']) == 1
+    assert datetime.fromisoformat(tail['signals'][0]['at']) == last
+    assert tail['signals'][0]['spo2'] == final['spo2']
+    timeline = admin_client.get(path + '/timeline').json()
+    assert [dict(r, at=datetime.fromisoformat(r['at'])) for r in report['entries']] == [
+        dict(r, at=datetime.fromisoformat(r['at'])) for r in timeline]
+    admin_client.put(path, json={**FORM, 'starts_at': begin.isoformat(), 'ends_at': last.isoformat(),
+                                 'include_medications': False, 'include_nutrition': False})
+    assert set(admin_client.get(path + '/report').json()['categories']) == {'care_task', 'observation', 'alerts', 'vitals'}

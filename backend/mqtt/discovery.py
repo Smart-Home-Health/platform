@@ -24,7 +24,7 @@ import json
 import logging
 import re
 from typing import Dict, Any, Optional, List, Tuple
-from .settings import get_mqtt_settings, get_patients_with_mqtt_enabled
+from .settings import get_mqtt_settings, get_patients_with_mqtt_enabled, schedule_details_topic
 
 logger = logging.getLogger('mqtt.discovery')
 
@@ -33,6 +33,7 @@ logger = logging.getLogger('mqtt.discovery')
 # Sections with get/both permission get one sensor each; state_topic is same for all (combined JSON).
 # blood_pressure and nutrition are special-cased in the loop.
 SECTION_DISCOVERY: Dict[str, Tuple[str, str, str, str]] = {
+    "schedule_details": ("{{ value_json.late_count }}", "", "Schedule details", "sensor"),
     "spo2": ("{{ value_json.spo2 }}", "%", "SpO₂", "sensor"),
     "bpm": ("{{ value_json.bpm }}", "BPM", "Heart Rate", "sensor"),
     "heart_rate": ("{{ value_json.bpm }}", "BPM", "Heart Rate", "sensor"),
@@ -166,6 +167,13 @@ def _all_section_entities() -> List[Tuple[str, str, str, str]]:
     return entity_plan(every_section) + _LEGACY_ENTITIES
 
 
+def _entity_id(device_ident, patient_id, suffix):
+    # Named care data must have its own discovery topic even for same-name patients.
+    if suffix == "schedule_details":
+        return f"shh_patient_{patient_id}_schedule_details"
+    return f"{device_ident}_{suffix}"
+
+
 def _remove_entity(mqtt_client, discovery_prefix: str, sensor_type: str,
                    sensor_id: str) -> None:
     """Publish an empty retained config — HA deletes the entity on receipt."""
@@ -191,7 +199,7 @@ def remove_mqtt_discovery_for_patient(mqtt_client, patient_id: int,
     device_ident = _safe_device_id(patient_name, patient_id)
     for _section, sensor_type, suffix, _name in _all_section_entities():
         _remove_entity(mqtt_client, discovery_prefix, sensor_type,
-                       f"{device_ident}_{suffix}")
+                       _entity_id(device_ident, patient_id, suffix))
     for reader_id in reader_ids or []:
         _remove_entity(mqtt_client, discovery_prefix, "binary_sensor",
                        f"{device_ident}_reader_{reader_id}")
@@ -355,8 +363,12 @@ def send_mqtt_discovery(mqtt_client, patient_id: Optional[int] = None) -> bool:
             val_tpl, unit, display_name, sensor_type = section_config
             safe_section = section_key.replace(" ", "_").lower()
 
+            section_topic = state_topic
             extra = {}
-            if sensor_type == "binary_sensor":
+            if section_key == "schedule_details":
+                section_topic = schedule_details_topic(base_topic, pid, entry.get("settings") or {})
+                extra.update(exp_aft=180, qos=1, avty_t=f"{base_topic}/availability")
+            elif sensor_type == "binary_sensor":
                 extra["pl_on"] = "ON"
                 extra["pl_off"] = "OFF"
                 extra["dev_cla"] = "problem"
@@ -370,10 +382,10 @@ def send_mqtt_discovery(mqtt_client, patient_id: Optional[int] = None) -> bool:
 
             success_count += _publish_discovery(
                 mqtt_client, discovery_prefix, sensor_type,
-                f"{device_ident}_{safe_section}",
+                _entity_id(device_ident, pid, safe_section),
                 f"{base_topic}_patient_{pid}_{safe_section}",
                 f"{patient_name} {display_name}",
-                state_topic, val_tpl, unit, device_info,
+                section_topic, val_tpl, unit, device_info,
                 **extra,
             )
 
@@ -384,7 +396,7 @@ def send_mqtt_discovery(mqtt_client, patient_id: Optional[int] = None) -> bool:
             if sections.get(section_key) in ("get", "both"):
                 continue
             _remove_entity(mqtt_client, discovery_prefix, sensor_type,
-                           f"{device_ident}_{suffix}")
+                           _entity_id(device_ident, pid, suffix))
 
         # --- Reader connectivity: one binary sensor per active reader, on its
         # own retained availability topic (published by the reader WS path) so

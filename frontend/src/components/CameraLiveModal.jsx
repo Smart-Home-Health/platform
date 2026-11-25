@@ -28,9 +28,8 @@ import './camera/camera-panel.css';
 /**
  * Modal that plays the live Frigate stream for a patient.
  *
- * The backend hands back an HLS playlist URL pointing directly at the
- * Frigate instance (go2rtc). We attach it via hls.js (or native HLS on
- * Safari) inside a <video> element.
+ * The Home Assistant recorder supplies a same-origin MJPEG preview.
+ * HLS streams use hls.js or native HLS on Safari.
  */
 export default function CameraLiveModal({ patientId, patientName, onClose }) {
   const videoRef = useRef(null);
@@ -44,6 +43,7 @@ export default function CameraLiveModal({ patientId, patientName, onClose }) {
     const load = async () => {
       setLoading(true);
       setError('');
+      setInfo(null);
       try {
         const res = await fetch(
           `${API_BASE_URL}/api/integrations/frigate/patient/${patientId}/live`,
@@ -72,7 +72,7 @@ export default function CameraLiveModal({ patientId, patientName, onClose }) {
     // HLS live_url comes back RELATIVE (the backend can't know the
     // browser-facing scheme/host); resolve it against the same base the
     // /live info fetch used. Absolute URLs (webrtc/go2rtc) pass through.
-    const streamUrl = new URL(info.live_url, API_BASE_URL).toString();
+    const streamUrl = info.live_url.startsWith('/api/') ? `${API_BASE_URL}${info.live_url}` : info.live_url;
 
     if (Hls.isSupported()) {
       const hls = new Hls({
@@ -129,6 +129,10 @@ export default function CameraLiveModal({ patientId, patientName, onClose }) {
 
         {loading ? (
           <div className="ld-dose-empty">Loading stream…</div>
+        ) : info?.live_mode === 'mjpeg' ? (
+          <img src={`${API_BASE_URL}${info.live_url}`} alt={`Live view of ${info.camera}`}
+            style={{ width: '100%', maxHeight: '70vh', objectFit: 'contain' }}
+            onError={() => setError('Could not load the live camera preview.')} />
         ) : info?.live_url ? (
           <ZoomableVideo
             videoRef={videoRef}
@@ -143,7 +147,7 @@ export default function CameraLiveModal({ patientId, patientName, onClose }) {
         ) : null}
 
         {info?.snapshot_url && (
-          <a className="ld-dose-linkbtn" href={info.snapshot_url} target="_blank" rel="noopener noreferrer">
+          <a className="ld-dose-linkbtn" href={info.snapshot_url.startsWith('/api/') ? `${API_BASE_URL}${info.snapshot_url}` : info.snapshot_url} target="_blank" rel="noopener noreferrer">
             Open snapshot
           </a>
         )}

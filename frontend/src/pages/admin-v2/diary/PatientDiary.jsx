@@ -29,6 +29,7 @@ import { PatientDayTimeline } from '../AdminV2MonitoringTimeline';
 import { DiarySettings, ObservationForm } from './DiaryForms';
 import DiaryTimeline from './DiaryTimeline';
 import { diaryReport } from './diaryReport';
+import { diaryOverview } from './diaryOverview';
 import { stamp, studyRange } from './diaryTime';
 import './diary.css';
 
@@ -46,8 +47,11 @@ async function request(path, method = 'GET', payload, signal) {
 
 function DiaryDetail({ diary, diaries, patient, base, canWrite, zone, onSelect, onCreate, onUpdated }) {
   const path = base + '/' + diary.id;
-  const [entries, setEntries] = useState(null);
-  const report = useMemo(() => entries && diaryReport(patient, diary, entries, zone), [patient, diary, entries, zone]);
+  const [snapshot, setSnapshot] = useState(null);
+  const entries = snapshot?.entries;
+  const report = useMemo(() => snapshot && {
+    ...diaryReport(patient, diary, snapshot.entries, zone), overview: diaryOverview(snapshot, zone),
+  }, [patient, diary, snapshot, zone]);
   const [printReport, setPrintReport] = useState(null);
   const [view, setView] = useState('day');
   const [loadError, setLoadError] = useState('');
@@ -62,11 +66,26 @@ function DiaryDetail({ diary, diaries, patient, base, canWrite, zone, onSelect, 
   const [notice, setNotice] = useState('');
   useEffect(() => {
     const ac = new AbortController();
+    let previous = null;
+    let loading = false;
     async function load() {
+      if (loading) return;
+      loading = true;
       try {
-        const rows = await request(path + '/timeline', 'GET', undefined, ac.signal);
-        if (!ac.signal.aborted) { setEntries(rows); setLoadError(''); }
+        const since = previous?.categories.alerts && previous.through;
+        const query = since ? '?' + new URLSearchParams({ signals_since: since }) : '';
+        let result = await request(path + '/report' + query, 'GET', undefined, ac.signal);
+        if (since && Date.parse(result.start) !== Date.parse(previous.start)) {
+          result = await request(path + '/report', 'GET', undefined, ac.signal);
+        } else if (since && result.categories.alerts) {
+          const from = Math.floor(Date.parse(result.signals_from) / 900000) * 900000;
+          result.signals = previous.signals.filter(row => Date.parse(row.at) < from).concat(result.signals);
+        }
+        if (ac.signal.aborted) return;
+        previous = result;
+        setSnapshot(result); setLoadError('');
       } catch (err) { if (!ac.signal.aborted) setLoadError(err.message); }
+      finally { loading = false; }
     }
     load();
     const timer = setInterval(() => { if (!document.hidden) load(); }, 60000);
@@ -79,6 +98,10 @@ function DiaryDetail({ diary, diaries, patient, base, canWrite, zone, onSelect, 
   }
   function openPanel(name, trigger) {
     returnFocus.current = trigger;
+    if (name === 'actions') {
+      // Print from a fresh full-study snapshot, including any historical imports.
+      setSnapshot(null); setRefresh(n => n + 1);
+    }
     setPanel(name);
   }
   async function mutate(action) {
@@ -86,7 +109,7 @@ function DiaryDetail({ diary, diaries, patient, base, canWrite, zone, onSelect, 
     inFlight.current = true; setBusy(true); setError(''); setNotice('');
     try {
       await action();
-      setEntries(null);
+      setSnapshot(null);
       setRefresh(n => n + 1);
     } catch (err) { setError(err.message); }
     finally { inFlight.current = false; setBusy(false); }

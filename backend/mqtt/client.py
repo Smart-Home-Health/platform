@@ -20,6 +20,7 @@ import json
 import logging
 import paho.mqtt.client as mqtt
 from typing import Optional, Callable, Dict, Any, Tuple
+from .discovery import send_mqtt_discovery
 from .settings import get_mqtt_settings, get_enabled_topics, get_patients_with_mqtt_enabled, get_patient_set_topic
 
 logger = logging.getLogger('mqtt.client')
@@ -122,6 +123,16 @@ class MQTTManager:
                 if topic_path and 'listen' in topic_name:
                     client.subscribe(topic_path)
                     logger.info(f"Subscribed to {topic_path}")
+
+            # connect() returns before the broker acknowledges the connection.
+            # Announce after that acknowledgement, including after a reconnect.
+            if self.settings.get("discovery_enabled", True):
+                if self.loop:
+                    self.loop.call_soon_threadsafe(
+                        self.loop.run_in_executor, None, send_mqtt_discovery, client,
+                    )
+                else:
+                    send_mqtt_discovery(client)
         else:
             self._is_connected = False
             logger.error(f"Failed to connect to MQTT Broker, code {rc}")

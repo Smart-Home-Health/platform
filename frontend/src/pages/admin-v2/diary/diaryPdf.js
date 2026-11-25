@@ -39,6 +39,11 @@ export function diaryPdf(report) {
     content: [
       { text: report.title, fontSize: 18, bold: true },
       { text: report.patient, margin: [0, 4, 0, 0] },
+      { text: 'Study overview', fontSize: 14, bold: true, margin: [0, 8, 0, 2] },
+      { text: report.overview.period, margin: [0, 0, 0, 12] },
+      ...(report.overview.svg ? [{ svg: report.overview.svg, fit: [540, 572] }] : []),
+      { text: 'Diary entries', fontSize: 15, bold: true, pageBreak: 'before' },
+      { text: report.title + ' · ' + report.patient, margin: [0, 4, 0, 0] },
       { text: report.period, margin: [0, 2, 0, 12] },
       report.rows.length
         ? { table: { headerRows: 1, widths: ['30%', '70%'], body }, layout: 'lightHorizontalLines' }

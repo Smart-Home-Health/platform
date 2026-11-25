@@ -53,7 +53,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { isAuthenticated, readRestricted, unlockWithAccountPassword } = useAuth();
+  const { isAuthenticated, haAccountAuth, readRestricted, restoreHaAccount, unlockWithAccountPassword } = useAuth();
   const { patients, selectedPatient: sessionPatient, selectPatient, loadingPatients } = useAdminPatient();
   const patientParam = searchParams.get('patient');
   // Resolve the link before starting patient-scoped reads, even if the session
@@ -77,16 +77,15 @@ export default function Dashboard() {
   const [unlockPassword, setUnlockPassword] = useState('');
   const [unlockError, setUnlockError] = useState('');
   const [unlockLoading, setUnlockLoading] = useState(false);
-  const [forceRelock, setForceRelock] = useState(false);
   // Account-password prompt requested by an action (24h re-confirm lapsed).
   const [actionUnlockOpen, setActionUnlockOpen] = useState(false);
   // Only genuine no-read-access blocks VIEWING (the server returns no data in
-  // that mode anyway). The 24h re-confirm (forceRelock) does NOT blank the
+  // that mode anyway). The 24h re-confirm does NOT blank the
   // screen — it gates actions instead, so the live dashboard stays a visible
   // monitoring view and only prompts for the account password when the user
   // actually does something.
   const needsUnlock = !!readRestricted;
-  const unlockModalOpen = needsUnlock || actionUnlockOpen;
+  const unlockModalOpen = needsUnlock || (!haAccountAuth && actionUnlockOpen);
 
   // Live chart buffer: server-side backfill + WS ticks, range tabs.
   const buffer = useLiveVitalsBuffer(selectedPatient?.id, !needsUnlock);
@@ -267,25 +266,12 @@ export default function Dashboard() {
     // the charts and cards columns, which resizes the tiles column).
   }, [needsUnlock, isMobile]);
 
-  // Enforce 24h unlock window (client-side)
+  // Start the daily re-confirmation window for password-based account access.
   useEffect(() => {
-    const raw = localStorage.getItem('dashboardUnlockedAt');
-    if (!raw) return;
-    const unlockedAt = Number(raw);
-    if (!Number.isFinite(unlockedAt)) return;
-    const ageMs = Date.now() - unlockedAt;
-    const maxMs = 24 * 60 * 60 * 1000;
-    if (ageMs >= maxMs) {
-      setForceRelock(true);
-    }
-  }, []);
-
-  // If we already have read access but no timestamp, set one so the 24h window applies
-  useEffect(() => {
-    if (readRestricted) return;
+    if (haAccountAuth || readRestricted) return;
     if (localStorage.getItem('dashboardUnlockedAt')) return;
     localStorage.setItem('dashboardUnlockedAt', String(Date.now()));
-  }, [readRestricted]);
+  }, [haAccountAuth, readRestricted]);
 
   // URL -> patient selection sync
   useEffect(() => {
@@ -809,29 +795,18 @@ export default function Dashboard() {
     setPendingOpenModal(null);
   }, [pendingOpenModal, isAuthenticated, needsUnlock]);
 
-  // Async modal-open guard.
-  //   - 24h account unlock must be valid (else show unlock modal).
-  //   - User identity must be fresh within the 5-min idle window managed by
-  //     PinChallengeContext. If stale, the global PIN challenge modal opens
-  //     and this awaits its outcome. Cancel → caller bails.
-  // Returns true when the caller may proceed to open its modal.
+  // Check at action time so a shared board can stay open across days.
   const requireUnlockAndFreshUser = async () => {
-    // Account password is required before acting when read access was never
-    // granted (readRestricted) or the 24h re-confirm window has lapsed.
-    if (readRestricted || forceRelock) {
-      setActionUnlockOpen(true);
-      setUnlockError('Enter account password to continue.');
-      return false;
+    if (readRestricted) return false;
+    if (!haAccountAuth) {
+      const unlockedAt = Number(localStorage.getItem('dashboardUnlockedAt'));
+      if (Date.now() - unlockedAt >= 24 * 60 * 60 * 1000) {
+        setUnlockError('');
+        setActionUnlockOpen(true);
+        return false;
+      }
     }
-    const ok = await requirePinAuth();
-    if (!ok) return false;
-    // Defensive fallback: if for some reason auth state still says no user
-    // after the challenge resolved true, send to the legacy picker.
-    if (!isAuthenticated) {
-      navigate('/select-user', { state: { from: location }, replace: false });
-      return false;
-    }
-    return true;
+    return requirePinAuth();
   };
 
   // Add handler functions
@@ -923,11 +898,16 @@ export default function Dashboard() {
     e.preventDefault();
     setUnlockError('');
     setUnlockLoading(true);
+    if (haAccountAuth) {
+      const restored = await restoreHaAccount();
+      setUnlockLoading(false);
+      if (!restored) setUnlockError('Could not restore Home Assistant access. Please try again.');
+      return;
+    }
     const result = await unlockWithAccountPassword(unlockPassword);
     setUnlockLoading(false);
     if (result.success) {
       localStorage.setItem('dashboardUnlockedAt', String(Date.now()));
-      setForceRelock(false);
       setActionUnlockOpen(false);
       setUnlockPassword('');
       setUnlockError('');
@@ -989,21 +969,23 @@ export default function Dashboard() {
       <ModalBase
         isOpen={unlockModalOpen}
         onClose={() => { if (!needsUnlock) setActionUnlockOpen(false); }}
-        title="Unlock"
+        title={haAccountAuth ? 'Home Assistant access' : 'Unlock'}
         dock={false}
         dismissible={false}
       >
         <form onSubmit={handleUnlockSubmit} className="em-inline">
           <div className="em-form">
             <p className="em-hint">
-              {needsUnlock
+              {haAccountAuth
+                ? 'Restore your Home Assistant session to continue.'
+                : needsUnlock
                 ? 'Enter the account unlock password to view dashboard data.'
                 : 'Enter the account password to continue.'}
             </p>
             {unlockError && (
               <div className="em-error" role="alert">{unlockError}</div>
             )}
-            <input
+            {!haAccountAuth && <input
               className="em-input"
               type="password"
               aria-label="Account password"
@@ -1012,14 +994,14 @@ export default function Dashboard() {
               placeholder="Account password"
               autoFocus
               disabled={unlockLoading}
-            />
+            />}
             <button
               type="submit"
               className="em-submit"
               style={{ width: '100%' }}
-              disabled={unlockLoading || !unlockPassword}
+              disabled={unlockLoading || (!haAccountAuth && !unlockPassword)}
             >
-              {unlockLoading ? 'Unlocking…' : 'Unlock'}
+              {haAccountAuth ? (unlockLoading ? 'Restoring…' : 'Restore access') : (unlockLoading ? 'Unlocking…' : 'Unlock')}
             </button>
           </div>
         </form>

@@ -508,6 +508,8 @@ async def update_mqtt_patient_config(
             client = mqtt_module.mqtt_manager.client
             if body.enabled:
                 await asyncio.to_thread(send_mqtt_discovery, client, patient_id=patient_id)
+                if settings["sections"].get("schedule_details") in ("get", "both"):
+                    await mqtt_module.refresh_patient_schedule(patient_id)
             else:
                 from models.readers import Reader
                 reader_ids = [r.id for r in db.query(Reader).filter(

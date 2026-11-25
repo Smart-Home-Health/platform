@@ -71,7 +71,17 @@ body:has(.vkb-launcher) .em-panel:has(.diary-form, .diary-buttons) {
 .diary-paper > p { margin: .35rem 0; }
 .diary-paper .diary-table { margin-top: 1rem; }
 .diary-paper .diary-table :is(td, th) { border-color: #bbb; }
+.diary-overview p, .diary-report-entries > p { margin: .2rem 0; }
+.diary-overview h2, .diary-report-entries h2 { margin: .7rem 0 .2rem; font-size: 1.12rem; }
+.diary-overview img { display: block; width: 100%; margin: .75rem auto 0; }
+.diary-paper .diary-overview { padding-bottom: 1rem; border-bottom: 1px solid #aeb9bd; }
 @media print {
+  @page diary-report { size: letter portrait; margin: .5in; }
+  html:has(.diary-print), body:has(> .diary-print), .diary-print { page: diary-report; }
+  .diary-overview { break-after: page; }
+  .diary-overview h1 { margin: 0; font-size: 18pt; }
+  .diary-overview img { max-height: 7.85in; object-fit: contain; }
+  .diary-report-entries h2 { margin-top: 0; }
   body:has(> .diary-print) > :not(.diary-print) { display: none !important; }
   html:has(.diary-print), body:has(> .diary-print) { height: auto !important; overflow: visible !important; background: white !important; }
   .diary-print { display: block; color: black; background: white; font: 11pt/1.4 sans-serif; overflow-wrap: anywhere; }

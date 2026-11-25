@@ -25,15 +25,19 @@ clip URLs derived from `credentials.base_url` and `settings.camera`.
 Frigate API endpoints used:
 - GET /api/version          -> connectivity check
 - GET /api/config           -> camera list (config["cameras"] dict)
+- GET /api/<cam>            -> MJPEG preview for Home Assistant installs
 - GET /api/<cam>/latest.jpg -> still snapshot
 - HLS live (when restream is configured): /live/<cam>/index.m3u8
 - Recording clip MP4:        /api/<cam>/start/<unix>/end/<unix>/clip.mp4
 """
+import os
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 from urllib.parse import quote
 
 import httpx
+
+from homeassistant.client import supervisor_available
 
 from .base import (
     BaseIntegration,
@@ -46,6 +50,36 @@ from .registry import register
 
 DEFAULT_CLIP_PADDING_SECONDS = 5
 DEFAULT_LIVE_MODE = "hls"  # "hls" | "webrtc"
+
+
+# Frigate documents these Supervisor DNS names for the four NVR variants.
+# The Proxy add-on serves a remote installation and is not itself a recorder.
+HA_FRIGATE_ADDONS = {
+    "ccab4aaf_frigate", "ccab4aaf_frigate-fa",
+    "ccab4aaf_frigate-beta", "ccab4aaf_frigate-fa-beta",
+}
+
+
+def addon_base_url(slug):
+    if not supervisor_available() or not isinstance(slug, str) or slug not in HA_FRIGATE_ADDONS:
+        raise AuthenticationError("Select an installed Frigate Home Assistant add-on.")
+    return f"http://{slug.replace('_', '-')}:5000"
+
+
+async def installed_frigate_addons():
+    """Only Supervisor receives its token. Return NVR metadata to the setup form."""
+    if not supervisor_available():
+        return []
+    async with httpx.AsyncClient(timeout=5, trust_env=False) as http:
+        response = await http.get("http://supervisor/supervisor/info", headers={
+            "Authorization": f"Bearer {os.environ['SUPERVISOR_TOKEN']}",
+        })
+        response.raise_for_status()
+        addons = response.json()["data"]["addons"]
+    return [
+        {"slug": app["slug"], "name": app["name"], "running": app.get("state") == "started"}
+        for app in addons if app.get("slug") in HA_FRIGATE_ADDONS
+    ]
 
 
 @register
@@ -61,13 +95,19 @@ class FrigateIntegration(BaseIntegration):
     description = "Local Frigate NVR for patient room cameras and event playback"
     auth_type = "local"
     supported_vitals: List[str] = []
-    auth_fields = ["base_url", "auth_header"]
+    auth_fields = ["base_url", "auth_header", "addon_slug"]
 
     @classmethod
     def get_config_schema(cls) -> Dict[str, Any]:
         return {
             "type": "object",
+            "x-ha-addon-discovery": supervisor_available(),
             "properties": {
+                "addon_slug": {
+                    "type": "string",
+                    "title": "Home Assistant Frigate add-on",
+                    "enum": sorted(HA_FRIGATE_ADDONS),
+                },
                 "base_url": {
                     "type": "string",
                     "title": "Frigate Base URL",
@@ -96,28 +136,41 @@ class FrigateIntegration(BaseIntegration):
                     "default": DEFAULT_LIVE_MODE,
                 },
             },
-            "required": ["base_url"],
+            "anyOf": [{"required": ["base_url"]}, {"required": ["addon_slug"]}],
         }
 
+    @property
+    def addon_slug(self) -> Optional[str]:
+        return (self.credentials or {}).get("addon_slug")
+
+    def http_client(self, timeout) -> httpx.AsyncClient:
+        # Internal Supervisor DNS is local to the add-on network.
+        return httpx.AsyncClient(timeout=timeout, trust_env=not self.addon_slug)
+
     def _base_url(self) -> str:
+        if self.addon_slug:
+            return addon_base_url(self.addon_slug)
         url = (self.credentials or {}).get("base_url", "").rstrip("/")
         if not url:
             raise AuthenticationError("Frigate base_url not configured")
         return url
 
     def _headers(self) -> Dict[str, str]:
+        if self.addon_slug:
+            return {}
         header = (self.credentials or {}).get("auth_header")
         return {"Authorization": header} if header else {}
 
     async def authenticate(self, auth_data: Dict[str, Any]) -> Dict[str, Any]:
-        base_url = (auth_data.get("base_url") or "").rstrip("/")
+        addon = auth_data.get("addon_slug")
+        base_url = addon_base_url(addon) if addon else (auth_data.get("base_url") or "").rstrip("/")
         if not base_url:
             raise AuthenticationError("base_url is required")
 
-        auth_header = auth_data.get("auth_header") or None
+        auth_header = None if addon else auth_data.get("auth_header") or None
         headers = {"Authorization": auth_header} if auth_header else {}
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, trust_env=not addon) as client:
             try:
                 resp = await client.get(f"{base_url}/api/version", headers=headers)
             except httpx.HTTPError as e:
@@ -125,9 +178,11 @@ class FrigateIntegration(BaseIntegration):
 
             if resp.status_code == 401 or resp.status_code == 403:
                 raise AuthenticationError("Frigate rejected credentials")
-            if resp.status_code >= 400:
+            if not resp.is_success:
                 raise AuthenticationError(f"Frigate /api/version returned {resp.status_code}")
 
+        if addon:
+            return {"addon_slug": addon}
         return {
             "base_url": base_url,
             "auth_header": auth_header,
@@ -139,7 +194,7 @@ class FrigateIntegration(BaseIntegration):
 
     async def fetch_devices(self) -> List[DeviceInfo]:
         base_url = self._base_url()
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with self.http_client(10.0) as client:
             resp = await client.get(f"{base_url}/api/config", headers=self._headers())
             resp.raise_for_status()
             cfg = resp.json()
@@ -222,7 +277,7 @@ class FrigateIntegration(BaseIntegration):
 
     async def test_connection(self) -> bool:
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
+            async with self.http_client(5.0) as client:
                 resp = await client.get(f"{self._base_url()}/api/version", headers=self._headers())
                 return resp.status_code < 400
         except Exception:

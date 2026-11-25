@@ -54,8 +54,11 @@ def get_patients_with_mqtt_enabled() -> List[Dict[str, Any]]:
             return []
         rows = (
             db.query(PatientIntegration)
+            .join(Patient, Patient.id == PatientIntegration.patient_id)
             .filter(
                 PatientIntegration.integration_id == mqtt_int.id,
+                PatientIntegration.account_id == Patient.account_id,
+                Patient.is_active.is_(True),
                 PatientIntegration.is_enabled == True,
             )
             .all()
@@ -97,6 +100,7 @@ def get_patient_mqtt_config(patient_id: int) -> Optional[Dict[str, Any]]:
     Returns settings dict with enabled, sections, topic_overrides, base_topic_override, or None.
     """
     from schemas.integration import Integration as IntegrationModel, PatientIntegration
+    from schemas.patient import Patient
     db = next(get_db())
     try:
         mqtt_int = db.query(IntegrationModel).filter(IntegrationModel.slug == "mqtt").first()
@@ -104,9 +108,12 @@ def get_patient_mqtt_config(patient_id: int) -> Optional[Dict[str, Any]]:
             return None
         pi = (
             db.query(PatientIntegration)
+            .join(Patient, Patient.id == PatientIntegration.patient_id)
             .filter(
                 PatientIntegration.patient_id == patient_id,
                 PatientIntegration.integration_id == mqtt_int.id,
+                PatientIntegration.account_id == Patient.account_id,
+                Patient.is_active.is_(True),
                 PatientIntegration.is_enabled == True,
             )
             .first()
@@ -132,6 +139,11 @@ def get_patient_state_topic(patient_id: int) -> Optional[str]:
         return overrides["state_topic"]
     base_override = cfg.get("base_topic_override") or base
     return f"{base_override}/patient/{patient_id}/state"
+
+
+def schedule_details_topic(base_topic, patient_id, config):
+    base = config.get("base_topic_override") or base_topic
+    return f"{base}/patient/{patient_id}/schedule"
 
 
 def get_patient_set_topic(patient_id: int) -> Optional[str]:
@@ -203,6 +215,7 @@ def get_mqtt_settings() -> Dict[str, Any]:
         
         # Get basic MQTT settings
         settings['enabled'] = get_setting(db, 'mqtt_enabled', False)
+        settings['discovery_enabled'] = get_setting(db, 'mqtt_discovery_enabled', True)
         settings['broker'] = get_setting(db, 'mqtt_broker', '')
         settings['port'] = get_setting(db, 'mqtt_port', 1883)
         settings['username'] = get_setting(db, 'mqtt_username', '')

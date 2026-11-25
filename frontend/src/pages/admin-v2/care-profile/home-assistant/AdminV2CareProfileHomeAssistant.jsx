@@ -118,7 +118,7 @@ export default function AdminV2CareProfileHomeAssistant() {
     const seeded = hasAnyShared(sections) ? sections : monitorOnlyDefaults();
     save(true, seeded, hasAnyShared(sections)
       ? 'Sharing turned on.'
-      : 'Sharing on — everything read-only to start. Adjust any group below.');
+      : 'Sharing enabled. Turn on schedule details under Reminders to share item names and due times.');
   };
 
   const chooseMode = (id) => {

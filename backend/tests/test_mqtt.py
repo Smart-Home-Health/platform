@@ -77,3 +77,24 @@ def test_patient_entities_track_the_sections_that_are_shared(admin_client, patie
 
 def test_patient_entities_404_for_an_unknown_patient(admin_client):
     assert admin_client.get("/api/mqtt/patients/999999/entities").status_code == 404
+
+
+def test_schedule_details_opt_in_through_profile(admin_client, db_session, patient, monkeypatch):
+    from mqtt import settings
+
+    # Use the route's test transaction for the independent MQTT settings reader.
+    monkeypatch.setattr(settings, "get_db", lambda: iter([db_session]))
+    monkeypatch.setattr(db_session, "close", lambda: None)
+    url = f"/api/mqtt/patients/{patient.id}"
+    for sharing, expected in [
+        ({"meds_counts": "get"}, False),
+        ({"schedule_details": "get"}, True),
+        ({"schedule_details": "off"}, False),
+    ]:
+        response = admin_client.put(url, json={"enabled": True, "sections": sharing})
+        assert response.status_code == 200, response.text
+        assert settings.section_allows_get(patient.id, "schedule_details") == expected
+        patients = settings.get_patients_with_mqtt_enabled()
+        assert [p["settings"]["sections"] for p in patients if p["patient_id"] == patient.id] == [sharing]
+        plan = admin_client.get(f"{url}/entities").json()["entities"]
+        assert any(e["key"] == "schedule_details" for e in plan) == expected

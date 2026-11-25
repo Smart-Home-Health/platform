@@ -1,0 +1,69 @@
+blueprint:
+  name: Smart Home Health · Late care reminder
+  domain: automation
+  description: >
+    Enable Schedule details under the care profile’s Home Assistant reminders.
+    Choose that sensor and the phone that should receive its item names and due times.
+  input:
+    schedule:
+      name: Schedule details sensor
+      selector:
+        entity:
+          filter:
+            - domain: sensor
+              integration: mqtt
+    phone:
+      name: Caregiver phone
+      selector:
+        device:
+          filter:
+            - integration: mobile_app
+    repeat_minutes:
+      name: Minutes between reminders
+      default: 30
+      selector:
+        number:
+          min: 1
+          max: 240
+          unit_of_measurement: min
+          mode: box
+
+mode: single
+variables:
+  repeat_minutes: !input repeat_minutes
+triggers:
+  # The sensor publishes a dated snapshot every minute, even if the count is unchanged.
+  - trigger: state
+    entity_id: !input schedule
+conditions:
+  - condition: template
+    value_template: >-
+      {% set current = trigger.to_state %}
+      {% set previous = trigger.from_state %}
+      {% set age = as_timestamp(now()) - as_timestamp(current.attributes.generated_at, 0) if current else -1 %}
+      {% set late = current.attributes.get('late', []) if current else [] %}
+      {{ current is not none and 0 <= age < 180 and late | length > 0
+         and current.state | int(-1) == late | length
+         and (previous is none or previous.state | int(0) == 0
+              or previous.attributes.get('late', []) | length == 0
+              or as_timestamp(now()) - as_timestamp(this.attributes.get('last_triggered'), 0)
+                 >= repeat_minutes | int * 60) }}
+actions:
+  - device_id: !input phone
+    domain: mobile_app
+    type: notify
+    title: "{{ trigger.to_state.attributes.late | length }} overdue · {{ trigger.to_state.name }}"
+    message: |-
+      {%- macro line(item) -%}
+      {{ item.category }} · {{ item.name }} — due {{ (as_timestamp(item.due_at) | timestamp_custom('%a %-I:%M %p', true)) if item.due_at is defined else item.due_date }}
+      {%- endmacro -%}
+      {%- set data = trigger.to_state.attributes -%}
+      {%- for item in data.late -%}
+      {{ line(item) }}{{ '\n' if not loop.last else '' }}
+      {%- endfor -%}
+      {%- if data.upcoming -%}
+      {{ '\n\nUpcoming\n' }}
+      {%- for item in data.upcoming -%}
+      {{ line(item) }}{{ '\n' if not loop.last else '' }}
+      {%- endfor -%}
+      {%- endif -%}

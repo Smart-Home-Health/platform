@@ -64,16 +64,23 @@ afterEach(() => {
 });
 
 describe('PinChallengeProvider', () => {
-  it('starts not-fresh and resolves immediately once verified', async () => {
-    renderProvider();
+  it('requires a new caregiver after a recently verified user leaves the session', async () => {
+    const view = renderProvider();
     expect(fresh()).toBe('false');
 
-    await clickBtn('mark');
+    mockUser = { id: 1 };
+    view.rerender(<PinChallengeProvider><Probe /></PinChallengeProvider>);
     expect(fresh()).toBe('true');
 
     await clickBtn('require');
     expect(result()).toBe('true');
-    expect(open()).toBe('false'); // no modal needed while fresh
+    expect(open()).toBe('false');
+
+    mockUser = null;
+    view.rerender(<PinChallengeProvider><Probe /></PinChallengeProvider>);
+    expect(fresh()).toBe('false');
+    await clickBtn('require');
+    expect(open()).toBe('true');
   });
 
   it('opens the challenge when stale and resolves true on success', async () => {
@@ -105,6 +112,7 @@ describe('PinChallengeProvider', () => {
 
   it('expires after the idle window, then re-challenges', async () => {
     vi.useFakeTimers();
+    mockUser = { id: 1 };
     renderProvider();
     await act(async () => { fireEvent.click(screen.getByText('mark')); });
     expect(fresh()).toBe('true');

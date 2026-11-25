@@ -15,7 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Patient event diaries with linked medication, nutrition, and care history."""
 from dataclasses import asdict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from crud.monitoring import patient_pulse_ox_patterns
 from crud.patients import get_visible_patient_ids
-from crud.monitoring_timeline import care_task_logs, day_streams
+from crud.monitoring_timeline import care_task_logs, day_streams, quarter_hour_signals, event_quarters
 from db import get_db
 from dependencies import get_current_user, require_permission, require_read_access
 from nutrition_vocab import LOCATION_DIAPER, LOCATION_LABELS, QUALITATIVE_AMOUNT_UNITS, location_from_flags
@@ -274,8 +274,13 @@ def diary_day(patient_id: int, diary_id: int, target_date: date | None = None,
 @router.get('/{diary_id}/timeline', dependencies=[Depends(patient_access)])
 def timeline(patient_id: int, diary_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     diary = lookup(db, patient_id, diary_id)
-    end = min(diary.ends_at, utc_now()) if diary.ends_at else utc_now()
-    entries = [manual_record(e) for e in db.query(DiaryEvent).filter_by(diary_id=diary_id)]
+    now = utc_now()
+    return diary_entries(db, diary, min(diary.ends_at or now, now), user)
+
+
+def diary_entries(db, diary, end, user):
+    patient_id = diary.patient_id
+    entries = [manual_record(e) for e in db.query(DiaryEvent).filter_by(diary_id=diary.id)]
     if user.has_permission('care_tasks.read'):
         # The diary includes a completion at its exact end. The shared query takes an exclusive end.
         logs = care_task_logs(db, patient_id, diary.starts_at, end + timedelta(microseconds=1)).filter(
@@ -308,3 +313,41 @@ def timeline(patient_id: int, diary_id: int, db: Session = Depends(get_db), user
             meal['note'] = '; '.join(meal.pop('parts'))
             entries.append(meal)
     return sorted(entries, key=lambda e: (e['at'], e['source'], e['id']))
+
+
+def quarter_start(at):
+    at = at.astimezone(timezone.utc)
+    return at.replace(minute=at.minute // 15 * 15, second=0, microsecond=0)
+
+
+@router.get('/{diary_id}/report', dependencies=[Depends(patient_access)])
+def print_report(patient_id: int, diary_id: int, signals_since: AwareDatetime | None = None,
+                 db: Session = Depends(get_db), user=Depends(get_current_user)):
+    diary = lookup(db, patient_id, diary_id)
+    now = utc_now()
+    end = min(diary.ends_at or now, now)
+    start = diary.starts_at
+    entries = diary_entries(db, diary, end, user)
+    # A polling client can retain earlier signal bins. A fresh print request
+    # omits signals_since, including any readings imported after initial load.
+    signal_start = start
+    if signals_since:
+        signal_start = max(start, quarter_start(min(signals_since, end)))
+    monitoring = user.has_permission('monitoring.read')
+    categories = {'observation': set()}
+    if user.has_permission('care_tasks.read'):
+        categories['care_task'] = set()
+    if diary.include_medications and user.has_permission('medications.read'):
+        categories['medication'] = set()
+    if diary.include_nutrition and user.has_permission('nutrition.read'):
+        categories.update(nutrition=set(), nutrition_output=set())
+    for entry in entries:
+        if start <= entry['at'] <= end:
+            categories[entry['source']].add(quarter_start(entry['at']))
+    categories = {key: sorted(bins) for key, bins in categories.items()}
+    categories['vitals'] = event_quarters(db, patient_id, start, end, 'vitals')
+    if monitoring:
+        categories['alerts'] = event_quarters(db, patient_id, start, end, 'alerts')
+    return dict(entries=entries, start=start, through=end, signals_from=signal_start,
+                signals=quarter_hour_signals(db, patient_id, signal_start, end) if monitoring else [],
+                categories=categories)

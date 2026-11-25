@@ -71,6 +71,37 @@ export default function AdminV2Connections() {
   const [discoveredCameras, setDiscoveredCameras] = useState([]);
   const [pickedCamera, setPickedCamera] = useState('');
 
+  const [frigateAddons, setFrigateAddons] = useState(null);
+  const [frigateDiscoveryError, setFrigateDiscoveryError] = useState('');
+  const [frigateAddon, setFrigateAddon] = useState('');
+  const canDiscoverFrigate = user?.is_system_admin && availableIntegrations.some(integration =>
+    integration.slug === 'frigate' && integration.config_schema?.['x-ha-addon-discovery']);
+  const discoverFrigate = selectedIntegration?.slug === 'frigate' && canDiscoverFrigate;
+
+  useEffect(() => {
+    if (!canDiscoverFrigate) return;
+    setFrigateAddons(null);
+    setFrigateDiscoveryError('');
+    const controller = new AbortController();
+    const load = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/integrations/frigate/home-assistant/addons`,
+          { credentials: 'include', signal: controller.signal });
+        if (!res.ok) throw new Error();
+        const apps = await res.json();
+        if (controller.signal.aborted) return;
+        setFrigateAddons(apps);
+        setFrigateAddon(apps.find(app => app.running)?.slug || '');
+      } catch {
+        if (controller.signal.aborted) return;
+        setFrigateDiscoveryError('Could not check Home Assistant. You can enter a Frigate URL below.');
+        setFrigateAddons([]);
+      }
+    };
+    load();
+    return () => controller.abort();
+  }, [canDiscoverFrigate]);
+
   // Syncing state
   const [syncingId, setSyncingId] = useState(null);
 
@@ -153,6 +184,8 @@ export default function AdminV2Connections() {
       if (schema?.default !== undefined) defaults[key] = schema.default;
     }
     setNewSettings(defaults);
+    setFrigateAddon(integration.slug === 'frigate' ? frigateAddons?.find(app => app.running)?.slug || '' : '');
+    setError('');
     setSelectedIntegration(integration);
   };
 
@@ -173,22 +206,40 @@ export default function AdminV2Connections() {
         else settingsOnly[k] = v;
       }
 
-      const res = await fetch(`${API_BASE_URL}/api/integrations/patient/${patientId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          integration_slug: selectedIntegration.slug,
-          settings: settingsOnly,
-        })
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.detail || 'Failed to add integration');
+      const isFrigate = selectedIntegration.slug === 'frigate';
+      if (isFrigate && frigateAddon) {
+        authData.addon_slug = frigateAddon;
+        delete authData.base_url;
+        delete authData.auth_header;
+        delete settingsOnly.live_mode;
       }
 
-      const newIntegration = await res.json();
+      // Reuse an unfinished connection after an offline recorder or an interrupted camera pick.
+      let newIntegration;
+      if (isFrigate) {
+        const connections = patientIntegrations.filter(pi => pi.integration_slug === 'frigate');
+        newIntegration = connections.find(pi => pi.is_enabled) || connections[0];
+      }
+      if (!newIntegration) {
+        const res = await fetch(`${API_BASE_URL}/api/integrations/patient/${patientId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ integration_slug: selectedIntegration.slug, settings: settingsOnly }),
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.detail || 'Failed to add integration');
+        }
+        newIntegration = await res.json();
+        if (isFrigate) setPatientIntegrations(prev => [...prev, newIntegration]);
+      } else {
+        const res = await fetch(`${API_BASE_URL}/api/integrations/patient/${patientId}/${newIntegration.id}`, {
+          method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(settingsOnly),
+        });
+        if (!res.ok) throw new Error('Could not update the Frigate connection.');
+      }
 
       if (selectedIntegration.auth_type === 'oauth2') {
         await startOAuthFlow(newIntegration.id);
@@ -224,7 +275,8 @@ export default function AdminV2Connections() {
             `${API_BASE_URL}/api/integrations/frigate/patient/${patientId}/cameras`,
             { credentials: 'include' }
           );
-          const cams = camsRes.ok ? await camsRes.json() : [];
+          if (!camsRes.ok) throw new Error('Could not load the discovered cameras.');
+          const cams = await camsRes.json();
           setDiscoveredCameras(cams);
           setPickedCamera(cams[0]?.device_id || '');
           setAddStep('select-camera');
@@ -563,9 +615,9 @@ export default function AdminV2Connections() {
   const externalIntegrations = availableIntegrations.filter(i => i.slug !== 'manual');
 
   // Get integrations not yet configured for this patient
-  const unconfiguredIntegrations = externalIntegrations.filter(
-    avail => !patientIntegrations.some(pi => pi.integration_slug === avail.slug)
-  );
+  const hasConnection = (slug) => patientIntegrations.some(pi => pi.integration_slug === slug
+    && (slug !== 'frigate' || (pi.is_enabled && pi.settings?.camera)));
+  const unconfiguredIntegrations = externalIntegrations.filter(avail => !hasConnection(avail.slug));
 
   // Add SHH Pulse Oximeter to available integrations list
   const allAvailableIntegrations = [shhPulseOxIntegration, ...externalIntegrations];
@@ -761,7 +813,12 @@ export default function AdminV2Connections() {
                   const isSHHDevice = integration.slug === 'shh_pulse_ox';
                   const isConfigured = isSHHDevice
                     ? hasConfiguredReaders
-                    : patientIntegrations.some(pi => pi.integration_slug === integration.slug);
+                    : hasConnection(integration.slug);
+                  const detected = integration.slug === 'frigate' && frigateAddons?.length > 0;
+                  const detectedTag = detected ? {
+                    label: frigateAddons.some(app => app.running) ? 'Detected in Home Assistant' : 'Stopped in Home Assistant',
+                    tone: 'idle',
+                  } : undefined;
                   return (
                     <EntityCard
                       key={integration.slug}
@@ -773,7 +830,7 @@ export default function AdminV2Connections() {
                             label: isSHHDevice ? `${pairedReaderCount} Connected` : 'Configured',
                             tone: 'complete',
                           }
-                        : undefined}
+                        : detectedTag}
                       inactive={isConfigured}
                       details={[
                         {
@@ -933,13 +990,35 @@ export default function AdminV2Connections() {
                   </p>
                 )}
 
+                {discoverFrigate && (
+                  frigateAddons === null ? <p role="status">Checking Home Assistant for Frigate…</p>
+                  : frigateAddons.length ? (
+                    <EmField label="Frigate server" htmlFor="int-frigate-server">
+                      <EmSelect id="int-frigate-server" value={frigateAddon} onChange={e => setFrigateAddon(e.target.value)}>
+                        {frigateAddons.map(app => (
+                          <option key={app.slug} value={app.slug} disabled={!app.running}>
+                            {app.name} · {app.running ? 'Home Assistant' : 'Stopped'}
+                          </option>
+                        ))}
+                        <option value="">Enter a server URL</option>
+                      </EmSelect>
+                      {!frigateAddons.some(app => app.running) && (
+                        <span className="ec-detail-label">Start Frigate in Home Assistant, then reopen Connections.</span>
+                      )}
+                    </EmField>
+                  ) : <p className="ec-detail-label">{frigateDiscoveryError || 'No Frigate recorder add-on was found in Home Assistant.'}</p>
+                )}
+
                 {configSchemaProps && Object.keys(configSchemaProps).length > 0 && (
                   <>
                     <strong>Settings</strong>
                     {Object.entries(configSchemaProps)
                       // Hide fields whose value is chosen in a later step
                       // (Frigate camera is picked from the discovered list)
-                      .filter(([key]) => !(selectedIntegration.slug === 'frigate' && key === 'camera'))
+                      .filter(([key]) => !(selectedIntegration.slug === 'frigate' && (
+                        key === 'camera' || key === 'addon_slug' || ((frigateAddon || (discoverFrigate && frigateAddons === null))
+                          && ['base_url', 'auth_header', 'live_mode'].includes(key))
+                      )))
                       .map(([key, schema]) => (
                         <EmField key={key} label={schema.title || key} htmlFor={`int-set-${key}`}>
                           {schema.type === 'boolean' ? (
@@ -982,6 +1061,7 @@ export default function AdminV2Connections() {
               </>
             )}
 
+            {error && <div className="em-error" role="alert">{error}</div>}
             <div className="em-footer">
               {selectedIntegration && addStep === 'form' && (
                 <button type="button" className="em-cancel" onClick={() => { setSelectedIntegration(null); setNewSettings({}); }}>Back</button>
@@ -992,7 +1072,7 @@ export default function AdminV2Connections() {
                   {addingIntegration ? 'Saving…' : 'Use this camera'}
                 </button>
               ) : selectedIntegration && (
-                <button type="button" className="em-submit" onClick={handleAddIntegration} disabled={addingIntegration}>
+                <button type="button" className="em-submit" onClick={handleAddIntegration} disabled={addingIntegration || (discoverFrigate && frigateAddons === null)}>
                   {addingIntegration ? 'Adding…' : (
                     selectedIntegration.auth_type === 'oauth2'
                       ? `Connect to ${selectedIntegration.name}`

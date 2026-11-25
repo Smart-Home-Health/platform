@@ -115,3 +115,82 @@ def test_requires_full_auth(account_client, patient):
 
 def test_requires_auth(client):
     assert client.get(SEG.format(pid=1), params={"u": BASE}).status_code == 401
+
+
+def test_home_assistant_recorder_setup_and_media(admin_client, patient, monkeypatch):
+    import httpx
+
+    monkeypatch.setenv("SUPERVISOR_TOKEN", "test-supervisor-token")
+    inventory = {"data": {"addons": [
+        {"slug": "ccab4aaf_frigate", "name": "Frigate", "state": "started"},
+        {"slug": "ccab4aaf_frigate-fa-beta", "name": "Frigate Beta FA", "state": "stopped"},
+        {"slug": "ccab4aaf_frigate-proxy", "name": "Frigate Proxy", "state": "started"},
+    ]}}
+    recorder = "ccab4aaf-frigate"
+    calls = []
+
+    def upstream(request):
+        calls.append(request.url.path)
+        if request.url.host == "supervisor":
+            assert request.url.path == "/supervisor/info"
+            assert request.headers["authorization"] == "Bearer test-supervisor-token"
+            return httpx.Response(200, json=inventory)
+        assert request.url.host == recorder and request.url.port == 5000
+        assert "Authorization" not in request.headers
+        if request.url.path == "/api/version":
+            return httpx.Response(200, text="0.18.3")
+        if request.url.path == "/api/config":
+            return httpx.Response(200, json={"cameras": {"test_room": {}}})
+        if request.url.path == "/api/test_room":
+            return httpx.Response(200, headers={"content-type": "multipart/x-mixed-replace;boundary=frame"},
+                                  content=b"--frame\r\nsynthetic frame")
+        if request.url.path.endswith("latest.jpg"):
+            return httpx.Response(200, headers={"content-type": "image/jpeg"}, content=b"synthetic still")
+        if request.url.path.endswith("clip.mp4"):
+            return httpx.Response(200, content=b"synthetic recording")
+        raise AssertionError(request.url)
+
+    client_type = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: client_type(
+        transport=httpx.MockTransport(upstream), **kwargs))
+    root = "/api/integrations"
+    assert admin_client.get(f"{root}/frigate/home-assistant/addons").json() == [
+        {"slug": "ccab4aaf_frigate", "name": "Frigate", "running": True},
+        {"slug": "ccab4aaf_frigate-fa-beta", "name": "Frigate Beta FA", "running": False},
+    ]
+    url = f"{root}/patient/{patient.id}"
+    response = admin_client.post(url, json={"integration_slug": "frigate", "settings": {}})
+    assert response.status_code == 200, response.text
+    connection = f"{url}/{response.json()['id']}"
+    assert admin_client.post(connection + "/connect", json={"addon_slug": "ccab4aaf_frigate-proxy"}).status_code == 400
+    assert admin_client.post(connection + "/connect", json={
+        "addon_slug": "ccab4aaf_frigate", "auth_header": "ignored", "base_url": "http://unused.invalid",
+    }).status_code == 200
+    assert admin_client.post(connection + "/discover").json()["devices_found"] == 1
+    camera = f"{root}/frigate/patient/{patient.id}"
+    assert admin_client.post(camera + "/select", json={"camera": "test_room"}).status_code == 200
+    live = admin_client.get(camera + "/live").json()
+    assert live["live_mode"] == "mjpeg"
+    assert admin_client.get(live["snapshot_url"]).content == b"synthetic still"
+    stream = admin_client.get(live["live_url"])
+    assert stream.headers["content-type"] == "multipart/x-mixed-replace;boundary=frame"
+    assert stream.content.endswith(b"synthetic frame")
+    assert admin_client.get(camera + "/download?start=100&end=120").content == b"synthetic recording"
+    assert "/api/test_room/start/95/end/125/clip.mp4" in calls
+
+
+def test_standalone_discovery_and_supervisor_failure(admin_client, monkeypatch):
+    import httpx
+
+    url = "/api/integrations/frigate/home-assistant/addons"
+    monkeypatch.delenv("SUPERVISOR_TOKEN", raising=False)
+    assert admin_client.get(url).json() == []
+    monkeypatch.setenv("SUPERVISOR_TOKEN", "sample")
+    client_type = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: client_type(
+        transport=httpx.MockTransport(lambda _: httpx.Response(403)), **kwargs))
+    assert admin_client.get(url).status_code == 503
+
+
+def test_addon_inventory_requires_user_login(account_client):
+    assert account_client.get("/api/integrations/frigate/home-assistant/addons").status_code == 403

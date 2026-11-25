@@ -36,7 +36,16 @@ function Entries({ rows, onEdit }) {
 }
 
 function Report({ report }) {
-  return <><h1>{report.title}</h1><p>{report.patient}</p><p>{report.period}</p><Entries rows={report.rows} /></>;
+  return <>
+    <section className="diary-overview">
+      <h1>{report.title}</h1><p>{report.patient}</p>
+      <h2>Study overview</h2><p>{report.overview.period}</p>
+      {report.overview.svg && <img alt="15-minute SpO₂ and heart-rate trends and activity by category"
+        src={'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(report.overview.svg)} />}
+    </section>
+    <section className="diary-report-entries"><h2>Diary entries</h2><p>{report.title} · {report.patient}</p>
+      <p>{report.period}</p><Entries rows={report.rows} /></section>
+  </>;
 }
 
 function PrintPreview({ report, onClose }) {

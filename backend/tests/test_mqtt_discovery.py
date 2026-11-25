@@ -237,3 +237,54 @@ def test_patient_care_area_roundtrip(admin_client, patient):
     assert resp.json()["care_area"] == "Bedroom"
     resp = admin_client.get(f"/api/patients/{patient.id}")
     assert resp.json()["care_area"] == "Bedroom"
+
+
+def test_schedule_details_discovery_and_publish_are_opt_in(fake_client, monkeypatch):
+    import mqtt.publisher as publisher
+    cfg = {"enabled": True, "base_topic_override": "custom", "sections": {"meds_counts": "get"}}
+    entry = {**PATIENT_ENTRY, "settings": cfg}
+    monkeypatch.setattr(disc, "get_patients_with_mqtt_enabled", lambda: [entry])
+    config_topic = "homeassistant/sensor/shh_patient_5_schedule_details/config"
+    disc.send_mqtt_discovery(fake_client)
+    assert _configs(fake_client)[config_topic] is None
+
+    cfg["sections"]["schedule_details"] = "get"
+    disc.send_mqtt_discovery(fake_client)
+    config = _configs(fake_client)[config_topic]
+    assert config["stat_t"] == config["json_attr_t"] == "custom/patient/5/schedule"
+    assert config["exp_aft"] == 180
+    assert config["avty_t"] == "shh/availability"
+    assert _configs(fake_client)["homeassistant/sensor/shh_pat_ient_meds_late/config"]["json_attr_t"] != config["stat_t"]
+
+    from unittest.mock import Mock
+    client = Mock()
+    client.publish.return_value.rc = 0
+    pub = MQTTPublisher(client)
+    monkeypatch.setattr(publisher, "get_mqtt_settings", lambda: {"enabled": True})
+    monkeypatch.setattr(publisher, "get_patient_mqtt_config", lambda pid: cfg)
+    payload = {"late_count": 0, "late": [], "upcoming": [], "due_now": []}
+    assert pub.publish_schedule_details(5, payload)
+    client.publish.assert_called_once_with(config["stat_t"], json.dumps(payload), qos=1, retain=False)
+    cfg["sections"]["schedule_details"] = "off"
+    assert not pub.publish_schedule_details(5, payload)
+    cfg.update(enabled=False, sections={"schedule_details": "get"})
+    assert not pub.publish_schedule_details(5, payload)
+    client.publish.assert_called_once()
+
+
+def test_discovery_runs_on_broker_ack_and_reconnect(monkeypatch):
+    from unittest.mock import Mock
+    from mqtt import client as mqtt_client
+
+    discovery = Mock()
+    monkeypatch.setattr(mqtt_client, 'send_mqtt_discovery', discovery)
+    client = Mock()
+    manager = mqtt_client.MQTTManager()
+    manager.settings = {'broker': 'local', 'port': 1883}
+    manager._on_connect(client, None, None, 0)
+    manager._on_disconnect(client, None, 1)
+    manager._on_connect(client, None, None, 0)
+    assert discovery.call_count == 2
+    manager.settings['discovery_enabled'] = False
+    manager._on_connect(client, None, None, 0)
+    assert discovery.call_count == 2
