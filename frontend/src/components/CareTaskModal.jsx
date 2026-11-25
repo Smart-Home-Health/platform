@@ -166,12 +166,14 @@ const CareTaskModal = ({ onClose }) => {
 
   // ===== Complete (legacy endpoint — carries the nutrition-tracking trigger) =====
   const submitMarkCompleted = async (task, { earlyOverride = false, note } = {}) => {
+    if (!selectedPatient) return;
     try {
       const res = await fetch(`${config.apiUrl}/api/care-task-schedules/${task.schedule_id}/complete`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          patient_id: selectedPatient.id,
           scheduled_time: task.scheduled_time,
           notes: note || 'Completed via live dashboard',
           early_override: earlyOverride,

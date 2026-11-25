@@ -15,14 +15,10 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-// The Dashboard care-task modal's PRN mark-done step after moving off the
-// shadcn Dialog/Field/Input onto EntityModal + em-*. The ModalBase shell and
-// the schedule view are out of scope here (mocked away).
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act, fireEvent, within } from '@testing-library/react';
 
 vi.mock('./ModalBase', () => ({ default: ({ children }) => <div>{children}</div> }));
-vi.mock('./schedule/DoseScheduleView', () => ({ default: () => null }));
 vi.mock('./nutrition/IntakeSheet', () => ({ default: () => null }));
 
 const { authCtx, patientCtx } = vi.hoisted(() => ({
@@ -61,5 +57,50 @@ describe('CareTaskModal PRN mark-done', () => {
     const footer = document.querySelector('.em-footer');
     expect(within(footer).getByRole('button', { name: /Back/ })).toHaveClass('em-cancel');
     expect(within(footer).getByRole('button', { name: 'Mark Done' })).toHaveClass('em-submit');
+  });
+});
+
+describe('CareTaskModal scheduled completion', () => {
+  it('keeps the patient and original occurrence when confirming an off-window task', async () => {
+    const scheduledTime = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    scheduledTime.setUTCMinutes(0, 0, 0);
+    const task = {
+      schedule_id: 17, care_task_id: 3, name: 'Reposition',
+      scheduled_time: scheduledTime.toISOString(),
+    };
+    const payloads = [];
+    let completed = false;
+    fetch.mockImplementation(async (url, options) => {
+      if (url.includes('/api/schedule/daily?')) {
+        return { ok: true, json: async () => ({ care_tasks: [{ ...task, completed }] }) };
+      }
+      if (url === '/api/care-task-schedules/17/complete' && options.method === 'POST') {
+        const payload = JSON.parse(options.body);
+        payloads.push(payload);
+        if (!payload.early_override) {
+          return { ok: false, status: 409, json: async () => ({ error: 'late_administration' }) };
+        }
+        completed = true;
+        return { ok: true, json: async () => ({ id: 9 }) };
+      }
+      return { ok: true, json: async () => ({ care_tasks: TASKS }) };
+    });
+
+    await act(async () => { render(<CareTaskModal onClose={() => {}} />); });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Mark done' })); });
+    expect(screen.getByText('Confirm Late Completion')).toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Complete anyway' })); });
+
+    const expected = {
+      patient_id: 5,
+      scheduled_time: task.scheduled_time,
+      notes: 'Completed via live dashboard',
+    };
+    expect(payloads).toEqual([
+      { ...expected, early_override: false },
+      { ...expected, early_override: true },
+    ]);
+    expect(screen.getByText('0 of 1 need attention')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Mark done' })).not.toBeInTheDocument();
   });
 });

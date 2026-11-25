@@ -83,3 +83,63 @@ def test_revision_count_matches_version_files(script_dir):
         f"{file_count} version files but the graph chains {walked} revisions — "
         "a file is likely orphaned or duplicated"
     )
+
+
+def test_legacy_live_board_repair_requires_an_unambiguous_scheduled_occurrence(
+    db_session, patient, script_dir, monkeypatch,
+):
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import text
+    from schemas.care_task import CareTask
+    from schemas.care_task_log import CareTaskLog
+    from schemas.care_task_schedule import CareTaskSchedule
+
+    db_session.execute(text("SET LOCAL TIME ZONE 'America/New_York'"))
+    performed = datetime(2026, 11, 25, 14, 46, tzinfo=timezone.utc)
+    canonical = datetime(2026, 11, 25, 12)
+    wall = datetime(2026, 11, 25, 7)
+    published = performed - timedelta(days=1)
+    task = CareTask(name='Respiratory care', patient_id=patient.id, active=True,
+                    created_at=published, updated_at=published)
+    db_session.add(task)
+    db_session.flush()
+
+    def schedule(cron='0 12 * * *', updated=None):
+        row = CareTaskSchedule(care_task_id=task.id, patient_id=patient.id, cron_expression=cron,
+                               active=True, created_at=published, updated_at=updated or published)
+        db_session.add(row)
+        db_session.flush()
+        return row.id
+
+    def record(schedule_id, timestamp=wall, **overrides):
+        values = dict(care_task_id=task.id, patient_id=patient.id, schedule_id=schedule_id,
+                      is_scheduled=schedule_id is not None, status='completed', scheduled_time=timestamp,
+                      completed_at=performed, completed_late=True, notes='Completed via live dashboard',
+                      created_at=performed)
+        row = CareTaskLog(**{**values, **overrides})
+        db_session.add(row)
+        db_session.flush()
+        return row.id
+
+    repaired = record(schedule())
+    already_utc = record(schedule(), canonical)
+    collision = schedule()
+    guards = [
+        record(schedule('0 7,12 * * *')),  # The stored time is itself a valid occurrence.
+        record(schedule('0 11,12 * * *')),  # Multiple distinct firings fit the timing flags.
+        record(schedule(updated=performed + timedelta(minutes=1))),
+        record(schedule(), notes='PRN care'),
+        record(schedule(), completed_late=False),
+        record(collision),
+    ]
+    record(collision, canonical)
+    prn = record(None, None)
+    migration = script_dir.get_revision('057_care_task_occurrence_utc').module
+    monkeypatch.setattr(migration.op, 'get_bind', lambda: db_session.connection())
+    migration.upgrade()
+    migration.upgrade()  # Retry preserves both canonical and unresolved logs.
+    db_session.expire_all()
+    assert db_session.get(CareTaskLog, repaired).scheduled_time == canonical
+    assert db_session.get(CareTaskLog, already_utc).scheduled_time == canonical
+    assert all(db_session.get(CareTaskLog, i).scheduled_time == wall for i in guards)
+    assert db_session.get(CareTaskLog, prn).scheduled_time is None

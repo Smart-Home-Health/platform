@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 from schemas.care_task_category import CareTaskCategory
 from schemas.care_task import CareTask
 from schemas.care_task_log import CareTaskLog
-from utils.datetime_utils import utc_now
+from utils.datetime_utils import make_utc, utc_now
 
 logger = logging.getLogger('crud')
 
@@ -388,10 +388,12 @@ def get_care_task_logs(db: Session, task_id=None, limit=50, start_date=None, end
                 'task_category_color': log.care_task.category.color if log.care_task.category else '#6f42c1',
                 'completed_at': log.completed_at.isoformat(),
                 'completion_status': log.status,
+                'completed_early': log.completed_early,
+                'completed_late': log.completed_late,
                 'notes': log.notes,
                 'completed_by': log.performed_by,
                 'schedule_id': log.schedule_id,
-                'scheduled_time': log.scheduled_time.isoformat() if log.scheduled_time else None,
+                'scheduled_time': make_utc(log.scheduled_time).isoformat() if log.scheduled_time else None,
                 'created_at': log.created_at.isoformat() if log.created_at else None
             }
             for log in logs
@@ -620,7 +622,7 @@ def get_overdue_care_tasks(db: Session, patient_id=None):
     that have no completion or skip log.
     """
     try:
-        from crud.scheduling import get_scheduled_care_tasks_for_date
+        from crud.scheduling import care_task_occurrence_log, get_scheduled_care_tasks_for_date
         from utils.datetime_utils import utc_today
 
         now = utc_now()
@@ -638,11 +640,7 @@ def get_overdue_care_tasks(db: Session, patient_id=None):
             if scheduled_time >= now:
                 continue
 
-            log = db.query(CareTaskLog).filter(
-                CareTaskLog.schedule_id == item['schedule_id'],
-                CareTaskLog.scheduled_time == scheduled_time
-            ).first()
-            if log:
+            if care_task_occurrence_log(db, item):
                 continue
 
             overdue.append({

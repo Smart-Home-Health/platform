@@ -143,6 +143,13 @@ def test_completion_records_whether_it_was_late(admin_client, patient, db_sessio
     # And it credits the signed-in user rather than whatever the body claimed.
     assert log.performed_by is not None
 
+    history = admin_client.get(f"/api/care-tasks/history?patient_id={patient.id}").json()["history"]
+    row = next(row for row in history if row["id"] == log.id)
+    assert row["completion_status"] == "completed"
+    assert row["completed_late"] is True
+    assert row["completed_early"] is False
+    assert datetime.fromisoformat(row["scheduled_time"]) == scheduled
+
 
 def test_completion_offers_intake_for_a_nutrition_task(admin_client, patient, db_session):
     """Which page a task was completed from decided whether intake was

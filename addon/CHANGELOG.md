@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.4
+
+- Completing or skipping a scheduled care task on the Live Board updates that occurrence on the patient's Schedule and in overdue reminders.
+- Care task **Completion history** shows the recorded status in its totals and labels. Scheduled completions show whether they were early, on time, or late. Skipped tasks are labeled **Skipped**.
+- To send late care reminders to more phones on Home Assistant 2026.5 or later, re-import the **Late care reminder** blueprint, open the existing automation, and select **Additional caregiver phones**.
+
+During the upgrade, migration 057 reconnects earlier Live Board completions when their recorded details identify a single scheduled occurrence.
+
 ## 0.7.3
 
 - Diary medication entries show the concentration saved on the medication record alongside the administered dose, including in printouts and saved PDFs.

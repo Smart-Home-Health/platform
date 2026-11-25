@@ -238,3 +238,97 @@ def test_undo_restores_quantity_and_soft_deletes_log(admin_client, patient, db_s
     assert db_session.query(Medication).get(med_id).quantity == 10
     # …and the log is excluded from reads by the global soft-delete filter.
     assert db_session.query(MedicationLog).filter(MedicationLog.id == log.id).first() is None
+
+
+def test_live_care_task_completion_credits_only_selected_patient_and_occurrence(
+    db_session, admin_client, patient, account, monkeypatch,
+):
+    from zoneinfo import ZoneInfo
+    from sqlalchemy import text
+    from crud import scheduling
+    from crud.patients import create_patient
+    from crud.schedule_status import get_schedule_status
+    from schemas.care_task import CareTask
+    from schemas.care_task_log import CareTaskLog
+    from schemas.care_task_schedule import CareTaskSchedule
+    from utils.datetime_utils import local_day_bounds
+
+    other = create_patient(db_session, {'first_name': 'Other', 'last_name': 'Patient', 'account_id': account.id})
+    at = datetime(2026, 11, 25, 14, 46, tzinfo=timezone.utc)  # 09:46 in New York
+    local_tz = ZoneInfo('America/New_York')
+    monkeypatch.setattr(scheduling, 'utc_now', lambda: at)
+    monkeypatch.setattr(scheduling, 'local_day_bounds', lambda tz: local_day_bounds(tz, at))
+    db_session.execute(text("SET LOCAL TIME ZONE 'America/New_York'"))
+
+    task = CareTask(name='Respiratory care', account_id=account.id, active=True,
+                    created_at=at, updated_at=at)
+    db_session.add(task)
+    db_session.flush()
+    schedule = CareTaskSchedule(care_task_id=task.id, cron_expression='0 5,12,15 * * *',
+                                active=True, created_at=at, updated_at=at)
+    db_session.add(schedule)
+    db_session.commit()
+    # The catalog task and schedule are shared; the first active patient differs
+    # from the patient whose occurrence the caregiver selected.
+    path = f'/api/care-task-schedules/{schedule.id}'
+    response = admin_client.post(f'{path}/complete', json={
+        'patient_id': other.id, 'scheduled_time': '2026-11-25T07:00:00-05:00',
+        'early_override': True, 'notes': 'Completed via live dashboard',
+    })
+    assert response.status_code == 200, response.text
+    log = db_session.get(CareTaskLog, response.json()['id'])
+    assert log.scheduled_time == datetime(2026, 11, 25, 12)
+    assert log.completed_at == at and log.completed_late and log.patient_id == other.id
+
+    def completed_rows(patient_id):
+        day = admin_client.get(f'/api/schedule/daily?patient_id={patient_id}&target_date=2026-11-25').json()
+        return [row for row in day['care_tasks'] if row['schedule_id'] == schedule.id and row['completed']]
+
+    assert [row['log_id'] for row in completed_rows(other.id)] == [log.id]
+    assert completed_rows(patient.id) == []
+    # The HA reminder must also retire exactly this patient's 7 AM entry.
+    def late_times(patient_id):
+        snapshot = get_schedule_status(db_session, patient_id, now=at, sections=['care_task_counts'])
+        return {item['due_at'] for item in snapshot['late']}
+
+    morning_slot = '2026-11-25T12:00:00+00:00'
+    assert late_times(patient.id) - late_times(other.id) == {morning_slot}
+    assert morning_slot not in late_times(other.id)
+    # Other reads (day board and overdue badges) must agree with the combined schedule.
+    board = scheduling.get_daily_care_task_schedule(db_session, patient_id=other.id, tz=local_tz)
+    credited = [item for item in board['scheduled_care_tasks'] if item['is_completed']]
+    assert [item['scheduled_time'] for item in credited] == [datetime(2026, 11, 25, 12, tzinfo=timezone.utc)]
+    assert not any(item['is_completed'] for item in scheduling.get_daily_care_task_schedule(
+        db_session, patient_id=patient.id, tz=local_tz)['scheduled_care_tasks'])
+
+    # A separate PRN completion does not clear an open firing of the same task.
+    assert admin_client.post(f'/api/care-tasks/{task.id}/complete', json={
+        'patient_id': other.id, 'completed_at': at.isoformat(),
+    }).status_code == 200
+    assert len(completed_rows(other.id)) == 1
+    # Backdated PRNs immediately either side of local midnight stay on their
+    # own calendar days even though both happened on the same UTC date.
+    for when in ('2026-11-24T23:59:00-05:00', '2026-11-25T00:00:00-05:00'):
+        assert admin_client.post(f'/api/care-tasks/{task.id}/complete', json={
+            'patient_id': other.id, 'completed_at': when,
+        }).status_code == 200
+    board = scheduling.get_daily_care_task_schedule(db_session, patient_id=other.id, tz=local_tz)
+    prns = [row for row in board['scheduled_care_tasks'] if row.get('is_prn')]
+    assert [row['is_yesterday'] for row in prns] == [True, False, False]
+    assert len(completed_rows(other.id)) == 1
+    skipped = admin_client.post(f'{path}/skip', json={
+        'patient_id': other.id, 'scheduled_time': '2026-11-25T00:00:00-05:00',
+    })
+    assert skipped.status_code == 200, skipped.text
+    assert [row['status'] for row in completed_rows(other.id)] == ['skipped', 'completed']
+    assert completed_rows(patient.id) == []
+
+    # Older clients omit patient_id for a schedule bound to one patient.
+    schedule.patient_id = other.id
+    db_session.commit()
+    assert admin_client.post(f'{path}/skip', json={
+        'patient_id': patient.id, 'scheduled_time': '2026-11-25T10:00:00-05:00',
+    }).status_code == 404
+    old_client = admin_client.post(f'{path}/skip', json={'scheduled_time': '2026-11-25T10:00:00-05:00'})
+    assert old_client.status_code == 200, old_client.text
+    assert db_session.get(CareTaskLog, old_client.json()['id']).patient_id == other.id
