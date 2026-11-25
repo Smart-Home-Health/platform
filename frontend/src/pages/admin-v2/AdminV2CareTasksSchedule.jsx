@@ -31,7 +31,7 @@ import '../../components/vc/entity-card.css';
 import './AdminV2.css';
 import './settings/settings-page.css';
 
-const AdminV2CareTasksSchedule = () => {
+const PatientCareTasksSchedule = ({ patientContext }) => {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const { 
@@ -39,7 +39,7 @@ const AdminV2CareTasksSchedule = () => {
     selectedPatient: contextPatient, 
     selectPatient: setContextPatient,
     loadingPatients 
-  } = useAdminPatient();
+  } = patientContext;
   
   // Use context patient as the source of truth
   const selectedPatient = contextPatient;
@@ -247,6 +247,7 @@ const AdminV2CareTasksSchedule = () => {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
+          patient_id: selectedPatient.id,
           scheduled_time: task.scheduled_time,
           notes: '',
           early_override: earlyOverride,
@@ -285,6 +286,7 @@ const AdminV2CareTasksSchedule = () => {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
+          patient_id: selectedPatient.id,
           scheduled_time: task.scheduled_time,
           notes: 'Skipped'
         })
@@ -454,4 +456,7 @@ const AdminV2CareTasksSchedule = () => {
   );
 };
 
-export default AdminV2CareTasksSchedule;
+export default function AdminV2CareTasksSchedule() {
+  const patientContext = useAdminPatient();
+  return <PatientCareTasksSchedule key={patientContext.selectedPatient?.id} patientContext={patientContext} />;
+}

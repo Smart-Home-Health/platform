@@ -84,6 +84,7 @@ class CareTaskScheduleResponse(BaseModel):
 
 
 class CareTaskScheduleComplete(BaseModel):
+    patient_id: Optional[int] = Field(None, gt=0)
     scheduled_time: Optional[datetime] = None
     notes: Optional[str] = None
     # Set to True to bypass the >1h-early administration guard

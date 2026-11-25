@@ -24,7 +24,7 @@ from schemas.care_task import CareTask
 from schemas.care_task_schedule import CareTaskSchedule
 from schemas.care_task_log import CareTaskLog
 from nutrition_vocab import LOCATION_LABELS, to_ml
-from care_task_vocab import is_nutrition_category
+from care_task_vocab import completion_timing, is_nutrition_category
 from crud.patients import get_active_patient, patient_account_scope
 from utils.datetime_utils import (
     utc_now,
@@ -257,25 +257,16 @@ def get_scheduled_care_tasks_for_date(db: Session, target_date=None, patient_id=
             CareTask.active == True
         )
         
-        # Filter by patient - if no patient_id provided, use current patient
         if patient_id is None:
             active_patient = get_active_patient(db)
-            if active_patient:
-                # Show schedules for current patient OR global schedules (patient_id is NULL)
-                query = query.filter(
-                    (CareTaskSchedule.patient_id == active_patient.id) | 
-                    (CareTaskSchedule.patient_id.is_(None))
-                )
-        elif patient_id == -1:
-            # Admin mode: show all schedules regardless of patient
-            pass  # No patient filter
-        else:
-            # Show schedules for specific patient OR global schedules
+            patient_id = active_patient.id if active_patient else None
+        if patient_id not in (None, -1):
             query = query.filter(
-                (CareTaskSchedule.patient_id == patient_id) | 
-                (CareTaskSchedule.patient_id.is_(None))
+                patient_account_scope(db, CareTask, patient_id),
+                (CareTaskSchedule.patient_id == patient_id) | CareTaskSchedule.patient_id.is_(None),
+                (CareTask.patient_id == patient_id) | CareTask.patient_id.is_(None),
             )
-        
+
         schedules = query.all()
         
         scheduled_tasks = []
@@ -286,7 +277,7 @@ def get_scheduled_care_tasks_for_date(db: Session, target_date=None, patient_id=
                 # UTC-aware start-of-day so the times it yields are UTC-aware
                 # — required because callers compare them against utc_now().
                 start_of_day = datetime.combine(target_date, datetime.min.time(), tzinfo=timezone.utc)
-                cron = croniter(schedule.cron_expression, start_of_day)
+                cron = croniter(schedule.cron_expression, start_of_day - timedelta(minutes=1))
 
                 category = schedule.care_task.category
                 category_name = category.name if category else None
@@ -299,6 +290,8 @@ def get_scheduled_care_tasks_for_date(db: Session, target_date=None, patient_id=
                         'care_task_id': schedule.care_task_id,
                         'care_task_name': schedule.care_task.name,
                         'care_task_description': schedule.care_task.description,
+                        'patient_id': (patient_id if patient_id not in (None, -1) else
+                                       schedule.patient_id or schedule.care_task.patient_id),
                         'care_task_category_name': category_name,
                         'care_task_category_color': category_color,
                         'scheduled_time': current_time,
@@ -318,6 +311,19 @@ def get_scheduled_care_tasks_for_date(db: Session, target_date=None, patient_id=
         return []
 
 
+def care_task_occurrence_log(db: Session, occurrence):
+    """Look up the selected patient's exact cron firing using the stored UTC clock."""
+    minute = make_utc(occurrence['scheduled_time']).replace(tzinfo=None, second=0, microsecond=0)
+    query = db.query(CareTaskLog).filter(
+        CareTaskLog.schedule_id == occurrence['schedule_id'],
+        CareTaskLog.scheduled_time >= minute,
+        CareTaskLog.scheduled_time < minute + timedelta(minutes=1),
+    )
+    if occurrence['patient_id'] is not None:
+        query = query.filter(CareTaskLog.patient_id == occurrence['patient_id'])
+    return query.first()
+
+
 def get_missed_care_tasks(db: Session, target_date=None):
     """
     Get care tasks that were scheduled but not completed for a specific date
@@ -335,28 +341,8 @@ def get_missed_care_tasks(db: Session, target_date=None):
         # Get all scheduled care tasks for the target date
         scheduled = get_scheduled_care_tasks_for_date(db, target_date)
         
-        missed_tasks = []
-        
-        for scheduled_task in scheduled:
-            # Check if this care task was actually completed
-            scheduled_time = scheduled_task['scheduled_time']
-            schedule_id = scheduled_task['schedule_id']
-            
-            # Look for completion log within 2 hours of scheduled time
-            window_start = scheduled_time - timedelta(hours=1)
-            window_end = scheduled_time + timedelta(hours=1)
-            
-            completed = db.query(CareTaskLog).filter(
-                CareTaskLog.schedule_id == schedule_id,
-                CareTaskLog.completed_at >= window_start,
-                CareTaskLog.completed_at <= window_end
-            ).first()
-            
-            if not completed:
-                missed_tasks.append(scheduled_task)
-        
-        return missed_tasks
-        
+        return [item for item in scheduled if care_task_occurrence_log(db, item) is None]
+
     except Exception as e:
         logger.error(f"Error getting missed care tasks: {e}")
         return []
@@ -432,10 +418,7 @@ def get_daily_care_task_schedule(db: Session, patient_id=None, tz=None):
 
         # Process yesterday's schedules (check if missed or completed)
         for item in yesterday_scheduled:
-            completion_log = db.query(CareTaskLog).filter(
-                CareTaskLog.schedule_id == item['schedule_id'],
-                CareTaskLog.scheduled_time == item['scheduled_time']
-            ).first()
+            completion_log = care_task_occurrence_log(db, item)
 
             _apply_completion(item, completion_log)
             if not completion_log:
@@ -446,10 +429,7 @@ def get_daily_care_task_schedule(db: Session, patient_id=None, tz=None):
 
         # Process today's schedules
         for item in today_scheduled:
-            completion_log = db.query(CareTaskLog).filter(
-                CareTaskLog.schedule_id == item['schedule_id'],
-                CareTaskLog.scheduled_time == item['scheduled_time']
-            ).first()
+            completion_log = care_task_occurrence_log(db, item)
 
             _apply_completion(item, completion_log)
             if not completion_log:
@@ -553,6 +533,7 @@ def complete_care_task(db: Session, task_id, schedule_id=None, scheduled_time=No
         completed_at = completed_at or now
         if isinstance(completed_at, str):
             completed_at = datetime.fromisoformat(completed_at.replace('Z', '+00:00'))
+        completed_at = make_utc(completed_at)
 
         # Get the care task to retrieve patient_id
         care_task = db.query(CareTask).filter(CareTask.id == task_id).first()
@@ -572,21 +553,10 @@ def complete_care_task(db: Session, task_id, schedule_id=None, scheduled_time=No
 
         # Calculate timing flags if this is a scheduled task
         is_scheduled = bool(schedule_id)
-        completed_early = False
-        completed_late = False
-
-        if is_scheduled and scheduled_time:
-            if isinstance(scheduled_time, str):
-                scheduled_dt = datetime.fromisoformat(scheduled_time.replace('Z', '+00:00'))
-            else:
-                scheduled_dt = scheduled_time
-
-            diff_minutes = (completed_at - scheduled_dt).total_seconds() / 60
-
-            if diff_minutes < -15:  # More than 15 minutes early
-                completed_early = True
-            elif diff_minutes > 15:  # More than 15 minutes late
-                completed_late = True
+        if isinstance(scheduled_time, str):
+            scheduled_time = datetime.fromisoformat(scheduled_time.replace('Z', '+00:00'))
+        scheduled_utc = make_utc(scheduled_time) if scheduled_time is not None else None
+        timing = completion_timing(scheduled_utc if status != 'skipped' else None, completed_at)
 
         # Create the completion log
         log = CareTaskLog(
@@ -595,9 +565,9 @@ def complete_care_task(db: Session, task_id, schedule_id=None, scheduled_time=No
             schedule_id=schedule_id,
             completed_at=completed_at,
             is_scheduled=is_scheduled,
-            scheduled_time=scheduled_time,
-            completed_early=completed_early,
-            completed_late=completed_late,
+            # The database stores this occurrence key as a UTC timestamp without timezone.
+            scheduled_time=scheduled_utc.replace(tzinfo=None) if scheduled_utc else None,
+            **timing,
             status=status,
             notes=notes,
             performed_by=performed_by,

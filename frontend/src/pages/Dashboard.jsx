@@ -1276,7 +1276,7 @@ export default function Dashboard() {
 
       {/* Care Task Modal */}
       {isCareTaskModalOpen && (
-        <CareTaskModal onClose={() => setIsCareTaskModalOpen(false)} />
+        <CareTaskModal key={sessionPatient?.id} onClose={() => setIsCareTaskModalOpen(false)} />
       )}
 
       {/* Capture Vitals — the live SpO2/HR are offered as a connected

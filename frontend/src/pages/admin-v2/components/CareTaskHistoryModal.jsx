@@ -47,12 +47,12 @@ const STATUS = [
 ];
 
 const timingOf = (row) => {
-  if (row.status === 'skipped') return { label: 'Skipped', tone: 'idle' };
+  if (row.completion_status === 'skipped') return { label: 'Skipped', tone: 'idle' };
+  if (row.completion_status === 'partial') return { label: 'Partial', tone: 'idle' };
+  if (!row.scheduled_time) return { label: 'As needed', tone: 'idle' };
   if (row.completed_late) return { label: 'Late', tone: 'due' };
   if (row.completed_early) return { label: 'Early', tone: 'due' };
-  if (row.scheduled_time) return { label: 'On time', tone: 'ok' };
-  // No scheduled time to be measured against — done as needed.
-  return { label: 'As needed', tone: 'idle' };
+  return { label: 'On time', tone: 'ok' };
 };
 
 export default function CareTaskHistoryModal({
@@ -98,9 +98,10 @@ export default function CareTaskHistoryModal({
 
   const totals = useMemo(() => ({
     total: rows.length,
-    completed: rows.filter((r) => r.status === 'completed').length,
-    skipped: rows.filter((r) => r.status === 'skipped').length,
-    late: rows.filter((r) => r.completed_late).length,
+    completed: rows.filter((r) => r.completion_status === 'completed').length,
+    skipped: rows.filter((r) => r.completion_status === 'skipped').length,
+    partial: rows.filter((r) => r.completion_status === 'partial').length,
+    late: rows.filter((r) => r.completion_status === 'completed' && r.scheduled_time && r.completed_late).length,
   }), [rows]);
 
   return (
@@ -139,6 +140,7 @@ export default function CareTaskHistoryModal({
           <span><strong>{totals.total}</strong> entries</span>
           <span><strong>{totals.completed}</strong> completed</span>
           <span><strong>{totals.skipped}</strong> skipped</span>
+          {totals.partial > 0 && <span><strong>{totals.partial}</strong> partial</span>}
           <span><strong>{totals.late}</strong> late</span>
         </div>
 
@@ -153,7 +155,7 @@ export default function CareTaskHistoryModal({
               return (
                 <li key={row.id} className="cth-row">
                   <span className={`cth-icon ${timing.tone}`}>
-                    {row.status === 'skipped'
+                    {row.completion_status === 'skipped'
                       ? <XIcon size={15} />
                       : timing.label === 'On time' ? <CheckIcon size={15} /> : <ClockIcon size={15} />}
                   </span>
@@ -161,7 +163,7 @@ export default function CareTaskHistoryModal({
                     <span className="cth-name">{row.task_name}</span>
                     <span className="cth-meta">
                       {formatDateTime(row.completed_at)}
-                      {row.task_category_name ? ` · ${row.task_category_name}` : ''}
+                      {row.task_category ? ` · ${row.task_category}` : ''}
                     </span>
                     {row.notes && <span className="cth-notes">{row.notes}</span>}
                   </span>

@@ -83,6 +83,23 @@ describe('schedule pages on the vc chassis', () => {
     expect(upcoming).toHaveAttribute('aria-pressed', 'true');
   });
 
+  it.each([['Mark Complete', 'complete'], ['Skip', 'skip']])(
+    'care tasks: %s records the selected patient and schedule slot',
+    async (label, action) => {
+      const scheduledTime = new Date().toISOString();
+      fetch.mockImplementation(async (url) => ({
+        ok: true,
+        json: async () => url.includes('/care-tasks/day')
+          ? { items: [{ name: 'Morning task', schedule_id: 8, scheduled_time: scheduledTime, status: 'due_on_time' }] }
+          : {},
+      }));
+      await act(async () => { render(<AdminV2CareTasksSchedule />); });
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: label })); });
+      const [, request] = fetch.mock.calls.find(([url]) => url.endsWith(`/care-task-schedules/8/${action}`));
+      expect(JSON.parse(request.body)).toMatchObject({ patient_id: 5, scheduled_time: scheduledTime });
+    },
+  );
+
   it('nutrition: the PRN picker opens as EntityModal choices, not a shadcn dialog', async () => {
     await act(async () => { render(<AdminV2NutritionSchedule />); });
     expectVcChrome();

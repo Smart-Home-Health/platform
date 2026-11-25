@@ -56,6 +56,8 @@ from crud.scheduling import (
     validate_cron_expression, get_next_scheduled_times
 )
 from crud.patients import get_current_patient
+from schemas.care_task_schedule import CareTaskSchedule
+from schemas.patient import Patient
 from utils.early_administration import guard_early_administration
 
 logger = logging.getLogger("app")
@@ -398,6 +400,24 @@ async def toggle_care_task_schedule_active_endpoint(schedule_id: int, db: Sessio
         )
 
 
+def _scheduled_task_for_patient(db, schedule_id, patient_id, account_id):
+    schedule = db.get(CareTaskSchedule, schedule_id)
+    if not schedule or schedule.care_task.account_id not in (None, account_id):
+        return None, None
+    task_patient = schedule.care_task.patient_id
+    selected = patient_id or schedule.patient_id or task_patient
+    patients = db.query(Patient.id).filter(Patient.account_id == account_id)
+    if selected is None:
+        # Older clients can omit the patient for a shared schedule.
+        patients = patients.filter(Patient.is_active.is_(True)).order_by(Patient.id).limit(1)
+    elif schedule.patient_id not in (None, selected) or task_patient not in (None, selected):
+        return None, None
+    else:
+        patients = patients.filter(Patient.id == selected)
+    selected = patients.scalar()
+    return (schedule, selected) if selected is not None else (None, None)
+
+
 @router.post("/care-task-schedules/{schedule_id}/complete", dependencies=[Depends(require_permission("care_tasks.perform"))])
 async def complete_care_task_schedule_endpoint(
     schedule_id: int,
@@ -408,7 +428,7 @@ async def complete_care_task_schedule_endpoint(
     """Complete a scheduled care task"""
     try:
         # Get the schedule to find the care task ID
-        schedule = get_care_task_schedule(db, schedule_id)
+        schedule, patient_id = _scheduled_task_for_patient(db, schedule_id, data.patient_id, current_user.account_id)
         if not schedule:
             return JSONResponse(status_code=404, content={"detail": "Care task schedule not found"})
 
@@ -424,12 +444,12 @@ async def complete_care_task_schedule_endpoint(
             return early
 
         # Get the care task details to check if it's nutrition-related
-        from crud.care_tasks import get_care_task
-        care_task = get_care_task(db, schedule['care_task_id'])
+        care_task = get_care_task(db, schedule.care_task_id)
         
         log_id = complete_care_task(
             db=db,
-            task_id=schedule['care_task_id'],
+            task_id=schedule.care_task_id,
+            patient_id=patient_id,
             schedule_id=schedule_id,
             scheduled_time=data.scheduled_time,
             notes=data.notes,
@@ -446,10 +466,10 @@ async def complete_care_task_schedule_endpoint(
                 is_nutrition_task = is_nutrition_category(care_task.get('category_name'))
             
             # Extract nutrition data from schedule notes if available
-            if is_nutrition_task and schedule.get('notes'):
+            if is_nutrition_task and schedule.notes:
                 try:
                     import json
-                    notes_data = json.loads(schedule['notes'])
+                    notes_data = json.loads(schedule.notes)
                     if 'nutrition' in notes_data:
                         nutrition_data = notes_data['nutrition']
                 except (json.JSONDecodeError, KeyError):
@@ -534,13 +554,14 @@ async def skip_care_task_schedule_endpoint(
     """Skip a scheduled care task"""
     try:
         # Get the schedule to find the care task ID
-        schedule = get_care_task_schedule(db, schedule_id)
+        schedule, patient_id = _scheduled_task_for_patient(db, schedule_id, data.patient_id, current_user.account_id)
         if not schedule:
             return JSONResponse(status_code=404, content={"detail": "Care task schedule not found"})
 
         log_id = complete_care_task(
             db=db,
-            task_id=schedule['care_task_id'],
+            task_id=schedule.care_task_id,
+            patient_id=patient_id,
             schedule_id=schedule_id,
             scheduled_time=data.scheduled_time,
             notes=data.notes or "Task skipped",
