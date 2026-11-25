@@ -4,6 +4,7 @@ blueprint:
   description: >
     Enable Schedule details under the care profile’s Home Assistant reminders.
     Choose that sensor and the caregiver phones that should receive its item names and due times.
+    You can also announce overdue reminders on selected voice satellites.
   input:
     schedule:
       name: Schedule details sensor
@@ -28,6 +29,23 @@ blueprint:
           entity:
             - domain: notify
               integration: mobile_app
+    announcement_satellites:
+      name: Voice satellites
+      description: Select the Assist satellites that should announce how many care items are overdue.
+      default: []
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - domain: assist_satellite
+              supported_features:
+                - assist_satellite.AssistSatelliteEntityFeature.ANNOUNCE
+    speak_item_names:
+      name: Speak overdue item names
+      description: Include the names of up to three overdue items in each spoken reminder.
+      default: false
+      selector:
+        boolean: {}
     repeat_minutes:
       name: Minutes between reminders
       default: 30
@@ -43,6 +61,8 @@ variables:
   repeat_minutes: !input repeat_minutes
   primary_phone: !input phone
   additional_phones: !input additional_phones
+  announcement_satellites: !input announcement_satellites
+  speak_item_names: !input speak_item_names
 triggers:
   # The sensor publishes a dated snapshot every minute, even if the count is unchanged.
   - trigger: state
@@ -95,3 +115,19 @@ actions:
           data:
             title: *reminder_title
             message: *reminder_message
+  - if:
+      - condition: template
+        value_template: "{{ announcement_satellites | length > 0 }}"
+    then:
+      - action: assist_satellite.announce
+        continue_on_error: true
+        target:
+          entity_id: !input announcement_satellites
+        data:
+          message: >-
+            {% set late = trigger.to_state.attributes.late -%}
+            {% set count = late | length -%}
+            {{ count }} care {{ 'item is' if count == 1 else 'items are' }} overdue.
+            {%- if speak_item_names %}
+              {{ late[:3] | map(attribute='name') | join(', ') }}{% if count > 3 %}, and {{ count - 3 }} more{% endif %}.
+            {%- endif %}
