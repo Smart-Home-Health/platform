@@ -73,7 +73,9 @@ export default function AdminV2Connections() {
 
   const [frigateAddons, setFrigateAddons] = useState(null);
   const [frigateDiscoveryError, setFrigateDiscoveryError] = useState('');
-  const [frigateAddon, setFrigateAddon] = useState('');
+  // null follows discovery. An empty string is the user's manual URL choice.
+  const [frigateServerChoice, setFrigateServerChoice] = useState(null);
+  const frigateAddon = frigateServerChoice ?? frigateAddons?.find(app => app.running)?.slug ?? '';
   const canDiscoverFrigate = user?.is_system_admin && availableIntegrations.some(integration =>
     integration.slug === 'frigate' && integration.config_schema?.['x-ha-addon-discovery']);
   const discoverFrigate = selectedIntegration?.slug === 'frigate' && canDiscoverFrigate;
@@ -91,7 +93,6 @@ export default function AdminV2Connections() {
         const apps = await res.json();
         if (controller.signal.aborted) return;
         setFrigateAddons(apps);
-        setFrigateAddon(apps.find(app => app.running)?.slug || '');
       } catch {
         if (controller.signal.aborted) return;
         setFrigateDiscoveryError('Could not check Home Assistant. You can enter a Frigate URL below.');
@@ -184,7 +185,7 @@ export default function AdminV2Connections() {
       if (schema?.default !== undefined) defaults[key] = schema.default;
     }
     setNewSettings(defaults);
-    setFrigateAddon(integration.slug === 'frigate' ? frigateAddons?.find(app => app.running)?.slug || '' : '');
+    setFrigateServerChoice(null);
     setError('');
     setSelectedIntegration(integration);
   };
@@ -994,7 +995,7 @@ export default function AdminV2Connections() {
                   frigateAddons === null ? <p role="status">Checking Home Assistant for Frigate…</p>
                   : frigateAddons.length ? (
                     <EmField label="Frigate server" htmlFor="int-frigate-server">
-                      <EmSelect id="int-frigate-server" value={frigateAddon} onChange={e => setFrigateAddon(e.target.value)}>
+                      <EmSelect id="int-frigate-server" value={frigateAddon} onChange={e => setFrigateServerChoice(e.target.value)}>
                         {frigateAddons.map(app => (
                           <option key={app.slug} value={app.slug} disabled={!app.running}>
                             {app.name} · {app.running ? 'Home Assistant' : 'Stopped'}

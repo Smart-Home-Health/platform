@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import AdminV2Connections from './AdminV2Connections';
 
 vi.mock('./AdminV2Layout', () => ({ default: ({ children }) => <div>{children}</div> }));
@@ -65,6 +65,15 @@ describe('Frigate setup', () => {
     await openFrigate();
     expect(await screen.findByText(/No Frigate recorder add-on/)).toBeInTheDocument();
     expect(screen.getByLabelText('Frigate Base URL')).toBeInTheDocument();
+  });
+
+  it('selects the running recorder when discovery finishes after the form opens', async () => {
+    let finishDiscovery;
+    serve(new Promise(resolve => { finishDiscovery = resolve; }));
+    await openFrigate();
+    expect(screen.getByText('Checking Home Assistant for Frigate…')).toBeInTheDocument();
+    await act(async () => finishDiscovery([{ slug: 'ccab4aaf_frigate', name: 'Frigate', running: true }]));
+    expect(screen.getByLabelText('Frigate server')).toHaveValue('ccab4aaf_frigate');
   });
 
   it('identifies a stopped recorder and explains how to connect it', async () => {
