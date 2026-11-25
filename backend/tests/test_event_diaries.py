@@ -20,6 +20,7 @@ from crud.backup import export_patient_to_targz, restore_patient_from_targz
 from schemas.care_task import CareTask
 from schemas.care_task_log import CareTaskLog
 from schemas.event_diary import DiaryEvent, EventDiary
+from schemas.medication import Medication
 from schemas.medication_log import MedicationLog
 from schemas.nutrition_intake import NutritionIntake
 from schemas.nutrition_output import NutritionOutput
@@ -103,7 +104,8 @@ def test_timeline_uses_actual_nonvoided_records_and_groups_intake(admin_client, 
     _, path = start(admin_client, patient)
     observe(admin_client, path)
     med = _make_med(admin_client, patient).json()['id']
-    for dose, when, voided in [(1, AT - timedelta(minutes=1), None), (0, AT, None), (1, AT, AT),
+    db_session.get(Medication, med).concentration = None  # Older medication with no strength on file.
+    for dose, when, voided in [(1.5, AT - timedelta(minutes=1), None), (0, AT, None), (1, AT, AT),
                               (1, AT + timedelta(days=2), None)]:
         db_session.add(MedicationLog(medication_id=med, patient_id=patient.id, dose_amount=dose,
             administered_at=when, created_at=when, voided_at=voided))
@@ -115,6 +117,7 @@ def test_timeline_uses_actual_nonvoided_records_and_groups_intake(admin_client, 
     db_session.commit()
     rows = admin_client.get(path + '/timeline').json()
     assert [r['source'] for r in rows] == ['medication', 'observation', 'nutrition']
+    assert rows[0]['note'] == 'Tylenol - 1.5 tablets'
     assert 'Water' in rows[-1]['note'] and 'Feed' in rows[-1]['note']
     admin_client.put(path, json={**FORM, 'include_medications': False, 'include_nutrition': False})
     assert [r['source'] for r in admin_client.get(path + '/timeline').json()] == ['observation']
@@ -329,7 +332,7 @@ def test_print_report_rolls_up_raw_samples_and_all_event_categories(admin_client
     diary = admin_client.post(base, json={**FORM, 'starts_at': begin.isoformat(), 'ends_at': last.isoformat()}).json()
     path = base + '/' + str(diary['id'])
     observe(admin_client, path)
-    med = _make_med(admin_client, patient).json()['id']
+    med = _make_med(admin_client, patient, name='Briviact', concentration='10mg/ml', quantity_unit='ml').json()['id']
     # The first and last raw samples lie outside the study but inside its first/last quarters.
     for ts, spo2, bpm in [(begin - timedelta(seconds=1), 70, 180), (begin, 99, 75),
                           (begin + timedelta(seconds=2), 99, 80), (begin + timedelta(minutes=1), 90, -1),
@@ -339,7 +342,8 @@ def test_print_report_rolls_up_raw_samples_and_all_event_categories(admin_client
     db_session.add_all([
         MonitoringAlert(patient_id=patient.id, start_time=begin, created_at=begin),
         Vital(patient_id=patient.id, timestamp=last, created_at=last, vital_type='heart_rate', value=80),
-        MedicationLog(patient_id=patient.id, medication_id=med, administered_at=last, dose_amount=1, created_at=last),
+        MedicationLog(patient_id=patient.id, medication_id=med, administered_at=last, dose_amount=10,
+                      notes='Given via tube', created_at=last),
         NutritionOutput(patient_id=patient.id, output_type='urine', occurred_at=last),
         NutritionIntake(patient_id=patient.id, item_name='Water', item_type='liquid', amount=20, amount_unit='ml',
                         consumed_at=last, created_at=last, updated_at=last),
@@ -348,6 +352,8 @@ def test_print_report_rolls_up_raw_samples_and_all_event_categories(admin_client
     ])
     db_session.flush()
     report = admin_client.get(path + '/report').json()
+    assert [row['note'] for row in report['entries'] if row['source'] == 'medication'] == [
+        'Briviact (10mg/ml) - 10ml · Given via tube']
     assert [datetime.fromisoformat(report[k]) for k in ['start', 'through']] == [begin, last]
     first_at = begin.replace(minute=0)
     first, final = report['signals']

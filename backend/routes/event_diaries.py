@@ -294,8 +294,12 @@ def diary_entries(db, diary, end, user):
             MedicationLog.patient_id == patient_id, MedicationLog.dose_amount > 0,
             MedicationLog.administered_at.between(diary.starts_at, end), MedicationLog.voided_at.is_(None))
         for dose, med in doses:
+            concentration = (med.concentration or '').strip()
+            name = f'{med.name} ({concentration})' if concentration else med.name
+            unit = med.quantity_unit
+            dose_unit = unit if unit.lower() in {'ml', 'mg'} else f' {unit}'
             entries.append(dict(source='medication', id=dose.id, at=dose.administered_at, label='Took medicine',
-                                note=f'{med.name} · {dose.dose_amount:g} {med.quantity_unit}' +
+                                note=f'{name} - {dose.dose_amount:g}{dose_unit}' +
                                      (f' · {dose.notes}' if dose.notes else '')))
     if diary.include_nutrition and user.has_permission('nutrition.read'):
         entries.extend(diary_output_entries(db, patient_id, diary.starts_at, end))
