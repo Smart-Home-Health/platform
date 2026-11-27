@@ -27,15 +27,15 @@ four days, daily ones for about fourteen hours. Irregular cadences
 Everything here is computed on read. Nothing is written.
 """
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from croniter import croniter
 from sqlalchemy.orm import Session
 
+from crud.medication_occurrences import medication_logs_for_window, medication_logs_by_firing
 from crud.patients import patient_account_scope
 from schemas.medication import Medication
 from schemas.medication_schedule import MedicationSchedule
-from schemas.medication_log import MedicationLog
 from utils.datetime_utils import utc_now, make_utc
 
 logger = logging.getLogger('crud')
@@ -50,10 +50,6 @@ MAX_LOOKBACK = timedelta(days=35)
 # Per-schedule safety valve on the backward cron walk (an every-hour cron
 # over 35 days is 840 firings; nothing sensible for a medication goes past this).
 MAX_FIRINGS_PER_SCHEDULE = 1000
-
-# A log without an exact scheduled_time still counts as this dose when it was
-# administered near the firing. Mirrors get_daily_medication_schedule.
-LOG_MATCH_WINDOW = timedelta(hours=4)
 
 
 def grace_hours_for(override_hours, firing_utc, next_firing_utc):
@@ -75,29 +71,6 @@ def _prev_firings(cron_expression, before_utc):
 
 def _next_firing(cron_expression, firing_utc):
     return make_utc(croniter(cron_expression, firing_utc).get_next(datetime))
-
-
-def nearest_logged_firing(cron_expression, administered_at):
-    """Resolve a legacy scheduled log with no due timestamp to at most one firing."""
-    at = make_utc(administered_at)
-    before = croniter(cron_expression, at + timedelta(seconds=1)).get_prev(datetime)
-    after = croniter(cron_expression, at).get_next(datetime)
-    nearest = min((before, after), key=lambda firing: abs(firing - at))
-    return nearest if abs(nearest - at) <= LOG_MATCH_WINDOW else None
-
-
-def _log_matches(logs_for_schedule, firing_utc):
-    """True when one of the schedule's logs records this firing: an exact
-    scheduled_time match (what the completion endpoints write), or an
-    administration close enough to the firing to be it."""
-    for log in logs_for_schedule:
-        st = log.scheduled_time
-        if st is not None and abs((make_utc(st) - firing_utc).total_seconds()) < 60:
-            return True
-        at = log.administered_at
-        if at is not None and abs(make_utc(at) - firing_utc) <= LOG_MATCH_WINDOW:
-            return True
-    return False
 
 
 def find_grace_period_doses(db: Session, patient_id: int, before_utc: datetime, now_utc: datetime = None, *, strict=False):
@@ -138,16 +111,7 @@ def find_grace_period_doses(db: Session, patient_id: int, before_utc: datetime, 
         if not schedules:
             return []
 
-        schedule_ids = [s.id for s in schedules]
-        logs = db.query(MedicationLog).filter(
-            MedicationLog.patient_id == patient_id,
-            MedicationLog.schedule_id.in_(schedule_ids),
-            (MedicationLog.scheduled_time >= lookback_start)
-            | (MedicationLog.administered_at >= lookback_start - LOG_MATCH_WINDOW),
-        ).all()
-        logs_by_schedule = {}
-        for log in logs:
-            logs_by_schedule.setdefault(log.schedule_id, []).append(log)
+        logs_by_schedule = medication_logs_for_window(db, schedules, patient_id, lookback_start, before_utc)
 
         rows = []
         for schedule in schedules:
@@ -160,12 +124,13 @@ def find_grace_period_doses(db: Session, patient_id: int, before_utc: datetime, 
             end = make_utc(med.end_date) if med.end_date is not None else None
 
             try:
+                logged = medication_logs_by_firing(schedule, logs_by_schedule.get(schedule.id, ()))
                 for firing in _prev_firings(schedule.cron_expression, before_utc):
                     if firing < floor:
                         break
                     if end is not None and firing > end:
                         continue
-                    if _log_matches(logs_by_schedule.get(schedule.id, ()), firing):
+                    if firing in logged:
                         continue
                     next_firing = _next_firing(schedule.cron_expression, firing)
                     grace_h = grace_hours_for(schedule.grace_period_hours, firing, next_firing)

@@ -40,6 +40,7 @@ vi.mock('react-router-dom', () => ({
 vi.mock('../../config', () => ({ default: { apiUrl: '' }, apiFetch: (...a) => fetch(...a) }));
 
 import AdminV2MedicationsSchedule from './AdminV2MedicationsSchedule';
+import AdminV2Medications from './AdminV2Medications';
 import AdminV2CareTasksSchedule from './AdminV2CareTasksSchedule';
 import AdminV2NutritionSchedule from './AdminV2NutritionSchedule';
 
@@ -85,6 +86,35 @@ describe('schedule pages on the vc chassis', () => {
     expect(ready).toHaveAttribute('aria-pressed', 'false');
     // Completed starts unselected on this page.
     expect(screen.getByRole('button', { name: /Completed/ })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('shows a completed medication in its scheduled slot with the time it was given', async () => {
+    fetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ scheduled_medications: [{
+        medication_name: 'Afternoon medication', schedule_id: 8,
+        scheduled_time: '2026-11-26T20:00:00Z', administered_at: '2026-11-26T19:59:00-05:00',
+        dose_amount: 1, actual_dose: 1, is_completed: true, status: 'completed_late',
+      }] }),
+    });
+
+    await act(async () => { render(<AdminV2MedicationsSchedule />); });
+    const completed = screen.getByRole('button', { name: /Completed 1/ });
+    fireEvent.click(completed);
+    expect(screen.getByText('15:00')).toBeInTheDocument();
+    expect(screen.getByText('Taken at 7:59 PM')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Take Now' })).not.toBeInTheDocument();
+  });
+
+  it('shows the last given date and time on the medication overview with a negative UTC offset', async () => {
+    fetch.mockResolvedValue({
+      ok: true,
+      json: async () => [{
+        id: 8, name: 'Afternoon medication', last_administered: '2026-11-26T19:59:00-05:00',
+      }],
+    });
+    await act(async () => { render(<AdminV2Medications />); });
+    expect(screen.getByText('Last given').parentElement).toHaveTextContent(/Nov 26, 2026.*7:59 PM/);
   });
 
   it('care tasks: a multi-status tile toggles all of its keys together', async () => {

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.1
+
+- The medication board and daily Schedule now count a scheduled dose consistently when it is recorded after midnight for the previous day. The dose stays linked to its original scheduled time, and the board shows when it was given.
+- The medication Overview shows the **Last given** time for entries with a negative UTC offset.
+
 ## 0.8.0
 
 - Open **Schedule → Manage routines** to enable feed timing for a care profile. Choose which feeds and scheduled water share a minimum gap between starts. After a late feed, the schedule and Home Assistant reminders use the adjusted times and allow for the previous feed’s run time.

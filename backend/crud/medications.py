@@ -24,7 +24,7 @@ from schemas.medication import Medication
 from schemas.medication_schedule import MedicationSchedule
 from schemas.medication_log import MedicationLog
 from crud.settings import get_setting
-from utils.datetime_utils import utc_now, utc_today, resolve_tz_for_patient, local_day_bounds
+from utils.datetime_utils import utc_now, utc_today, make_utc, resolve_tz_for_patient, local_day_bounds
 from utils.medication_quantity import InsufficientMedicationQuantityError
 
 logger = logging.getLogger('crud')
@@ -290,52 +290,25 @@ def administer_medication(db: Session, med_id, dose_amount, schedule_id=None, sc
                 raise InsufficientMedicationQuantityError(med, dose_amount)
             med.quantity = max(0, med.quantity - float(dose_amount))
         
-        # Use timezone-aware UTC datetime
-        now = datetime.now(timezone.utc)
+        now = utc_now()
+        if isinstance(scheduled_time, str):
+            scheduled_time = datetime.fromisoformat(scheduled_time.replace('Z', '+00:00'))
+        scheduled_dt = make_utc(scheduled_time) if scheduled_time is not None else None
 
-        # Resolve the actual administered timestamp first, since the early/late
-        # flags must be computed against that — not against request-time.
-        # Priority:
-        #   1. explicit `administered_at` from the caller (PRN retro-logging)
-        #   2. scheduled_time for skipped doses (keep skip on timeline)
-        #   3. now
+        if isinstance(administered_at, str):
+            administered_at = datetime.fromisoformat(administered_at.replace('Z', '+00:00'))
         if administered_at is not None:
-            if isinstance(administered_at, datetime):
-                log_time = administered_at
-                if log_time.tzinfo is None:
-                    log_time = log_time.replace(tzinfo=timezone.utc)
-            else:
-                log_time = datetime.fromisoformat(str(administered_at).replace('Z', '+00:00'))
-        elif float(dose_amount) == 0 and scheduled_time:
-            if isinstance(scheduled_time, datetime):
-                log_time = scheduled_time
-                if log_time.tzinfo is None:
-                    log_time = log_time.replace(tzinfo=timezone.utc)
-            else:
-                log_time = datetime.fromisoformat(str(scheduled_time).replace('Z', '+00:00'))
+            log_time = make_utc(administered_at)
+        elif float(dose_amount) == 0 and scheduled_dt is not None:
+            log_time = scheduled_dt
         else:
             log_time = now
 
-        # Calculate timing flags only for actual administrations against a
-        # scheduled dose. Skipped doses (dose_amount == 0) are not an
-        # administration so they don't carry early/late flags.
-        administered_early = False
-        administered_late = False
-
-        if schedule_id and scheduled_time and float(dose_amount) > 0:
-            if isinstance(scheduled_time, datetime):
-                scheduled_dt = scheduled_time
-                if scheduled_dt.tzinfo is None:
-                    scheduled_dt = scheduled_dt.replace(tzinfo=timezone.utc)
-            else:
-                scheduled_dt = datetime.fromisoformat(scheduled_time.replace('Z', '+00:00'))
-
-            diff_minutes = (log_time - scheduled_dt).total_seconds() / 60
-
-            if diff_minutes < -15:  # More than 15 minutes early
-                administered_early = True
-            elif diff_minutes > 15:  # More than 15 minutes late
-                administered_late = True
+        administered_early = administered_late = False
+        if schedule_id and scheduled_dt is not None and float(dose_amount) > 0:
+            offset = log_time - scheduled_dt
+            administered_early = offset < -timedelta(minutes=15)
+            administered_late = offset > timedelta(minutes=15)
 
         # Record log
         log = MedicationLog(
@@ -345,7 +318,8 @@ def administer_medication(db: Session, med_id, dose_amount, schedule_id=None, sc
             administered_at=log_time,
             dose_amount=dose_amount,
             is_scheduled=bool(schedule_id),
-            scheduled_time=scheduled_time,
+            # Migration 001 stores this occurrence as a naive UTC timestamp.
+            scheduled_time=scheduled_dt.replace(tzinfo=None) if scheduled_dt is not None else None,
             administered_early=administered_early,
             administered_late=administered_late,
             # Who gave the dose. The column has existed since the initial
@@ -736,204 +710,53 @@ def get_daily_medication_schedule(db: Session, patient_id=None, tz=None):
     Returns:
         Dict with 'scheduled_medications' list sorted chronologically
     """
+    from crud.dose_grace import find_grace_period_doses, merge_grace_rows
+    from crud.scheduling import get_scheduled_medications
+
     try:
+        if patient_id is None:
+            try:
+                patient_id = int(get_setting(db, 'current_patient_id'))
+            except (ValueError, TypeError):
+                patient_id = None
         if tz is None:
             tz = resolve_tz_for_patient(db, patient_id)
         bounds = local_day_bounds(tz)
         current_time = bounds['now_utc']
-        local_yesterday_start_utc = bounds['yesterday_start_utc']
-        local_today_start_utc = bounds['today_start_utc']
-        local_today_end_utc = bounds['today_end_utc']
 
-        # Get cron-generated schedule entries for all UTC dates spanning the
-        # local yesterday+today window.
-        all_raw = []
-        for utc_date in bounds['utc_dates']:
-            all_raw.extend(get_scheduled_medications_for_date(db, utc_date, patient_id=patient_id))
-
-        # Deduplicate by (schedule_id, scheduled_time)
-        seen = set()
-        deduped = []
-        for item in all_raw:
-            key = (item['schedule_id'], item['scheduled_time'])
-            if key not in seen:
-                seen.add(key)
-                deduped.append(item)
-
-        # Split into local yesterday and local today based on UTC boundaries
-        yesterday_scheduled = [
-            item for item in deduped
-            if local_yesterday_start_utc <= item['scheduled_time'] < local_today_start_utc
-        ]
-        today_scheduled = [
-            item for item in deduped
-            if local_today_start_utc <= item['scheduled_time'] < local_today_end_utc
-        ]
-        
+        # Use the same occurrence and log as the daily Schedule, including when
+        # the dose was given or recorded on another day.
         all_scheduled = []
-        
-        # Process yesterday's schedules (check if missed)
-        for item in yesterday_scheduled:
-            scheduled_time = item['scheduled_time']
-            schedule_id = item['schedule_id']
-            
-            # Check if this was taken - look for any log entry for this schedule and date
-            # First try exact schedule_id match
-            log_entry = db.query(MedicationLog).filter(
-                MedicationLog.schedule_id == schedule_id,
-                MedicationLog.scheduled_time == scheduled_time
-            ).first()
-            
-            # If no exact match, check within time window (±4 hours for more flexibility)
-            if not log_entry:
-                time_window_start = scheduled_time - timedelta(hours=4)
-                time_window_end = scheduled_time + timedelta(hours=4)
-                
-                log_entry = db.query(MedicationLog).filter(
-                    MedicationLog.schedule_id == schedule_id,
-                    MedicationLog.administered_at >= time_window_start,
-                    MedicationLog.administered_at <= time_window_end
-                ).first()
-            
-            if log_entry:
-                # Check if dose was skipped (actual_dose = 0)
-                if log_entry.dose_amount == 0:
-                    status = 'skipped'
-                else:
-                    # Calculate timing status for completed dose
-                    # Ensure both datetimes are timezone-naive for comparison
-                    administered_at = log_entry.administered_at
-                    if administered_at.tzinfo is not None:
-                        administered_at = administered_at.replace(tzinfo=None)
-                    
-                    scheduled_time_naive = scheduled_time
-                    if scheduled_time_naive.tzinfo is not None:
-                        scheduled_time_naive = scheduled_time_naive.replace(tzinfo=None)
-                    
-                    time_diff = (administered_at - scheduled_time_naive).total_seconds() / 60  # minutes
-                    if abs(time_diff) <= 60:  # Within 1 hour
+        for day in (bounds['local_yesterday'], bounds['local_today']):
+            for item in get_scheduled_medications(db, day, patient_id, tz=tz):
+                if item.get('is_prn'):
+                    continue
+                item['is_completed'] = item['completed']
+                if item['completed']:
+                    administered_at = datetime.fromisoformat(item['completed_at'])
+                    item['administered_at'] = administered_at
+                    offset = abs(administered_at - item['scheduled_time'])
+                    if item['skipped']:
+                        status = 'skipped'
+                    elif offset <= timedelta(hours=1):
                         status = 'completed_on_time'
-                    elif abs(time_diff) <= 120:  # 1-2 hours early/late
+                    elif offset <= timedelta(hours=2):
                         status = 'completed_warning'
-                    else:  # More than 2 hours early/late
+                    else:
                         status = 'completed_late'
-                
-                # Show all completed medications from yesterday (including on-time ones)
-                all_scheduled.append({
-                    **item,
-                    'status': status,
-                    'administered_at': log_entry.administered_at,
-                    'actual_dose': log_entry.dose_amount,
-                    'is_completed': True,
-                    'log_id': log_entry.id
-                })
-            else:
-                # Show as missed if it's from yesterday (before local today start)
-                if scheduled_time < local_today_start_utc:
-                    all_scheduled.append({
-                        **item,
-                        'status': 'missed',
-                        'is_completed': False
-                    })
-        
-        # Process today's schedules
-        for item in today_scheduled:
-            scheduled_time = item['scheduled_time']
-            schedule_id = item['schedule_id']
-            
-            # Check if this was taken - look for any log entry for this schedule and date
-            # First try exact schedule_id and scheduled_time match
-            log_entry = db.query(MedicationLog).filter(
-                MedicationLog.schedule_id == schedule_id,
-                MedicationLog.scheduled_time == scheduled_time
-            ).first()
-            
-            # If no exact match, check within time window (±4 hours for more flexibility)
-            if not log_entry:
-                time_window_start = scheduled_time - timedelta(hours=4)
-                time_window_end = scheduled_time + timedelta(hours=4)
-                
-                log_entry = db.query(MedicationLog).filter(
-                    MedicationLog.schedule_id == schedule_id,
-                    MedicationLog.administered_at >= time_window_start,
-                    MedicationLog.administered_at <= time_window_end
-                ).first()
-            
-            if log_entry:
-                # Check if dose was skipped (actual_dose = 0)
-                if log_entry.dose_amount == 0:
-                    status = 'skipped'
-                else:
-                    # Calculate timing status for completed dose
-                    # Ensure both datetimes are timezone-naive for comparison
-                    administered_at = log_entry.administered_at
-                    if administered_at.tzinfo is not None:
-                        administered_at = administered_at.replace(tzinfo=None)
-                    
-                    scheduled_time_naive = scheduled_time
-                    if scheduled_time_naive.tzinfo is not None:
-                        scheduled_time_naive = scheduled_time_naive.replace(tzinfo=None)
-                    
-                    time_diff = (administered_at - scheduled_time_naive).total_seconds() / 60  # minutes
-                    if abs(time_diff) <= 60:  # Within 1 hour
-                        status = 'completed_on_time'
-                    elif abs(time_diff) <= 120:  # 1-2 hours early/late
-                        status = 'completed_warning'
-                    else:  # More than 2 hours early/late
-                        status = 'completed_late'
-                
-                all_scheduled.append({
-                    **item,
-                    'status': status,
-                    'administered_at': log_entry.administered_at,
-                    'actual_dose': log_entry.dose_amount,
-                    'is_completed': True,
-                    'log_id': log_entry.id
-                })
-            else:
-                # Check timing status for pending dose
-                # Ensure both datetimes are timezone-naive for comparison
-                current_time_naive = current_time
-                if current_time_naive.tzinfo is not None:
-                    current_time_naive = current_time_naive.replace(tzinfo=None)
-                
-                scheduled_time_naive = scheduled_time
-                if scheduled_time_naive.tzinfo is not None:
-                    scheduled_time_naive = scheduled_time_naive.replace(tzinfo=None)
-                
-                time_diff = (current_time_naive - scheduled_time_naive).total_seconds() / 60  # minutes
-                
-                if scheduled_time_naive > current_time_naive:
-                    # Future dose
+                elif day == bounds['local_yesterday']:
+                    status = 'missed'
+                elif item['scheduled_time'] > current_time:
                     status = 'upcoming'
-                elif time_diff <= 120:
-                    # Within 2 hours of scheduled time — ready to take
+                elif current_time - item['scheduled_time'] <= timedelta(hours=2):
                     status = 'ready'
                 else:
-                    # More than 2 hours late
                     status = 'missed'
-                
-                all_scheduled.append({
-                    **item,
-                    'status': status,
-                    'is_completed': False
-                })
-        
-        # Grace-period doses (crud/dose_grace.py): unfilled firings older than
-        # the window that are still actionable. They ride along as 'missed'
-        # with in_grace set, so the badges count them as overdue and the
-        # schedule page offers Take Now. Yesterday's missed rows above get
-        # annotated when their grace is still running.
-        from crud.dose_grace import find_grace_period_doses, merge_grace_rows
-        grace_patient_id = patient_id
-        if grace_patient_id is None:
-            raw = get_setting(db, 'current_patient_id')
-            try:
-                grace_patient_id = int(raw) if raw else None
-            except (ValueError, TypeError):
-                grace_patient_id = None
+                item['status'] = status
+                all_scheduled.append(item)
+
         grace_rows = find_grace_period_doses(
-            db, grace_patient_id, before_utc=local_today_start_utc, now_utc=current_time,
+            db, patient_id, before_utc=bounds['today_start_utc'], now_utc=current_time,
         )
         for row in grace_rows:
             row['status'] = 'missed'

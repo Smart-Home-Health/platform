@@ -31,7 +31,8 @@ class MedicationLog(Base):
     
     # Schedule tracking (only relevant if schedule_id is not null)
     is_scheduled = Column(Boolean, default=False, nullable=False)  # True if this was a scheduled dose
-    scheduled_time = Column(TIMESTAMP(timezone=True), nullable=True)  # The originally scheduled time for this dose
+    # Migration 001 uses timestamp without time zone, storing the due instant as UTC.
+    scheduled_time = Column(TIMESTAMP(timezone=False), nullable=True)
     administered_early = Column(Boolean, default=False, nullable=False)  # True if given before scheduled time
     administered_late = Column(Boolean, default=False, nullable=False)   # True if given after scheduled time
     

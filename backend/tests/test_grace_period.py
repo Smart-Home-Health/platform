@@ -18,6 +18,7 @@ schedule, actionable, until it is given or its grace runs out."""
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from sqlalchemy import text
 
 from crud.dose_grace import find_grace_period_doses, grace_hours_for, merge_grace_rows
 from crud.medications import add_medication, add_medication_schedule
@@ -44,7 +45,8 @@ def _schedule(db, patient, cron, grace=None, created_at=LONG_AGO, med_kw=None):
 def _log(db, med_id, sid, patient, scheduled_time, dose=1, administered_at=None):
     log = MedicationLog(
         medication_id=med_id, patient_id=patient.id, schedule_id=sid,
-        administered_at=administered_at or scheduled_time, scheduled_time=scheduled_time,
+        administered_at=administered_at or scheduled_time,
+        scheduled_time=scheduled_time.astimezone(timezone.utc).replace(tzinfo=None) if scheduled_time else None,
         dose_amount=dose, is_scheduled=True, created_at=NOW,
     )
     db.add(log)
@@ -95,6 +97,32 @@ def test_administration_near_the_firing_counts_without_scheduled_time(db_session
     )
     db_session.add(log)
     db_session.commit()
+    assert find_grace_period_doses(db_session, patient.id, DAY_START, NOW) == []
+
+
+@pytest.mark.parametrize('scheduled_seconds,given_seconds', [
+    pytest.param(0, 60, id='explicit-earlier-dose-given-at-later-firing'),
+    pytest.param(59, -5 * 3600, id='end-of-minute-belongs-to-earlier-firing'),
+    pytest.param(None, 5, id='legacy-log-belongs-to-nearest-firing'),
+])
+def test_one_log_leaves_the_next_firing_in_grace(db_session, patient, scheduled_seconds, given_seconds):
+    midnight = datetime(2026, 9, 4, tzinfo=timezone.utc)
+    first = midnight - timedelta(hours=1)
+    med_id, sid = _schedule(db_session, patient, "0,1 23 * * *")
+    _log(db_session, med_id, sid, patient,
+         first + timedelta(seconds=scheduled_seconds) if scheduled_seconds is not None else None,
+         administered_at=first + timedelta(seconds=given_seconds))
+    rows = find_grace_period_doses(db_session, patient.id, midnight, midnight + timedelta(minutes=30))
+    assert [row['scheduled_time'] for row in rows] == [first + timedelta(minutes=1)]
+
+
+def test_grace_lookback_matches_stored_utc_in_a_non_utc_session(db_session, patient):
+    db_session.execute(text("SET LOCAL TIME ZONE 'Asia/Tokyo'"))
+    med_id, sid = _schedule(db_session, patient, "0 16 31 7 *")
+    firing = datetime(2026, 7, 31, 16, tzinfo=timezone.utc)  # One hour into the 35-day lookback.
+    assert [row['scheduled_time'] for row in find_grace_period_doses(
+        db_session, patient.id, DAY_START, NOW)] == [firing]
+    _log(db_session, med_id, sid, patient, firing, administered_at=firing - timedelta(hours=8))
     assert find_grace_period_doses(db_session, patient.id, DAY_START, NOW) == []
 
 
