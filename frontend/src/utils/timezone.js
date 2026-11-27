@@ -22,6 +22,14 @@
  * These utilities handle conversion between local time and UTC.
  */
 
+// Older API records store UTC without an offset.
+export function parseScheduleTimestamp(value) {
+  if (!value) return null;
+  const zoned = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : value + 'Z';
+  const date = new Date(zoned);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 /**
  * Convert local time (HH:MM) to UTC hour/minute
  * Used when creating cron expressions from user input

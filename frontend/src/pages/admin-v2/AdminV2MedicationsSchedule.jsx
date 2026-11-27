@@ -23,7 +23,7 @@ import config from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import { MedicationsIcon } from '../../components/Icons';
-import { checkAdministrationWindow, formatDurationMinutes } from '../../utils/timezone';
+import { checkAdministrationWindow, formatDurationMinutes, parseScheduleTimestamp } from '../../utils/timezone';
 import ScheduleBoard from '../../components/schedule/ScheduleBoard';
 import { groupBySlot, recurrenceLabel } from '../../components/schedule/scheduleRollup';
 import ConfirmSheet from '../../components/vc/ConfirmSheet';
@@ -193,12 +193,13 @@ const AdminV2MedicationsSchedule = () => {
       actions.push({ key: 'undo', label: 'Undo', tone: 'ghost', onClick: () => handleUndo(item) });
     }
 
+    const givenAt = item.is_completed && item.actual_dose > 0 && parseScheduleTimestamp(item.administered_at);
     return {
       id: `${item.schedule_id}-${item.scheduled_time}`,
       title: item.medication_name,
       meta: [`${item.dose_amount} ${item.dose_unit || 'units'}`, item.concentration].filter(Boolean).join(' · '),
-      scheduleLine: item.actual_time
-        ? `Taken at ${new Date(item.actual_time).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true })}`
+      scheduleLine: givenAt
+        ? `Taken at ${givenAt.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: true })}`
         : recurrenceLabel(item.description),
       statusLabel: overdueLabel(item) || getStatusText(item),
       statusTone: getStatusTone(item),

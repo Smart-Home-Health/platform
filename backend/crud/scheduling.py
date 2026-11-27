@@ -25,6 +25,7 @@ from schemas.care_task_schedule import CareTaskSchedule
 from schemas.care_task_log import CareTaskLog
 from nutrition_vocab import LOCATION_LABELS, to_ml
 from care_task_vocab import completion_timing, is_nutrition_category
+from crud.medication_occurrences import medication_logs_for_window, medication_logs_by_firing
 from crud.patients import get_active_patient, patient_account_scope
 from utils.datetime_utils import (
     utc_now,
@@ -754,52 +755,15 @@ def get_scheduled_medications(db: Session, target_date, patient_id: int, tz_offs
             (Medication.end_date == None) | (Medication.end_date >= datetime.combine(target_date, datetime.min.time()))
         ).all()
 
-        # Migration 001 stores medication scheduled_time as timestamp without
-        # time zone, holding UTC wall-clock values. Compare naive UTC bounds
-        # so PostgreSQL does not apply its session timezone to those values.
-        med_logs = db.query(MedicationLog).filter(
-            MedicationLog.patient_id == patient_id,
-            MedicationLog.schedule_id.isnot(None),
-            MedicationLog.scheduled_time >= local_start_utc.replace(tzinfo=None),
-            MedicationLog.scheduled_time < local_end_utc.replace(tzinfo=None),
-        ).all()
-
-        # Match full UTC minutes regardless of the database session timezone.
-        # Retain the date because a 25-hour local day can span two occurrences
-        # of the same UTC HH:MM on different dates.
-        log_lookup = {}
-        for log in med_logs:
-            if log.scheduled_time:
-                key = (log.schedule_id, make_utc(log.scheduled_time).replace(second=0, microsecond=0))
-                log_lookup[key] = log
-
-        # Older scheduled administrations sometimes have only the actual time.
-        # Assign each to one firing, including when it was given across midnight.
-        from crud.dose_grace import LOG_MATCH_WINDOW, nearest_logged_firing
-        legacy_by_schedule = {}
-        if schedules:
-            legacy_logs = db.query(MedicationLog).filter(
-                MedicationLog.patient_id == patient_id,
-                MedicationLog.schedule_id.in_([schedule.id for schedule in schedules]),
-                MedicationLog.scheduled_time.is_(None),
-                MedicationLog.administered_at >= local_start_utc - LOG_MATCH_WINDOW,
-                MedicationLog.administered_at < local_end_utc + LOG_MATCH_WINDOW,
-            )
-            for log in legacy_logs:
-                legacy_by_schedule.setdefault(log.schedule_id, []).append(log)
-
+        logs_by_schedule = medication_logs_for_window(db, schedules, patient_id, local_start_utc, local_end_utc)
         scheduled_meds = []
 
         for schedule in schedules:
             try:
-                for log in legacy_by_schedule.get(schedule.id, []):
-                    firing = nearest_logged_firing(schedule.cron_expression, log.administered_at)
-                    if firing is not None:
-                        log_lookup.setdefault((schedule.id, firing), log)
+                log_lookup = medication_logs_by_firing(schedule, logs_by_schedule.get(schedule.id, ()))
 
                 for next_time_utc in nutrition_occurrences(schedule, local_start_utc, local_end_utc):
-                    key = (schedule.id, next_time_utc.replace(second=0, microsecond=0))
-                    log = log_lookup.get(key)
+                    log = log_lookup.get(next_time_utc)
 
                     scheduled_meds.append({
                         'schedule_id': schedule.id,
@@ -812,6 +776,7 @@ def get_scheduled_medications(db: Session, target_date, patient_id: int, tz_offs
                         'scheduled_time': next_time_utc,
                         'description': schedule.description,
                         'cron_expression': schedule.cron_expression,
+                        'actual_dose': log.dose_amount if log else None,
                         'completed': log is not None,
                         # A skipped scheduled dose is recorded as a log with
                         # dose_amount == 0; surface it so the frontend can show

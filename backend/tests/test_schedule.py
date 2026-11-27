@@ -137,6 +137,131 @@ def test_schedule_completion_matches_local_midnight_across_database_timezones(
     assert [row["completed"] for row in after_undo if row["schedule_id"] == schedule_id] == [False]
 
 
+@pytest.mark.parametrize("writer", ["daily-schedule", "administer"])
+def test_backdated_medication_credits_only_its_selected_occurrence(
+    admin_client, patient, db_session, monkeypatch, writer,
+):
+    from sqlalchemy import text
+    from crud import medications
+    from routes import schedule
+    from schemas.medication_log import MedicationLog
+    from utils import datetime_utils
+
+    # It's 00:31 in New York. Yesterday's 15:00 dose was given at 19:59,
+    # near a different firing of the very same schedule.
+    recorded = datetime.fromisoformat("2020-11-27T00:31:00-05:00").astimezone(timezone.utc)
+    due = datetime.fromisoformat("2020-11-26T15:00:00-05:00")
+    given = datetime.fromisoformat("2020-11-26T19:59:00-05:00")
+    monkeypatch.setattr(datetime_utils, "utc_now", lambda: recorded)
+    monkeypatch.setattr(medications, "utc_now", lambda: recorded)
+    monkeypatch.setattr(schedule, "utc_now", lambda: recorded)
+    db_session.execute(text("SET LOCAL TIME ZONE 'America/New_York'"))
+    med_id = _make_med(admin_client, patient, start_date="2020-01-01")
+    added = admin_client.post(f"/api/add/schedule/{med_id}", json={
+        "cron_expression": "0 0,3,20 * * *", "description": "Afternoon and evening",
+        "dose_amount": 1, "patient_id": patient.id,
+    })
+    assert added.status_code == 200, added.text
+    schedule_id = added.json()["id"]
+
+    payload = {"patient_id": patient.id, "schedule_id": schedule_id,
+               "scheduled_time": due.isoformat(), "dose_amount": 1.5, "early_override": True}
+    if writer == "daily-schedule":
+        response = admin_client.post("/api/schedule/complete/medication", json={
+            **payload, "completed_at": given.isoformat(),
+        })
+    else:
+        response = admin_client.post(f"/api/medications/{med_id}/administer", json={
+            **payload, "administered_at": given.isoformat(),
+        })
+    assert response.status_code == 200 and response.json()["success"], response.text
+    log = db_session.query(MedicationLog).filter_by(schedule_id=schedule_id).one()
+
+    # An ad-hoc dose at 19:00 doesn't fulfill the 19:00 scheduled dose.
+    adjacent = due + timedelta(hours=4)
+    prn = admin_client.post(f"/api/medications/{med_id}/administer", json={
+        "patient_id": patient.id, "dose_amount": 0.5, "administered_at": adjacent.isoformat(),
+    })
+    assert prn.status_code == 200 and prn.json()["success"], prn.text
+    skip_time = due + timedelta(hours=7)
+    skip = admin_client.post("/api/schedule/complete/medication", json={
+        **payload, "scheduled_time": skip_time.isoformat(), "completed_at": skip_time.isoformat(),
+        "dose_amount": 0,
+    })
+    assert skip.status_code == 200 and skip.json()["success"], skip.text
+
+    daily_url = f"/api/schedule/daily?patient_id={patient.id}&target_date=2020-11-26"
+    board_url = f"/api/schedules/daily?patient_id={patient.id}"
+    daily = admin_client.get(daily_url).json()["medications"]
+    board = admin_client.get(board_url).json()["scheduled_medications"]
+    expected = {due: log.id, adjacent: None, skip_time: skip.json()["log_id"]}
+    assert {datetime.fromisoformat(row["scheduled_time"]): row["log_id"]
+            for row in daily if row["schedule_id"] == schedule_id} == expected
+    # The board spans yesterday and today. Only the two explicitly selected
+    # occurrences should be closed across all six firings.
+    assert len(board) == 6
+    completed = {datetime.fromisoformat(row["scheduled_time"]): row for row in board if row["is_completed"]}
+    assert {dt: row["log_id"] for dt, row in completed.items()} == {due: log.id, skip_time: skip.json()["log_id"]}
+    assert completed[due]["actual_dose"] == 1.5
+    assert completed[due]["status"] == "completed_late"
+    assert datetime.fromisoformat(completed[due]["administered_at"]) == given
+    assert completed[skip_time]["status"] == "skipped"
+    assert log.created_at == recorded
+
+    undo = admin_client.delete(f"/api/schedule/log/medication/{log.id}")
+    assert undo.status_code == 200, undo.text
+    remaining = admin_client.get(board_url).json()["scheduled_medications"]
+    assert [row["log_id"] for row in remaining if row["is_completed"]] == [skip.json()["log_id"]]
+
+
+def test_legacy_medication_board_local_times_require_an_unambiguous_firing(
+    admin_client, patient, db_session, monkeypatch,
+):
+    from sqlalchemy import text
+    from schemas.medication_log import MedicationLog
+    from schemas.medication_schedule import MedicationSchedule
+    from utils import datetime_utils
+
+    db_session.execute(text("SET LOCAL TIME ZONE 'America/New_York'"))
+    due = datetime.fromisoformat("2020-11-26T01:00:00-05:00")
+    wall = due.replace(tzinfo=None)  # Old board saved 01:00 instead of 06:00 UTC.
+    entered = due + timedelta(hours=4)
+    monkeypatch.setattr(datetime_utils, "utc_now", lambda: due + timedelta(days=1))
+    med_id = _make_med(admin_client, patient, start_date="2020-01-01")
+    expected = {}
+    for case in ("taken", "skipped", "ambiguous", "edited"):
+        # 05:00 and 06:00 UTC both fit an administration flagged late at 10:00 UTC.
+        cron = "0 5,6 * * *" if case == "ambiguous" else "0 6 * * *"
+        published = due - timedelta(days=2)
+        schedule = MedicationSchedule(medication_id=med_id, patient_id=patient.id, dose_amount=1,
+                                      cron_expression=cron, active=True, created_at=published,
+                                      updated_at=entered + timedelta(minutes=1) if case == "edited" else published)
+        db_session.add(schedule)
+        db_session.flush()
+        skipped = case == "skipped"
+        log = MedicationLog(medication_id=med_id, patient_id=patient.id, schedule_id=schedule.id,
+                            scheduled_time=wall, is_scheduled=True, created_at=entered,
+                            dose_amount=0 if skipped else 1, notes="Skipped" if skipped else "",
+                            administered_at=due if skipped else entered, administered_late=not skipped)
+        db_session.add(log)
+        db_session.flush()
+        if case in ("taken", "skipped"):
+            expected[(schedule.id, due)] = (log.id, skipped)
+    db_session.commit()
+
+    daily = admin_client.get(f"/api/schedule/daily?patient_id={patient.id}&target_date=2020-11-26")
+    board = admin_client.get(f"/api/schedules/daily?patient_id={patient.id}")
+    for rows, flag, count in ((daily.json()["medications"], "completed", 5),
+                              (board.json()["scheduled_medications"], "is_completed", 10)):
+        assert len(rows) == count
+        assert {(row["schedule_id"], datetime.fromisoformat(row["scheduled_time"])):
+                (row["log_id"], row["actual_dose"] == 0 if flag == "is_completed" else row["skipped"])
+                for row in rows if row[flag]} == expected
+    # Reading either endpoint leaves the original audit records intact.
+    db_session.expire_all()
+    assert {log.scheduled_time for log in db_session.query(MedicationLog).filter_by(medication_id=med_id)} == {wall}
+
+
 def test_off_window_administration_blocked_then_overridden(admin_client, patient):
     med_id = _make_med(admin_client, patient, quantity=10)
     future = (datetime.utcnow() + timedelta(hours=3)).isoformat()

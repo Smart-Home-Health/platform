@@ -43,7 +43,7 @@ import {
   PrintIcon,
   UndoIcon
 } from '../../components/Icons';
-import { getCurrentLocalDateTime, localDateTimeToUTC, checkAdministrationWindow, formatDurationMinutes } from '../../utils/timezone';
+import { getCurrentLocalDateTime, localDateTimeToUTC, checkAdministrationWindow, formatDurationMinutes, parseScheduleTimestamp } from '../../utils/timezone';
 import EntityModal, { EmField } from '../../components/vc/EntityModal';
 import '../../components/vc/entity-card.css';
 import './settings/settings-page.css';
@@ -63,14 +63,6 @@ const dueDayLabel = (d) => {
   if (daysAgo < 7) return d.toLocaleDateString(undefined, { weekday: 'short' });
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
-
-// Older API records store UTC without an offset.
-function parseScheduleTimestamp(value) {
-  if (!value) return null;
-  const zoned = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : value + 'Z';
-  const date = new Date(zoned);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
 
 function withLocalTimes(item) {
   const scheduledAt = parseScheduleTimestamp(item.scheduled_time);

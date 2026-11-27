@@ -20,6 +20,7 @@ import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
 import { PatientSelectorModal, MedStockBar, MedicationHistoryModal } from './components';
 import config from '../../config';
+import { parseScheduleTimestamp } from '../../utils/timezone';
 import { useAdminPatient } from '../../contexts/AdminPatientContext';
 import { MedicationsIcon, ClockIcon, PackageIcon, ChevronRightIcon } from '../../components/Icons';
 import EntityCard from '../../components/vc/EntityCard';
@@ -28,10 +29,8 @@ import { CfgStat } from './settings/CfgSection';
 import './AdminV2.css';
 
 const formatDateTime = (iso) => {
-  if (!iso) return '—';
-  const normalized = iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z';
-  const d = new Date(normalized);
-  if (isNaN(d.getTime())) return '—';
+  const d = parseScheduleTimestamp(iso);
+  if (!d) return '—';
   return d.toLocaleString(undefined, {
     month: 'short',
     day: 'numeric',
@@ -100,8 +99,8 @@ const AdminV2Medications = () => {
       if (res.ok) {
         const data = await res.json();
         const sorted = data.sort((a, b) => {
-          const aTime = a.last_administered ? new Date(a.last_administered).getTime() : -Infinity;
-          const bTime = b.last_administered ? new Date(b.last_administered).getTime() : -Infinity;
+          const aTime = parseScheduleTimestamp(a.last_administered)?.getTime() ?? -Infinity;
+          const bTime = parseScheduleTimestamp(b.last_administered)?.getTime() ?? -Infinity;
           if (bTime !== aTime) return bTime - aTime;
           return a.name.localeCompare(b.name);
         });
