@@ -6,13 +6,13 @@
 # (Local dev still uses the split, hot-reload docker-compose.yml.)
 
 # --- Stage 1: build the frontend -------------------------------------------
-FROM node:20-alpine AS frontend
+FROM node:24-alpine AS frontend
 WORKDIR /fe
 # Install deps against the lockfile first for layer caching.
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
-# Produces /fe/dist (index.html, assets/, SciChart *.wasm).
+# Produces /fe/dist, including the offline OCR assets.
 RUN npm run build
 
 # --- Stage 2: python runtime that serves API + built SPA --------------------
@@ -28,16 +28,13 @@ ENV TZ=UTC \
     STATIC_DIR=/app/static
 WORKDIR /app
 
-# Only curl is needed at runtime (healthcheck). All Python deps install from
-# prebuilt wheels (psycopg2-binary, bcrypt, cryptography) on amd64 AND arm64,
-# so no gcc/toolchain is required; backup/restore is pure-Python (no pg_dump).
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Python deps first for caching.
+# Link psycopg2 against Debian's security-maintained libpq and OpenSSL.
 COPY backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl libpq5 gcc libc6-dev libpq-dev \
+    && pip install --no-cache-dir -r requirements.txt \
+    && apt-get purge -y --auto-remove gcc libc6-dev libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # Backend application code + the startup entrypoint.
 COPY backend/ ./

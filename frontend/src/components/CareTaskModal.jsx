@@ -15,47 +15,31 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useState, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import ModalBase from './ModalBase';
-import config from '../config';
-import { useAdminPatient } from '../contexts/AdminPatientContext';
+import config, { apiFetch } from '../config';
+import { DailySchedule } from '../pages/admin-v2/AdminV2Schedule';
 import { useAuth } from '../contexts/AuthContext';
-import DoseScheduleView from './schedule/DoseScheduleView';
-import DoseDetailPane from './schedule/DoseDetailPane';
-import { TASK_LABELS } from './schedule/scheduleLabels';
-import { rollupSchedule } from './schedule/scheduleRollup';
+import { canRecordSchedule, hasSchedulePermission } from './schedule/schedulePermissions';
 import PanelViewSwitcher from './section-panel/PanelViewSwitcher';
 import PrnPicker from './section-panel/PrnPicker';
 import { careTaskRows } from './section-panel/prnRows';
 import './section-panel/section-panel.css';
 import './care-task/care-task.css';
-import { computeScheduleStatus } from './schedule/scheduleStatus';
 import IntakeSheet from './nutrition/IntakeSheet';
-import {
-  checkAdministrationWindow,
-  formatDurationMinutes,
-  getCurrentLocalDateTime,
-  localDateTimeToUTC,
-} from '../utils/timezone';
-import ConfirmSheet from './vc/ConfirmSheet';
+import { getCurrentLocalDateTime, localDateTimeToUTC } from '../utils/timezone';
 import EntityModal, { EmField } from './vc/EntityModal';
 import { ChevronLeftIcon } from './Icons';
 
-const OFF_WINDOW_ERRORS = ['early_administration', 'late_administration', 'off_window_administration'];
-
-const CareTaskModal = ({ onClose }) => {
-  const { selectedPatient } = useAdminPatient();
-  const { user } = useAuth();
+const CareTaskModal = ({ patient: selectedPatient, onClose }) => {
+  const { user, hasReadAccess } = useAuth();
+  const canReadTasks = hasReadAccess !== false && hasSchedulePermission(user, 'care_tasks.read');
+  const canPerformTask = canReadTasks && canRecordSchedule(user, 'care_tasks');
   const [tab, setTab] = useState('scheduled');
-  // Which task the detail pane is showing. Keyed on the schedule slot rather
-  // than the normalized id, which embeds log_id and changes the moment a task
-  // is completed — selecting by it would drop the selection on the refetch.
-  const [selectedId, setSelectedId] = useState(null);
-  const [activeTasks, setActiveTasks] = useState([]);
-  const [scheduled, setScheduled] = useState([]);   // raw `care_tasks` rows from /api/schedule/daily
+  const [taskCatalog, setTaskCatalog] = useState([]);
+  const activeTasks = canReadTasks ? taskCatalog : [];
   const [loading, setLoading] = useState(false);
-  // Off-window (early/late) completion confirmation
-  const [windowConfirm, setWindowConfirm] = useState({ open: false, task: null, check: null });
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Nutrition tracking modal (opens when a nutrition-category task is completed)
   const [nutritionModal, setNutritionModal] = useState({ open: false, careTaskLogId: null, careTaskName: '', nutritionData: null });
@@ -66,166 +50,29 @@ const CareTaskModal = ({ onClose }) => {
   const [prnSaving, setPrnSaving] = useState(false);
   const [prnError, setPrnError] = useState(null);
 
-  useEffect(() => {
-    if (!selectedPatient) return;
-    if (tab === 'scheduled') fetchSchedule();
-    // Active tasks are fetched either way: the view menu and the PRN button
-    // both report their count, and a button that says 0 until you press it is
-    // worse than one extra request.
-    fetchActiveTasks();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helpers are recreated each render and selectedPatient is tracked via its id; effect is intentionally keyed on tab/patient id only
-  }, [tab, selectedPatient?.id]);
-
-  const fetchActiveTasks = async () => {
-    if (!selectedPatient) return;
+  const patientId = selectedPatient?.id;
+  const fetchActiveTasks = useCallback(async () => {
+    if (!patientId || !canReadTasks) return;
     setLoading(true);
     try {
-      const res = await fetch(`${config.apiUrl}/api/care-tasks/active?patient_id=${selectedPatient.id}`, { credentials: 'include' });
+      const res = await apiFetch(`${config.apiUrl}/api/care-tasks/active?patient_id=${patientId}`);
       if (res.ok) {
         const data = await res.json();
-        setActiveTasks(data.care_tasks || []);
+        setTaskCatalog(data.care_tasks || []);
       }
     } catch (error) {
       console.error('Error fetching care tasks:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [patientId, canReadTasks]);
 
-  const fetchSchedule = async () => {
-    if (!selectedPatient) return;
-    setLoading(true);
-    try {
-      const today = new Date();
-      const dateParam = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-      const tz = -today.getTimezoneOffset();
-      const res = await fetch(
-        `${config.apiUrl}/api/schedule/daily?patient_id=${selectedPatient.id}&target_date=${dateParam}&tz_offset_minutes=${tz}&include_prior_day=true`,
-        { credentials: 'include' }
-      );
-      if (res.ok) {
-        const data = await res.json();
-        setScheduled(data.care_tasks || []);
-      }
-    } catch (error) {
-      console.error('Error fetching scheduled care tasks:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => { fetchActiveTasks(); }, [fetchActiveTasks, tab]);
 
-  // Normalize the unified `care_tasks` rows into the shape ScheduleList expects.
-  const scheduledItems = useMemo(() => {
-    return scheduled.map(item => {
-      const status = computeScheduleStatus(item);
-      return {
-        id: `${item.schedule_id}-${item.scheduled_time}-${item.log_id ?? ''}`,
-        scheduled_time: item.scheduled_time,
-        name: item.name,
-        description: item.description,
-        category: item.category_name ? { name: item.category_name, color: item.category_color || 'var(--vc-state-idle)' } : null,
-        status,
-        is_completed: status === 'completed' || status === 'skipped',
-        is_yesterday: !!item.is_yesterday,
-        showSkip: true,
-        _raw: item,
-      };
-    });
-  }, [scheduled]);
-
-  const taskKey = (raw) => `${raw?.schedule_id ?? 'prn'}-${raw?.scheduled_time}`;
-  const selectedItem = useMemo(
-    () => scheduledItems.find(i => taskKey(i._raw) === selectedId) || null,
-    [scheduledItems, selectedId]
-  );
-  const recordingAs = user?.full_name || user?.username || null;
-
-  // The menu reports what each view is holding, so you can choose without
-  // opening both.
-  const viewOptions = useMemo(() => {
-    const { counts } = rollupSchedule(scheduledItems);
-    const outstanding = counts.missed + counts.due;
-    return [
-      {
-        value: 'scheduled',
-        label: 'Scheduled',
-        sublabel: "Today's care tasks",
-        note: counts.missed > 0
-          ? `${counts.missed} missed`
-          : (outstanding > 0 ? `${outstanding} due` : 'All done'),
-        tone: counts.missed > 0 || outstanding > 0 ? 'due' : 'given',
-      },
-      {
-        value: 'active',
-        label: 'Active care tasks',
-        sublabel: 'All current task profiles',
-        count: activeTasks.length,
-      },
-    ];
-  }, [scheduledItems, activeTasks.length]);
-
-  // ===== Complete (legacy endpoint — carries the nutrition-tracking trigger) =====
-  const submitMarkCompleted = async (task, { earlyOverride = false, note } = {}) => {
-    if (!selectedPatient) return;
-    try {
-      const res = await fetch(`${config.apiUrl}/api/care-task-schedules/${task.schedule_id}/complete`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          patient_id: selectedPatient.id,
-          scheduled_time: task.scheduled_time,
-          notes: note || 'Completed via live dashboard',
-          early_override: earlyOverride,
-        }),
-      });
-      if (res.ok) {
-        const result = await res.json();
-        if (result.requires_nutrition_tracking && result.care_task) {
-          setNutritionModal({ open: true, careTaskLogId: result.id, careTaskName: result.care_task.name, nutritionData: result.nutrition_data || null });
-        }
-        fetchSchedule();
-        return;
-      }
-      const err = await res.json().catch(() => ({}));
-      if (res.status === 409 && OFF_WINDOW_ERRORS.includes(err.error) && !earlyOverride) {
-        setWindowConfirm({ open: true, task, note, check: checkAdministrationWindow(task.scheduled_time) });
-        return;
-      }
-      window.alert(err.detail || 'Failed to mark task as completed');
-    } catch (error) {
-      console.error('Error marking task as completed:', error);
-      window.alert('Error connecting to server');
-    }
-  };
-
-  // ===== Skip (unified endpoint — skips aren't gated and skip nutrition tracking) =====
-  const handleSkipTask = async (task, { note } = {}) => {
-    if (!selectedPatient) return;
-    try {
-      const res = await fetch(`${config.apiUrl}/api/schedule/complete/care-task`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          schedule_id: task.schedule_id,
-          scheduled_time: task.scheduled_time,
-          patient_id: selectedPatient.id,
-          skipped: true,
-          completed_at: null,
-          notes: note || 'Skipped via live dashboard',
-        }),
-      });
-      if (res.ok) { fetchSchedule(); return; }
-      const err = await res.json().catch(() => ({}));
-      window.alert(err.detail || 'Failed to skip task');
-    } catch (error) {
-      console.error('Error skipping task:', error);
-      window.alert('Error connecting to server');
-    }
-  };
-
-  const closeWindowConfirm = () => setWindowConfirm({ open: false, task: null, note: undefined, check: null });
+  const viewOptions = [
+    { value: 'scheduled', label: 'Scheduled' },
+    { value: 'active', label: 'Active care tasks', count: activeTasks.length },
+  ];
 
   // ===== PRN =====
   const openPrnPicker = () => {
@@ -250,7 +97,7 @@ const CareTaskModal = ({ onClose }) => {
     setPrnSaving(true);
     setPrnError(null);
     try {
-      const res = await fetch(`${config.apiUrl}/api/care-tasks/${prnModal.selectedTask.id}/complete`, {
+      const res = await apiFetch(`${config.apiUrl}/api/care-tasks/${prnModal.selectedTask.id}/complete`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -265,10 +112,10 @@ const CareTaskModal = ({ onClose }) => {
         throw new Error(data.detail || 'Failed to record completion');
       }
       const result = await res.json();
-      if (result.requires_nutrition_tracking && result.care_task) {
+      if (result.requires_nutrition_tracking && result.care_task && hasSchedulePermission(user, 'nutrition.create')) {
         setNutritionModal({ open: true, careTaskLogId: result.id, careTaskName: result.care_task.name, nutritionData: null });
       }
-      if (tab === 'scheduled') fetchSchedule(); else fetchActiveTasks();
+      setRefreshKey(value => value + 1);
       closePrnModal();
     } catch (err) {
       setPrnError(err.message);
@@ -319,53 +166,22 @@ const CareTaskModal = ({ onClose }) => {
               label: 'PRN',
               count: activeTasks.length,
               onClick: openPrnPicker,
-              disabled: !selectedPatient,
+              disabled: !selectedPatient || !canPerformTask,
               title: 'Record an ad-hoc care task',
             }]}
           />
 
           <div className="ld-panel-scroll">
-            {tab === 'scheduled' && (
-              <DoseScheduleView
-                items={scheduledItems}
-                loading={loading}
-                emptyText="No scheduled care tasks"
-                labels={TASK_LABELS}
-                selectedId={selectedItem?.id || null}
-                onSelect={(item) => setSelectedId(item ? taskKey(item._raw) : null)}
-                onRecord={(item, opts) => submitMarkCompleted(item._raw, opts)}
-                onSkip={(item, opts) => handleSkipTask(item._raw, opts)}
-                detail={(
-                  <DoseDetailPane
-                    item={selectedItem}
-                    patientId={selectedPatient?.id}
-                    recordingAs={recordingAs}
-                    labels={TASK_LABELS}
-                    scheduleHref="/care/care-tasks/schedule"
-                    skipNote="Recorded as skipped with your note"
-                    historyQuery={(item, pid) => (item?._raw?.care_task_id
-                      ? `/api/care-tasks/history?task_id=${item._raw.care_task_id}&patient_id=${pid}&limit=10`
-                      : null)}
-                    mapHistoryRow={(row) => ({
-                      id: row.id,
-                      at: row.completed_at,
-                      status: row.completion_status === 'skipped' ? 'Skipped' : 'Done',
-                      tone: row.completion_status === 'skipped' ? 'skipped' : 'given',
-                      // No "who": the endpoint returns `completed_by` as a raw
-                      // user id, and an id on a clinical row is noise. Showing
-                      // a name needs the endpoint to resolve it.
-                      meta: null,
-                      note: row.notes,
-                    })}
-                    onRecord={(item, opts) => submitMarkCompleted(item._raw, opts)}
-                    onSkip={(item, opts) => handleSkipTask(item._raw, opts)}
-                  />
-                )}
-              />
+            {selectedPatient && (
+              <div hidden={tab !== 'scheduled'}>
+                <DailySchedule patient={selectedPatient} category="care_tasks" active={tab === 'scheduled'}
+                  refreshKey={refreshKey} />
+              </div>
             )}
 
             {tab === 'active' && (
-              loading
+              !canReadTasks ? <p>Care task read access is required.</p>
+                : loading
                 ? <div style={{ textAlign: 'center', padding: 40, color: 'var(--dash-text-muted)' }}>Loading…</div>
                 : activeTasks.length === 0
                   ? (
@@ -388,7 +204,7 @@ const CareTaskModal = ({ onClose }) => {
                           </div>
                           <div className="ctm-group-list">
                             {group.tasks.map(task => (
-                              <button key={task.id} type="button" className="ctm-task"
+                              <button key={task.id} type="button" className="ctm-task" disabled={!canPerformTask}
                                       onClick={() => pickPrnTask(task)}>
                                 <span className="ctm-task-text">
                                   <span className="ctm-task-name">{task.name}</span>
@@ -409,35 +225,6 @@ const CareTaskModal = ({ onClose }) => {
         </div>
       </ModalBase>
 
-      {/* Off-window completion confirmation */}
-      {windowConfirm.open && windowConfirm.task && windowConfirm.check && (() => {
-        const isLate = windowConfirm.check.status === 'late';
-        const title = isLate ? 'Confirm Late Completion' : 'Confirm Early Completion';
-        const heading = isLate ? 'This care task was scheduled earlier' : 'This care task is scheduled later';
-        const offsetText = isLate
-          ? `${formatDurationMinutes(Math.abs(windowConfirm.check.minutesOffset))} ago`
-          : `${formatDurationMinutes(windowConfirm.check.minutesOffset)} from now`;
-        return (
-          <ConfirmSheet
-            open
-            onOpenChange={(o) => { if (!o) closeWindowConfirm(); }}
-            title={title}
-            confirmLabel="Complete anyway"
-            onConfirm={async () => {
-              const { task, note } = windowConfirm;
-              closeWindowConfirm();
-              await submitMarkCompleted(task, { earlyOverride: true, note });
-            }}
-          >
-            <strong className="cs-lead">{heading}</strong>
-            <strong>{windowConfirm.task.name}</strong> is scheduled for{' '}
-            <strong>{windowConfirm.check.scheduledLocal}</strong> — that&apos;s <strong>{offsetText}</strong>.
-          </ConfirmSheet>
-        );
-      })()}
-
-      {/* PRN modal — pick a task, then enter time + notes */}
-      {/* PRN step 1: pick a task */}
       <PrnPicker
         open={prnModal.open && !prnModal.selectedTask}
         onOpenChange={(o) => { if (!o) closePrnModal(); }}
@@ -516,7 +303,7 @@ const CareTaskModal = ({ onClose }) => {
       <IntakeSheet
         open={nutritionModal.open}
         onClose={() => setNutritionModal({ open: false, careTaskLogId: null, careTaskName: '', nutritionData: null })}
-        onSaved={() => fetchSchedule()}
+        onSaved={() => setRefreshKey(value => value + 1)}
         patient={selectedPatient}
         careTaskLogId={nutritionModal.careTaskLogId}
         careTaskName={nutritionModal.careTaskName}

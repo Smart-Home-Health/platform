@@ -53,8 +53,9 @@ export default function PermissionGroupDialog({
     <EntityModal open={open} onOpenChange={onOpenChange} title={group.label}>
       <form onSubmit={submit} className="em-form">
         <p className="em-hint">
-          Get is Home Assistant reading this from the hub. Set is Home Assistant
-          writing it back. Off is never published.
+          {group.id === 'reminders'
+            ? 'Choose Get only for the reminder counts you want to share. Enable Schedule details to include names and due times for those categories.'
+            : 'Get is Home Assistant reading this from the hub. Set is Home Assistant writing it back. Off is never published.'}
         </p>
 
         {error && <div className="em-error" role="alert">{error}</div>}

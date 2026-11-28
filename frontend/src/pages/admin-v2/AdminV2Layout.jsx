@@ -228,7 +228,7 @@ const RESTRICTED_NAV_PATHS = ['/care', '/care/schedule', '/care/vitals', '/care/
 const AdminV2Layout = ({ children }) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, logout, switchUser, hasReadAccess, unlockWithAccountPassword } = useAuth();
   const connection = useConnectionStatus();
   const [showUnlockModal, setShowUnlockModal] = useState(false);
@@ -536,6 +536,11 @@ const AdminV2Layout = ({ children }) => {
                     onClick={(e) => {
                       e.stopPropagation();
                       selectPatient(null);
+                      if (searchParams.has('patient')) {
+                        const next = new URLSearchParams(searchParams);
+                        next.delete('patient');
+                        setSearchParams(next);
+                      }
                       setShowPatientDropdown(false);
                     }}
                   >

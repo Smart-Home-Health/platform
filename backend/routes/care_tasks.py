@@ -22,7 +22,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from db import get_db
-from dependencies import require_read_access, get_current_user, require_permission
+from dependencies import require_read_access, get_current_user, require_permission, legacy_schedule_patient
 from models.users import User
 from models.care_tasks import (
     CareTaskCreate,
@@ -258,25 +258,14 @@ async def get_all_care_task_schedules_endpoint(active_only: bool = True, patient
         )
 
 
-@router.get("/care-tasks/day")
+@router.get("/care-tasks/day", deprecated=True)
 async def get_care_task_day(
-    patient_id: int = None,
+    patient_id: int = Depends(legacy_schedule_patient('care_tasks')),
     db: Session = Depends(get_db),
     _: bool = Depends(require_read_access),
 ):
-    """Today's and yesterday's care tasks, in the canonical item shape.
-
-    THE endpoint for a care-task-only day view. The three views that render
-    this used to read two producers with different names for the same fields,
-    so each learned one dialect and a field added in one place stayed invisible
-    in the others. `is_nutrition` is resolved here rather than re-guessed from
-    the category name by each caller.
-    """
+    """Legacy two-day task summary. New schedule views use /api/schedule/daily with category=care_tasks."""
     try:
-        if patient_id is None:
-            current_patient = get_current_patient(db)
-            patient_id = current_patient.id if current_patient else None
-
         schedule = get_daily_care_task_schedule(db, patient_id=patient_id)
         items = [canonical_care_task_item(t)
                  for t in schedule.get('scheduled_care_tasks', [])]
@@ -297,23 +286,14 @@ async def get_care_task_day(
         return JSONResponse(status_code=500, content={"detail": str(e)})
 
 
-@router.get("/care-task-schedules/daily")
+@router.get("/care-task-schedules/daily", deprecated=True)
 async def get_daily_care_task_schedule_endpoint(
-    patient_id: int = None,
+    patient_id: int = Depends(legacy_schedule_patient('care_tasks')),
     db: Session = Depends(get_db),
     _: bool = Depends(require_read_access),
 ):
-    """Deprecated: use /api/care-tasks/day.
-
-    Kept so nothing breaks mid-migration; it now emits the canonical items
-    alongside its original payload. It also gained the read dependency its
-    sibling endpoints already had.
-    """
+    """Legacy task schedule with counts and items. Use /api/schedule/daily with category=care_tasks."""
     try:
-        if patient_id is None:
-            current_patient = get_current_patient(db)
-            patient_id = current_patient.id if current_patient else None
-
         schedule = get_daily_care_task_schedule(db, patient_id=patient_id)
         schedule['items'] = [canonical_care_task_item(t)
                              for t in schedule.get('scheduled_care_tasks', [])]

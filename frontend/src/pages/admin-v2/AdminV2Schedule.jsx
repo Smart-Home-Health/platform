@@ -23,6 +23,8 @@ import IntakeItemsEditor from '../../components/nutrition/IntakeItemsEditor';
 import { nutritionService } from '../../services/nutrition';
 import FixedCheckDialog from '../../components/schedule/FixedCheckDialog';
 import MoveFeedDialog from '../../components/schedule/MoveFeedDialog';
+import ScheduleHistoryButton from '../../components/schedule/ScheduleHistoryButton';
+import { canRecordSchedule, hasSchedulePermission } from '../../components/schedule/schedulePermissions';
 import { scheduleManagerService } from '../../services/scheduleManager';
 import { BathroomCheckCard } from './care-profile/BathroomCheckCard';
 import {
@@ -98,6 +100,15 @@ function ScheduleItemTime({ item }) {
   return <span className="admin-v2-schedule-item-time" title={title}><ClockIcon size={12} />{text}</span>;
 }
 
+function activateGridRow(event) {
+  // Native history, undo and bulk buttons already handle their own keys.
+  if ((event.key === 'Enter' || event.key === ' ')
+      && event.target.matches('div[role="button"][tabindex="0"]')) {
+    event.preventDefault();
+    event.target.click();
+  }
+}
+
 function useDailyRoutines(patientId, rows, canRead) {
   const [state, setState] = useState(null);
   const [error, setError] = useState('');
@@ -121,7 +132,7 @@ function useDailyRoutines(patientId, rows, canRead) {
   return { state: state?.patientId === patientId ? state : null, update: (next) => setState({ ...next, patientId }), error };
 }
 
-function DailyRoutines({ patientId, today, rows, canRead, manager, onScheduledCheck }) {
+function DailyRoutines({ patientId, today, rows, canRead, manager, onScheduledCheck, onRecorded }) {
   const { state, update, error } = manager;
   if (!canRead) return null;
   const overnight = rows.find(row => row.managed_feed && !row.completed && !row.is_yesterday &&
@@ -150,28 +161,94 @@ function DailyRoutines({ patientId, today, rows, canRead, manager, onScheduledCh
           <button className="cfg-ghost" disabled={!state.can_record} onClick={() => onScheduledCheck(linkedCheck)}>
             Open {linkedCheck.name}
           </button></p>
-        : <BathroomCheckCard state={state} patientId={patientId} onUpdate={update} />)}
+        : <BathroomCheckCard state={state} patientId={patientId} onUpdate={(next) => { update(next); onRecorded(); }} />)}
     </section>
   );
 }
 
-const AdminV2Schedule = () => {
-  const { user, hasReadAccess } = useAuth();
+const AdminV2Schedule = ({ category }) => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const {
+    patients,
+    selectedPatient: contextPatient,
+    selectPatient: setContextPatient,
+    loadingPatients
+  } = useAdminPatient();
+
+  const [showPatientModal, setShowPatientModal] = useState(false);
+
+  const requestedId = searchParams.get('patient');
+  const patient = requestedId && requestedId !== String(contextPatient?.id)
+    ? patients.find(person => String(person.id) === requestedId) ?? null
+    : contextPatient;
+
+  useEffect(() => {
+    if (loadingPatients) return;
+    if (requestedId && patient?.id !== contextPatient?.id) {
+      setContextPatient(patient);
+    } else if (!requestedId && contextPatient) {
+      const next = new URLSearchParams(searchParams);
+      next.set('patient', contextPatient.id);
+      setSearchParams(next, { replace: true });
+    }
+  }, [loadingPatients, requestedId, patient, contextPatient, setContextPatient, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (!loadingPatients && !patient && patients.length > 0) setShowPatientModal(true);
+  }, [loadingPatients, patient, patients.length]);
+
+  const handleSelectPatient = (selected) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('patient', selected.id);
+    setSearchParams(next);
+    setContextPatient(selected);
+    setShowPatientModal(false);
+  };
+
+  return (
+    <AdminV2Layout>
+      <div className="admin-v2-page">
+        {patient ? (
+          <DailySchedule key={`${patient.id}-${category || 'all'}`} patient={patient} category={category} />
+        ) : (
+          <div className="cfg-nopatient">
+            <h2>Select a Patient</h2>
+            <p>Choose a patient to view their daily schedule</p>
+            <button type="button" className="em-submit" onClick={() => setShowPatientModal(true)}>
+              Select Patient
+            </button>
+          </div>
+        )}
+
+        {/* Patient Selection Modal */}
+        {showPatientModal && (
+          <PatientSelectorModal
+            patients={patients}
+            selectedPatient={contextPatient}
+            onSelectPatient={handleSelectPatient}
+            onClose={() => setShowPatientModal(false)}
+            loading={loadingPatients}
+          />
+        )}
+      </div>
+    </AdminV2Layout>
+  );
+};
+
+export function DailySchedule({ patient: selectedPatient, category, onChange, refreshKey, active = true }) {
+  const showMeds = !category || category === 'medications';
+  const showNutrition = !category || category === 'nutrition';
+  const showTasks = !category || category === 'care_tasks';
+  const { user, hasReadAccess } = useAuth();
+  const canMedicate = canRecordSchedule(user, 'medications');
+  const canPerformTask = canRecordSchedule(user, 'care_tasks');
+  const canLogNutrition = hasSchedulePermission(user, 'nutrition.create');
+  const canCompleteNutrition = canRecordSchedule(user, 'nutrition');
+
   const scrollContainerRef = useRef(null);
   const requestNumber = useRef(0);
   const scrolledDay = useRef(null);
-  const { 
-    patients, 
-    selectedPatient: contextPatient, 
-    selectPatient: setContextPatient,
-    loadingPatients 
-  } = useAdminPatient();
-  
-  // Use context patient as the source of truth
-  const selectedPatient = contextPatient;
-  const [showPatientModal, setShowPatientModal] = useState(false);
-  
+
   // Schedule date state
   const [selectedDate, setSelectedDate] = useState(new Date());
   
@@ -184,10 +261,12 @@ const AdminV2Schedule = () => {
     nutrition: [],
     care_tasks: []
   });
-  const canReadRoutines = hasReadAccess !== false && Boolean(user?.is_system_admin || user?.is_superuser || user?.permissions?.includes('nutrition.read'));
+  const canReadRoutines = active && showNutrition && hasReadAccess !== false
+    && hasSchedulePermission(user, 'nutrition.read');
   const manager = useDailyRoutines(selectedPatient?.id, scheduleData.nutrition, canReadRoutines);
   const [moveFeed, setMoveFeed] = useState(null);
   const [fixedCheck, setFixedCheck] = useState(null);
+  const [trackedTask, setTrackedTask] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [completing, setCompleting] = useState({}); // Track items being completed
@@ -309,31 +388,9 @@ const AdminV2Schedule = () => {
     setSelectedDate(new Date());
   };
 
-  // Check URL params for patient ID or use context patient
-  useEffect(() => {
-    const patientId = searchParams.get('patient');
-    if (patientId && patients.length > 0) {
-      const patient = patients.find(p => p.id === parseInt(patientId));
-      if (patient && patient.id !== contextPatient?.id) {
-        setContextPatient(patient);
-      }
-    } else if (!patientId && !contextPatient && patients.length > 0 && !loadingPatients) {
-      setShowPatientModal(true);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-way URL→context sync; adding contextPatient would re-run on selection change and revert it to the stale URL param
-  }, [searchParams, patients, loadingPatients]);
-
-  // Update URL when context patient changes
-  useEffect(() => {
-    if (contextPatient && searchParams.get('patient') !== String(contextPatient.id)) {
-      setSearchParams({ patient: contextPatient.id });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-way context→URL sync; runs only when the selection changes
-  }, [contextPatient]);
-
   // Fetch schedule when patient or date changes
   useEffect(() => {
-    if (!selectedPatient) return;
+    if (!selectedPatient || !active) return;
     setMoveFeed(null);
     setFixedCheck(null);
     setShowCompleteModal(false);
@@ -348,13 +405,13 @@ const AdminV2Schedule = () => {
       window.clearInterval(timer);
       window.removeEventListener('focus', refresh);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helper is recreated each render; effect is keyed on patient change only
-  }, [selectedPatient, selectedDate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when the visible patient, day, category or external refresh changes
+  }, [selectedPatient, selectedDate, category, refreshKey, active]);
 
   // Scroll to current hour on load
   useEffect(() => {
     const dayKey = `${selectedPatient?.id}-${selectedDate.toDateString()}`;
-    if (scrollContainerRef.current && isToday(selectedDate) && scrolledDay.current !== dayKey) {
+    if (active && scrollContainerRef.current && isToday(selectedDate) && scrolledDay.current !== dayKey) {
       const currentHour = new Date().getHours();
       const hourRow = scrollContainerRef.current.querySelector(`[data-hour="${currentHour}"]`);
       if (hourRow) {
@@ -362,7 +419,7 @@ const AdminV2Schedule = () => {
         hourRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
     }
-  }, [scheduleData, selectedDate, selectedPatient?.id]);
+  }, [scheduleData, selectedDate, selectedPatient?.id, active]);
 
   const fetchSchedule = async (background = false) => {
     if (!selectedPatient) return;
@@ -377,20 +434,28 @@ const AdminV2Schedule = () => {
       // uses this to compute the user-local day's UTC range so cron firings,
       // completion logs, and PRN doses all bucket onto the right day.
       const tzOffsetMinutes = -selectedDate.getTimezoneOffset();
+      const params = new URLSearchParams({
+        patient_id: selectedPatient.id, target_date: dateParam,
+        tz_offset_minutes: tzOffsetMinutes,
+      });
+      // A managed feed from yesterday can move into today's nutrition grid.
+      // Medication grace rows are included independently by the daily endpoint.
+      if (showNutrition) params.set('include_prior_day', 'true');
+      if (category) params.set('category', category);
       const response = await fetch(
-        `${config.apiUrl}/api/schedule/daily?patient_id=${selectedPatient.id}&target_date=${dateParam}&tz_offset_minutes=${tzOffsetMinutes}&include_prior_day=true`,
+        `${config.apiUrl}/api/schedule/daily?${params}`,
         { credentials: 'include' }
       );
 
       if (response.ok) {
         const data = await response.json();
         if (request !== requestNumber.current) return;
-        const nutrition = (data.nutrition || []).map(withLocalTimes).filter(row =>
+        const nutrition = (showNutrition ? data.nutrition || [] : []).map(withLocalTimes).filter(row =>
           !row.is_yesterday || (row.managed_feed && row.effectiveAt?.toDateString() === selectedDate.toDateString()));
         setScheduleData({
-          medications: (data.medications || []).filter(row => !row.is_yesterday || row.in_grace).map(withLocalTimes),
+          medications: (showMeds ? data.medications || [] : []).filter(row => !row.is_yesterday || row.in_grace).map(withLocalTimes),
           nutrition,
-          care_tasks: (data.care_tasks || []).filter(row => !row.is_yesterday).map(withLocalTimes),
+          care_tasks: (showTasks ? data.care_tasks || [] : []).filter(row => !row.is_yesterday).map(withLocalTimes),
         });
       } else if (request === requestNumber.current) {
         setError('Failed to load schedule');
@@ -403,9 +468,13 @@ const AdminV2Schedule = () => {
     }
   };
 
-  const handleSelectPatient = (patient) => {
-    setContextPatient(patient);
-    setShowPatientModal(false);
+  const onTaskRecorded = (result) => {
+    if (result?.requires_nutrition_tracking && result.care_task && hasSchedulePermission(user, 'nutrition.create')) setTrackedTask(result);
+  };
+
+  const refreshAfterWrite = () => {
+    onChange?.();
+    return fetchSchedule(true);
   };
 
   // Open completion modal for a single item
@@ -486,7 +555,7 @@ const AdminV2Schedule = () => {
   };
 
   // Submit completion from modal
-  const handleSubmitCompletion = async () => {
+  const handleSubmitCompletion = async (skip = false) => {
     const { type, items, isBulk } = completeModalData;
     
     // Create completion key for loading state
@@ -550,7 +619,7 @@ const AdminV2Schedule = () => {
           setShowCompleteModal(false);
           // Reload the persisted rows: bulk requests can partially fail, and
           // completed rows need their actual time and log id for Undo.
-          await fetchSchedule();
+          await refreshAfterWrite();
           const completedCount = (result[key] || []).filter(i => i.success).length;
           if (!result.success || completedCount < items.length) {
             alert(result.error || 'Some items could not be recorded. Review the schedule for items still incomplete.');
@@ -571,12 +640,13 @@ const AdminV2Schedule = () => {
             scheduled_time: item.scheduled_time,
             patient_id: selectedPatient.id,
             user_id: user?.id || null,
-            notes: completeFormData.notes || null,
+            notes: completeFormData.notes || (skip ? 'Skipped' : null),
+            ...(type === 'care-task' && skip && { skipped: true }),
             completed_at: localDateTimeToUTC(completeFormData.completed_at),
-            early_override: itemIsOffWindow(item),
+            early_override: !skip && itemIsOffWindow(item),
             // Include type-specific data
             ...(type === 'medication' && {
-              dose_amount: completeFormData.dose_amount,
+              dose_amount: skip ? 0 : completeFormData.dose_amount,
               dose_unit: completeFormData.dose_unit
             }),
             ...(type === 'nutrition' && {
@@ -593,9 +663,10 @@ const AdminV2Schedule = () => {
           const result = await response.json();
           if (result.success) {
             setShowCompleteModal(false);
+            onTaskRecorded(result);
             // Include the actual completion time, Undo log id, and any
             // post-feed flush queued by the server in the refreshed schedule.
-            await fetchSchedule();
+            await refreshAfterWrite();
           } else {
             alert(result.error || 'Failed to record completion.');
           }
@@ -650,7 +721,7 @@ const AdminV2Schedule = () => {
         });
       }
       setFlushModal((m) => ({ ...m, open: false, busy: false }));
-      fetchSchedule();
+      refreshAfterWrite();
     } catch (err) {
       setFlushModal((m) => ({ ...m, busy: false, error: err.message }));
     }
@@ -682,7 +753,7 @@ const AdminV2Schedule = () => {
         { method: 'DELETE', credentials: 'include' }
       );
       if (response.ok) {
-        await fetchSchedule();
+        await refreshAfterWrite();
       } else {
         const data = await response.json().catch(() => ({}));
         alert(data.detail || 'Failed to undo');
@@ -889,14 +960,15 @@ const AdminV2Schedule = () => {
     const rowId = med.schedule_id ?? `prn-${med.log_id}`;
     const itemKey = `medication-${rowId}-${med.scheduled_time}`;
     const isPrn = !!med.is_prn;
+    const canComplete = canMedicate && !med.completed && !isPrn && !med.skipped;
     return (
       <React.Fragment key={`med-${rowId}-${idx}`}>
         {idx > 0 && <div className="admin-v2-schedule-divider" />}
         <div
-          className={`admin-v2-schedule-item ${med.completed ? 'completed' : 'clickable'} ${completing[itemKey] ? 'completing' : ''}`}
-          onClick={(e) => { e.stopPropagation(); if (!med.completed) handleCompleteItem('medication', med); }}
-          role="button"
-          tabIndex={med.completed || isPrn ? -1 : 0}
+          className={`admin-v2-schedule-item ${med.completed ? 'completed' : canComplete ? 'clickable' : ''} ${completing[itemKey] ? 'completing' : ''}`}
+          onClick={(e) => { e.stopPropagation(); if (canComplete) handleCompleteItem('medication', med); }}
+          role={canComplete ? 'button' : undefined}
+          tabIndex={canComplete ? 0 : undefined}
           title={isPrn ? 'PRN dose — administered ad-hoc' : undefined}
         >
           <div className="admin-v2-schedule-item-header">
@@ -917,7 +989,9 @@ const AdminV2Schedule = () => {
                 {med.dose_amount} {med.dose_unit}
               </span>
             )}
-            {med.completed && med.log_id ? (
+            {med.skipped && <span className="admin-v2-badge">Skipped</span>}
+            {hasReadAccess !== false && <ScheduleHistoryButton type="medication" item={med} patientId={selectedPatient.id} />}
+            {canMedicate && med.completed && med.log_id ? (
               <button
                 type="button"
                 className="admin-v2-schedule-item-undo"
@@ -939,10 +1013,7 @@ const AdminV2Schedule = () => {
   };
 
   return (
-    <AdminV2Layout>
-      <div className="admin-v2-page">
-        {selectedPatient ? (
-          <>
+    <div className={category ? 'daily-schedule scoped-schedule' : 'daily-schedule'}>
             {error && (
               <div className="em-error" role="alert" style={{ marginBottom: '1rem' }}>{error}</div>
             )}
@@ -985,8 +1056,12 @@ const AdminV2Schedule = () => {
 
               <input
                 type="date"
+                aria-label="Schedule date"
                 value={formatDateForApi(selectedDate)}
-                onChange={(e) => setSelectedDate(new Date(e.target.value + 'T00:00:00'))}
+                onChange={(e) => {
+                  const day = new Date(e.target.value + 'T00:00:00');
+                  if (!Number.isNaN(day.getTime())) setSelectedDate(day);
+                }}
                 className="admin-v2-date-picker"
               />
 
@@ -1003,10 +1078,10 @@ const AdminV2Schedule = () => {
 
             <DailyRoutines key={selectedPatient.id} patientId={selectedPatient.id}
               today={isToday(selectedDate)} rows={scheduleData.nutrition}
-              canRead={canReadRoutines} manager={manager} onScheduledCheck={setFixedCheck} />
+              canRead={canReadRoutines} manager={manager} onScheduledCheck={setFixedCheck} onRecorded={refreshAfterWrite} />
 
             {/* Summary Stats - on mobile: compact cards side-by-side, act as tab selector (no separate tab bar) */}
-            <div className="admin-v2-summary-stats admin-v2-schedule-stats" style={{ marginBottom: '1.5rem' }}>
+            {!category && <div className="admin-v2-summary-stats admin-v2-schedule-stats" style={{ marginBottom: '1.5rem' }}>
               <div className="admin-v2-schedule-stats-spacer" />
               <button
                 type="button"
@@ -1050,10 +1125,11 @@ const AdminV2Schedule = () => {
                   <p>Care Tasks</p>
                 </div>
               </button>
-            </div>
+            </div>}
 
             {/* Schedule Grid - which column(s) show is controlled by mobileTab (cards above are the selector) */}
-            <div className={`admin-v2-schedule-container mobile-tab-${mobileTab}`}>
+            <div className={`admin-v2-schedule-container mobile-tab-${category === 'care_tasks' ? 'tasks' : category || mobileTab}`}
+              onKeyDown={activateGridRow}>
               {loading ? (
                 <div className="admin-v2-loading">Loading schedule...</div>
               ) : (
@@ -1061,26 +1137,29 @@ const AdminV2Schedule = () => {
                   {/* Column Headers - long labels for desktop, short for mobile */}
                   <div className="admin-v2-schedule-header">
                     <div className="admin-v2-schedule-time-col">Time</div>
-                    <div className="admin-v2-schedule-col medications">
+                    {showMeds && <div className="admin-v2-schedule-col medications">
                       <MedicationsIcon size={16} />
                       <span className="admin-v2-schedule-col-long">Medications</span>
                       <span className="admin-v2-schedule-col-short">Meds</span>
-                    </div>
-                    <div className="admin-v2-schedule-col nutrition">
+                      {category && <span aria-label="Completed of scheduled">{completedMeds}/{totalMeds}</span>}
+                    </div>}
+                    {showNutrition && <div className="admin-v2-schedule-col nutrition">
                       <NutritionIcon size={16} />
                       <span className="admin-v2-schedule-col-long">Nutrition</span>
                       <span className="admin-v2-schedule-col-short">Nutrition</span>
-                    </div>
-                    <div className="admin-v2-schedule-col tasks">
+                      {category && <span aria-label="Completed of scheduled">{completedNutrition}/{totalNutrition}</span>}
+                    </div>}
+                    {showTasks && <div className="admin-v2-schedule-col tasks">
                       <TasksIcon size={16} />
                       <span className="admin-v2-schedule-col-long">Care Tasks</span>
                       <span className="admin-v2-schedule-col-short">Tasks</span>
-                    </div>
+                      {category && <span aria-label="Completed of scheduled">{completedTasks}/{totalTasks}</span>}
+                    </div>}
                   </div>
 
                   {/* Scrollable Hour Rows */}
                   <div className="admin-v2-schedule-body" ref={scrollContainerRef}>
-                    {graceMeds.length > 0 && (
+                    {showMeds && graceMeds.length > 0 && (
                       <div className="admin-v2-schedule-row has-items overdue-band" data-band="overdue">
                         <div className="admin-v2-schedule-time-col">
                           <span className="admin-v2-hour-label">Overdue</span>
@@ -1090,8 +1169,8 @@ const AdminV2Schedule = () => {
                             {graceMeds.map(renderMedRow)}
                           </div>
                         </div>
-                        <div className="admin-v2-schedule-col nutrition" />
-                        <div className="admin-v2-schedule-col tasks" />
+                        {showNutrition && <div className="admin-v2-schedule-col nutrition" />}
+                        {showTasks && <div className="admin-v2-schedule-col tasks" />}
                       </div>
                     )}
                     {displayedHours.map(hour => (
@@ -1106,16 +1185,16 @@ const AdminV2Schedule = () => {
                         </div>
 
                         {/* Medications Column */}
-                        <div
-                          className="admin-v2-schedule-col medications admin-v2-schedule-col-clickable"
-                          onClick={() => openPrnModal('medication', hour)}
-                          role="button"
-                          tabIndex={0}
-                          title="Log PRN medication"
+                        {showMeds && <div
+                          className={`admin-v2-schedule-col medications ${canMedicate ? 'admin-v2-schedule-col-clickable' : ''}`}
+                          onClick={canMedicate ? () => openPrnModal('medication', hour) : undefined}
+                          role={canMedicate ? 'button' : undefined}
+                          tabIndex={canMedicate ? 0 : undefined}
+                          title={canMedicate ? 'Log PRN medication' : undefined}
                         >
                           {medicationsByHour[hour]?.length > 0 && (
                             <div className="admin-v2-schedule-group medication">
-                              {medicationsByHour[hour].some(m => !m.completed) && (
+                              {canMedicate && medicationsByHour[hour].some(m => !m.completed) && (
                                 <button
                                   className="admin-v2-schedule-complete-all"
                                   onClick={(e) => { e.stopPropagation(); handleCompleteHour(hour, 'medication'); }}
@@ -1130,29 +1209,29 @@ const AdminV2Schedule = () => {
                                   but when items fill the cell there's no white space to hit
                                   on touch devices. */}
                               <div className="admin-v2-schedule-divider" />
-                              <button
+                              {canMedicate && <button
                                 type="button"
                                 className="admin-v2-schedule-prn-add"
                                 onClick={(e) => { e.stopPropagation(); openPrnModal('medication', hour); }}
                                 title="Log PRN medication"
                               >
                                 + PRN
-                              </button>
+                              </button>}
                             </div>
                           )}
-                        </div>
+                        </div>}
 
                         {/* Nutrition Column */}
-                        <div
-                          className="admin-v2-schedule-col nutrition admin-v2-schedule-col-clickable"
-                          onClick={() => openPrnModal('nutrition', hour)}
-                          role="button"
-                          tabIndex={0}
-                          title="Log intake or output"
+                        {showNutrition && <div
+                          className={`admin-v2-schedule-col nutrition ${canLogNutrition ? 'admin-v2-schedule-col-clickable' : ''}`}
+                          onClick={canLogNutrition ? () => openPrnModal('nutrition', hour) : undefined}
+                          role={canLogNutrition ? 'button' : undefined}
+                          tabIndex={canLogNutrition ? 0 : undefined}
+                          title={canLogNutrition ? 'Log intake or output' : undefined}
                         >
                           {nutritionByHour[hour]?.length > 0 && (
                             <div className="admin-v2-schedule-group nutrition">
-                              {nutritionByHour[hour].some(n => !n.completed && !n.skipped && n.row_kind !== 'diaper_check' && n.row_kind !== 'flush') && (
+                              {canCompleteNutrition && nutritionByHour[hour].some(n => !n.completed && !n.skipped && n.row_kind !== 'diaper_check' && n.row_kind !== 'flush') && (
                                 <button
                                   className="admin-v2-schedule-complete-all"
                                   onClick={(e) => { e.stopPropagation(); handleCompleteHour(hour, 'nutrition'); }}
@@ -1174,7 +1253,9 @@ const AdminV2Schedule = () => {
                                 const isOutput = item.intake_type === 'output';
                                 const isSkipped = !!item.skipped;
                                 const isActionable = !item.completed && !isPrn && !isSkipped &&
-                                  (item.row_kind !== 'diaper_check' || manager.state?.can_record);
+                                  (item.row_kind === 'diaper_check'
+                                    ? (canLogNutrition && (manager.state?.can_record ?? true))
+                                    : canCompleteNutrition);
                                 return (
                                   <React.Fragment key={`nutr-${rowId}-${idx}`}>
                                     {idx > 0 && <div className="admin-v2-schedule-divider" />}
@@ -1260,7 +1341,8 @@ const AdminV2Schedule = () => {
                                             setMoveFeed(item);
                                           }}>Move this feed</button>
                                         )}
-                                        {item.completed && item.log_id ? (
+                                        {hasReadAccess !== false && <ScheduleHistoryButton type="nutrition" item={item} patientId={selectedPatient.id} />}
+                                        {canCompleteNutrition && item.completed && item.log_id ? (
                                           <button
                                             type="button"
                                             className="admin-v2-schedule-item-undo"
@@ -1282,29 +1364,29 @@ const AdminV2Schedule = () => {
                               })}
                               {/* Explicit PRN tap target — mirrors the meds column. */}
                               <div className="admin-v2-schedule-divider" />
-                              <button
+                              {canLogNutrition && <button
                                 type="button"
                                 className="admin-v2-schedule-prn-add"
                                 onClick={(e) => { e.stopPropagation(); openPrnModal('nutrition', hour); }}
                                 title="Log PRN intake or output"
                               >
                                 + PRN
-                              </button>
+                              </button>}
                             </div>
                           )}
-                        </div>
+                        </div>}
 
                         {/* Care Tasks Column */}
-                        <div
-                          className="admin-v2-schedule-col tasks admin-v2-schedule-col-clickable"
-                          onClick={() => openPrnModal('care-task', hour)}
-                          role="button"
-                          tabIndex={0}
-                          title="Log ad-hoc care task"
+                        {showTasks && <div
+                          className={`admin-v2-schedule-col tasks ${canPerformTask ? 'admin-v2-schedule-col-clickable' : ''}`}
+                          onClick={canPerformTask ? () => openPrnModal('care-task', hour) : undefined}
+                          role={canPerformTask ? 'button' : undefined}
+                          tabIndex={canPerformTask ? 0 : undefined}
+                          title={canPerformTask ? 'Log ad-hoc care task' : undefined}
                         >
                           {careTasksByHour[hour]?.length > 0 && (
                             <div className="admin-v2-schedule-group care-task">
-                              {careTasksByHour[hour].some(t => !t.completed) && (
+                              {canPerformTask && careTasksByHour[hour].some(t => !t.completed) && (
                                 <button
                                   className="admin-v2-schedule-complete-all"
                                   onClick={(e) => { e.stopPropagation(); handleCompleteHour(hour, 'care-task'); }}
@@ -1319,6 +1401,7 @@ const AdminV2Schedule = () => {
                                 const rowId = task.schedule_id ?? `prn-${task.log_id}`;
                                 const itemKey = `care-task-${rowId}-${task.scheduled_time}`;
                                 const isPrn = !!task.is_prn;
+                                const canComplete = canPerformTask && !task.completed && !isPrn && task.status !== 'skipped';
                                 return (
                                   <React.Fragment key={`task-${rowId}-${idx}`}>
                                     {idx > 0 && (
@@ -1331,10 +1414,10 @@ const AdminV2Schedule = () => {
                                       />
                                     )}
                                     <div
-                                      className={`admin-v2-schedule-item ${task.completed ? 'completed' : 'clickable'} ${completing[itemKey] ? 'completing' : ''}`}
-                                      onClick={(e) => { e.stopPropagation(); if (!task.completed) handleCompleteItem('care-task', task); }}
-                                      role="button"
-                                      tabIndex={task.completed || isPrn ? -1 : 0}
+                                      className={`admin-v2-schedule-item ${task.completed ? 'completed' : canComplete ? 'clickable' : ''} ${completing[itemKey] ? 'completing' : ''}`}
+                                      onClick={(e) => { e.stopPropagation(); if (canComplete) handleCompleteItem('care-task', task); }}
+                                      role={canComplete ? 'button' : undefined}
+                                      tabIndex={canComplete ? 0 : undefined}
                                       title={isPrn ? 'PRN care task — completed ad-hoc' : undefined}
                                       style={task.category_color ? { borderLeft: `3px solid ${task.category_color}` } : {}}
                                     >
@@ -1354,7 +1437,9 @@ const AdminV2Schedule = () => {
                                             {task.category_name}
                                           </span>
                                         )}
-                                        {task.completed && task.log_id ? (
+                                        {task.status === 'skipped' && <span className="admin-v2-badge">Skipped</span>}
+                                        {hasReadAccess !== false && <ScheduleHistoryButton type="care-task" item={task} patientId={selectedPatient.id} />}
+                                        {canPerformTask && task.completed && task.log_id ? (
                                           <button
                                             type="button"
                                             className="admin-v2-schedule-item-undo"
@@ -1376,49 +1461,32 @@ const AdminV2Schedule = () => {
                               })}
                               {/* Explicit PRN tap target — mirrors meds/nutrition columns. */}
                               <div className="admin-v2-schedule-divider" />
-                              <button
+                              {canPerformTask && <button
                                 type="button"
                                 className="admin-v2-schedule-prn-add"
                                 onClick={(e) => { e.stopPropagation(); openPrnModal('care-task', hour); }}
                                 title="Log ad-hoc care task"
                               >
                                 + PRN
-                              </button>
+                              </button>}
                             </div>
                           )}
-                        </div>
+                        </div>}
                       </div>
                     ))}
                   </div>
                 </>
               )}
             </div>
-          </>
-        ) : (
-          <div className="cfg-nopatient">
-            <h2>Select a Patient</h2>
-            <p>Choose a patient to view their daily schedule</p>
-            <button type="button" className="em-submit" onClick={() => setShowPatientModal(true)}>
-              Select Patient
-            </button>
-          </div>
+        {trackedTask && (
+          <IntakeSheet open patient={selectedPatient}
+            careTaskLogId={trackedTask.log_id ?? trackedTask.id} careTaskName={trackedTask.care_task.name}
+            onClose={() => setTrackedTask(null)} onSaved={refreshAfterWrite} />
         )}
-
-        {/* Patient Selection Modal */}
-        {showPatientModal && (
-          <PatientSelectorModal
-            patients={patients}
-            selectedPatient={selectedPatient}
-            onSelectPatient={handleSelectPatient}
-            onClose={() => setShowPatientModal(false)}
-            loading={loadingPatients}
-          />
-        )}
-
         {moveFeed && <MoveFeedDialog item={moveFeed} patientId={selectedPatient.id}
-          onClose={() => setMoveFeed(null)} onSaved={() => { setMoveFeed(null); fetchSchedule(true); }} />}
+          onClose={() => setMoveFeed(null)} onSaved={() => { setMoveFeed(null); refreshAfterWrite(); }} />}
         {fixedCheck && <FixedCheckDialog item={fixedCheck} patientId={selectedPatient.id}
-          onClose={() => setFixedCheck(null)} onSaved={() => { setFixedCheck(null); fetchSchedule(true); }} />}
+          onClose={() => setFixedCheck(null)} onSaved={() => { setFixedCheck(null); refreshAfterWrite(); }} />}
 
         {/* Completion Confirmation Dialog */}
         <EntityModal
@@ -1566,6 +1634,10 @@ const AdminV2Schedule = () => {
               <button type="button" className="em-cancel" onClick={() => setShowCompleteModal(false)}>
                 Cancel
               </button>
+              {!completeModalData.isBulk && completeModalData.type !== 'nutrition' && (
+                <button type="button" className="em-cancel" disabled={Object.values(completing).some(Boolean)}
+                  onClick={() => handleSubmitCompletion(true)}>Skip</button>
+              )}
               {(() => {
                 const completedAtUtc = completeFormData.completed_at
                   ? localDateTimeToUTC(completeFormData.completed_at)
@@ -1593,7 +1665,7 @@ const AdminV2Schedule = () => {
                   <button
                     type="button"
                     className={`em-submit${isOffWindow ? ' warn' : ''}`}
-                    onClick={handleSubmitCompletion}
+                    onClick={() => handleSubmitCompletion()}
                     disabled={saving || nutritionInvalid}
                   >
                     {label}
@@ -1709,21 +1781,21 @@ const AdminV2Schedule = () => {
         <IntakeSheet
           open={showPrnIntakeModal}
           onClose={() => setShowPrnIntakeModal(false)}
-          onSaved={fetchSchedule}
+          onSaved={refreshAfterWrite}
           patient={selectedPatient}
           defaultDateTime={prnNutritionDefaultDt}
         />
         <OutputSheet
           open={showPrnOutputModal}
           onClose={() => setShowPrnOutputModal(false)}
-          onSaved={fetchSchedule}
+          onSaved={refreshAfterWrite}
           patient={selectedPatient}
           defaultDateTime={prnNutritionDefaultDt}
         />
         <MedicationDoseModal
           open={showDoseModal}
           onClose={() => { setShowDoseModal(false); setDoseModalMed(null); }}
-          onSaved={fetchSchedule}
+          onSaved={refreshAfterWrite}
           patient={selectedPatient}
           medication={doseModalMed}
           defaultDateTime={doseModalDefaultDt}
@@ -1738,7 +1810,7 @@ const AdminV2Schedule = () => {
         <CareTaskCompleteModal
           open={showCareTaskCompleteModal}
           onClose={() => { setShowCareTaskCompleteModal(false); setCareTaskModalTask(null); }}
-          onSaved={fetchSchedule}
+          onSaved={(result) => { onTaskRecorded(result); refreshAfterWrite(); }}
           patient={selectedPatient}
           task={careTaskModalTask}
           defaultDateTime={careTaskModalDefaultDt}
@@ -1804,9 +1876,8 @@ const AdminV2Schedule = () => {
             </div>
           </div>
         </EntityModal>
-      </div>
-    </AdminV2Layout>
+    </div>
   );
-};
+}
 
 export default AdminV2Schedule;

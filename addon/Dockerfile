@@ -11,7 +11,7 @@
 ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base-debian:bookworm
 
 # --- Stage 1: build the SPA (same as the root Dockerfile) -------------------
-FROM node:20-alpine AS frontend
+FROM node:24-alpine AS frontend
 WORKDIR /fe
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
@@ -31,13 +31,15 @@ ENV TZ=UTC \
     STATIC_DIR=/app/static \
     PIP_BREAK_SYSTEM_PACKAGES=1
 
-# PostgreSQL 15 + TimescaleDB from the PGDG + Timescale apt repos, plus Python.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Apply available Debian fixes to packages inherited from the HA base image.
+# PostgreSQL 15 + TimescaleDB come from the PGDG and Timescale apt repos.
+RUN apt-get update && apt-get upgrade -y --no-install-recommends \
+    && apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg \
     && install -d /usr/share/keyrings \
     && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
         | gpg --dearmor -o /usr/share/keyrings/pgdg.gpg \
-    && echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] http://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
+    && echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
         > /etc/apt/sources.list.d/pgdg.list \
     && curl -fsSL https://packagecloud.io/timescale/timescaledb/gpgkey \
         | gpg --dearmor -o /usr/share/keyrings/timescaledb.gpg \
@@ -50,10 +52,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Python deps first for layer caching (psycopg2-binary/bcrypt/cryptography ship
-# wheels for amd64 + arm64, so no toolchain needed).
+# Build psycopg2 against the same system libpq used by PostgreSQL.
 COPY backend/requirements.txt .
-RUN pip3 install --no-cache-dir -r requirements.txt
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libpq5 gcc libc6-dev libpq-dev python3-dev \
+    && pip3 install --no-cache-dir -r requirements.txt \
+    && apt-get purge -y --auto-remove gcc libc6-dev libpq-dev python3-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # Backend code + built SPA.
 COPY backend/ ./

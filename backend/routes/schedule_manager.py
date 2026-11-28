@@ -17,16 +17,14 @@
 from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from crud import schedule_manager as manager
 from crud.feed_start_overrides import StartOverrideRequest, save_start_override
 from db import get_db
-from dependencies import get_current_user, require_read_access
+from dependencies import get_current_user, require_read_access, schedule_profile_level
 from event_publisher import publish_due_counts_changed
-from schemas.patient import AccessLevel, Patient, PatientAccess
-from utils.datetime_utils import utc_now
+from schemas.patient import AccessLevel
 
 router = APIRouter(prefix='/api/schedule-manager', tags=['Schedule manager'], dependencies=[Depends(require_read_access)])
 
@@ -39,19 +37,12 @@ class ManagerAccess:
 
 
 def profile_access(patient_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
-    patient = db.query(Patient.id).filter_by(id=patient_id, account_id=user.account_id, is_active=True).first()
-    if patient is None:
-        raise HTTPException(404, 'Care profile not found.')
+    level = schedule_profile_level(db, user, patient_id)
     if user.is_superuser:
         return ManagerAccess(user.id, True, True)
-    grant = db.query(PatientAccess).filter(
-        PatientAccess.patient_id == patient_id, PatientAccess.user_id == user.id, PatientAccess.is_active.is_(True),
-        or_(PatientAccess.expires_at.is_(None), PatientAccess.expires_at > utc_now().replace(tzinfo=None))).first()
-    if grant is None:
-        raise HTTPException(404, 'Care profile not found.')
     if not user.has_permission('nutrition.read'):
         raise HTTPException(403, 'Nutrition read permission required.')
-    writable = grant.access_level != AccessLevel.VIEWER
+    writable = level != AccessLevel.VIEWER
     return ManagerAccess(user.id, writable and user.has_permission('nutrition.update'),
                          writable and user.has_permission('nutrition.create'))
 

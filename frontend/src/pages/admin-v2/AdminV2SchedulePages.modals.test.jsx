@@ -15,11 +15,8 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-// The three per-domain schedule pages after moving off shadcn: stat tiles are
-// cfg-stat filter buttons, the off-window confirm is a ConfirmSheet, and the
-// nutrition PRN picker is an EntityModal. ScheduleBoard itself is unchanged.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, act, fireEvent } from '@testing-library/react';
+import { render, screen, act, fireEvent, within } from '@testing-library/react';
 
 vi.mock('./AdminV2Layout', () => ({ default: ({ children }) => <div>{children}</div> }));
 
@@ -35,75 +32,174 @@ const { authCtx, patientCtx } = vi.hoisted(() => ({
 vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => authCtx }));
 vi.mock('../../contexts/AdminPatientContext', () => ({ useAdminPatient: () => patientCtx }));
 vi.mock('react-router-dom', () => ({
+  Link: ({ to, children }) => <a href={to}>{children}</a>,
   useSearchParams: () => [new URLSearchParams('patient=5'), () => {}],
 }));
-vi.mock('../../config', () => ({ default: { apiUrl: '' }, apiFetch: (...a) => fetch(...a) }));
+vi.mock('../../config', () => ({ default: { apiUrl: '' }, apiFetch: (...args) => fetch(...args) }));
 
-import AdminV2MedicationsSchedule from './AdminV2MedicationsSchedule';
+import AdminV2Schedule, { DailySchedule } from './AdminV2Schedule';
 import AdminV2Medications from './AdminV2Medications';
-import AdminV2CareTasksSchedule from './AdminV2CareTasksSchedule';
-import AdminV2NutritionSchedule from './AdminV2NutritionSchedule';
+
+const dailyCalls = () => fetch.mock.calls.filter(([url]) => url.includes('/api/schedule/daily')).map(([url]) => new URL(url, 'http://test').searchParams);
+const baseRow = () => ({ schedule_id: 8, scheduled_time: new Date().toISOString() });
+const showSchedule = async (category) => {
+  await act(async () => { render(<AdminV2Schedule category={category} />); });
+};
+function stubSchedule(rows, write = { success: true }) {
+  vi.stubGlobal('fetch', vi.fn(async (url, options = {}) => ({
+    ok: true, status: 200,
+    json: async () => options.method === 'POST' ? write : url.includes('/api/schedule/daily') ? rows : {},
+  })));
+}
 
 beforeEach(() => {
-  vi.stubGlobal('fetch', vi.fn(async () => ({
-    ok: true, status: 200, json: async () => ({}),
-  })));
+  Element.prototype.scrollIntoView = vi.fn();
+  authCtx.user = { id: 1, is_system_admin: true, permissions: [] };
+  stubSchedule({});
 });
 
-const expectVcChrome = () => {
-  expect(document.querySelector('[data-slot="dialog-content"]')).not.toBeInTheDocument();
-  expect(document.querySelector('.admin-v2-stat-card')).not.toBeInTheDocument();
-  expect(document.querySelector('.admin-v2-page-header')).not.toBeInTheDocument();
-};
+describe('section schedules', () => {
+  it.each([
+    ['medications', 'Medication row', 'medications'],
+    ['nutrition', 'Feed row', 'nutrition'],
+    ['care_tasks', 'Task row', 'tasks'],
+  ])('shows only %s and keeps the category when changing days', async (category, visible, css) => {
+    const names = ['Medication row', 'Feed row', 'Task row'];
+    const row = baseRow();
+    stubSchedule({
+      medications: [{ ...row, name: names[0] }],
+      nutrition: [{ ...row, name: names[1] }],
+      care_tasks: [{ ...row, name: names[2] }],
+    });
+    await showSchedule(category);
+    expect(screen.getByText(visible)).toBeInTheDocument();
+    for (const hidden of names.filter(n => n !== visible)) expect(screen.queryByText(hidden)).toBeNull();
+    expect(document.querySelectorAll('.admin-v2-schedule-header .admin-v2-schedule-col')).toHaveLength(1);
+    expect(document.querySelector('.admin-v2-schedule-header .admin-v2-schedule-col')).toHaveClass(css);
+    expect(document.querySelector('.admin-v2-schedule-stats')).toBeNull();
+    if (category !== 'nutrition') {
+      expect(screen.queryByText('Manage routines')).toBeNull();
+      expect(fetch.mock.calls.some(([url]) => url.includes('schedule-manager'))).toBe(false);
+    }
+    const today = dailyCalls()[0].get('target_date');
+    await act(async () => { fireEvent.click(screen.getByTitle('Previous Day')); });
+    const previous = dailyCalls().at(-1).get('target_date');
+    expect(previous < today).toBe(true);
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Go to Today' })); });
+    expect(dailyCalls().at(-1).get('target_date')).toBe(today);
+    const picker = screen.getByLabelText('Schedule date');
+    fireEvent.change(picker, { target: { value: '' } });
+    expect(picker.value).toBe(today);
+    await act(async () => { fireEvent.change(picker, { target: { value: '2026-01-15' } }); });
+    await act(async () => { fireEvent.click(screen.getByTitle('Next Day')); });
+    expect(dailyCalls().at(-1).get('target_date')).toBe('2026-01-16');
+    for (const query of dailyCalls()) {
+      expect(query.get('category')).toBe(category);
+      expect(query.get('patient_id')).toBe('5');
+      expect(query.get('include_prior_day')).toBe(category === 'nutrition' ? 'true' : null);
+    }
+  });
 
-describe('schedule pages on the vc chassis', () => {
+  it('keeps a past-due grace medication separate from the selected day', async () => {
+    const row = { ...baseRow(), name: 'Grace dose', in_grace: true, overdue_minutes: 120 };
+    stubSchedule({ medications: [row] });
+    await showSchedule('medications');
+    expect(document.querySelector('[data-band="overdue"]')).toContainElement(screen.getByText('Grace dose'));
+  });
+
+  it('opens a focused occurrence from the keyboard and leaves nested buttons independent', async () => {
+    stubSchedule({ medications: [{ ...baseRow(), medication_id: 22, name: 'Morning dose' }] });
+    await showSchedule('medications');
+    const row = screen.getByText('Morning dose').closest('.admin-v2-schedule-item');
+    fireEvent.keyDown(within(row).getByRole('button', { name: 'Recent history' }), { key: 'Enter' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.keyDown(row, { key: ' ' });
+    expect(screen.getByRole('dialog', { name: 'Complete Medication' })).toBeInTheDocument();
+  });
+
+  it('keeps the embedded day selection while suspending requests in a hidden panel', async () => {
+    const view = (active) => <DailySchedule patient={patientCtx.selectedPatient} category="medications" active={active} />;
+    const { rerender } = render(view(false));
+    expect(dailyCalls()).toHaveLength(0);
+    await act(async () => { rerender(view(true)); });
+    await act(async () => { fireEvent.click(screen.getByTitle('Previous Day')); });
+    const day = screen.getByLabelText('Schedule date').value;
+    await act(async () => { rerender(view(false)); window.dispatchEvent(new Event('focus')); });
+    expect(dailyCalls()).toHaveLength(2);
+    await act(async () => { rerender(view(true)); });
+    expect(dailyCalls()).toHaveLength(3);
+    expect(dailyCalls().at(-1).get('target_date')).toBe(day);
+  });
+
+  it.each([
+    ['medications', 'medication', 'medications.administer', true],
+    ['care_tasks', 'care-task', 'care_tasks.perform', false],
+    ['care_tasks', 'care-task', 'care_tasks.perform', true],
+  ])('%s writes %s with %s at the original slot (skip=%s)', async (category, type, permission, skip) => {
+    authCtx.user = { id: 1, permissions: [permission, category + '.read'] };
+    const row = { ...baseRow(), name: 'Scheduled item', dose_amount: 5 };
+    stubSchedule({ [category]: [row] });
+    await showSchedule(category);
+    fireEvent.click(screen.getByText(row.name));
+    const submit = screen.getByRole('button', { name: skip ? 'Skip' : 'Mark Complete' });
+    await act(async () => { fireEvent.click(submit); });
+    const [, options] = fetch.mock.calls.find(([url]) => url.endsWith('/api/schedule/complete/' + type));
+    expect(JSON.parse(options.body)).toMatchObject({
+      patient_id: 5, schedule_id: 8, scheduled_time: row.scheduled_time,
+      ...(skip && (type === 'medication' ? { dose_amount: 0 } : { skipped: true })),
+    });
+  });
+
+  it.each([undefined, 'medications'])('keeps a read-only schedule visible without recording or PRN controls (%s)', async (scope) => {
+    authCtx.user = { id: 1, permissions: ['medications.read'] };
+    stubSchedule({ medications: [{ ...baseRow(), name: 'Morning medication' }] });
+    await showSchedule(scope);
+    fireEvent.click(screen.getByText('Morning medication'));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('button', { name: /PRN|Complete all/i })).toBeNull();
+  });
+
+  it.each([undefined, 'medications'])('lets a caregiver record or skip a dose on either schedule (%s)', async scope => {
+    authCtx.user = { id: 1, permissions: ['medications.read', 'medications.administer'] };
+    stubSchedule({ medications: [{ ...baseRow(), name: 'Caregiver dose' }] });
+    await showSchedule(scope);
+    fireEvent.click(screen.getByText('Caregiver dose'));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('button', { name: 'Mark Complete' })).toBeEnabled();
+    expect(within(dialog).getByRole('button', { name: 'Skip' })).toBeEnabled();
+  });
+
+  it('offers linked nutrition tracking after completing an eligible care task', async () => {
+    const row = { ...baseRow(), care_task_id: 4, name: 'Meal support' };
+    stubSchedule({ care_tasks: [row] }, {
+      success: true, requires_nutrition_tracking: true, log_id: 83, care_task: { name: row.name },
+    });
+    await showSchedule('care_tasks');
+    fireEvent.click(screen.getByText(row.name));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Mark Complete' })); });
+    expect(screen.getByRole('dialog', { name: 'Log intake' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toHaveTextContent(row.name);
+  });
+
   it('records a scheduled diaper check as a check outcome', async () => {
-    const time = new Date().toISOString();
-    const calls = [];
-    vi.stubGlobal('fetch', vi.fn(async (url, options = {}) => {
-      calls.push([url, options]);
-      return { ok: true, status: 200, json: async () => url.includes('/api/schedule/daily')
-        ? { nutrition: [{ schedule_id: 23, scheduled_time: time, name: 'Afternoon check', row_kind: 'diaper_check' }] }
-        : {} };
-    }));
-    await act(async () => { render(<AdminV2NutritionSchedule />); });
-    fireEvent.click(screen.getByRole('button', { name: 'Record check' }));
+    authCtx.user = { id: 1, permissions: ['nutrition.read', 'nutrition.create'] };
+    const row = { ...baseRow(), name: 'Afternoon check', row_kind: 'diaper_check' };
+    stubSchedule({ nutrition: [row] });
+    await showSchedule('nutrition');
+    fireEvent.click(screen.getByText(row.name));
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Checked dry' })); });
-    const writes = calls.filter(([, options]) => options.method === 'POST');
+    const writes = fetch.mock.calls.filter(([, options]) => options?.method === 'POST');
     expect(writes).toHaveLength(1);
     expect(writes[0][0]).toContain('/api/schedule-manager/5/actions');
-    expect(JSON.parse(writes[0][1].body)).toMatchObject({ action: 'dry', check_schedule_id: 23, check_scheduled_time: time });
+    expect(JSON.parse(writes[0][1].body)).toMatchObject({ action: 'dry', check_schedule_id: 8, check_scheduled_time: row.scheduled_time });
   });
 
-  it('medications: cfg-stat tiles toggle their filters, no shadcn left', async () => {
-    await act(async () => { render(<AdminV2MedicationsSchedule />); });
-    expectVcChrome();
-
-    const ready = screen.getByRole('button', { name: /Ready/ });
-    expect(ready).toHaveClass('cfg-stat');
-    expect(ready).toHaveAttribute('aria-pressed', 'true');
-    await act(async () => { fireEvent.click(ready); });
-    expect(ready).toHaveAttribute('aria-pressed', 'false');
-    // Completed starts unselected on this page.
-    expect(screen.getByRole('button', { name: /Completed/ })).toHaveAttribute('aria-pressed', 'false');
-  });
-
-  it('shows a completed medication in its scheduled slot with the time it was given', async () => {
-    fetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ scheduled_medications: [{
-        medication_name: 'Afternoon medication', schedule_id: 8,
-        scheduled_time: '2026-11-26T20:00:00Z', administered_at: '2026-11-26T19:59:00-05:00',
-        dose_amount: 1, actual_dose: 1, is_completed: true, status: 'completed_late',
-      }] }),
-    });
-
-    await act(async () => { render(<AdminV2MedicationsSchedule />); });
-    const completed = screen.getByRole('button', { name: /Completed 1/ });
-    fireEvent.click(completed);
-    expect(screen.getByText('15:00')).toBeInTheDocument();
-    expect(screen.getByText('Taken at 7:59 PM')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Take Now' })).not.toBeInTheDocument();
+  it('opens the shared intake and output picker in the selected nutrition hour', async () => {
+    await showSchedule('nutrition');
+    fireEvent.click(document.querySelector('[data-hour="8"] .admin-v2-schedule-col.nutrition'));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('button', { name: 'Log Intake' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Log Output' })).toBeInTheDocument();
   });
 
   it('shows the last given date and time on the medication overview with a negative UTC offset', async () => {
@@ -117,46 +213,4 @@ describe('schedule pages on the vc chassis', () => {
     expect(screen.getByText('Last given').parentElement).toHaveTextContent(/Nov 26, 2026.*7:59 PM/);
   });
 
-  it('care tasks: a multi-status tile toggles all of its keys together', async () => {
-    await act(async () => { render(<AdminV2CareTasksSchedule />); });
-    expectVcChrome();
-
-    // Six tiles: Ready, Upcoming, Missed, Completed, Skipped, PRN.
-    expect(document.querySelectorAll('button.cfg-stat').length).toBe(6);
-    const upcoming = screen.getByRole('button', { name: /Upcoming/ });
-    expect(upcoming).toHaveAttribute('aria-pressed', 'true');
-    await act(async () => { fireEvent.click(upcoming); });
-    expect(upcoming).toHaveAttribute('aria-pressed', 'false');
-    await act(async () => { fireEvent.click(upcoming); });
-    expect(upcoming).toHaveAttribute('aria-pressed', 'true');
-  });
-
-  it.each([['Mark Complete', 'complete'], ['Skip', 'skip']])(
-    'care tasks: %s records the selected patient and schedule slot',
-    async (label, action) => {
-      const scheduledTime = new Date().toISOString();
-      fetch.mockImplementation(async (url) => ({
-        ok: true,
-        json: async () => url.includes('/care-tasks/day')
-          ? { items: [{ name: 'Morning task', schedule_id: 8, scheduled_time: scheduledTime, status: 'due_on_time' }] }
-          : {},
-      }));
-      await act(async () => { render(<AdminV2CareTasksSchedule />); });
-      await act(async () => { fireEvent.click(screen.getByRole('button', { name: label })); });
-      const [, request] = fetch.mock.calls.find(([url]) => url.endsWith(`/care-task-schedules/8/${action}`));
-      expect(JSON.parse(request.body)).toMatchObject({ patient_id: 5, scheduled_time: scheduledTime });
-    },
-  );
-
-  it('nutrition: the PRN picker opens as EntityModal choices, not a shadcn dialog', async () => {
-    await act(async () => { render(<AdminV2NutritionSchedule />); });
-    expectVcChrome();
-
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'PRN' })); });
-    expect(document.querySelector('[data-slot="dialog-content"]')).not.toBeInTheDocument();
-    expect(document.querySelector('.em-panel')).toBeInTheDocument();
-    const choices = document.querySelectorAll('.em-panel .sch-choice');
-    expect(choices.length).toBe(2);
-    expect(choices[0]).toHaveTextContent('Log Intake');
-  });
 });

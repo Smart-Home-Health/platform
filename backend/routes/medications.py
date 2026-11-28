@@ -23,7 +23,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from db import get_db
-from dependencies import require_read_access, get_current_user
+from dependencies import require_read_access, get_current_user, legacy_schedule_patient
 from models.medications import (
     MedicationCreate,
     MedicationUpdate,
@@ -489,9 +489,12 @@ async def toggle_medication_schedule_active_endpoint(schedule_id: int, db: Sessi
     return {"status": "success", "active": new_active_status}
 
 
-@router.get("/schedules/daily")
-async def get_daily_medication_schedule_endpoint(patient_id: Optional[int] = None, db: Session = Depends(get_db), _: bool = Depends(require_read_access)):
-    """Get today's scheduled medications plus yesterday's missed medications."""
+@router.get("/schedules/daily", deprecated=True)
+async def get_daily_medication_schedule_endpoint(
+    patient_id: int = Depends(legacy_schedule_patient('medications')),
+    db: Session = Depends(get_db), _: bool = Depends(require_read_access),
+):
+    """Legacy two-day medication summary. New schedule views use /api/schedule/daily with category=medications."""
     try:
         daily_schedule = get_daily_medication_schedule(db, patient_id=patient_id)
         return daily_schedule

@@ -24,42 +24,56 @@ import { render, screen, act } from '@testing-library/react';
 
 vi.mock('./AdminV2Layout', () => ({ default: ({ children }) => <div>{children}</div> }));
 
-const { authCtx, patientCtx } = vi.hoisted(() => ({
+const { authCtx, patientCtx, route } = vi.hoisted(() => ({
+  route: { search: '', setSearch: vi.fn() },
   authCtx: { user: { id: 1, is_system_admin: true, permissions: [] } },
   patientCtx: {
     selectedPatient: null,
     patients: [{ id: 5, first_name: 'Eli', last_name: 'Carty', is_active: true }],
-    selectPatient: () => {},
+    selectPatient: vi.fn(),
     loadingPatients: false,
   },
 }));
 vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => authCtx }));
 vi.mock('../../contexts/AdminPatientContext', () => ({ useAdminPatient: () => patientCtx }));
 vi.mock('react-router-dom', () => ({
-  useSearchParams: () => [new URLSearchParams(), () => {}],
+  useSearchParams: () => [new URLSearchParams(route.search), route.setSearch],
 }));
 vi.mock('../../config', () => ({ default: { apiUrl: '' }, apiFetch: (...a) => fetch(...a) }));
 
 import AdminV2Schedule from './AdminV2Schedule';
-import AdminV2MedicationsSchedule from './AdminV2MedicationsSchedule';
-import AdminV2CareTasksSchedule from './AdminV2CareTasksSchedule';
-import AdminV2NutritionSchedule from './AdminV2NutritionSchedule';
 
 beforeEach(() => {
+  route.search = '';
+  patientCtx.selectedPatient = null;
+  vi.clearAllMocks();
   Element.prototype.scrollIntoView = vi.fn();
   vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) })));
 });
 
-const PAGES = [
-  ['AdminV2Schedule', AdminV2Schedule],
-  ['AdminV2MedicationsSchedule', AdminV2MedicationsSchedule],
-  ['AdminV2CareTasksSchedule', AdminV2CareTasksSchedule],
-  ['AdminV2NutritionSchedule', AdminV2NutritionSchedule],
-];
+it('loads only the linked patient when the session restores a different selection', async () => {
+  route.search = 'patient=5';
+  patientCtx.selectedPatient = { id: 9, first_name: 'Other' };
+  await act(async () => { render(<AdminV2Schedule category="medications" />); });
+  const reads = fetch.mock.calls.map(([url]) => new URL(url, 'http://test'))
+    .filter(url => url.pathname === '/api/schedule/daily');
+  expect(reads.map(url => url.searchParams.get('patient_id'))).toEqual(['5']);
+  expect(patientCtx.selectPatient).toHaveBeenCalledWith(patientCtx.patients[0]);
+  expect(route.setSearch).not.toHaveBeenCalled();
+});
 
-describe.each(PAGES)('%s with no patient selected', (_name, Page) => {
+it('offers the picker without fetching the saved patient when the linked patient is unavailable', async () => {
+  route.search = 'patient=999';
+  patientCtx.selectedPatient = patientCtx.patients[0];
+  await act(async () => { render(<AdminV2Schedule category="medications" />); });
+  expect(screen.getByText('Eli Carty')).toBeInTheDocument();
+  expect(fetch.mock.calls.some(([url]) => url.includes('/api/schedule/daily'))).toBe(false);
+  expect(route.setSearch).not.toHaveBeenCalled();
+});
+
+describe.each([undefined, 'medications', 'care_tasks', 'nutrition'])('schedule %s with no patient selected', (category) => {
   it('offers the patient picker instead of crashing', async () => {
-    await act(async () => { render(<Page />); });
+    await act(async () => { render(<AdminV2Schedule category={category} />); });
     // The picker opens as a hard gate on mount (Radix aria-hides the page
     // behind it), listing the patients to choose from.
     expect(document.querySelector('.em-panel')).toBeInTheDocument();

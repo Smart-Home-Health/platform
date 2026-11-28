@@ -32,6 +32,32 @@
  * category with their own configured colour. */
 @import '../../styles/vc-tokens.css';
 
+.scoped-schedule {
+  min-width: 0;
+  container-type: inline-size;
+}
+.scoped-schedule .admin-v2-schedule-header,
+.scoped-schedule .admin-v2-schedule-row {
+  grid-template-columns: clamp(3.5rem, 12%, 5rem) minmax(0, 1fr);
+}
+.scoped-schedule .admin-v2-schedule-nav {
+  flex-wrap: wrap;
+  margin-inline: 0;
+}
+@media screen {
+  .scoped-schedule .admin-v2-schedule-nav .admin-v2-btn-sm { display: inline-flex; }
+}
+@container (max-width: 32rem) {
+  .scoped-schedule .admin-v2-schedule-nav {
+    gap: 0.35rem;
+    padding: 0.5rem;
+  }
+  .scoped-schedule .admin-v2-schedule-date,
+  .scoped-schedule .admin-v2-schedule-nav .admin-v2-btn-primary { display: none; }
+  .scoped-schedule .admin-v2-date-picker { margin-inline-start: 0; }
+  .scoped-schedule .admin-v2-schedule-item-header { flex-wrap: wrap; }
+}
+
 /* ---------- Date nav ---------- */
 .admin-v2-schedule-nav {
   background: var(--vc-bg-surface);

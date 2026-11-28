@@ -20,8 +20,8 @@ import json
 import logging
 import uuid
 from datetime import datetime, date, timedelta, timezone
-from typing import List, Optional
-from fastapi import APIRouter, Depends, Query, Body, Request
+from typing import List, Literal, Optional
+from fastapi import APIRouter, Depends, Query, Body, Request, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
@@ -44,20 +44,20 @@ from crud.nutrition import (
 )
 from crud.users import create_audit_log
 from event_publisher import publish_due_counts_changed
-from dependencies import get_current_user, require_permission
+from dependencies import get_current_user, readable_schedule_categories, require_permission, schedule_profile_level
+from schemas.patient import AccessLevel
 from models.users import AuditLog, User
 from utils.early_administration import guard_early_administration, guard_future_administration
 from utils.medication_quantity import insufficient_quantity_response
-from schemas.medication import Medication
 from schemas.medication_schedule import MedicationSchedule
 from schemas.medication_log import MedicationLog
-from schemas.care_task import CareTask
 from care_task_vocab import is_nutrition_category, completion_timing
 from schemas.care_task_schedule import CareTaskSchedule
 from schemas.care_task_log import CareTaskLog
 from schemas.care_task_category import CareTaskCategory
 from schemas.nutrition_schedule import NutritionSchedule
 from schemas.nutrition_intake import NutritionIntake
+from schemas.nutrition_item import NutritionItem
 from nutrition_vocab import item_type_for_schedule_type, SCHEDULE_TYPE_TO_MEAL_TYPE
 from schemas.nutrition_output import NutritionOutput
 from croniter import croniter
@@ -110,17 +110,22 @@ async def get_daily_schedule(
         None,
         description="Deprecated. Day boundaries now derive from the patient's account timezone (Account.timezone), which takes precedence. Still accepted as a legacy fallback.",
     ),
+    category: Optional[Literal["medications", "nutrition", "care_tasks"]] = Query(
+        None, description="Load only this category; omitted categories have empty arrays.",
+    ),
     include_prior_day: bool = Query(
         False,
-        description="If true, also include the prior day's medications, nutrition, and care tasks (marked is_yesterday=true). Used by the live dashboard so missed items remain visible; admin views leave it off to avoid duplicating yesterday's completions.",
+        description="Also load the prior local day's rows for the requested categories and mark them is_yesterday=true.",
     ),
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
     """
     Get the complete daily schedule for a patient, organized by hour.
     Returns medications, nutrition schedules, and care tasks with completion status.
     Allowed in restricted mode so user can see what to complete and perform care.
     """
+    categories = readable_schedule_categories(db, user, patient_id, category)
     try:
         # The patient's account timezone is the source of truth for day
         # boundaries, so the view buckets items into the same local day the
@@ -130,54 +135,43 @@ async def get_daily_schedule(
 
         # Parse target date (defaults to the patient's account-local today,
         # not the server's UTC today).
+        bounds = local_day_bounds(tz)
         if target_date:
             schedule_date = datetime.strptime(target_date, "%Y-%m-%d").date()
         else:
-            schedule_date = local_day_bounds(tz)['local_today']
+            schedule_date = bounds['local_today']
+        is_live_day = schedule_date == bounds['local_today']
 
-        # Get all scheduled items (now includes completion status from joined logs).
-        medications = get_scheduled_medications(db, schedule_date, patient_id, tz_offset_minutes=tz_offset_minutes, tz=tz)
-        for item in medications:
-            item["is_yesterday"] = False
-        today_nutrition = get_scheduled_nutrition(db, schedule_date, patient_id, tz_offset_minutes=tz_offset_minutes, tz=tz)
-        for item in today_nutrition:
-            item["is_yesterday"] = False
-        nutrition_items = today_nutrition
-        care_tasks = get_scheduled_care_tasks(db, schedule_date, patient_id, tz_offset_minutes=tz_offset_minutes, tz=tz)
-        for item in care_tasks:
-            item["is_yesterday"] = False
-        if include_prior_day:
-            # Live dashboard opts in so missed items from yesterday stay
-            # visible. Admin views skip this to avoid duplicating yesterday's
-            # completions onto the current-day view. Yesterday and today are
-            # disjoint local-day windows, so logs/PRN rows can't double-report.
-            prior_date = schedule_date - timedelta(days=1)
-            prior_meds = get_scheduled_medications(db, prior_date, patient_id, tz_offset_minutes=tz_offset_minutes, tz=tz)
-            for item in prior_meds:
-                item["is_yesterday"] = True
-            medications = prior_meds + medications
-            prior_nutrition = get_scheduled_nutrition(db, prior_date, patient_id, tz_offset_minutes=tz_offset_minutes, tz=tz)
-            if schedule_date == local_day_bounds(tz)['local_today']:
-                prior_nutrition = [r for r in prior_nutrition if not r.get("reminder_superseded")]
-            for item in prior_nutrition:
-                item["is_yesterday"] = True
-            nutrition_items = prior_nutrition + nutrition_items
-            prior_tasks = get_scheduled_care_tasks(db, prior_date, patient_id, tz_offset_minutes=tz_offset_minutes, tz=tz)
-            for item in prior_tasks:
-                item["is_yesterday"] = True
-            care_tasks = prior_tasks + care_tasks
+        # Group rows before serializing so a single-section view loads only
+        # the requested clinical data, including on prior-day requests.
+        days = [schedule_date - timedelta(days=1), schedule_date] if include_prior_day else [schedule_date]
+        loaders = {
+            "medications": get_scheduled_medications,
+            "nutrition": get_scheduled_nutrition,
+            "care_tasks": get_scheduled_care_tasks,
+        }
+        rows = {key: [] for key in loaders}
+        for key in categories:
+            load = loaders[key]
+            for day in days:
+                prior = day != schedule_date
+                items = load(db, day, patient_id, tz_offset_minutes=tz_offset_minutes, tz=tz)
+                for item in items:
+                    if prior and is_live_day and key == "nutrition" and item.get("reminder_superseded"):
+                        continue
+                    item["is_yesterday"] = prior
+                    rows[key].append(item)
 
         # Grace-period doses: unfilled firings from before the day shown that
         # are still actionable (crud/dose_grace.py). Only on the live day; a
         # past or future day is history or a plan, and "overdue" is relative
         # to now. Prior-day rows already present just get annotated.
-        bounds = local_day_bounds(tz)
-        if schedule_date == bounds['local_today']:
+        if 'medications' in categories and is_live_day:
             day_start_utc, _ = local_day_range_utc(schedule_date, tz_offset_minutes, tz)
             grace_rows = find_grace_period_doses(db, patient_id, before_utc=day_start_utc, now_utc=bounds['now_utc'])
             for item in grace_rows:
                 item["is_yesterday"] = False
-            merge_grace_rows(medications, grace_rows)
+            merge_grace_rows(rows["medications"], grace_rows)
         
         # Build response - completion status already included from get_scheduled_* functions
         result = {
@@ -188,7 +182,7 @@ async def get_daily_schedule(
             "care_tasks": []
         }
         
-        for med in medications:
+        for med in rows["medications"]:
             result["medications"].append({
                 "schedule_id": med["schedule_id"],
                 "medication_id": med["medication_id"],
@@ -213,7 +207,7 @@ async def get_daily_schedule(
                 "type": "medication",
             })
         
-        for nutr in nutrition_items:
+        for nutr in rows["nutrition"]:
             result["nutrition"].append({
                 "schedule_id": nutr["schedule_id"],
                 "name": nutr["name"],
@@ -259,7 +253,7 @@ async def get_daily_schedule(
                 "type": "nutrition",
             })
         
-        for task in care_tasks:
+        for task in rows["care_tasks"]:
             # One shape for a care-task day item, shared with the care-task
             # endpoints so a field added in one place shows up in all of them.
             result["care_tasks"].append(canonical_care_task_item(task))
@@ -273,6 +267,53 @@ async def get_daily_schedule(
 
 # ===== Completion Endpoints =====
 
+_RECORD_PERMISSIONS = {
+    "medications": ("medications.administer", "medications.update"),
+    "nutrition": ("nutrition.create", "nutrition.update"),
+    "care_tasks": ("care_tasks.perform",),
+}
+
+
+def _require_record_permission(user, category):
+    if not user.is_superuser and not any(user.has_permission(p) for p in _RECORD_PERMISSIONS[category]):
+        raise HTTPException(403, "Schedule recording permission required.")
+
+
+def _require_writable_profile(db, user, patient_id):
+    if schedule_profile_level(db, user, patient_id) == AccessLevel.VIEWER:
+        raise HTTPException(403, "Care profile is read-only.")
+
+
+def _catalog_matches_profile(record, patient_id, account_id):
+    # Older shared catalog entries can have a null patient or account.
+    return record is not None and record.patient_id in (None, patient_id) and record.account_id in (None, account_id)
+
+
+def _schedule_for_recording(db, user, category, item):
+    _require_record_permission(user, category)
+    _require_writable_profile(db, user, item.patient_id)
+    model = {"medications": MedicationSchedule, "care_tasks": CareTaskSchedule, "nutrition": NutritionSchedule}[category]
+    schedule = db.get(model, item.schedule_id)
+    if schedule is None or schedule.patient_id not in (None, item.patient_id):
+        raise HTTPException(404, "Schedule not found.")
+    if category == "nutrition":
+        item_ids = {part.item_id for part in (item.items or []) if part.item_id is not None}
+        item_ids.update(part.item_id for part in schedule.components)
+        if item_ids:
+            visible_count = db.query(NutritionItem.id).filter(
+                NutritionItem.id.in_(item_ids),
+                (NutritionItem.account_id == user.account_id) | NutritionItem.account_id.is_(None),
+                (NutritionItem.patient_id == item.patient_id) | NutritionItem.patient_id.is_(None),
+            ).count()
+            if visible_count != len(item_ids):
+                raise HTTPException(404, "Nutrition item not found.")
+    else:
+        record = schedule.medication if category == "medications" else schedule.care_task
+        if not _catalog_matches_profile(record, item.patient_id, user.account_id):
+            raise HTTPException(404, "Schedule not found.")
+    return schedule
+
+
 @router.post("/complete/medication")
 async def complete_medication(
     data: CompleteItemRequest,
@@ -280,6 +321,8 @@ async def complete_medication(
     current_user=Depends(get_current_user)
 ):
     """Mark a scheduled medication as administered"""
+    schedule = _schedule_for_recording(db, current_user, "medications", data)
+    medication = schedule.medication
     try:
         # Parse scheduled time
         scheduled_dt = parse_scheduled_time(data.scheduled_time)
@@ -311,16 +354,6 @@ async def complete_medication(
             completed_at = utc_now()
 
         logger.info(f"Completing medication: schedule_id={data.schedule_id}, scheduled_time={data.scheduled_time}, completed_at={completed_at}")
-        
-        # Get the schedule to find medication ID
-        schedule = db.query(MedicationSchedule).filter(MedicationSchedule.id == data.schedule_id).first()
-        if not schedule:
-            return {"success": False, "error": "Schedule not found"}
-        
-        # Get medication for dose info
-        medication = db.query(Medication).filter(Medication.id == schedule.medication_id).first()
-        if not medication:
-            return {"success": False, "error": "Medication not found"}
         
         # Use provided dose or fall back to schedule defaults
         dose_amount = data.dose_amount if data.dose_amount is not None else (schedule.dose_amount or 0)
@@ -449,13 +482,12 @@ def _diaper_check_outcome_required():
 @router.post("/complete/nutrition")
 async def complete_nutrition(
     data: CompleteItemRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     """Mark a scheduled nutrition item as completed"""
+    schedule = _schedule_for_recording(db, current_user, "nutrition", data)
     try:
-        schedule = db.query(NutritionSchedule).filter_by(id=data.schedule_id, patient_id=data.patient_id).first()
-        if not schedule:
-            return {"success": False, "error": "Schedule not found"}
         if schedule.schedule_type == 'diaper_check':
             return _diaper_check_outcome_required()
 
@@ -505,7 +537,7 @@ async def complete_nutrition(
                 (schedule.schedule_type or '').strip().lower()
             ),
             notes=data.notes,
-            recorded_by=data.user_id,
+            recorded_by=current_user.id,
             schedule_id=data.schedule_id,
             scheduled_time=scheduled_dt,
         )
@@ -555,8 +587,7 @@ def _schedule_nutrition_prefill(schedule):
         return None
 
 
-@router.post("/complete/care-task",
-             dependencies=[Depends(require_permission("care_tasks.perform"))])
+@router.post("/complete/care-task")
 async def complete_care_task(
     data: CompleteItemRequest,
     db: Session = Depends(get_db),
@@ -570,6 +601,7 @@ async def complete_care_task(
     the same action from the care-tasks schedule tab did not, quietly skewing
     the adherence stats.
     """
+    schedule = _schedule_for_recording(db, current_user, "care_tasks", data)
     try:
         # Parse scheduled time
         scheduled_dt = parse_scheduled_time(data.scheduled_time)
@@ -595,11 +627,6 @@ async def complete_care_task(
             completed_at = parse_scheduled_time(data.completed_at)
         else:
             completed_at = utc_now()
-
-        # Get the schedule to find care task ID
-        schedule = db.query(CareTaskSchedule).filter(CareTaskSchedule.id == data.schedule_id).first()
-        if not schedule:
-            return {"success": False, "error": "Schedule not found"}
 
         # Skips are neither early nor late — they were not done at all.
         timing = ({'completed_early': False, 'completed_late': False} if data.skipped
@@ -627,7 +654,7 @@ async def complete_care_task(
 
         # Same nutrition hook the other completion paths carry, so which page
         # a task was completed from stops deciding whether intake is offered.
-        care_task = db.query(CareTask).filter(CareTask.id == schedule.care_task_id).first()
+        care_task = schedule.care_task
         category_name = care_task.category.name if care_task and care_task.category else None
         is_nutrition = (not data.skipped) and is_nutrition_category(category_name)
 
@@ -668,9 +695,13 @@ async def complete_bulk(
         EARLY_ADMINISTRATION_THRESHOLD_MINUTES,
         LATE_ADMINISTRATION_THRESHOLD_MINUTES,
     )
-    if nutrition and db.query(NutritionSchedule.id).filter(
-            NutritionSchedule.id.in_([item.schedule_id for item in nutrition]),
-            NutritionSchedule.schedule_type == 'diaper_check').first():
+    # Validate every category and persisted schedule before inspecting stock,
+    # checking managed feeds, or writing any part of this batch.
+    schedules = {
+        category: {item.schedule_id: _schedule_for_recording(db, current_user, category, item) for item in items}
+        for category, items in (("medications", medications), ("nutrition", nutrition), ("care_tasks", care_tasks))
+    }
+    if any(schedule.schedule_type == "diaper_check" for schedule in schedules["nutrition"].values()):
         return _diaper_check_outcome_required()
     off_window_items = []
     sections = [
@@ -742,10 +773,8 @@ async def complete_bulk(
     for item in medications:
         if item.dose_amount is not None and item.dose_amount == 0:
             continue
-        schedule = db.query(MedicationSchedule).filter(MedicationSchedule.id == item.schedule_id).first()
-        if not schedule:
-            continue
-        medication = db.query(Medication).filter(Medication.id == schedule.medication_id).first()
+        schedule = schedules["medications"][item.schedule_id]
+        medication = schedule.medication
         dose_amount = item.dose_amount if item.dose_amount is not None else (schedule.dose_amount or 0)
         guard = insufficient_quantity_response(medication, dose_amount)
         if guard is not None:
@@ -765,34 +794,32 @@ async def complete_bulk(
                 scheduled_dt = parse_scheduled_time(item.scheduled_time)
                 completed_at = parse_scheduled_time(item.completed_at) if item.completed_at else utc_now()
                 
-                schedule = db.query(MedicationSchedule).filter(MedicationSchedule.id == item.schedule_id).first()
-                if schedule:
-                    medication = db.query(Medication).filter(Medication.id == schedule.medication_id).first()
-                    if medication:
-                        dose_amount = item.dose_amount if item.dose_amount is not None else (schedule.dose_amount or 0)
-                        if dose_amount > 0 and medication.quantity is not None:
-                            medication.quantity = max(0, medication.quantity - float(dose_amount))
-                        
-                        if dose_amount > 0:
-                            early_flag, late_flag = _compute_timing_flags(scheduled_dt, completed_at)
-                        else:
-                            early_flag, late_flag = False, False
-                        log = MedicationLog(
-                            medication_id=medication.id,
-                            patient_id=item.patient_id,
-                            schedule_id=item.schedule_id,
-                            administered_at=completed_at,
-                            dose_amount=dose_amount,
-                            is_scheduled=True,
-                            scheduled_time=scheduled_dt.replace(tzinfo=None),
-                            administered_early=early_flag,
-                            administered_late=late_flag,
-                            administered_by=getattr(current_user, 'id', None),
-                            notes=item.notes,
-                            created_at=utc_now()
-                        )
-                        db.add(log)
-                        results["medications"].append({"schedule_id": item.schedule_id, "success": True})
+                schedule = schedules["medications"][item.schedule_id]
+                medication = schedule.medication
+                dose_amount = item.dose_amount if item.dose_amount is not None else (schedule.dose_amount or 0)
+                if dose_amount > 0 and medication.quantity is not None:
+                    medication.quantity = max(0, medication.quantity - float(dose_amount))
+
+                if dose_amount > 0:
+                    early_flag, late_flag = _compute_timing_flags(scheduled_dt, completed_at)
+                else:
+                    early_flag, late_flag = False, False
+                log = MedicationLog(
+                    medication_id=medication.id,
+                    patient_id=item.patient_id,
+                    schedule_id=item.schedule_id,
+                    administered_at=completed_at,
+                    dose_amount=dose_amount,
+                    is_scheduled=True,
+                    scheduled_time=scheduled_dt.replace(tzinfo=None),
+                    administered_early=early_flag,
+                    administered_late=late_flag,
+                    administered_by=getattr(current_user, 'id', None),
+                    notes=item.notes,
+                    created_at=utc_now()
+                )
+                db.add(log)
+                results["medications"].append({"schedule_id": item.schedule_id, "success": True})
             except Exception as e:
                 results["medications"].append({"schedule_id": item.schedule_id, "success": False, "error": str(e)})
         
@@ -802,60 +829,59 @@ async def complete_bulk(
                 scheduled_dt = parse_scheduled_time(item.scheduled_time)
                 completed_at = parse_scheduled_time(item.completed_at) if item.completed_at else utc_now()
                 
-                schedule = db.query(NutritionSchedule).filter(NutritionSchedule.id == item.schedule_id).first()
-                if schedule:
-                    rows = _nutrition_completion_rows(schedule, item, db=db, scheduled_dt=scheduled_dt)
-                    if rows is None:
-                        # Care activity, not an intake -- see the single path.
-                        continue
-
-                    # One event per feed: every row of the mix shares a group
-                    # id. Rows are added to the shared bulk transaction rather
-                    # than through create_nutrition_intake_event so the whole
-                    # bulk completion stays one commit with one MQTT publish.
-                    group_id = str(uuid.uuid4())
-                    meal_type = SCHEDULE_TYPE_TO_MEAL_TYPE.get(
-                        (schedule.schedule_type or '').strip().lower()
-                    )
-                    for row in rows:
-                        intake = NutritionIntake(
-                            patient_id=item.patient_id,
-                            schedule_id=item.schedule_id,
-                            event_group_id=group_id,
-                            item_id=row.get('item_id'),
-                            item_name=row['item_name'],
-                            item_type=row['item_type'],
-                            amount=row['amount'],
-                            amount_unit=row['amount_unit'],
-                            feed_route=row.get('feed_route'),
-                            rate_ml_per_hr=row.get('rate_ml_per_hr'),
-                            duration_minutes=row.get('duration_minutes'),
-                            calories=row.get('calories'),
-                            protein_grams=row.get('protein_grams'),
-                            carbs_grams=row.get('carbs_grams'),
-                            fat_grams=row.get('fat_grams'),
-                            fiber_grams=row.get('fiber_grams'),
-                            sodium_mg=row.get('sodium_mg'),
-                            meal_type=meal_type,
-                            consumed_at=completed_at,
-                            scheduled_time=scheduled_dt,
-                            notes=item.notes,
-                            created_at=utc_now(),
-                            updated_at=utc_now()
-                        )
-                        db.add(intake)
-                    # A flush-flagged schedule queues its follow-up inside the
-                    # same bulk transaction.
-                    maybe_spawn_flush_followup(
-                        db, schedule,
+                schedule = schedules["nutrition"][item.schedule_id]
+                rows = _nutrition_completion_rows(schedule, item, db=db, scheduled_dt=scheduled_dt)
+                if rows is None:
+                    # Care activity, not an intake -- see the single path.
+                    continue
+                # One event per feed: every row of the mix shares a group
+                # id. Rows are added to the shared bulk transaction rather
+                # than through create_nutrition_intake_event so the whole
+                # bulk completion stays one commit with one MQTT publish.
+                group_id = str(uuid.uuid4())
+                meal_type = SCHEDULE_TYPE_TO_MEAL_TYPE.get(
+                    (schedule.schedule_type or '').strip().lower()
+                )
+                for row in rows:
+                    intake = NutritionIntake(
                         patient_id=item.patient_id,
-                        group_id=group_id,
-                        rows=rows,
+                        schedule_id=item.schedule_id,
+                        event_group_id=group_id,
+                        item_id=row.get('item_id'),
+                        item_name=row['item_name'],
+                        item_type=row['item_type'],
+                        amount=row['amount'],
+                        amount_unit=row['amount_unit'],
+                        feed_route=row.get('feed_route'),
+                        rate_ml_per_hr=row.get('rate_ml_per_hr'),
+                        duration_minutes=row.get('duration_minutes'),
+                        calories=row.get('calories'),
+                        protein_grams=row.get('protein_grams'),
+                        carbs_grams=row.get('carbs_grams'),
+                        fat_grams=row.get('fat_grams'),
+                        fiber_grams=row.get('fiber_grams'),
+                        sodium_mg=row.get('sodium_mg'),
+                        meal_type=meal_type,
                         consumed_at=completed_at,
-                        feed_scheduled_time=scheduled_dt,
-                        recorded_by=item.user_id,
+                        recorded_by=current_user.id,
+                        scheduled_time=scheduled_dt,
+                        notes=item.notes,
+                        created_at=utc_now(),
+                        updated_at=utc_now()
                     )
-                    results["nutrition"].append({"schedule_id": item.schedule_id, "success": True})
+                    db.add(intake)
+                # A flush-flagged schedule queues its follow-up inside the
+                # same bulk transaction.
+                maybe_spawn_flush_followup(
+                    db, schedule,
+                    patient_id=item.patient_id,
+                    group_id=group_id,
+                    rows=rows,
+                    consumed_at=completed_at,
+                    feed_scheduled_time=scheduled_dt,
+                    recorded_by=current_user.id,
+                )
+                results["nutrition"].append({"schedule_id": item.schedule_id, "success": True})
             except Exception as e:
                 results["nutrition"].append({"schedule_id": item.schedule_id, "success": False, "error": str(e)})
         
@@ -865,22 +891,21 @@ async def complete_bulk(
                 scheduled_dt = parse_scheduled_time(item.scheduled_time)
                 completed_at = parse_scheduled_time(item.completed_at) if item.completed_at else utc_now()
                 
-                schedule = db.query(CareTaskSchedule).filter(CareTaskSchedule.id == item.schedule_id).first()
-                if schedule:
-                    log = CareTaskLog(
-                        care_task_id=schedule.care_task_id,
-                        patient_id=item.patient_id,
-                        schedule_id=item.schedule_id,
-                        scheduled_time=scheduled_dt.replace(tzinfo=None),
-                        completed_at=completed_at,
-                        is_scheduled=True,
-                        status="completed",
-                        notes=item.notes,
-                        performed_by=item.user_id,
-                        created_at=utc_now()
-                    )
-                    db.add(log)
-                    results["care_tasks"].append({"schedule_id": item.schedule_id, "success": True})
+                schedule = schedules["care_tasks"][item.schedule_id]
+                log = CareTaskLog(
+                    care_task_id=schedule.care_task_id,
+                    patient_id=item.patient_id,
+                    schedule_id=item.schedule_id,
+                    scheduled_time=scheduled_dt.replace(tzinfo=None),
+                    completed_at=completed_at,
+                    is_scheduled=True,
+                    status="completed",
+                    notes=item.notes,
+                    performed_by=current_user.id,
+                    created_at=utc_now()
+                )
+                db.add(log)
+                results["care_tasks"].append({"schedule_id": item.schedule_id, "success": True})
             except Exception as e:
                 results["care_tasks"].append({"schedule_id": item.schedule_id, "success": False, "error": str(e)})
         
@@ -952,18 +977,26 @@ async def undo_completion(
     composite "mixed-<id>-<id>" key (see get_scheduled_nutrition) — every member
     output is voided.
     """
+    categories = {"medication": "medications", "care_task": "care_tasks",
+                  "nutrition_intake": "nutrition", "nutrition_output": "nutrition"}
+    if item_type not in categories:
+        raise HTTPException(400, f"Unknown item_type: {item_type}")
+    _require_record_permission(current_user, categories[item_type])
     now = utc_now()
-    uid = current_user.id if current_user else None
+    uid = current_user.id
     try:
         if item_type == "medication":
             log = db.query(MedicationLog).filter(MedicationLog.id == int(log_id)).first()
             if not log:
                 return JSONResponse(status_code=404, content={"detail": "Medication log not found"})
+            _require_writable_profile(db, current_user, log.patient_id)
+            medication = log.medication
+            if medication and not _catalog_matches_profile(medication, log.patient_id, current_user.account_id):
+                raise HTTPException(404, "Medication log not found")
             # Mirror the deduction done at administration time so on-hand stock
             # is restored. Skips (dose_amount == 0) never deducted, so nothing to add.
             restored = None
             if log.dose_amount and log.dose_amount > 0:
-                medication = db.query(Medication).filter(Medication.id == log.medication_id).first()
                 if medication and medication.quantity is not None:
                     medication.quantity = medication.quantity + float(log.dose_amount)
                     restored = float(log.dose_amount)
@@ -988,7 +1021,11 @@ async def undo_completion(
             log = db.query(CareTaskLog).filter(CareTaskLog.id == int(log_id)).first()
             if not log:
                 return JSONResponse(status_code=404, content={"detail": "Care task log not found"})
-            task_name = log.care_task.name if log.care_task else None
+            _require_writable_profile(db, current_user, log.patient_id)
+            task = log.care_task
+            if task and not _catalog_matches_profile(task, log.patient_id, current_user.account_id):
+                raise HTTPException(404, "Care task log not found")
+            task_name = task.name if task else None
             log.voided_at = now
             log.voided_by = uid
             _record_undo_audit(db, request, current_user, item_type, log_id, {
@@ -1007,6 +1044,7 @@ async def undo_completion(
             intake = db.query(NutritionIntake).filter(NutritionIntake.id == int(log_id)).first()
             if not intake:
                 return JSONResponse(status_code=404, content={"detail": "Nutrition intake not found"})
+            _require_writable_profile(db, current_user, intake.patient_id)
             # Un-completing a feed means the whole feed: void every row of the
             # logged event (a multi-item mix), not just the one the board
             # happened to reference. The soft-delete filter already excludes
@@ -1025,7 +1063,7 @@ async def undo_completion(
             # Undoing a feed voids its queued flush; undoing a logged flush
             # restores the follow-up to pending.
             flush_sync = sync_flush_followups_on_void(
-                db, [intake.event_group_id], uid, now)
+                db, [intake.event_group_id], uid, now, patient_id=intake.patient_id)
             _record_undo_audit(db, request, current_user, item_type, log_id, {
                 "primary_id": intake.id,
                 "voided_ids": voided_ids,
@@ -1048,19 +1086,17 @@ async def undo_completion(
         if item_type == "nutrition_output":
             # Merged diaper rows carry a composite "mixed-<id>-<id>" key.
             raw = str(log_id)
-            ids = raw[len("mixed-"):].split("-") if raw.startswith("mixed-") else [raw]
-            voided_ids = []
-            first = None
-            for oid in ids:
-                output = db.query(NutritionOutput).filter(NutritionOutput.id == int(oid)).first()
-                if output:
-                    output.voided_at = now
-                    output.voided_by = uid
-                    voided_ids.append(output.id)
-                    if first is None:
-                        first = output
-            if not voided_ids:
-                return JSONResponse(status_code=404, content={"detail": "Nutrition output not found"})
+            parts = raw[len("mixed-"):].split("-") if raw.startswith("mixed-") else [raw]
+            ids = list(dict.fromkeys(int(part) for part in parts))
+            outputs = {row.id: row for row in db.query(NutritionOutput).filter(NutritionOutput.id.in_(ids))}
+            if len(outputs) != len(ids) or len({row.patient_id for row in outputs.values()}) != 1:
+                raise HTTPException(404, "Nutrition output not found")
+            first = outputs[ids[0]]
+            _require_writable_profile(db, current_user, first.patient_id)
+            for output in outputs.values():
+                output.voided_at = now
+                output.voided_by = uid
+            voided_ids = ids
             _record_undo_audit(db, request, current_user, item_type, log_id, {
                 "primary_id": voided_ids[0],
                 "voided_ids": voided_ids,
@@ -1075,7 +1111,8 @@ async def undo_completion(
             _publish_bathroom_mqtt(db, first.patient_id)
             return {"success": True}
 
-        return JSONResponse(status_code=400, content={"detail": f"Unknown item_type: {item_type}"})
+    except HTTPException:
+        raise
     except ValueError:
         return JSONResponse(status_code=400, content={"detail": "Invalid log id"})
     except Exception as e:

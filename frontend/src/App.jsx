@@ -31,10 +31,8 @@ import {
 import AdminV2RoleDetail from './pages/admin-v2/AdminV2RoleDetail';
 import AdminV2Medications from './pages/admin-v2/AdminV2Medications';
 import AdminV2MedicationsManage from './pages/admin-v2/AdminV2MedicationsManage';
-import AdminV2MedicationsSchedule from './pages/admin-v2/AdminV2MedicationsSchedule';
 import AdminV2CareTasks from './pages/admin-v2/AdminV2CareTasks';
 import AdminV2CareTasksOverview from './pages/admin-v2/AdminV2CareTasksOverview';
-import AdminV2CareTasksSchedule from './pages/admin-v2/AdminV2CareTasksSchedule';
 import AdminV2EquipmentOverview from './pages/admin-v2/AdminV2EquipmentOverview';
 import AdminV2EquipmentHistory from './pages/admin-v2/AdminV2EquipmentHistory';
 import AdminV2Shipments from './pages/admin-v2/AdminV2Shipments';
@@ -66,7 +64,6 @@ import AdminV2Symptoms from './pages/admin-v2/AdminV2Symptoms';
 import AdminV2Diagnoses from './pages/admin-v2/AdminV2Diagnoses';
 import AdminV2Implants from './pages/admin-v2/AdminV2Implants';
 import AdminV2Nutrition from './pages/admin-v2/AdminV2Nutrition';
-import AdminV2NutritionSchedule from './pages/admin-v2/AdminV2NutritionSchedule';
 import AdminV2ProfileSummary from './pages/admin-v2/AdminV2ProfileSummary';
 import AdminV2Monitoring from './pages/admin-v2/AdminV2Monitoring';
 import AdminV2Messages from './pages/admin-v2/AdminV2Messages';
@@ -149,11 +146,11 @@ function AppContent() {
           <Route path="/care/users/add" element={<Navigate to="/care/configuration/users" replace />} />
           <Route path="/care/users/roles" element={<Navigate to="/care/configuration/users/roles" replace />} />
           <Route path="/care/medications" element={<ProtectedRoute><Layout><AdminV2Medications /></Layout></ProtectedRoute>} />
-          <Route path="/care/medications/schedule" element={<ProtectedRoute><Layout><AdminV2MedicationsSchedule /></Layout></ProtectedRoute>} />
+          <Route path="/care/medications/schedule" element={<ProtectedRoute><Layout><AdminV2Schedule category="medications" /></Layout></ProtectedRoute>} />
           <Route path="/care/medications/manage" element={<ProtectedRoute><Layout><AdminV2MedicationsManage /></Layout></ProtectedRoute>} />
           <Route path="/care/care-tasks" element={<ProtectedRoute><Layout><AdminV2CareTasksOverview /></Layout></ProtectedRoute>} />
           <Route path="/care/care-tasks/manage" element={<ProtectedRoute><Layout><AdminV2CareTasks /></Layout></ProtectedRoute>} />
-          <Route path="/care/care-tasks/schedule" element={<ProtectedRoute><Layout><AdminV2CareTasksSchedule /></Layout></ProtectedRoute>} />
+          <Route path="/care/care-tasks/schedule" element={<ProtectedRoute><Layout><AdminV2Schedule category="care_tasks" /></Layout></ProtectedRoute>} />
           {/* History is a modal on the Overview now; the old path lands there. */}
           <Route path="/care/care-tasks/history" element={<ProtectedRoute><Layout><AdminV2CareTasksOverview /></Layout></ProtectedRoute>} />
           <Route path="/care/equipment" element={<ProtectedRoute><Layout><AdminV2EquipmentOverview /></Layout></ProtectedRoute>} />
@@ -188,7 +185,7 @@ function AppContent() {
             
           {/* Care Nutrition Routes */}
           <Route path="/care/nutrition" element={<ProtectedRoute><Layout><AdminV2Nutrition /></Layout></ProtectedRoute>} />
-          <Route path="/care/nutrition/schedule" element={<ProtectedRoute><Layout><AdminV2NutritionSchedule /></Layout></ProtectedRoute>} />
+          <Route path="/care/nutrition/schedule" element={<ProtectedRoute><Layout><AdminV2Schedule category="nutrition" /></Layout></ProtectedRoute>} />
           <Route path="/care/nutrition/intake" element={<ProtectedRoute><Layout><AdminV2Nutrition /></Layout></ProtectedRoute>} />
           <Route path="/care/nutrition/output" element={<ProtectedRoute><Layout><AdminV2Nutrition /></Layout></ProtectedRoute>} />
           <Route path="/care/nutrition/plan" element={<ProtectedRoute><Layout><AdminV2Nutrition /></Layout></ProtectedRoute>} />

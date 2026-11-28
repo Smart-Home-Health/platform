@@ -2,7 +2,8 @@ blueprint:
   name: Smart Home Health · Late care reminder
   domain: automation
   description: >
-    Enable Schedule details under the care profile’s Home Assistant reminders.
+    Under the care profile’s Home Assistant reminders, turn on Schedule details
+    and the Due/Late categories you want to include.
     Choose that sensor and the caregiver phones that should receive its item names and due times.
     You can also announce overdue reminders on selected voice satellites.
   input:

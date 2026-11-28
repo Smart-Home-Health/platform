@@ -26,6 +26,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 from mcp_types import CallToolResult, ListToolsResult, TextContent, Tool, ToolAnnotations
 from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
@@ -103,13 +104,14 @@ def register_admin_mcp(app, session_factory=SessionLocal):
         transport_security=TransportSecuritySettings(allowed_hosts=[host], allowed_origins=[]),
     )
 
-    @endpoint.middleware("http")
     async def authenticate(request, call_next):
         scheme, _, value = request.headers.get("authorization", "").partition(" ")
         if scheme.lower() != "bearer" or not hmac.compare_digest(value.encode(), token.encode()):
             return JSONResponse({"detail": "MCP bearer token required"}, status_code=401,
                                 headers={"WWW-Authenticate": "Bearer"})
         return await call_next(request)
+
+    endpoint.add_middleware(BaseHTTPMiddleware, dispatch=authenticate)
 
     # The SDK owns the /mcp route and its session-manager lifespan. Include the
     # latter in FastAPI's lifespan alongside the existing startup/shutdown hooks.

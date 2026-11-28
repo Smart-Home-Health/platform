@@ -17,14 +17,36 @@
 FastAPI dependencies for authentication and authorization
 """
 from fastapi import Depends, HTTPException, status, Request
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from db import get_db
+from crud.patients import get_current_patient
 from crud.users import get_user_by_id
 from models.users import User, Account
+from schemas.patient import AccessLevel, Patient, PatientAccess
+from utils.datetime_utils import utc_now
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def schedule_profile_level(db: Session, user: User, patient_id: int) -> AccessLevel:
+    """Return access to this account's active care profile for schedule reads and management."""
+    patient = db.query(Patient.id).filter_by(id=patient_id, account_id=user.account_id, is_active=True).first()
+    if patient is None:
+        raise HTTPException(404, 'Care profile not found.')
+    if user.is_superuser:
+        return AccessLevel.OWNER
+    grant = db.query(PatientAccess).filter(
+        PatientAccess.patient_id == patient_id,
+        PatientAccess.user_id == user.id,
+        PatientAccess.is_active.is_(True),
+        or_(PatientAccess.expires_at.is_(None), PatientAccess.expires_at > utc_now().replace(tzinfo=None)),
+    ).first()
+    if grant is None:
+        raise HTTPException(404, 'Care profile not found.')
+    return grant.access_level
 
 
 async def get_current_account_id(request: Request) -> int:
@@ -157,6 +179,28 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)) -> U
         )
     
     return user
+
+
+def readable_schedule_categories(db: Session, user: User, patient_id: int, requested: Optional[str] = None) -> list[str]:
+    schedule_profile_level(db, user, patient_id)
+    categories = (requested,) if requested else ('medications', 'nutrition', 'care_tasks')
+    allowed = [key for key in categories if user.is_superuser or user.has_permission(f'{key}.read')]
+    if not allowed:
+        raise HTTPException(403, 'Schedule read permission required.')
+    return allowed
+
+
+def legacy_schedule_patient(category: str):
+    """Compatibility day routes can omit the patient and use the dashboard selection."""
+    def resolve(patient_id: Optional[int] = None, db: Session = Depends(get_db), user=Depends(get_current_user)) -> int:
+        if patient_id is None:
+            patient = get_current_patient(db)
+            if patient is None:
+                raise HTTPException(404, 'Care profile not found.')
+            patient_id = patient.id
+        readable_schedule_categories(db, user, patient_id, category)
+        return patient_id
+    return resolve
 
 
 async def get_current_active_user(

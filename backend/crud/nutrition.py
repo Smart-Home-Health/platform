@@ -878,7 +878,7 @@ def delete_nutrition_intake(db: Session, intake_id: int, whole_event: bool = Fal
         # Removing a whole feed removes its queued flush; removing a logged
         # flush restores the follow-up to pending.
         if whole_event and intake.event_group_id:
-            sync_flush_followups_on_void(db, [intake.event_group_id], None, utc_now())
+            sync_flush_followups_on_void(db, [intake.event_group_id], None, utc_now(), patient_id=patient_id)
         db.commit()
 
         logger.info(f"Deleted nutrition intake record(s): {[r.id for r in rows]}")
@@ -1480,7 +1480,7 @@ def maybe_spawn_flush_followup(
 
 
 def sync_flush_followups_on_void(db: Session, event_group_ids: List[str],
-                                 user_id: Optional[int], now: datetime) -> dict:
+                                 user_id: Optional[int], now: datetime, *, patient_id: int) -> dict:
     """Keep flush follow-ups consistent when intake events are voided.
 
     Feed undo: pending follow-ups spawned by a voided feed are voided too.
@@ -1495,6 +1495,7 @@ def sync_flush_followups_on_void(db: Session, event_group_ids: List[str],
         return result
 
     pending = db.query(NutritionFlushFollowup).filter(
+        NutritionFlushFollowup.patient_id == patient_id,
         NutritionFlushFollowup.source_event_group_id.in_(groups),
         NutritionFlushFollowup.status == 'pending',
     ).all()
@@ -1505,6 +1506,7 @@ def sync_flush_followups_on_void(db: Session, event_group_ids: List[str],
         result['voided'].append(followup.id)
 
     completed = db.query(NutritionFlushFollowup).filter(
+        NutritionFlushFollowup.patient_id == patient_id,
         NutritionFlushFollowup.completed_intake_group_id.in_(groups),
     ).all()
     for followup in completed:
