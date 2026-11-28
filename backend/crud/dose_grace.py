@@ -155,6 +155,8 @@ def find_grace_period_doses(db: Session, patient_id: int, before_utc: datetime, 
                         'log_id': None,
                         'in_grace': True,
                         'grace_hours': grace_h,
+                        'grace_period_hours': schedule.grace_period_hours,
+                        'reminder_window_minutes': schedule.reminder_window_minutes,
                         'grace_expires_at': expires,
                         'overdue_minutes': int((now_utc - firing).total_seconds() // 60),
                     })

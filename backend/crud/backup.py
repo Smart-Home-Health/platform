@@ -290,7 +290,7 @@ def _build_user_id_resolver(db: Session, account_id: int, users_referenced: Dict
 
 
 def _validate_archive(archive_bytes, contents):
-    from crud.backup_records import MODELS, STREAMED, SCHEMA_VERSION, fields, validate_rows
+    from crud.backup_records import MODELS, STREAMED, SCHEMA_VERSION, WINDOW_TABLES, fields, validate_rows
 
     manifest = contents.get('manifest.json')
     if not isinstance(manifest, dict):
@@ -320,6 +320,9 @@ def _validate_archive(archive_bytes, contents):
         archive_tables -= {'event_diaries', 'diary_events'}
     if strict and manifest.get('schema_version') in (1, 2):
         archive_tables -= {'schedule_manager_profiles', 'schedule_manager_feeds', 'schedule_manager_actions', 'schedule_manager_recipients', 'feed_start_overrides'}
+    predates_reminders = strict and manifest.get('schema_version') in (1, 2, 3)
+    if predates_reminders:
+        archive_tables.remove('schedule_reminders')
     expected = {name + '.json' for name in archive_tables - STREAMED}
     expected.update(name + '.ndjson' for name in STREAMED)
     expected.update(('manifest.json', 'users_referenced.json'))
@@ -333,7 +336,10 @@ def _validate_archive(archive_bytes, contents):
             expected.add(item['member'])
     if strict:
         schema = {name: sorted(fields(MODELS[name])) for name in archive_tables}
-        if manifest.get('schema_version') not in (1, 2, SCHEMA_VERSION) or manifest.get('tables') != schema:
+        if predates_reminders:
+            for name in WINDOW_TABLES:
+                schema[name].remove('reminder_window_minutes')
+        if type(manifest.get('schema_version')) is not int or manifest['schema_version'] not in (1, 2, 3, SCHEMA_VERSION) or manifest.get('tables') != schema:
             raise ValueError('Unsupported backup schema; export and restore using a matching application version')
         if attachments is None:
             raise ValueError('Archive is missing attachment manifest')
@@ -351,6 +357,12 @@ def _validate_archive(archive_bytes, contents):
         if members - expected:
             raise ValueError('Archive contains unsupported members: ' + ', '.join(sorted(members - expected)))
     rows = {name: contents.get(name + '.json', []) for name in MODELS if name not in STREAMED}
+    if predates_reminders:
+        for name in WINDOW_TABLES:
+            for row in rows[name]:
+                if not isinstance(row, dict) or set(row) != set(schema[name]):
+                    raise ValueError(f'Missing or unsupported fields in {name}')
+                row['reminder_window_minutes'] = None
     validate_rows(rows, strict=strict, patient_id=source_patient, account_id=source_account)
     if strict:
         for name, values in rows.items():
@@ -409,7 +421,7 @@ def _restored_orm_row(model, values):
 
 def _restore_records(db, archive_bytes, account_id, manifest, rows, contents, members, attachments):
     from crud.backup_records import (MODELS, STREAMED, TABLE_NAMES, CLEARED_REFERENCES,
-                                    EXCLUSIONS, fields, user_fields)
+                                    EXCLUSIONS, REMINDER_SCHEDULE_TABLES, fields, user_fields)
     strict = manifest['format_version'] >= 4
     warnings = list(EXCLUSIONS.values())
     if not strict:
@@ -509,6 +521,9 @@ def _restore_records(db, archive_bytes, account_id, manifest, rows, contents, me
                         raise ValueError(f'Missing dependency for {name}.{field}={value}')
                 else:
                     raise ValueError(f'Unsupported relationship {name}.{field}')
+        if name == 'schedule_reminders':
+            target = REMINDER_SCHEDULE_TABLES[row['category']]
+            row['schedule_id'] = maps[target][row['schedule_id']]
         for field in ('event_group_id', 'source_event_group_id', 'completed_intake_group_id', 'encounter_uid'):
             if row.get(field):
                 row[field] = event_groups.setdefault(row[field], str(uuid.uuid4()))
@@ -587,7 +602,8 @@ def _restore_records(db, archive_bytes, account_id, manifest, rows, contents, me
                 obj = _restored_orm_row(model, row)
                 db.add(obj)
                 db.flush()
-                maps[name][old_id] = obj.id
+                if old_id is not None:
+                    maps[name][old_id] = obj.id
             count += 1
         if batch:
             db.bulk_insert_mappings(model, batch)

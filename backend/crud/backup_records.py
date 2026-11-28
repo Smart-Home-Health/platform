@@ -19,6 +19,7 @@ Order is dependency order, except shipment self-links (wired in a second pass).
 Adding a patient table/column must update this contract and its roundtrip tests.
 Account configuration and credentials are intentionally not portable patient data.
 """
+from datetime import datetime
 from functools import lru_cache
 
 from sqlalchemy import inspect as sa_inspect, or_
@@ -52,6 +53,7 @@ from schemas.nutrition_schedule import NutritionSchedule, NutritionScheduleCompo
 from schemas.nutrition_flush_followup import NutritionFlushFollowup
 from schemas.nutrition_goal import NutritionGoal
 from schemas.feed_start_override import FeedStartOverride
+from schemas.schedule_reminder import ScheduleReminder
 from schemas.schedule_manager import ScheduleManagerProfile, ScheduleManagerFeed, ScheduleManagerAction, ScheduleManagerRecipient
 from schemas.dme_shipment import (DMEShipment, DMEShipmentItem, DMEReceiptItem,
                                   DMEShipmentAlert, DMEShipmentDocument)
@@ -92,13 +94,20 @@ MODELS = dict([
     ('nutrition_outputs', NutritionOutput), ('nutrition_flush_followups', NutritionFlushFollowup),
     ('schedule_manager_profiles', ScheduleManagerProfile), ('schedule_manager_feeds', ScheduleManagerFeed),
     ('schedule_manager_actions', ScheduleManagerAction), ('schedule_manager_recipients', ScheduleManagerRecipient), ('feed_start_overrides', FeedStartOverride),
+    ('schedule_reminders', ScheduleReminder),
     ('dme_shipments', DMEShipment), ('dme_shipment_items', DMEShipmentItem),
     ('dme_receipt_items', DMEReceiptItem), ('dme_shipment_alerts', DMEShipmentAlert),
     ('dme_shipment_documents', DMEShipmentDocument),
 ])
 STREAMED = {'pulse_ox_data', 'vent_samples'}
 TABLE_NAMES = {model.__tablename__: name for name, model in MODELS.items()}
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
+REMINDER_SCHEDULE_TABLES = {
+    'medications': 'medication_schedules',
+    'care_tasks': 'care_task_schedules',
+    'nutrition': 'nutrition_schedules',
+}
+WINDOW_TABLES = {'patient', *REMINDER_SCHEDULE_TABLES.values()}
 
 # This obsolete GPIO alarm model was never created by the migration chain.
 # A pre-migration installation may still contain the table and history. Only
@@ -200,6 +209,16 @@ def gather_rows(db, patient_id, account_id):
         if required - {r.id for r in rows[name]}:
             raise ValueError(f'Missing source dependency in {name}')
 
+    # A patient's first snooze can be on an account-wide schedule, before any
+    # history exists to pull its parent medication or care task into the archive.
+    for category, name in REMINDER_SCHEDULE_TABLES.items():
+        required = {r.schedule_id for r in rows['schedule_reminders'] if r.category == category}
+        missing = required - {r.id for r in rows[name]}
+        if missing:
+            model = MODELS[name]
+            rows[name] += query(model).filter(model.id.in_(missing),
+                or_(model.patient_id == patient_id, model.patient_id.is_(None))).all()
+
     dependencies('medications', [('medication_logs', 'medication_id'), ('medication_schedules', 'medication_id')])
     dependencies('care_tasks', [('care_task_logs', 'care_task_id'), ('care_task_schedules', 'care_task_id')])
     dependencies('equipment', [('equipment_change_logs', 'equipment_id'), ('dme_shipment_items', 'equipment_id')])
@@ -256,7 +275,13 @@ def validate_rows(rows, *, strict, patient_id, account_id):
             if strict and set(row) != set(allowed):
                 raise ValueError(f'Missing fields in {name}: {", ".join(sorted(set(allowed) - set(row)))}')
             old_id = row.get('id')
-            if old_id is None or isinstance(old_id, bool) or not isinstance(old_id, (int, str)) or old_id in seen:
+            if name == 'schedule_reminders':
+                old_id = (row.get('category'), row.get('schedule_id'), row.get('scheduled_at'))
+                if not (isinstance(old_id[0], str) and type(old_id[1]) is int and isinstance(old_id[2], (str, datetime))):
+                    raise ValueError('Invalid schedule reminder occurrence')
+            elif old_id is None or isinstance(old_id, bool) or not isinstance(old_id, (int, str)):
+                raise ValueError(f'Missing or duplicate id in {name}')
+            if old_id in seen:
                 raise ValueError(f'Missing or duplicate id in {name}')
             seen.add(old_id)
             if 'account_id' in row and row['account_id'] not in (None, account_id):
@@ -268,6 +293,10 @@ def validate_rows(rows, *, strict, patient_id, account_id):
         if name not in MODELS or name in STREAMED:
             continue
         for row in values:
+            if name == 'schedule_reminders':
+                target = REMINDER_SCHEDULE_TABLES.get(row['category'])
+                if target is None or row['schedule_id'] not in ids.get(target, set()):
+                    raise ValueError('Missing dependency for schedule_reminders.schedule_id')
             for field, column in fields(MODELS[name]).items():
                 value = row.get(field)
                 if value is None:

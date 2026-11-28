@@ -74,6 +74,35 @@ def test_intake_history_filters_by_schedule(admin_client, patient, db_session):
         "Overnight Water", "Morning Feed", "Ad-hoc sip"}
 
 
+def test_saved_item_history_includes_scheduled_and_ad_hoc_records(admin_client, patient, account, db_session):
+    from datetime import datetime, timezone
+    from schemas.nutrition_intake import NutritionIntake
+    from schemas.nutrition_item import NutritionItem
+    from schemas.nutrition_schedule import NutritionSchedule
+    from schemas.patient import Patient
+
+    when = datetime.now(timezone.utc)
+    item = NutritionItem(account_id=account.id, name='Test drink', item_type='liquid')
+    other = Patient(account_id=account.id, first_name='Other', last_name='Profile', created_at=when, updated_at=when)
+    plan = NutritionSchedule(patient_id=patient.id, name='Evening drink', schedule_type='liquid',
+                             cron_expression='0 20 * * *')
+    db_session.add_all([item, other, plan])
+    db_session.flush()
+    for owner, item_id, schedule_id, amount in [
+        (patient.id, item.id, plan.id, 120), (patient.id, item.id, None, 60),
+        (patient.id, None, None, 90), (other.id, item.id, None, 180),
+    ]:
+        db_session.add(NutritionIntake(patient_id=owner, schedule_id=schedule_id, item_id=item_id,
+                                       item_name=item.name, item_type='liquid', amount=amount, amount_unit='ml',
+                                       consumed_at=when, created_at=when, updated_at=when))
+    db_session.commit()
+    path = f'/api/patients/{patient.id}/nutrition-intake?item_id={item.id}'
+    response = admin_client.get(path)
+    assert response.status_code == 200, response.text
+    assert [row['amount'] for row in response.json()] == [60, 120]
+    assert [row['amount'] for row in admin_client.get(path + '&limit=1').json()] == [60]
+
+
 def test_create_nutrition_intake(admin_client, patient):
     resp = admin_client.post(f"/api/nutrition-intake?patient_id={patient.id}", json=_intake())
     assert resp.status_code == 200

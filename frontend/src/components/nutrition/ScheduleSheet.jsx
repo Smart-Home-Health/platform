@@ -34,6 +34,8 @@ import { ClockIcon, FoodIcon, LiquidIcon, SnackIcon, SupplementIcon } from '../I
 import {
   localTimeToUTC, localTimeAndDaysToUTC, utcCronToLocalDaysAndTime,
 } from '../../utils/timezone';
+import MissedWindowField from '../schedule/MissedWindowField';
+import { validMissedWindow } from '../schedule/reminderTiming';
 import IntakeItemsEditor from './IntakeItemsEditor';
 import {
   rowFromComponentResponse, rowIsValid, rowToComponentPayload,
@@ -72,6 +74,7 @@ const emptyForm = () => ({
   default_calories: '',
   create_care_task: true,
   reminder_minutes_before: 15,
+  reminder_window_minutes: null,
   instructions: '',
   notes: '',
   is_active: true,
@@ -139,6 +142,7 @@ export default function ScheduleSheet({ open, onClose, onSave, editing, saving, 
       default_amount_unit: editing.default_amount_unit || 'ml',
       default_calories: editing.default_calories ?? '',
       create_care_task: editing.create_care_task !== false,
+      reminder_window_minutes: editing.reminder_window_minutes ?? null,
       reminder_minutes_before: editing.reminder_minutes_before ?? 15,
       instructions: editing.instructions || '',
       notes: editing.notes || '',
@@ -190,7 +194,7 @@ export default function ScheduleSheet({ open, onClose, onSave, editing, saving, 
   const mixValid = mixItems.every((row) => rowIsValid(row) && row.itemId);
   const canSave = !!form.name.trim() && !saving
     && !(mode === 'weekly' && days.length === 0)
-    && (isCare || mixValid);
+    && validMissedWindow(form.reminder_window_minutes) && (isCare || mixValid);
 
   const summary = useMemo(() => {
     const when = mode === 'daily'
@@ -237,6 +241,7 @@ export default function ScheduleSheet({ open, onClose, onSave, editing, saving, 
       fluid_max_ml: (!isCare && fillsFluidGoal) ? numberOrNull(fluidMax) : null,
       create_care_task: form.create_care_task,
       reminder_minutes_before: numberOrNull(form.reminder_minutes_before) ?? 0,
+      ...((form.reminder_window_minutes !== (editing?.reminder_window_minutes ?? null)) && { reminder_window_minutes: form.reminder_window_minutes }),
       instructions: form.instructions || null,
       notes: form.notes || null,
       is_active: form.is_active,
@@ -498,6 +503,11 @@ export default function ScheduleSheet({ open, onClose, onSave, editing, saving, 
           </section>
         )}
 
+        <MissedWindowField key={editing?.id ?? 'new'} initialMinutes={editing?.reminder_window_minutes} value={form.reminder_window_minutes}
+          onChange={minutes => set({ reminder_window_minutes: minutes })}
+          placeholder={editing ? 'End of the following day' : 'Profile default'}
+          hint={editing ? 'Leave blank to mark missed at the end of the following day.'
+            : 'Leave blank to use the profile default. Without a default, this stays due through the following day.'} />
         <DisclosureRow label="Reminder and care task" optional>
           <EmField label="Remind (minutes before)" htmlFor="sched-reminder">
             <input

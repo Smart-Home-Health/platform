@@ -392,6 +392,7 @@ class NutritionScheduleCreate(BaseModel):
     patient_id: int
     schedule_type: str = Field(..., pattern="^(meal|hydration|snack|supplement|diaper_check|bathroom_assist|catheter_care)$")
     name: str = Field(..., min_length=1, max_length=200)
+    reminder_window_minutes: Optional[int] = Field(None, gt=0, le=2147483647)
     cron_expression: str = Field(..., min_length=1, max_length=100)
     default_item_name: Optional[str] = None
     default_amount: Optional[float] = None
@@ -416,6 +417,7 @@ class NutritionScheduleUpdate(BaseModel):
     """Update nutrition schedule"""
     schedule_type: Optional[str] = None
     name: Optional[str] = None
+    reminder_window_minutes: Optional[int] = Field(None, gt=0, le=2147483647)
     cron_expression: Optional[str] = None
     default_item_name: Optional[str] = None
     default_amount: Optional[float] = None
@@ -439,6 +441,7 @@ class NutritionScheduleResponse(BaseModel):
     patient_id: int
     schedule_type: str
     name: str
+    reminder_window_minutes: Optional[int] = Field(None, gt=0, le=2147483647)
     cron_expression: str
     default_item_name: Optional[str]
     default_amount: Optional[float]

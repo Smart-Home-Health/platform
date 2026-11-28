@@ -258,6 +258,9 @@ CANONICAL_KEYS = {
 }
 
 
+REMINDER_KEYS = {'original_due_at', 'deadline_at', 'remind_at', 'effective_time', 'reminder_state', 'can_remind_later'}
+
+
 def test_canonical_item_reconciles_both_dialects():
     """Two producers named the same fields differently, so each view learned
     one dialect and missed anything added to the other."""
@@ -310,7 +313,7 @@ def test_day_endpoint_returns_canonical_items(admin_client, patient, db_session)
     assert 'items' in body and 'counts' in body
     assert body['counts']['total'] == len(body['items'])
     for item in body['items']:
-        assert set(item) == CANONICAL_KEYS, set(item) ^ CANONICAL_KEYS
+        assert set(item) == CANONICAL_KEYS | REMINDER_KEYS
 
 
 def test_day_endpoint_requires_read_access(client, patient):
@@ -328,4 +331,4 @@ def test_combined_schedule_speaks_the_same_shape(admin_client, patient, db_sessi
 
     body = admin_client.get(f"/api/schedule/daily?patient_id={patient.id}").json()
     for item in body.get('care_tasks', []):
-        assert set(item) == CANONICAL_KEYS, set(item) ^ CANONICAL_KEYS
+        assert set(item) == CANONICAL_KEYS | REMINDER_KEYS

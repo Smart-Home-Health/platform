@@ -23,6 +23,7 @@ import { scheduleManagerService } from '../../../services/scheduleManager';
 import { CfgFields, CfgGroup, CfgSection } from '../settings/CfgSection';
 import { BathroomCheckCard } from './BathroomCheckCard';
 import { formatDateTime } from './careProfileFormat';
+import ReminderDefaults from './ReminderDefaults';
 import CareProfileSection from './CareProfileSection';
 import useCareProfile from './useCareProfile';
 
@@ -295,6 +296,7 @@ function Manager({ patientId }) {
     description="Choose how this person’s schedule responds to care recorded throughout the day."
     loading={!record && !loadError} error={error || loadError} notice={notice}>
     {!record && loadError && <button type="button" className="cfg-ghost" onClick={refresh}>Try again</button>}
+    {patient && <ReminderDefaults patientId={patientId} />}
     {record && settings && <>
       {(record.settings.manual_checks_enabled || record.settings.checks_enabled) && (record.can_record || record.suggestion) &&
         <BathroomCheckCard state={record} patientId={patientId} onUpdate={updateRecord} />}

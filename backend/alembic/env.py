@@ -46,6 +46,7 @@ from schemas import Base
 
 # Import all schema models to ensure they're registered with Base.metadata
 from schemas.patient import Patient
+from schemas.schedule_reminder import ScheduleReminder
 from schemas.business import Business
 from schemas.provider import Provider
 from schemas.vital import Vital

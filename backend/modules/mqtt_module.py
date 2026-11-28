@@ -200,7 +200,7 @@ class MQTTModule:
             if not cfg.get("enabled", True) or not (badges or details):
                 return {}, None
             with get_db_session() as db:
-                snapshot = get_schedule_status(db, patient_id, sections=badges)
+                snapshot = get_schedule_status(db, patient_id, sections=badges, include_alerts=details)
             return schedule_badge_counts(snapshot, badges), snapshot if details else None
         try:
             return await asyncio.to_thread(_load)

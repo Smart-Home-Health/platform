@@ -26,6 +26,8 @@
 // JSON in the schedule's notes field, which is the shape the API already reads.
 import { useEffect, useState } from 'react';
 import EntityModal, { EmField } from '../vc/EntityModal';
+import MissedWindowField from '../schedule/MissedWindowField';
+import { validMissedWindow } from '../schedule/reminderTiming';
 import SegmentedControl from '../vc/SegmentedControl';
 import ChipGroup from '../vc/ChipGroup';
 import DisclosureRow from '../vc/DisclosureRow';
@@ -78,6 +80,7 @@ export default function CareTaskScheduleModal({
   saving, error,
 }) {
   const [editing, setEditing] = useState(null);
+  const [windowMinutes, setWindowMinutes] = useState(null);
   const [description, setDescription] = useState('');
   const [note, setNote] = useState('');
   const [nutrition, setNutrition] = useState(emptyNutrition);
@@ -97,6 +100,7 @@ export default function CareTaskScheduleModal({
   }, [open, task?.id, reset]);
 
   const startNew = () => {
+    setWindowMinutes(null);
     setEditing(null);
     setDescription('');
     setNote('');
@@ -106,6 +110,7 @@ export default function CareTaskScheduleModal({
   };
 
   const startEdit = (schedule) => {
+    setWindowMinutes(schedule.reminder_window_minutes ?? null);
     setEditing(schedule);
     setDescription(schedule.description || '');
     setNote(readPlainNote(schedule.notes));
@@ -134,11 +139,12 @@ export default function CareTaskScheduleModal({
   const submit = (event) => {
     event.preventDefault();
     const expression = cron.build();
-    if (!expression) return;
+    if (!expression || !validMissedWindow(windowMinutes)) return;
     const payload = {
       cron_expression: expression,
       description: description.trim() || cron.summary,
       notes: buildNotes(),
+      ...(windowMinutes !== (editing?.reminder_window_minutes ?? null) && { reminder_window_minutes: windowMinutes }),
     };
     if (editing) onUpdate(editing, payload);
     else onCreate(payload);
@@ -241,6 +247,10 @@ export default function CareTaskScheduleModal({
                      onChange={(e) => cron.setTime(e.target.value)} required />
             </EmField>
 
+            <MissedWindowField key={editing?.id ?? 'new'} value={windowMinutes} onChange={setWindowMinutes}
+              placeholder={editing ? 'End of the following day' : 'Profile default'}
+              hint={editing ? 'Leave blank to mark missed at the end of the following day.'
+                : 'Leave blank to use the profile default. Without a default, this stays due through the following day.'} />
             <EmField label="Label" optional htmlFor="ct-desc">
               <input id="ct-desc" className="em-input" value={description}
                      placeholder={cron.summary}
@@ -296,7 +306,7 @@ export default function CareTaskScheduleModal({
               <button type="button" className="em-cancel" onClick={() => setShowForm(false)}>
                 Cancel
               </button>
-              <button type="submit" className="em-submit" disabled={!cron.valid || saving}>
+              <button type="submit" className="em-submit" disabled={!cron.valid || !validMissedWindow(windowMinutes) || saving}>
                 {saving ? 'Saving…' : (editing ? 'Save schedule' : 'Add schedule')}
               </button>
             </div>

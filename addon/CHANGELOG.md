@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.3
+
+- Choose **Remind me later** on a scheduled medication, nutrition entry or care task. The occurrence moves to the selected time on the daily timeline and Live Board. Home Assistant pauses its reminders until then. The next regular occurrence keeps its scheduled time.
+- Set **Mark missed after** on a schedule, or set a care profile default for new schedules. The window runs from the original due time. If a reminder crosses the next occurrence of the same item, the hub shows both times and asks for confirmation. If the chosen time falls beyond the window, you can request a final reminder when it ends.
+- Open recent history from the arrow on a Nutrition Items or Care Tasks card, as on the medication Overview. Each modal shows the selected profile’s last ten records for that item. The daily timeline no longer has a history button on each row.
+- Re-import the **Late care reminder** Home Assistant blueprint to receive a notification at the selected time or at the end of the window, including when another item is already late.
+
 ## 0.8.2
 
 - Medications, Nutrition and Care Tasks now use the same daily timeline as the combined Schedule. Opening a section or its Live Board panel shows just that category. Use the arrows or date picker to review yesterday or another day, and **Today** to return.

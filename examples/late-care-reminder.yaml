@@ -5,7 +5,8 @@ blueprint:
     Under the care profile’s Home Assistant reminders, turn on Schedule details
     and the Due/Late categories you want to include.
     Choose that sensor and the caregiver phones that should receive its item names and due times.
-    You can also announce overdue reminders on selected voice satellites.
+    It also sends reminders at caregiver-selected times, including at the end of a missed window.
+    You can also announce reminders on selected voice satellites.
   input:
     schedule:
       name: Schedule details sensor
@@ -40,8 +41,8 @@ blueprint:
           filter:
             - domain: assist_satellite
     speak_item_names:
-      name: Speak overdue item names
-      description: Include the names of up to three overdue items in each spoken reminder.
+      name: Speak item names
+      description: Include the names of up to three items in each spoken reminder.
       default: false
       selector:
         boolean: {}
@@ -55,7 +56,7 @@ blueprint:
           unit_of_measurement: min
           mode: box
 
-mode: single
+mode: queued
 variables:
   repeat_minutes: !input repeat_minutes
   primary_phone: !input phone
@@ -72,6 +73,19 @@ variables:
     {% endfor %}
     {{ targets.ids }}
   speak_item_names: !input speak_item_names
+  reminder_alerts: >-
+    {% set current = trigger.to_state if trigger is defined and trigger.to_state is defined else none %}
+    {% set previous = trigger.from_state if trigger is defined and trigger.from_state is defined else none %}
+    {% set seen = namespace(keys=[], fresh=[]) %}
+    {% for item in (previous.attributes.get('reminder_alerts', []) if previous and previous.state not in ['unknown', 'unavailable'] else []) %}
+      {% set seen.keys = seen.keys + [(item.occurrence_id, item.due_at)] %}
+    {% endfor %}
+    {% for item in (current.attributes.get('reminder_alerts', []) if current else []) %}
+      {% if (item.occurrence_id, item.due_at) not in seen.keys %}
+        {% set seen.fresh = seen.fresh + [item] %}
+      {% endif %}
+    {% endfor %}
+    {{ seen.fresh }}
 triggers:
   # The sensor publishes a dated snapshot every minute, even if the count is unchanged.
   - trigger: state
@@ -84,24 +98,29 @@ conditions:
       {% set age = as_timestamp(now()) - as_timestamp(current.attributes.generated_at, 0) if current else -1 %}
       {% set late = current.attributes.get('late', []) if current else [] %}
       {{ current is not none and current.state not in ['unknown', 'unavailable']
-         and 0 <= age < 180 and late | length > 0
+         and 0 <= age < 180 and (reminder_alerts | length > 0 or (late | length > 0
          and current.attributes.get('late_count', -1) | int(-1) == late | length
          and (previous is none or previous.state in ['unknown', 'unavailable']
               or previous.attributes.get('late', []) | length == 0
               or as_timestamp(now()) - as_timestamp(this.attributes.get('last_triggered'), 0)
-                 >= repeat_minutes | int * 60) }}
+                 >= repeat_minutes | int * 60))) }}
 actions:
   - device_id: !input phone
     domain: mobile_app
     type: notify
     continue_on_error: true
-    title: &reminder_title "{{ trigger.to_state.attributes.late | length }} overdue · {{ trigger.to_state.name }}"
+    title: &reminder_title >-
+      {{ 'Care reminder' if reminder_alerts else (trigger.to_state.attributes.late | length ~ ' overdue') }} · {{ trigger.to_state.name }}
     message: &reminder_message |-
       {%- macro line(item) -%}
       {{ item.category }} · {{ item.name }} — due {{ (as_timestamp(item.due_at) | timestamp_custom('%a %-I:%M %p', true)) if item.due_at is defined else item.due_date }}
       {%- endmacro -%}
       {%- set data = trigger.to_state.attributes -%}
-      {%- if data.details is defined -%}
+      {%- if reminder_alerts -%}
+      {%- for item in reminder_alerts -%}
+      {{ 'Window ended' if item.at_deadline else 'Remind me later' }} · {{ item.category }} · {{ item.name }} — {{ as_timestamp(item.due_at) | timestamp_custom('%a %-I:%M %p', true) }}{{ '\n' if not loop.last else '' }}
+      {%- endfor -%}
+      {%- elif data.details is defined -%}
       {{ data.details }}
       {%- else -%}
       {%- for item in data.late -%}
@@ -134,9 +153,16 @@ actions:
           entity_id: "{{ announcement_targets }}"
         data:
           message: >-
+            {% if reminder_alerts -%}
+            {% for item in reminder_alerts[:3] -%}
+            {{ 'The reminder window has ended' if item.at_deadline else 'It is time for your reminder' }}{{ ' for ' ~ item.name if speak_item_names else '' }}.{{ ' ' if not loop.last else '' }}
+            {%- endfor %}
+            {%- if reminder_alerts | length > 3 %} And {{ reminder_alerts | length - 3 }} more.{% endif %}
+            {%- else -%}
             {% set late = trigger.to_state.attributes.late -%}
             {% set count = late | length -%}
             {{ count }} care {{ 'item is' if count == 1 else 'items are' }} overdue.
             {%- if speak_item_names %}
               {{ late[:3] | map(attribute='name') | join(', ') }}{% if count > 3 %}, and {{ count - 3 }} more{% endif %}.
+            {%- endif %}
             {%- endif %}

@@ -23,6 +23,7 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt, field_validator, model_validator
 from sqlalchemy import or_
 
+from crud.reminder_windows import medication_window_fields
 from crud.medications import stage_medication, stage_medication_schedule
 from models.medications import MedicationDetails, MedicationScheduleChanges, MedicationScheduleDetails
 from schemas.medication import Medication
@@ -59,7 +60,7 @@ class ScheduleChanges(MedicationScheduleChanges):
     def validate_changes(self):
         if not self.model_fields_set:
             raise ValueError("Supply at least one schedule field")
-        for key in self.model_fields_set - {"notes", "grace_period_hours"}:
+        for key in self.model_fields_set - {"notes", "grace_period_hours", "reminder_window_minutes"}:
             if getattr(self, key) is None:
                 raise ValueError(f"{key} cannot be null")
         if self.cron_expression is not None:
@@ -203,7 +204,7 @@ class MedicationPlan:
             schedule = self.schedules.get(data.schedule_id)
             if schedule is None or schedule.medication_id != med.id:
                 raise PlanError("Schedule not found on this medication")
-            for field, value in data.schedule.model_dump(exclude_unset=True).items():
+            for field, value in medication_window_fields(data.schedule.model_dump(exclude_unset=True)).items():
                 setattr(schedule, field, value)
             schedule.updated_at = utc_now()
         return schedule.id

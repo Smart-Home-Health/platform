@@ -20,10 +20,12 @@
 // just "pick it, enter the mL" — calories and macros scale automatically.
 import { useMemo, useState } from 'react';
 import EntityToolbar from '../../../components/vc/EntityToolbar';
+import ItemHistoryModal from './ItemHistoryModal';
 import EntityCard from '../../../components/vc/EntityCard';
 import {
   BarcodeIcon, FlameIcon, FoodIcon, LiquidIcon, NutritionIcon,
   SupplementIcon, TubeIcon,
+  ChevronRightIcon,
 } from '../../../components/Icons';
 import { INTAKE_TYPE_LABELS } from '../../../components/nutrition/intakeVocab';
 
@@ -52,6 +54,7 @@ const perServing = (perUnit, amount) => {
 export default function NutritionItemsTab({
   items = [],
   loading,
+  patientId,
   canCreate,
   canUpdate,
   canDelete,
@@ -59,6 +62,7 @@ export default function NutritionItemsTab({
   onEdit,
   onDelete,
 }) {
+  const [historyItem, setHistoryItem] = useState(null);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
 
@@ -154,6 +158,11 @@ export default function NutritionItemsTab({
                   badges={badges}
                   details={details}
                   menu={menuFor(item)}
+                  quickActions={patientId ? [{
+                    icon: <ChevronRightIcon size={20} />,
+                    label: `View history for ${item.name}`,
+                    onClick: () => setHistoryItem(item),
+                  }] : []}
                 >
                   {kcal == null && (
                     <p className="ec-note">
@@ -167,6 +176,8 @@ export default function NutritionItemsTab({
           </div>
         </>
       )}
+      {historyItem && <ItemHistoryModal type="nutrition" patientId={patientId} item={historyItem}
+        onClose={() => setHistoryItem(null)} />}
     </>
   );
 }

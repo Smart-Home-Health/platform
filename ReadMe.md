@@ -196,7 +196,11 @@ For a notification message, use `{{ state_attr('sensor.your_schedule_details', '
 
 The hub publishes the snapshot on `<base>/patient/<id>/schedule` every minute and on care log changes. Timed items become late after one hour. Upcoming covers the next hour for timed care and the next seven days for equipment. Each snapshot includes `generated_at`. Home Assistant marks the sensor unavailable after three minutes without an update.
 
-To get phone reminders, import the blueprint under **Settings → Automations & scenes → Blueprints**, create an automation from it, and select the sensor and caregiver phone. It sends the first reminder when an item becomes late and repeats every 30 minutes by default while items are still late. [Late care reminder blueprint](examples/late-care-reminder.yaml)
+To get phone reminders, import the blueprint under **Settings → Automations & scenes → Blueprints**, create an automation from it, and select the sensor and caregiver phone. It sends the first reminder when an item becomes late and repeats every 30 minutes by default while items are still late. Re-import the 0.8.3 blueprint to receive **Remind me later** notifications when they come due. These use the sensor’s `reminder_alerts` attribute and can arrive during the regular repeat interval. [Late care reminder blueprint](examples/late-care-reminder.yaml)
+
+On the daily timeline or Live Board, open a scheduled medication, nutrition entry or care task and choose **Remind me later**. Enter the time in the device time zone shown in the dialog. The occurrence moves to that time and keeps its original due time in its details. A confirmation appears when the reminder would cross another occurrence of the same item. Recording or skipping the occurrence clears its reminder.
+
+Set **Mark missed after** on an individual schedule to choose how long it can remain due. The window starts at the original due time. A reminder requested beyond the window can be moved to the end instead, when the hub marks the occurrence missed. The care profile’s Schedule Manager can provide a default for newly created schedules.
 
 ## License
 

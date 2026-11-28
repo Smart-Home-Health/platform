@@ -17,6 +17,8 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { EmField, EmRow, EmSelect } from '../vc/EntityModal';
+import MissedWindowField from '../schedule/MissedWindowField';
+import { validMissedWindow } from '../schedule/reminderTiming';
 import { DAYS } from '../vc/useCronSchedule';
 import { localTimeAndDaysToUTC, localTimeToUTC, parseCronExpression } from '../../utils/timezone';
 
@@ -54,7 +56,9 @@ export default function MedicationScheduleForm({
   const [initialTiming] = useState(() => readTiming(schedule));
   const [timing, setTiming] = useState(initialTiming);
   const [dose, setDose] = useState(schedule ? String(schedule.dose_amount ?? '') : '1.000');
-  const [grace, setGrace] = useState(String(schedule?.grace_period_hours ?? ''));
+  const existingWindow = schedule?.reminder_window_minutes
+    ?? (schedule?.grace_period_hours != null ? schedule.grace_period_hours * 60 : null);
+  const [windowMinutes, setWindowMinutes] = useState(existingWindow);
   const [patientId, setPatientId] = useState(String((schedule ? schedule.patient_id : currentPatientId) ?? ''));
   const heading = useRef(null);
   useEffect(() => {
@@ -68,7 +72,7 @@ export default function MedicationScheduleForm({
   });
   const custom = timing.mode === 'custom';
   const validDose = Number(dose) > 0 || (schedule && schedule.dose_amount == null && dose === '');
-  const valid = validDose && (grace === '' || Number(grace) > 0)
+  const valid = validDose && (windowMinutes === existingWindow || validMissedWindow(windowMinutes))
     && (custom || (timing.time && (timing.mode !== 'weekly' || timing.days.length > 0)))
     && (!medication.is_global || patientId || (schedule && schedule.patient_id == null));
 
@@ -81,16 +85,18 @@ export default function MedicationScheduleForm({
     const payload = !schedule || fields.cron_expression !== writeTiming(initialTiming).cron_expression
       ? fields : {};
     const newDose = dose === '' ? null : Number(dose);
-    const newGrace = grace === '' ? null : Number(grace);
     if (!schedule || newDose !== schedule.dose_amount) payload.dose_amount = newDose;
-    if (!schedule || newGrace !== (schedule.grace_period_hours ?? null)) payload.grace_period_hours = newGrace;
+    if (windowMinutes !== existingWindow) {
+      payload.reminder_window_minutes = windowMinutes;
+      if (schedule?.grace_period_hours != null) payload.grace_period_hours = null;
+    }
     if (medication.is_global && patientId && Number(patientId) !== schedule?.patient_id) {
       payload.patient_id = Number(patientId);
     }
     if (await onSave(payload) && !schedule) {
       setTiming(initialTiming);
       setDose('1.000');
-      setGrace('');
+      setWindowMinutes(null);
     }
   }
 
@@ -155,11 +161,10 @@ export default function MedicationScheduleForm({
                  value={dose} onChange={e => setDose(e.target.value)} placeholder="1.000" />
         </EmField>
       </EmRow>
-      <EmField label="Grace period (hours)" optional htmlFor="med-sched-grace"
-               hint="How long a missed dose stays on the schedule before it counts as missed. Blank uses 60% of the interval: about 4 days for a weekly dose, 14 hours for a daily one.">
-        <input id="med-sched-grace" className="em-input" type="number" step="any" min="0"
-               value={grace} onChange={e => setGrace(e.target.value)} placeholder="Default" />
-      </EmField>
+      <MissedWindowField value={windowMinutes} onChange={setWindowMinutes} legacyValue={existingWindow}
+        placeholder={schedule ? 'Automatic' : 'Profile default'}
+        hint={schedule ? 'Leave blank to use 60% of the time until the next dose.'
+          : 'Leave blank to use the profile default. Without a default, a dose is marked missed after 60% of the time until its next occurrence.'} />
       <div className={schedule ? 'em-footer' : 'cfg-actions'}>
         {schedule && <button type="button" className="em-cancel" disabled={saving} onClick={onCancel}>Cancel</button>}
         <button type="submit" className="em-submit" disabled={saving || !valid}>

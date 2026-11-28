@@ -62,7 +62,7 @@ SCHEDULE_STATE_TEMPLATE = _SCHEDULE_FORMAT + r"""
 """
 
 SCHEDULE_ATTRIBUTES_TEMPLATE = _SCHEDULE_FORMAT + """
-{{- dict(value_json, details=details|trim) | to_json -}}
+{{- dict(value_json, details=details|trim, reminder_alerts=value_json.get('reminder_alerts', [])) | to_json -}}
 """
 
 # Section key -> (value_template, unit_of_measurement, display_name, sensor_type) for discovery.

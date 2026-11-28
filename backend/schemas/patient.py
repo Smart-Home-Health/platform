@@ -29,6 +29,7 @@ class AccessLevel(enum.Enum):
 
 class Patient(Base):
     __tablename__ = 'patients'
+    reminder_window_minutes = Column(Integer, nullable=True)
     id = Column(Integer, primary_key=True, autoincrement=True)
     account_id = Column(Integer, ForeignKey('accounts.id', ondelete='CASCADE'), nullable=True, index=True)  # Account this patient belongs to
     first_name = Column(String, nullable=False)

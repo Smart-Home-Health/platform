@@ -20,6 +20,7 @@ from schemas import Base
 
 class CareTaskSchedule(Base):
     __tablename__ = 'care_task_schedule'
+    reminder_window_minutes = Column(Integer, nullable=True)
     id = Column(Integer, primary_key=True, autoincrement=True)
     care_task_id = Column(Integer, ForeignKey('care_task.id'), nullable=False)
     patient_id = Column(Integer, ForeignKey('patients.id'), nullable=True)  # Can be NULL for global tasks

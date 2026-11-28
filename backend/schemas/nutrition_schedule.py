@@ -25,6 +25,7 @@ from schemas import Base
 class NutritionSchedule(Base):
     """Schedules for meals, hydration, and bathroom checks"""
     __tablename__ = 'nutrition_schedules'
+    reminder_window_minutes = Column(Integer, nullable=True)
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     patient_id = Column(Integer, ForeignKey('patients.id'), nullable=False)

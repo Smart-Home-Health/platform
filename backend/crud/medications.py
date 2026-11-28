@@ -19,6 +19,7 @@ Medication management CRUD operations
 import logging
 from datetime import datetime, timedelta, timezone
 from croniter import croniter
+from crud.reminder_windows import new_reminder_window, medication_window_fields
 from sqlalchemy.orm import Session
 from schemas.medication import Medication
 from schemas.medication_schedule import MedicationSchedule
@@ -310,6 +311,23 @@ def administer_medication(db: Session, med_id, dose_amount, schedule_id=None, sc
             administered_early = offset < -timedelta(minutes=15)
             administered_late = offset > timedelta(minutes=15)
 
+        # Older charting clients may supply the schedule but omit its firing.
+        # The schedule view credits the nearest firing within its matching window.
+        if schedule_id and scheduled_dt is None and current_patient_id is not None:
+            from crud.medication_occurrences import nearest_logged_firing
+            from crud.schedule_manager import lock_patient
+            from schemas.schedule_reminder import ScheduleReminder
+
+            schedule = db.query(MedicationSchedule).filter_by(id=schedule_id, medication_id=med_id).first()
+            if schedule is not None:
+                lock_patient(db, current_patient_id)
+                firing = nearest_logged_firing(schedule.cron_expression, log_time)
+                if firing is not None:
+                    db.query(ScheduleReminder).filter_by(patient_id=current_patient_id, category='medications',
+                        schedule_id=schedule.id, scheduled_at=firing).update({
+                        ScheduleReminder.remind_at: None, ScheduleReminder.notified_at: None,
+                        ScheduleReminder.updated_at: now, ScheduleReminder.updated_by: administered_by,
+                    })
         # Record log
         log = MedicationLog(
             medication_id=med_id,
@@ -402,13 +420,15 @@ def get_medication_names_for_dropdown(db: Session):
 # --- MedicationSchedule CRUD ---
 def stage_medication_schedule(db: Session, **fields) -> MedicationSchedule:
     now = utc_now()
-    schedule = MedicationSchedule(created_at=now, updated_at=now, **fields)
+    if fields.get("grace_period_hours") is None:
+        fields["reminder_window_minutes"] = new_reminder_window(db, fields.get("patient_id"), fields.get("reminder_window_minutes"))
+    schedule = MedicationSchedule(created_at=now, updated_at=now, **medication_window_fields(fields))
     db.add(schedule)
     db.flush()
     return schedule
 
 
-def add_medication_schedule(db: Session, medication_id, cron_expression, description=None, dose_amount=None, active=True, notes=None, patient_id=None, grace_period_hours=None):
+def add_medication_schedule(db: Session, medication_id, cron_expression, description=None, dose_amount=None, active=True, notes=None, patient_id=None, grace_period_hours=None, reminder_window_minutes=None):
     """
     Add a new medication schedule
     """
@@ -431,6 +451,7 @@ def add_medication_schedule(db: Session, medication_id, cron_expression, descrip
             active=active,
             notes=notes,
             grace_period_hours=grace_period_hours,
+            reminder_window_minutes=reminder_window_minutes,
         )
         db.commit()
         db.refresh(schedule)
@@ -462,6 +483,7 @@ def get_medication_schedules(db: Session, medication_id):
                 'active': s.active,
                 'notes': s.notes,
                 'grace_period_hours': s.grace_period_hours,
+                'reminder_window_minutes': s.reminder_window_minutes,
                 'created_at': s.created_at,
                 'updated_at': s.updated_at
             }
@@ -493,6 +515,7 @@ def get_all_medication_schedules(db: Session, active_only=True):
                 'active': s.active,
                 'notes': s.notes,
                 'grace_period_hours': s.grace_period_hours,
+                'reminder_window_minutes': s.reminder_window_minutes,
                 'created_at': s.created_at,
                 'updated_at': s.updated_at
             }
@@ -513,7 +536,7 @@ def update_medication_schedule(db: Session, schedule_id, **kwargs):
             return False
         
         # Update fields if provided
-        for key, value in kwargs.items():
+        for key, value in medication_window_fields(kwargs).items():
             if hasattr(schedule, key):
                 setattr(schedule, key, value)
         
@@ -710,8 +733,7 @@ def get_daily_medication_schedule(db: Session, patient_id=None, tz=None):
     Returns:
         Dict with 'scheduled_medications' list sorted chronologically
     """
-    from crud.dose_grace import find_grace_period_doses, merge_grace_rows
-    from crud.scheduling import get_scheduled_medications
+    from crud.reminder_timeline import timeline_rows
 
     try:
         if patient_id is None:
@@ -726,46 +748,40 @@ def get_daily_medication_schedule(db: Session, patient_id=None, tz=None):
 
         # Use the same occurrence and log as the daily Schedule, including when
         # the dose was given or recorded on another day.
+        rows = timeline_rows(db, patient_id, 'medications', [bounds['local_yesterday'], bounds['local_today']],
+                             tz, current_time, grace_before=bounds['today_start_utc'])
         all_scheduled = []
-        for day in (bounds['local_yesterday'], bounds['local_today']):
-            for item in get_scheduled_medications(db, day, patient_id, tz=tz):
-                if item.get('is_prn'):
-                    continue
-                item['is_completed'] = item['completed']
-                if item['completed']:
-                    administered_at = datetime.fromisoformat(item['completed_at'])
-                    item['administered_at'] = administered_at
-                    offset = abs(administered_at - item['scheduled_time'])
-                    if item['skipped']:
-                        status = 'skipped'
-                    elif offset <= timedelta(hours=1):
-                        status = 'completed_on_time'
-                    elif offset <= timedelta(hours=2):
-                        status = 'completed_warning'
-                    else:
-                        status = 'completed_late'
-                elif day == bounds['local_yesterday']:
-                    status = 'missed'
-                elif item['scheduled_time'] > current_time:
-                    status = 'upcoming'
-                elif current_time - item['scheduled_time'] <= timedelta(hours=2):
-                    status = 'ready'
+        for item in rows:
+            if item.get('is_prn'):
+                continue
+            item['is_completed'] = item['completed']
+            if item['completed']:
+                administered_at = datetime.fromisoformat(item['completed_at'])
+                item['administered_at'] = administered_at
+                offset = abs(administered_at - item['scheduled_time'])
+                if item['skipped']:
+                    status = 'skipped'
+                elif offset <= timedelta(hours=1):
+                    status = 'completed_on_time'
+                elif offset <= timedelta(hours=2):
+                    status = 'completed_warning'
                 else:
-                    status = 'missed'
-                item['status'] = status
-                all_scheduled.append(item)
+                    status = 'completed_late'
+            elif item['reminder_state'] in ('snoozed', 'missed'):
+                status = item['reminder_state']
+            elif item['is_yesterday'] or item.get('in_grace'):
+                status = 'missed'
+            elif item['effective_time'] > current_time:
+                status = 'upcoming'
+            elif current_time - item['effective_time'] <= timedelta(hours=2):
+                status = 'ready'
+            else:
+                status = 'missed'
+            item['status'] = status
+            item.pop('_reminder_alert', None)
+            all_scheduled.append(item)
+        all_scheduled.sort(key=lambda item: item['effective_time'])
 
-        grace_rows = find_grace_period_doses(
-            db, patient_id, before_utc=bounds['today_start_utc'], now_utc=current_time,
-        )
-        for row in grace_rows:
-            row['status'] = 'missed'
-            row['is_completed'] = False
-        merge_grace_rows(all_scheduled, grace_rows)
-
-        # Sort by scheduled time chronologically
-        all_scheduled.sort(key=lambda x: x['scheduled_time'])
-        
         return {
             'scheduled_medications': all_scheduled,
             'generated_at': current_time.isoformat()
@@ -780,132 +796,22 @@ def get_daily_medication_schedule(db: Session, patient_id=None, tz=None):
 
 
 def get_due_and_upcoming_medications_count(db: Session, patient_id=None, tz=None):
-    """
-    Count scheduled medication occurrences that are "due" for the badge/summary.
-
-    An occurrence counts when it is NOT yet completed/skipped AND its scheduled
-    time falls within the window [start of the local prior day, now + 1 hour].
-    The daily schedule (account-local today+yesterday) spans the window and
-    matches administrations to occurrences by ``scheduled_time`` (so a dose
-    logged late on the next calendar day is still recognised as completed), so we
-    only need the open occurrences up to the one-hour lookahead. This is the same
-    rule used by the admin dashboard summary, keeping both views consistent.
-    """
-    try:
-        schedule_data = get_daily_medication_schedule(db, patient_id=patient_id, tz=tz)
-        meds = schedule_data.get('scheduled_medications', [])
-        return _count_due_and_upcoming(meds)
-    except Exception as e:
-        logger.error(f"Error getting due/upcoming medications count: {e}")
-        return 0
-
-
-def _count_due_and_upcoming(items):
-    """
-    Shared "due now or within the next hour" counter for schedule items.
-
-    Counts items whose ``is_completed`` flag is falsy and whose ``scheduled_time``
-    is at or before now + 1 hour. The lower bound (start of the prior day) is
-    inherent to the daily-schedule range passed in.
-    """
-    cutoff = utc_now() + timedelta(hours=1)
-    count = 0
-    for item in items:
-        if item.get('is_completed'):
-            continue
-        scheduled_time = item.get('scheduled_time')
-        if isinstance(scheduled_time, str):
-            scheduled_time = datetime.fromisoformat(scheduled_time)
-        if scheduled_time is None:
-            continue
-        if scheduled_time.tzinfo is None:
-            scheduled_time = scheduled_time.replace(tzinfo=timezone.utc)
-        if scheduled_time <= cutoff:
-            count += 1
-    return count
-
-
-def _count_overdue(items):
-    """
-    Count open (not completed) occurrences whose scheduled hour has fully passed.
-
-    An occurrence stays "normal" during its own hour and only becomes overdue
-    once the clock ticks past that hour — so we compare against the start of the
-    current hour, not against ``now``. This is a subset of _count_due_and_upcoming.
-    """
-    hour_start = utc_now().replace(minute=0, second=0, microsecond=0)
-    count = 0
-    for item in items:
-        if item.get('is_completed'):
-            continue
-        scheduled_time = item.get('scheduled_time')
-        if isinstance(scheduled_time, str):
-            scheduled_time = datetime.fromisoformat(scheduled_time)
-        if scheduled_time is None:
-            continue
-        if scheduled_time.tzinfo is None:
-            scheduled_time = scheduled_time.replace(tzinfo=timezone.utc)
-        if scheduled_time < hour_start:
-            count += 1
-    return count
-
-
-def _count_due_now_and_late(items):
-    """Split open schedule occurrences into ``{'due_now', 'late'}`` for the MQTT
-    badge sensors.
-
-    The thresholds match the per-patient MQTT badge spec, independent of the
-    dashboard's due/overdue window:
-    - ``due_now``: scheduled time within ±1 hour of now (the item is happening
-      around now).
-    - ``late``: scheduled more than 1 hour in the past.
-
-    Items more than an hour in the future are "upcoming" and counted in neither.
-    Completed/skipped occurrences are excluded. The lower bound (start of the
-    prior local day) is inherent to the daily-schedule range passed in, so
-    ``late`` doesn't reach back indefinitely.
-    """
-    now = utc_now()
-    due_now = 0
-    late = 0
-    for item in items:
-        if item.get('is_completed'):
-            continue
-        scheduled_time = item.get('scheduled_time')
-        if isinstance(scheduled_time, str):
-            scheduled_time = datetime.fromisoformat(scheduled_time)
-        if scheduled_time is None:
-            continue
-        if scheduled_time.tzinfo is None:
-            scheduled_time = scheduled_time.replace(tzinfo=timezone.utc)
-        diff_seconds = (scheduled_time - now).total_seconds()
-        if diff_seconds < -3600:
-            late += 1
-        elif diff_seconds <= 3600:
-            due_now += 1
-    return {'due_now': due_now, 'late': late}
-
-
-def get_medication_due_now_late_counts(db: Session, patient_id=None, tz=None):
-    """Return {'due_now', 'late'} medication badge counts (see _count_due_now_and_late)."""
-    try:
-        schedule_data = get_daily_medication_schedule(db, patient_id=patient_id, tz=tz)
-        meds = schedule_data.get('scheduled_medications', [])
-        return _count_due_now_and_late(meds)
-    except Exception as e:
-        logger.error(f"Error getting due_now/late medication counts: {e}")
-        return {'due_now': 0, 'late': 0}
+    return get_medication_schedule_counts(db, patient_id=patient_id, tz=tz)['due']
 
 
 def get_medication_schedule_counts(db: Session, patient_id=None, tz=None):
-    """Return {'due', 'overdue'} medication counts from one schedule fetch."""
-    try:
-        schedule_data = get_daily_medication_schedule(db, patient_id=patient_id, tz=tz)
-        meds = schedule_data.get('scheduled_medications', [])
-        return {'due': _count_due_and_upcoming(meds), 'overdue': _count_overdue(meds)}
-    except Exception as e:
-        logger.error(f"Error getting medication schedule counts: {e}")
-        return {'due': 0, 'overdue': 0}
+    """Count actionable occurrences using the same reminder timeline as Home Assistant."""
+    from crud.schedule_status import dashboard_schedule_counts
+    now = local_day_bounds(tz or resolve_tz_for_patient(db, patient_id))['now_utc']
+    counts = dashboard_schedule_counts(db, patient_id, 'meds_counts', now, tz)
+    return {'due': counts['due'], 'overdue': counts['overdue']}
+
+
+def get_medication_due_now_late_counts(db: Session, patient_id=None, tz=None):
+    from crud.schedule_status import dashboard_schedule_counts
+    now = local_day_bounds(tz or resolve_tz_for_patient(db, patient_id))['now_utc']
+    counts = dashboard_schedule_counts(db, patient_id, 'meds_counts', now, tz)
+    return {'due_now': counts['due_now'], 'late': counts['late']}
 
 
 def get_medication_history(db: Session, limit=25, medication_name=None, start_date=None, end_date=None, status_filter=None, patient_id=None, medication_id=None):

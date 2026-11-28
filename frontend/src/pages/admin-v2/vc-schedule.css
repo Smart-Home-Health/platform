@@ -544,6 +544,7 @@
 .schedule-routines-summary strong { color: var(--vc-text-primary); }
 .schedule-routines-summary a { margin-left: auto; color: var(--vc-data-live); }
 .schedule-routines-late { color: var(--vc-state-due); }
+.schedule-original-due { order: 1; }
 .schedule-timing-reason {
   flex-basis: 100%;
   font-size: .78rem;
