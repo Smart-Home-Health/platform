@@ -39,6 +39,7 @@ vi.mock('../../config', () => ({ default: { apiUrl: '' }, apiFetch: (...args) =>
 
 import AdminV2Schedule, { DailySchedule } from './AdminV2Schedule';
 import AdminV2Medications from './AdminV2Medications';
+import { getLocalDateTimeString } from '../../utils/timezone';
 
 const dailyCalls = () => fetch.mock.calls.filter(([url]) => url.includes('/api/schedule/daily')).map(([url]) => new URL(url, 'http://test').searchParams);
 const baseRow = () => ({ schedule_id: 8, scheduled_time: new Date().toISOString() });
@@ -107,11 +108,11 @@ describe('section schedules', () => {
     expect(document.querySelector('[data-band="overdue"]')).toContainElement(screen.getByText('Grace dose'));
   });
 
-  it('opens a focused occurrence from the keyboard and leaves nested buttons independent', async () => {
+  it('opens a focused occurrence from the keyboard without a history button', async () => {
     stubSchedule({ medications: [{ ...baseRow(), medication_id: 22, name: 'Morning dose' }] });
     await showSchedule('medications');
     const row = screen.getByText('Morning dose').closest('.admin-v2-schedule-item');
-    fireEvent.keyDown(within(row).getByRole('button', { name: 'Recent history' }), { key: 'Enter' });
+    expect(within(row).queryByRole('button', { name: 'Recent history' })).toBeNull();
     expect(screen.queryByRole('dialog')).toBeNull();
     fireEvent.keyDown(row, { key: ' ' });
     expect(screen.getByRole('dialog', { name: 'Complete Medication' })).toBeInTheDocument();
@@ -167,6 +168,57 @@ describe('section schedules', () => {
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByRole('button', { name: 'Mark Complete' })).toBeEnabled();
     expect(within(dialog).getByRole('button', { name: 'Skip' })).toBeEnabled();
+  });
+
+  it.each([
+    [undefined, 'medications'], ['medications', 'medications'], ['nutrition', 'nutrition'], ['care_tasks', 'care_tasks'],
+  ])('places a deferred %s row at the reminder hour and keeps its care due time in the dialog (%s)', async (scope, category) => {
+    const original = new Date();
+    original.setDate(original.getDate() - 1);
+    original.setHours(8, 0, 0, 0);
+    const target = new Date();
+    target.setHours(17, 30, 0, 0);
+    const row = { ...baseRow(), name: 'Moved occurrence', default_item: 'Water', default_amount: 50, default_amount_unit: 'ml', scheduled_time: original.toISOString(),
+      original_due_at: original.toISOString(), remind_at: target.toISOString(), effective_time: target.toISOString(),
+      deadline_at: new Date(target.getTime() + 86400000).toISOString(), can_remind_later: true, reminder_state: 'snoozed' };
+    stubSchedule({ [category]: [row] });
+    await showSchedule(scope);
+    const hour = document.querySelector('[data-hour="17"]');
+    expect(within(hour).getByText(/Originally due/)).toBeInTheDocument();
+    fireEvent.click(within(hour).getByText(row.name));
+    expect(screen.getByRole('dialog')).toHaveTextContent(/Scheduled.*8:00 AM/);
+    expect(screen.getByRole('button', { name: 'Confirm Late Administration' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Adjust reminder' }));
+    expect(screen.getByLabelText('Remind me on').value).toMatch(/T17:30$/);
+  });
+
+  it('opens the profile calendar day after a reminder moves across midnight in another timezone', async () => {
+    const target = new Date();
+    target.setDate(target.getDate() + 2);
+    target.setHours(23, 30, 0, 0);
+    const row = { ...baseRow(), name: 'Afternoon task', can_remind_later: true,
+      deadline_at: new Date(target.getTime() + 86400000).toISOString() };
+    stubSchedule({ timezone: 'Asia/Tokyo', care_tasks: [row] });
+    await showSchedule('care_tasks');
+    fireEvent.click(screen.getByText(row.name));
+    fireEvent.click(screen.getByRole('button', { name: 'Remind me later' }));
+    fireEvent.change(screen.getByLabelText('Remind me on'), { target: { value: getLocalDateTimeString(target) } });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save reminder' })); });
+    const day = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo' }).format(target);
+    expect(day).not.toBe(getLocalDateTimeString(target).slice(0, 10));
+    expect(dailyCalls().at(-1).get('target_date')).toBe(day);
+    expect(screen.getByLabelText('Schedule date')).toHaveValue(day);
+    const put = fetch.mock.calls.find(([url, opts]) => opts?.method === 'PUT' && url.endsWith('/reminders/care_tasks'));
+    expect(JSON.parse(put[1].body)).toMatchObject({ scheduled_time: row.scheduled_time, remind_at: target.toISOString() });
+  });
+
+  it('marks a missed occurrence visibly on its timeline and excludes the reminder action', async () => {
+    stubSchedule({ care_tasks: [{ ...baseRow(), name: 'Earlier task', reminder_state: 'missed', can_remind_later: false }] });
+    await showSchedule('care_tasks');
+    expect(screen.getByText('Missed')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Earlier task'));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remind me later' })).toBeNull();
   });
 
   it('offers linked nutrition tracking after completing an eligible care task', async () => {

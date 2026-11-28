@@ -20,6 +20,7 @@ from schemas import Base
 
 class MedicationSchedule(Base):
     __tablename__ = 'medication_schedule'
+    reminder_window_minutes = Column(Integer, nullable=True)
     id = Column(Integer, primary_key=True, autoincrement=True)
     medication_id = Column(Integer, ForeignKey('medication.id'), nullable=False)
     patient_id = Column(Integer, ForeignKey('patients.id'), nullable=True)  # Can be NULL for global meds

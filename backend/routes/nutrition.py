@@ -19,7 +19,7 @@ from datetime import datetime, date
 from typing import List, Literal, Optional
 import logging
 from db import get_db
-from dependencies import require_read_access, require_permission
+from dependencies import require_schedule_edit, get_current_user, readable_schedule_categories, require_read_access, require_permission
 from sqlalchemy.exc import IntegrityError
 from crud.nutrition_plan import get_nutrition_plan
 from crud.nutrition_library import (
@@ -319,13 +319,16 @@ async def get_patient_nutrition_intake_endpoint(
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
     schedule_id: Optional[int] = None,
+    item_id: Optional[int] = None,
+    user=Depends(get_current_user),
     db: Session = Depends(get_db),
     _: bool = Depends(require_read_access)
 ):
     """Get nutrition intake records for a patient, optionally bounded by a
-    consumed_at date range and/or narrowed to one nutrition schedule."""
+    consumed_at date range and/or narrowed to one nutrition schedule or saved item."""
+    readable_schedule_categories(db, user, patient_id, "nutrition")
     intake_records = get_patient_nutrition_intake(
-        db, patient_id, limit, start_date, end_date, schedule_id=schedule_id)
+        db, patient_id, limit, start_date, end_date, schedule_id=schedule_id, item_id=item_id)
     return intake_records
 
 @router.get("/patients/{patient_id}/nutrition-intake/daily")
@@ -1391,8 +1394,9 @@ async def get_schedule_types(_: bool = Depends(require_read_access)):
 
 
 @router.post("/nutrition/schedules", response_model=NutritionScheduleResponse)
-async def create_schedule(schedule_data: NutritionScheduleCreate, db: Session = Depends(get_db)):
+async def create_schedule(schedule_data: NutritionScheduleCreate, db: Session = Depends(get_db), user=Depends(get_current_user)):
     """Create a new nutrition schedule"""
+    require_schedule_edit(db, user, "nutrition.create", schedule_data.patient_id)
     try:
         schedule = create_nutrition_schedule(db, schedule_data.model_dump())
         return schedule
@@ -1422,8 +1426,12 @@ async def get_schedule(schedule_id: int, db: Session = Depends(get_db), _: bool 
 
 
 @router.put("/nutrition/schedules/{schedule_id}", response_model=NutritionScheduleResponse)
-async def update_schedule(schedule_id: int, update_data: NutritionScheduleUpdate, db: Session = Depends(get_db)):
+async def update_schedule(schedule_id: int, update_data: NutritionScheduleUpdate, db: Session = Depends(get_db), user=Depends(get_current_user)):
     """Update a nutrition schedule"""
+    schedule = get_nutrition_schedule_by_id(db, schedule_id)
+    if schedule is None:
+        raise HTTPException(404, "Nutrition schedule not found.")
+    require_schedule_edit(db, user, "nutrition.update", schedule.patient_id)
     schedule = update_nutrition_schedule(db, schedule_id, update_data.model_dump(exclude_unset=True))
     if not schedule:
         raise HTTPException(status_code=404, detail="Nutrition schedule not found")

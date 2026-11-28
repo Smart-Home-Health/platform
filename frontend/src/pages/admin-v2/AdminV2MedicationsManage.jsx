@@ -19,6 +19,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AdminV2Layout from './AdminV2Layout';
 import MedicationSheet from '../../components/medication/MedicationSheet';
+import { formatMissedWindow } from '../../components/schedule/reminderTiming';
 import MedicationScheduleForm from '../../components/medication/MedicationScheduleForm';
 import { PatientSelectorModal, MedStockBar } from './components';
 import config from '../../config';
@@ -697,7 +698,7 @@ const AdminV2MedicationsManage = () => {
                           <th>Time</th>
                           <th>Schedule</th>
                           {selectedMedication.is_global && <th>Patient</th>}
-                          <th>Grace</th>
+                          <th>Mark missed after</th>
                           <th>Status</th>
                           <th>Actions</th>
                         </tr>
@@ -722,8 +723,9 @@ const AdminV2MedicationsManage = () => {
                               {selectedMedication.is_global && (
                                 <td data-label="Patient">{patientName ? `${patientName.first_name} ${patientName.last_name}` : '-'}</td>
                               )}
-                              <td data-label="Grace">
-                                {schedule.grace_period_hours != null ? `${schedule.grace_period_hours} h` : 'Default'}
+                              <td data-label="Mark missed after">
+                                {schedule.reminder_window_minutes != null ? formatMissedWindow(schedule.reminder_window_minutes)
+                                  : schedule.grace_period_hours != null ? `${schedule.grace_period_hours} h` : 'Default'}
                               </td>
                               <td data-label="Status">
                                 <CfgBadge tone={schedule.active ? 'ok' : undefined}>

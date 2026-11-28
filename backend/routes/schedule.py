@@ -31,7 +31,7 @@ from utils.datetime_utils import utc_now, make_utc, resolve_tz_for_patient, loca
 from models.schedule import CompleteItemRequest, BulkCompleteRequest
 from crud.scheduling import get_scheduled_medications, get_scheduled_care_tasks, get_scheduled_nutrition, get_due_and_upcoming_care_tasks_count
 from crud.scheduling import canonical_care_task_item
-from crud.dose_grace import find_grace_period_doses, merge_grace_rows
+from crud.reminder_timeline import timeline_rows, reminder_fields
 from crud.nutrition import (
     create_nutrition_intake_event,
     maybe_spawn_flush_followup,
@@ -44,7 +44,8 @@ from crud.nutrition import (
 )
 from crud.users import create_audit_log
 from event_publisher import publish_due_counts_changed
-from dependencies import get_current_user, readable_schedule_categories, require_permission, schedule_profile_level
+from dependencies import (get_current_user, permitted_schedule_categories, require_permission, can_record_schedule,
+                          require_schedule_record_permission, require_writable_schedule_profile, schedule_profile_level)
 from schemas.patient import AccessLevel
 from models.users import AuditLog, User
 from utils.early_administration import guard_early_administration, guard_future_administration
@@ -125,7 +126,8 @@ async def get_daily_schedule(
     Returns medications, nutrition schedules, and care tasks with completion status.
     Allowed in restricted mode so user can see what to complete and perform care.
     """
-    categories = readable_schedule_categories(db, user, patient_id, category)
+    profile_level = schedule_profile_level(db, user, patient_id)
+    categories = permitted_schedule_categories(user, category)
     try:
         # The patient's account timezone is the source of truth for day
         # boundaries, so the view buckets items into the same local day the
@@ -151,31 +153,21 @@ async def get_daily_schedule(
             "care_tasks": get_scheduled_care_tasks,
         }
         rows = {key: [] for key in loaders}
+        grace_before = local_day_range_utc(schedule_date, tz_offset_minutes, tz)[0] if is_live_day else None
         for key in categories:
-            load = loaders[key]
-            for day in days:
-                prior = day != schedule_date
-                items = load(db, day, patient_id, tz_offset_minutes=tz_offset_minutes, tz=tz)
+            items = timeline_rows(db, patient_id, key, days, tz, bounds['now_utc'], load=loaders[key],
+                                  grace_before=grace_before, tz_offset_minutes=tz_offset_minutes)
+            if profile_level == AccessLevel.VIEWER or not can_record_schedule(user, key):
                 for item in items:
-                    if prior and is_live_day and key == "nutrition" and item.get("reminder_superseded"):
-                        continue
-                    item["is_yesterday"] = prior
-                    rows[key].append(item)
+                    if 'can_remind_later' in item:
+                        item['can_remind_later'] = False
+            rows[key] = [item for item in items if not (key == 'nutrition' and is_live_day
+                         and item['is_yesterday'] and item.get('reminder_superseded'))]
 
-        # Grace-period doses: unfilled firings from before the day shown that
-        # are still actionable (crud/dose_grace.py). Only on the live day; a
-        # past or future day is history or a plan, and "overdue" is relative
-        # to now. Prior-day rows already present just get annotated.
-        if 'medications' in categories and is_live_day:
-            day_start_utc, _ = local_day_range_utc(schedule_date, tz_offset_minutes, tz)
-            grace_rows = find_grace_period_doses(db, patient_id, before_utc=day_start_utc, now_utc=bounds['now_utc'])
-            for item in grace_rows:
-                item["is_yesterday"] = False
-            merge_grace_rows(rows["medications"], grace_rows)
-        
         # Build response - completion status already included from get_scheduled_* functions
         result = {
             "date": schedule_date.isoformat(),
+            "timezone": str(tz),
             "patient_id": patient_id,
             "medications": [],
             "nutrition": [],
@@ -183,6 +175,7 @@ async def get_daily_schedule(
         }
         
         for med in rows["medications"]:
+            display_at = med.get("effective_time", med["scheduled_time"])
             result["medications"].append({
                 "schedule_id": med["schedule_id"],
                 "medication_id": med["medication_id"],
@@ -190,8 +183,8 @@ async def get_daily_schedule(
                 "dose_amount": med["dose_amount"],
                 "dose_unit": med["dose_unit"],
                 "scheduled_time": med["scheduled_time"].isoformat(),
-                "hour": med["scheduled_time"].hour,
-                "minute": med["scheduled_time"].minute,
+                "hour": display_at.hour,
+                "minute": display_at.minute,
                 "description": med["description"],
                 "completed": med["completed"],
                 "skipped": med.get("skipped", False),
@@ -205,6 +198,7 @@ async def get_daily_schedule(
                 "grace_expires_at": med["grace_expires_at"].isoformat() if med.get("grace_expires_at") else None,
                 "overdue_minutes": med.get("overdue_minutes"),
                 "type": "medication",
+                **reminder_fields(med),
             })
         
         for nutr in rows["nutrition"]:
@@ -251,6 +245,7 @@ async def get_daily_schedule(
                 "log_id": nutr.get("log_id"),
                 "is_yesterday": nutr.get("is_yesterday", False),
                 "type": "nutrition",
+                **reminder_fields(nutr),
             })
         
         for task in rows["care_tasks"]:
@@ -267,31 +262,14 @@ async def get_daily_schedule(
 
 # ===== Completion Endpoints =====
 
-_RECORD_PERMISSIONS = {
-    "medications": ("medications.administer", "medications.update"),
-    "nutrition": ("nutrition.create", "nutrition.update"),
-    "care_tasks": ("care_tasks.perform",),
-}
-
-
-def _require_record_permission(user, category):
-    if not user.is_superuser and not any(user.has_permission(p) for p in _RECORD_PERMISSIONS[category]):
-        raise HTTPException(403, "Schedule recording permission required.")
-
-
-def _require_writable_profile(db, user, patient_id):
-    if schedule_profile_level(db, user, patient_id) == AccessLevel.VIEWER:
-        raise HTTPException(403, "Care profile is read-only.")
-
-
 def _catalog_matches_profile(record, patient_id, account_id):
     # Older shared catalog entries can have a null patient or account.
     return record is not None and record.patient_id in (None, patient_id) and record.account_id in (None, account_id)
 
 
 def _schedule_for_recording(db, user, category, item):
-    _require_record_permission(user, category)
-    _require_writable_profile(db, user, item.patient_id)
+    require_schedule_record_permission(user, category)
+    require_writable_schedule_profile(db, user, item.patient_id)
     model = {"medications": MedicationSchedule, "care_tasks": CareTaskSchedule, "nutrition": NutritionSchedule}[category]
     schedule = db.get(model, item.schedule_id)
     if schedule is None or schedule.patient_id not in (None, item.patient_id):
@@ -981,7 +959,7 @@ async def undo_completion(
                   "nutrition_intake": "nutrition", "nutrition_output": "nutrition"}
     if item_type not in categories:
         raise HTTPException(400, f"Unknown item_type: {item_type}")
-    _require_record_permission(current_user, categories[item_type])
+    require_schedule_record_permission(current_user, categories[item_type])
     now = utc_now()
     uid = current_user.id
     try:
@@ -989,7 +967,7 @@ async def undo_completion(
             log = db.query(MedicationLog).filter(MedicationLog.id == int(log_id)).first()
             if not log:
                 return JSONResponse(status_code=404, content={"detail": "Medication log not found"})
-            _require_writable_profile(db, current_user, log.patient_id)
+            require_writable_schedule_profile(db, current_user, log.patient_id)
             medication = log.medication
             if medication and not _catalog_matches_profile(medication, log.patient_id, current_user.account_id):
                 raise HTTPException(404, "Medication log not found")
@@ -1021,7 +999,7 @@ async def undo_completion(
             log = db.query(CareTaskLog).filter(CareTaskLog.id == int(log_id)).first()
             if not log:
                 return JSONResponse(status_code=404, content={"detail": "Care task log not found"})
-            _require_writable_profile(db, current_user, log.patient_id)
+            require_writable_schedule_profile(db, current_user, log.patient_id)
             task = log.care_task
             if task and not _catalog_matches_profile(task, log.patient_id, current_user.account_id):
                 raise HTTPException(404, "Care task log not found")
@@ -1044,7 +1022,7 @@ async def undo_completion(
             intake = db.query(NutritionIntake).filter(NutritionIntake.id == int(log_id)).first()
             if not intake:
                 return JSONResponse(status_code=404, content={"detail": "Nutrition intake not found"})
-            _require_writable_profile(db, current_user, intake.patient_id)
+            require_writable_schedule_profile(db, current_user, intake.patient_id)
             # Un-completing a feed means the whole feed: void every row of the
             # logged event (a multi-item mix), not just the one the board
             # happened to reference. The soft-delete filter already excludes
@@ -1092,7 +1070,7 @@ async def undo_completion(
             if len(outputs) != len(ids) or len({row.patient_id for row in outputs.values()}) != 1:
                 raise HTTPException(404, "Nutrition output not found")
             first = outputs[ids[0]]
-            _require_writable_profile(db, current_user, first.patient_id)
+            require_writable_schedule_profile(db, current_user, first.patient_id)
             for output in outputs.values():
                 output.voided_at = now
                 output.voided_by = uid

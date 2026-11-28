@@ -21,9 +21,10 @@ import AdminV2Layout from './AdminV2Layout';
 import { PatientSelectorModal, IntakeSheet, OutputSheet, MedicationDoseModal, UpdateQuantityModal, CareTaskCompleteModal } from './components';
 import IntakeItemsEditor from '../../components/nutrition/IntakeItemsEditor';
 import { nutritionService } from '../../services/nutrition';
+import OccurrenceReminderDialog from '../../components/schedule/OccurrenceReminderDialog';
+import { reminderDateLabel } from '../../components/schedule/reminderTiming';
 import FixedCheckDialog from '../../components/schedule/FixedCheckDialog';
 import MoveFeedDialog from '../../components/schedule/MoveFeedDialog';
-import ScheduleHistoryButton from '../../components/schedule/ScheduleHistoryButton';
 import { canRecordSchedule, hasSchedulePermission } from '../../components/schedule/schedulePermissions';
 import { scheduleManagerService } from '../../services/scheduleManager';
 import { BathroomCheckCard } from './care-profile/BathroomCheckCard';
@@ -78,11 +79,11 @@ function withLocalTimes(item) {
   };
 }
 
-function ScheduleItemTime({ item }) {
+function ScheduleItemHeading({ item }) {
   const { scheduledAt, completedAt, effectiveAt } = item;
   let text = `${String(item.hour).padStart(2, '0')}:${String(item.minute).padStart(2, '0')}`;
   let title;
-  if (item.in_grace) {
+  if (item.in_grace && !item.remind_at) {
     text = `${dueDayLabel(scheduledAt)} ${text}`;
     title = graceTitle(item);
   } else if (completedAt) {
@@ -97,7 +98,14 @@ function ScheduleItemTime({ item }) {
     }
     title = item.timing_reason || undefined;
   }
-  return <span className="admin-v2-schedule-item-time" title={title}><ClockIcon size={12} />{text}</span>;
+  return <>
+    <span className="admin-v2-schedule-item-time" title={title}><ClockIcon size={12} />{text}</span>
+    <span className="admin-v2-schedule-item-name">{item.name}</span>
+    {item.reminder_state === 'missed' && <span className="admin-v2-badge admin-v2-badge-overdue">Missed</span>}
+    {item.remind_at && !item.completed && <span className="schedule-timing-reason schedule-original-due">
+      Reminder · Originally due {reminderDateLabel(item.original_due_at ?? item.scheduled_time)}
+    </span>}
+  </>;
 }
 
 function activateGridRow(event) {
@@ -253,6 +261,7 @@ export function DailySchedule({ patient: selectedPatient, category, onChange, re
   const [selectedDate, setSelectedDate] = useState(new Date());
   
   // Mobile tab state (for showing one section at a time on mobile)
+  const [scheduleZone, setScheduleZone] = useState();
   const [mobileTab, setMobileTab] = useState('medications');
   
   // Schedule data state
@@ -264,6 +273,7 @@ export function DailySchedule({ patient: selectedPatient, category, onChange, re
   const canReadRoutines = active && showNutrition && hasReadAccess !== false
     && hasSchedulePermission(user, 'nutrition.read');
   const manager = useDailyRoutines(selectedPatient?.id, scheduleData.nutrition, canReadRoutines);
+  const [reminder, setReminder] = useState(null);
   const [moveFeed, setMoveFeed] = useState(null);
   const [fixedCheck, setFixedCheck] = useState(null);
   const [trackedTask, setTrackedTask] = useState(null);
@@ -392,6 +402,7 @@ export function DailySchedule({ patient: selectedPatient, category, onChange, re
   useEffect(() => {
     if (!selectedPatient || !active) return;
     setMoveFeed(null);
+    setReminder(null);
     setFixedCheck(null);
     setShowCompleteModal(false);
     fetchSchedule();
@@ -451,7 +462,8 @@ export function DailySchedule({ patient: selectedPatient, category, onChange, re
         const data = await response.json();
         if (request !== requestNumber.current) return;
         const nutrition = (showNutrition ? data.nutrition || [] : []).map(withLocalTimes).filter(row =>
-          !row.is_yesterday || (row.managed_feed && row.effectiveAt?.toDateString() === selectedDate.toDateString()));
+          !row.is_yesterday || (row.managed_feed && !row.remind_at && row.effectiveAt?.toDateString() === selectedDate.toDateString()));
+        setScheduleZone(data.timezone);
         setScheduleData({
           medications: (showMeds ? data.medications || [] : []).filter(row => !row.is_yesterday || row.in_grace).map(withLocalTimes),
           nutrition,
@@ -478,6 +490,26 @@ export function DailySchedule({ patient: selectedPatient, category, onChange, re
   };
 
   // Open completion modal for a single item
+  const openReminder = (type, item) => {
+    const categories = { medication: 'medications', nutrition: 'nutrition', 'care-task': 'care_tasks' };
+    setShowCompleteModal(false);
+    setFixedCheck(null);
+    setReminder({ category: categories[type], item });
+  };
+
+  const reminderSaved = (displayDate) => {
+    setReminder(null);
+    // The day requested by /daily is the profile's calendar day. The caregiver
+    // may have entered a time on another date in their device's timezone.
+    const day = displayDate && new Intl.DateTimeFormat('sv-SE', {
+      timeZone: scheduleZone, month: '2-digit', day: '2-digit', year: 'numeric',
+    }).format(displayDate);
+    if (day && day !== formatDateForApi(selectedDate)) {
+      onChange?.();
+      setSelectedDate(new Date(day + 'T12:00:00'));
+    } else refreshAfterWrite();
+  };
+
   const openCompleteModal = (type, item) => {
     if (item.completed) return;
     
@@ -572,7 +604,7 @@ export function DailySchedule({ patient: selectedPatient, category, onChange, re
       ? localDateTimeToUTC(completeFormData.completed_at)
       : null;
     const itemIsOffWindow = (item) => {
-      const { status } = checkAdministrationWindow(item.effective_time ?? item.scheduled_time, completedAtUtc);
+      const { status } = checkAdministrationWindow(item.original_due_at ?? item.effective_time ?? item.scheduled_time, completedAtUtc);
       return status === 'early' || status === 'late';
     };
 
@@ -892,7 +924,7 @@ export function DailySchedule({ patient: selectedPatient, category, onChange, re
     items.forEach(item => {
       // A delayed overnight run stays at the end of its original care evening.
       // It is also actionable on the following day's grid at its effective hour.
-      const dayDifference = item.managed_feed && item.effectiveAt
+      const dayDifference = item.managed_feed && !item.remind_at && item.effectiveAt
         ? Math.max(0, Math.round((new Date(item.effectiveAt).setHours(0, 0, 0, 0) -
           new Date(selectedDate).setHours(0, 0, 0, 0)) / 86400000))
         : 0;
@@ -913,9 +945,9 @@ export function DailySchedule({ patient: selectedPatient, category, onChange, re
   // 4 PM dose next to today's 4 PM dose reads as a duplicate that is wrongly
   // overdue. Oldest first.
   const graceMeds = scheduleData.medications
-    .filter(m => m.in_grace)
+    .filter(m => m.in_grace && !m.remind_at)
     .sort((a, b) => new Date(a.scheduled_time) - new Date(b.scheduled_time));
-  const medicationsByHour = getItemsByHour(scheduleData.medications.filter(m => !m.in_grace));
+  const medicationsByHour = getItemsByHour(scheduleData.medications.filter(m => !m.in_grace || m.remind_at));
   const nutritionByHour = getItemsByHour(scheduleData.nutrition);
   const careTasksByHour = getItemsByHour(scheduleData.care_tasks);
 
@@ -947,8 +979,8 @@ export function DailySchedule({ patient: selectedPatient, category, onChange, re
   // Count totals for summary. These are scheduled-adherence ratios, so PRN /
   // ad-hoc entries (is_prn) are excluded — they still render on the timeline,
   // but they're extra care, not part of "X of Y scheduled items done".
-  const totalMeds = scheduleData.medications.filter(m => !m.is_prn && !m.in_grace).length;
-  const completedMeds = scheduleData.medications.filter(m => !m.is_prn && !m.in_grace && m.completed).length;
+  const totalMeds = scheduleData.medications.filter(m => !m.is_prn && (!m.in_grace || m.remind_at)).length;
+  const completedMeds = scheduleData.medications.filter(m => !m.is_prn && (!m.in_grace || m.remind_at) && m.completed).length;
   const totalNutrition = scheduleData.nutrition.filter(n => !n.is_prn && !n.is_yesterday).length;
   const completedNutrition = scheduleData.nutrition.filter(n => !n.is_prn && !n.is_yesterday && n.completed).length;
   const totalTasks = scheduleData.care_tasks.filter(t => !t.is_prn).length;
@@ -972,9 +1004,8 @@ export function DailySchedule({ patient: selectedPatient, category, onChange, re
           title={isPrn ? 'PRN dose — administered ad-hoc' : undefined}
         >
           <div className="admin-v2-schedule-item-header">
-            <ScheduleItemTime item={med} />
-            <span className="admin-v2-schedule-item-name">{med.name}</span>
-            {med.in_grace && (
+            <ScheduleItemHeading item={med} />
+            {med.in_grace && !med.remind_at && med.reminder_state !== 'missed' && (
               <span className="admin-v2-badge admin-v2-badge-overdue" title={graceTitle(med)}>
                 {overdueLabel(med)}
               </span>
@@ -990,7 +1021,6 @@ export function DailySchedule({ patient: selectedPatient, category, onChange, re
               </span>
             )}
             {med.skipped && <span className="admin-v2-badge">Skipped</span>}
-            {hasReadAccess !== false && <ScheduleHistoryButton type="medication" item={med} patientId={selectedPatient.id} />}
             {canMedicate && med.completed && med.log_id ? (
               <button
                 type="button"
@@ -1275,9 +1305,8 @@ export function DailySchedule({ patient: selectedPatient, category, onChange, re
                                           : undefined}
                                     >
                                       <div className="admin-v2-schedule-item-header">
-                                        <ScheduleItemTime item={item} />
-                                        <span className="admin-v2-schedule-item-name">{item.name}</span>
-                                        {item.managed_feed && !item.completed && item.effectiveAt?.getTime() !== item.scheduledAt?.getTime() && item.timing_reason && (
+                                        <ScheduleItemHeading item={item} />
+                                        {item.managed_feed && !item.completed && !item.remind_at && item.effectiveAt?.getTime() !== item.scheduledAt?.getTime() && item.timing_reason && (
                                           <span className="schedule-timing-reason">Usually {slotLabel(item.scheduledAt)} · {item.timing_reason}</span>
                                         )}
                                         {isPrn && (
@@ -1341,7 +1370,6 @@ export function DailySchedule({ patient: selectedPatient, category, onChange, re
                                             setMoveFeed(item);
                                           }}>Move this feed</button>
                                         )}
-                                        {hasReadAccess !== false && <ScheduleHistoryButton type="nutrition" item={item} patientId={selectedPatient.id} />}
                                         {canCompleteNutrition && item.completed && item.log_id ? (
                                           <button
                                             type="button"
@@ -1422,8 +1450,7 @@ export function DailySchedule({ patient: selectedPatient, category, onChange, re
                                       style={task.category_color ? { borderLeft: `3px solid ${task.category_color}` } : {}}
                                     >
                                       <div className="admin-v2-schedule-item-header">
-                                        <ScheduleItemTime item={task} />
-                                        <span className="admin-v2-schedule-item-name">{task.name}</span>
+                                        <ScheduleItemHeading item={task} />
                                         {isPrn && (
                                           <span className="admin-v2-badge admin-v2-badge-prn" title="As-needed care task">
                                             PRN
@@ -1438,7 +1465,6 @@ export function DailySchedule({ patient: selectedPatient, category, onChange, re
                                           </span>
                                         )}
                                         {task.status === 'skipped' && <span className="admin-v2-badge">Skipped</span>}
-                                        {hasReadAccess !== false && <ScheduleHistoryButton type="care-task" item={task} patientId={selectedPatient.id} />}
                                         {canPerformTask && task.completed && task.log_id ? (
                                           <button
                                             type="button"
@@ -1485,7 +1511,10 @@ export function DailySchedule({ patient: selectedPatient, category, onChange, re
         )}
         {moveFeed && <MoveFeedDialog item={moveFeed} patientId={selectedPatient.id}
           onClose={() => setMoveFeed(null)} onSaved={() => { setMoveFeed(null); refreshAfterWrite(); }} />}
+        {reminder && <OccurrenceReminderDialog item={reminder.item} category={reminder.category}
+          patientId={selectedPatient.id} onClose={() => setReminder(null)} onSaved={reminderSaved} />}
         {fixedCheck && <FixedCheckDialog item={fixedCheck} patientId={selectedPatient.id}
+          onRemind={() => openReminder('nutrition', fixedCheck)}
           onClose={() => setFixedCheck(null)} onSaved={() => { setFixedCheck(null); refreshAfterWrite(); }} />}
 
         {/* Completion Confirmation Dialog */}
@@ -1502,12 +1531,18 @@ export function DailySchedule({ patient: selectedPatient, category, onChange, re
                 <div key={idx} className="sch-summary-row">
                   <span className="sch-summary-name">{item.name}</span>
                   <span className="sch-summary-when">
-                    Scheduled {String(item.hour).padStart(2, '0')}:{String(item.minute).padStart(2, '0')}
+                    Scheduled {reminderDateLabel(item.original_due_at ?? item.scheduled_time) || slotLabel(item.scheduledAt)}
                   </span>
                 </div>
               ))}
             </div>
 
+            {!completeModalData.isBulk && completeModalData.items[0]?.can_remind_later && (
+              <div><button type="button" className="em-cancel"
+                onClick={() => openReminder(completeModalData.type, completeModalData.items[0])}>
+                {completeModalData.items[0].remind_at ? 'Adjust reminder' : 'Remind me later'}
+              </button></div>
+            )}
             <EmField label={completeModalData.items.some(item => item.managed_feed) ? 'Started at' : 'Completed At'}
                      required htmlFor="sch-completed-at"
                      hint={completeModalData.items.some(item => item.managed_feed)
@@ -1584,7 +1619,7 @@ export function DailySchedule({ patient: selectedPatient, category, onChange, re
                 : null;
               const checks = completeModalData.items.map(item => ({
                 item,
-                check: checkAdministrationWindow(item.effective_time ?? item.scheduled_time, completedAtUtc),
+                check: checkAdministrationWindow(item.original_due_at ?? item.effective_time ?? item.scheduled_time, completedAtUtc),
               }));
               const earlyItems = checks.filter(({ check }) => check.status === 'early');
               const lateItems = checks.filter(({ check }) => check.status === 'late');
@@ -1643,7 +1678,7 @@ export function DailySchedule({ patient: selectedPatient, category, onChange, re
                   ? localDateTimeToUTC(completeFormData.completed_at)
                   : null;
                 const statuses = completeModalData.items.map(
-                  item => checkAdministrationWindow(item.effective_time ?? item.scheduled_time, completedAtUtc).status
+                  item => checkAdministrationWindow(item.original_due_at ?? item.effective_time ?? item.scheduled_time, completedAtUtc).status
                 );
                 const hasEarly = statuses.some(s => s === 'early');
                 const hasLate = statuses.some(s => s === 'late');

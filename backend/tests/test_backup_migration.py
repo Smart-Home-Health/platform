@@ -49,6 +49,7 @@ from schemas.medication_log import MedicationLog
 from schemas.medication_schedule import MedicationSchedule
 from schemas.monitoring_alert import MonitoringAlert
 from schemas.nutrition_flush_followup import NutritionFlushFollowup
+from schemas.schedule_reminder import ScheduleReminder
 from schemas.nutrition_intake import NutritionIntake
 from schemas.nutrition_item import NutritionItem
 from schemas.nutrition_output import NutritionOutput
@@ -714,16 +715,55 @@ def test_missing_required_table_is_not_treated_as_empty_legacy_history(db_sessio
     assert inspect(db.connection()).has_table("nutrition_items")
 
 
-@pytest.mark.parametrize('schema_version', [1, 2])
+@pytest.mark.parametrize('schema_version', [1, 2, 3])
 def test_strict_archives_from_before_manager_restore(db_session, migration_graph, schema_version):
     g = migration_graph
     members = _members(_export(db_session, g))
     manifest = json.loads(members['manifest.json'])
     manifest['schema_version'] = schema_version
-    absent = ['schedule_manager_profiles', 'schedule_manager_feeds', 'schedule_manager_actions', 'schedule_manager_recipients', 'feed_start_overrides']
+    absent = ['schedule_reminders']
+    for name in ('patient', 'medication_schedules', 'nutrition_schedules', 'care_task_schedules'):
+        manifest['tables'][name].remove('reminder_window_minutes')
+        _change_json(members, name + '.json', lambda rows: [r.pop('reminder_window_minutes') for r in rows])
+    if schema_version < 3:
+        absent.extend(['schedule_manager_profiles', 'schedule_manager_feeds', 'schedule_manager_actions', 'schedule_manager_recipients', 'feed_start_overrides'])
     if schema_version == 1:
         absent.extend(['event_diaries', 'diary_events'])
     for name in absent:
         del manifest['tables'][name], manifest['counts'][name], members[name + '.json']
     members['manifest.json'] = json.dumps(manifest).encode()
     assert restore_patient_from_targz(db_session, _pack(members), g.target.id)['new_patient_id']
+
+def test_reminder_roundtrip_preserves_timing_and_remaps_schedule(db_session, migration_graph):
+    g = migration_graph
+    schedule = db_session.query(NutritionSchedule).filter_by(patient_id=g.source.id).one()
+    schedule.reminder_window_minutes = 180
+    g.source.reminder_window_minutes = 240
+    remind_at = WHEN + timedelta(hours=2)
+    _add(db_session, ScheduleReminder, patient_id=g.source.id, category='nutrition',
+         schedule_id=schedule.id, scheduled_at=WHEN, original_due_at=WHEN, remind_at=remind_at,
+         deadline_at=WHEN + timedelta(hours=3), updated_at=WHEN)
+    restored = restore_patient_from_targz(db_session, _export(db_session, g), g.target.id)['new_patient_id']
+    row = db_session.query(ScheduleReminder).filter_by(patient_id=restored).one()
+    copy = db_session.get(NutritionSchedule, row.schedule_id)
+    assert copy.patient_id == restored and copy.id != schedule.id
+    assert db_session.get(Patient, restored).reminder_window_minutes == 240
+    assert copy.reminder_window_minutes == 180
+    assert row.scheduled_at == WHEN and row.remind_at == remind_at
+    assert row.deadline_at == WHEN + timedelta(hours=3) and row.notified_at is None
+
+
+def test_reminder_pulls_shared_schedule_into_patient_archive(db_session, migration_graph):
+    g = migration_graph
+    med = _add(db_session, Medication, account_id=g.source_account.id, name='Shared treatment',
+               quantity=12, quantity_unit='units', created_at=WHEN, updated_at=WHEN)
+    schedule = _add(db_session, MedicationSchedule, medication_id=med.id, cron_expression='0 10 * * *',
+                    dose_amount=1, created_at=WHEN, updated_at=WHEN)
+    _add(db_session, ScheduleReminder, patient_id=g.source.id, category='medications', schedule_id=schedule.id,
+         scheduled_at=WHEN, original_due_at=WHEN, remind_at=WHEN + timedelta(hours=1),
+         deadline_at=WHEN + timedelta(hours=2), updated_at=WHEN)
+    restored = restore_patient_from_targz(db_session, _export(db_session, g), g.target.id)['new_patient_id']
+    reminder = db_session.query(ScheduleReminder).filter_by(patient_id=restored).one()
+    copied = db_session.get(MedicationSchedule, reminder.schedule_id)
+    assert copied.patient_id == restored and copied.medication_id != med.id
+    assert copied.medication.name == med.name

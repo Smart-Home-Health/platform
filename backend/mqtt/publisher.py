@@ -173,8 +173,29 @@ class MQTTPublisher:
         }
         payload = {'generated_at': snapshot['generated_at'], 'late_count': len(groups['late']), **groups}
         topic = schedule_details_topic(settings.get('base_topic', 'shh'), patient_id, config)
-        result = self.mqtt_client.publish(topic, json.dumps(payload), qos=1, retain=False)
-        return result.rc == 0
+        alerts = [item for item in snapshot.get('reminder_alerts', []) if item['category'] in categories]
+        if not alerts:
+            return self.mqtt_client.publish(topic, json.dumps(payload), qos=1, retain=False).rc == 0
+        # MQTT enqueue is not delivery. Persist the chosen notification only
+        # after QoS 1 PUBACK, leaving it eligible for retry on broker failure.
+        from crud.schedule_status import pending_alert_records
+        from state_manager import get_db_session
+        from utils.datetime_utils import utc_now
+        with get_db_session() as db:
+            deliveries = pending_alert_records(db, patient_id, alerts)
+            if deliveries:
+                payload['reminder_alerts'] = [item for _, item in deliveries]
+            result = self.mqtt_client.publish(topic, json.dumps(payload), qos=1, retain=False)
+            if result.rc != 0:
+                return False
+            if deliveries:
+                result.wait_for_publish(timeout=5)
+                if not result.is_published():
+                    return False
+                for record, _ in deliveries:
+                    record.notified_at = utc_now()
+                db.commit()
+        return True
 
     def publish_patient_combined_state(self, patient_id: int, state: Dict[str, Any]) -> bool:
         """

@@ -19,7 +19,7 @@ import { useState } from 'react';
 import EntityModal from '../vc/EntityModal';
 import { scheduleManagerService } from '../../services/scheduleManager';
 
-export default function FixedCheckDialog({ item, patientId, onClose, onSaved }) {
+export default function FixedCheckDialog({ item, patientId, onClose, onSaved, onRemind }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const record = async (action) => {
@@ -39,6 +39,8 @@ export default function FixedCheckDialog({ item, patientId, onClose, onSaved }) 
   return <EntityModal open onOpenChange={(open) => { if (!open && !busy) onClose(); }} title={item.name}>
     <div className="em-form">
       <p>Record the outcome of this scheduled check.</p>
+      {item.can_remind_later && onRemind && <div><button className="em-cancel" type="button" disabled={busy}
+        onClick={onRemind}>{item.remind_at ? 'Adjust reminder' : 'Remind me later'}</button></div>}
       {error && <p role="alert" className="em-error">{error}</p>}
       <div className="sm-actions">
         <button type="button" className="em-cancel" disabled={busy} onClick={() => record('dry')}>Checked dry</button>

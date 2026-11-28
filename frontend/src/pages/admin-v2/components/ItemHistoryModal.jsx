@@ -16,26 +16,10 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 import { useEffect, useState } from 'react';
-import config, { apiFetch } from '../../config';
-import { parseScheduleTimestamp } from '../../utils/timezone';
-import EntityModal from '../vc/EntityModal';
-import './schedule-panel.css';
-
-const STATUS_LABELS = { 'on-time': 'On time', early: 'Early', late: 'Late', skipped: 'Skipped' };
-
-function historyQuery(type, item, patientId) {
-  if (!patientId || !item) return null;
-  if (type === 'medication' && item.medication_id) {
-    return `/api/medications/history?medication_id=${item.medication_id}&patient_id=${patientId}&limit=10`;
-  }
-  if (type === 'care-task' && item.care_task_id) {
-    return `/api/care-tasks/history?task_id=${item.care_task_id}&patient_id=${patientId}&limit=10`;
-  }
-  if (type === 'nutrition' && item.schedule_id && !['diaper_check', 'flush'].includes(item.row_kind)) {
-    return `/api/patients/${patientId}/nutrition-intake?schedule_id=${item.schedule_id}&limit=10`;
-  }
-  return null;
-}
+import config, { apiFetch } from '../../../config';
+import { parseScheduleTimestamp } from '../../../utils/timezone';
+import EntityModal from '../../../components/vc/EntityModal';
+import '../../../components/schedule/schedule-panel.css';
 
 function HistoryList({ type, query }) {
   const [rows, setRows] = useState(null);
@@ -63,18 +47,16 @@ function HistoryList({ type, query }) {
 
   return <div className="ld-dose-history">
     {rows.map(row => {
-      const when = parseScheduleTimestamp(row.administered_at || row.completed_at || row.consumed_at);
-      const amount = type === 'medication' ? row.dose_amount : row.amount;
-      const unit = type === 'medication' ? row.dose_unit : row.amount_unit;
-      const status = type === 'care-task' ? (row.completion_status === 'skipped' ? 'Skipped' : 'Done')
-        : type === 'nutrition' ? 'Taken' : (STATUS_LABELS[row.status] || row.status);
+      const when = parseScheduleTimestamp(row.completed_at || row.consumed_at);
+      const status = type === 'nutrition' ? 'Logged'
+        : ({ skipped: 'Skipped', partial: 'Partial', completed: 'Done' }[row.completion_status] || 'Done');
       return (
         <div className="ld-dose-history-row" key={row.id}>
           <span className="ld-dose-history-when">{when?.toLocaleString(undefined, {
             month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
           }) || '—'}</span>
           <span className={`ld-dose-history-status ${status === 'Skipped' ? 'skipped' : 'given'}`}>{status}</span>
-          {amount != null && <span className="ld-dose-history-dose">{amount}{unit && ` ${unit}`}</span>}
+          {row.amount != null && <span className="ld-dose-history-dose">{row.amount} {row.amount_unit}</span>}
           {row.notes && <span className="ld-dose-history-note">{row.notes}</span>}
         </div>
       );
@@ -82,23 +64,14 @@ function HistoryList({ type, query }) {
   </div>;
 }
 
-export default function ScheduleHistoryButton({ type, item, patientId }) {
-  const query = historyQuery(type, item, patientId);
-  const [openQuery, setOpenQuery] = useState(null);
-  if (!query) return null;
-  const open = query === openQuery;
+export default function ItemHistoryModal({ type, patientId, item, onClose }) {
+  if (!patientId || !item) return null;
+  const query = type === 'nutrition'
+    ? `/api/patients/${patientId}/nutrition-intake?item_id=${item.id}&limit=10`
+    : `/api/care-tasks/history?patient_id=${patientId}&task_id=${item.id}&limit=10`;
   return (
-    <span onClick={event => event.stopPropagation()}>
-      <button type="button" className="admin-v2-btn admin-v2-btn-sm"
-        aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpenQuery(query)}>
-        Recent history
-      </button>
-      {open && (
-        <EntityModal open onOpenChange={value => { if (!value) setOpenQuery(null); }}
-          title={`Recent history · ${item.name}`}>
-          <HistoryList key={query} type={type} query={query} />
-        </EntityModal>
-      )}
-    </span>
+    <EntityModal open onOpenChange={value => { if (!value) onClose(); }} title={`Recent history · ${item.name}`}>
+      <HistoryList key={query} type={type} query={query} />
+    </EntityModal>
   );
 }

@@ -19,9 +19,11 @@
 // it is running. Replaces the table the Manage page used to render.
 import { useMemo, useState } from 'react';
 import EntityToolbar from '../../../components/vc/EntityToolbar';
+import ItemHistoryModal from './ItemHistoryModal';
 import EntityCard from '../../../components/vc/EntityCard';
 import {
   CareTasksIcon, ClockIcon, TagIcon, NutritionIcon,
+  ChevronRightIcon,
 } from '../../../components/Icons';
 import { describeCron } from './cronLabel';
 import './care-tasks-page.css';
@@ -31,9 +33,11 @@ export default function CareTasksTab({
   categories = [],
   schedulesByTask = {},
   loading,
+  patientId,
   canCreate, canUpdate, canDelete,
   onAdd, onEdit, onDelete, onToggle, onManageSchedules, onManageCategories,
 }) {
+  const [historyItem, setHistoryItem] = useState(null);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('active');
   const [categoryFilter, setCategoryFilter] = useState('all');
@@ -165,6 +169,11 @@ export default function CareTasksTab({
                   tag={task.active === false ? { label: 'Paused', tone: 'idle' } : undefined}
                   details={details}
                   menu={menuFor(task)}
+                  quickActions={patientId ? [{
+                    icon: <ChevronRightIcon size={20} />,
+                    label: `View history for ${task.name}`,
+                    onClick: () => setHistoryItem(task),
+                  }] : []}
                 >
                   {task.category_color && (
                     <p className="ctp-cat">
@@ -179,6 +188,8 @@ export default function CareTasksTab({
           </div>
         </>
       )}
+      {historyItem && <ItemHistoryModal type="care-task" patientId={patientId} item={historyItem}
+        onClose={() => setHistoryItem(null)} />}
     </div>
   );
 }

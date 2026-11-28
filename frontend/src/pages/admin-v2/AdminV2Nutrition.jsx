@@ -42,7 +42,7 @@ import './settings/settings-page.css';
 // they own their own field state and cron handling.
 
 const AdminV2Nutrition = () => {
-  const { user } = useAuth();
+  const { user, hasReadAccess } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const { 
@@ -639,6 +639,8 @@ const AdminV2Nutrition = () => {
             {/* ITEMS TAB — the saved-item library logging draws from */}
             {activeTab === 'items' && (
               <NutritionItemsTab
+                key={selectedPatient.id}
+                patientId={hasReadAccess !== false && hasPermission('nutrition.read') ? selectedPatient.id : null}
                 items={libraryItems}
                 loading={loading}
                 canCreate={hasPermission('nutrition.create')}

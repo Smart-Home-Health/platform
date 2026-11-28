@@ -108,6 +108,7 @@ class MedicationResponse(BaseModel):
 
 
 class MedicationScheduleDetails(BaseModel):
+    reminder_window_minutes: Optional[int] = Field(None, gt=0, le=2147483647)
     cron_expression: str = Field(..., min_length=1)
     description: str = Field(..., min_length=1, max_length=255)
     dose_amount: float = Field(..., gt=0)
@@ -123,6 +124,7 @@ class MedicationScheduleCreate(MedicationScheduleDetails):
 
 
 class MedicationScheduleChanges(BaseModel):
+    reminder_window_minutes: Optional[int] = Field(None, gt=0, le=2147483647)
     cron_expression: Optional[str] = Field(None, min_length=1)
     description: Optional[str] = Field(None, min_length=1, max_length=255)
     dose_amount: Optional[float] = Field(None, gt=0)
@@ -140,6 +142,7 @@ class MedicationScheduleResponse(BaseModel):
     id: int
     medication_id: int
     patient_id: Optional[int]
+    reminder_window_minutes: Optional[int] = Field(None, gt=0, le=2147483647)
     cron_expression: str
     description: str
     dose_amount: float

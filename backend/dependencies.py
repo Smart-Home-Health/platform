@@ -181,13 +181,52 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)) -> U
     return user
 
 
-def readable_schedule_categories(db: Session, user: User, patient_id: int, requested: Optional[str] = None) -> list[str]:
-    schedule_profile_level(db, user, patient_id)
+def permitted_schedule_categories(user: User, requested: Optional[str] = None) -> list[str]:
     categories = (requested,) if requested else ('medications', 'nutrition', 'care_tasks')
     allowed = [key for key in categories if user.is_superuser or user.has_permission(f'{key}.read')]
     if not allowed:
         raise HTTPException(403, 'Schedule read permission required.')
     return allowed
+
+
+def readable_schedule_categories(db: Session, user: User, patient_id: int, requested: Optional[str] = None) -> list[str]:
+    schedule_profile_level(db, user, patient_id)
+    return permitted_schedule_categories(user, requested)
+
+
+_RECORD_PERMISSIONS = {
+    "medications": ("medications.administer", "medications.update"),
+    "nutrition": ("nutrition.create", "nutrition.update"),
+    "care_tasks": ("care_tasks.perform",),
+}
+
+
+def can_record_schedule(user, category):
+    return user.is_superuser or any(user.has_permission(p) for p in _RECORD_PERMISSIONS[category])
+
+
+def require_schedule_record_permission(user, category):
+    if not can_record_schedule(user, category):
+        raise HTTPException(403, "Schedule recording permission required.")
+
+
+def require_writable_schedule_profile(db, user, patient_id):
+    if schedule_profile_level(db, user, patient_id) == AccessLevel.VIEWER:
+        raise HTTPException(403, "Care profile is read-only.")
+
+
+def require_schedule_edit(db, user, permission, patient_id, catalog=None, *, alternate=None):
+    """A schedule editor needs the category role and scope for its actual template."""
+    if not user.is_superuser and not (user.has_permission(permission) or (alternate and user.has_permission(alternate))):
+        raise HTTPException(403, 'Schedule editing permission required.')
+    if catalog is not None:
+        if catalog.account_id not in (None, user.account_id) or catalog.patient_id not in (None, patient_id):
+            raise HTTPException(404, 'Schedule not found.')
+    if patient_id is None:
+        if not user.is_superuser:
+            raise HTTPException(403, 'Administrator access required to edit a shared schedule.')
+    else:
+        require_writable_schedule_profile(db, user, patient_id)
 
 
 def legacy_schedule_patient(category: str):

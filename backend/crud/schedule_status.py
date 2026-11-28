@@ -14,11 +14,11 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """Outstanding care occurrences for schedule reminders, with one clock per snapshot."""
-from datetime import timedelta
+from datetime import datetime, timedelta
 
-from crud.dose_grace import find_grace_period_doses
-from crud.patients import patient_account_scope
-from crud.scheduling import get_scheduled_care_tasks, get_scheduled_medications, get_scheduled_nutrition
+from crud.reminder_timeline import timeline_rows
+from crud.patients import get_active_patient, patient_account_scope
+from schemas.schedule_reminder import ScheduleReminder
 from schemas.equipment import Equipment
 from schemas.patient import Patient
 from utils.datetime_utils import get_account_tz, local_day_bounds, make_utc, utc_now
@@ -46,13 +46,16 @@ def schedule_badge_counts(snapshot, sections):
     return counts
 
 
-def get_schedule_status(db, patient_id, now=None, *, sections=None):
+def get_schedule_status(db, patient_id, now=None, *, sections=None, include_alerts=False, tz=None):
     """Return late, due now and upcoming items. Timed items look ahead one hour,
     replacements seven calendar days. Each open occurrence appears exactly once.
     """
     now = make_utc(now) if now is not None else utc_now()
-    account_id, = db.query(Patient.account_id).filter_by(id=patient_id, is_active=True).one()
-    tz = get_account_tz(db, account_id)
+    account = db.query(Patient.account_id).filter_by(id=patient_id, is_active=True).one_or_none()
+    if account is None:
+        return {'generated_at': now.isoformat(), 'late_count': 0, 'due_now': [], 'upcoming': [], 'late': []}
+    account_id, = account
+    tz = tz or get_account_tz(db, account_id)
     bounds = local_day_bounds(tz, now)
     hour = timedelta(hours=1)
     horizon = now + hour
@@ -62,24 +65,27 @@ def get_schedule_status(db, patient_id, now=None, *, sections=None):
 
     sections = SCHEDULE_BADGES if sections is None else sections
     groups = {'late': [], 'due_now': [], 'upcoming': []}
-    for section, name_field, load in (
-        ('meds_counts', 'medication_name', get_scheduled_medications),
-        ('nutrition_counts', 'name', get_scheduled_nutrition),
-        ('care_task_counts', 'care_task_name', get_scheduled_care_tasks),
+    alerts = []
+    for section, name_field, key in (
+        ('meds_counts', 'medication_name', 'medications'),
+        ('nutrition_counts', 'name', 'nutrition'),
+        ('care_task_counts', 'care_task_name', 'care_tasks'),
     ):
         if section not in sections:
             continue
         _, category = SCHEDULE_BADGES[section]
-        rows = []
-        for day in days:
-            options = {'as_of': now} if section == 'nutrition_counts' else {}
-            rows.extend(load(db, day, patient_id, tz=tz, strict=True, **options))
-        if category == 'Medication':
-            rows.extend(find_grace_period_doses(
-                db, patient_id, before_utc=bounds['yesterday_start_utc'], now_utc=now, strict=True,
-            ))
+        rows = timeline_rows(db, patient_id, key, days, tz, now, active=True, alerts=include_alerts,
+                             grace_before=bounds['yesterday_start_utc'], strict=True)
         for row in rows:
             if row.get('completed') or row.get('skipped') or row.get('is_prn') or row.get('reminder_superseded'):
+                continue
+            if include_alerts and row.get('_reminder_alert'):
+                firing = row['scheduled_time'].isoformat()
+                alerts.append({'category': category, 'name': row[name_field],
+                               'due_at': row['remind_at'].isoformat(), 'scheduled_time': firing,
+                               'at_deadline': row['remind_at'] == row['deadline_at'],
+                               'occurrence_id': f"{key}/{row['schedule_id']}/{firing}"})
+            if row.get('reminder_state') in ('missed', 'snoozed'):
                 continue
             due = make_utc(row.get('effective_time', row['scheduled_time']))
             if due > horizon:
@@ -124,4 +130,44 @@ def get_schedule_status(db, patient_id, now=None, *, sections=None):
 
     for items in groups.values():
         items.sort(key=lambda item: (item.get('due_at') or item['due_date'], item['category'], item['name']))
-    return {'generated_at': now.isoformat(), 'late_count': len(groups['late']), **groups}
+    snapshot = {'generated_at': now.isoformat(), 'late_count': len(groups['late']), **groups}
+    if alerts:
+        snapshot['reminder_alerts'] = sorted(alerts, key=lambda item: (item['due_at'], item['occurrence_id']))
+    return snapshot
+
+
+
+def pending_alert_records(db, patient_id, alerts):
+    """Lock and recheck the chosen instants before handing them to the broker."""
+    now = utc_now()
+    result = []
+    # A consistent lock order also permits overlapping publisher processes.
+    for item in sorted(alerts, key=lambda item: item['occurrence_id']):
+        category, schedule_id, firing = item['occurrence_id'].split('/', 2)
+        record = db.query(ScheduleReminder).filter_by(
+            patient_id=patient_id, category=category, schedule_id=int(schedule_id),
+            scheduled_at=datetime.fromisoformat(firing), remind_at=datetime.fromisoformat(item['due_at']),
+            notified_at=None,
+        ).with_for_update().one_or_none()
+        if not record or now < record.remind_at:
+            continue
+        if now < record.deadline_at or record.remind_at == record.deadline_at:
+            result.append((record, item))
+    return result
+
+
+def dashboard_schedule_counts(db, patient_id, section, now, tz=None):
+    """Dashboard overdue begins at the previous full hour; MQTT late is a rolling hour."""
+    if patient_id is None:
+        patient = get_active_patient(db)
+        patient_id = patient.id if patient else None
+    if patient_id is None:
+        return {'due': 0, 'overdue': 0, 'due_now': 0, 'late': 0}
+    snapshot = get_schedule_status(db, patient_id, now, sections=[section], tz=tz)
+    rolling = schedule_badge_counts(snapshot, [section])
+    prefix = SCHEDULE_BADGES[section][0]
+    due_now, late = rolling[f'{prefix}_due_now'], rolling[f'{prefix}_late']
+    hour_start = now.replace(minute=0, second=0, microsecond=0)
+    overdue = sum(datetime.fromisoformat(item['due_at']) < hour_start
+                  for item in snapshot['late'] + snapshot['due_now'])
+    return {'due': due_now + late, 'overdue': overdue, 'due_now': due_now, 'late': late}

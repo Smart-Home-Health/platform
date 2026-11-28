@@ -43,7 +43,7 @@ const readsAsNutrition = (name) => {
 };
 
 const AdminV2CareTasks = () => {
-  const { user } = useAuth();
+  const { user, hasReadAccess } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const {
     patients, selectedPatient: contextPatient,
@@ -200,6 +200,8 @@ const AdminV2CareTasks = () => {
             {error && <div className="em-error ec-page-alert" role="alert">{error}</div>}
 
             <CareTasksTab
+              key={selectedPatient.id}
+              patientId={hasReadAccess !== false && hasPermission('care_tasks.read') ? selectedPatient.id : null}
               tasks={decoratedTasks}
               categories={categories}
               schedulesByTask={schedulesByTask}

@@ -33,9 +33,11 @@ const baseSettings = {
 };
 let state;
 let requests;
+let reminderDefault;
 
 beforeEach(() => {
   requests = [];
+  reminderDefault = { reminder_window_minutes: null, can_edit: true };
   state = {
     settings: { ...baseSettings }, can_manage: true, can_record: true, suggestion: null, history: [],
     schedules: [{ id: 2, name: 'Lunch' }, { id: 7, name: 'Overnight' }],
@@ -47,6 +49,10 @@ beforeEach(() => {
     const replaceAudience = parsed.searchParams.get('replace_check_recipients');
     const body = options.body && JSON.parse(options.body);
     requests.push({ path, method: options.method, body, replaceAudience });
+    if (path.includes('/reminder-defaults/')) {
+      if (options.method === 'PUT') reminderDefault = { ...reminderDefault, ...body };
+      return Response.json(reminderDefault);
+    }
     if (path.endsWith('/preview')) {
       return Response.json({
         feeds: [{ name: 'Overnight', scheduled_time: '2026-11-25T23:00:00Z',
@@ -72,6 +78,22 @@ function showManager() {
 }
 
 describe('Schedule Manager', () => {
+  it('sets a default for newly created schedules and can clear it', async () => {
+    showManager();
+    const input = await screen.findByLabelText('Mark missed after');
+    const button = screen.getByRole('button', { name: 'Save default' });
+    expect(button).toBeDisabled();
+    fireEvent.change(input, { target: { value: '2' } });
+    fireEvent.click(button);
+    await screen.findByText('Default for new schedules saved.');
+    expect(reminderDefault.reminder_window_minutes).toBe(120);
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.click(button);
+    await screen.findByText('Default for new schedules saved.');
+    expect(reminderDefault.reminder_window_minutes).toBeNull();
+    expect(requests.filter(r => r.method === 'PUT').every(r => r.path === '/api/schedule/reminder-defaults/5')).toBe(true);
+  });
+
   it('previews a day with the unsaved selection before saving the same rules to the profile', async () => {
     showManager();
     fireEvent.click(await screen.findByLabelText('Adjust feed times when the day runs late'));

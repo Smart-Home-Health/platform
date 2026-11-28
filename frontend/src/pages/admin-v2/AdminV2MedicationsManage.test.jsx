@@ -77,11 +77,11 @@ describe('editing a medication schedule', () => {
     expect(button('Sun')).toHaveAttribute('aria-pressed', 'true');
     expect(button('Wed')).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByLabelText(/Dose Amount/)).toHaveValue(1.25);
-    expect(screen.getByLabelText(/Grace period/)).toHaveValue(4.5);
+    expect(screen.getByLabelText(/Mark missed after/)).toHaveValue(4.5);
     fireEvent.click(button('Sun'));
     change('Time', '23:15');
     change(/Dose Amount/, '0.5');
-    change(/Grace period/, '');
+    change(/Mark missed after/, '');
     fireEvent.click(button('Save Changes'));
 
     const edit = await screen.findByRole('button', { name: 'Edit' });
@@ -92,7 +92,7 @@ describe('editing a medication schedule', () => {
     expect(row.getByText('Default')).toBeInTheDocument();
     expect(row.getByText('Lee Gray')).toBeInTheDocument();
     expect(writes).toEqual([{ method: 'PUT', path: '/api/schedules/73', payload: {
-      cron_expression: weekly('23:15', [3]), description: 'Wed at 23:15', dose_amount: 0.5, grace_period_hours: null,
+      cron_expression: weekly('23:15', [3]), description: 'Wed at 23:15', dose_amount: 0.5, grace_period_hours: null, reminder_window_minutes: null,
     } }]);
   });
 
@@ -110,7 +110,7 @@ describe('editing a medication schedule', () => {
     await screen.findByText('Day 5 monthly (UTC)');
     expect(writes[0].payload.cron_expression).toBe('30 14 5 * *');
     expect(screen.getByLabelText(/^Patient/)).toHaveValue('1');
-    expect(screen.getByLabelText(/Grace period/)).toHaveValue(null);
+    expect(screen.getByLabelText(/Mark missed after/)).toHaveValue(null);
     fireEvent.click(button('Fri'));
     fireEvent.click(button('Add Schedule'));
     await screen.findByText('Fri', { selector: 'td' });

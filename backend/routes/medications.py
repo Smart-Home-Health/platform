@@ -18,12 +18,12 @@ Medication management routes
 """
 import logging
 from datetime import datetime
-from fastapi import APIRouter, Depends, Body
+from fastapi import APIRouter, Depends, Body, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from db import get_db
-from dependencies import require_read_access, get_current_user, legacy_schedule_patient
+from dependencies import require_schedule_edit, require_read_access, get_current_user, legacy_schedule_patient
 from models.medications import (
     MedicationCreate,
     MedicationUpdate,
@@ -45,6 +45,7 @@ from crud.medications import (add_medication, get_active_medications, get_inacti
 from pydantic import BaseModel, Field
 from crud.settings import get_setting
 from models import Medication
+from schemas.medication_schedule import MedicationSchedule
 from utils.early_administration import guard_early_administration, guard_future_administration
 from utils.medication_quantity import insufficient_quantity_response, InsufficientMedicationQuantityError
 
@@ -386,7 +387,7 @@ async def administer_medication_endpoint(med_id: int, data: MedicationAdminister
 async def api_add_medication_schedule(
     medication_id: int, 
     data: MedicationScheduleCreate, 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db), user=Depends(get_current_user),
 ):
     """Add a new medication schedule entry."""
     try:
@@ -409,6 +410,10 @@ async def api_add_medication_schedule(
                     except (ValueError, TypeError):
                         pass  # Leave patient_id as None
         
+        selected = patient_id if medication.patient_id is None else medication.patient_id
+        if data.patient_id is not None and selected != data.patient_id:
+            raise HTTPException(404, "Medication schedule not found.")
+        require_schedule_edit(db, user, "medications.create", selected, medication, alternate="medications.update")
         schedule_id = add_medication_schedule(
             db,
             medication_id=medication_id,
@@ -419,6 +424,7 @@ async def api_add_medication_schedule(
             notes=data.notes or '',
             patient_id=patient_id,
             grace_period_hours=data.grace_period_hours,
+            reminder_window_minutes=data.reminder_window_minutes,
         )
         
         if schedule_id:
@@ -426,6 +432,8 @@ async def api_add_medication_schedule(
         else:
             return JSONResponse(status_code=500, content={"detail": "Failed to create medication schedule"})
     
+    except HTTPException:
+        raise
     except Exception as e:
         return JSONResponse(status_code=500, content={"detail": f"Internal server error: {str(e)}"})
 
@@ -453,14 +461,22 @@ async def get_all_medication_schedules_endpoint(active_only: bool = True, db: Se
 async def update_medication_schedule_endpoint(
     schedule_id: int, 
     data: MedicationScheduleUpdate, 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db), user=Depends(get_current_user),
 ):
     """Update an existing medication schedule."""
+    schedule = db.get(MedicationSchedule, schedule_id)
+    if schedule is None:
+        raise HTTPException(404, "Medication schedule not found.")
+    selected = schedule.patient_id or schedule.medication.patient_id
+    require_schedule_edit(db, user, "medications.update", selected, schedule.medication)
+    if data.patient_id is not None and data.patient_id != selected:
+        require_schedule_edit(db, user, "medications.update", data.patient_id, schedule.medication)
     # Filter out None values. grace_period_hours is the exception: an explicit
     # null clears the override back to the interval-derived default.
     update_data = {k: v for k, v in data.model_dump().items() if v is not None}
-    if 'grace_period_hours' in data.model_fields_set:
-        update_data['grace_period_hours'] = data.grace_period_hours
+    for field in ('grace_period_hours', 'reminder_window_minutes'):
+        if field in data.model_fields_set:
+            update_data[field] = getattr(data, field)
     
     success = update_medication_schedule(db, schedule_id, **update_data)
     if not success:

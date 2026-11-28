@@ -13,6 +13,7 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+from crud.reminder_windows import new_reminder_window
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, and_, func
 from datetime import datetime, date, timedelta, timezone
@@ -658,6 +659,7 @@ def get_patient_nutrition_intake(
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
     schedule_id: Optional[int] = None,
+    item_id: Optional[int] = None,
 ) -> List[NutritionIntake]:
     """Get nutrition intake records for a patient, optionally bounded by a
     consumed_at date range (UTC datetimes).
@@ -669,11 +671,13 @@ def get_patient_nutrition_intake(
     query = db.query(NutritionIntake).filter(NutritionIntake.patient_id == patient_id)
     if schedule_id is not None:
         query = query.filter(NutritionIntake.schedule_id == schedule_id)
+    if item_id is not None:
+        query = query.filter(NutritionIntake.item_id == item_id)
     if start_date:
         query = query.filter(NutritionIntake.consumed_at >= start_date)
     if end_date:
         query = query.filter(NutritionIntake.consumed_at <= end_date)
-    return query.order_by(desc(NutritionIntake.consumed_at)).limit(limit).all()
+    return query.order_by(desc(NutritionIntake.consumed_at), desc(NutritionIntake.id)).limit(limit).all()
 
 def get_daily_nutrition_intake(
     db: Session,
@@ -1523,6 +1527,7 @@ def sync_flush_followups_on_void(db: Session, event_group_ids: List[str],
 def create_nutrition_schedule(db: Session, schedule_data: dict) -> NutritionSchedule:
     """Create a new nutrition schedule"""
     payload = dict(schedule_data)
+    payload["reminder_window_minutes"] = new_reminder_window(db, payload["patient_id"], payload.get("reminder_window_minutes"))
     components = payload.pop('components', None)
     try:
         schedule = NutritionSchedule(
@@ -1584,7 +1589,7 @@ def update_nutrition_schedule(db: Session, schedule_id: int, update_data: dict) 
                 continue
             # The route dumps with exclude_unset, so a present-but-None
             # clamp is an explicit clear, not an omission.
-            if value is None and field not in ('fluid_min_ml', 'fluid_max_ml'):
+            if value is None and field not in ('fluid_min_ml', 'fluid_max_ml', 'reminder_window_minutes'):
                 continue
             setattr(schedule, field, value)
 

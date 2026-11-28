@@ -119,7 +119,7 @@ export default function AdminV2CareProfileHub() {
       to: `${base}/schedule-manager`,
       icon: <CalendarIcon size={18} />,
       title: 'Schedule Manager',
-      blurb: 'Adjust feed timing and suggest bathroom checks for this person.',
+      blurb: 'Set reminder windows for new schedules, adjust feeds and plan bathroom checks.',
       action: 'Open manager',
       status: 'optional',
       facts: [],

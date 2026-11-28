@@ -25,6 +25,7 @@ from schemas.care_task_schedule import CareTaskSchedule
 from schemas.care_task_log import CareTaskLog
 from nutrition_vocab import LOCATION_LABELS, to_ml
 from care_task_vocab import completion_timing, is_nutrition_category
+from crud.reminder_windows import new_reminder_window
 from crud.medication_occurrences import medication_logs_for_window, medication_logs_by_firing
 from crud.patients import get_active_patient, patient_account_scope
 from utils.datetime_utils import (
@@ -40,7 +41,7 @@ logger = logging.getLogger('crud')
 
 
 # --- CareTaskSchedule CRUD ---
-def add_care_task_schedule(db: Session, care_task_id, cron_expression, description=None, active=True, notes=None, patient_id=None):
+def add_care_task_schedule(db: Session, care_task_id, cron_expression, description=None, active=True, notes=None, patient_id=None, reminder_window_minutes=None):
     """
     Add a new care task schedule
     """
@@ -55,6 +56,7 @@ def add_care_task_schedule(db: Session, care_task_id, cron_expression, descripti
         schedule = CareTaskSchedule(
             care_task_id=care_task_id,
             patient_id=patient_id,
+            reminder_window_minutes=new_reminder_window(db, patient_id, reminder_window_minutes),
             cron_expression=cron_expression,
             description=description,
             active=active,
@@ -108,6 +110,7 @@ def get_care_task_schedules(db: Session, care_task_id, patient_id=None):
             {
                 'id': s.id,
                 'care_task_id': s.care_task_id,
+                'reminder_window_minutes': s.reminder_window_minutes,
                 'patient_id': s.patient_id,
                 'cron_expression': s.cron_expression,
                 'description': s.description,
@@ -157,6 +160,7 @@ def get_all_care_task_schedules(db: Session, active_only=True, patient_id=None):
             {
                 'id': s.id,
                 'care_task_id': s.care_task_id,
+                'reminder_window_minutes': s.reminder_window_minutes,
                 'care_task_name': s.care_task.name if s.care_task else None,
                 'patient_id': s.patient_id,
                 'cron_expression': s.cron_expression,
@@ -371,6 +375,36 @@ def get_daily_care_task_schedule(db: Session, patient_id=None, tz=None):
         bounds = local_day_bounds(tz)
         current_time = bounds['now_utc']
 
+        if patient_id is None:
+            selected = get_active_patient(db)
+            patient_id = selected.id if selected else None
+        if patient_id is not None and patient_id != -1:
+            from crud.reminder_timeline import timeline_rows
+            rows = timeline_rows(db, patient_id, 'care_tasks', [bounds['local_yesterday'], bounds['local_today']],
+                                 tz, current_time)
+            for item in rows:
+                item['patient_id'] = patient_id
+                item['care_task_category_name'] = item['category_name']
+                item['care_task_category_color'] = item['category_color'] or '#6f42c1'
+                item['is_completed'] = item['completed']
+                item['completed_time'] = item['completed_at']
+                item['performed_by'] = item['completed_by']
+                item.pop('_reminder_alert', None)
+                if item['completed']:
+                    item['status'] = item.get('status') or 'completed'
+                    item['notes'] = item.pop('completion_notes', item['notes'])
+                elif item['reminder_state'] in ('snoozed', 'missed'):
+                    item['status'] = item['reminder_state']
+                elif item['is_yesterday']:
+                    item['status'] = 'missed'
+                else:
+                    offset = (current_time - item['effective_time']).total_seconds() / 60
+                    item['status'] = ('pending' if offset < -30 else 'due_warning' if offset < -15
+                                      else 'due_on_time' if offset < 15 else 'due_late')
+            rows.sort(key=lambda row: row.get('effective_time', row['scheduled_time']))
+            return {'scheduled_care_tasks': rows, 'generated_at': current_time.isoformat()}
+
+        # The legacy all-patient summary has no single profile's reminder timeline.
         # A single UTC calendar date no longer equals the local day, so fetch
         # every UTC date spanning the local yesterday+today, dedup, then bucket
         # by the local-day boundaries.
@@ -595,49 +629,22 @@ def complete_care_task(db: Session, task_id, schedule_id=None, scheduled_time=No
 
 
 def get_due_and_upcoming_care_tasks_count(db: Session, patient_id=None, tz=None):
-    """
-    Count scheduled care-task occurrences that are "due" for the badge/summary.
-
-    An occurrence counts when it is NOT yet completed/skipped AND its scheduled
-    time falls within the window [start of the local prior day, now + 1 hour].
-    The daily schedule (account-local today+yesterday) spans the window and
-    matches completions to occurrences by ``scheduled_time``, so we only need the
-    open occurrences up to the one-hour lookahead. This mirrors the medication
-    and nutrition counters, keeping all badges on one shared window.
-    """
-    try:
-        from crud.medications import _count_due_and_upcoming
-        schedule_data = get_daily_care_task_schedule(db, patient_id=patient_id, tz=tz)
-        tasks = schedule_data.get('scheduled_care_tasks', [])
-        return _count_due_and_upcoming(tasks)
-    except Exception as e:
-        logger.error(f"Error getting due/upcoming care tasks count: {e}")
-        return 0
-
-
-def get_care_task_due_now_late_counts(db: Session, patient_id=None, tz=None):
-    """Return {'due_now', 'late'} care-task badge counts (mirrors the medication
-    badge counter; see crud.medications._count_due_now_and_late)."""
-    try:
-        from crud.medications import _count_due_now_and_late
-        schedule_data = get_daily_care_task_schedule(db, patient_id=patient_id, tz=tz)
-        tasks = schedule_data.get('scheduled_care_tasks', [])
-        return _count_due_now_and_late(tasks)
-    except Exception as e:
-        logger.error(f"Error getting due_now/late care task counts: {e}")
-        return {'due_now': 0, 'late': 0}
+    return get_care_task_schedule_counts(db, patient_id=patient_id, tz=tz)['due']
 
 
 def get_care_task_schedule_counts(db: Session, patient_id=None, tz=None):
-    """Return {'due', 'overdue'} care-task counts from one schedule fetch."""
-    try:
-        from crud.medications import _count_due_and_upcoming, _count_overdue
-        schedule_data = get_daily_care_task_schedule(db, patient_id=patient_id, tz=tz)
-        tasks = schedule_data.get('scheduled_care_tasks', [])
-        return {'due': _count_due_and_upcoming(tasks), 'overdue': _count_overdue(tasks)}
-    except Exception as e:
-        logger.error(f"Error getting care task schedule counts: {e}")
-        return {'due': 0, 'overdue': 0}
+    """Count actionable occurrences using the same reminder timeline as Home Assistant."""
+    from crud.schedule_status import dashboard_schedule_counts
+    now = local_day_bounds(tz or resolve_tz_for_patient(db, patient_id))['now_utc']
+    counts = dashboard_schedule_counts(db, patient_id, 'care_task_counts', now, tz)
+    return {'due': counts['due'], 'overdue': counts['overdue']}
+
+
+def get_care_task_due_now_late_counts(db: Session, patient_id=None, tz=None):
+    from crud.schedule_status import dashboard_schedule_counts
+    now = local_day_bounds(tz or resolve_tz_for_patient(db, patient_id))['now_utc']
+    counts = dashboard_schedule_counts(db, patient_id, 'care_task_counts', now, tz)
+    return {'due_now': counts['due_now'], 'late': counts['late']}
 
 
 def get_care_task_schedule(db: Session, schedule_id):
@@ -654,6 +661,7 @@ def get_care_task_schedule(db: Session, schedule_id):
             'care_task_id': schedule.care_task_id,
             'care_task_name': schedule.care_task.name if schedule.care_task else None,
             'cron_expression': schedule.cron_expression,
+            'reminder_window_minutes': schedule.reminder_window_minutes,
             'description': schedule.description,
             'active': schedule.active,
             'notes': schedule.notes,
@@ -769,6 +777,8 @@ def get_scheduled_medications(db: Session, target_date, patient_id: int, tz_offs
                         'schedule_id': schedule.id,
                         'medication_id': schedule.medication_id,
                         'medication_name': schedule.medication.name,
+                        'reminder_window_minutes': schedule.reminder_window_minutes,
+                        'grace_period_hours': schedule.grace_period_hours,
                         'dose_amount': schedule.dose_amount,
                         'dose_unit': schedule.medication.quantity_unit,
                         # Real UTC ISO with offset; the frontend converts to
@@ -907,6 +917,8 @@ def get_scheduled_care_tasks(db: Session, target_date, patient_id: int, tz_offse
                         'care_task_id': schedule.care_task_id,
                         'care_task_name': schedule.care_task.name,
                         'care_task_description': schedule.care_task.description,
+                        'reminder_window_minutes': schedule.reminder_window_minutes,
+                        'cron_expression': schedule.cron_expression,
                         # Real UTC datetime — frontend converts to local for display.
                         'scheduled_time': next_time_utc,
                         'schedule_description': schedule.description,
@@ -919,6 +931,7 @@ def get_scheduled_care_tasks(db: Session, target_date, patient_id: int, tz_offse
                         # care_task_log.status is completed | skipped | partial;
                         # surface it so skipped tasks render distinctly.
                         'status': log.status if log else None,
+                        'completion_notes': log.notes if log else None,
                         'completed_at': log.completed_at.isoformat() if log else None,
                         'completed_by': log.performed_by if log else None,
                         'log_id': log.id if log else None,
@@ -1071,6 +1084,7 @@ def get_scheduled_nutrition(db: Session, target_date, patient_id: int, tz_offset
                         'name': schedule.name,
                         'schedule_type': schedule.schedule_type,
                         'default_item_name': schedule.default_item_name,
+                        'reminder_window_minutes': schedule.reminder_window_minutes,
                         'default_amount': schedule.default_amount,
                         'default_amount_unit': schedule.default_amount_unit,
                         'default_calories': schedule.default_calories,
@@ -1461,76 +1475,22 @@ def _apply_water_budget(db, patient_id, rows, local_start_utc, local_end_utc):
 
 
 def get_due_and_upcoming_nutrition_count(db: Session, patient_id=None, tz=None):
-    """
-    Returns the count of scheduled nutrition items that need attention:
-    - missed (yesterday or today, scheduled >1h ago and not completed)
-    - due/late (today, scheduled 15min–1h ago and not completed)
-    - ready (today, within ±15min of now and not completed)
-    - upcoming (today, scheduled within the next hour and not completed)
-
-    PRN (ad-hoc) intakes and outputs are excluded — they're already done.
-
-    Scoped to ``patient_id`` when provided (for per-patient dashboard badges);
-    falls back to the global active patient otherwise. The today/yesterday window
-    is the patient's account-local day (``tz``, resolved from the account when
-    not passed) so it shares one window with the medication/care-task badges and
-    doesn't count items from two local days ago.
-    """
     return get_nutrition_schedule_counts(db, patient_id=patient_id, tz=tz)['due']
 
 
-def _nutrition_attention_times(db, patient_id, tz):
-    if patient_id is None:
-        patient = get_active_patient(db)
-        if not patient:
-            return
-        patient_id = patient.id
-    tz = tz or resolve_tz_for_patient(db, patient_id)
-    bounds = local_day_bounds(tz)
-    now = bounds['now_utc']
-    # Query each original care day exactly once, including a prior evening
-    # whose overnight feed may now fall on today's clock.
-    for day in (bounds['local_yesterday'], bounds['local_today']):
-        for row in get_scheduled_nutrition(db, day, patient_id, tz=tz, as_of=now, strict=True):
-            if row.get('is_prn') or row.get('completed') or row.get('skipped') or row.get('reminder_superseded'):
-                continue
-            due = row.get('effective_time', row['scheduled_time'])
-            due = make_utc(datetime.fromisoformat(due) if isinstance(due, str) else due)
-            if not (bounds['yesterday_start_utc'] <= due < bounds['today_end_utc']):
-                continue
-            if row.get('managed_feed') and due > now:
-                continue
-            yield due, now
-
-
 def get_nutrition_schedule_counts(db: Session, patient_id=None, tz=None):
-    """Dashboard counts. Managed feeds become due only when they may start."""
-    due = overdue = 0
-    try:
-        for when, now in _nutrition_attention_times(db, patient_id, tz):
-            if when <= now + timedelta(hours=1):
-                due += 1
-            if when < now.replace(minute=0, second=0, microsecond=0):
-                overdue += 1
-    except Exception as e:
-        logger.error(f"Error getting nutrition schedule counts: {e}")
-        return {'due': 0, 'overdue': 0}
-    return {'due': due, 'overdue': overdue}
+    """Count actionable occurrences using the same reminder timeline as Home Assistant."""
+    from crud.schedule_status import dashboard_schedule_counts
+    now = local_day_bounds(tz or resolve_tz_for_patient(db, patient_id))['now_utc']
+    counts = dashboard_schedule_counts(db, patient_id, 'nutrition_counts', now, tz)
+    return {'due': counts['due'], 'overdue': counts['overdue']}
 
 
 def get_nutrition_due_now_late_counts(db: Session, patient_id=None, tz=None):
-    """Per-patient MQTT badge counts on the same adjusted care-day schedule."""
-    due_now = late = 0
-    try:
-        for when, now in _nutrition_attention_times(db, patient_id, tz):
-            if when < now - timedelta(hours=1):
-                late += 1
-            elif when <= now + timedelta(hours=1):
-                due_now += 1
-    except Exception as e:
-        logger.error(f"Error getting due_now/late nutrition counts: {e}")
-        return {'due_now': 0, 'late': 0}
-    return {'due_now': due_now, 'late': late}
+    from crud.schedule_status import dashboard_schedule_counts
+    now = local_day_bounds(tz or resolve_tz_for_patient(db, patient_id))['now_utc']
+    counts = dashboard_schedule_counts(db, patient_id, 'nutrition_counts', now, tz)
+    return {'due_now': counts['due_now'], 'late': counts['late']}
 
 
 # =====================
@@ -1551,6 +1511,8 @@ def canonical_care_task_item(raw: dict) -> dict:
     speaks it. ``is_nutrition`` is resolved here too, so no caller has to
     re-guess it from the category name.
     """
+    from crud.reminder_timeline import reminder_fields
+
     def pick(*keys, default=None):
         for key in keys:
             if key in raw and raw[key] is not None:
@@ -1560,7 +1522,8 @@ def canonical_care_task_item(raw: dict) -> dict:
     scheduled = pick('scheduled_time')
     if hasattr(scheduled, 'isoformat'):
         scheduled_iso = scheduled.isoformat()
-        hour, minute = scheduled.hour, scheduled.minute
+        display_at = pick('effective_time', 'scheduled_time')
+        hour, minute = display_at.hour, display_at.minute
     else:
         scheduled_iso, hour, minute = scheduled, None, None
 
@@ -1593,4 +1556,5 @@ def canonical_care_task_item(raw: dict) -> dict:
         'is_nutrition': is_nutrition_category(category_name),
         'notes': pick('notes'),
         'type': 'care_task',
+        **reminder_fields(raw),
     }

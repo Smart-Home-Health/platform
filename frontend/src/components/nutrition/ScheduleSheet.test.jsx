@@ -70,6 +70,13 @@ describe('ScheduleSheet', () => {
     expect(payload.components).toEqual([]);
   });
 
+  it('keeps the advance reminder separate from the duration after the feed is due', () => {
+    const { onSave } = setup({ editing: { id: 2, name: 'Feed', reminder_minutes_before: 10, reminder_window_minutes: 90 } });
+    fireEvent.change(screen.getByLabelText('Mark missed after'), { target: { value: '' } });
+    fireEvent.click(saveButton());
+    expect(onSave.mock.calls[0][0]).toMatchObject({ reminder_window_minutes: null, reminder_minutes_before: 10 });
+  });
+
   it('sends the fluid-budget flag and clamps for a flagged hydration spot', () => {
     const { onSave } = setup();
     nameIt('Afternoon water');

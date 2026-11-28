@@ -53,6 +53,7 @@ class CareTaskResponse(BaseModel):
 
 
 class CareTaskScheduleCreate(BaseModel):
+    reminder_window_minutes: Optional[int] = Field(None, gt=0, le=2147483647)
     cron_expression: str = Field(..., min_length=1)
     description: Optional[str] = Field(None, max_length=500)
     active: bool = True
@@ -61,6 +62,7 @@ class CareTaskScheduleCreate(BaseModel):
 
 
 class CareTaskScheduleUpdate(BaseModel):
+    reminder_window_minutes: Optional[int] = Field(None, gt=0, le=2147483647)
     cron_expression: Optional[str] = Field(None, min_length=1)
     description: Optional[str] = Field(None, max_length=500)
     active: Optional[bool] = None
@@ -72,6 +74,7 @@ class CareTaskScheduleResponse(BaseModel):
     id: int
     care_task_id: int
     patient_id: Optional[int]
+    reminder_window_minutes: Optional[int] = Field(None, gt=0, le=2147483647)
     cron_expression: str
     description: Optional[str]
     active: bool

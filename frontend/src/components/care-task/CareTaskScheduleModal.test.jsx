@@ -94,6 +94,19 @@ describe('CareTaskScheduleModal', () => {
     expect(onCreate.mock.calls[0][0].cron_expression).toMatch(/^\d+ \d+ \* \* \*$/);
   });
 
+  it('saves a custom duration in minutes and leaves the default unset on a new task schedule', () => {
+    const { onCreate } = setup();
+    const open = () => fireEvent.click(screen.getByText('Add a schedule'));
+    const save = () => fireEvent.click(screen.getByRole('button', { name: 'Add schedule' }));
+    open(); save();
+    expect(onCreate.mock.calls[0][0]).not.toHaveProperty('reminder_window_minutes');
+    open();
+    fireEvent.change(screen.getByLabelText('Duration unit'), { target: { value: 'days' } });
+    fireEvent.change(screen.getByLabelText('Mark missed after'), { target: { value: '1.5' } });
+    save();
+    expect(onCreate.mock.calls[1][0].reminder_window_minutes).toBe(2160);
+  });
+
   it('offers intake prefill only for a nutrition task', () => {
     setup();
     fireEvent.click(screen.getByText('Add a schedule'));

@@ -17,12 +17,12 @@
 Care task management routes
 """
 import logging
-from fastapi import APIRouter, Depends, Body
+from fastapi import APIRouter, Depends, Body, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from db import get_db
-from dependencies import require_read_access, get_current_user, require_permission, legacy_schedule_patient
+from dependencies import require_schedule_edit, require_read_access, get_current_user, require_permission, legacy_schedule_patient
 from models.users import User
 from models.care_tasks import (
     CareTaskCreate,
@@ -56,6 +56,7 @@ from crud.scheduling import (
     validate_cron_expression, get_next_scheduled_times
 )
 from crud.patients import get_current_patient
+from schemas.care_task import CareTask
 from schemas.care_task_schedule import CareTaskSchedule
 from schemas.patient import Patient
 from utils.early_administration import guard_early_administration
@@ -192,7 +193,7 @@ async def toggle_care_task_active_endpoint(task_id: int, db: Session = Depends(g
 async def api_add_care_task_schedule(
     care_task_id: int, 
     data: CareTaskScheduleCreate, 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db), user=Depends(get_current_user),
 ):
     """Add a schedule to a care task"""
     try:
@@ -207,6 +208,10 @@ async def api_add_care_task_schedule(
             current_patient = get_current_patient(db)
             patient_id = current_patient.id if current_patient else None
         
+        task = db.get(CareTask, care_task_id)
+        if task is None:
+            raise HTTPException(404, "Care task not found.")
+        require_schedule_edit(db, user, "care_tasks.create", patient_id, task)
         schedule_id = add_care_task_schedule(
             db=db,
             care_task_id=care_task_id,
@@ -214,12 +219,15 @@ async def api_add_care_task_schedule(
             description=data.description,
             active=data.active,
             notes=data.notes,
-            patient_id=patient_id
+            patient_id=patient_id,
+            reminder_window_minutes=data.reminder_window_minutes,
         )
         if schedule_id:
             return {"id": schedule_id, "status": "success"}
         else:
             return JSONResponse(status_code=500, content={"detail": "Failed to create care task schedule"})
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error adding care task schedule: {e}")
         return JSONResponse(
@@ -321,12 +329,22 @@ async def get_care_task_schedule_endpoint(schedule_id: int, db: Session = Depend
 
 
 @router.put("/care-task-schedules/{schedule_id}", dependencies=[Depends(require_permission("care_tasks.update"))])
-async def update_care_task_schedule_endpoint(schedule_id: int, data: CareTaskScheduleUpdate, db: Session = Depends(get_db)):
+async def update_care_task_schedule_endpoint(schedule_id: int, data: CareTaskScheduleUpdate, db: Session = Depends(get_db), user=Depends(get_current_user)):
     """Update an existing care task schedule"""
+    schedule = db.get(CareTaskSchedule, schedule_id)
+    if schedule is None:
+        raise HTTPException(404, "Care task schedule not found.")
+    selected = schedule.patient_id or schedule.care_task.patient_id
+    require_schedule_edit(db, user, "care_tasks.update", selected, schedule.care_task)
+    if data.patient_id is not None and data.patient_id != selected:
+        require_schedule_edit(db, user, "care_tasks.update", data.patient_id, schedule.care_task)
     try:
         # Filter out None values
         update_data = {k: v for k, v in data.model_dump().items() if v is not None}
         
+        if "reminder_window_minutes" in data.model_fields_set:
+            update_data["reminder_window_minutes"] = data.reminder_window_minutes
+
         # Validate cron expression if provided
         if "cron_expression" in update_data:
             is_valid, error_msg = validate_cron_expression(update_data["cron_expression"])
@@ -671,7 +689,7 @@ async def delete_care_task_category_endpoint(category_id: int, db: Session = Dep
 # History and stats endpoints - MUST be before /care-tasks/{task_id} to avoid route conflicts
 @router.get("/care-tasks/history")
 async def get_care_task_history_endpoint(
-    patient_id: int = None,
+    patient_id: int = Depends(legacy_schedule_patient('care_tasks')),
     task_id: int = None,
     task_name: str = None,
     category_id: int = None,

@@ -61,7 +61,7 @@ def test_scoped_schedule_reads_only_permitted_categories(limited_client, limited
         pytest.fail('Read data from an excluded schedule category')
 
     monkeypatch.setattr(schedule, 'get_scheduled_medications', unexpected)
-    monkeypatch.setattr(schedule, 'find_grace_period_doses', unexpected)
+    monkeypatch.setattr('crud.reminder_timeline.find_grace_period_doses', unexpected)
     monkeypatch.setattr(schedule, 'get_scheduled_care_tasks', unexpected)
 
     params = {'patient_id': patient.id, 'include_prior_day': 'true'}
@@ -70,6 +70,7 @@ def test_scoped_schedule_reads_only_permitted_categories(limited_client, limited
     body = combined.json()
     assert body['medications'] == body['care_tasks'] == []
     assert [(row['name'], row['is_yesterday']) for row in body['nutrition']] == [('Lunch', True), ('Lunch', False)]
+    assert all(row['can_remind_later'] is False for row in body['nutrition'])
     assert limited_client.get(path, params={**params, 'category': 'nutrition'}).json() == body
     assert limited_client.get(path, params={**params, 'category': 'care_tasks'}).status_code == 403
     assert limited_client.get(path, params={**params, 'category': 'unexpected'}).status_code == 422
