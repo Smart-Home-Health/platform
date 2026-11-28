@@ -128,12 +128,6 @@ export const careTaskService = {
                   'Failed to change schedule status');
   },
 
-  // ---------- day view ----------
-  async day(patientId) {
-    return asJson(await apiFetch(`${config.apiUrl}/api/care-tasks/day?patient_id=${patientId}`),
-                  'Failed to fetch the care task day');
-  },
-
   // ---------- history / stats ----------
   async history(params) {
     const qs = new URLSearchParams(

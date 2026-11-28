@@ -56,7 +56,7 @@ jobs:
       AARCH64_ARCHIVE_SHA256: ${{ inputs.aarch64_archive_sha256 }}
       AARCH64_IMAGE_ID: ${{ inputs.aarch64_image_id }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -111,13 +111,13 @@ jobs:
                   output.write(f'{arch}_artifact={name}\n')
           pathlib.Path('promotion-plan.json').write_text(json.dumps(plan))
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ steps.runs.outputs.amd64_artifact }}
           run-id: ${{ env.AMD64_RUN }}
           github-token: ${{ github.token }}
           path: accepted/amd64
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ steps.runs.outputs.aarch64_artifact }}
           run-id: ${{ inputs.aarch64_run }}
@@ -157,7 +157,7 @@ jobs:
               need(image['Os'] + '/' + image['Architecture'] == item['platform'], 'Wrong image architecture')
               need(image['Config']['Labels']['org.opencontainers.image.revision'] == item['commit'], 'Image revision mismatch')
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -226,7 +226,7 @@ jobs:
 
       - name: Preserve publication receipts even after a partial failure
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: addon-publication-${{ github.run_id }}
           path: promotion-receipts/
@@ -249,7 +249,7 @@ jobs:
       contents: read
       packages: read
     steps:
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -269,7 +269,7 @@ jobs:
           jq -n --arg arch "$ARCH" --arg digest "$REGISTRY_DIGEST" --arg image_id "$EXPECTED_IMAGE_ID" \
             '{arch:$arch, registry_digest:$digest, image_id:$image_id, fresh_pull_verified:true}' > "verified/${ARCH}.json"
           echo "Verified fresh pull: $image ($EXPECTED_IMAGE_ID)" >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: addon-fresh-pull-${{ matrix.arch }}-${{ github.run_id }}
           path: verified/

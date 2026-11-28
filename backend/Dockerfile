@@ -6,21 +6,13 @@ ENV TZ=UTC
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies (curl is used by the healthcheck)
-RUN apt-get update && apt-get install -y \
-    gcc \
-    postgresql-client \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements first for better caching
+# curl serves the healthcheck. Build psycopg2 against the system libpq.
 COPY requirements.txt .
-
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Install additional dependencies for alembic
-RUN pip install --no-cache-dir alembic
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl libpq5 gcc libc6-dev libpq-dev \
+    && pip install --no-cache-dir -r requirements.txt \
+    && apt-get purge -y --auto-remove gcc libc6-dev libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy application code
 COPY . .

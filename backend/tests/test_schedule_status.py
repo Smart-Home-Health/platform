@@ -92,7 +92,7 @@ def test_schedule_feed_excludes_other_patients_and_accounts(db_session, account,
     ]
 
 
-def test_refresh_publishes_details_without_badge_permissions(db_session, patient, monkeypatch):
+def test_refresh_clears_details_without_readable_reminder_categories(db_session, patient, monkeypatch):
     import asyncio
     from contextlib import nullcontext
     from unittest.mock import Mock
@@ -103,6 +103,9 @@ def test_refresh_publishes_details_without_badge_permissions(db_session, patient
     import state_manager
     import json
 
+    assert add_equipment_simple(db_session, 'Overdue replacement', patient_id=patient.id,
+                                account_id=patient.account_id, useful_days=1,
+                                last_changed=datetime.now(timezone.utc) - timedelta(days=3))
     cfg = {'enabled': True, 'sections': {'schedule_details': 'get'}}
     monkeypatch.setattr(settings, 'get_patient_mqtt_config', lambda pid: cfg)
     monkeypatch.setattr(publisher, 'get_patient_mqtt_config', lambda pid: cfg)

@@ -15,150 +15,52 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-import { useState, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import ModalBase from './ModalBase';
-import config from '../config';
-import { useAdminPatient } from '../contexts/AdminPatientContext';
+import config, { apiFetch } from '../config';
+import { DailySchedule } from '../pages/admin-v2/AdminV2Schedule';
 import { useAuth } from '../contexts/AuthContext';
-import DoseScheduleView from './schedule/DoseScheduleView';
-import DoseDetailPane from './schedule/DoseDetailPane';
+import { canRecordSchedule, hasSchedulePermission } from './schedule/schedulePermissions';
 import PanelViewSwitcher from './section-panel/PanelViewSwitcher';
 import PrnPicker from './section-panel/PrnPicker';
 import { medicationRows } from './section-panel/prnRows';
 import './section-panel/section-panel.css';
-import { computeScheduleStatus } from './schedule/scheduleStatus';
-import { rollupSchedule } from './schedule/scheduleRollup';
-import { checkAdministrationWindow, formatDurationMinutes, getCurrentLocalDateTime } from '../utils/timezone';
+import { getCurrentLocalDateTime } from '../utils/timezone';
 import MedicationDoseModal from '../pages/admin-v2/components/MedicationDoseModal';
-import UpdateQuantityModal from '../pages/admin-v2/components/UpdateQuantityModal';
-import ConfirmSheet from './vc/ConfirmSheet';
 
-const OFF_WINDOW_ERRORS = ['early_administration', 'late_administration', 'off_window_administration'];
-
-const MedicationModal = ({ onClose }) => {
-  const { selectedPatient } = useAdminPatient();
+const MedicationModal = ({ patient: selectedPatient, onClose }) => {
+  const { user, hasReadAccess } = useAuth();
+  const canReadMeds = hasReadAccess !== false && hasSchedulePermission(user, 'medications.read');
   const [tab, setTab] = useState('scheduled');
-  // Which dose the detail pane is showing. Kept here rather than in the view so
-  // it survives the refetch after recording.
-  const [selectedId, setSelectedId] = useState(null);
-  const { user } = useAuth();
-  const [scheduled, setScheduled] = useState([]);          // raw `medications` rows from /api/schedule/daily
-  const [activeMedications, setActiveMedications] = useState([]);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [medicationCatalog, setMedicationCatalog] = useState([]);
+  const activeMedications = canReadMeds ? medicationCatalog : [];
   const [loading, setLoading] = useState(false);
 
-  // Off-window confirm (shared shape for single + bulk completion).
-  const [windowConfirm, setWindowConfirm] = useState({ open: false, title: '', heading: '', detail: '', onConfirm: null });
-  // Low-quantity gate — `info` is the backend 409 body; `retry` re-runs the action.
-  const [qtyGate, setQtyGate] = useState({ open: false, info: null, retry: null });
   // PRN: pick an as-needed med, then the shared dose modal collects dose/time.
   const [prnPickerOpen, setPrnPickerOpen] = useState(false);
   const [prnMed, setPrnMed] = useState(null);
 
-  useEffect(() => {
-    if (!selectedPatient) return;
-    fetchActiveMedications();
-    if (tab === 'scheduled') fetchSchedule();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch helpers are recreated each render and selectedPatient is tracked via its id; effect is intentionally keyed on tab/patient id only
-  }, [tab, selectedPatient?.id]);
-
-  const fetchSchedule = async () => {
-    if (!selectedPatient) return;
+  const patientId = selectedPatient?.id;
+  const fetchActiveMedications = useCallback(async () => {
+    if (!patientId || !canReadMeds) return;
     setLoading(true);
     try {
-      const today = new Date();
-      const dateParam = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-      const tz = -today.getTimezoneOffset();
-      const res = await fetch(
-        `${config.apiUrl}/api/schedule/daily?patient_id=${selectedPatient.id}&target_date=${dateParam}&tz_offset_minutes=${tz}&include_prior_day=true`,
-        { credentials: 'include' }
-      );
-      if (res.ok) {
-        const data = await res.json();
-        setScheduled(data.medications || []);
-      }
+      const res = await apiFetch(`${config.apiUrl}/api/admin/medications/active?patient_id=${patientId}`);
+      if (res.ok) setMedicationCatalog(await res.json());
     } catch (err) {
-      console.error('Error fetching medication schedule:', err);
+      console.error('Error fetching medications:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [patientId, canReadMeds]);
 
-  const fetchActiveMedications = async () => {
-    if (!selectedPatient) return;
-    try {
-      const res = await fetch(
-        `${config.apiUrl}/api/admin/medications/active?patient_id=${selectedPatient.id}`,
-        { credentials: 'include' }
-      );
-      if (res.ok) setActiveMedications(await res.json());
-    } catch (err) {
-      console.error('Error fetching medications:', err);
-    }
-  };
+  useEffect(() => { fetchActiveMedications(); }, [fetchActiveMedications, tab]);
 
-  // Normalize the unified `medications` rows into the shape ScheduleList expects.
-  const scheduledItems = useMemo(() => {
-    return scheduled.map(item => {
-      const dose = item.dose_amount != null
-        ? `${item.dose_amount}${item.dose_unit ? ' ' + item.dose_unit : ''}`
-        : null;
-      const status = computeScheduleStatus(item);
-      return {
-        id: `${item.schedule_id ?? 'prn'}-${item.scheduled_time}-${item.log_id ?? ''}`,
-        scheduled_time: item.scheduled_time,
-        name: item.name,
-        description: item.description,
-        extra: dose,
-        category: null,
-        status,
-        is_completed: status === 'completed' || status === 'skipped',
-        is_yesterday: !!item.is_yesterday,
-        // Grace period: a prior day's dose still actionable (status stays
-        // 'missed'; the view shows how far past it is and when it lapses).
-        in_grace: !!item.in_grace,
-        overdue_minutes: item.overdue_minutes,
-        grace_expires_at: item.grace_expires_at,
-        completeLabel: status === 'missed' ? 'Take Now' : 'Mark Taken',
-        skipLabel: 'Skip',
-        showSkip: true,
-        _raw: item,
-      };
-    });
-  }, [scheduled]);
-
-  // A dose's normalized id embeds log_id, which appears the moment the dose is
-  // recorded — so selecting by id would drop the selection on the refetch that
-  // follows. Key on the schedule slot instead, which is stable.
-  const doseKey = (raw) => `${raw?.schedule_id ?? 'prn'}-${raw?.scheduled_time}`;
-  const selectedItem = useMemo(
-    () => scheduledItems.find(i => doseKey(i._raw) === selectedId) || null,
-    [scheduledItems, selectedId]
-  );
-  const recordingAs = user?.full_name || user?.username || null;
-
-  // The menu shows what each view is holding, so you can choose without
-  // opening both: how much is outstanding, and how many profiles there are.
-  const viewOptions = useMemo(() => {
-    const { counts } = rollupSchedule(scheduledItems);
-    const outstanding = counts.missed + counts.due;
-    return [
-      {
-        value: 'scheduled',
-        label: 'Scheduled',
-        sublabel: "Today's administration tasks",
-        note: counts.missed > 0
-          ? `${counts.missed} missed`
-          : (outstanding > 0 ? `${outstanding} due` : 'All done'),
-        tone: counts.missed > 0 || outstanding > 0 ? 'due' : 'given',
-      },
-      {
-        value: 'active',
-        label: 'Active medications',
-        sublabel: 'All current medication profiles',
-        count: activeMedications.length,
-      },
-    ];
-  }, [scheduledItems, activeMedications.length]);
+  const viewOptions = [
+    { value: 'scheduled', label: 'Scheduled' },
+    { value: 'active', label: 'Active medications', count: activeMedications.length },
+  ];
 
   const formatTimestamp = (iso) => {
     if (!iso) return null;
@@ -170,97 +72,6 @@ const MedicationModal = ({ onClose }) => {
       return null;
     }
   };
-
-  // ===== Completion / skip (unified endpoints) =====
-  const submitMed = async (med, { override = false, skip = false, note } = {}) => {
-    if (!selectedPatient) return;
-    try {
-      const res = await fetch(`${config.apiUrl}/api/schedule/complete/medication`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          schedule_id: med.schedule_id,
-          scheduled_time: med.scheduled_time,
-          patient_id: selectedPatient.id,
-          dose_amount: skip ? 0 : (med.dose_amount ?? null),
-          completed_at: null,
-          notes: note || (skip ? 'Dose skipped via live dashboard' : 'Administered via live dashboard'),
-          early_override: override,
-        }),
-      });
-      if (res.ok) { fetchSchedule(); fetchActiveMedications(); return; }
-      const err = await res.json().catch(() => ({}));
-      if (res.status === 409 && err.error === 'insufficient_quantity') {
-        setQtyGate({ open: true, info: err, retry: () => submitMed(med, { override, skip, note }) });
-        return;
-      }
-      if (res.status === 409 && OFF_WINDOW_ERRORS.includes(err.error) && !override && !skip) {
-        const check = checkAdministrationWindow(med.scheduled_time);
-        const isLate = check.status === 'late';
-        setWindowConfirm({
-          open: true,
-          title: isLate ? 'Confirm Late Administration' : 'Confirm Early Administration',
-          heading: isLate ? 'This dose was scheduled earlier' : 'This dose is scheduled later',
-          detail: `${med.name} is scheduled for ${check.scheduledLocal} — that's ${
-            isLate
-              ? `${formatDurationMinutes(Math.abs(check.minutesOffset))} ago`
-              : `${formatDurationMinutes(check.minutesOffset)} from now`
-          }.`,
-          onConfirm: () => submitMed(med, { override: true, note }),
-        });
-        return;
-      }
-      window.alert(err.detail || err.error || 'Failed to record dose');
-    } catch (err) {
-      console.error('Error completing medication:', err);
-      window.alert('Error connecting to server');
-    }
-  };
-
-  const submitBulk = async (meds, { override = false } = {}) => {
-    if (!selectedPatient || meds.length === 0) return;
-    try {
-      const res = await fetch(`${config.apiUrl}/api/schedule/complete/bulk`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          medications: meds.map(m => ({
-            schedule_id: m.schedule_id,
-            scheduled_time: m.scheduled_time,
-            patient_id: selectedPatient.id,
-            dose_amount: m.dose_amount ?? null,
-            completed_at: null,
-            early_override: override,
-          })),
-        }),
-      });
-      if (res.ok) { fetchSchedule(); fetchActiveMedications(); return; }
-      const err = await res.json().catch(() => ({}));
-      if (res.status === 409 && err.error === 'insufficient_quantity') {
-        setQtyGate({ open: true, info: err, retry: () => submitBulk(meds, { override }) });
-        return;
-      }
-      if (res.status === 409 && OFF_WINDOW_ERRORS.includes(err.error) && !override) {
-        const n = err.early_items?.length || meds.length;
-        setWindowConfirm({
-          open: true,
-          title: 'Confirm Off-Window Administration',
-          heading: 'Some doses are outside their window',
-          detail: `${n} dose${n === 1 ? '' : 's'} are outside the administration window. Administer them anyway?`,
-          onConfirm: () => submitBulk(meds, { override: true }),
-        });
-        return;
-      }
-      window.alert(err.detail || err.error || 'Failed to mark all');
-    } catch (err) {
-      console.error('Error completing medications:', err);
-      window.alert('Error connecting to server');
-    }
-  };
-
-  const closeWindowConfirm = () => setWindowConfirm({ open: false, title: '', heading: '', detail: '', onConfirm: null });
 
   // ===== PRN =====
   const openPrnPicker = () => setPrnPickerOpen(true);
@@ -333,7 +144,7 @@ const MedicationModal = ({ onClose }) => {
               label: 'PRN',
               count: prnMedications.length,
               onClick: openPrnPicker,
-              disabled: !selectedPatient || prnMedications.length === 0,
+              disabled: !selectedPatient || !canRecordSchedule(user, 'medications') || prnMedications.length === 0,
               title: prnMedications.length === 0
                 ? 'No as-needed medications for this patient'
                 : 'Give an as-needed medication',
@@ -341,29 +152,15 @@ const MedicationModal = ({ onClose }) => {
           />
 
           <div className="ld-panel-scroll">
-            {tab === 'scheduled' && (
-              <DoseScheduleView
-                items={scheduledItems}
-                loading={loading}
-                emptyText="No scheduled medications for today"
-                selectedId={selectedItem?.id || null}
-                onSelect={(item) => setSelectedId(item ? doseKey(item._raw) : null)}
-                onRecord={(item, opts) => submitMed(item._raw, opts)}
-                onSkip={(item, opts) => submitMed(item._raw, { ...opts, skip: true })}
-                onRecordAll={(items) => submitBulk(items.map(i => i._raw))}
-                detail={(
-                  <DoseDetailPane
-                    item={selectedItem}
-                    patientId={selectedPatient?.id}
-                    recordingAs={recordingAs}
-                    onRecord={(item, opts) => submitMed(item._raw, opts)}
-                    onSkip={(item, opts) => submitMed(item._raw, { ...opts, skip: true })}
-                  />
-                )}
-              />
+            {selectedPatient && (
+              <div hidden={tab !== 'scheduled'}>
+                <DailySchedule patient={selectedPatient} category="medications" active={tab === 'scheduled'}
+                  refreshKey={refreshKey} onChange={fetchActiveMedications} />
+              </div>
             )}
             {tab === 'active' && (
-              loading
+              !canReadMeds ? <p>Medication read access is required.</p>
+                : loading
                 ? <div style={{ textAlign: 'center', padding: 40, color: 'var(--dash-text-muted)' }}>Loading…</div>
                 : activeMedications.length === 0
                   ? <div style={{ textAlign: 'center', padding: 40, color: 'var(--dash-text-muted)' }}>No active medications.</div>
@@ -372,18 +169,6 @@ const MedicationModal = ({ onClose }) => {
           </div>
         </div>
       </ModalBase>
-
-      {/* Off-window confirm (single + bulk) */}
-      <ConfirmSheet
-        open={windowConfirm.open}
-        onOpenChange={(o) => { if (!o) closeWindowConfirm(); }}
-        title={windowConfirm.title}
-        confirmLabel="Administer anyway"
-        onConfirm={() => { const fn = windowConfirm.onConfirm; closeWindowConfirm(); fn && fn(); }}
-      >
-        <strong className="cs-lead">{windowConfirm.heading}</strong>
-        {windowConfirm.detail}
-      </ConfirmSheet>
 
       {/* PRN step 1: choose an as-needed med (step 2 is MedicationDoseModal) */}
       <PrnPicker
@@ -400,25 +185,12 @@ const MedicationModal = ({ onClose }) => {
       <MedicationDoseModal
         open={!!prnMed}
         onClose={() => setPrnMed(null)}
-        onSaved={() => { setPrnMed(null); fetchSchedule(); fetchActiveMedications(); }}
+        onSaved={() => { setPrnMed(null); setRefreshKey(value => value + 1); fetchActiveMedications(); }}
         patient={selectedPatient}
         medication={prnMed}
         defaultDateTime={getCurrentLocalDateTime()}
       />
 
-      {/* Low-quantity gate */}
-      {qtyGate.open && qtyGate.info && (
-        <UpdateQuantityModal
-          info={qtyGate.info}
-          onClose={() => setQtyGate({ open: false, info: null, retry: null })}
-          onUpdated={() => {
-            const retry = qtyGate.retry;
-            setQtyGate({ open: false, info: null, retry: null });
-            fetchActiveMedications();
-            if (retry) retry();
-          }}
-        />
-      )}
     </>
   );
 };

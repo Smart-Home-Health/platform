@@ -38,6 +38,66 @@ def test_daily_schedule_contract(admin_client, patient):
     assert "medications" in resp.json()
 
 
+def test_scoped_schedule_reads_only_permitted_categories(limited_client, limited_user, account, patient, db_session, monkeypatch):
+    from crud.users import create_role, get_permission_by_name
+    from routes import schedule
+    from routes.auth import create_access_token
+    from schemas.nutrition_schedule import NutritionSchedule
+    from schemas.patient import AccessLevel, PatientAccess
+
+    path = '/api/schedule/daily'
+    permission = get_permission_by_name(db_session, 'nutrition.read')
+    limited_user.roles.append(create_role(db_session, 'test_nutrition', 'Nutrition', permission_ids=[permission.id]))
+    db_session.commit()
+    assert limited_client.get(path, params={'patient_id': patient.id}).status_code == 404  # A role alone grants no access to this patient.
+
+    grant = PatientAccess(patient_id=patient.id, user_id=limited_user.id, access_level=AccessLevel.VIEWER,
+                          granted_at=datetime(2020, 1, 1), is_active=True)
+    meal = NutritionSchedule(patient_id=patient.id, name='Lunch', schedule_type='meal', cron_expression='0 12 * * *')
+    db_session.add_all([grant, meal])
+    db_session.commit()
+
+    def unexpected(*args, **kwargs):
+        pytest.fail('Read data from an excluded schedule category')
+
+    monkeypatch.setattr(schedule, 'get_scheduled_medications', unexpected)
+    monkeypatch.setattr(schedule, 'find_grace_period_doses', unexpected)
+    monkeypatch.setattr(schedule, 'get_scheduled_care_tasks', unexpected)
+
+    params = {'patient_id': patient.id, 'include_prior_day': 'true'}
+    combined = limited_client.get(path, params=params)
+    combined.raise_for_status()
+    body = combined.json()
+    assert body['medications'] == body['care_tasks'] == []
+    assert [(row['name'], row['is_yesterday']) for row in body['nutrition']] == [('Lunch', True), ('Lunch', False)]
+    assert limited_client.get(path, params={**params, 'category': 'nutrition'}).json() == body
+    assert limited_client.get(path, params={**params, 'category': 'care_tasks'}).status_code == 403
+    assert limited_client.get(path, params={**params, 'category': 'unexpected'}).status_code == 422
+    for legacy_route in ('/api/schedules/daily', '/api/care-tasks/day', '/api/care-task-schedules/daily'):
+        assert limited_client.get(legacy_route, params={'patient_id': patient.id}).status_code == 403
+
+    # The live board remains available when the selected caregiver has entered chart-only mode.
+    token = create_access_token(user=limited_user, account=account, read_restricted=True)
+    assert limited_client.get(path, params={**params, 'category': 'nutrition'},
+                              headers={'Authorization': f'Bearer {token}'}).json() == body
+    grant.expires_at = datetime(2021, 1, 1)
+    db_session.commit()
+    assert limited_client.get(path, params={**params, 'category': 'nutrition'}).status_code == 404
+
+
+def test_schedule_rejects_other_accounts_profiles(admin_client, db_session):
+    from crud.patients import create_patient
+    from models.users import Account
+
+    other_account = Account(name='Other family', slug='other-schedule-family', password_hash='unused')
+    db_session.add(other_account)
+    db_session.flush()
+    patient = create_patient(db_session, {'account_id': other_account.id, 'first_name': 'Other', 'last_name': 'Patient'})
+    for path in ('/api/schedule/daily', '/api/schedules/daily', '/api/care-tasks/day', '/api/care-task-schedules/daily'):
+        response = admin_client.get(path, params={'patient_id': patient.id})
+        assert response.status_code == 404, (path, response.text)
+
+
 @pytest.mark.parametrize("database_tz,completion_mode", [
     ("UTC", "single"),
     ("America/New_York", "single"),
@@ -310,6 +370,15 @@ def test_daily_schedule_include_prior_day_meds_and_tasks(admin_client, patient):
     assert [m["is_yesterday"] for m in without["medications"]] == [False]
     assert [t["is_yesterday"] for t in without["care_tasks"]] == [False]
 
+    for category in ('medications', 'care_tasks'):
+        response = admin_client.get('/api/schedule/daily', params={
+            'patient_id': patient.id, 'category': category, 'target_date': without['date'],
+        })
+        response.raise_for_status()
+        scoped = response.json()
+        assert scoped[category] == without[category]
+        assert all(scoped[key] == [] for key in ('medications', 'care_tasks', 'nutrition') if key != category)
+
 
 def test_daily_schedule_prior_day_no_duplicate_prn(admin_client, patient, db_session):
     """A PRN dose given yesterday must appear exactly once (in the prior-day
@@ -457,3 +526,154 @@ def test_live_care_task_completion_credits_only_selected_patient_and_occurrence(
     old_client = admin_client.post(f'{path}/skip', json={'scheduled_time': '2026-11-25T10:00:00-05:00'})
     assert old_client.status_code == 200, old_client.text
     assert db_session.get(CareTaskLog, old_client.json()['id']).patient_id == other.id
+
+
+@pytest.fixture
+def recording_schedules(db_session, patient):
+    from schemas.care_task import CareTask
+    from schemas.care_task_schedule import CareTaskSchedule
+    from schemas.medication import Medication
+    from schemas.medication_schedule import MedicationSchedule
+    from schemas.nutrition_schedule import NutritionSchedule
+
+    at = datetime.now(timezone.utc)
+    stamps = dict(created_at=at, updated_at=at)
+    scope = dict(patient_id=patient.id, account_id=patient.account_id)
+    med = Medication(name="Test medication", quantity=10, quantity_unit="tablet", **scope, **stamps)
+    task = CareTask(name="Test task", **scope, **stamps)
+    schedule = dict(patient_id=patient.id, cron_expression="0 12 * * *", **stamps)
+    records = {
+        "medication": MedicationSchedule(medication=med, dose_amount=1, **schedule),
+        "care-task": CareTaskSchedule(care_task=task, **schedule),
+        "nutrition": NutritionSchedule(name="Test meal", schedule_type="meal", **schedule),
+    }
+    db_session.add_all(records.values())
+    db_session.commit()
+    return records
+
+
+def _recording_grant(db, user, patient, permission, level):
+    from crud.users import create_role, get_permission_by_name
+    from schemas.patient import PatientAccess
+
+    role = create_role(db, 'test_record', 'Test recording', permission_ids=[get_permission_by_name(db, permission).id])
+    user.roles.append(role)
+    grant = PatientAccess(patient_id=patient.id, user_id=user.id, access_level=level,
+                          granted_at=datetime(2020, 1, 1), is_active=True)
+    db.add(grant)
+    db.commit()
+    return grant
+
+
+@pytest.mark.parametrize("kind,permission,collection,log_type,id_key", [
+    ("medication", "medications.administer", "medications", "medication", "log_id"),
+    ("medication", "medications.update", "medications", "medication", "log_id"),
+    ("nutrition", "nutrition.create", "nutrition", "nutrition_intake", "intake_id"),
+    ("nutrition", "nutrition.update", "nutrition", "nutrition_intake", "intake_id"),
+    ("care-task", "care_tasks.perform", "care_tasks", "care_task", "log_id"),
+])
+def test_recording_requires_writable_profile_and_category(
+    limited_client, limited_user, patient, db_session, recording_schedules, kind, permission, collection, log_type, id_key,
+):
+    from schemas.patient import AccessLevel
+
+    item = dict(patient_id=patient.id, schedule_id=recording_schedules[kind].id,
+                scheduled_time=datetime.now(timezone.utc).isoformat())
+    complete = f"/api/schedule/complete/{kind}"
+    bulk = "/api/schedule/complete/bulk"
+    assert limited_client.post(complete, json=item).status_code == 403
+    grant = _recording_grant(db_session, limited_user, patient, permission, AccessLevel.VIEWER)
+    grant.is_active = False
+    db_session.commit()
+    assert limited_client.post(complete, json=item).status_code == 404
+    grant.is_active = True
+    db_session.commit()
+    assert limited_client.post(complete, json=item).status_code == 403
+    assert limited_client.post(bulk, json={collection: [item]}).status_code == 403
+
+    grant.access_level = AccessLevel.CAREGIVER
+    db_session.commit()
+    # A category-specific recording role can chart and undo that category alone.
+    other = "medication" if kind == "nutrition" else "nutrition"
+    other_item = {**item, "schedule_id": recording_schedules[other].id}
+    assert limited_client.post(f"/api/schedule/complete/{other}", json=other_item).status_code == 403
+    response = limited_client.post(complete, json=item)
+    assert response.status_code == 200, response.text
+    assert response.json()["success"], response.text
+    undo = f"/api/schedule/log/{log_type}/{response.json()[id_key]}"
+    grant.access_level = AccessLevel.VIEWER
+    db_session.commit()
+    assert limited_client.delete(undo).status_code == 403
+    grant.access_level = AccessLevel.CAREGIVER
+    db_session.commit()
+    assert limited_client.delete(undo).json() == {"success": True}
+
+
+def test_bulk_recording_preflights_all_profiles_and_categories(
+    patient, db_session, recording_schedules, limited_client, limited_user,
+):
+    from crud.patients import create_patient
+    from schemas.medication_log import MedicationLog
+    from schemas.patient import AccessLevel
+
+    _recording_grant(db_session, limited_user, patient, "medications.update", AccessLevel.CAREGIVER)
+    other = create_patient(db_session, dict(first_name="Other", last_name="Profile", account_id=patient.account_id))
+    med = recording_schedules["medication"]
+    item = dict(patient_id=patient.id, schedule_id=med.id, scheduled_time=datetime.now(timezone.utc).isoformat())
+    meal = {**item, "schedule_id": recording_schedules["nutrition"].id}
+    path = "/api/schedule/complete/bulk"
+    assert limited_client.post(path, json={"medications": [item], "nutrition": [meal]}).status_code == 403
+    assert limited_client.post(path, json={"medications": [item, {**item, "patient_id": other.id}]}).status_code == 404
+
+    med.patient_id = other.id
+    db_session.commit()
+    assert limited_client.post(path, json={"medications": [item]}).status_code == 404
+    med.patient_id = None
+    med.medication.patient_id = other.id
+    db_session.commit()
+    assert limited_client.post("/api/schedule/complete/medication", json=item).status_code == 404
+    assert db_session.query(MedicationLog).count() == 0
+    assert med.medication.quantity == 10
+
+    med.medication.patient_id = None  # A shared catalog entry in this account still works.
+    db_session.commit()
+    assert limited_client.post(path, json={"medications": [item]}).json()["medications"][0]["success"]
+    assert db_session.query(MedicationLog).one().patient_id == patient.id
+
+
+def test_nutrition_mixed_undo_preflights_every_member(limited_client, limited_user, db_session, patient):
+    from crud.patients import create_patient
+    from schemas.nutrition_output import NutritionOutput
+    from schemas.patient import AccessLevel
+
+    _recording_grant(db_session, limited_user, patient, "nutrition.create", AccessLevel.CAREGIVER)
+    other = create_patient(db_session, dict(first_name="Other", last_name="Profile", account_id=patient.account_id))
+    outputs = [NutritionOutput(patient_id=pid, output_type="urine", occurred_at=datetime.now(timezone.utc))
+               for pid in (patient.id, other.id, patient.id)]
+    db_session.add_all(outputs)
+    db_session.commit()
+    first, foreign, second = (row.id for row in outputs)
+    path = "/api/schedule/log/nutrition_output/"
+    for key in (str(foreign), f"mixed-{first}-{foreign}", f"mixed-{first}-99999999"):
+        assert limited_client.delete(path + key).status_code == 404
+    assert db_session.query(NutritionOutput).count() == 3
+    assert limited_client.delete(path + f"mixed-{first}-{second}").json() == {"success": True}
+    assert db_session.query(NutritionOutput).one().id == foreign
+
+
+def test_nutrition_completion_scopes_schedule_and_saved_items(patient, db_session, recording_schedules, admin_client):
+    from crud.patients import create_patient
+    from schemas.nutrition_intake import NutritionIntake
+    from schemas.nutrition_item import NutritionItem
+
+    other = create_patient(db_session, dict(first_name="Other", last_name="Profile", account_id=patient.account_id))
+    saved = NutritionItem(patient_id=other.id, account_id=patient.account_id, item_type="food", name="Test food")
+    db_session.add(saved)
+    db_session.commit()
+    schedule = recording_schedules["nutrition"]
+    source = {"schedule_id": schedule.id, "patient_id": patient.id, "scheduled_time": datetime.now(timezone.utc).isoformat()}
+    part = {"item_id": saved.id, "item_name": "Test food", "item_type": "food", "amount": 1, "amount_unit": "serving"}
+    for payload in ({**source, "patient_id": other.id}, {**source, "items": [part]}):
+        assert admin_client.post("/api/schedule/complete/nutrition", json=payload).status_code == 404
+        assert admin_client.post("/api/schedule/complete/bulk", json={"nutrition": [payload]}).status_code == 404
+    assert db_session.query(NutritionIntake).count() == 0

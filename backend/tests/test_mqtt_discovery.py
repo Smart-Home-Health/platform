@@ -265,14 +265,55 @@ def test_schedule_details_discovery_and_publish_are_opt_in(fake_client, monkeypa
     pub = MQTTPublisher(client)
     monkeypatch.setattr(publisher, "get_mqtt_settings", lambda: {"enabled": True})
     monkeypatch.setattr(publisher, "get_patient_mqtt_config", lambda pid: cfg)
-    payload = {"late_count": 0, "late": [], "upcoming": [], "due_now": []}
+    payload = {"generated_at": "2026-11-27T12:00:00+00:00", "late_count": 0,
+               "late": [], "upcoming": [], "due_now": []}
     assert pub.publish_schedule_details(5, payload)
-    client.publish.assert_called_once_with(config["stat_t"], json.dumps(payload), qos=1, retain=False)
+    (topic, raw), flags = client.publish.call_args
+    assert topic == config["stat_t"]
+    assert flags == {"qos": 1, "retain": False}
+    assert json.loads(raw) == payload
     cfg["sections"]["schedule_details"] = "off"
     assert not pub.publish_schedule_details(5, payload)
     cfg.update(enabled=False, sections={"schedule_details": "get"})
     assert not pub.publish_schedule_details(5, payload)
     client.publish.assert_called_once()
+
+
+def test_schedule_details_follow_current_reminder_permissions(monkeypatch):
+    from unittest.mock import Mock
+    from mqtt import publisher
+
+    sections = {"schedule_details": "get", "meds_counts": "get", "nutrition_counts": "both",
+                "care_task_counts": "off", "equipment_counts": "set"}
+    monkeypatch.setattr(publisher, "get_patient_mqtt_config",
+                        lambda pid: {"enabled": True, "sections": sections})
+    monkeypatch.setattr(publisher, "get_mqtt_settings", lambda: {"enabled": True})
+    client = Mock()
+    client.publish.return_value.rc = 0
+    pub = MQTTPublisher(client)
+
+    med = {"category": "Medication", "name": "Dose", "due_at": "2026-11-27T09:00:00+00:00"}
+    task = {"category": "Care task", "name": "Morning care", "due_at": "2026-11-27T08:00:00+00:00"}
+    feed = {"category": "Nutrition", "name": "Feed", "due_at": "2026-11-27T12:00:00+00:00"}
+    next_feed = {**feed, "due_at": "2026-11-27T12:45:00+00:00"}
+    equipment = {"category": "Equipment", "name": "Filter", "due_date": "2026-11-27"}
+    next_change = {**equipment, "due_date": "2026-11-30"}
+    snapshot = {"generated_at": "2026-11-27T12:00:00+00:00", "late_count": 2,
+                "late": [task, med], "due_now": [equipment, feed], "upcoming": [next_feed, next_change]}
+
+    assert pub.publish_schedule_details(5, snapshot)
+    assert json.loads(client.publish.call_args.args[1]) == {
+        "generated_at": snapshot["generated_at"], "late_count": 1,
+        "late": [med], "due_now": [feed], "upcoming": [next_feed],
+    }
+
+    # The snapshot was computed before the permissions changed.
+    sections = {"schedule_details": "get", "care_task_counts": "both", "equipment_counts": "get"}
+    assert pub.publish_schedule_details(5, snapshot)
+    assert json.loads(client.publish.call_args.args[1]) == {
+        "generated_at": snapshot["generated_at"], "late_count": 1,
+        "late": [task], "due_now": [equipment], "upcoming": [next_change],
+    }
 
 
 def test_discovery_runs_on_broker_ack_and_reconnect(monkeypatch):

@@ -18,6 +18,7 @@ MQTT Settings and Configuration
 """
 import json
 from typing import Dict, Any, Optional, List
+from crud.schedule_status import SCHEDULE_BADGES
 from crud.settings import get_setting
 from db import get_db
 import logging
@@ -144,6 +145,14 @@ def get_patient_state_topic(patient_id: int) -> Optional[str]:
 def schedule_details_topic(base_topic, patient_id, config):
     base = config.get("base_topic_override") or base_topic
     return f"{base}/patient/{patient_id}/schedule"
+
+
+def shared_schedule_categories(sections: Dict[str, str]) -> Dict[str, str]:
+    """Map readable reminder section IDs to the categories used in schedule items."""
+    return {
+        section: category for section, (_, category) in SCHEDULE_BADGES.items()
+        if sections.get(section) in ("get", "both")
+    }
 
 
 def get_patient_set_topic(patient_id: int) -> Optional[str]:

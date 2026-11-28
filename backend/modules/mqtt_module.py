@@ -190,17 +190,17 @@ class MQTTModule:
     async def _schedule_state(self, patient_id, *, include_details):
         """Load the enabled badge counts and, on a schedule refresh, the opt-in snapshot."""
         def _load():
-            from crud.schedule_status import SCHEDULE_BADGES, get_schedule_status, schedule_badge_counts
-            from mqtt.settings import get_patient_mqtt_config
+            from crud.schedule_status import get_schedule_status, schedule_badge_counts
+            from mqtt.settings import get_patient_mqtt_config, shared_schedule_categories
             from state_manager import get_db_session
             cfg = get_patient_mqtt_config(patient_id) or {}
             sharing = cfg.get("sections") or {}
-            badges = [s for s in SCHEDULE_BADGES if sharing.get(s) in ("get", "both")]
+            badges = shared_schedule_categories(sharing)
             details = include_details and sharing.get("schedule_details") in ("get", "both")
             if not cfg.get("enabled", True) or not (badges or details):
                 return {}, None
             with get_db_session() as db:
-                snapshot = get_schedule_status(db, patient_id, sections=None if details else badges)
+                snapshot = get_schedule_status(db, patient_id, sections=badges)
             return schedule_badge_counts(snapshot, badges), snapshot if details else None
         try:
             return await asyncio.to_thread(_load)

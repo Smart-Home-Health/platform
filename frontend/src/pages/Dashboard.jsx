@@ -53,12 +53,13 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { isAuthenticated, haAccountAuth, readRestricted, restoreHaAccount, unlockWithAccountPassword } = useAuth();
+  const { user, isAuthenticated, haAccountAuth, readRestricted, restoreHaAccount, unlockWithAccountPassword } = useAuth();
   const { patients, selectedPatient: sessionPatient, selectPatient, loadingPatients } = useAdminPatient();
   const patientParam = searchParams.get('patient');
   // Resolve the link before starting patient-scoped reads, even if the session
   // remembers a different patient.
   const selectedPatient = patientParam ? patients.find(p => p.id === Number(patientParam)) : sessionPatient;
+  const schedulePanelKey = `${selectedPatient?.id}:${user?.id}`;
   const { requirePinAuth, pinChallengeOpen } = usePinChallenge();
   const { chartChrome } = useDashboardTheme();
   const clock = useLiveClockFormat();
@@ -1265,18 +1266,18 @@ export default function Dashboard() {
       )}
 
       {/* Medication Modal */}
-      {isMedicationModalOpen && (
-        <MedicationModal onClose={() => setIsMedicationModalOpen(false)} />
+      {isMedicationModalOpen && isAuthenticated && !needsUnlock && (
+        <MedicationModal key={schedulePanelKey} patient={selectedPatient} onClose={() => setIsMedicationModalOpen(false)} />
       )}
 
       {/* Nutrition Modal */}
-      {isNutritionModalOpen && (
-        <NutritionModal onClose={() => setIsNutritionModalOpen(false)} />
+      {isNutritionModalOpen && isAuthenticated && !needsUnlock && (
+        <NutritionModal key={schedulePanelKey} patient={selectedPatient} onClose={() => setIsNutritionModalOpen(false)} />
       )}
 
       {/* Care Task Modal */}
-      {isCareTaskModalOpen && (
-        <CareTaskModal key={sessionPatient?.id} onClose={() => setIsCareTaskModalOpen(false)} />
+      {isCareTaskModalOpen && isAuthenticated && !needsUnlock && (
+        <CareTaskModal key={schedulePanelKey} patient={selectedPatient} onClose={() => setIsCareTaskModalOpen(false)} />
       )}
 
       {/* Capture Vitals — the live SpO2/HR are offered as a connected

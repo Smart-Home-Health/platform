@@ -37,7 +37,7 @@ const emptyForm = () => ({
  * Props:
  *   open            — boolean
  *   onClose         — () => void
- *   onSaved         — () => void
+ *   onSaved         — (completion) => void
  *   patient         — { id }
  *   task            — { id, name, description, category_name, category_color }
  *   defaultDateTime — datetime-local string to seed completed_at on a fresh open
@@ -77,7 +77,7 @@ const CareTaskCompleteModal = ({ open, onClose, onSaved, patient, task, defaultD
         const data = await res.json().catch(() => ({}));
         throw new Error(data.detail || 'Failed to record completion');
       }
-      onSaved?.();
+      onSaved?.(await res.json());
       onClose?.();
     } catch (err) {
       setError(err.message);

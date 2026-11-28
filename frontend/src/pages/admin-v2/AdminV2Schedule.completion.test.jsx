@@ -25,7 +25,7 @@ const { patientCtx } = vi.hoisted(() => ({
     patients: [], selectPatient: () => {},
   },
 }));
-vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 1 } }) }));
+vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 1, permissions: ['nutrition.read', 'nutrition.create'] } }) }));
 vi.mock('../../contexts/AdminPatientContext', () => ({ useAdminPatient: () => patientCtx }));
 vi.mock('react-router-dom', () => ({ Link: ({ to, children }) => <a href={to}>{children}</a>, useSearchParams: () => [new URLSearchParams(), () => {}] }));
 vi.mock('../../config', () => ({ default: { apiUrl: '' }, apiFetch: (...args) => fetch(...args) }));

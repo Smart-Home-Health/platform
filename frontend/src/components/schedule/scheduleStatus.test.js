@@ -18,7 +18,7 @@
 // Grace-period cues: an unfilled past dose that is still actionable keeps
 // status 'missed' and gets an "Overdue · Xd" label from these helpers.
 import { describe, it, expect } from 'vitest';
-import { computeScheduleStatus, formatOverdue, overdueLabel, graceTitle } from './scheduleStatus';
+import { formatOverdue, overdueLabel, graceTitle } from './scheduleStatus';
 
 describe('formatOverdue', () => {
   it('reads in minutes, then hours, then days', () => {
@@ -60,10 +60,5 @@ describe('overdueLabel / graceTitle', () => {
     // Unparseable dates fall out rather than reading "Invalid Date".
     expect(graceTitle({ ...item, grace_expires_at: 'nope' })).toMatch(/^Originally due /);
     expect(graceTitle({ ...item, grace_expires_at: 'nope' })).not.toMatch(/Invalid/);
-  });
-
-  it('does not change the status taxonomy: an in-grace dose is still missed', () => {
-    expect(computeScheduleStatus({ ...item, completed: false })).toBe('missed');
-    expect(computeScheduleStatus({ ...item, completed: true })).toBe('completed');
   });
 });

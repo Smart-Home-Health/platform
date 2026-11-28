@@ -154,7 +154,7 @@ recognized variables.
 ```bash
 docker compose logs -f backend     # Tail backend logs
 docker compose logs -f frontend    # Tail frontend logs
-docker compose restart backend     # After changes that don't hot-reload (e.g. requirements.txt)
+docker compose up -d --build backend  # Rebuild after changing Python dependencies
 
 # Database migrations (run inside the backend container)
 docker compose exec backend alembic revision --autogenerate -m "description"
@@ -190,7 +190,7 @@ The system integrates with **Home Assistant** and other MQTT‑enabled devices.
 
 #### Care schedule reminders
 
-In **Care profile → Home Assistant → Reminders**, set **Schedule details (names and due times)** to **Get only**. The Schedule details sensor shows item names and due times, with late items first, followed by due-now and upcoming items. When the list exceeds Home Assistant’s state length limit, the sensor shows the first item and the number of additional items. The `details` attribute lists every item on a separate line using Home Assistant’s local time. Equipment replacements show their due date.
+In **Care profile → Home Assistant → Reminders**, set the **Due/Late** categories you want to share to **Get only**. To include names and due times for those categories, also set **Schedule details (names and due times)** to **Get only**. The sensor lists late items first, followed by due-now and upcoming items. When the list exceeds Home Assistant’s state length limit, the sensor shows the first item and the number of additional items. The `details` attribute lists each shared item on a separate line using Home Assistant’s local time. Equipment replacements show their due date.
 
 For a notification message, use `{{ state_attr('sensor.your_schedule_details', 'details') }}` with your profile’s entity ID. For numeric triggers, select the sensor’s `late_count` attribute. The `late`, `due_now`, and `upcoming` lists also contain each item’s category, name, and `due_at` timestamp or `due_date`. If you imported the 0.7.2 reminder blueprint, re-import the updated version so it reads `late_count`.
 

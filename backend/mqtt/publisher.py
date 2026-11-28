@@ -27,6 +27,7 @@ from .settings import (
     get_patient_mqtt_config,
     schedule_details_topic,
     section_allows_get,
+    shared_schedule_categories,
     state_key_to_section,
 )
 
@@ -155,16 +156,24 @@ class MQTTPublisher:
             return False
 
     def publish_schedule_details(self, patient_id, snapshot):
-        """Publish only while sharing is still enabled. The broker need not retain care names."""
+        """Apply the current sharing permissions before sending names and due times."""
         if not self.is_available():
             return False
-        config = get_patient_mqtt_config(patient_id) or {}
         settings = get_mqtt_settings()
+        config = get_patient_mqtt_config(patient_id) or {}
+        sections = config.get('sections') or {}
         if not (settings.get('enabled') and config.get('enabled', True)
-                and (config.get('sections') or {}).get('schedule_details') in ('get', 'both')):
+                and sections.get('schedule_details') in ('get', 'both')):
             return False
+        # Permissions may have changed since the schedule was read.
+        categories = set(shared_schedule_categories(sections).values())
+        groups = {
+            group: [item for item in snapshot[group] if item['category'] in categories]
+            for group in ('late', 'due_now', 'upcoming')
+        }
+        payload = {'generated_at': snapshot['generated_at'], 'late_count': len(groups['late']), **groups}
         topic = schedule_details_topic(settings.get('base_topic', 'shh'), patient_id, config)
-        result = self.mqtt_client.publish(topic, json.dumps(snapshot), qos=1, retain=False)
+        result = self.mqtt_client.publish(topic, json.dumps(payload), qos=1, retain=False)
         return result.rc == 0
 
     def publish_patient_combined_state(self, patient_id: int, state: Dict[str, Any]) -> bool:

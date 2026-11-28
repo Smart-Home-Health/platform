@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.2
+
+- Medications, Nutrition and Care Tasks now use the same daily timeline as the combined Schedule. Opening a section or its Live Board panel shows just that category. Use the arrows or date picker to review yesterday or another day, and **Today** to return.
+- Opening a schedule link for a particular care profile now uses that profile even when the browser last viewed someone else. Schedule reads, recording and undo respect the caregiver's profile and category permissions.
+- The Home Assistant **Schedule details** sensor includes names, due times and counts only for reminder categories enabled in that care profile. Turning a category off removes its entries from the next published update.
+- Updated application and build dependencies to address published security advisories, and removed unused dependencies.
+
 ## 0.8.1
 
 - The medication board and daily Schedule now count a scheduled dose consistently when it is recorded after midnight for the previous day. The dose stays linked to its original scheduled time, and the board shows when it was given.

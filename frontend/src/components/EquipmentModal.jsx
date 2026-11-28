@@ -43,7 +43,7 @@ export default function EquipmentModal({ isOpen = true, onClose }) {
   const { selectedPatient } = useAdminPatient();
   const patientId = selectedPatient?.id ?? null;
   // Wide only at the expanded dock stop; the narrow stop and the phone sheet
-  // both get the two-column facts (same rule as DoseScheduleView).
+  // both get the two-column facts.
   const { docked, expanded } = useModalDock();
   const wide = docked && expanded;
 

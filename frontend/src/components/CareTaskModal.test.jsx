@@ -22,12 +22,12 @@ vi.mock('./ModalBase', () => ({ default: ({ children }) => <div>{children}</div>
 vi.mock('./nutrition/IntakeSheet', () => ({ default: () => null }));
 
 const { authCtx, patientCtx } = vi.hoisted(() => ({
-  authCtx: { user: { id: 1, full_name: 'Temp Name' } },
+  authCtx: { user: { id: 1, full_name: 'Temp Name', permissions: ['care_tasks.read', 'care_tasks.perform'] } },
   patientCtx: { selectedPatient: { id: 5, first_name: 'Eli', last_name: 'Carty' } },
 }));
 vi.mock('../contexts/AuthContext', () => ({ useAuth: () => authCtx }));
 vi.mock('../contexts/AdminPatientContext', () => ({ useAdminPatient: () => patientCtx }));
-vi.mock('../config', () => ({ default: { apiUrl: '' } }));
+vi.mock('../config', () => ({ default: { apiUrl: '' }, apiFetch: (...args) => fetch(...args) }));
 
 import CareTaskModal from './CareTaskModal';
 
@@ -37,6 +37,7 @@ const TASKS = [{
 }];
 
 beforeEach(() => {
+  Element.prototype.scrollIntoView = vi.fn();
   vi.stubGlobal('fetch', vi.fn(async (url) => {
     if (url.includes('/api/care-tasks/active')) {
       return { ok: true, status: 200, json: async () => ({ care_tasks: TASKS }) };
@@ -47,7 +48,7 @@ beforeEach(() => {
 
 describe('CareTaskModal PRN mark-done', () => {
   it('runs the PRN flow on EntityModal with em fields, no shadcn dialog', async () => {
-    await act(async () => { render(<CareTaskModal onClose={() => {}} />); });
+    await act(async () => { render(<CareTaskModal patient={patientCtx.selectedPatient} onClose={() => {}} />); });
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: /PRN/i })); });
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Reposition/ })); });
 
@@ -72,35 +73,33 @@ describe('CareTaskModal scheduled completion', () => {
     let completed = false;
     fetch.mockImplementation(async (url, options) => {
       if (url.includes('/api/schedule/daily?')) {
-        return { ok: true, json: async () => ({ care_tasks: [{ ...task, completed }] }) };
+        return { ok: true, json: async () => ({
+          care_tasks: [{ ...task, completed, ...(completed && { log_id: 9 }) }],
+        }) };
       }
-      if (url === '/api/care-task-schedules/17/complete' && options.method === 'POST') {
-        const payload = JSON.parse(options.body);
-        payloads.push(payload);
-        if (!payload.early_override) {
-          return { ok: false, status: 409, json: async () => ({ error: 'late_administration' }) };
-        }
+      if (url === '/api/schedule/complete/care-task' && options.method === 'POST') {
+        payloads.push(JSON.parse(options.body));
         completed = true;
-        return { ok: true, json: async () => ({ id: 9 }) };
+        return { ok: true, json: async () => ({ success: true, log_id: 9 }) };
       }
       return { ok: true, json: async () => ({ care_tasks: TASKS }) };
     });
 
-    await act(async () => { render(<CareTaskModal onClose={() => {}} />); });
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Mark done' })); });
-    expect(screen.getByText('Confirm Late Completion')).toBeInTheDocument();
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Complete anyway' })); });
+    await act(async () => { render(<CareTaskModal patient={patientCtx.selectedPatient} onClose={() => {}} />); });
+    await act(async () => { fireEvent.click(screen.getByText('Reposition')); });
+    expect(screen.getByRole('alert')).toHaveTextContent(/late administration/i);
+    expect(payloads).toHaveLength(0);
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Confirm Late Administration' })); });
 
-    const expected = {
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]).toMatchObject({
       patient_id: 5,
+      schedule_id: 17,
       scheduled_time: task.scheduled_time,
-      notes: 'Completed via live dashboard',
-    };
-    expect(payloads).toEqual([
-      { ...expected, early_override: false },
-      { ...expected, early_override: true },
-    ]);
-    expect(screen.getByText('0 of 1 need attention')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Mark done' })).not.toBeInTheDocument();
+      early_override: true,
+    });
+    const row = screen.getByText('Reposition').closest('.admin-v2-schedule-item');
+    expect(row).toHaveClass('completed');
+    expect(within(row).getByRole('button', { name: 'Undo' })).toBeInTheDocument();
   });
 });
